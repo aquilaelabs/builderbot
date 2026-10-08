@@ -45,7 +45,7 @@ function getNotebook(project){
 }
 
 function openNotebook(name, view){
-  openTab({kind: "notebook", arg: name, label: "Notebook: " + name});
+  openTab({kind: "notebook", arg: name, label: "Notebook: " + projLabel(name)});
   if (view) getNotebook(name).view(view);
 }
 
@@ -69,6 +69,9 @@ function makeNotebook(project){
                      nbUnsaved, noteBatch, syncSave});
   nb.loaded = false;
   nb.ruleData = null; nb.rulePending = null; nb.rulesRev = null;
+  // Global rules switched off for this project, staged (nb-rules.js), and
+  // the one an administrator is editing.
+  nb.globalOffPending = null; nb.globalEditing = null;
   // Which rules are open for editing, by row. A rule is READ by default:
   // its name, its text, its triggers, and shows its fields only after Edit,
   // the way a bug report does; every row opening as a form read as a tab
@@ -105,9 +108,13 @@ function makeNotebook(project){
   // defines functions, and the names it hands back are what the rest of
   // this closure calls by name.
   const {loadGit} = nbGitView({$, nb, project});
+  // Each section's Save and Revert (see sectBar): published before the views
+  // are made, since they register their sections as they are.
+  nb.stagers = {}; nb.sectBar = sectBar; nb.stage = stage;
   const {loadArtifacts, loadVersion, drawVersion, postArtifacts, postVersion} = Object.assign(nb, nbArtifactsView({$, nb, project, root, sheet}));
   const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
   const {loadDesign} = Object.assign(nb, nbDesignView({$, nb, project, root}));
+  const {loadWiki, wikiDirty, wikiNews} = Object.assign(nb, nbWikiView({$, nb, project}));
   const {loadRules, drawRules, saveRules, ruleDirty} = Object.assign(nb, nbRulesView({$, nb, project}));
   const {loadTests} = Object.assign(nb, nbTestsView({$, nb, project}));
   const {loadBugs, drawBugs, postBug} = Object.assign(nb, nbBugsView({$, nb, project}));
@@ -159,11 +166,9 @@ function makeNotebook(project){
   // The backdrop, and not the box on it: a click landing inside is aimed at
   // something in there.
   sheet.onclick = e => { if (e.target === sheet) closeSheet(); };
-  root.addEventListener("keydown", e => {
-    // A filter field holding a search clears the field on Escape and stops
-    // the event, so this never sees that one.
-    if (e.key === "Escape" && !sheet.hidden){ e.preventDefault(); closeSheet(); }
-  });
+  // Escape is modalKeys' (page-motion.js), which reaches the backdrop's
+  // closeSheet above. A filter field holding a search clears the field on
+  // Escape and stops the event, so the sheet stays open for that one.
 
   nb.memProj = null;  // set by openMemory; always this project
   nb.memGen  = 0;  // bumped on close, so a slow load cannot repaint it
@@ -178,10 +183,9 @@ function makeNotebook(project){
   async function openMemory(name){
     nb.memProj = name;
     const gen = ++nb.memGen;
-    $("memTitle").textContent = "Notebook: " + name;
+    $("memTitle").textContent = "Notebook: " + projLabel(name);
     nb.memN = null; briefingHead();
     $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
-    $("roadmapSaveQuiet").disabled = true;
     nb.roadmapSel = null;                 // the send box lives on the row, and the
     nb.roadmapOrdering = false;           // rows are about to be replaced wholesale
     nb.roadmapPending = []; nb.roadmapWas = null;
@@ -197,6 +201,7 @@ function makeNotebook(project){
     $("histFind").value = "";
     cancelSend();
     $("roadmapText").value = "";
+    $("roadmapForm").hidden = true; $("roadmapAddBar").hidden = false; $("roadmapShow").hidden = false;
     $("roadmapList").innerHTML = `<div class="loading">loading…</div>`;
     // Opening it is a re-read: both halves come off disk again, and the card
     // gets the same treatment so the number on the row you just pressed is not
@@ -302,46 +307,60 @@ function makeNotebook(project){
     await reloadViews();
   }
 
-  // One button for the panel: the list's changes are already on disk, the
-  // memory editor's are not, and either way this is what tells a session. Dead
-  // rather than absent, so the footer does not move about under a thumb.
+  // ---- a section's own Save and Revert (the operator, 5 Oct) ------------------
+  // Every section that stages anything carries its own Save and Revert at its
+  // foot, and they write or throw away that section's changes and nothing
+  // else. There was one pair at the bottom of the tab, and on a phone a
+  // change made near the top was a long scroll from the button that saved it,
+  // past sections that had nothing to do with it. A stager is what a section
+  // registers: how many changes it holds, what they are in words, how to
+  // write them (a message, or null when a clash stopped it part-way) and how
+  // to throw them away.
+  function stage(key, st){ nb.stagers[key] = st; }
+  // The bar, drawn by whichever view draws the section; dead rather than
+  // absent while there is nothing to save, so it does not move under a thumb.
+  function sectBar(key){
+    const n = nb.stagers[key]?.count() || 0;
+    // In a field band, as every line of a section's body is (a-dialog/layout):
+    // bare, it sat beside the last row it followed rather than under it.
+    return `<div class="field"><div class="actbar sectbar" data-bar="${esc(key)}"><span class="state"></span><span class="sp"></span>
+      <button type="button" data-ssave="${esc(key)}"${n ? "" : " disabled"}>Save</button>
+      <button type="button" class="caution" data-srevert="${esc(key)}"${n ? "" : " disabled"}>Revert</button></div></div>`;
+  }
+  // A section holding unsaved work, or a change no session has been told
+  // about yet, which the roadmap's and the memories' Saves settle.
+  function sectDirty(key){
+    const st = nb.stagers[key];
+    if (!st) return false;
+    return st.count() > 0 || (key === "roadmap" && !!nb.roadmapUnsaved.roadmap)
+      || (key === "briefing:memories" && !!nb.roadmapUnsaved.memory);
+  }
   function syncSave(){
-    const q = $("roadmapSaveQuiet");
-    if (!q) return;
-    const dirty = nb.roadmapUnsaved.roadmap || nb.roadmapUnsaved.memory || memDirty()
-                  || nb.roadmapPending.length > 0 || nb.verStagedCount() > 0
-                  || nb.ruleStagedCount() > 0 || nb.designStagedCount() > 0;
     // Held while a session is mid-batch, and again until the list is re-read
-    // after one finishes. Reverting is still allowed either way: throwing away
-    // your own unsaved work never depends on what anybody else is doing.
+    // after one finishes; that is the list's own business, so it holds only
+    // the roadmap's Save. Reverting is allowed either way: throwing away your
+    // own unsaved work never depends on what anybody else is doing.
     const held = nbHeld();
-    q.disabled = !dirty || held;
-    // A panel holding unsaved work stops re-reading, which is right, since a
-    // redraw would eat the typing, and it used to say nothing while it did
-    // (B199): stage one line, go to lunch, and the list on screen was the
-    // pre-lunch one until Save was refused an op at a time. Said once, where
-    // the Save is, and true of all three halves now that the rules check
-    // their revision too.
-    if (!dirty) nb.movedUnder = false;
-    const mv = $("roadmapMoved");
-    if (mv){
-      mv.hidden = !(dirty && nb.movedUnder);
-      mv.textContent = mv.hidden ? "" : "this has changed since you loaded it: Save will ask which version wins";
-    }
-    // Revert answers the same question the Saves do, from the other side.
-    const rv = $("roadmapRevert");
-    if (rv){
-      rv.disabled = !(nb.roadmapPending.length || memDirty() || nb.verStagedCount()
-                      || nb.ruleStagedCount() || nb.designStagedCount());
-      rv.title = rv.disabled ? "nothing unsaved to throw away"
-        : "throw away what has not been saved: the list and the memory editors "
-          + "go back to what is on disk";
-    }
-    q.title = held
-      ? (nb.roadmapBatch ? "a session is part-way through changing this list"
-                   : "a session changed this list: reload it before saving over it")
-      : "save every change here; a session running here hears about it on its "
-        + "next prompt";
+    if (![...Object.keys(nb.stagers)].some(k => nb.stagers[k].count() > 0)) nb.movedUnder = false;
+    root.querySelectorAll(".sectbar[data-bar]").forEach(bar => {
+      const key = bar.dataset.bar, st = nb.stagers[key];
+      const save = bar.querySelector("[data-ssave]"), rv = bar.querySelector("[data-srevert]");
+      if (!st || !save || !rv || save.getAttribute("aria-busy")) return;
+      const n = st.count();
+      save.disabled = !sectDirty(key) || (key === "roadmap" && held);
+      rv.disabled = !n;
+      rv.title = n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away";
+      save.title = key === "roadmap" && held
+        ? (nb.roadmapBatch ? "a session is part-way through changing this list"
+                           : "a session changed this list: reload it before saving over it")
+        : "save this section; a session running here hears about it on its next prompt";
+      // A panel holding unsaved work stops re-reading, since a redraw would
+      // eat the typing (B199); said where the Save is, once something here
+      // has moved under it.
+      const state = bar.querySelector(".state");
+      state.textContent = n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
+        : n ? `${n} unsaved` : "";
+    });
   }
 
   // ---- who else is in here ---------------------------------------------------
@@ -376,7 +395,7 @@ function makeNotebook(project){
   // identify; the whole value of this line is knowing WHO, and on a phone the
   // names are shorter than the sentence explaining there are two of them.
   const WHERE_IS = {memory: "Memory", roadmap: "Roadmap", bugs: "Bugs",
-                    analysis: "Analysis", artifacts: "Artifacts", design: "Design"};
+                    analysis: "Analysis", artifacts: "Artifacts", design: "Design", wiki: "Wiki"};
 
   function drawHere(){
     const el = $("nbHere");
@@ -404,6 +423,7 @@ function makeNotebook(project){
             memDirty() ? "an edited memory" : "",
             nb.ruleStagedCount() ? "an edited rule" : "",
             nb.designStagedCount() ? "an unsaved design" : "",
+            wikiDirty() ? "a wiki page being edited" : "",
             v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
       .filter(Boolean).join(" and ");
   }
@@ -415,23 +435,6 @@ function makeNotebook(project){
   nb.verStagedCount = () => 0;
   nb.verCommitStaged = async () => {};
   nb.verClearStaged = () => {};
-
-  // Throw the unsaved changes away. What Close used to do on the way out, now
-  // that there is no way out to do it on: the tab stays, so this is the only
-  // thing left for a button beside Save to mean.
-  async function revertNotebook(){
-    const what = nbUnsaved();
-    if (!what) return;
-    if (!confirm(`Revert ${what}?\n\nIt goes back to what is on disk.`)) return;
-    revertPending();
-    nb.verClearStaged();
-    nb.ruleClearStaged();
-    nb.designClearStaged();
-    nb.roadmapOrdering = false;
-    redrawRoadmap();
-    nb.memEditing.clear();
-    await loadMemory(nb.memGen);       // drops whatever the editors were holding
-  }
 
   // A notebook tab going away takes whatever is unsaved in it with it, so it is
   // the one tab close that asks. Answered here rather than in hideTab, which is
@@ -448,46 +451,55 @@ function makeNotebook(project){
     nb.memGen++; nb.memProj = null;
     return true;
   }
-  // Save writes whatever the memory editor is holding, replays whatever the
-  // list has staged, and settles the panel. It says nothing to a running
-  // session and does not need to: the hook every session runs under carries the
-  // news back on the next prompt it is given (roadmap #27).
-  async function saveAll(){
-    const b = $("roadmapSaveQuiet"), was = b.textContent;
+  // One section's Save: its own changes written, then the marker settled, so
+  // a session running here hears about it on its next prompt (roadmap #27).
+  async function saveSection(key, b){
+    const st = nb.stagers[key];
+    if (!st) return;
+    const was = b.textContent;
     busy(b, "Saving");
-    // Everything staged, replayed in the order it was made, which is what makes
-    // the server arrive at what is on screen.
-    nb.clashResume = () => saveAll();
-    await flushPending();
-    // A refusal stops the replay with the op still at the head of the queue and
-    // the band asking which version wins. Settling it calls this again from the
-    // top, so nothing further here should run in the meantime: writing the
-    // memories and settling the panel while a roadmap change is still unwritten
-    // would report "saved" over work that is not.
-    if (nb.roadmapPending.length){ unbusy(b, was); syncSave(); return; }
-    nb.clashResume = null;
-    // Before the memory write and the settle: a bump is a git commit, and if it
-    // is going to refuse (a staged VERSION, a hand edit in the worktree) the
-    // operator should hear that instead of "saved".
-    const verMsg = await nb.verCommitStaged();
-    await nb.ruleCommitStaged();
-    const dsMsg = await nb.designCommitStaged();
-    if (memDirty()) await saveMemory(true);
+    const msg = await st.save();
+    // A refused roadmap change stops the replay with the op still queued and
+    // the band asking which version wins; settling it calls this again.
+    if (msg === null){ unbusy(b, was); syncSave(); return; }
     const j = await postRoadmap({action: "save"});
-    await loadMemory(nb.memGen);
-    // Out of the busy state, and no further: the button stays disabled, which
-    // is what a finished save leaves. Asking syncSave here instead re-enabled
-    // it for as long as it took the answer's `unsaved` to land, and a second
-    // Save pressed into that window is a save of nothing.
     b.removeAttribute("aria-busy");
     b.textContent = was;
-    // Committed, so there is nothing left for a Cancel to go back to.
-    nb.roadmapWas = null;
-    if (j) notify([verMsg, dsMsg, "saved: the session reads it on its next prompt"]
-                  .filter(Boolean).join(" · "));
+    syncSave();
+    if (j) notify([msg, "saved: the session reads it on its next prompt"].filter(Boolean).join(" · "));
   }
-  $("roadmapSaveQuiet").onclick = () => saveAll();
-  $("roadmapRevert").onclick = revertNotebook;
+  async function revertSection(key){
+    const st = nb.stagers[key];
+    if (!st || !st.count()) return;
+    if (!confirm(`Revert ${st.what()}?\n\nIt goes back to what is on disk.`)) return;
+    await st.revert();
+    syncSave();
+  }
+  root.addEventListener("click", e => {
+    const sv = e.target.closest("[data-ssave]"), rv = e.target.closest("[data-srevert]");
+    if (sv && !sv.disabled){ e.preventDefault(); saveSection(sv.dataset.ssave, sv); }
+    if (rv && !rv.disabled){ e.preventDefault(); revertSection(rv.dataset.srevert); }
+  });
+  // The two halves this file holds: the roadmap's list and the memories.
+  stage("roadmap", {
+    count: () => nb.roadmapPending.length,
+    what: () => `${nb.roadmapPending.length} change${nb.roadmapPending.length === 1 ? "" : "s"} to the list`,
+    save: async () => {
+      nb.clashResume = () => saveSection("roadmap", root.querySelector('[data-ssave="roadmap"]'));
+      await flushPending();
+      if (nb.roadmapPending.length) return null;
+      nb.clashResume = null;
+      nb.roadmapWas = null;     // committed: nothing left for a Cancel to go back to
+      return "";
+    },
+    revert: () => { revertPending(); nb.roadmapOrdering = false; redrawRoadmap(); }});
+  // The Memories section is markup rather than a draw: wired here, once.
+  wireSections(root.querySelector('.nbview[data-view="briefing"]'));
+  stage("briefing:memories", {
+    count: () => memDirty() ? 1 : 0,
+    what: () => "the edited memories",
+    save: async () => { if (memDirty()) await saveMemory(true); await loadMemory(nb.memGen); return ""; },
+    revert: async () => { nb.memEditing.clear(); await loadMemory(nb.memGen); }});
 
   // ---- the four views ------------------------------------------------------
   function setNbView(v){
@@ -516,15 +528,16 @@ function makeNotebook(project){
         x.classList.add("justpainted");
       }
     });
-    // Save and Revert belong to the views that stage: roadmap, briefing and
-    // the version on Artifacts. Bugs, tests and findings write through, and
-    // a Save under a list nothing stages read as a button that did nothing.
-    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git", "docker"].includes(v);
+    // The settings form comes into this view while it is on screen, and goes
+    // back to the dialog when another view is picked (page-projsettings.js).
+    if (v === "settings") settingsInto(project, root.querySelector('.nbview[data-view="settings"] .nbsettings'));
+    else if (rnHost && root.contains(rnHost)) settingsOut();
     if (v === "git") loadGit();
     if (v === "docker") loadNbDocker();
     if (v === "bugs" && !nb.bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "design") loadDesign();
+    if (v === "wiki") loadWiki();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
     if (v === "tests" && !nb.tests) loadTests();
     // The rules once; the code base every time the view is shown, since a
@@ -563,6 +576,7 @@ function makeNotebook(project){
     nb.verClearStaged();
     nb.ruleClearStaged();
     nb.designClearStaged();
+    nb.wikiClear();
     nb.roadmapOrdering = false;
     redrawRoadmap();
     nb.memEditing.clear();
@@ -620,6 +634,7 @@ function makeNotebook(project){
   });
   watch("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
   watch("reports", () => { if (showing("analysis")) loadAnalysis(); });
+  watch(() => `wiki:${project}`, k => { if (showing("wiki") && wikiNews(k)) loadWiki(); });
   watch("findings", () => { if (showing("analysis")) loadAnalysis(); });
 
   // ---- the notebook's own six halves ---------------------------------------
@@ -705,13 +720,15 @@ function makeNotebook(project){
     const where = (nodesList || []).find(n => n.id === (got.node || node))?.name || "its node";
     const n = mine.length + others.length;
     $("dkHint").textContent = n
-      ? `${n} container${n === 1 ? "" : "s"} of ${project}'s on ${where}${
+      ? `${n} container${n === 1 ? "" : "s"} of ${projLabel(project)}'s on ${where}${
           blind ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`
-      : `nothing belongs to ${project} on ${where} yet: send it from the Artifacts tab, or pick ${project} on a container's row on the Docker tab`;
+      : `0 containers on ${where}`;
     const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length]);
     if (key === dkSeen) return;
     dkSeen = key;
-    $("dkList").innerHTML = dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others);
+    // What the view is for, as its empty state (R119 step 4).
+    $("dkList").innerHTML = (dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others))
+      || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from the Artifacts tab, or pick it on a container's row on the Docker tab.</div></div>`;
     tipify($("dkList"));
     dmWireRows($("dkList"), got);
   }

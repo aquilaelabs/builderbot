@@ -72,11 +72,12 @@ print(m.redact("GET /x?t=bbs_abcdefgh1234 Authorization: Bearer abc.def.ghi pass
      `the redactor takes tokens, headers and passwords out and leaves the words (${out})`);
 }
 
-// ---- a session: the switch, the node's tick, the account --------------------
-// On the agent node the harness already has, never a new one: a node cannot
-// be deleted, only revoked, and a row left behind is in every later file's
-// node list. What is touched is read first and put back exactly: that node's
-// tick, alpha's node and the switch.
+// ---- a session: the switch, the project's grant, the account's grant -------
+// Per project since 6 Oct: the grant is alpha's (its settings' Debug), not
+// the node's, and the account must hold `debug`, which only the owner has
+// until a role names it; the built-in admin's "everything" leaves it out.
+// What is touched is read first and put back: alpha's node and grants and
+// the switch.
 {
   const prefsPy = code => execFileSync('python3', ['-c', `
 import importlib.util, json
@@ -87,49 +88,80 @@ ${code}`], { encoding: 'utf8' }).trim();
   const node = ((await call('/api/v1/nodes')).body.nodes || []).find(x => x.kind === 'agent' && x.state !== 'retired');
   ok(!!node, `the harness has an agent node to ask from (${node?.name})`);
   const wasNode = prefsPy('print(p.get("alpha").get("node") or "")');
-  const wasDiag = !!node.config?.diag, wasFrom = node.config?.log_from || [];
+  const wasDiag = prefsPy('print(p.get("alpha").get("diag"))') === 'True';
   const wasDebug = !!(await call('/api/diag', { sections: ['settings'] })).body.settings?.debug_mode;
   await call('/api/prefs', { project: 'alpha', node: node.id });
-  const plainUid = usersPy(`
+  const mk = (name, role) => usersPy(`
 d = u.load()
 uid = u.mint_uid()
-d["users"]["diag.plain"] = {"uid": uid, "role": "user", "projects": ["alpha"],
-                            "prefs": {"full_name": "Diag Plain", "email": "dp@example.invalid"},
-                            "password": u.hash_password("diag-plain-pw"), "created": 0, "seen": 0}
+d["users"]["${name}"] = {"uid": uid, "role": "${role}", "projects": ["alpha"],
+                        "prefs": {"full_name": "${name}", "email": "${name}@example.invalid"},
+                        "password": u.hash_password("${name}-pw"), "created": 0, "seen": 0}
 u._save(d)
 print(uid)`);
-  const asAdmin = bearer(tok(ownerUid)), asPlain = bearer(tok(plainUid));
+  const plainUid = mk('diag.plain', 'user'), adminUid = mk('diag.admin', 'admin');
+  const asOwner = bearer(tok(ownerUid)), asPlain = bearer(tok(plainUid)), asAdmin = bearer(tok(adminUid));
   await call('/api/settings', { set: { debug_mode: false } });
-  await call('/api/v1/nodes', { action: 'log-grant', id: node.id, from: wasFrom, diag: false });
+  await call('/api/prefs', { project: 'alpha', diag: false, log_from: [] });
 
-  let r = await call('/api/diag', {}, asAdmin);
+  let r = await call('/api/diag', {}, asOwner);
   ok(r.status === 403 && /debug mode is off/.test(r.body.error || ''),
-     `with debug mode off, an administrator's session is refused, saying why (${r.body.error})`);
+     `with debug mode off, the owner's session is refused, saying why (${r.body.error})`);
   await call('/api/settings', { set: { debug_mode: true } });
-  r = await call('/api/diag', {}, asAdmin);
-  ok(r.status === 403 && new RegExp(`${node.name} has not been granted`).test(r.body.error || ''),
-     `...and on, still refused until its node is ticked (${r.body.error})`);
-  const g = (await call('/api/v1/nodes', { action: 'log-grant', id: node.id, from: wasFrom, diag: true })).body;
-  ok(g.ok && g.diag === true, 'the tick is set with the log grant, on the node\'s record');
-  r = await call('/api/diag', {}, asAdmin);
+  r = await call('/api/diag', {}, asOwner);
+  ok(r.status === 403 && /alpha has not been granted the controller's diagnostics: Debug in its settings/.test(r.body.error || ''),
+     `...and on, still refused until the PROJECT is granted it (${r.body.error})`);
+  const g = (await call('/api/prefs', { project: 'alpha', diag: true })).body;
+  ok(!g.error && prefsPy('print(p.get("alpha").get("diag"))') === 'True', `the grant is the project's (${g.error || 'set'})`);
+  r = await call('/api/diag', {}, asOwner);
   ok(r.status === 200 && Array.isArray(r.body.nodes) && r.body.nodes.some(n => n.name === node.name),
-     `...then an administrator's session on that node reads the report (${r.status})`);
+     `...then the owner's session on alpha reads the report (${r.status})`);
+  // The node's own jobs the report lists open for the same reader (B547):
+  // a system job by its id and in the listing, through the redactor, and
+  // for nobody without the grant. Queued straight into the harness's store.
+  const sysJob = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('nodes', ${JSON.stringify(join(HERE, 'nodes.py'))})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(state=${JSON.stringify(join(DIR, 'state'))})
+print(json.dumps(m.job_add('system', {'node': '${node.id}'}, 'exec', {'argv': ['echo', 'password=hunter22']})))`],
+    { encoding: 'utf8' }).trim().split('\n').pop();
+  const jid = JSON.parse(sysJob).job;
+  r = await call(`/api/v1/jobs?id=${jid}`, undefined, asOwner);
+  ok(r.status === 200 && r.body.id === jid && !r.body.project && !/hunter22/.test(JSON.stringify(r.body))
+     && r.body.spec?.argv?.[1] === '<redacted>' && r.body.spec.argv[0] === 'echo',
+     `...and opens a node's own job by its id, its spec through the redactor (${r.status} ${JSON.stringify(r.body.spec || r.body.error).slice(0, 80)})`);
+  r = await call(`/api/v1/jobs?node=${node.id}&n=50`, undefined, asOwner);
+  ok((r.body.jobs || []).some(j => j.id === jid), '...and sees it in the listing');
+  r = await call(`/api/v1/jobs?id=${jid}`, undefined, asPlain);
+  ok(r.status === 404, `...which an account without the grant does not, as for a typo (${r.status})`);
+  await call('/api/prefs', { project: 'alpha', diag: false });
+  r = await call(`/api/v1/jobs?id=${jid}`, undefined, asOwner);
+  ok(r.status === 404, `...nor the owner's session once alpha's grant is off (${r.status})`);
+  await call('/api/prefs', { project: 'alpha', diag: true });
+  await call('/api/v1/jobs', { action: 'cancel', id: jid });
+  // Admin is built in with everything the owner may do since R152 (the
+  // operator, 7 Oct), the debug options included; a plain account is not.
+  r = await call('/api/diag', {}, asAdmin);
+  ok(r.status === 200, `an administrator's session reads it too: admin holds everything the owner does (${r.status} ${r.body.error || ''})`);
   r = await call('/api/diag', {}, asPlain);
-  ok(r.status === 403 && /administrator's/.test(r.body.error || ''),
-     `a plain account's session on the same ticked node is refused: the tick is not a tester's (${r.body.error})`);
-  r = await call('/api/diag', {}, basic('diag.plain', 'diag-plain-pw'));
-  ok(r.status === 403, `...and so is that account with its password (${r.status})`);
-  const log = (await call('/api/v1/nodes', { action: 'log-grant', id: node.id, from: wasFrom })).body;
-  ok(log.ok && log.diag === true, 'a log grant saved without the tick leaves the tick as it was');
+  ok(r.status === 403 && /debug grant/.test(r.body.error || ''), `...and a plain account's is refused (${r.body.error})`);
+  r = await call('/api/diag', {}, basic('diag.admin', 'diag.admin-pw'));
+  ok(r.status === 200, `...as is the administrator with a password, in the dashboard (${r.status})`);
+  r = await call('/api/prefs', { project: 'alpha', diag: false }, basic('diag.plain', 'diag.plain-pw'));
+  ok(r.status === 403, `a plain account may not change a project's Debug grants (${r.status})`);
+  const can = acc => call('/api/status', undefined, basic(acc, `${acc}-pw`)).then(x => x.body?.can?.debug);
+  ok(await can('diag.admin') === true && await can('diag.plain') === false,
+     'the status gives an administrator the debug options and a plain account none');
 
   // Everything back as it was found.
-  await call('/api/v1/nodes', { action: 'log-grant', id: node.id, from: wasFrom, diag: wasDiag });
+  await call('/api/roles', { action: 'remove', name: 'debugger' });
+  await call('/api/prefs', { project: 'alpha', diag: wasDiag, log_from: [] });
   await call('/api/settings', { set: { debug_mode: wasDebug } });
   await call('/api/prefs', { project: 'alpha', node: wasNode });
-  usersPy('d = u.load(); d["users"].pop("diag.plain", None); u._save(d)');
-  const after = ((await call('/api/v1/nodes')).body.nodes || []).find(x => x.id === node.id);
-  ok(prefsPy('print(p.get("alpha").get("node") or "")') === wasNode && !!after?.config?.diag === wasDiag,
-     `...and what it touched is as it was: alpha's node (${wasNode || 'none'}) and the node's tick`);
+  usersPy('d = u.load(); d["users"].pop("diag.plain", None); d["users"].pop("diag.admin", None); u._save(d)');
+  ok(prefsPy('print(p.get("alpha").get("node") or "")') === wasNode,
+     `...and what it touched is as it was: alpha's node (${wasNode || 'none'}) and its grants`);
 }
 
 await done();

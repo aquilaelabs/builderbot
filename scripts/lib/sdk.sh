@@ -145,6 +145,10 @@ for p in rows:
     lay = p.get("layout") or {}
     d = "android" if p["name"].startswith("android:") else p["name"]
     for var, rel in (lay.get("env") or {}).items():
+        # `=VALUE` is the value itself, as the agent's sdk_env reads it (B548).
+        if rel.startswith("="):
+            print(f'export {var}="{rel[1:]}"')
+            continue
         path = where(d, rel)
         if os.path.exists(path):
             print(f'export {var}="{path}"')
@@ -349,6 +353,29 @@ sdk_status_local() {
             printf '  %-11s not installed (bb toolchains install %s)\n' "$t" "$t"
         fi
     done
+    # ...and every other toolchain of the catalog this store holds, with the
+    # program it is used through. The list above is the build toolchains
+    # by name; ffmpeg, the document readers or pytorch installed from the
+    # Toolchains tab were on PATH and in the store and missing from here,
+    # so a session asking what this machine has was told they were not
+    # (B435, a session that went looking for PyTorch).
+    local meta; meta="$(sdk_meta_file)"
+    if [ -f "$meta" ]; then
+        SDK_ROOT_NOW="$root" SDK_LISTED="$SDK_TOOLCHAINS android-tools" python3 - "$meta" <<'PY' 2>/dev/null || true
+import json, os, sys
+root, listed = os.environ["SDK_ROOT_NOW"], set(os.environ["SDK_LISTED"].split())
+for t in json.load(open(sys.argv[1])).get("toolchains", []):
+    name = t.get("name", "")
+    if not name or ":" in name or name in listed:
+        continue
+    d = os.path.join(root, name)
+    if not os.path.isdir(d):
+        continue
+    tool = (t.get("layout") or {}).get("tool") or ""
+    run = os.path.basename(tool) if tool else ""
+    print(f"  {name:<11} {d}" + (f"  (run as {run})" if run else ""))
+PY
+    fi
     printf '\n== android packages ==\n'
     if command -v sdkmanager >/dev/null 2>&1; then
         sdkmgr --list_installed 2>/dev/null | sed -n '/^  /p' | head -20 \
@@ -356,6 +383,106 @@ sdk_status_local() {
     else
         printf '  cmdline-tools are missing from this image\n'
     fi
+    sdk_builds_with "$(sdk_dir android)"
+}
+
+# Where the NVIDIA driver stands on this machine, in a line, or nothing
+# with no NVIDIA card (R102). The machine's and not the store's, so read
+# here from sysfs and modinfo: which driver has the card, the version
+# loaded, the version installed for this kernel. BB_SYS_ROOT is the tests'.
+sdk_nvidia_line() {
+    local sys="${BB_SYS_ROOT:-/sys}" dev bound="" card="" loaded="" inst="" m
+    for dev in "$sys"/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) ;; *) continue ;; esac
+        card=1
+        [ -L "$dev/driver" ] && bound="$(basename "$(readlink "$dev/driver")")"
+        break
+    done
+    [ -n "$card" ] || return 0
+    loaded="$(cat "$sys/module/nvidia/version" 2>/dev/null)"
+    for m in modinfo /sbin/modinfo /usr/sbin/modinfo; do
+        command -v "$m" >/dev/null 2>&1 || continue
+        inst="$("$m" -F version nvidia 2>/dev/null | head -1)"
+        break
+    done
+    if [ "$bound" = nvidia ] || [ -n "$loaded" ]; then
+        if [ -z "$inst" ]; then echo "removed; it keeps the card until the machine restarts"
+        elif [ -n "$loaded" ] && [ "$inst" != "$loaded" ]; then echo "$loaded running the card; $inst takes over when the machine restarts"
+        else echo "$inst, running the card: nvidia-smi says how much of its memory is free"
+        fi
+    elif [ -n "$inst" ]; then echo "$inst installed; it takes the card when the machine restarts"
+    else echo "not installed: nouveau has the card; the operator installs the driver on the Toolchains tab"
+    fi
+}
+
+# Whether a container on this machine can be given the card, for `bb
+# toolchains` beside the driver's line: the NVIDIA container toolkit by its
+# own tool, which is on the machine and not the store. Nothing with no
+# card. BB_SYS_ROOT is the tests'.
+sdk_nvidia_container_line() {
+    local sys="${BB_SYS_ROOT:-/sys}" dev card="" v
+    for dev in "$sys"/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) card=1; break ;; esac
+    done
+    [ -n "$card" ] || return 0
+    if command -v nvidia-ctk >/dev/null 2>&1; then
+        v="$(nvidia-ctk --version 2>/dev/null | sed -n 's/.*version \([^ ]*\).*/\1/p' | head -1)"
+        echo "toolkit ${v:-installed}: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)"
+    else
+        echo "no container toolkit: a container here cannot reserve the card; the operator installs it on the Toolchains tab"
+    fi
+}
+
+# The names in a directory, one per line, or nothing: what the listings
+# below read, without ls's word-splitting.
+sdk_names_in() {
+    [ -d "$1" ] || return 0
+    find "$1" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null
+}
+
+# What a build here can use, said as a build reads it (R100): the newest
+# platform is the compileSdk ceiling, and a library that wants a newer one
+# fails checkDebugAarMetadata before anything compiles; and what the Gradle
+# cache already holds, since a build offline or in a hurry uses that. A
+# session dug through platforms/ and ~/.gradle by hand for these, asked
+# dl.google.com for versions, and hit the ceiling anyway (Shebang-DevBoard,
+# 30 Sep). Read from the directories, never from sdkmanager or Gradle: a
+# status is instant.
+sdk_builds_with() {
+    local sdk="$1" plats tools newest
+    plats="$(sdk_names_in "$sdk/platforms" | sed -n 's/^android-//p' | sort -n | tr '\n' ' ')"
+    plats="${plats% }"
+    tools="$(sdk_names_in "$sdk/build-tools" | sort -V | tr '\n' ' ')"
+    printf '\n== builds with ==\n'
+    if [ -n "$plats" ]; then
+        newest="${plats##* }"
+        printf '  %-14s %s\n' platforms "$plats"
+        printf '  %-14s %s\n' compileSdk "up to ${newest}: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains tab"
+    else
+        printf '  %-14s %s\n' platforms "none: nothing compiles here until the operator adds one on the Toolchains tab"
+    fi
+    [ -n "$tools" ] && printf '  %-14s %s\n' build-tools "${tools% }"
+    local nv; nv="$(sdk_nvidia_line)"
+    [ -z "$nv" ] || printf '  %-14s %s\n' "nvidia driver" "$nv"
+    nv="$(sdk_nvidia_container_line)"
+    [ -z "$nv" ] || printf '  %-14s %s\n' "  containers" "$nv"
+    local gh="${GRADLE_USER_HOME:-$HOME/.gradle}" m dists k v
+    m="$gh/caches/modules-2/files-2.1"
+    printf '  %-14s %s\n' "gradle cache" "$gh"
+    dists="$(sdk_names_in "$gh/wrapper/dists" | sed -n 's/^gradle-\(.*\)-\(bin\|all\)$/\1/p' | sort -V | tr '\n' ' ')"
+    [ -n "$dists" ] && printf '  %-14s %s\n' "  gradle" "${dists% } (wrapper distributions, no download)"
+    if [ -d "$m" ]; then
+        for k in "AGP:com.android.tools.build/gradle" "kotlin:org.jetbrains.kotlin/kotlin-gradle-plugin" \
+                 "compose BOM:androidx.compose/compose-bom"; do
+            v="$(sdk_names_in "$m/${k#*:}" | sort -V | tr '\n' ' ')"
+            [ -n "$v" ] && printf '  %-14s %s\n' "  ${k%%:*}" "${v% }"
+        done
+    else
+        printf '  %-14s %s\n' "  modules" "none cached yet: the first build fetches them"
+    fi
+    return 0
 }
 
 # sdk_fetch URL DEST: download with a progress line, into a temp file first.
@@ -408,10 +535,16 @@ sdk_android_list_forget() { rm -f "${TMPDIR:-/tmp}/bb-sdk-list.cache"; }
 # without ever saying so.
 sdk_android_newest() {
     local pkg="$1" all stable
+    # A platform is named by its level, and the newest level's base is what
+    # a compileSdk names: platforms;android-37.0 for compileSdk 37 (Google
+    # spells a level with its minor since 37). Its later minors (37.1, a
+    # quarterly release) and the extension levels (36-ext19) are left to
+    # be asked for by id, so "the newest platform" is one a build can use.
     all="$(sdk_android_list | sed -n '/Available Packages/,$p' \
            | awk -F'|' -v p="$pkg" '
                { id=$1; v=$2; gsub(/^ +| +$/,"",id); gsub(/^ +| +$/,"",v) }
-               id ~ ("^" p "(;[0-9][^;]*)?$") { print id "\t" v }' | sort -V)"
+               p == "platforms;android" && id ~ /^platforms;android-[0-9]+(\.0)?$/ { print id "\t" v; next }
+               p != "platforms;android" && id ~ ("^" p "(;[0-9][^;]*)?$") { print id "\t" v }' | sort -V)"
     stable="$(printf '%s\n' "$all" | grep -viE '(rc|beta|alpha|preview)[0-9]*$' || true)"
     if [ -n "$stable" ]; then all="$stable"; fi
     printf '%s\n' "$all" | tail -1
@@ -538,7 +671,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
                 # version it would move to, which is the only interesting half.
                 local line=""
                 line="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" timeout 60 \
-                        "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1)"
+                        "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1 || true)"
                 # Lower case, and a colon rather than an arrow:
                 #   stable-x86_64-unknown-linux-gnu - up to date: 1.97.1 (...)
                 #   stable-x86_64-unknown-linux-gnu - update available: 1.97.1 -> 1.98.0
@@ -584,6 +717,27 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             ;;
         android:*)
             local pkg="${what#android:}"
+            # A versioned row (the NDK, CMake, build-tools, the SDK platform)
+            # is a family of packages side by side, and a newer one is a new
+            # package rather than an update to the one installed: so the
+            # question is whether the newest the repository offers is on
+            # the store, not whether sdkmanager lists a revision update
+            # (which never showed platform 37 to a store holding 36).
+            local vpkg; vpkg="$(sdk_meta field "$what" source.package 2>/dev/null)"
+            if [ -n "$(sdk_meta field "$what" source.versioned 2>/dev/null)" ] && [ -n "$vpkg" ]; then
+                local fam="${ANDROID_HOME:-/opt/android-sdk}/${vpkg%%;*}" newest nid
+                inst="$(find "$fam/" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f\n' 2>/dev/null | sort -V | tail -1)"
+                [ -n "$inst" ] || inst="-"
+                if [ -z "$local_only" ]; then
+                    newest="$(sdk_android_newest "$vpkg")"; nid="${newest%%	*}"
+                    if [ -n "$nid" ]; then
+                        latest="${nid#*;}"
+                        if [ "$inst" = "-" ]; then status=absent
+                        elif [ -d "$fam/${nid#*;}" ]; then status=current
+                        else status=update; fi
+                    fi
+                fi
+            else
             # Non-empty, not merely present: every one of these is a
             # symlink onto the store, and the store has a directory per
             # package kind whether or not anything was installed into it.
@@ -613,6 +767,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
                 # same way the installer asks.
                 latest="$(sdk_android_newest "$pkg" | cut -f2)"
                 [ -n "$latest" ] || latest="-"
+            fi
             fi
             ;;
         *) printf '%s\t-\t-\tunknown\n' "$what"; return 0 ;;
@@ -659,7 +814,12 @@ sdk_check() {
     local names="$*"
     [ -n "$names" ] || names="$(sdk_checkable)"
     local n
-    for n in $names; do sdk_check_one "$n"; done
+    # Each recipe's answer is its own: one whose probe fails under set -e
+    # (rust's grep finding no "stable" line in rustup's answer) ended the
+    # run there, so every row after it went unasked and the node's check
+    # job failed, exit 1 or git's 128, and was queued again (B549). In an
+    # || its probe runs to its row whatever one command in it says.
+    for n in $names; do sdk_check_one "$n" || true; done
 }
 
 # bb toolchains update NAME: bring an installed toolchain up to date, each the way
@@ -697,6 +857,13 @@ sdk_update() {
    Android command-line tools on the Tools tab with that node picked; an android:*
    toolchain should bring it along, and if it did not then this store has a
    cmdline-tools directory with nothing in it, which is not the same thing."
+            # A versioned row updates by installing the newest beside what is
+            # there: a project pinned to the older one keeps building.
+            if [ -n "$(sdk_meta field "$what" source.versioned 2>/dev/null)" ]; then
+                sdk_install_android "$what"
+                sdk_relink_android
+                return 0
+            fi
             log "updating ${what#android:}"
             sdkmgr --update
             ;;

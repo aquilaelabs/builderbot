@@ -390,6 +390,14 @@ def _ask(url, kind, token, data=None):
     and here is its sentence, the host could not be reached), so they are
     resolved once here rather than in three copies of the same try block.
     """
+    body, why, _h, _code = _ask_full(url, kind, token, data)
+    return body, why
+
+
+def _ask_full(url, kind, token, data=None):
+    """_ask with the response's headers and status as well: (body, why,
+    headers, status), status 0 when the host could not be reached. GitHub
+    says a classic token's scopes in a header and nowhere else."""
     headers = {"User-Agent": "BuilderBot", **_auth(kind, token)}
     if data is not None:
         headers["Content-Type"] = "application/json"
@@ -397,13 +405,13 @@ def _ask(url, kind, token, data=None):
     # module chose, so nothing but http(s) reaches here; checked anyway,
     # since urlopen would open file:// as readily.
     if not url.lower().startswith(("https://", "http://")):
-        return {}, f"not a web address: {url[:60]}"
+        return {}, f"not a web address: {url[:60]}", {}, 0
     req = urllib.request.Request(url, data=data, headers=headers,
                                  method="POST" if data is not None else "GET")
     try:
         with _OPENER.open(req, timeout=30) as r:
-            body = r.read(20000)
-            return (json.loads(body) if body.strip() else {}), ""
+            body = r.read(200000)
+            return (json.loads(body) if body.strip() else {}), "", dict(r.headers), r.status
     except urllib.error.HTTPError as e:
         try:
             j = json.loads(e.read(20000)) or {}
@@ -412,9 +420,9 @@ def _ask(url, kind, token, data=None):
                 why = "; ".join(str(x) for x in j["errors"])[:200]
         except (ValueError, OSError):
             why = ""
-        return None, why or f"HTTP {e.code}"
+        return None, why or f"HTTP {e.code}", dict(e.headers or {}), e.code
     except (urllib.error.URLError, OSError, ValueError) as e:
-        return None, f"could not be reached: {e}"
+        return None, f"could not be reached: {e}", {}, 0
 
 
 def whoami(entry, host, token, scheme="https"):
@@ -428,6 +436,69 @@ def whoami(entry, host, token, scheme="https"):
     if not isinstance(j, dict):
         return ""
     return str(j.get("login") or j.get("username") or j.get("name") or "")
+
+
+def token_access(entry, host, token, path, scheme="https"):
+    """What the host says this token may do on this repository, for the
+    settings dialog's Test (the operator, 7 Oct). git proves a read and a
+    push; this says what git cannot: a GitHub classic token's scopes (one
+    without `workflow` pushes everything except a change under
+    .github/workflows), and the role the host gives the token's account.
+
+    {"missing": [sentence], "notes": [sentence]}, both empty for a host with
+    no API to ask.
+    """
+    out = {"missing": [], "notes": []}
+    base = api_base(entry, host, scheme)
+    if not base:
+        return out
+    kind = entry["kind"]
+    if kind == "gitlab":
+        j, why, _h, code = _ask_full(f"{base}/projects/{urllib.parse.quote(path, safe='')}", kind, token)
+    else:
+        j, why, h, code = _ask_full(f"{base}/repos/{path}", kind, token)
+    if j is None:
+        if code in (401,):
+            out["missing"].append(f"a token {entry['name']} accepts: it answered {why or code}, "
+                                  "so the token is wrong, expired or revoked")
+        elif code in (403, 404):
+            out["missing"].append(f"access to {path}: {entry['name']} will not show it to this token ({why or code}). "
+                                  "A fine-grained token has to list the repository, and an organization "
+                                  "may have to approve the token under its Personal access tokens settings")
+        else:
+            out["notes"].append(f"{entry['name']} could not be asked about the token: {why}")
+        return out
+    if kind == "gitlab":
+        perms = j.get("permissions") or {}
+        level = max((perms.get(k) or {}).get("access_level") or 0
+                    for k in ("project_access", "group_access"))
+        if level and level < 30:
+            out["missing"].append("the Developer role or above on the project: its account has "
+                                  f"access level {level}, which reads but cannot push")
+        me, _w = _ask(f"{base}/personal_access_tokens/self", kind, token)
+        scopes = (me or {}).get("scopes") if isinstance(me, dict) else None
+        if isinstance(scopes, list):
+            if not {"write_repository", "api"} & set(scopes):
+                out["missing"].append("the write_repository scope, which a push over https needs "
+                                      f"(it has {', '.join(scopes) or 'none'})")
+        return out
+    perms = j.get("permissions") or {}
+    if perms and not perms.get("push"):
+        out["missing"].append(f"write access to {path}: {entry['name']} says this token can read it "
+                              "and not push (on GitHub, Contents: Read and write)")
+    if kind == "github":
+        scopes = {k.lower(): v for k, v in h.items()}.get("x-oauth-scopes")
+        if scopes is not None:
+            have = {x.strip() for x in scopes.split(",") if x.strip()}
+            if not ({"repo"} & have or ({"public_repo"} & have and not j.get("private"))):
+                out["missing"].append(f"the repo scope (it has {', '.join(sorted(have)) or 'none'})")
+            if "workflow" not in have:
+                out["missing"].append("the workflow scope: without it a push that changes "
+                                      "anything under .github/workflows is refused")
+        else:
+            out["notes"].append("A fine-grained token's Workflows permission cannot be read back: "
+                                "it needs Read and write to push a change under .github/workflows.")
+    return out
 
 
 def can_create(entry):

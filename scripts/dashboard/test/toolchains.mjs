@@ -23,7 +23,7 @@ ok(await page.$$eval('.side .card[data-card]', cs =>
 ok(await page.$eval('.card[data-card="tools"] #bToolchains', b => !b.hidden),
    'the Tools card carries its button');
 ok(await page.$eval('.card[data-card="tools"] #bFindings',
-                    b => b.textContent.trim() === 'Static analysis'),
+                    b => b.textContent.trim() === 'Analysis'),
    '...and the scanner report is a button on it');
 
 // ---- the tab -----------------------------------------------------------
@@ -106,9 +106,12 @@ ok(catalog.toolchains.length === list.length
 const pw = catalog.toolchains.find(p => p.name === 'playwright');
 const lt = catalog.toolchains.find(p => p.name === 'lint-tools');
 ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.source?.run?.join(' '))
+   // ...and its command on PATH (B534): which playwright found nothing, and
+   // a session hard-coded the module's path into its own scripts.
+   && pw?.layout?.bin?.includes('node_modules/.bin')
    && lt?.layout?.bin?.includes('bin')
    && ['shellcheck', 'hadolint', 'actionlint', 'ruff', 'yq', 'fd'].every(t => (lt?.source?.run?.join(' ') || '').includes(t)),
-   'the playwright recipe puts the module in the store with NODE_PATH on it, and lint-tools carries what bb lint runs');
+   'the playwright recipe puts the module in the store with NODE_PATH on it and its command on PATH, and lint-tools carries what bb lint runs');
 
 // A recipe that gives a session commands says under which name (`tool`):
 // they live under `bb tool NAME`, one name per recipe, so two toolchains may
@@ -140,11 +143,19 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
      'a row says which tool installing it adds');
 }
 
-// Pressing Install accepts Google's SDK terms, and the tab says so where the
-// button is: the acceptance is the operator's, not a script's.
-ok(await page.$eval('.doc .tcterms', e => /Android SDK terms/.test(e.textContent)
-                                          && e.querySelector('a[href*="developer.android.com/studio/terms"]')),
-   'the Tools tab says that Install accepts Google\'s Android SDK terms, with the terms linked');
+// Pressing Install accepts Google's SDK terms, and each Android row says so
+// with them linked: the acceptance is the operator's, not a script's. Every
+// other row names what it is licensed under (the operator, 7 Oct).
+{
+  const terms = await page.$$eval('.doc .tc', rows => rows.map(r => ({
+    name: r.querySelector('input')?.value, text: r.querySelector('.tcterms')?.textContent || '',
+    google: !!r.querySelector('.tcterms a[href*="developer.android.com/studio/terms"]') })));
+  const android = terms.filter(t => /^android/.test(t.name));
+  ok(android.length && android.every(t => t.google && /Installing it accepts Google's Android SDK terms/.test(t.text)),
+     `each Android row says Install accepts Google's Android SDK terms, linked (${android.length} rows)`);
+  const bare = terms.filter(t => !t.text);
+  ok(!bare.length, `...and every other row names its terms (${bare.map(t => t.name).join(', ') || 'none without'})`);
+}
 
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .tc input[value="flutter"]');
@@ -340,7 +351,7 @@ ok(/download/.test((await pill('swift', 0)).text)
 // The answers cost a network round trip each, so they are kept on the state
 // volume (a dashboard restart used to wipe every version the tab had been
 // told) and dated, because a number with no date on it goes quietly stale.
-ok(/versions checked/.test(await page.$eval('.doc .macros', el => el.textContent)),
+ok(/versions checked/.test(await page.$eval('.doc.on .macros', el => el.textContent)),
    '...and the tab says how old the answers are');
 const stored = JSON.parse(readFileSync(`${DIR}/state/toolchain-versions.json`, 'utf8'));
 ok(stored.at > 0 && stored.items.flutter.status === 'update',
@@ -524,9 +535,13 @@ await page.waitForFunction(() => toolchains?.job?.running);
 ok(await page.$eval('.doc [data-tc="install"]',
      b => b.textContent.trim() === 'Install selected' && b.disabled),
    'the Install button keeps its own name and goes dead, rather than becoming a banner');
-ok(await page.$eval('.doc .macros .tcworking', e => /Installing go/.test(e.textContent))
+// ...said in the bar's state slot, by the name on the toolchain's row rather
+// than its recipe id (the operator, 6 Oct: "Installing ndk...").
+const label = await page.$eval('.doc .tc input[value="go"]', i => i.closest('.tc').querySelector('.nm').firstChild.textContent.trim());
+ok(await page.$eval('.doc .macros .state.tcworking', (e, l) => e.textContent.startsWith(`Installing ${l}`), label)
    && await page.$('.doc .macros .tcworking .dots') !== null,
-   '...with what it is doing beside it, and an ellipsis');
+   `...with what it is doing as the bar's state, by the row's name, and an ellipsis (${
+     await page.$eval('.doc .macros .tcworking', e => e.textContent).catch(() => 'none')})`);
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
                            { timeout: 60000 });
 
@@ -576,6 +591,16 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
   const fl = rows.find(r => r.name === 'flutter');
   ok(fl && !/no update in place/.test(fl.title),
      'while one that CAN update in place is not marked that way');
+  // ...and when a newer version is out, its row says what updates it rather
+  // than "tick it", which its locked box cannot (the operator, 6 Oct, JDK 21).
+  const line = await page.evaluate(() => {
+    const d = document.createElement('div');
+    d.innerHTML = tcRow({ name: 'go', label: 'Go', installed: true, updatable: false, state: 'update', about: '' },
+                        false, null, true);
+    return d.querySelector('.sub.upd')?.textContent || '';
+  });
+  ok(/uninstall it with the bin, then tick it/.test(line),
+     `a locked row with an update out says how to get it, on the row (${line})`);
   // ...and the catalog is where that is decided, not a list in the server.
   const seen = await page.evaluate(() => (toolchains.items || [])
     .filter(i => i.updatable).map(i => i.name).sort());
@@ -738,6 +763,70 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   mkdirSync(`${odd}/${scope}/${scope}`, { recursive: true });
   ok(sh(`${odd}/${scope}`) === `${odd}/${scope} ${odd}/${scope}/${scope}`,
      '...while a store whose own name is the scope keeps it, since it holds one');
+
+  // ---- what a build here can use (R100) ------------------------------------
+  // The newest platform is the compileSdk ceiling and the Gradle cache is
+  // what a build has without fetching: read from the directories, said in
+  // one block, so a session does not list platforms/ and ~/.gradle by hand
+  // (Shebang-DevBoard, 30 Sep).
+  const sdk = `${store}/${scope}/android`, gh = mkdtempSync(`${tmpdir()}/bbgradle-`);
+  for (const d of ['platforms/android-35', 'platforms/android-36', 'build-tools/36.0.0']) mkdirSync(`${sdk}/${d}`, { recursive: true });
+  for (const d of ['wrapper/dists/gradle-9.7.1-bin', 'caches/modules-2/files-2.1/com.android.tools.build/gradle/9.4.1',
+                   'caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin/2.4.20']) mkdirSync(`${gh}/${d}`, { recursive: true });
+  const SDK = LIB.replace(/common\.sh$/, 'sdk.sh');
+  const builds = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(sdk)}`],
+                              { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: gh } });
+  ok(/== builds with ==/.test(builds) && /platforms\s+35 36\n/.test(builds)
+     && /compileSdk\s+up to 36: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains tab/.test(builds)
+     && /build-tools\s+36\.0\.0/.test(builds),
+     `bb toolchains says the platforms, the compileSdk ceiling and the build-tools as a build reads them (${builds.split('\n')[2]?.trim()})`);
+  ok(/gradle\s+9\.7\.1 \(wrapper distributions, no download\)/.test(builds) && /AGP\s+9\.4\.1\n/.test(builds)
+     && /kotlin\s+2\.4\.20\n/.test(builds) && !/compose BOM/.test(builds),
+     '...and what the Gradle cache holds, naming only what is there');
+  const bare = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(`${odd}/none`)}`],
+                            { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: `${odd}/nogradle` } });
+  ok(/platforms\s+none: nothing compiles here until the operator adds one on the Toolchains tab/.test(bare)
+     && /modules\s+none cached yet: the first build fetches them/.test(bare),
+     '...and an empty store and an empty cache are said as such rather than as a blank');
+  // The NVIDIA driver's line (R102), read from this machine's sysfs and
+  // modinfo: none without a card, and each of the states the row has.
+  const sysr = mkdtempSync(`${tmpdir()}/bbsys-`), fbin = mkdtempSync(`${tmpdir()}/bbbin-`);
+  const devd = `${sysr}/bus/pci/devices/0000:04:00.0`;
+  mkdirSync(devd, { recursive: true });
+  const { writeFileSync: wf, symlinkSync: ln, rmSync: rm } = await import('node:fs');
+  wf(`${devd}/vendor`, '0x10de\n'); wf(`${devd}/class`, '0x030000\n');
+  const nv = (bound, inst, loaded) => {
+    rm(`${devd}/driver`, { force: true });
+    if (bound){ mkdirSync(`${sysr}/bus/pci/drivers/${bound}`, { recursive: true }); ln(`${sysr}/bus/pci/drivers/${bound}`, `${devd}/driver`); }
+    rm(`${sysr}/module`, { recursive: true, force: true });
+    if (loaded){ mkdirSync(`${sysr}/module/nvidia`, { recursive: true }); wf(`${sysr}/module/nvidia/version`, loaded + '\n'); }
+    wf(`${fbin}/modinfo`, inst ? `#!/bin/sh\necho ${inst}\n` : '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    return execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_nvidia_line`],
+      { encoding: 'utf8', env: { ...process.env, BB_SYS_ROOT: sysr, PATH: `${fbin}:${process.env.PATH}` } }).trim();
+  };
+  const lines = [nv('nouveau', '', ''), nv('nouveau', '580.95.05', ''), nv('nvidia', '580.95.05', '580.95.05'),
+                 nv('nvidia', '580.95.05', '575.64'), nv('nvidia', '', '580.95.05')];
+  ok(/^not installed: nouveau has the card/.test(lines[0]) && /^580\.95\.05 installed; it takes the card when the machine restarts$/.test(lines[1])
+     && /^580\.95\.05, running the card/.test(lines[2]) && /^575\.64 running the card; 580\.95\.05 takes over/.test(lines[3])
+     && /^removed; it keeps the card until the machine restarts$/.test(lines[4]),
+     `bb toolchains says where the NVIDIA driver stands, read from the machine (${lines.map(x => x.slice(0, 24)).join(' | ')})`);
+  // ...and the container toolkit's line beside it, by its own tool. On a
+  // PATH of this check's own, so a machine that really has the toolkit
+  // reads the same as one that does not.
+  const kbin = mkdtempSync(`${tmpdir()}/bbkit-`);
+  for (const t of ['cat', 'sed', 'head'])
+    ln(execFileSync('bash', ['-c', `command -v ${t}`], { encoding: 'utf8' }).trim(), `${kbin}/${t}`);
+  const bash = execFileSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).trim();
+  const kit = () => execFileSync(bash, ['-c', `. ${JSON.stringify(SDK)}; sdk_nvidia_container_line`],
+    { encoding: 'utf8', env: { ...process.env, BB_SYS_ROOT: sysr, PATH: kbin } }).trim();
+  const nokit = kit();
+  wf(`${kbin}/nvidia-ctk`, '#!/bin/sh\necho "NVIDIA Container Toolkit CLI version 1.17.8"\necho "commit: abc"\n', { mode: 0o755 });
+  const haskit = kit();
+  ok(/^no container toolkit: a container here cannot reserve the card/.test(nokit)
+     && /^toolkit 1\.17\.8: a compose file reserves the card with deploy\.resources\.reservations\.devices/.test(haskit),
+     `...and whether a container there can be given the card, by the container toolkit's own tool (${nokit.slice(0, 20)} | ${haskit.slice(0, 14)})`);
+  wf(`${devd}/vendor`, '0x1234\n');
+  ok(nv('', '', '') === '' && kit() === '', '...and nothing at all on a machine with no NVIDIA card');
 }
 
 await done(browser);

@@ -62,12 +62,18 @@ function drawBell(){
   const bell = $("bBell"), panel = $("bellPanel");
   if (!bell) return;
   const asks = ph?.asks || [];
+  // Invitations to a project waiting on this account (membership.py): its
+  // own answer, Accept or Decline, from the poll like the rest.
+  const invites = state?.invites || [];
   // What sessions have waiting for approval, per project (roadmap #27):
   // the server's fact like an ask, so it leaves the moment it is answered.
   const waiting = (state?.projects || []).filter(p => p.pending > 0);
   // What the nodes need: an agent behind, or from another window. From the
   // poll, never stored here, so a row leaves the moment it stops being true.
   const att = state?.attention || [];
+  // A project whose main branch's newest CI run failed (R117): from the
+  // poll, so it leaves when a run passes.
+  const ciRed = state?.ci_red || [];
   const unread = Math.max(0, notes.length - notesSeen);
   // The WORST of what is unread, not the newest. notes are unshifted, so the
   // first `unread` of them are the new ones. A failure followed by three
@@ -77,19 +83,19 @@ function drawBell(){
               : fresh.some(n => n.lv === "warn") ? "warn"
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
-  const pendingOn = asks.length + waiting.length;
-  const attOn = att.some(a => a.window) ? "bad" : att.length ? "warn" : "";
-  dot.hidden = !(pendingOn || att.length || unread);
+  const pendingOn = asks.length + waiting.length + invites.length;
+  const attOn = att.some(a => a.window) || ciRed.length ? "bad" : att.length ? "warn" : "";
+  dot.hidden = !(pendingOn || att.length || ciRed.length || unread);
   // An ask outranks every level of record: one is a thing that happened, the
   // other is a thing that has not happened yet because it is waiting on you.
   // A node alert sits between: red when work is stopped, amber when an
   // update merely waits.
   dot.className = "dot" + (pendingOn ? " ask" : attOn ? " " + attOn : worst ? " " + worst : "");
-  bell.classList.toggle("has", !!(pendingOn || att.length || unread));
+  bell.classList.toggle("has", !!(pendingOn || att.length || ciRed.length || unread));
   bell.classList.toggle("waiting", pendingOn > 0);
   bell.title = pendingOn
     ? `${pendingOn} waiting on an answer`
-    : att.length ? `${att.length} need${att.length === 1 ? "s" : ""} attention`
+    : att.length + ciRed.length ? `${att.length + ciRed.length} need${att.length + ciRed.length === 1 ? "s" : ""} attention`
     : unread ? `${unread} new` : "notifications";
   // Drawn whenever it is ON SCREEN, which is the question that matters, and
   // not when a flag says it is open; those two disagreed and the panel a
@@ -100,32 +106,58 @@ function drawBell(){
     // Above everything the page merely said: somebody is blocked on these.
     // A root ask (roadmap R38) is the same row with the stakes said: which
     // machine, and that it is root there. `#` is the prompt root gets.
-    ...asks.map(a => `<div class="bnote ask${a.kind === "root" ? " bad" : ""}">
+    // A removal from a release takes something away from the people
+    // downloading, so it wears the destructive color, as root does.
+    ...asks.map(a => `<div class="bnote ask${a.kind === "root" || a.kind === "release-remove" ? " bad" : ""}">
         <div class="btag">${
           a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
-          : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
+          : a.kind === "sign" ? `sign a build of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "sign-key" ? `a signing key change in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release" ? `release ${esc(a.project ? projLabel(a.project) : "a project")} ${esc(a.tag || "")}: needs your answer`
+          : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "phone-use" ? `your phone, from ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" || a.kind === "container" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>${
+        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" || a.kind === "release-remove" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
         // A container is approved by reading its compose file, the way root
         // is approved by reading its argv (R71): the file is the request, so
         // it is here whole, folded, with the env file's keys and never its
         // values, which is where a token would be.
         a.kind === "container" ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the compose file${
             a.env_keys?.length ? `, and an env file setting ${a.env_keys.map(esc).join(", ")}` : ""}${
-            a.for ? `, for ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
+            a.for ? `, for ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}${
+        // An edit of a release (R139) is approved by reading the notes it
+        // would put on the page, whole.
+        a.kind === "release-edit" && a.detail ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the new notes</summary><pre>${
+            esc(a.detail)}</pre></details>` : ""}
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>
-          <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
+          <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>${
+            // A phone's commands come one after another: the second answer
+            // lets the rest from this session run without asking (the
+            // operator, 4 Oct), taken back on the Phone tab.
+            a.kind === "phone" || a.kind === "phone-use"
+              ? `<a href="#" data-ballow="${a.id}" data-bsession="1">Approve for this session</a>` : ""}
             <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
+    ...invites.map(i => `<div class="bnote ask">
+        <div class="btag">${i.kind === "owner" ? `${esc(projLabel(i.project))} offered to you` : `invited to ${esc(projLabel(i.project))}`}</div>
+        <div class="bwhy">${i.kind === "owner"
+          ? `${esc(i.by || "Somebody")} offers you ownership of ${esc(projLabel(i.project))}`
+          : `${esc(i.by || "Somebody")} invited you to work on ${esc(projLabel(i.project))}${
+              i.role ? ` as ${esc(i.role)}` : ""}`}</div>
+        <div class="bfoot"><span>${esc(ago(i.at))}</span>
+          <span class="acts"><a href="#" data-binvite="${i.id}" data-yes="0">Decline</a>
+            <a href="#" data-binvite="${i.id}" data-yes="1">Accept</a></span></div></div>`),
     // ...and beside them, what a session has waiting in each project's
     // notebook. One row per project, not per change: the notebook is where
     // the changes are read, so the row's only job is to take you there.
     ...waiting.map(p => `<div class="bnote ask">
         <div class="btag">waiting for your approval</div>
-        <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(p.name)}</div>
+        <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(projLabel(p.name))}</div>
         <div class="bfoot"><span>on the notebook</span>
           <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
     // ...and the nodes. Out of window is red and names the projects it
@@ -141,7 +173,7 @@ function drawBell(){
         <div class="bwhy">${esc(a.node)} runs Claude Code ${esc(a.from)} and ${esc(a.to)} is out${
           a.projects.length ? `; ${a.projects.map(esc).join(", ")} run${a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>
         <div class="bfoot"><span>on the Nodes tab: Update ends the Claude sessions there first</span>
-          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}" data-bwhat="claude">Nodes tab</a></span></div></div>`
       : `<div class="bnote ask${a.window ? " bad" : ""}">
         <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
         <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
@@ -150,7 +182,13 @@ function drawBell(){
                 ? ` ${a.projects.map(esc).join(", ")} cannot build, test or use the emulator there` : " Nothing works there"} until it is updated`
             : ""}</div>
         <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
-          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`),
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`),
+    ...ciRed.map(c => `<div class="bnote ask bad">
+        <div class="btag">CI failing in ${esc(projLabel(c.project))}</div>
+        <div class="bwhy">${esc(c.text)}</div>
+        <div class="bfoot"><span>this stays until the check passes again</span>
+          <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
+            <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
     ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
@@ -159,17 +197,33 @@ function drawBell(){
     ? rows.join("") + (notes.length
         ? `<div class="bfootbar"><button type="button" id="bellClear">Clear</button></div>` : "")
     : `<div class="bempty">nothing to report</div>`;
+  // Any press in the drawer closes it, after the press's own handler has
+  // run (the operator, 7 Oct): Approve, Deny, an invitation's answer, Clear,
+  // a link to where a row is about. One listener on the drawer, so a row
+  // added later is covered without remembering to.
+  panel.onclick = e => {
+    if (e.target.closest?.("button, a")) queueMicrotask(() => toggleBell(false));
+  };
   const clear = $("bellClear");
   // Only the page's own log clears: an ask is not this button's to dismiss.
   if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
   panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
     e.preventDefault();
     phBusy = "running it"; phRev++; drawPanes();
-    phFetch({action: "allow", id: Number(a.dataset.ballow)});
+    phFetch({action: "allow", id: Number(a.dataset.ballow), session: !!a.dataset.bsession});
   });
   panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
     e.preventDefault();
     phFetch({action: "deny", id: Number(a.dataset.bdeny)});
+  });
+  panel.querySelectorAll("[data-binvite]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const yes = a.dataset.yes === "1";
+    const j = await (await postJSON("/api/members", {action: yes ? "accept" : "decline",
+                                                     id: Number(a.dataset.binvite)})).json().catch(() => ({}));
+    notify(j.error || (yes ? (j.owner ? `you own ${projLabel(j.project)} now` : `you are on ${projLabel(j.project)} now`)
+                           : `declined ${projLabel(j.project)}`), !!j.error);
+    refresh();
   });
   panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -177,12 +231,19 @@ function drawBell(){
     openNotebook(a.dataset.bpend);
     openPending(a.dataset.bpend);
   });
-  // To the node's row, where Update agent is: the press itself stays there,
-  // beside the state line that says what it does.
+  panel.querySelectorAll("[data-bci]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    sectOpen["git:ci"] = true;
+    openNotebook(a.dataset.bci, "git");
+  });
+  // To the node the row is about, at the control it is about (Update agent
+  // in its head bar, or its Claude Code section, opened): the press itself
+  // stays there, beside the state line that says what it does.
   panel.querySelectorAll("[data-bnode]").forEach(a => a.onclick = e => {
     e.preventDefault();
     toggleBell(false);
-    openNodesTab();
+    openNodesTab(a.dataset.bnode, a.dataset.bwhat);
   });
 }
 

@@ -11,6 +11,7 @@ and remembers the answers; bb decides *how*, out of config/toolchains.json,
 which holds every URL, flag and argument any of it needs. Neither of them has
 a toolchain name written into it.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -37,6 +38,8 @@ run = None
 write_json = None
 STATE = None
 nodes = None          # the node store, once the server has opened it (phase 6)
+claudecode = None     # claudecode.py, set by the server: Claude Code as a node's toolchain (R145)
+CLAUDE = "claude-code"
 
 
 def configure(*, run, write_json, state):
@@ -108,6 +111,14 @@ def load_toolchains():
         tool = r.get("tool")
         if isinstance(tool, str) and tool and tool.replace("-", "").isalnum():
             row["tool"] = tool
+        # What installing it is under (the operator, 7 Oct): each license or
+        # agreement with its link, drawn on the row, an agreement Install
+        # accepts (Google's, NVIDIA's, Apple's) marked so the row says so.
+        terms = [{"label": str(t["label"])[:120], "url": str(t["url"]), "accept": bool(t.get("accept"))}
+                 for t in (r.get("terms") or []) if isinstance(t, dict)
+                 and isinstance(t.get("label"), str) and str(t.get("url") or "").startswith("https://")]
+        if terms:
+            row["terms"] = terms[:8]
         lay = r.get("layout")
         if isinstance(lay, dict):
             row["layout"] = {
@@ -441,6 +452,7 @@ def payload():
         else:
             origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      "terms": p.get("terms") or [],
                       # The tool this recipe adds under `bb tool`, one name
                       # per recipe, so a row says what installing it adds to
                       # a session and the suite holds two from claiming one.
@@ -699,13 +711,19 @@ def _node_errors(job_id, failed, verb):
     key = (job_id, tuple(failed))
     if key in _node_errors_seen:
         return _node_errors_seen[key]
-    parts, cur = {}, None
+    parts, cur, refused = {}, None, ""
     for line in (nodes.job_tail(job_id, 20000) or "").splitlines():
-        m = re.match(r"== bb toolchains \S+ (\S+)", line)
+        # An install's section is bb's header; a system-packages job's is the
+        # agent's own (sysdeps), which this did not read, so that row said
+        # only that it failed.
+        m = (re.match(r"== bb toolchains \S+ (\S+)", line)
+             or re.match(r"== system packages for (\S+?):", line))
         if m:
             cur = m.group(1)
             parts[cur] = []
             continue
+        if line.startswith("refused:") and not refused:
+            refused = line.strip()
         if line.startswith("== "):
             cur = None
             continue
@@ -713,6 +731,29 @@ def _node_errors(job_id, failed, verb):
             parts[cur].append(line)
     out = {}
     for name in failed:
+        if name in (DRIVER, TOOLKIT):
+            # bb-sandbox says why on a line of its own ("!! ..."), and the
+            # agent's refusal begins "refused:"; its sections are not bb's.
+            # apt's own first complaint ("E: ...") is the reason; bb-sandbox's
+            # last line only says apt had one (the dev node's lock, 30 Sep).
+            # Each of the machine's two rows reads its own part of the log,
+            # from the agent's header for it to the header of the other.
+            # A log with no such header is all one row's.
+            mine = "gpu-container" if name == TOOLKIT else "gpu-driver"
+            whole = [x.strip() for x in (nodes.job_tail(job_id, 20000) or "").splitlines()]
+            log, on = [], not any(x.startswith("== bb-sandbox gpu-") for x in whole)
+            for x in whole:
+                if x.startswith("== bb-sandbox gpu-"):
+                    on = x.startswith(f"== bb-sandbox {mine} ")
+                if x.startswith("refused:"):
+                    if (TOOLKIT in x) == (name == TOOLKIT):
+                        log.append(x)
+                elif on:
+                    log.append(x)
+            apt = next((x[3:].strip() for x in log if x.startswith("E: ")), "")
+            why = next((x.lstrip("! ") for x in reversed(log) if x.startswith(("!!", "refused:"))), "")
+            out[name] = " · ".join([w for w in (apt or why,) if w] + [f"{verb} failed on the node"])[-400:]
+            continue
         lines = []
         for ln in parts.get(name) or []:
             # The run's own footer, not this toolchain's; and curl's meter
@@ -725,10 +766,29 @@ def _node_errors(job_id, failed, verb):
             if ln.strip() and not ln.strip().strip("#=O- "):
                 continue
             lines.append(ln)
-        said = _job_tail("\n".join(lines), keep=4)
+        said = _job_tail("\n".join(lines), keep=4) or ([refused] if refused else [])
         out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
     _node_errors_seen[key] = out
     return out
+
+
+def finished(act, names, here, rep, state):
+    """(done, failed) for a node's last toolchain job, from what is true now.
+
+    An install is done where the toolchain is in the store, a removal where
+    it is not. A system-packages job is neither: the recipe is in the store
+    before and after, so that test called every one failed, the ones that
+    worked too. What the census still finds unmet is its answer (the agent
+    reports again as the job ends), and no names is every held recipe."""
+    if act == "sysdeps":
+        unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
+        names = names or sorted(unmet)
+        failed = [x for x in names if x in unmet]
+        if state != "succeeded" and not failed:
+            failed = names or ["system packages"]
+        return [x for x in names if x not in failed], failed
+    done = [x for x in names if (x in here) == (act == "install")]
+    return done, [x for x in names if x not in done]
 
 
 def _check_rows(job_id):
@@ -804,6 +864,7 @@ def payload_for_node(nid):
             {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _tc_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      "terms": p.get("terms") or [],
                       # The tool this recipe adds under `bb tool`, one name
                       # per recipe, so a row says what installing it adds to
                       # a session and the suite holds two from claiming one.
@@ -861,7 +922,9 @@ def payload_for_node(nid):
     if nodes:
         for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1):
             job = {"running": True, "action": (j.get("spec") or {}).get("action", ""),
-                   "queue": (j.get("spec") or {}).get("names", []), "current": j.get("step", ""),
+                   "queue": [DRIVER if str(x).startswith(DRIVER + ":") else x
+                             for x in (j.get("spec") or {}).get("names", [])],
+                   "current": j.get("step", ""),
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
                    "failed": [], "aborting": bool(j.get("cancel")), "node": nid, "id": j["id"]}
             break
@@ -880,11 +943,11 @@ def payload_for_node(nid):
                 if j.get("state") not in ("succeeded", "failed", "canceled"):
                     break
                 sp = j.get("spec") or {}
-                names = [str(x) for x in (sp.get("names") or [])]
+                names = [DRIVER if str(x).startswith(DRIVER + ":") else str(x) for x in (sp.get("names") or [])]
                 act = sp.get("action") or "install"
                 here = {i["name"] for i in items if i["installed"]}
-                done = [x for x in names if (x in here) == (act == "install")]
-                failed = [x for x in names if x not in done]
+                here |= {r["name"] for r in (driver_row(n), container_row(n)) if r and r["here"]}
+                done, failed = finished(act, names, here, rep, j.get("state"))
                 job = {"running": False, "action": act, "queue": [], "current": "",
                        "done": done, "failed": failed,
                        "errors": _node_errors(j["id"], failed, act),
@@ -894,16 +957,27 @@ def payload_for_node(nid):
     # the job's log the first time and kept: a check is a round trip per
     # recipe on the node, so the answer is worth holding on to until somebody
     # asks for a fresh one.
-    for j in nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []:
+    recent = nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []
+    for j in recent:
         if (j.get("spec") or {}).get("action") != "check":
             continue
         if j.get("state") not in ("succeeded", "failed"):
             continue
         rows = _check_rows(j["id"])
+        # What was installed since that check, by a job that succeeded: the
+        # check's "update" or "absent" for it is the answer from before, and
+        # the row kept offering an update it had just taken until somebody
+        # checked again (the operator, 6 Oct).
+        since = {str(x) for k in recent
+                 if (k.get("spec") or {}).get("action") == "install" and k.get("state") == "succeeded"
+                 and int(k.get("ended") or 0) > int(j.get("ended") or 0)
+                 for x in ((k.get("spec") or {}).get("names") or [])}
         for i in items:
             r = rows.get(i["name"])
             if not r:
                 continue
+            if i["name"] in since:
+                r = dict(r, status="current")
             i["latest"] = r["latest"]
             # Said as the check found it. The controller's own list drops an
             # answer that disagrees with its probe, because there both
@@ -916,7 +990,32 @@ def payload_for_node(nid):
             i["state"] = r["status"]
         checked = int(j.get("ended") or 0)
         break
+    machine = [r for r in (driver_row(n), container_row(n)) if r]
+    for m in machine:
+        # The census after a job that touched the driver or the toolkit is
+        # what says where it stands now; until it has arrived the tab keeps
+        # asking, two minutes at most for an agent gone quiet.
+        ended = 0
+        for j in nodes.jobs_for(node_id=nid, type="toolchain", n=1) if nodes else []:
+            sp = j.get("spec") or {}
+            # ...and after a check, which reads apt's lists again on the node.
+            if j.get("state") in ("succeeded", "failed", "canceled") and (
+                    sp.get("action") == "check"
+                    or any(str(x).startswith(DRIVER) or str(x) == TOOLKIT for x in sp.get("names") or [])):
+                ended = int(j.get("ended") or 0)
+        # The agent's hello at the end of a job lands a moment before the
+        # job's result does, so a census from the job's last seconds counts.
+        m["settling"] = bool(ended) and int(rep.get("at") or 0) < ended - 5 and time.time() - ended < 120
+    # Claude Code, the session account's (R145), drawn with the machine's
+    # rows; its own job says where it stands, not the toolchain jobs.
+    cl = claude_row(n)
+    if cl:
+        machine.append(cl)
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
+            # What is this machine's rather than the store's: the NVIDIA
+            # driver and the container toolkit, where the node has the card
+            # (R102).
+            "machine": machine,
             # Held recipes whose system packages this machine lacks, and
             # whether the agent may install them there (roadmap R51).
             "sysdeps": rep.get("sysdeps") or {}, "sandbox": bool(rep.get("sandbox")),
@@ -931,6 +1030,47 @@ def payload_for_node(nid):
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": checked, "sizing": False,
             "items": items, "job": job or {"running": False}}
+
+
+DRIVER = "nvidia-driver"
+
+
+def driver_row(n):
+    """The NVIDIA driver as a row of the node's Toolchains tab (R102), or
+    None where the node reports no NVIDIA card. A row like the store's, with
+    a tick box, in the same batch and the same check, but the machine's own:
+    built for its kernel, installed as root, taking the card at the next
+    boot. Its state is read from the census the agent sends: installed for
+    this kernel, loaded now, which driver has the card, the package apt
+    holds and what apt would move it to, and the branches on offer."""
+    rep = n.get("reported") or {}
+    card = rep.get("gpu_card")
+    if not card:
+        return None
+    gd = rep.get("gpu_driver")
+    known = isinstance(gd, dict)
+    gd = gd if known else {}
+    inst, loaded, bound = gd.get("installed") or "", gd.get("loaded") or "", gd.get("bound") or ""
+    has = bound == "nvidia" or bool(loaded)
+    state = ("unknown" if not known
+             else "update" if has and inst and loaded and inst != loaded
+             else "loaded" if has and inst
+             else "leaving" if has
+             else "waiting" if inst
+             else "absent")
+    pv, cand = gd.get("pkg_version") or "", gd.get("candidate") or ""
+    return {"name": DRIVER, "label": "NVIDIA driver", "card": str(card),
+            "gpu": str(rep.get("gpu") or ""), "installed": inst, "loaded": loaded,
+            "bound": bound, "state": state, "managed": bool(rep.get("sandbox")),
+            # On the machine, whether or not it has the card yet: what a
+            # tick means and what Remove is offered on.
+            "here": state in ("waiting", "loaded", "update"),
+            "package": gd.get("package") or "",
+            # What apt would move the installed package to, when that is not
+            # what is installed: the row's "update available".
+            "newer": cand.split("-", 1)[0] if pv and cand and cand != pv else "",
+            "recommended": gd.get("recommended") or "",
+            "options": [o for o in (gd.get("options") or []) if isinstance(o, dict)][:16]}
 
 
 def _store_share(n):
@@ -1141,31 +1281,207 @@ def _store_job_on(node_id):
     return any(nodes.jobs_for(node_id=node_id, type=t, active=True, n=1) for t in STORE_JOBS)
 
 
-def store_busy(nid):
-    """Why this node's toolchain store cannot take another job now, or "".
+def store_areas(names, action="install", plat=""):
+    """The parts of a toolchain store these names write, as (platform, area).
 
-    One at a time across every node that shares the store, not just this
-    one. docs/nodes.md section 6 names the trap: two agents unpacking into
-    one NFS directory, or one upgrading a toolchain under another mid-build,
-    is version skew nobody can debug. The rule is enforced across a shared
-    store or it is not enforced at all."""
+    Each toolchain unpacks into a directory of its own under its machine's
+    <os>-<arch> scope, so two installs collide only on the same toolchain,
+    except the Android family, which sdkmanager keeps in one SDK tree. The
+    driver, the container toolkit, system packages and a check write no
+    store at all: they are each machine's own, or only read."""
+    if action in ("check", "sysdeps"):
+        return set()
+    out = set()
+    for x in names:
+        x = str(x)
+        if x == TOOLKIT or x == DRIVER or x.startswith(DRIVER + ":"):
+            continue
+        out.add((plat, "android" if x == "android-tools" or x.startswith("android:") else x))
+    return out
+
+
+def _image_areas(plat):
+    # The SDK tree an image job's sdkmanager runs in, and the system images,
+    # which every platform on the store shares (one directory, no scope).
+    return {(plat, "android"), ("", "android system images")}
+
+
+def _job_areas(j, plat):
+    sp = j.get("spec") or {}
+    if j.get("type") == "image":
+        return _image_areas(plat)
+    return store_areas(sp.get("names") or [], sp.get("action") or "install", plat)
+
+
+def store_busy(nid, names=None, action="install"):
+    """Why this node's toolchain store cannot take this job now, or "".
+
+    On the node itself, one toolchain or image job at a time: its tab shows
+    one job. Across nodes that share the store, only a job touching the same
+    toolchain (the Android SDK counting as one) waits: docs/nodes.md section
+    6 names the trap, two agents unpacking into one NFS directory, and it is
+    the directory that clashes, not the share. Two installs of different
+    toolchains on two nodes used to be refused for sharing a store at all.
+    `names` None is any write to the store (an image job: the Android SDK)."""
     n = nodes.node(nid)
-    sharers = store_sharers(nid)
-    for other in [n] + sharers:
-        if _store_job_on(other["id"]):
-            where = ("" if other["id"] == nid
-                     else f"; it shares this toolchain store with {n['name']}")
-            return f"a toolchain or image job is already running on {other['name']}{where}. One at a time."
+    if _store_job_on(nid):
+        return f"a toolchain or image job is already running on {n['name']}. One at a time on a node."
+    mine = (store_areas(names, action, platform_of(n)) if names is not None
+            else _image_areas(platform_of(n)))
+    if not mine:
+        return ""
+    for other in store_sharers(nid):
+        plat = platform_of(other)
+        for t in STORE_JOBS:
+            for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
+                both = sorted(a for _, a in mine & _job_areas(j, plat))
+                if both:
+                    return (f"{other['name']} is installing {', '.join(both)} into the toolchain store "
+                            f"it shares with {n['name']}; this waits for it, since two machines "
+                            "unpacking one toolchain into one directory is a broken install")
     # ...and this container's own installer, which is not a job and so is
-    # invisible to the loop above. It is the sharer that matters most here:
-    # the toolchain store is mounted by the controller and by the sandbox at once.
-    if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
-        return ("this container is installing into the same toolchain store "
-                f"right now; it shares it with {n['name']}. One at a time.")
+    # invisible to the loop above. The store is mounted by the controller and
+    # by the sandbox at once.
+    if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in store_sharers(nid)):
+        local = nodes.node(nodes.LOCAL)
+        theirs = store_areas(list(_tc_job["queue"]) + [_tc_job["current"]] if _tc_job["current"]
+                             else list(_tc_job["queue"]), _tc_job["action"], platform_of(local))
+        both = sorted(a for _, a in mine & theirs)
+        if both:
+            return (f"this container is installing {', '.join(both)} into the toolchain store "
+                    f"it shares with {n['name']}; this waits for it")
     return ""
 
 
-def node_job(principal, nid, action, names):
+TOOLKIT = "nvidia-container-toolkit"
+
+
+def container_row(n):
+    """The NVIDIA container toolkit as a row of the node's Toolchains tab
+    (R102), or None where the node reports no NVIDIA card or no Docker: what
+    lets a container there reserve the card. The machine's own like the
+    driver it needs, and from NVIDIA's package source, which its install
+    adds and its removal takes away; Docker reloads its configuration for
+    it, and no container stops."""
+    rep = n.get("reported") or {}
+    if not rep.get("gpu_card") or not rep.get("docker"):
+        return None
+    gc = rep.get("gpu_container")
+    known = isinstance(gc, dict)
+    gc = gc if known else {}
+    inst, cand = gc.get("installed") or "", gc.get("candidate") or ""
+    drv = driver_row(n) or {}
+    state = ("unknown" if not known
+             else "absent" if not inst
+             else "ready" if gc.get("runtime")
+             else "unconfigured")
+    return {"name": TOOLKIT, "label": "NVIDIA container toolkit", "installed": inst,
+            "state": state, "managed": bool(rep.get("sandbox")), "here": bool(inst),
+            "newer": cand if inst and cand and cand != inst else "",
+            # The driver on the machine, which the toolkit hands to a
+            # container: without it an install is refused, by name.
+            "driver": bool(drv.get("here")),
+            # ...and running the card, which is when a container sees it.
+            "driver_loaded": drv.get("state") in ("loaded", "update")}
+
+
+def claude_row(n):
+    """Claude Code as a row of the node's Toolchains tab (R145), or None on
+    a node that runs no session account: what a Claude session there runs,
+    installed on purpose rather than by the provisioner, checked and updated
+    like the rest. The version is the census's (claude --version as the
+    session account); the latest is claudecode's check; the job behind
+    install, update and remove is claudecode's, which ends the node's Claude
+    sessions first, since the binary is swapped under nothing."""
+    se = (n.get("reported") or {}).get("session") or {}
+    if not claudecode or n.get("kind") != "agent" or not se.get("up"):
+        return None
+    inst = claudecode.installed(n)
+    cur = claudecode.latest()
+    job = next(iter(nodes.jobs_for(node_id=n["id"], type=claudecode.JOB, n=1) or []), None) if nodes else None
+    running = claudecode.updating(n["id"])
+    failed = (job or {}).get("state") == "failed" and not running
+    return {"name": CLAUDE, "label": "Claude Code", "installed": inst, "latest": cur.get("version") or "",
+            "state": ("absent" if not inst else "update" if claudecode.behind(n) else "current"),
+            "managed": bool((n.get("reported") or {}).get("sandbox")), "here": bool(inst),
+            "running": running, "action": ((job or {}).get("spec") or {}).get("action") or "install",
+            "error": str((job or {}).get("error") or "")[:200] if failed else "",
+            "checked": int(cur.get("at") or 0), "check_error": cur.get("error") or ""}
+
+
+def container_why(n):
+    """Why a container on this node cannot be given its NVIDIA card, in
+    words for the row that asked, or "" when it can: the card, the driver
+    running it, the toolkit, and Docker listing the runtime."""
+    if not n:
+        return "there is no node with an NVIDIA card behind it"
+    row = container_row(n)
+    name = n.get("name") or "its node"
+    if not (n.get("reported") or {}).get("gpu_card"):
+        return f"{name} has no NVIDIA card"
+    if not row:
+        return f"{name} reports no Docker"
+    if row["state"] == "unknown":
+        return f"{name}'s agent does not report the NVIDIA container toolkit yet: update it on the Nodes tab"
+    if row["state"] == "absent":
+        return (f"{name} has no NVIDIA container toolkit, which is what hands the card to a container: "
+                "an administrator installs it from that node's Toolchains tab")
+    if row["state"] == "unconfigured":
+        return (f"Docker on {name} does not list the nvidia runtime, though the toolkit is installed: "
+                "install the toolkit again from that node's Toolchains tab, which configures it")
+    if not row["driver_loaded"]:
+        return f"NVIDIA's driver is not running the card on {name}: its Toolchains tab says where it stands"
+    return ""
+
+
+def _machine_name(n, action, name, also):
+    """(the name the job carries, error) for the container toolkit, by the
+    machine's own rules as the driver's are: a sandbox's, an agent that
+    reports it, not a locked node, and the driver there first (or in the
+    same batch, which installs it first)."""
+    row = container_row(n)
+    if not row:
+        return "", f"{n['name']} reports no NVIDIA card with Docker beside it"
+    if not row["managed"]:
+        return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: the container toolkit "
+                    "is installed or removed there, the way NVIDIA's guide does it")
+    if row["state"] == "unknown":
+        return "", f"{n['name']}'s agent does not report the container toolkit yet: update it on the Nodes tab first"
+    if (n.get("config") or {}).get("lock"):
+        return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
+    if action == "install" and not row["driver"] and DRIVER not in also:
+        return "", (f"the NVIDIA driver is not installed on {n['name']}, and the toolkit hands its libraries "
+                    "to a container: tick the driver as well, or install it first")
+    return name, ""
+
+
+def _driver_name(n, action, pkg):
+    """(the name the job carries for the driver, error): nvidia-driver, or
+    nvidia-driver:PACKAGE for a branch picked on the row. The machine's own
+    rules, said before anything is queued: a guest machine's driver is its
+    owner's, an agent that does not report the driver cannot be asked, a
+    branch is one apt offers there, and one branch at a time."""
+    row = driver_row(n)
+    if not row:
+        return "", f"{n['name']} reports no NVIDIA card"
+    if not row["managed"]:
+        return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: its driver is "
+                    "installed or removed there, the way its distribution does it")
+    if row["state"] == "unknown":
+        return "", f"{n['name']}'s agent does not report the driver yet: update it on the Nodes tab first"
+    if (n.get("config") or {}).get("lock"):
+        return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
+    if action != "install" or not pkg:
+        return DRIVER, ""
+    if pkg not in {o.get("pkg") for o in row["options"]}:
+        return "", f"{pkg} is not a driver apt offers on {n['name']}"
+    if row["here"] and row["package"] and pkg != row["package"]:
+        return "", (f"{row['package']} is installed on {n['name']}: remove it first, then install "
+                    f"{pkg}. One branch at a time")
+    return f"{DRIVER}:{pkg}", ""
+
+
+def node_job(principal, nid, action, names, driver=""):
     """Queue the toolchain job. Refused, with numbers, when the store cannot
     hold what is asked, measured here the last time it was installed, so a
     toolchain this controller never had is not gated, and the log says so."""
@@ -1183,7 +1499,19 @@ def node_job(principal, nid, action, names):
     if action == "sysdeps" and not (n.get("reported") or {}).get("sandbox"):
         return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so its "
                          "system packages are its owner's to install; the row names them"}
-    if action == "install":
+    # The driver leaves the list for the store's checks and joins it again
+    # at the end, since it is the machine's and ends at a restart.
+    drv = ctk = ""
+    if TOOLKIT in names:
+        ctk, why = _machine_name(n, action, TOOLKIT, names)
+        if why:
+            return {"error": why}
+    if DRIVER in names:
+        drv, why = _driver_name(n, action, driver)
+        if why:
+            return {"error": why}
+    names = [x for x in names if x not in (DRIVER, TOOLKIT)]
+    if action == "install" and names:
         # What these need, ahead of them. android-tools without a jdk fails
         # inside sdkmanager with a message that names neither.
         have = node_has(n)
@@ -1208,7 +1536,7 @@ def node_job(principal, nid, action, names):
             return {"error": f"{n['name']}'s toolchain store has {human_kb(free * 1024)} free "
                              f"and this needs about {human_kb(int(need_kb * 1.2))}: "
                              "point the store somewhere bigger first"}
-    busy = store_busy(nid)
+    busy = store_busy(nid, names + [x for x in (drv, ctk) if x], action)
     if busy:
         return {"error": busy}
     # Two architectures on one store used to be refused here, because a flat
@@ -1216,7 +1544,7 @@ def node_job(principal, nid, action, names):
     # installs under <store>/<os>-<arch> (roadmap R19), so a Mac and a Linux
     # box sharing a share is the design, not a mistake.
     r = nodes.job_add(principal, {"node": nid}, "toolchain",
-                      {"action": action, "names": names, "timeout": 3600})
+                      {"action": action, "names": names + [x for x in (drv, ctk) if x], "timeout": 3600})
     if r.get("ok") and added:
         r["added"] = added
     return r
@@ -1278,9 +1606,13 @@ def start_job(action, names, auto=False):
         # from the other side.
         if nodes:
             try:
+                me = nodes.node(nodes.LOCAL)
+                mine = store_areas(list(names), action, platform_of(me))
                 for other in store_sharers(nodes.LOCAL):
-                    if _store_job_on(other["id"]):
-                        return False
+                    for t in STORE_JOBS:
+                        for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
+                            if mine & _job_areas(j, platform_of(other)):
+                                return False
             except sqlite3.Error as e:
                 print(f"dashboard: toolchains: store sharers unread, going ahead: {e}",
                       file=sys.stderr, flush=True)
@@ -1335,7 +1667,47 @@ def versions_loop():
         if TOOLCHAINS and time.time() >= due and not _tc_job["running"]:
             if start_job("check", [p["name"] for p in TOOLCHAINS], auto=True):
                 due = time.time() + TC_CHECK_EVERY
+        with contextlib.suppress(Exception):
+            node_checks_due()
         time.sleep(300)
+
+
+def node_checks_due(now=None):
+    """Each node's own weekly check (the operator, 6 Oct: a node's tab said
+    its versions were checked twelve days ago). The loop above checked only
+    this controller's store, and a node's answers are its last check job's,
+    so they aged until somebody pressed Check. A live node with a toolchain
+    store whose last check ended a week ago or more, and that has no
+    toolchain job waiting or running, is queued one, as is one that has just
+    started, whatever its last check. The node ids queued."""
+    if not nodes or not TOOLCHAINS:
+        return []
+    now = time.time() if now is None else now
+    queued = []
+    for n in nodes.node_list():
+        if n.get("kind") != "agent" or n.get("state") != "online" or n.get("live") is False:
+            continue
+        if not (((n.get("reported") or {}).get("stores") or {}).get("toolchains")):
+            continue
+        jobs = nodes.jobs_for(node_id=n["id"], type="toolchain", n=20) or []
+        if any(j.get("state") in ("queued", "assigned", "running") for j in jobs):
+            continue
+        last = max((int(j.get("ended") or 0) for j in jobs
+                    if (j.get("spec") or {}).get("action") == "check"), default=0)
+        # ...or sooner, for a node that has just started (nodes.checks_wanted).
+        wanted = n["id"] in getattr(nodes, "checks_wanted", ())
+        if last and now - last < TC_CHECK_EVERY and not wanted:
+            continue
+        r = node_job("system", n["id"], "check", [])
+        if r.get("ok") or r.get("job"):
+            queued.append(n["id"])
+            getattr(nodes, "checks_wanted", set()).discard(n["id"])
+    # Claude Code on the same clock (R145): asked once for every node, since
+    # what is out is one answer, when any node was due or a week has passed.
+    if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= TC_CHECK_EVERY):
+        with contextlib.suppress(Exception):
+            claudecode.check()
+    return queued
 
 
 # ---- the Tools card's verbs, one call from the dashboard ---------------------
@@ -1361,6 +1733,24 @@ def verb(action, req, principal):
         if not node:
             return {"error": "no such node"}, 400
         known = {p["name"] for p in TOOLCHAINS}
+        # The NVIDIA driver is a name like the others on a node that has
+        # the card (R102); node_job decides whether it may be touched.
+        if (node.get("reported") or {}).get("gpu_card"):
+            known = known | {DRIVER, TOOLKIT}
+        # Claude Code is its own job (claudecode.py): an install or an update
+        # runs the installer as the session account and ends the node's
+        # Claude sessions first; a removal takes the copy off (R145). Alone,
+        # never in a batch with the store's recipes.
+        want = [str(x) for x in (req.get("names") or [])]
+        if CLAUDE in want and action in ("install", "remove") and claudecode:
+            if len(want) > 1:
+                return {"error": "Claude Code installs on its own: untick the others, or press Install "
+                                 "selected again for them after"}, 400
+            r = claudecode.update(principal, nid) if action == "install" else claudecode.remove(principal, nid)
+            return r, (400 if r.get("error") else 200)
+        # A press of Check for updates asks Claude Code's latest too, in the
+        # same answer, like the store's recipes (R145).
+        claude_said = claudecode.check() if action == "check" and claudecode else None
         if action == "check":
             # Every row, or the ones named: the question a check answers
             # is "is any of this out of date", and an uninstalled row's
@@ -1376,7 +1766,9 @@ def verb(action, req, principal):
             names = [n for n in (req.get("names") or []) if n in known][:8]
             if not names:
                 return {"error": "nothing selected"}, 400
-        r = node_job(principal, nid, action, names)
+        r = node_job(principal, nid, action, names, driver=field(req, "driver"))
+        if claude_said is not None:
+            r = r | {"claude": {"version": claude_said.get("version") or "", "error": claude_said.get("error") or ""}}
         return r, (400 if r.get("error") else 200)
     if action == "abort":
         return {"ok": abort_job()}, 200

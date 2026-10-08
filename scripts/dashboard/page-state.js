@@ -20,13 +20,17 @@
 // the pane renders a placeholder and "+" starts over. Tabs are separate from
 // panes on purpose: a pane is a viewport, and closing one should not destroy
 // what it was showing.
-let tabs = [{id:"ws", kind:"term", arg:"shell", label:"sh: workspace"}];
+// A new layout opens on the projects, with the controller's shell beside
+// them: the shell first was a raw prompt for a newcomer, and on a setup
+// whose work runs on nodes, one that could not even start (R119, 4 Oct).
+let tabs = [{id:"pj", kind:"projects", arg:"__projects", label:"Projects"},
+            {id:"ws", kind:"term", arg:"shell", label:"sh: workspace"}];
 // The windows terminals were popped out into (R8), by tab id: this browser's
 // own handles, which is the only way a page can know a popped window still
 // lives. A reload loses them, and a tab popped from a page since reloaded
 // comes back into the strip: the edge R8 named, decided this way.
 const popWins = new Map();
-let panes = ["ws", null];
+let panes = ["pj", null];
 // What a session's container ask is asking for, from its own command line:
 // "new" makes a container, "remove" removes one, "env set" writes its env,
 // start, stop and restart are themselves, and only the rest is a rebuild.
@@ -136,11 +140,9 @@ const projFor = n =>
 
 const isClaude = t => t.kind === "term" && tmuxBase(sessionOf(t.arg)).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
-// Signing out pulls the ground from under every conversation on the box, so
-// the button is dead while any of them is running. Named from the session
-// rather than the tab: a Claude session with no tab is still a conversation.
+// Named from the session rather than the tab: a Claude session with no tab
+// is still a conversation.
 const claudeSessions = () => [...liveSessions()].filter(n => n.startsWith("claude-"));
-const signedIn = () => state?.claude_auth?.signed_in !== false;
 
 // What a Claude session is doing ({state: "working"|"waiting", task}) read
 // from the pane title the server collected, or null for anything else. The
@@ -180,3 +182,25 @@ function fmtTime(t, opts = {}){
 const humanBytes = n =>
   n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
   : n >= 1024 ? Math.round(n / 1024) + "kB" : (n || 0) + "B";
+
+// ---- fields a password manager leaves alone ------------------------------
+// Bitwarden offered itself on every text box on the page (B495): a search,
+// a note, a role's purpose. It ignores autocomplete="off" and honors only
+// its own attribute, as 1Password and LastPass honor theirs, so every field
+// that is not a password or a sign-in carries all three. A password field,
+// and one whose autocomplete names an account or a password, is left as it
+// is: those are where a manager belongs. Wired in index.html on every
+// element that appears, the way proselines are; idempotent.
+const MANAGER_FIELDS = new Set(["username", "current-password", "new-password", "one-time-code", "email"]);
+function quietFields(root){
+  const all = root.matches?.("input, textarea") ? [root] : [];
+  for (const el of [...all, ...(root.querySelectorAll?.("input, textarea") || [])]){
+    if (el.dataset.bwignore !== undefined) continue;
+    const t = (el.getAttribute("type") || "text").toLowerCase();
+    if (t === "password" || t === "hidden" || t === "checkbox" || t === "radio" || t === "file") continue;
+    if (MANAGER_FIELDS.has((el.getAttribute("autocomplete") || "").toLowerCase())) continue;
+    el.setAttribute("data-bwignore", "");
+    el.setAttribute("data-1p-ignore", "");
+    el.setAttribute("data-lpignore", "true");
+  }
+}

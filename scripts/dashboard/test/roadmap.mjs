@@ -5,6 +5,9 @@
 // Claude session bb-tty starts, which is the whole point: something noticed
 // mid-task and left undone used to live in the conversation and die with it.
 import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR, closePage } from './lib.mjs';
+// The add band unrolls the box in its place (R119 step 4): typing a line
+// presses Add to roadmap first, as a person does.
+const unroll = async pg => { if (await pg.$eval('#roadmapForm', f => f.hidden)) await pg.click('#roadmapShow'); };
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -60,10 +63,11 @@ await nbTab(page, 'roadmap');
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
    'the panel opens on the list');
 await page.waitForFunction(() => document.getElementById('roadmapHint').textContent.length > 0);
-ok((await page.$eval('#roadmapHint', el => el.textContent)).includes('every Claude session'),
-   '...and says where the items end up');
+ok((await page.$eval('#roadmapHint', el => el.textContent)) === 'nothing yet'
+   && await page.$eval('#roadmapEmpty', el => !el.hidden && /every Claude session/.test(el.textContent)),
+   '...and says where the items end up, as its empty state under a head that counts (R119 step 4)');
 
-await page.fill('#roadmapText', 'make the picker wrap properly');
+await unroll(page); await page.fill('#roadmapText', 'make the picker wrap properly');
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadmap').length === 1);
 let items = await open();
@@ -121,12 +125,17 @@ ok(await page.$$eval('#roadmapList .roadmap[data-step="-1"] .n',
   const out = execFileSync('python3', ['-c', `
 import sys; sys.path.insert(0, ${JSON.stringify(join(dirname(fileURLToPath(import.meta.url)), '..'))})
 import notify
-frames = ['> ', '> [Pasted text #1]', '> [Pasted text #1]']
+# The box shows the placeholder once the line is typed, and not before: a
+# stand-in that moved on with every look read as a pane still drawing,
+# which tell now waits out before it counts (B389).
+typed = []
 calls = []
 def run(argv, timeout=10):
     calls.append(argv)
     if argv[1] == 'capture-pane':
-        return {"code": 0, "out": frames.pop(0) if len(frames) > 1 else frames[0]}
+        return {"code": 0, "out": '> [Pasted text #1]' if typed else '> '}
+    if argv[1] == 'send-keys' and '-l' in argv:
+        typed.append(1)
     return {"code": 0, "out": ""}
 notify.configure(run=run)
 notify.SETTLE = 0
@@ -257,7 +266,7 @@ await page.waitForSelector('#roadmapList .roadmap', { timeout: 20000 });
 // never heard of, off a list that only exists in this browser, is how the two
 // end up describing different plans.
 const tab = v => `.nbtabs button[data-v="${v}"]`;
-await page.fill('#roadmapText', 'staged, deliberately not saved');
+await unroll(page); await page.fill('#roadmapText', 'staged, deliberately not saved');
 await page.click('#roadmapAdd');
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .txt')]
   .some(t => t.textContent.includes('staged, deliberately')));
@@ -724,10 +733,15 @@ await page.waitForFunction(() => document.querySelectorAll('#roadmapHist .hist')
                            { timeout: 10000 });
 const capped = await page.$$eval('#roadmapHist .hist', hs => hs.length);
 ok(capped <= 25, `the window caps what comes back (${capped} of them)`);
+// A wait on the answer, not a half-second sleep: under a loaded whole run
+// the list was read mid-redraw with fewer lines than it ends with (B413).
+const answered = page.waitForResponse(r => /"action":"history"/.test(r.request().postData() || ''),
+                                      { timeout: 15000 });
 await page.selectOption('#histWhen', '0');
-await page.waitForTimeout(500);
-ok(await page.$$eval('#roadmapHist .hist', hs => hs.length) >= capped,
-   '...and widening it to all time brings back at least as much');
+await answered;
+const widened = await page.waitForFunction(n => document.querySelectorAll('#roadmapHist .hist').length >= n,
+                                           capped, { timeout: 10000 }).then(() => true, () => false);
+ok(widened, '...and widening it to all time brings back at least as much');
 
 // It opens OVER the list rather than in place of it: the line you wanted to
 // read the log against is still there behind, and the send box is put away
@@ -759,7 +773,7 @@ ok(/is changing this\s+notebook/.test(await banner()),
    'the notebook says a session is mid-change, without being touched');
 ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    '...and Save is held while it is');
-await page.fill('#roadmapText', 'typed while a session was mid-batch');
+await unroll(page); await page.fill('#roadmapText', 'typed while a session was mid-batch');
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .txt')]
   .some(t => /typed while a session/.test(t.textContent)), { timeout: 10000 });
@@ -1158,16 +1172,17 @@ await page.waitForFunction(id => !!document.querySelector(
 ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dinfo`,
      el => el.hidden),
    'the panel shows a details fold, closed: the words are the decision, this is the workings');
-await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dtog`);
+// Watched across the click rather than read after it: under a whole run's
+// load the 180 ms tween could finish before a read after the click, and the
+// check failed in a four-worker run and passed alone (B390).
+const slid = await animatedDuring(page, () =>
+  page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dtog`));
 ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dinfo`,
      el => !el.hidden && /GUI half: stepRow/.test(el.textContent)),
    '...and one tap opens it, breaks and all');
 // It slides rather than appearing: the same height tween the sidebar cards
 // fold with, so the rows below ride down instead of jumping.
-const fold = await page.$eval(
-  `#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dinfo`,
-  el => ({ anim: el.getAnimations().length > 0, h: el.offsetHeight }));
-ok(fold.anim, '...as a slide, not a snap');
+ok(slid.length > 0, `...as a slide, not a snap (${slid.join(' ') || 'nothing animated'})`);
 await page.waitForFunction(id => !document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="-1"] .dinfo`).getAnimations().length,
   plainId, { timeout: 5000 });
@@ -1359,11 +1374,12 @@ await page.waitForFunction(() => document.querySelector(
   '#projects .row:has(.name) [data-m]')?.classList.contains('on'),
   { timeout: 15000 });
 ok(true, 'the notebook icon takes the green while its tab is open');
+// Folded, the card's row keeps three buttons beside the name (R119 step 2).
 ok(await page.$eval(`${row('alpha')} .acts`, a => {
      const r = a.getBoundingClientRect();
      const n = a.closest('.row').querySelector('.name').getBoundingClientRect();
-     return r.top >= n.bottom; }),
-   '...and the buttons sit on their own line under the name, where a word fits');
+     return r.top < n.bottom && r.left > n.left; }),
+   '...and its three buttons sit beside the name, the rest behind …');
 
 // ---- a document has a reading width --------------------------------------
 // An ultrawide pane put a row's name at one end of two thousand pixels and
@@ -1396,6 +1412,18 @@ ok(await ultra.evaluate(() => {
      return p && p.getBoundingClientRect().width <= 1100; }),
    '...and so does the Toolchains tab, where the bin was furthest from its row');
 await closePage(ultra);
+// The two pages are one account, and an account's tabs are one layout: the
+// Toolchains tab the wide page opened could become the active tab here too,
+// and under a whole run's load that landed before the Save below was
+// pressed, with the notebook's footer behind it (B396). The notebook first.
+// Opening it straight away was not enough (B414): this page adopts the
+// wide page's layout on its next status poll, which could come after the
+// notebook was shown, even in the suite run alone. So first this page holds
+// the layout revision the server has, and only then is the notebook shown.
+const serverRev = await page.evaluate(async () => (await (await fetch('/api/status')).json()).layout?.rev ?? -1);
+await page.waitForFunction(r => myRev >= r, serverRev, { timeout: 20000 });
+await page.evaluate(() => openNotebook('alpha', 'roadmap'));
+await nbShown(page);
 
 // ---- one Save, and what it does NOT do ----------------------------------
 // There were two, and the second typed the change into a running session's
@@ -1404,7 +1432,8 @@ await closePage(ultra);
 // so the panel writes and says nothing, and this asserts the silence.
 await post({ action: 'add', project: 'alpha', text: 'something to settle' });
 await page.evaluate(() => notebooks.get('alpha').reload());
-await page.waitForFunction(() => !document.getElementById('roadmapSaveQuiet').disabled);
+await page.waitForFunction(() => { const b = document.getElementById('roadmapSaveQuiet');
+  return !b.disabled && b.offsetParent; });
 ok(await page.$('#roadmapSave') === null,
    'there is one Save in the footer, not two');
 const beforeQuiet = tmuxCapture('claude-alpha').length;
@@ -1478,15 +1507,16 @@ await phone.waitForSelector('#roadmapList .roadmap', { timeout: 20000 });
 // and its History first, then the row of things that change the list.
 ok(await phone.evaluate(() => {
      const head = document.querySelector('[data-view="roadmap"] .nbhead');
-     const add = document.querySelector('.roadmapadd');
-     return !!head && !!add
+     const add = document.getElementById('roadmapAddBar');
+     return !!head && !!add && add.classList.contains('addbar')
        && head.contains(document.getElementById('roadmapHint'))
        && head.contains(document.getElementById('roadmapLog'))
-       && add.contains(document.getElementById('roadmapAdd'))
+       && /^Add to roadmap$/.test(document.getElementById('roadmapShow').textContent.trim())
        && add.contains(document.getElementById('roadmapOrder'))
+       && document.getElementById('roadmapForm').hidden
        && head.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING;
    }),
-   'the summary and History sit above the add row, with Add and Reorder beside the field');
+   'the summary and History sit above the add band: Add to roadmap and Reorder, the box rolled up until asked for (R119 step 4)');
 // The strip does not spill off a phone. Five labels are wider than 360px and
 // flex items will not shrink below their text, so it scrolls sideways
 // instead, and the tab that is current has to be inside the visible part of it.
@@ -1704,7 +1734,7 @@ await page.waitForFunction(() => document.querySelector('.nbsheet').hidden, { ti
   });
   page.evaluate(() => notebooks.get('alpha').reload());   // held, so not awaited
   await page.waitForFunction(() => true);
-  await page.fill('#roadmapText', 'typed while a reload was out');
+  await unroll(page); await page.fill('#roadmapText', 'typed while a reload was out');
   await page.keyboard.press('Enter');
   await page.waitForFunction(
     () => [...document.querySelectorAll('#roadmapList .roadmap .txt')]
@@ -1731,7 +1761,7 @@ bbRoadmapEarly('add', 'added while the panel was just sitting there');
 await refreshUntil(page, () => [...document.querySelectorAll('#roadmapList .roadmap .txt')]
   .some(e => e.textContent.includes('added while the panel was just sitting there')));
 ok(true, 'an item a session adds arrives in an open notebook, with nothing touched');
-await page.fill('#roadmapText', 'something staged, and not to be thrown away');
+await unroll(page); await page.fill('#roadmapText', 'something staged, and not to be thrown away');
 await page.keyboard.press('Enter');
 bbRoadmapEarly('add', 'and one more from the session');
 await refreshUntil(page, () => true, { timeout: 4000 });
@@ -1921,8 +1951,8 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
   // closed and reopened, which lands it on the strip's first view, and the
   // add box is in the DOM there and not on screen.
   await nbTab(page, 'roadmap');
-  await page.waitForSelector('#roadmapText', { state: 'visible', timeout: 15000 });
-  await page.fill('#roadmapText', 'staged here and not saved');
+  await page.waitForSelector('#roadmapShow, #roadmapText', { state: 'visible', timeout: 15000 });
+  await unroll(page); await page.fill('#roadmapText', 'staged here and not saved');
   await page.keyboard.press('Enter');
   bbRoadmap('add', 'written underneath by somebody else');
   let said = '';
@@ -1935,7 +1965,7 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
   ok(/changed since you loaded it/.test(said),
      `a panel with unsaved work says when the list moved under it, where the Save is (${said || 'nothing said'})`);
   await saveList();
-  ok(await page.evaluate(() => document.getElementById('roadmapMoved')?.hidden === true),
+  ok(await page.evaluate(() => !/changed since/.test(document.getElementById('roadmapMoved')?.textContent || '')),
      '...and stops saying it once there is nothing unsaved');
 }
 

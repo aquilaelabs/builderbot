@@ -10,7 +10,7 @@
 // project became unstartable, ttyd reconnecting into the same error every five
 // seconds. The command goes through a launcher file now, and this is the test
 // that says so.
-import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt } from './lib.mjs';
+import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt, takeOn, member } from './lib.mjs';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
@@ -91,6 +91,7 @@ exit 0
 `);
 writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash
 if [ "\${1:-}" = auth ]; then
+  [ -n "\${FAKE_AUTH_LOG:-}" ] && echo auth >> "\${FAKE_AUTH_LOG}"
   [ "\${2:-}" = status ] && printf '{"loggedIn":true}\\n'
   exit 0
 fi
@@ -141,6 +142,22 @@ await sleep(400);
 ok(!/command too long/.test(out),
    'a roadmap past tmux\'s 16KB command limit does not stop the session starting');
 ok(alive('claude-alpha'), '...the session is really there');
+// A tab coming back to a session already running attaches at once: the
+// sign-in checks, the briefing and the launcher are for starting one, and
+// cost every reload of a running Claude tab about two seconds (6 Oct).
+{
+  const authLog = join(DIR, 'auth.log');
+  rmSync(authLog, { force: true });
+  const before = launcher();
+  try {
+    execFileSync('bash', [BBTTY, `claude:alpha:b:${boot}`], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'),
+             HOME: join(DIR, 'home'), DASHBOARD_STATE: join(DIR, 'state'), FAKE_AUTH_LOG: authLog } });
+  } catch { /* attach needs a terminal, which this is not: it fails AT the attach */ }
+  ok(!existsSync(authLog) && alive('claude-alpha') && launcher() === before,
+     'a tab coming back to a running Claude session attaches at once: no sign-in check, no briefing, no launcher written');
+}
 // The account's commit identity rides into the session as git's environment
 // (GIT_AUTHOR_* and GIT_COMMITTER_*, which outrank any user.name a
 // repository carries) from bb settings --json, which the stub answers.
@@ -183,13 +200,17 @@ ok(launcher().includes(tokWritten),
   const dead = 'bbs_' + Buffer.from('alpha|1000000000|u_0badf00d|deadbeef')
     .toString('base64url').replace(/=+$/, '');
   const ask = (env) => execFileSync('bash', ['-c',
-    'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
+    'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_project()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
     'sh', BBBIN],
     { encoding: 'utf8', env: { ...process.env, HOME: join(DIR, 'home'), BB_PROJECT: 'alpha', ...env } }).trim();
   ok(ask({ BB_TOKEN: dead }) === tokWritten,
      'bb reaches for that file the moment the token it started with has expired');
   ok(ask({ BB_TOKEN: tokWritten }) === tokWritten,
      '...and leaves a live one alone');
+  // B497: `bb -p NAME` repoints BB_PROJECT at the project being read; the
+  // kept copy is still found by the project the token was minted for.
+  ok(ask({ BB_TOKEN: dead, BB_PROJECT: 'beta' }) === tokWritten,
+     '...and finds it under bb -p too, by the project the token names, not the one being read');
   // ...and `bb token keep` is how a token gets INTO that file for a session
   // nobody is typing in. A session that is talking slides its own forward on
   // every answer it gets; one idle past twelve hours has nothing to slide it,
@@ -208,7 +229,7 @@ ok(launcher().includes(tokWritten),
      && (statSync(landed).mode & 0o077) === 0,
      `bb token keep stores a token where that account's sessions read it, 0600 (${fresh.slice(0, 12)}…)`);
   ok(execFileSync('bash', ['-c',
-       'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
+       'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_project()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
        'sh', BBBIN],
        { encoding: 'utf8', env: { ...process.env, HOME: keepHome, BB_PROJECT: 'alpha',
                                   BB_TOKEN: dead } }).trim() === fresh,
@@ -466,6 +487,7 @@ tmuxKill('claude-alpha');
       { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't',
         GIT_AUTHOR_EMAIL: 't@e', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@e' } });
     git(['init', '-q']); git(['add', '-A']); git(['commit', '-qm', 'first']);
+    await takeOn(proj);                  // dropped in by hand, so the owner takes it on (R135)
 
     tmuxKill(`claude-${proj}`); tmuxKill(`${other}~claude-${proj}`);
     shell(`u:${ownerUid}:claude:${proj}:b:${boot}`);
@@ -518,21 +540,18 @@ tmuxKill('claude-alpha');
        '...with the project directory itself denied to it, being another tree');
     ok(!deny.includes(`Edit(${wt}/**)`),
        '...and its own not denied, which a blanket rule on .worktrees would have done');
+    // ...and the memory of its own tree allowed, which Claude Code keeps
+    // outside the tree: a session asked the person to approve reading a
+    // memory it was updating (6 Oct).
+    const mem = scope.permissions.additionalDirectories || [];
+    ok(mem.length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replaceAll('/', '-')}/memory`),
+       `...and the memory of its own tree is a directory it may use without asking (${mem.join(', ')})`);
     // The scope file also carries the work hook, which is how the finer half
     // of `bb work` gets anything to report.
     ok(JSON.stringify(scope.hooks?.Stop || {}).includes('bb-check-relay'),
        'the settings file wires the Stop hook that runs a rule\'s check before the session hands back (R31)');
     ok(JSON.stringify(scope.hooks || {}).includes('bb-work-note'),
        '...and the settings carry the hook that records what the session touches');
-    // ...and the one that keeps this node's copy of the account's Claude
-    // grant in step while the session runs. On UserPromptSubmit and nowhere
-    // else: a prompt is the moment a session is about to work, and it is the
-    // only thing on a node holding both a token minted for the account and
-    // that account's home (B100).
-    ok(JSON.stringify(scope.hooks?.UserPromptSubmit || {}).includes('bb-keep-login'),
-       '...and the hook that keeps the Claude login in step, on every prompt');
-    ok(!JSON.stringify(scope.hooks?.PreToolUse || {}).includes('bb-keep-login'),
-       '...and not on every tool call, which would be a process per call for a thing that moves hourly');
     // No permission mode of BuilderBot's: what a session may do without
     // asking is set in Claude Code itself (the operator's call, 15 Sep), and
     // the deny list is the wall, so a sibling project, VERSION and the rules
@@ -656,6 +675,7 @@ d["users"]["plain.user"] = {"uid": uid, "role": "user", "projects": ["wtproj"],
                             "password": u.hash_password("plain-user-pass"), "created": 0, "seen": 0}
 u._save(d)
 print(uid)`);
+    await member('plain.user');
     const ownerTok = tok('wtproj');
     // Another account's transcripts on the share, for the walls below.
     mkdirSync(join(DIR, 'ws', '.claude', 'u_0badf00d', 'projects'), { recursive: true });
@@ -810,6 +830,8 @@ print(uid)`);
       writeFileSync(helper, helperSrc(false), { mode: 0o755 });
       const vproj = 'viewproj';
       mkdirSync(join(DIR, 'ws', vproj), { recursive: true });
+      writeFileSync(join(DIR, 'ws', vproj, 'README.md'), 'x\n');   // an empty directory is not listed
+      await takeOn(vproj);               // dropped in by hand, so the owner takes it on (R135)
       const vhome = join(HOMEDIR, 'users', ownerUid);
       const viewTok = tok(vproj);
       const runView = target => { try {
@@ -833,6 +855,11 @@ print(uid)`);
       ok(envRaw.split('\0').includes(`BB_TOKEN=${viewTok}`) && (statSync(envf).mode & 0o777) === 0o600
          && /^check$/m.test(readFileSync(calls, 'utf8')) && new RegExp(`^plan --project ${vproj} `, 'm').test(readFileSync(calls, 'utf8')),
          '...having asked the helper whether this node builds one and planned it first, with the environment in a file only the account reads');
+      // The file is what the session runs with, so the project's own Gradle
+      // home has to be in it: tmux's -e is overridden by it (report #54).
+      const gh = envRaw.split('\0').find(l => l.startsWith('GRADLE_USER_HOME=')) || '';
+      ok(gh === `GRADLE_USER_HOME=${vhome}/.cache/builderbot/u/${ownerUid}/project/${vproj}/gradle-home`,
+         `...and in it the project's own Gradle home, not the account's ~/.gradle (${gh.slice(0, 90)})`);
       tmuxKill(`${ownerUid}~claude-${vproj}`);
       // The projects this one reads (prefs.reads) ride the grant: one
       // --reads each for the helper, and Claude's walls let it Read them
@@ -990,85 +1017,7 @@ print(uid)`);
       writeFileSync(cjf, saved);
     }
 
-    // ---- keeping the Claude grant in step while a session runs (B100) --------
-// The grant is an OAuth pair and a refresh ROTATES the refresh token, so the
-// moment one machine refreshes the server retires every other copy. The sync
-// itself was always right; the only thing that ever RAN it was this script,
-// on a browser connection, so a session on another node sat holding a retired
-// grant for hours and said "Login expired" for no reason anybody could see.
-{
-  const hk = mkdtempSync(join(tmpdir(), 'keeplogin-'));
-  mkdirSync(join(hk, 'dashboard'));
-  mkdirSync(join(hk, 'bin'));
-  mkdirSync(join(hk, 'home', '.claude'), { recursive: true });
-  const HOOK = join(hk, 'dashboard', 'bb-keep-login');
-  writeFileSync(HOOK, readFileSync(
-    new globalThis.URL('../bb-keep-login', import.meta.url).pathname, 'utf8'));
-  chmodSync(HOOK, 0o755);
-  // No bb beside it, so it falls back to the one on PATH, which is this
-  // stub, recording rather than relaying.
-  const calls = join(hk, 'calls');
-  writeFileSync(join(hk, 'bin', 'bb'),
-    `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> ${calls}\n`);
-  chmodSync(join(hk, 'bin', 'bb'), 0o755);
-  const grant = ms => writeFileSync(join(hk, 'home', '.claude', '.credentials.json'),
-    JSON.stringify({ claudeAiOauth: { expiresAt: Date.now() + ms } }));
-  const ran = () => { try { return readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean); }
-                      catch { return []; } };
-  const fire = (role) => {
-    try {
-      execFileSync('python3', [HOOK, 'alpha', 'someone'], {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PATH: `${join(hk, 'bin')}:${process.env.PATH}`,
-               HOME: join(hk, 'home'), XDG_CACHE_HOME: join(hk, 'cache'),
-               BUILDERBOT_ROLE: role },
-      });
-      return 0;
-    } catch (e) { return e.status ?? 1; }
-  };
-
-  grant(8 * 3600 * 1000);
-  ok(fire('controller') === 0 && ran().length === 0,
-     'the login hook does nothing on the controller, which is where the grant already lives');
-  ok(fire('node') === 0 && ran().length === 1 && /login --check/.test(ran()[0]),
-     `...and on a node it runs the sync (${ran()[0] || 'nothing'})`);
-  ok(fire('node') === 0 && ran().length === 1,
-     '...once, not on every prompt: an access token lasts hours and this is not free');
-
-  // ...unless the grant is nearly out, which is when being one rotation
-  // behind is about to cost the session its next turn.
-  grant(10 * 60 * 1000);
-  ok(fire('node') === 0 && ran().length === 2,
-     '...and the throttle is off entirely inside the grant\'s last half hour');
-
-  // Nothing it can do is worth a turn. No credentials file to read, and a bb
-  // that fails the way it does when the controller is away: still silent,
-  // still exit 0, and the prompt goes through.
-  rmSync(join(hk, 'home', '.claude', '.credentials.json'), { force: true });
-  writeFileSync(join(hk, 'bin', 'bb'),
-    '#!/usr/bin/env bash\necho "could not reach the controller" >&2\nexit 1\n');
-  chmodSync(join(hk, 'bin', 'bb'), 0o755);
-  const out = (() => { try {
-      return execFileSync('python3', [HOOK, 'alpha', 'someone'], {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PATH: `${join(hk, 'bin')}:${process.env.PATH}`,
-               HOME: join(hk, 'home'), XDG_CACHE_HOME: join(hk, 'cache2'),
-               // The account the hook runs for: its login state is its own,
-               // not the base home's, because the cache folder is shared (B159).
-               BB_ACCOUNT_UID: ownerUid,
-               BUILDERBOT_ROLE: 'node' } }) || '';
-    } catch (e) { return `EXIT ${e.status}: ${e.stdout || ''}${e.stderr || ''}`; } })();
-  ok(out === '',
-     `a sync that could not run is silent and costs the turn nothing (${
-       JSON.stringify(out)})`);
-  // ...and it is stamped anyway, so a controller that is down does not turn
-  // every prompt into a thirty-second wait.
-  ok(existsSync(join(hk, 'cache2', 'builderbot', 'u', ownerUid, 'account', 'login-sync')),
-     '...and still stamped, so a controller that is away is asked once, not every turn');
-  rmSync(hk, { recursive: true, force: true });
-}
-
-// A token or a name in the wrong shape is dropped, not trusted, and on a
+    // A token or a name in the wrong shape is dropped, not trusted, and on a
     // node a dropped token is no token, so nothing opens.
     tmuxKill(`${ownerUid}~shell-wtproj-11`);
     try {

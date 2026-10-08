@@ -276,6 +276,38 @@ nothing on one machine can be a wall. What it buys is that reaching the phone
 is a deliberate act rather than an incidental one, and that every deliberate
 one leaves a question on the owner's screen.
 
+**A phone is the person's who connected it** (R120, 4 Oct). Only they lend
+it to a project, from the project's row, and nobody else may, an
+administrator included: whose phone a session drives is not a role's to
+decide. A session never connects, lends or disconnects one. Lent, each
+command a session runs on it still asks its owner, in their bell alone,
+because a project's settings are everybody's on the project and whether a
+session drives somebody's phone is theirs to say each time. An
+administrator may disconnect it, since a connected, lent phone is a
+machine-wide fact somebody has to be able to end; nobody connects over it.
+
+**Allow for this session** (the operator, 4 Oct). Answering every command
+was too much, so the owner has a second answer: this one and the rest from
+that account's sessions in that project, to that phone, run without asking
+for as long as it is lent there (an hour where it is not), until they take
+it back on the Phone tab or the companion app, take the phone back or
+disconnect it. A session token names its project and account and nothing
+finer, so "this session" is that account's sessions in that project. Each
+command so allowed is still an ask on the record, answered at once in the
+owner's name, and the companion app keeps a note in the shade for as long
+as a grant, or a lend, lasts; tapping it ends it.
+
+**An ask reaches the app in a second, by a held request** (R125, 4 Oct).
+The app asked on Android's alarm, which an idle phone stretches to nine
+minutes or more against a fifteen-minute window to answer. A switch in the
+app (Hear asks at once) runs a foreground service holding GET
+/api/phone/wait open; the dashboard answers it the moment this account's
+phone asks, lease or grants change, or after 45 s, and the app runs its
+usual round. No Firebase: every install would need its own project and
+keys, and the phone already reaches its BuilderBot directly. Android still
+cuts a sleeping phone's network unless the app is exempt from battery
+optimisation, so the switch offers that too.
+
 ## How a view knows to re-read
 
 Requests wait **fifteen minutes**, not five, and the card counts down. Five
@@ -336,6 +368,17 @@ the same user inside the container: deliberately, so everything written to
 your array keeps the ownership `PUID`/`PGID` give it, which means an
 administrator can reach any account's files if they go looking. Give that role
 to people you would give the server to.
+
+**A Claude login is one account's, on one node (30 Sep 2026).** A person
+signs in on each node they work on, from that node's row, and signs out
+there. It was asked for as a simplification and it is one: there is no
+account-wide identity to keep, no rule that a second node must be the same
+Anthropic account as the first, no sign-out that has to reach machines that
+are not listening, and no switch for two BuilderBot accounts on one login,
+because nothing refuses that any more; the Users tab says it on both rows,
+since Anthropic's terms allow one person per Claude account. What is kept is
+what each node reported, per account. The cost is a sign-in per node, which
+a project's Claude button offers the first time it is needed.
 
 ## Telling a project's sessions about this environment
 

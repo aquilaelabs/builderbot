@@ -120,12 +120,36 @@ bb version bump major|minor|patch    move the target, if the policy allows it.
                    the bump rather than leaving the number moved and its twin
                    behind. A repo without one is unaffected
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
-bb version unbump      take an unreleased bump back; its changelog section
-                   dissolves into Unreleased, the code stays
+bb version set X.Y.Z   straight to a later version in one commit, allowed
+                   when the policy allows the largest part it moves; from a
+                   number never released (no tag), its changelog section is
+                   dated as the new one
+bb version unbump      take the last unreleased bump or set back; its
+                   changelog section dissolves into Unreleased, the code
+                   stays. Once: the bump before it is not taken back too.
+                   A section dated under the wrong number is fixed with
+                   unbump, then set to the number meant
+bb version release --why "..."
+                   tag this commit and publish the release, as Release on the
+                   Artifacts tab does, on the controller with the project's own
+                   credentials. The project's settings say whether Claude may
+                   (Tag and publish a release): auto releases, ask waits for
+                   the project's owner, with --why as the reason
+bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
+                   change the published release under the same setting, each
+                   edit its own ask: the notes replaced whole (- reads stdin),
+                   a build in dist/ or a committed file attached (one of the
+                   same name replaced), (asset:NAME) in the notes the address
+                   of that file on the release, for a screenshot
+bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
+                   take files off the published release, named as the forge
+                   lists them: its own ask under the same setting, never part
+                   of an edit, the names checked against the release first
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
-bb version policy  what a session may move here, and who decides. The
-                   operator picks it on the Artifacts tab, before or after
+bb version policy  what a session may move here, and who decides. A
+                   person picks it in the project's settings (Claude may:
+                   Move the version) or on the Artifacts tab, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
                    after), patch, patch and minor, or anything
@@ -162,19 +186,10 @@ bb changelog rm N        drop one that stopped being true
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
-                   run on. Nothing is copied anywhere
-bb login --check   what THIS machine is signed in as, told to the controller,
-                   and a sign-out taken here. The grant never travels: every
-                   failure this had came from one OAuth pair living on several
-                   machines: a refresh rotates the refresh token, so two
-                   copies sign each other out, and a machine that was away
-                   holds one the server has retired. Each machine signs in for
-                   itself and keeps the grant it alone refreshes. What crosses
-                   the wire is "I am signed in as X" going up and a generation
-                   coming back; behind means the account was signed out while
-                   this machine was not listening, and the answer is
-                   `claude auth logout` here. Run on every connection and
-                   every prompt
+                   run on. Nothing is copied anywhere: each node is signed in
+                   for itself, from its row on the Nodes tab or with this
+bb login --check   what THIS machine is signed in as, told to the controller.
+                   The login itself never travels
 bb git push|fetch|pull|ls-remote [ARGS]
 bb git policy      what a session may push here (its own branches, main) from
                    the project's Git view; the controller enforces it on the
@@ -183,9 +198,40 @@ bb git policy      what a session may push here (its own branches, main) from
                    are the operator's whatever the two settings say
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
-bb emu start [api] | stop | status | list | log [-p]
+bb emu start [api] | stop | status | list | log [-p] | adopt
+                   the project's own emulator: its phones are this project's
+                   alone, made on the first start; adopt moves the account's
+                   phones from before that into this project, once
+bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS] [--mark FILE]
+                   a timed touch on the running emulator, in screen pixels;
+                   a glide moves like a hand (steady, normal, shaky, or
+                   ruler for the straight even stroke), repeatable by seed,
+                   at the pace asked whatever a move costs the device;
+                   --mark FILE is made when the finger arrives to be held
+bb gpu             this node's NVIDIA card: how much of its memory is free, who is
+                   computing on it, and whether this session may
+bb gpu run [--mem MB] -- CMD
+                   CMD with a turn on the card: one heavy job at a time per node, waiting
+                   for its turn and for MB of free memory rather than failing on a full card
+bb tidy [--keep emulator|gpu|gradle|browser|server|tmp]... [--dry]
+                   after a task or a batch of them, give back what it left holding:
+                   this session's emulator (through bb emu stop), anything else of
+                   its own on the NVIDIA card, its Gradle and Kotlin daemons, the
+                   headless browsers a test left behind, a server it put in the
+                   background and left listening (a dev server, a preview), and its
+                   own files in /tmp, which in a session is memory; --keep one, with
+                   the reason in your reply
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
+bb node busy [--json]
+                   whether this node is quiet enough to time anything on: its load,
+                   memory and card (what holds the card's memory, by kind), what
+                   runs there by kind (emulators, Gradle, compilers, browsers,
+                   other Claude sessions working, other projects' jobs, counted
+                   and never named) and a verdict: quiet, busy, saturated
+bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
+                   wait until it is (quiet twice, ten seconds apart), before a
+                   measurement; exits 1, saying how busy, if it never was
 bb nodes           the machines enrolled as nodes, read-only in a terminal;
                    the Nodes tab is where they are edited
 bb settings        this project's settings as the dashboard has them: node,
@@ -248,6 +294,28 @@ bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]
                    one of those, under the same setting; --container NAME on the
                    other verbs reaches one written for this project
+bb sign FILE [--for play|sideload] [--why "..."]
+                   sign a build in dist/ with one of the project's keys, on its
+                   node, as a job this session cannot look inside: the key and
+                   its password never reach the session. --for play is the Play
+                   upload key (the default for an .aab), sideload the app signing
+                   key (the default for an .apk). The project's settings say
+                   whether Claude may (Sign a build): auto signs, ask waits for
+                   the project's owner to allow it, with --why as the reason.
+                   Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
+                   with that key; without it, the key the build's package is
+                   mapped to, else the project's default
+bb sign keys       the project's keys by name, their fingerprints and which
+                   package each signs (never a key or a password)
+bb sign key new NAME --for play|sideload --why "..."
+bb sign map PACKAGE KEY --why "..."
+bb sign rotate OLD NEW --why "..."
+                   a new key made on the controller, or an app's package mapped
+                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   keys: auto does it, ask waits for the project's owner. rotate
+                   moves the apps OLD's sideload key signs to NEW's: builds go out
+                   signed with both and a proof, Android 9 and newer take NEW,
+                   older devices keep checking OLD, which is kept for good
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -304,6 +372,8 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    image that carries its tests: one built to ship has none, and a run inside it finds
                    nothing and passes. Claude may: Run its container is not asked: a test runs in a
                    container that is already up
+bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
+                   or a browser, in under a second; preflight runs it before any suite
 bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.
@@ -335,6 +405,16 @@ bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
                    puts a design language it was given into the notebook
+bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
+                   who changed each last, and where it is pushed
+bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
+bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
+                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   for the operator, deny refuses it, hidden keeps the whole
+                   wiki from a session, reading included. A page changed since the
+                   save began is refused rather than overwritten
+bb wiki rm NAME [--why "..."]   take a page out, under the same setting
+bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
 bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile tab lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
@@ -354,6 +434,25 @@ bb phone run --why "..." -- adb args...
                    ask to reach it: the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb phone lease     whether the phone is lent to this project, for how long, and
+                   which of its apps the lease covers. While lent, each of
+                   these asks the phone's owner and runs on their Allow
+                   (--why "..." is the sentence they read), or at once
+                   once they allowed this session's commands:
+bb phone install dist/APP.apk   install one of this project's builds; its
+                   package joins the lease
+bb phone start|stop|ime|log PKG   run, stop, pick as keyboard, or read the
+                   logcat of a lease app
+bb phone shot      the screen, into dist/phone/
+bb phone record [SECONDS] | record start [SECONDS] | record stop
+                   a video into dist/phone/, with its reel beside it (the
+                   frames that changed, with their times, in one picture);
+                   start leaves it running while touches work the phone,
+                   stop collects it
+bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--seed N] |
+                   text "..." | key back|enter|del|tab|space|up|down|left|right
+                   only while a lease app is in front or is the keyboard;
+                   bb phone ui prints the screen's layout under the same rule
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,
@@ -379,7 +478,9 @@ bb catchup         what has happened here lately: commits with the first line
                    box archived, and which image it is actually running
                    (`--since 7d`, `-n COMMITS`)
 bb ci-log          what CI printed on its last run here (`--list` for the runs
-                   kept, a run id for one, `--project NAME` from elsewhere)
+                   kept, a run id for one, `--project NAME` from elsewhere);
+                   for a project on GitHub's own runners, its runs and the end
+                   of each failed job's log, read by the controller from GitHub
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -388,13 +489,12 @@ bb logs --node NAME [--agent|--runner|--terminal] [N]
                    the terminal server's. Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a
                    session cannot read them at all. Offered only while **debug
-                   mode** is on in Controller settings AND the asking node has
-                   been granted that node on its **Debug settings**, its own
-                   journal included; "it is only looking at itself" is the
-                   reasoning that makes a boundary stop meaning anything.
-                   Which node is asking is the node of the session's own
-                   project, proved by its token, never the `BB_NODE` in its
-                   environment. What can be read is a table of three streams;
+                   mode** is on in Controller settings, the session's project
+                   has been granted that node's logs under **Debug** in its
+                   settings, its own node included, and the session's account
+                   has the **debug** grant, which is the owner's unless a role
+                   names it. The project is the session's own, proved by its
+                   token. What can be read is a table of three streams;
                    anything else is refused, not run
 bb diag [--json] [SECTION...]
                    the controller's diagnostics, read-only: its build and the
@@ -402,30 +502,26 @@ bb diag [--json] [SECTION...]
                    node's agent and session half, the Claude plugins each
                    account installed on each node, the last day's jobs and the
                    failures, error lines from its own logs and the audit
-                   trail, with anything shaped like a credential redacted. An
-                   administrator's. A session reads it only while **debug
-                   mode** is on, its node is ticked for **the controller's
-                   diagnostics** on its Debug settings, and its account is an
-                   administrator's, so a tester on the same node never gets it.
-                   Its `reports` section is what sessions on other projects
-                   reported about BuilderBot and nobody has answered yet
+                   trail, with anything shaped like a credential redacted. The
+                   **debug** grant's: the owner's, or a role's that names it.
+                   A session reads it only while **debug mode** is on, its
+                   project is granted **the controller's diagnostics** under
+                   Debug in its settings, and its account has the grant.
+                   Its `reports` section is what sessions on any project
+                   reported about BuilderBot, kept until a person clears them
 bb report "..." [--area A] [--repro "..."]
                    a problem with BuilderBot itself, from a session on any
-                   project: it waits on the controller for BuilderBot's own
-                   sessions rather than going into the project's tracker (the
-                   briefing's notebook section says so), redacted like the
-                   diagnostics. `bb report` alone lists the project's reports
-                   and what became of each. A `bb bug add` whose words name
+                   project: it goes into the controller's diagnostics rather
+                   than the project's tracker (the briefing's notebook section
+                   says so), redacted like the diagnostics, and nothing comes
+                   back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
                    unless `--here` says it is the project's own. *Claude may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
-bb report file N [--sev S] [--as BUG] | close N "why"
-                   answer a report, behind the diagnostics' gate: file it as a
-                   bug in this project's tracker through `bb bug add` (or mark
-                   it as one already there), or close it with the reason its
-                   session will read
+bb report conversation N   the conversation a person sent with a report (the
+                   end of it, redacted), behind the same gate
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -434,8 +530,12 @@ bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reve
 bb dashboard status  which copy of the dashboard is serving
 bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS, by endpoint and who asked, with how long each took
 bb drift           what this checkout changed that the container is not serving
-bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
-                   draws ID|.class, suites FILE...; a session asks it before grepping
+bb map VERB ...    the code map, which a session asks before grepping: find NAME,
+                   who-calls NAME, calls NAME, defs FILE, draws ID|.class,
+                   suites FILE..., state [FILE], sections FILE, unused [FILE],
+                   addresses [FILE...], coverage, covered NAME, uncovered [FILE],
+                   affected --base REF FILES..., languages (which files it
+                   reads), build; bb map help says what each does
 bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    one picture at rest: a page, the running emulator's screen,
                    or an X display (--drive F works the surface first). At rest
@@ -443,7 +543,9 @@ bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    match, so a modal still arriving or a list still loading is
                    not the picture: the dashboard's own pages and the two other
                    sources settle by default, --settle asks it of any page, --now
-                   takes the one shot at once. Into dist/emu/ for the emulator
+                   takes the one shot at once. Into dist/emu/ for the emulator.
+                   A page that does not answer is no picture and exit 3; one
+                   that answers 4xx or 5xx is shot, and the status said
 bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
                    eyes on change over time: the frames of a recording that changed,
                    each stamped with its time, tiled into dist/reel/NAME/sheet.png
@@ -471,17 +573,64 @@ bb tool graphics CMD  pictures a session can make and then read back, with the
                    favicon SVG [DIR], a favicon set (ico + touch icon) from one mark
 bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) rendered to
                    PNG and SVG in dist/diagrams/, with the diagrams toolchain
+bb tool docs read FILE...  a PDF, Word document, slide deck or spreadsheet as
+                   Markdown on stdout, with the documents toolchain
+bb tool docs pages FILE [--pages N-M] [--dpi N]  its pages as pictures in
+                   dist/docs/NAME/, for layout, charts and scans; a file that
+                   is not a PDF is made one by the office toolchain first
+bb tool office convert FILE... [--to FORMAT]  LibreOffice with no window: a
+                   document into pdf (the default), docx, xlsx, pptx or odt
+bb tool sound make PRESET [--seed N] [--name N] [--wav]  a sound effect for an
+                   app from sfxr's presets (blip, pickup, jump, laser, hit,
+                   powerup, explosion, bloop), into dist/sound/ as OGG, with a
+                   waveform and a spectrogram beside it to check it by; tone
+                   HZ [--ms N] [--to HZ] makes a beep or a sweep, look FILE
+                   draws any sound, presets lists them; say "TEXT" speaks it
+                   into a WAV (piper) and hear FILE writes down what a
+                   recording says with its times (whisper), which need the
+                   audio toolchain
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
 The dashboard's Commands flyout carries this same list in this same order.
+
+## Signing Android releases
+
+A project keeps its Android keys on the controller, under **Signing keys** in
+its settings, and a build is signed on its node as a job no session can look
+inside: from the Artifacts tab, or by a session with `bb sign`, under the
+project's **Claude may: Sign a build**. No key is made or added until the
+project's owner has set its **backup password**, which every download of a
+key's backup asks for, BuilderBot's owner included; a backup goes only to an
+administrator who works on the project.
+
+| Key | For | If it is lost or leaks |
+|---|---|---|
+| Play upload key | Google Play with Play App Signing: you sign the `.aab` with it, Google re-signs what users download with the key it holds | Play Console resets it |
+| Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
+
+So a sideload key is downloaded once with **Download backup** and kept
+offline, with its password somewhere apart from it; its row says so in red
+until it has been. A lost backup password is not reset from the dashboard:
+signing goes on, and only somebody with a shell on the controller can clear
+it, so keep it as carefully as the key. A signed build's Artifacts
+row gives the certificate's whole fingerprint, with **Copy for F-Droid** for
+its metadata. Using one key on Play, F-Droid and your own downloads (so users
+can move between them) means giving Play that key when the app is first set
+up there. A project can keep several named keys (one per app, or one shared),
+generated on the controller or uploaded, with each app's package mapped to its
+key, and a sideload key can be **rotated** to another: builds then carry both
+and a proof, Android 9 and newer move to the new key, and the old one is kept
+for the devices before that. [docs/how-it-works.md](docs/how-it-works.md#android-signing-keys)
+has the rest.
 
 ## Documentation
 
 - [docs/start-here.md](docs/start-here.md): given an account on somebody else's BuilderBot rather than setting one up: the first five minutes, what is shared, and what the refusals mean
 - [docs/install.md](docs/install.md): setup, start to finish: the complete checklist with the decisions you need to make
 - [docs/unraid.md](docs/unraid.md): step-by-step Unraid walkthrough
-- [docs/how-it-works.md](docs/how-it-works.md): the controller, the nodes, the sessions, the dashboard, the notebook, builds, tests, CI, containers and the phone
+- [docs/architecture.md](docs/architecture.md): one page: what the parts are, how they reach each other, and where each is explained
+- [docs/how-it-works.md](docs/how-it-works.md): the controller, the nodes, the sessions, the dashboard, the notebook and its wiki, builds, tests, CI, containers, signing, and a real phone lent to a project
 - [docs/decisions.md](docs/decisions.md): the design decisions, with their dates and reasons
 - [docs/layout.md](docs/layout.md): the file-by-file layout
 - [docs/nodes.md](docs/nodes.md): design: controller + nodes, homelab-default and enterprise-scalable
@@ -489,6 +638,9 @@ The dashboard's Commands flyout carries this same list in this same order.
 - [docs/users.md](docs/users.md): accounts, roles, and what each one may reach
 - [docs/design-language.md](docs/design-language.md): what the dashboard's surfaces owe each other
 - [docs/journeys.md](docs/journeys.md): what a person does with BuilderBot, walked for real rather than reasoned about
+- [docs/api.md](docs/api.md): every dashboard endpoint and who may call it, generated from the server
+- [CONTRIBUTING.md](CONTRIBUTING.md): working on BuilderBot itself
+- BuilderBot's own wiki, in its notebook's Wiki view (and its Export, as Markdown): the same ground a page at a time, for people using it
 
 ## License
 

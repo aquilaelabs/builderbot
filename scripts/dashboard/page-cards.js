@@ -209,6 +209,7 @@ async function liveRefresh(){
   if (!state || !j || j.error) return;
   state.claude_with = j.claude_with || {};
   state.claude_busy = j.claude_busy || {};
+  state.claude_where = j.claude_where || {};
   drawProjects(state.projects);
 }
 function sessionRows(proj){
@@ -221,9 +222,21 @@ function sessionRows(proj){
   // the note color, waiting is the warn color. The row had a dot of its
   // own in other colors, and the same state read differently in each
   // place (the operator, 29 Sep).
-  return names.map(n => `<div class="sessone"><span class="st ${busy.has(n) ? "working" : "waiting"}" title="${
-    busy.has(n) ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(n)}${
-    n === state?.me ? " (you)" : ""}</div>`).join("");
+  // One line per account per node, the node in brackets, so a person with
+  // a session on two machines is two lines and each says whether it is
+  // working there (the operator, 30 Sep). Where the payload has no node
+  // rows (a session on this container), one line per account, as before.
+  const where = (state?.claude_where || {})[tmuxName(proj)] || (state?.claude_where || {})[proj] || [];
+  // ...and only while it names the same people as the map beside it, which
+  // is the one a poll that has not carried it yet still fills.
+  const whos = new Set(where.map(r => r.who));
+  const agrees = where.length && names.every(n => whos.has(n)) && [...whos].every(w => names.includes(w));
+  const rows = agrees
+    ? [...where].sort((a, b) => (a.who === state?.me) - (b.who === state?.me) || a.node.localeCompare(b.node))
+    : names.map(n => ({who: n, node: "", working: busy.has(n)}));
+  return rows.map(r => `<div class="sessone"><span class="st ${r.working ? "working" : "waiting"}" title="${
+    r.working ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(r.who)}${
+    r.who === state?.me ? " (you)" : ""}${r.node ? ` <span class="dim">(${esc(r.node)})</span>` : ""}</div>`).join("");
 }
 
 // ---- sidebar cards ---------------------------------------------------

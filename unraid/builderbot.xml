@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>BuilderBot</Name>
-  <Repository>ghcr.io/stencil-projects/builderbot:latest</Repository>
+  <Repository>ghcr.io/aquilaelabs/builderbot:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Stencil-Projects/BuilderBot/issues</Support>
-  <Project>https://github.com/Stencil-Projects/BuilderBot</Project>
+  <Support>https://github.com/aquilaelabs/BuilderBot/issues</Support>
+  <Project>https://github.com/aquilaelabs/BuilderBot</Project>
   <Overview>
 Claude Code workstation and the controller for your build nodes - the machines where builds, tests, CI and the Android emulator run.
 
@@ -30,7 +30,7 @@ NOTES
        empty URL and never consults the cache, so an empty <Icon/> shows the
        question-mark placeholder however many PNGs are sitting on disk.
        If the repo ever goes public this starts working on its own. -->
-  <Icon>https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/config/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/aquilaelabs/BuilderBot/main/config/icon.png</Icon>
   <ExtraParams>--hostname=builderbot</ExtraParams>
   <PostArgs/>
   <DonateText/>

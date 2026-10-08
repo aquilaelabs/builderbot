@@ -73,6 +73,10 @@ node_addr = None
 ENVDIR = None
 write_json = None
 field = None                     # server.py's one-string-field reader, for act()
+# Why a container of a project on a node cannot be given that node's NVIDIA
+# card, or "": server.py's, which knows the node's switch, the project's
+# setting and what the node's Toolchains tab holds (R102).
+gpu_why = None
 
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 
@@ -107,6 +111,7 @@ project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 project_nodes = None  # ...and the set it works on, primary first (R82)
 all_project_nodes = None  # () -> {project: [node ids]}, every project's set
 reads_of = None           # project -> [projects it reads] (prefs.reads), set by the server
+reaches_of = None         # (project, node) -> ["ADDR" or "ADDR:PORT"] its sessions there may reach (prefs.reaches_on)
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. The node record names the
@@ -866,8 +871,8 @@ def available():
         have = [n for n in (queue.docker_nodes() if queue else []) if n.get("kind") != "local"]
         if have:
             return {"on": False,
-                    "why": "this project has no node, so it has no daemon: pick one in its "
-                           "settings dialog (" + ", ".join(n["name"] for n in have[:3]) + ")"} | source()
+                    "why": "this project has no node, so it has no daemon: pick one on its "
+                           "notebook's Settings (" + ", ".join(n["name"] for n in have[:3]) + ")"} | source()
         return {"on": False,
                 "why": "no node with a daemon; enroll the sandbox VM on the "
                        "Nodes tab (Enroll node mints a token, then provision-linux.sh "
@@ -1103,6 +1108,18 @@ def _guard(argv):
         if len(argv) == 3 and _CTR_NAME.match(argv[2]):
             return ""
         return f"a `docker {verb}` this module did not build"
+    # Start on boot (R122): the restart policies read for a list, and one set
+    # on named containers, each in the one shape this module builds. Refused
+    # by this guard until B476, so the switch never read or set anything.
+    if verb == "inspect":
+        if argv[2:4] == ["--format", BOOT_FORMAT] and argv[4:] and all(_CTR_NAME.match(a) for a in argv[4:]):
+            return ""
+        return "a `docker inspect` this module did not build"
+    if verb == "update":
+        if (argv[2:3] == ["--restart"] and len(argv) > 4 and argv[3] in ("unless-stopped", "no")
+                and all(_CTR_NAME.match(a) for a in argv[4:])):
+            return ""
+        return "a `docker update` this module did not build"
     if verb == "logs":
         if (len(argv) == 6 and argv[2] == "--tail" and argv[3].isdigit()
                 and argv[4] == "--timestamps" and _CTR_NAME.match(argv[5])):
@@ -1176,7 +1193,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # failed on every fresh deploy (B134). Streamed calls are builds and
     # never reach here on an agent node; _submit ships those whole.
     if sink is None and hold is None and argv[:1] == [DOCKER] \
-            and len(argv) > 1 and argv[1] in _BARE_OK:
+            and len(argv) > 1 and (argv[1] in _BARE_OK or argv[1] == "inspect"):
         n = _agent_here()
         if n:
             return _agent_read(n, argv, timeout)
@@ -1187,7 +1204,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # for, so a session's bb devapp log on the dev pair met "Host key
     # verification failed" from the VM (B312).
     if sink is None and hold is None and argv[:1] == [DOCKER] \
-            and len(argv) > 1 and argv[1] in _CTL_OK | {"logs"}:
+            and len(argv) > 1 and argv[1] in _CTL_OK | {"logs", "update"}:
         n = _agent_here()
         if n:
             return _agent_exec(n, argv, timeout)
@@ -1351,8 +1368,104 @@ def containers():
             "service": labels.get(SERVICE_LABEL, ""),
             "ours": proj in mine,
         })
+    _boot_read(out)
     out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
     return {"error": "", "containers": out, "stale": bool(r.get("stale"))}
+
+
+# Start on boot (R122, the operator 4 Oct): a container's restart policy,
+# read in one docker inspect for the whole list. unless-stopped or always is
+# on: the daemon starts it when the node (or docker) starts, unless somebody
+# stopped it. For an instance of BuilderBot's own the choice is kept on its
+# record, because a rebuild recreates its containers with the compose file's
+# policy, and the listing that finds one drifted puts the choice back.
+BOOT_ON = ("always", "unless-stopped")
+BOOT_FORMAT = "{{.Id}} {{.HostConfig.RestartPolicy.Name}}"
+# Each container's policy by its id, so a listing inspects only containers it
+# has not seen. On a node the listing is an agent job, and a second job for
+# the inspect on every listing doubled what the Docker tab waits on: devapp.mjs
+# timed out around Up in every gate that ran it beside another suite (B470).
+# A rebuild makes new ids, read once; Start on boot writes what it set here.
+_policies = {}
+_asked_at = {}          # id -> when an inspect last went unanswered for it
+_boot_thread = None     # the last read, for a test to wait on
+UNKNOWN_S = 300
+
+
+def boot_known(ids, policy):
+    """What a press of Start on boot just set, so the next listing says it
+    without asking docker again."""
+    for i in ids:
+        if i:
+            _policies[str(i)[:12]] = policy
+
+
+def _boot_read(out):
+    ids = [c["id"] for c in out if c.get("id")]
+    if not ids:
+        return
+    new = [i for i in ids if i not in _policies or
+           (_policies[i] == "" and time.time() - _asked_at.get(i, 0) > UNKNOWN_S)]
+    if new:
+        # Read off the listing's path: the listing draws what is known, and
+        # the next one (seconds later) has the rest. On a node the inspect is
+        # a job of its own, and a listing that waited on it was what kept
+        # the Docker tab's waits running out (B470, B476). An id the daemon
+        # did not describe is remembered as unknown for a while, then asked
+        # again.
+        for i in new:
+            _policies[i] = ""
+            _asked_at[i] = time.time()
+        n = _agent_here()
+        argv = [DOCKER, "inspect", "--format", BOOT_FORMAT, *new]
+
+        def read():
+            r = _agent_read(n, argv, 30) if n else _run(argv, timeout=30)
+            for ln in (r.get("out") or "").splitlines():
+                bits = ln.split()
+                if len(bits) == 2 and bits[0][:12] in _policies:
+                    _policies[bits[0][:12]] = bits[1]
+        global _boot_thread
+        _boot_thread = threading.Thread(target=read, name="docker-boot", daemon=True)
+        _boot_thread.start()
+    # Bounded: past a few hundred ids, keep only the ones this list has. A
+    # node switched away from is read again once, which costs one inspect.
+    if len(_policies) > 500:
+        for i in [i for i in _policies if i not in ids]:
+            _policies.pop(i, None)
+            _asked_at.pop(i, None)
+    pol = {i: _policies.get(i, "") for i in ids}
+    for c in out:
+        c["restart"] = pol.get(c.get("id"), "")
+        c["boot"] = c["restart"] in BOOT_ON
+    want = {}
+    for p, insts in _load().items():
+        for i, rec in (insts or {}).items():
+            if isinstance(rec, dict) and isinstance(rec.get("boot"), bool):
+                want[_pname(p, i)] = rec["boot"]
+    for on in (True, False):
+        drift = [c for c in out if c.get("restart") and want.get(c.get("project")) is on and c["boot"] is not on]
+        if drift:
+            got = _run([DOCKER, "update", "--restart", "unless-stopped" if on else "no",
+                        *[c["name"] or c["id"] for c in drift]], timeout=30)
+            if got.get("code") == 0:
+                for c in drift:
+                    c["boot"], c["restart"] = on, "unless-stopped" if on else "no"
+                boot_known([c.get("id") for c in drift], "unless-stopped" if on else "no")
+
+
+def remember_boot(pname, on):
+    """Keep an instance's Start on boot choice, so a rebuild cannot undo it;
+    a container that is not one of BuilderBot's instances has nothing to keep."""
+    with _lock:
+        d = _load()
+        for p, insts in d.items():
+            for i in (insts or {}):
+                if _pname(p, i) == pname:
+                    _rec(d, p, i)["boot"] = bool(on)
+                    write_json(FILE, d)
+                    return True
+    return False
 
 
 def _labels(raw):
@@ -1987,100 +2100,6 @@ def check_paths(node_id=None):
                           + (r["out"].strip()[:200] or f"exit {r['code']}"))
         return out
 
-
-def rename_dev_data(old, new):
-    """Move an instance's data when its project is renamed: (moved?, error).
-
-    The case projects.py cannot reach with a rename(2), because the directory
-    is on the daemon's disk and not on ours. It handles the mounted case
-    itself; this answers False with no error when that is the arrangement, so
-    nothing is done twice.
-
-    A project that never had a dev instance has nothing to move and is not a
-    failure, the same rule as the local move.
-    """
-    if Path(DEVDATA).is_dir() or not sandbox_daemon():
-        return False, ""
-    if not _devdata_run("test", old, quiet=True):
-        return False, ""
-    # `mv a b` with b an existing DIRECTORY does not fail: it puts a inside
-    # it, as /d/<new>/<old>. The local move checks the target first and this
-    # did not, so the one arrangement that cannot be checked by looking was
-    # also the one that silently nested somebody's data one level deeper.
-    if _devdata_run("test", new, quiet=True):
-        return False, (f"the sandbox already has a data directory called "
-                       f"{new}, and moving onto it would bury one inside the "
-                       f"other, so nothing was moved")
-    if not _devdata_run("mv", old, new):
-        return False, ("the dev instance's data is on the sandbox and could "
-                       "not be moved: it is still under the old name")
-    return True, ""
-
-
-def rename_project_data(old, new):
-    """Move EVERY instance's data directory when a project is renamed.
-
-    Returns (moved, failed) as two lists of sentences, for the rename to
-    report beside the rest of what it moved.
-
-    This is devapp's job rather than the renamer's because the layout is
-    devapp's, and asking it per PROJECT is what keeps _pname out of a module
-    that has no business spelling one. projects.py called _pname(old) and
-    _pname(new) with the instance left to default, which was right by accident:
-    it is right because of a rule that lives here and could change here.
-
-    The rule: only the default instance's directory is named for the project
-    (_pname gives the project's slug for `main` and the instance's own name for
-    anything else, because nobody typed a name for the default one). So a
-    rename moves exactly that one, and a named instance keeps its directory
-    because its name never contained the project. Skipped explicitly rather
-    than by knowing: was == now is asked, so a change to _pname is picked up
-    here instead of quietly orphaning what it renames.
-
-    Both arrangements, because which one is live is this module's business
-    too: a mounted /devdata is renamed here, and a sandbox's is moved over
-    there by rename_dev_data.
-
-    Order matters at the call site: the store's record has already moved to
-    the new name by the time this runs, so the instance list is asked of the
-    NEW key.
-
-    What BELONGS to the project moves with it here too: a container's project
-    is a value in two files, and the rename's table only moves keys.
-    """
-    moved, failed = [], []
-    if rename_owner(old, new):
-        moved.append("the containers that belong to it")
-    for inst in instances(new):
-        was, now = _pname(old, inst), _pname(new, inst)
-        if was == now:
-            continue           # not named for the project: nothing to move
-        what = ("the dev instance's data" if inst == MAIN
-                else f"the {inst} instance's data")
-        if Path(DEVDATA).is_dir():
-            src, dst = Path(DEVDATA) / was, Path(DEVDATA) / now
-            if not src.is_dir():
-                continue
-            if dst.exists():
-                failed.append(f"{what} could not move: {now} already exists")
-                continue
-            try:
-                src.rename(dst)
-                moved.append(what)
-            except OSError as e:
-                failed.append(f"{what} could not be moved: {e}")
-            continue
-        # The daemon-side move runs against the daemon this instance is
-        # bound to: with several nodes, "the sandbox" is a per-record fact.
-        with on_node(_instance_node(new, inst)):
-            did, err = rename_dev_data(was, now)
-        if did:
-            moved.append(f"{what}, on the sandbox")
-        elif err:
-            failed.append(err)
-    return moved, failed
-
-
 def _build_env(project, instance=MAIN):
     """BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION for a compose whose
     build args opt in with them: the commit the build is from (the tree's
@@ -2348,9 +2367,19 @@ def _overview_here(picked):
                 # The project it belongs to, or "" for none: whose sessions
                 # may see it and work on it, and the group it is drawn in.
                 "owner": owner_of(project, inst, rec),
+                # Its project was deleted (moved to the trash): drawn as
+                # "X (deleted)" until X is restored or it is moved (8 Oct).
+                "owner_gone": owner_gone(owner_of(project, inst, rec)),
+                "owner_label": owner_label(owner_of(project, inst, rec)),
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
+                # Start on boot, as the daemon says for this instance's own
+                # containers (R122). The listing's top-level containers are
+                # the ones that belong to no instance, so the row's switch
+                # read a list that never held its containers and always said
+                # off (found walking the dev instance, 5 Oct).
+                "boot": any(c.get("boot") for c in mine),
                 # Ports from the containers themselves rather than from the
                 # compose file: what is published is what the daemon says it
                 # published, and a stopped instance publishes nothing.
@@ -2442,7 +2471,9 @@ def _overview_here(picked):
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double. Each with
             # the project it was put under, read once for the node.
-            "containers": [c | {"owner": held.get(c["name"], "")}
+            "containers": [c | {"owner": held.get(c["name"], ""),
+                                "owner_gone": owner_gone(held.get(c["name"], "")),
+                                "owner_label": owner_label(held.get(c["name"], ""))}
                            for held in [_owners().get(picked or _node_here()) or {}]
                            for c in cs["containers"] if not c["ours"]]}
 
@@ -2666,6 +2697,73 @@ def owner_of(project, instance=MAIN, rec=None):
     return "" if rec.get("source") == "file" else project
 
 
+# registry.label, set by the server (R154): the name a deleted project was
+# shown under, which the registry keeps after its directory is gone.
+label_of = None
+
+
+def owner_label(owner):
+    return (label_of(owner) if label_of and owner else owner) or ""
+
+
+def owner_gone(owner):
+    """True when a container's project is no project any more: deleted to
+    the trash, its records kept under its name, so a restore gives every one
+    of them back (the operator, 8 Oct)."""
+    return bool(owner) and not (WORKSPACE / owner).is_dir()
+
+
+def move_instance(project, instance, to):
+    """Move a project's own instance to project `to` (the operator, 8 Oct:
+    MediaReducer-Dev's dev container to MediaReducer before the old project
+    goes). Recorded under `to` as the instance whose compose name is the one
+    it already has, so its containers, env file and data directory stay
+    exactly where they are; from then on it builds from `to`'s tree and is
+    `to`'s. A written container is no project's build and moves with its
+    project picker (set_owner) instead."""
+    to = str(to or "").strip()
+    if not to or to == project:
+        return {"error": "name another project to move it to"}
+    rec = _read_rec(project, instance)
+    if not rec:
+        return {"error": f"no instance {instance} of {project}"}
+    if rec.get("source") == "file":
+        return {"error": "a container written here is built from its own compose file, not a "
+                         "project's: give it to another project with its project picker"}
+    if not project_has_compose(to):
+        return {"error": f"{to} has no compose file at its root to build this from"}
+    node = _instance_node(project, instance)
+    why, _ = on_project_node(to, node)
+    if why:
+        return {"error": why}
+    name = _pname(project, instance)
+    inst = instance_key(to, name)
+    with _lock:
+        d = _load()
+        if inst in (d.get(to) or {}):
+            return {"error": f"{to} already has a container called {name}"}
+        r = (d.get(project) or {}).pop(instance, None)
+        if r is None:
+            return {"error": f"no instance {instance} of {project}"}
+        if not d.get(project):
+            d.pop(project, None)
+        # Pinned where it is: its data directory is on that node, and a
+        # record with no node would follow `to`'s primary instead.
+        if node:
+            r["node"] = str(node)
+        # Its owner was the default (the project it was built from): now it
+        # is `to`'s default. One given elsewhere on purpose stays given.
+        if "for" not in r or r.get("for") == to:
+            r.pop("for", None)
+        # A branch of the old repository means nothing in the new one.
+        ref = r.pop("ref", None)
+        d.setdefault(to, {})[inst] = r
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "project": to, "instance": inst, "name": name, "was": project,
+            "dropped_ref": ref or ""}
+
+
 def set_owner(project, instance, owner):
     """Which project an instance or a written container belongs to: a
     project's name, or "" for none. server.py has checked that the name is a
@@ -2751,6 +2849,14 @@ def session_net_own(node_id):
         for other in nids:
             if other != node_id:
                 reach(o, project, other)
+        # ...and what its settings name besides (Also reaches, the operator,
+        # 7 Oct): a whole machine, or one port on it.
+        for e in (reaches_of(project, node_id) if reaches_of else []) or []:
+            addr, _, port = str(e).partition(":")
+            if port:
+                o["peers"].add((addr, int(port)))
+            else:
+                o["hosts"].add(addr)
         # ...and the containers of the projects this one READS (prefs.reads),
         # here and on this project's other nodes, so a session can open
         # their pages and photograph them: read-only is about the tree and
@@ -2802,35 +2908,6 @@ def _node_here():
     container's owner is kept under, since a name is only unique on its own
     daemon."""
     return getattr(_node_ctx, "node", None) or _default_node() or ""
-
-
-def rename_owner(old, new):
-    """Every container that belonged to the project `old` belongs to `new`.
-    True when any moved. The rename's table moves what is KEYED by a
-    project's name; these hold it as a value, which that table cannot see."""
-    moved = False
-    with _lock:
-        d = _load()
-        for insts in d.values():
-            for rec in insts.values():
-                if rec.get("for") == old:
-                    rec["for"] = new
-                    moved = True
-        if moved:
-            write_json(FILE, d)
-        o = _owners()
-        hit = False
-        for held in o.values():
-            for c, p in held.items():
-                if p == old:
-                    held[c] = new
-                    hit = True
-        if hit:
-            write_json(OWNERS, o)
-    if moved or hit:
-        _bump()
-    return moved or hit
-
 
 def refs_of(project):
     """The branches this project could be built from, newest commit first,
@@ -3392,6 +3469,46 @@ def risk_digest(rs):
     if not rs:
         return ""
     return hashlib.sha256("\n".join(sorted(rs)).encode()).hexdigest()[:12]
+
+
+def gpu_asks(cfg):
+    """The services of this compose that reserve an NVIDIA GPU, by name, in
+    any of the three spellings compose takes: a device reservation under
+    deploy.resources (driver nvidia, or the gpu capability with no driver
+    named), `runtime: nvidia`, or `gpus:`."""
+    out = []
+    for name, sv in sorted(_services(cfg).items()):
+        res = (((sv.get("deploy") or {}).get("resources") or {}).get("reservations") or {}) \
+            if isinstance(sv.get("deploy"), dict) else {}
+        devs = res.get("devices") if isinstance(res, dict) else None
+        asks = str(sv.get("runtime") or "") == "nvidia" or bool(sv.get("gpus"))
+        for d in devs if isinstance(devs, list) else []:
+            if not isinstance(d, dict):
+                continue
+            caps = [str(c) for c in (d.get("capabilities") or [])] if isinstance(d.get("capabilities"), list) else []
+            drv = str(d.get("driver") or "")
+            if drv == "nvidia" or (not drv and "gpu" in caps):
+                asks = True
+        if asks:
+            out.append(name)
+    return out
+
+
+def gpu_gate(project, instance=MAIN, cfg=None):
+    """The reason a compose that reserves the GPU cannot start on this
+    instance's node, or "": Docker's own answer there is "could not select
+    device driver nvidia", after the build, which names neither the toolkit
+    nor the setting that said no (R102)."""
+    if gpu_why is None:
+        return ""
+    asks = gpu_asks(cfg if cfg is not None else _config(project, instance))
+    if not asks:
+        return ""
+    why = gpu_why(project, _instance_node(project, instance))
+    if not why:
+        return ""
+    return (f"{', '.join(asks[:3])} reserve{'s' if len(asks) == 1 else ''} the NVIDIA GPU in the compose file, and "
+            + why)
 
 
 def _risk_gate(project, instance=MAIN, ack=""):

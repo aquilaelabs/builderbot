@@ -37,6 +37,11 @@ const look = await page.$eval('#rnReads', e => ({ overflow: getComputedStyle(e).
   row: Math.round(e.querySelector('label.lrow').getBoundingClientRect().height), display: getComputedStyle(e.querySelector('label.lrow')).display }));
 ok(look.overflow === 'auto' && look.border === '1px' && look.row >= 38 && look.display === 'flex',
    `a listbox is a bordered box that scrolls, its rows a thumb high (${JSON.stringify(look)})`);
+// ...and the Debug grants beside them (the operator, 6 Oct): drawn for an
+// account with the debug grant, the controller's diagnostics first, then
+// each node's machine logs. diag.mjs holds the refusals.
+ok(await page.$eval('#rnDebugField', f => !f.hidden && !!f.querySelector('input[value="@diag"]')),
+   'the project\'s Debug grants are offered to an account with the debug grant, the diagnostics first');
 await page.check('#rnReads input[value="beta"]');
 await saveDialog(page);
 await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reads?.join() === 'beta', { timeout: 20000 });
@@ -81,6 +86,15 @@ ok(add.status === 403 && /beta is read-only from a session on alpha: bb roadmap 
 const gitp = await relay(['git', 'push'], 'beta');
 ok(gitp.status === 403 && /acts on the project's own machines/.test(gitp.error || ''),
    `...as is a verb that acts on beta's machines (${gitp.error})`);
+// A project it does not read is named, with where the reads are set, and a
+// name that is no project says that (MediaReducer, 7 Oct: "this session's
+// token is for another project" read the same for both).
+const unreadR = await relay(['roadmap'], 'gamma');
+ok(unreadR.status === 403 && /alpha does not read gamma: its owner adds it under Reads/.test(unreadR.error || ''),
+   `a project the session does not read is refused by name, saying where reads are set (${unreadR.error})`);
+const noneR = await relay(['roadmap'], 'nosuch');
+ok(noneR.status === 400 && /there is no project called nosuch/.test(noneR.error || ''),
+   `...and a name that is no project says so (${noneR.error})`);
 
 // ---- the grant carries the reads, for the view and the walls ---------------------------
 const grant = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));
@@ -113,6 +127,18 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   const g = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));
   ok(Array.isArray(g.sees) && g.sees.join() === '/mnt/media,/srv/samples',
      `the terminal's grant names them, for bb-session (${JSON.stringify(g.sees)})`);
+  // Whether the session may compute on its node's NVIDIA card (R102) rides
+  // the same grant: on unless the project's setting, or the node's switch,
+  // says otherwise, and the grant says which.
+  ok(g.gpu === 'on', `the grant says the card is the session's to compute on by default (${g.gpu})`);
+  const goff = await api('/api/prefs', { project: 'alpha', gpu: 'off' });
+  const g2 = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));
+  ok(goff.status === 200 && g2.gpu === 'project'
+     && (await api('/api/status')).projects.find(p => p.name === 'alpha').prefs.gpu === 'off',
+     `a project set to leave the GPU alone has its sessions told so, and by whom (${g2.gpu})`);
+  const gbad = await api('/api/prefs', { project: 'alpha', gpu: 'sometimes' });
+  ok(gbad.status === 400 && /gpu is one of on, off/.test(gbad.error || ''), `a value that is neither is refused (${gbad.error})`);
+  await api('/api/prefs', { project: 'alpha', gpu: 'on' });
   const said = (await api('/api/preamble?project=alpha')).text;
   ok(/Of the shares and disks mounted on its node, this project is shown \/mnt\/media, \/srv\/samples, as the node has each/.test(said)
      && /A share or\s+a disk mounted on the node, another project's build cache or container data,\s+and the home of the account sessions run as are not in its view/.test(said),
@@ -123,7 +149,10 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   ok(/^\s+sees\s+\/mnt\/media, \/srv\/samples$/m.test(shown), `bb settings lists them (${(shown.match(/^.*sees.*$/m) || ['nothing'])[0].trim()})`);
   // The dialog: a field beside the node's, there when there is a node to
   // be on, filled with what is stored and read when Save is pressed.
-  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.sees?.join() === '/mnt/media,/srv/samples', { timeout: 20000 });
+  // ...the GPU setting back on too: the dialog fills from the poll, and one
+  // from a moment ago still carried the off this file had just set.
+  await refreshUntil(page, () => { const p = (state?.projects || []).find(p => p.name === 'alpha')?.prefs;
+    return p?.sees?.join() === '/mnt/media,/srv/samples' && (p.gpu || 'on') === 'on'; }, { timeout: 20000 });
   await page.evaluate(() => { nodesList = [{ id: 'n_0000test', name: 'box', kind: 'agent', state: 'ready', reported: {} }]; renameProject('alpha', 'all'); });
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   await page.waitForSelector('#rnSeesField:not([hidden])', { timeout: 10000 });
@@ -131,8 +160,19 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
     help: document.querySelector('label[for=rnSees] .help')?.dataset.tip || '', hint: !!document.querySelector('#rnSeesField .hint') }));
   ok(field.value === '/mnt/media, /srv/samples' && field.label === 'Also sees' && /share or a disk mounted on the node/.test(field.help) && !field.hint,
      `the project's settings carry the places in a field under the node, labeled above, its one sentence behind the ? (${JSON.stringify(field).slice(0, 140)})`);
+  // ...and the GPU setting with the other Claude settings, a pulldown read
+  // at Save like the rest.
+  ok(await page.$eval('#rnGpu', e => e.value === 'on' && [...e.options].map(o => o.value).join() === 'on,off'
+                        && /The node's GPU/.test(e.closest('label').textContent)),
+     "the dialog carries The node's GPU, on by default");
+  ok(await page.$eval('#rnGpu', e => e.closest('.rngroup')?.querySelector('summary .t')?.textContent) === 'Where it runs',
+     "...under Where it runs, with the node it is about");
+  await page.selectOption('#rnGpu', 'off');
   await page.fill('#rnSees', '/mnt/media');
   await saveDialog(page);
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gpu === 'off', { timeout: 20000 });
+  ok(true, '...and Save stores it');
+  await api('/api/prefs', { project: 'alpha', gpu: 'on' });
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.sees?.join() === '/mnt/media', { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.sees.join() === '/mnt/media',
      '...and Save keeps what the field says');
@@ -160,11 +200,68 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
      '...and with none named the briefing names none');
 }
 
+// ---- what its sessions may still reach where the node filters (Also reaches, 7 Oct) ------
+// An address, or one with a port, on the project's nodes it names (every one
+// when it names none). devapp.mjs proves what the node is handed.
+{
+  const set = await api('/api/prefs', { project: 'alpha', reaches: ['192.168.1.50',
+    { addr: '192.168.1.60:8123', nodes: ['n_two'] }, { addr: '192.168.1.60:8123', nodes: ['n_one'] }] });
+  const kept = (await api('/api/status')).projects.find(p => p.name === 'alpha').prefs.reaches;
+  ok(set.status === 200 && JSON.stringify(kept) === JSON.stringify([{ addr: '192.168.1.50', nodes: [] },
+       { addr: '192.168.1.60:8123', nodes: ['n_one', 'n_two'] }]),
+     `a project's settings keep the addresses its sessions may reach, each once with its nodes (${JSON.stringify(kept)})`);
+  const bad = [['nas.lan', /not an address/], ['192.168.1.0/24', /a name or a range is not taken/],
+               ['127.0.0.1', /this machine/], ['10.231.0.4', /sessions themselves/]];
+  const got = [];
+  for (const [e, re] of bad){
+    const r = await api('/api/prefs', { project: 'alpha', reaches: ['192.168.1.50', e] });
+    if (!(r.status === 400 && re.test(r.error || ''))) got.push(`${e}: ${r.status} ${r.error || ''}`);
+  }
+  ok(got.length === 0, `a name, a range, this machine and the sessions' own range are refused by name${got.length ? ` (not: ${got.join(' | ')})` : ''}`);
+  const mine = await api('/api/prefs', { project: 'alpha', reaches: ['192.168.1.9'] }, asSession(tok));
+  ok(mine.status === 403, `a session cannot open its own network (${mine.status} ${mine.error})`);
+  // In the dialog: a row per address under Also sees, and Add an address.
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reaches?.length === 2, { timeout: 20000 });
+  await page.evaluate(() => renameProject('alpha'));
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  const rows = await page.$$eval('#rnReachRows .rnreach [data-reach]', es => es.map(e => e.value));
+  ok(rows.join() === '192.168.1.50,192.168.1.60:8123', `the dialog draws a row per address (${rows.join(', ')})`);
+  await page.evaluate(() => document.querySelector('details[data-sect="rn:runs"]').open = true);
+  await page.click('#rnReachAdd');
+  await page.fill('#rnReachRows .rnreach:last-child [data-reach]', '192.168.1.70');
+  await page.click('#rnReachRows .rnreach:first-child [data-reachrm]');
+  await saveDialog(page);
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reaches?.length === 2, { timeout: 20000 });
+  const after = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.reaches.map(e => e.addr);
+  ok(after.join() === '192.168.1.60:8123,192.168.1.70', `...and Save keeps what the rows say, one removed and one added (${after.join(', ')})`);
+  await api('/api/prefs', { project: 'alpha', reaches: [] });
+}
+
+// ---- a read project's containers are read from here (B551, B552) ----------------------
+// bb -p beta devapp from a session on alpha, which reads beta: its listing
+// and its dev instance's state answer for beta, and changing anything of
+// beta's is still refused. Reads are set again here, since a check above
+// may have cleared them.
+{
+  await api('/api/prefs', { project: 'alpha', reads: ['beta'] });
+  const t2 = token('alpha');
+  const ls = await api('/api/docker?project=beta', undefined, asSession(t2));
+  ok(ls.status === 200 && !/does not belong/.test(ls.error || ''),
+     `a session lists the containers of a project it reads (${ls.status} ${ls.error || 'ok'})`);
+  const st = await api('/api/devapp', { project: 'beta', action: 'state' }, asSession(t2));
+  ok(!/does not belong to alpha/.test(st.error || '') && st.status !== 403,
+     `...and reads its dev instance's state (${st.status} ${st.error || 'ok'})`);
+  const rb = await api('/api/devapp', { project: 'beta', action: 'rebuild' }, asSession(t2));
+  ok(rb.status === 403, `...while rebuilding it is refused (${rb.status} ${rb.error || ''})`);
+  const unread = await api('/api/devapp', { project: 'gamma', action: 'state' }, asSession(t2));
+  ok(unread.status >= 400, `...and a project it does not read answers as before (${unread.status})`);
+}
+
 // ---- the briefing names them ------------------------------------------------------------
 const pre = await api('/api/preamble?project=alpha');
 ok(/This project reads beta: each is at \/workspace\/NAME, read-only, and `bb -p NAME` in front/.test(pre.text)
-   && /its containers answer from here on this project's nodes/.test(pre.text) && /Nothing there is yours to change/.test(pre.text) && /read the projects its settings say it reads/.test(pre.text),
-   'the briefing says which projects the session reads and that nothing there is its to change, and the shipped rule carries the exception');
+   && /its containers answer from here on this project's nodes/.test(pre.text) && /Nothing there is yours to change/.test(pre.text) && /beyond the ones it reads/.test(pre.text),
+   'the briefing says which projects the session reads, that nothing there is its to change, and to look for context nowhere else');
 await api('/api/prefs', { project: 'alpha', reads: [] });
 ok(!/This project reads/.test((await api('/api/preamble?project=alpha')).text),
    '...and says nothing about reads when there are none');

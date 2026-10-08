@@ -473,6 +473,12 @@ elif op in ("history", "log"):
         if e.get("approved"):
             print(f"{'':>32}approved by the operator")
 else:
+    # `bb bug note` has a twin here under another name; a session reaching
+    # for it met the whole usage line (MediaReducer, 7 Oct).
+    if op == "note":
+        print("[builderbot] ERROR: a roadmap item's notes are its details: "
+              "bb roadmap info N [STEP] TEXT", file=sys.stderr)
+        sys.exit(1)
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
           "rm N [WHY]|restore N|shelve N|unshelve N [WHY]|begin|commit|revert|pending|"

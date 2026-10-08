@@ -46,6 +46,7 @@ from names import claude_session
 # peer library rather than an injection: it holds no server state, and the
 # alternative was this module carrying a second copy of the URL rules.
 import forges
+import registry
 
 # A personal access token belonging to ONE project.
 #
@@ -205,13 +206,6 @@ after_create = None
 # (name, value, env) -> version.init's answer: the first VERSION, committed,
 # for a project born with a starting version (the operator, 25 Sep).
 first_version = None
-# Moving the dev-instance data is devapp's, whole: the layout is a directory
-# per instance under a derived name, and where it lives depends on the daemon:
-# a mounted /devdata is this box's, a sandbox's is on that machine's disk.
-# Injected rather than imported, so this module keeps to the one thing it is
-# about, and asked once for the project rather than once for a name this module
-# would have to spell.
-rename_project_data = None
 # What create_from_dialog() and the pins need from the server: the one lock
 # every read-edit-write of the server's state files takes, an account taking
 # a project on (users.take_on), and a project's settings written the way the
@@ -229,7 +223,7 @@ brief_writer = None
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
               project_name,
-              state, home, write_json, rename_project_data=None, after_create=None):
+              state, home, write_json, after_create=None):
     """Hand over the server's helpers. `after_create(name)` is called once
     a project's tree is in place (a fresh repo, a clone, an unpacked
     archive): the map build that mapping.py starts in the background."""
@@ -238,121 +232,11 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
         gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
         PROJECT_NAME=project_name,
         STATE=Path(state), HOME=Path(home), write_json=write_json,
-        rename_project_data=rename_project_data, after_create=after_create)
+        after_create=after_create)
     # The peer library takes the same runner: it shells out to `ssh -G` to
     # resolve a deploy-key alias, and to nothing else.
     forges.configure(run=run, state=state, write_json=write_json)
 
-
-# ---------------------------------------------------------------------------
-# renaming
-#
-# A project's NAME is its key in a dozen places, and every one of them fails
-# the same quiet way when it is missed: the directory is there under its new
-# name, and its roadmap, its bugs, its dev-instance data or its version history
-# simply are not. Nothing errors. So the places are a table rather than a
-# sequence of statements (the defense against forgetting one is being able to
-# read the whole list in a single screen), and what moved is reported back
-# rather than summarized as success.
-
-# {file: [the keys inside it whose sub-dicts are keyed by project]}. None means
-# the file's own top level is the keyed dict.
-# The prefs module, set by the server: a rename touches the reads lists in
-# it, which are keyed by the READING project and name this one inside.
-prefs_mod = None
-
-_KEYED = {
-    "roadmap.json":         ["projects", "unsaved", "history", "batch"],
-    "bugs.json":          ["projects", "history", "batch"],
-    "versions.json":      ["projects"],
-    "findings-log.json":  ["projects"],
-    "devapps.json":       [None],
-    # What Claude runs on here. Keyed by project name like the rest, and it has
-    # to move with a rename or the renamed project silently reverts to claude's
-    # own default the next time a session starts in it.
-    "claude-prefs.json":  ["projects"],
-    # A new project's brief, staged or kept after it left the tree (brief.py).
-    "briefs.json":        [None],
-    # A project's design language and pages (design.py).
-    "designs.json":       [None],
-}
-
-# Files holding a flat list of project names.
-_LISTED = ["locked-projects.json"]
-
-
-def _rename_in_json(path, old, new):
-    """Move a project's entries inside one state file. True if anything moved."""
-    try:
-        with open(path) as f:
-            d = json.load(f)
-    except (OSError, ValueError):
-        return False
-    if not isinstance(d, dict):
-        return False
-    moved = False
-    for key in _KEYED.get(path.name, []):
-        holder = d if key is None else d.get(key)
-        if isinstance(holder, dict) and old in holder:
-            holder[new] = holder.pop(old)
-            moved = True
-    if moved:
-        write_json(path, d)
-    return moved
-
-
-def _rename_in_list(path, old, new):
-    """The same, for a file that is a flat list of names."""
-    try:
-        with open(path) as f:
-            v = json.load(f)
-    except (OSError, ValueError):
-        return False
-    if not isinstance(v, list) or old not in v:
-        return False
-    write_json(path, sorted({new if x == old else x for x in v}))
-    return True
-
-
-def _rename_tabs(old, new):
-    """Open tabs naming the project. Returns (rewritten, dropped).
-
-    A notebook tab is rewritten: its arg IS the project name, and the operator
-    would expect to come back to it. A terminal tab is dropped instead: its arg
-    encodes a session name (`claude:X:r:<id>`, `sh:2:X`) that no longer exists,
-    and rewriting one would offer a Resume onto a transcript recorded under the
-    old directory. Dropping is the honest answer, and it is reported.
-    """
-    path = STATE / "tabs.json"
-    try:
-        with open(path) as f:
-            d = json.load(f)
-    except (OSError, ValueError):
-        return 0, 0
-    tabs = d.get("tabs")
-    if not isinstance(tabs, list):
-        return 0, 0
-    keep, rewritten, dropped = [], 0, 0
-    for t in tabs:
-        if not isinstance(t, dict):
-            keep.append(t)
-            continue
-        if t.get("kind") == "notebook" and t.get("arg") == old:
-            t["arg"] = new
-            t["label"] = "Notebook: " + new
-            rewritten += 1
-        elif t.get("kind") == "term" and _names_project(t.get("arg", ""), old):
-            dropped += 1
-            continue
-        keep.append(t)
-    if rewritten or dropped:
-        d["tabs"] = keep
-        # The panes reference tab ids, and a dropped tab leaves a dangling one.
-        # The page already tolerates that (it renders "no tab here"), so this
-        # does not try to rebuild the layout: it would be guessing at what the
-        # operator wants on screen.
-        write_json(path, d)
-    return rewritten, dropped
 
 
 def _names_project(arg, name):
@@ -369,44 +253,17 @@ def _names_project(arg, name):
         return parts[2] == name
     return False
 
-
-# Prompts off, and ssh in batch mode: a key the agent does not hold has to
-# fail with a message rather than block on a username prompt no HTTP request
-# can answer. accept-new because the first contact with github.com on a fresh
-# home volume is expected, not an attack to refuse.
-def _mv(src, dst, label, moved, failed):
-    """Move one path, recording which it was. Missing is not a failure: most
-    projects have never had a dev instance or a CI log."""
-    try:
-        if not src.exists():
-            return
-        if dst.exists():
-            failed.append(f"{label}: {dst.name} was already there")
-            return
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        src.rename(dst)
-        moved.append(label)
-    except OSError as e:
-        failed.append(f"{label}: {e}")
-
-
 def rename(req):
-    """Rename a project: the directory, and everything keyed to its old name.
+    """Rename a project: the name it is shown under, and with it, in the same
+    dialog, its remote's credential, authentication and address.
 
-    Guarded rather than clever. A live session, a dev instance with containers
-    still on the daemon, or another project job in flight all mean the answer
-    is "not now": each of them holds the old name somewhere this cannot reach,
-    and renaming underneath one produces a mess with no single owner. Those
-    three are checked by the caller, which can see tmux and the daemon.
-
-    The directory moves first. It is the step most likely to fail and the only
-    one that fails cleanly; if it does, nothing else has been touched. Every
-    store after it is best-effort and reported: a project whose roadmap did not
-    follow is worth knowing about, and is still better than one that says it
-    renamed successfully and quietly dropped it.
+    Since R154 a rename moves nothing on disk. The directory is the
+    project's for good and every store, session, container and Claude Code
+    path keys by it, so the registry's shown name is all that changes, and
+    nothing that holds the project has to be asked to let go first.
     """
     old = _field(req, "name").strip()
-    new = sanitize_name(_field(req, "to"))
+    shown = registry.clean_name(_field(req, "to"))
     token = _field(req, "token").strip()
     # "" leaves the remote's spelling alone, which is what every rename that is
     # only a rename sends.
@@ -415,6 +272,9 @@ def rename(req):
     # request that did would be asking to write a credential and delete it in
     # the same breath. The write is the intention worth honoring.
     clear = bool(req.get("clear_token")) and not token
+    # The same repository's new address, after its owner was renamed on the
+    # host (set_address); "" leaves the remote where it points.
+    address = _field(req, "address").strip()
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
     if auth and auth not in ("https", "ssh", "none"):
@@ -422,169 +282,59 @@ def rename(req):
     src = WORKSPACE / old
     if not src.is_dir():
         return {"error": f"{old} is not a project under the workspace"}, 400
-    if not new:
+    if _field(req, "to").strip() and not shown:
         return {"error": "a name needs at least one letter or digit in it"}, 400
     if token and not TOKEN_RE.fullmatch(token):
         return {"error": "that does not look like an access token: letters, "
                          "digits, dots, dashes and underscores, no spaces"}, 400
-    if new == old:
-        # Not an error when a token or an auth switch came with it: changing
-        # the credential without moving the directory is a thing somebody will
-        # want, and the dialog offers all three at once precisely so they can.
-        if not token and not auth and not clear:
-            return {"error": f"{old} is already its name"}, 400
-        moved, failed = [], []
-        if token:
-            # The remote decides where the credential is filed: git matches a
-            # stored line on scheme and host, so a token written against the
-            # wrong one is a file it reads and ignores.
-            addr = forges.parse(origin_url(src))
-            if not addr:
-                return {"error": f"{old} has no remote to store a token "
-                                 f"for"}, 400
-            host = forges.host_of(origin_url(src)) or addr["host"]
-            forge = forges.forge_of(host)
-            # An ssh remote's scheme is not a scheme git stores a credential
-            # under; https is where a token would be used if the switch below
-            # ever points the remote at one.
-            scheme = "http" if addr["scheme"] == "http" else "https"
-            write_token(old, token, host, scheme,
-                        forges.cred_user(forge, host, token, scheme))
-            _scope_to_token(src, token_helper(old))
-            moved.append("its access token")
-        elif clear:
-            forget_token(old)
-            unscope(src)
-            moved.append("its access token, removed")
-        # After the token, always: switching to https needs the token that the
-        # same submit may have just written.
-        if auth:
-            msg, err = set_auth(old, src, auth)
-            if err:
-                return {"error": err}, 400
-            if msg:
-                moved.append(msg)
-        return {"ok": True, "name": old, "from": old,
-                "moved": moved, "failed": failed}, 200
-    dest = WORKSPACE / new
-    if dest.exists():
-        return {"error": f"{new} already exists in the workspace"}, 400
-    with _lock:
-        if _job["running"]:
-            return {"error": f"already {DOING.get(_job['kind'], 'working on')} "
-                             f"{_job['name']}"}, 409
-    try:
-        src.rename(dest)
-    except OSError as e:
-        return {"error": f"could not rename the directory: {e}"}, 500
-
+    was = registry.label(old)
+    renaming = bool(shown) and shown != was
+    if not renaming and not token and not auth and not clear and not address:
+        return {"error": f"{was} is already its name"}, 400
     moved, failed = [], []
-    for name in _KEYED:
-        try:
-            if _rename_in_json(STATE / name, old, new):
-                moved.append(name)
-        except OSError as e:                       # write_json can fail
-            failed.append(f"{name}: {e}")
-    for name in _LISTED:
-        try:
-            if _rename_in_list(STATE / name, old, new):
-                moved.append(name)
-        except OSError as e:
-            failed.append(f"{name}: {e}")
-    # ...and every other project that reads this one by name (prefs.reads).
-    try:
-        if prefs_mod is not None and prefs_mod.rename_reads(old, new):
-            moved.append("claude-prefs.json reads")
-    except OSError as e:
-        failed.append(f"reads: {e}")
-    try:
-        if _rename_in_pins(STATE / "pinned-projects.json", old, new):
-            moved.append("pinned-projects.json")
-    except OSError as e:
-        failed.append(f"pinned-projects.json: {e}")
-    try:
-        rewritten, dropped = _rename_tabs(old, new)
-        if rewritten:
-            moved.append(f"{rewritten} open notebook tab(s)")
-        if dropped:
-            moved.append(f"{dropped} terminal tab(s) closed; their sessions "
-                         f"were named for the old directory")
-    except OSError as e:
-        failed.append(f"tabs.json: {e}")
-
-    _mv(STATE / "devenv" / f"{old}.env", STATE / "devenv" / f"{new}.env",
-        "the dev instance's env", moved, failed)
-    _mv(STATE / "ci-logs" / old, STATE / "ci-logs" / new,
-        "archived CI logs", moved, failed)
-    # ...and the repository's own access token, which its .git/config names by
-    # absolute path, so the config has to be rewritten to the new one, or the
-    # rename leaves a repo pointing at a file that is no longer there.
-    _mv(STATE / "gitcreds" / old, STATE / "gitcreds" / new,
-        "its access token", moved, failed)
-    # Push rights follow the project, not the name: renaming is not a way to
-    # get a second pushing copy of one repository.
-    rights = load_push()
-    if old in rights:
-        rights[new] = rights.pop(old)
-        try:
-            save_push(rights)
-            moved.append("its push rights")
-        except OSError as e:
-            failed.append(f"push-rights.json: {e}")
-    # A new token replaces whatever moved, and is written under the NEW name,
-    # so the order matters: the move first, this second. For the remote's
-    # host and scheme, the same as a settings-only save: a line written for
-    # no host is one git reads and ignores (this called write_token with the
-    # token alone, which was a 500 on every rename that carried one).
+    if renaming:
+        r = registry.set_name(old, shown)
+        if r.get("error"):
+            return {"error": r["error"]}, 400
+        moved.append("its name")
     if token:
-        addr = forges.parse(origin_url(dest))
-        if addr:
-            host = forges.host_of(origin_url(dest)) or addr["host"]
-            forge = forges.forge_of(host)
-            scheme = "http" if addr["scheme"] == "http" else "https"
-            write_token(new, token, host, scheme,
-                        forges.cred_user(forge, host, token, scheme))
-            moved.append("a new access token")
-        else:
-            failed.append("the access token: the project has no remote to store one for")
+        # The remote decides where the credential is filed: git matches a
+        # stored line on scheme and host, so a token written against the
+        # wrong one is a file it reads and ignores.
+        addr = forges.parse(origin_url(src))
+        if not addr:
+            return {"error": f"{was} has no remote to store a token for"}, 400
+        host = forges.host_of(origin_url(src)) or addr["host"]
+        forge = forges.forge_of(host)
+        # An ssh remote's scheme is not a scheme git stores a credential
+        # under; https is where a token would be used if the switch below
+        # ever points the remote at one.
+        scheme = "http" if addr["scheme"] == "http" else "https"
+        write_token(old, token, host, scheme,
+                    forges.cred_user(forge, host, token, scheme))
+        _scope_to_token(src, token_helper(old))
+        moved.append("its access token")
     elif clear:
-        forget_token(new)
+        forget_token(old)
+        unscope(src)
         moved.append("its access token, removed")
-    if (STATE / "gitcreds" / new).is_file():
-        _scope_to_token(dest, token_helper(new))
-    elif clear:
-        # Only when this request cleared one. A repository that never had a
-        # token may still have a helper somebody set by hand, and a rename is
-        # not the moment to take it away.
-        unscope(dest)
-    # Last, and under the new name: set_auth reads and writes the push record,
-    # which only moved a few lines above.
-    if auth:
-        msg, err = set_auth(new, dest, auth)
+    # The address before the switch: set_auth rebuilds an https remote
+    # from the path the remote has, which should be the new one.
+    if address:
+        msg, err = set_address(old, src, address)
         if err:
-            failed.append(err)
-        elif msg:
+            return {"error": err}, 400
+        if msg:
             moved.append(msg)
-    # Every instance's data directory, and devapp does all of it: the layout is
-    # a directory per INSTANCE with a derived, sanitized name, which is not
-    # this module's to know. It used to be one call with the instance left to
-    # default, so a project with a second instance kept exactly one directory
-    # and lost the rest. The store's record moves whole, so the two halves
-    # then disagreed and that instance came up empty with nothing said.
-    #
-    # After _rename_in_json above, deliberately: the instance list is read from
-    # the store under the NEW name.
-    if rename_project_data:
-        did, bad = rename_project_data(old, new)
-        moved.extend(did)
-        failed.extend(bad)
-    # Claude Code's own directory: the transcripts AND the memories, which live
-    # inside it. Its slug is the working directory's path with the slashes
-    # turned into dashes, the same rule memory.py reads it by.
-    _mv(HOME / ".claude" / "projects" / str(src).replace("/", "-"),
-        HOME / ".claude" / "projects" / str(dest).replace("/", "-"),
-        "Claude's transcripts and memories", moved, failed)
-    return {"ok": True, "name": new, "from": old,
+    # After the token, always: switching to https needs the token that the
+    # same submit may have just written.
+    if auth:
+        msg, err = set_auth(old, src, auth)
+        if err:
+            return {"error": err}, 400
+        if msg:
+            moved.append(msg)
+    return {"ok": True, "name": old, "label": registry.label(old), "from": was,
             "moved": moved, "failed": failed}, 200
 
 
@@ -641,23 +391,6 @@ def repo_path_of(url):
     got = forges.parse(url)
     return got["path"] if got else ""
 
-
-def repo_of_remotes(remotes):
-    """The repository path of the first remote in `git remote -v` output.
-
-    Lowercased, because the hosts this links to treat an owner and a repo
-    case-insensitively and two clones differing only in case are the same
-    repository, which is the whole question being asked here. Paired with the
-    host by the caller, which is what actually makes an identity.
-    """
-    for line in remotes.splitlines():
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        path = repo_path_of(parts[1])
-        if path:
-            return path.lower()
-    return ""
 
 
 def push_holder(host, repo):
@@ -798,12 +531,96 @@ def auth_options(project, dest):
     """
     now = remote_auth(dest, project)
     return {"now": now,
+            # As written, for the address field: a deploy key's alias shows
+            # as the alias, which is what the field will keep.
+            "url": origin_url(dest),
             "token": bool(token_helper(project)),
             # Either it is on ssh already, or it was and we kept the URL. A
             # project that has only ever been https has no alias and no key
             # picked, and offering "deploy key" would be offering to build
             # one, which is the clone dialog's job, not this one's.
             "ssh": now == "ssh" or bool(_remembered_ssh(project))}
+
+
+def _same_repository(dest, url):
+    """"" when the repository at `url` shares this project's history, else why
+    not. Its branch tips are asked for (ls-remote, under the repository's own
+    credential config) and one of them has to be a commit this project
+    already has: an owner renamed on the host keeps every commit, while a
+    typo or another repository has none of them. A fork shares them too,
+    which is why this is the operator's control and says what it checked."""
+    r = run(["git", "-C", str(dest), "ls-remote", "--heads", "--", url],
+            timeout=60, env=_git_env(), split_err=True)
+    if r["code"] != 0:
+        said = (r["err"] or r["out"]).strip().splitlines()
+        return f"could not reach {url}: " + (said[-1][:200] if said else f"git said nothing (exit {r['code']})")
+    tips = [ln.split()[0] for ln in r["out"].splitlines() if len(ln.split()) == 2]
+    if not tips:
+        return (f"{url} has no branches, so nothing shows it is this repository; "
+                "an empty repository is linked with Unlink and Link instead")
+    for sha in tips:
+        if run(["git", "-C", str(dest), "cat-file", "-e", f"{sha}^{{commit}}"], timeout=15)["code"] == 0:
+            return ""
+    return (f"the repository at {url} shares no commit with this project, so it is not "
+            "this repository at a new address; a different repository is linked with "
+            "Unlink and Link")
+
+
+def set_address(project, dest, url):
+    """Point origin at the same repository's new address. (message, error).
+
+    For an owner or an organization renamed on the host: the host redirects
+    the old address only until somebody claims the old name, and until this
+    the only way to move was Unlink, which takes the token and the push
+    rights with it, or `git remote set-url`, after which the relay refused
+    every push because the rights name the old path. So the path changes and
+    nothing else: the remote keeps its form (https, ssh, or a deploy key's
+    alias, which is named after the key and still reaches the same host),
+    the token stays filed under the host it always was, and the push grant
+    and the remembered ssh address move with the path. Refused for another
+    host, for a repository another project may push to, and for one that
+    shares no commit with this project."""
+    now = origin_url(dest)
+    if not now:
+        return "", "this project has no origin remote to point anywhere else"
+    if busy_name() == project:
+        return "", f"a job is working on {project}; let it finish first"
+    old_path = repo_path_of(now)
+    got = forges.parse(url)
+    if not got or not old_path:
+        return "", ("not a repository address; use https://host/owner/repo, "
+                    "git@host:owner/repo.git or ssh://git@host/owner/repo.git")
+    new_path = got["path"]
+    host = (forges.host_of(now) or "").lower()
+    if (forges.host_of(url) or got["host"] or "").lower() != host:
+        return "", (f"that address is on another host than {host}: a repository moved to "
+                    "another host is linked again with Unlink and Link")
+    if new_path == old_path:
+        return "", ""
+    holder = push_holder(host, new_path.lower())
+    if holder and holder != project:
+        return "", f"{holder} already pushes to {host}/{new_path}, and one project pushes to a repository"
+    # The same remote with its path replaced: the form, the user and an
+    # alias stay as they were.
+    i = now.rfind(old_path)
+    moved_to = now[:i] + new_path + now[i + len(old_path):]
+    why = _same_repository(dest, moved_to)
+    if why:
+        return "", why
+    r = run(["git", "-C", str(dest), "remote", "set-url", "origin", moved_to], timeout=15)
+    if r["code"] != 0:
+        return "", f"could not rewrite the remote: {r['out'].strip()[:200]}"
+    d = load_push()
+    rec = d.get(project)
+    if isinstance(rec, dict):
+        rec["repo"] = new_path.lower()
+        ssh = rec.get("ssh_url") or ""
+        j = ssh.rfind(old_path)
+        if j >= 0:
+            rec["ssh_url"] = ssh[:j] + new_path + ssh[j + len(old_path):]
+        save_push(d)
+    return (f"it now points at {host}/{new_path}"
+            + ("; its push rights and credentials came with it" if isinstance(rec, dict) else "")), ""
 
 
 def set_auth(project, dest, mode):
@@ -830,9 +647,9 @@ def set_auth(project, dest, mode):
             return "", ("this project has no deploy-key remote to go back to: "
                         "it has only ever used https")
     else:
-        # As written, NOT folded: repo_of_remotes lowercases for comparison,
-        # and building the URL with that turned Stencil-Projects/BuilderBot
-        # into stencil-projects/builderbot in the operator's own remote. The
+        # As written, NOT folded: a lowercased path once built the URL here,
+        # and that turned Stencil-Projects/BuilderBot into
+        # stencil-projects/builderbot in the operator's own remote. The
         # hosts here accept either, so nothing broke; it just no longer said
         # the name of the repository it points at.
         repo = repo_path_of(origin_url(dest))
@@ -925,8 +742,8 @@ def check_token_push(token, repo):
                  "Accept": "application/vnd.github+json",
                  "User-Agent": "BuilderBot"})
     try:
-        # nosemgrep: dynamic-urllib-use-detected (the host is the literal above; only the repo path varies, and it is quoted)
-        with urllib.request.urlopen(req, timeout=20) as r:
+        # The host is the literal above; only the repo path varies, and it is quoted.
+        with urllib.request.urlopen(req, timeout=20) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             data = json.loads(r.read(200000))
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
@@ -995,7 +812,8 @@ def trash(req):
     # push on this repository, and this copy is still sitting in .trash if it
     # turns out that was a mistake.
     drop_push(name)
-    return {"ok": True, "name": name,
+    registry.mark(name, "trashed")
+    return {"ok": True, "name": name, "label": registry.label(name),
             "to": f"{TRASH}/{dest.name}"}, 200
 
 
@@ -1043,28 +861,46 @@ def trash_list():
             at = 0
         # `name-2` is the second delete of `name`; the original name is what
         # somebody is looking for, and what a restore would put back.
-        base = re.sub(r"-\d+$", "", d.name)
-        out.append({"name": d.name, "was": base, "at": at,
-                    "taken": (WORKSPACE / base).exists()})
+        # Since R154 the directory is the project's own, never reused, and
+        # goes back where it was; the name shown is the registry's.
+        out.append({"name": d.name, "was": registry.label(d.name), "at": at,
+                    "taken": (WORKSPACE / _restore_dir(d.name)).exists()})
     out.sort(key=lambda e: -e["at"])
     return {"items": out}
 
 
+def _restore_dir(name):
+    """Where a directory in the bin goes back to: the directory it was.
+    One deleted before ids (R154) and numbered then (X-2) was X, and goes
+    back to X while X is free, its notebook being X's."""
+    if (registry.get(name) or {}).get("legacy"):
+        base = re.sub(r"-\d+$", "", name)
+        if not (WORKSPACE / base).exists():
+            return base
+    return name
+
+
 def trash_restore(req):
-    """Move one back out of the bin, under the name it had."""
+    """Move one back out of the bin, to the directory it had. A live project
+    shown under its name meanwhile makes this one Name (2)."""
     name = _field(req, "name").strip()
     src = _bin_path(name)
     if src is None:
         return {"error": "not something in the bin"}, 400
-    base = re.sub(r"-\d+$", "", name)
-    dest = WORKSPACE / base
+    back = _restore_dir(name)
+    dest = WORKSPACE / back
     if dest.exists():
-        return {"error": f"{base} exists again; rename or move it first"}, 409
+        return {"error": f"{back} exists again; move it first"}, 409
     try:
         src.rename(dest)
     except OSError as e:
         return {"error": f"could not move it back: {e}"}, 500
-    return {"ok": True, "name": base}, 200
+    if back != name:
+        registry.claim(back, registry.label(name))
+        registry.mark(name, "purged")
+    else:
+        registry.mark(back, "live")
+    return {"ok": True, "name": back, "label": registry.label(back)}, 200
 
 
 def trash_purge(req):
@@ -1090,6 +926,8 @@ def trash_purge(req):
         shutil.rmtree(src)
     except OSError as e:
         return {"error": f"could not delete it: {e}"}, 500
+    # Gone for good, its directory still never handed out again (R154).
+    registry.mark(name, "purged")
     return {"ok": True, "name": name}, 200
 
 
@@ -1293,8 +1131,8 @@ def create(req, env=None):
             if holder:
                 return {"error": f"{holder} already has push rights on "
                                  f"{addr['host']}/{repo_id}. Only one project "
-                                 f"may push to a repository; delete that one "
-                                 f"first"}, 409
+                                 f"may push to a repository: unlink or delete "
+                                 f"that one first, or clone this one without push"}, 409
             # Asked of the host before the right is granted, where the host can
             # be asked at all: a token missing the scope otherwise fails at the
             # first push, days later, with nothing connecting it to the box
@@ -1329,6 +1167,11 @@ def create(req, env=None):
     # assertion that cannot fire is cheaper than one that was removed.
     if not PROJECT_NAME.fullmatch(name):
         return {"error": "a name needs at least one letter or digit in it"}, 400
+    # The name as typed is the one shown; the directory is the sanitized one,
+    # numbered when any project ever had it (R154), so a new project never
+    # takes over an old one's notebook or containers.
+    shown = registry.clean_name(_field(req, "name")) or name
+    name = registry.new_dir(name)
     # Asked before the directory is claimed, so a refused second job does not
     # leave an empty directory behind it.
     if mode == "clone":
@@ -1344,6 +1187,7 @@ def create(req, env=None):
             return {"error": f"{name} already exists in the workspace"}, 400
         except OSError as e:
             return {"error": f"cannot create {name}: {e}"}, 500
+    registry.claim(name, shown)
     if mode == "init":
         # An archive to start from: unpacked into the directory just claimed,
         # BEFORE git init, so the tree is there for the first status.
@@ -1948,6 +1792,9 @@ def create_from_dialog(req, *, env, account, may_node):
     # matches nothing.
     if account:
         take_on(account, name)
+        # ...and owns it (membership.py).
+        import membership
+        membership.on_create(name, account)
     # The node it was made for, when the dialog offered one: the same
     # write the settings dialog makes, so a project is born able to
     # build and start a session rather than needing a second dialog
@@ -1972,6 +1819,16 @@ def create_from_dialog(req, *, env, account, may_node):
         r = set_prefs(name, devbuild=str(devbuild))
         if r.get("error"):
             body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
+    # ...and the rest of Claude may, each only where it differs from the
+    # default a project gets anyway.
+    for key, dflt, label in (("sign", "ask", "Sign a build"), ("keys", "ask", "Manage signing keys"),
+                             ("release", "ask", "Tag and publish a release"),
+                             ("report", "auto", "Report BuilderBot bugs")):
+        v = req.get(key)
+        if v and v != dflt:
+            r = set_prefs(name, **{key: str(v)})
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; {label} not set: {r['error']}"
     # Pinned on arrival, once anything has ever been pinned. Without this a
     # project made while a pins file exists is absent from it, so it lands
     # on disk and never reaches the sidebar: created, and apparently gone.
@@ -2018,9 +1875,11 @@ def _load_pins():
             for k, names in v.items() if isinstance(k, str) and isinstance(names, list)}
 
 
-def load_project_pins(uid):
+def load_project_pins(uid, fresh=False):
     """This account's pinned set, or None when it has never pinned anything
-    and nobody's default stands.
+    and nobody's default stands. `fresh` is an account that starts with
+    nothing pinned (users.starts_unpinned): its no-entry is the empty set,
+    and the old everybody default under "*" is not its.
 
     None is not the same as empty and the difference decides what a fresh
     install looks like. No entry means this person has not had this thought
@@ -2031,6 +1890,8 @@ def load_project_pins(uid):
     looking at from the sidebar is a question each account answers.
     """
     d = _load_pins()
+    if fresh and str(uid or "") not in d:
+        return []
     v = d.get(str(uid or ""), d.get("*"))
     return None if v is None else sorted(v)
 
@@ -2051,21 +1912,7 @@ def pin_new_project(name):
         return
     write_json(_pins_file(), {k: sorted(set(v) | {name}) for k, v in d.items()})
 
-
-def _rename_in_pins(path, old, new):
-    """The same, for every account's pinned set."""
-    d = _load_pins()
-    moved = False
-    for k, names in d.items():
-        if old in names:
-            d[k] = sorted((set(names) - {old}) | {new})
-            moved = True
-    if moved:
-        write_json(path, d)
-    return moved
-
-
-def pin(uid, name, on):
+def pin(uid, name, on, fresh=False):
     """Pin or unpin a project for one account, once the server has let a
     signed-in person: the pins are theirs. Unpinning something running a
     build leaves it running, and the Projects tab still has every button.
@@ -2082,7 +1929,7 @@ def pin(uid, name, on):
     if name not in here:
         return {"error": f"unknown project: {name}"}, 400
     with lock:
-        pins = load_project_pins(uid)
+        pins = load_project_pins(uid, fresh)
         names = here.copy() if pins is None else set(pins)
         names.add(name) if on else names.discard(name)
         try:
@@ -2189,6 +2036,142 @@ def auth_answer(name):
     if not d.is_dir():
         return {"error": "unknown project"}, 400
     return auth_options(name, d), 200
+
+
+def _stored_token(project):
+    """The token this project's credential file holds, decoded, or "". Read
+    for the host's API in auth_test and never sent anywhere else."""
+    try:
+        line = (STATE / "gitcreds" / project).read_text().strip().splitlines()[0]
+    except (OSError, IndexError):
+        return ""
+    m = re.match(r"https?://[^:@/]*:([^@]*)@", line)
+    return urllib.parse.unquote(m.group(1)) if m else ""
+
+
+# What git and ssh print around every refusal, whatever it was: the line
+# that says why is the one left (the host's "Permission denied", a key
+# "marked as read only", a 403), not "and the repository exists."
+_GIT_BOILERPLATE = re.compile(
+    r"^(hint:|Warning: Permanently added|fatal: Could not read from remote repository"
+    r"|Please make sure you have the correct access rights|and the repository exists"
+    r"|To |error: failed to push some refs|Could not create directory .*\.ssh"
+    r"|Failed to add the host to the list of known hosts)", re.I)
+
+
+def _git_said(r):
+    """The line of git's that says why, for a sentence."""
+    said = [ln.strip() for ln in (r.get("err", "") + "\n" + r.get("out", "")).splitlines()
+            if ln.strip() and not _GIT_BOILERPLATE.match(ln.strip())]
+    why = [ln for ln in said if re.search(r"denied|read.only|error|not found|could not|unable|refused", ln, re.I)]
+    pick = (why or said or [""])[0]
+    return pick[:240] if pick else f"git said nothing (exit {r['code']})"
+
+
+def auth_test(name, typed=""):
+    """Can this project read and push with what it authenticates with now
+    (the operator, 7 Oct)? (payload, status).
+
+    git answers for every host and both credentials: `ls-remote` is the read
+    and `push --dry-run` the write, which the host refuses at the
+    receive-pack handshake when the key is read-only or the token cannot
+    push, and which sends nothing. The pre-push hook is skipped, since a
+    project cloned without push rights refuses there before the host is
+    asked. A token is also put to the host's API (forges.token_access) for
+    what git cannot see. `typed` is a token typed in the dialog and not
+    saved: it is tried in its place, over https, from a file of its own
+    that is gone when this returns.
+    """
+    if not PROJECT_NAME.fullmatch(name or ""):
+        return {"error": "unknown project"}, 400
+    d = WORKSPACE / name
+    if not d.is_dir():
+        return {"error": "unknown project"}, 400
+    url = origin_url(d)
+    if not url:
+        return {"error": "this project has no remote to test"}, 400
+    # As written, not as get-url rewrites it through a url.insteadOf: the
+    # host and the path are the ones a token is filed and asked under.
+    written = run(["git", "-C", str(d), "config", "--get", "remote.origin.url"], timeout=15)
+    url = written["out"].strip() if written["code"] == 0 and written["out"].strip() else url
+    host, repo = forges.host_of(url), repo_path_of(url)
+    forge = forges.forge_of(host)
+    mode = remote_auth(d, name)
+    remote, scope, tmp = "origin", [], None
+    stored = token_target(name) or {}
+    if typed:
+        typed = typed.strip()
+        bad = forges.token_ok(forge, typed)
+        if bad:
+            return {"error": bad}, 400
+        if not repo or not host:
+            return {"error": "could not read the repository from this project's remote"}, 400
+        scheme = stored.get("scheme") or "https"
+        fd, tmp = tempfile.mkstemp(prefix="bb-authtest-")
+        q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
+        with os.fdopen(fd, "w") as fh:
+            fh.write(f"{scheme}://{q(forge['user'] or 'oauth2')}:{q(typed)}@{stored.get('host') or host}\n")
+        scope = ["-c", "credential.helper=", "-c", f"credential.helper=store --file={tmp}"]
+        remote = f"{scheme}://{stored.get('host') or host}/{repo}.git"
+        mode = "typed"
+    what = {"ssh": "its deploy key", "https": "its access token", "typed": "the token typed here",
+            "none": "no credential (Authentication is Disabled)"}.get(mode, "what its remote says")
+    missing, notes = [], []
+    env = _git_env()
+    try:
+        r = run(["git", "-C", str(d), *scope, "ls-remote", "--heads", "--", remote],
+                timeout=60, env=env, split_err=True)
+        can_read = r["code"] == 0
+        if not can_read:
+            said = _git_said(r)
+            if mode == "ssh" and re.search(r"denied|not found|not appear", said, re.I):
+                missing.append(f"read access for the deploy key: {said.rstrip('.')}. Add its public half under "
+                               f"the repository's deploy keys on {forge['name']}")
+            elif re.search(r"returned error: 403", said):
+                # git's own line says only the number; this is what it means.
+                missing.append(f"read access: {forge['name']} accepted the token and refused it this "
+                               "repository (403). A fine-grained token has to list the repository with "
+                               "Contents: Read and write, and an organization may have to approve it "
+                               "under its Personal access tokens settings")
+            else:
+                missing.append(f"read access: {said}")
+        has_head = run(["git", "-C", str(d), "rev-parse", "--verify", "-q", "HEAD"], timeout=15)["code"] == 0
+        can_push = None
+        if not has_head:
+            notes.append("Nothing is committed yet, so a push could not be tried.")
+        elif can_read:
+            r = run(["git", "-C", str(d), *scope, "push", "--dry-run", "--no-verify", "--porcelain",
+                     "--", remote, "HEAD:refs/heads/builderbot-access-check"],
+                    timeout=60, env=env, split_err=True)
+            can_push = r["code"] == 0
+            if not can_push:
+                said = _git_said(r)
+                if mode == "ssh" and re.search(r"read.only|write access|denied", said, re.I):
+                    missing.append(f"write access for the deploy key: {said.rstrip('.')}. On {forge['name']}, "
+                                   "edit the key under the repository's deploy keys and allow write access")
+                else:
+                    missing.append(f"write access: {said}")
+        tok = typed or (_stored_token(name) if mode == "https" else "")
+        if tok and repo:
+            got = forges.token_access(forge, stored.get("host") or host, tok, repo,
+                                      stored.get("scheme") or "https")
+            # The host's own answer says why a read was refused better than
+            # git's line, so it takes that line's place; a refused push is
+            # already said by git.
+            why = [m for m in got["missing"] if m.startswith(("a token", "access to"))]
+            if can_read is False and why:
+                missing = [m for m in missing if not m.startswith("read access")]
+            missing += [m for m in got["missing"] if not (can_push is False and m.startswith("write access"))]
+            notes += got["notes"]
+        if not may_push(name):
+            notes.append("This project was set up without push rights, so a session's push is "
+                         "refused here whatever the credential may do.")
+    finally:
+        if tmp:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+    return {"using": what, "mode": mode, "read": can_read, "push": can_push,
+            "missing": missing, "notes": notes}, 200
 
 
 def job_verb(act):

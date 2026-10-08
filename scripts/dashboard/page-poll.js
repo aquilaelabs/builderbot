@@ -112,7 +112,7 @@ async function refresh(){
     // jump, so this only speaks when local has nothing to say. A pick made
     // HERE outranks the record, or picking a scheme on a phone would be
     // undone by the desktop's next poll.
-    adoptTheme(state.theme);
+    adoptTheme(state.theme, state.me);
     // An account with no shell must not be sitting in one. The page opens on
     // a workspace terminal and the saved strip may carry more, both of which
     // predate knowing who is asking, so the first payload that says so is
@@ -185,17 +185,40 @@ async function refresh(){
     drawCard("git", drawGit);
     drawCard("custom", drawCustom);
     drawCard("doctor", drawDoctor);
-    drawCard("docAuth", drawAuth);
     // The Administration card is an administrator's: to anybody else it is
     // not there, rather than there with dead buttons.
-    drawCard(null, () => { const c = $("cardAdmin"); if (c) c.hidden = state?.can?.admin === false; });
-    // The Emulator button, ghosted until some node has what the tab needs,
-    // with the reason as its tip.
+    // R152 step 3: a tab whose area this account may not read is not
+    // offered at all (state.areas, "" for no Read), and the Administration
+    // card shows whichever of its three it may read, gone when none.
     drawCard(null, () => {
-      const b = $("bEmulator"), e = state?.emulator;
+      const a = state?.areas;
+      if (!a) return;
+      const show = {bSettings: a.controller, bUsers: a.accounts, bRoles: a.accounts,
+                    bToolchains: a.toolchains, bJobs: a.jobs, bNodes: a.nodes};
+      for (const [id, lvl] of Object.entries(show)){
+        const b = $(id);
+        if (b) b.hidden = !lvl;
+      }
+      const c = $("cardAdmin");
+      if (c) c.hidden = !a.controller && !a.accounts;
+    });
+    // The Emulator button, ghosted until some node has what the tab needs,
+    // with the reason as its tip and, since a tip is nothing on a phone, as
+    // a red line under the card's buttons (R119 step 6).
+    drawCard(null, () => {
+      // CI runner is offered by grant (R137 step 3): hidden, not ghosted,
+      // for an account without it; the runner's status stays on its card.
+      const r = $("bRunner");
+      if (r) r.hidden = state?.can?.runner === false || state?.areas?.runner === "";
+      const b = $("bEmulator"), e = state?.emulator, w = $("toolsWhy");
       if (!b || !e) return;
       b.disabled = !e.ready;
       if (e.ready) b.removeAttribute("data-tip"); else b.dataset.tip = e.why;
+      if (w){
+        const say = e.ready ? "" : `Emulator: ${e.why}`;
+        if (w.textContent !== say) w.textContent = say;
+        w.hidden = !say;
+      }
     });
     drawCard(null, watchSignin);
     // A scan re-ran on the host: drop the cache, and any notebook showing
@@ -254,7 +277,7 @@ async function refresh(){
 // count and the reason once it is not.
 let pollFails = 0;
 
-// The Static analysis button, and any tab already open on it. Ghosting the
+// The Analysis button, and any tab already open on it. Ghosting the
 // button is the ordinary half; closing an open tab is only done ONCE, when the
 // page first learns there is nothing to read: a layout restored from the last
 // session can carry an Analysis tab for a scanner that has since been
@@ -305,10 +328,25 @@ function onRev(key, fn){
   return () => { const i = revWatch.indexOf(w); if (i >= 0) revWatch.splice(i, 1); };
 }
 
+// One out at a time, as refresh() is (R88): the timer, a tab coming back
+// into view and a menu let go all start one, and with no guard an older
+// reply landing second set revs back to the past, every watch fired again
+// and every view's fetch doubled. Asked while one is out, it is remembered
+// and asked once more when that one lands.
+let revsBusy = false, revsAgain = false;
 async function pollRevs(){
   // A notebook view draws from its own fetch, straight into its own element,
   // so the only place to hold one is here, before the watch that starts it.
   if (menuHolds(null)) return;
+  if (revsBusy){ revsAgain = true; return; }
+  revsBusy = true;
+  try{ await pollRevsOnce(); }
+  finally{
+    revsBusy = false;
+    if (revsAgain){ revsAgain = false; pollRevs(); }
+  }
+}
+async function pollRevsOnce(){
   let now;
   try{
     // Which projects this page has a notebook open on. The per-project

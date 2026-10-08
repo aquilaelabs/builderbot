@@ -33,7 +33,10 @@ function nbMemoryView({$, nb}){
     const bits = [];
     if (r !== undefined) bits.push(r ? `${r} rule${r === 1 ? "" : "s"}` : "no rules");
     if (nb.memN !== null) bits.push(nb.memN ? `${nb.memN} ${nb.memN === 1 ? "memory" : "memories"}` : "nothing remembered yet");
-    el.textContent = "what every session here starts with" + (bits.length ? ": " + bits.join(", ") : "");
+    // Count first, like every view's head (R119 step 4); what the view is
+    // for is its title, there when a pointer asks.
+    el.textContent = bits.join(" · ") || "loading…";
+    el.title = "what every session here starts with";
   }
 
   function drawMemory(j){
@@ -52,13 +55,28 @@ function nbMemoryView({$, nb}){
     // reads; shut on a phone, where the warnings were what you scrolled past
     // to reach a memory. The count is on the heading either way, in the warn
     // color, so a shut one still says something is wrong.
+    // Lines for memories that are gone are taken out by rewriting the index
+    // with nothing changed (save_index drops them and keeps every other line
+    // where it was), offered as its own press (B455).
+    const dangling = j.issues.filter(i => i.fix === "tidy").length;
     $("memDrift").innerHTML = j.issues.length
       ? docSection("memory", "drift", "Index",
                    `${j.issues.length} problem${j.issues.length === 1 ? "" : "s"}`,
-                   j.issues.map(i => `<div>${esc(i.text)}</div>`).join(""),
+                   j.issues.map(i => `<div>${esc(i.text)}</div>`).join("")
+                   + (dangling ? `<div class="actbar"><span class="state">${dangling === 1
+                       ? "a line for a memory that is gone" : `${dangling} lines for memories that are gone`}</span>
+                       <button type="button" id="memTidy">Take ${dangling === 1 ? "it" : "them"} out</button></div>` : ""),
                    {cls: "warn"})
       : "";
     wireSections($("memDrift"));
+    const tidy = $("memTidy");
+    if (tidy) tidy.onclick = async () => {
+      busy(tidy, "Taking out");
+      if (await postMemory({action: "index", lines: [], rev: nb.memIndexRev})){
+        notify("the index no longer names them");
+        await loadMemory(nb.memGen);
+      }else if (tidy.isConnected) unbusy(tidy, "Take out");
+    };
     // The note is offered only when there is a session to put it in, and says
     // what it will do: the text is typed, not sent. See memory.py's notify().
     $("memCount").textContent = n ? "Memories: newest first" : "Memories";
@@ -66,6 +84,9 @@ function nbMemoryView({$, nb}){
     // Folded unless this page opened it (the operator, 29 Sep); the fold's
     // state is the page's one toggle listener's, keyed like every section.
     $("memSect").open = "briefing:memories" in sectOpen ? sectOpen["briefing:memories"] : false;
+    // ...one section open at a time in a notebook (page-docs.js): open here
+    // only because the person opened it, so it is the one that stays.
+    if ($("memSect").open) keepOpen($("memSect"));
     // Which were open before this redraw. Saving reloads the book, and folding
     // away the memory that was just edited is the wrong answer to "did that
     // work?": the whole point is to look at it again.
@@ -124,7 +145,7 @@ function nbMemoryView({$, nb}){
                   is said by the note above the editor, and repeating it here
                   would be the same sentence twice on one screen. -->
              <div class="actbar macts">
-               <span class="state">Save at the foot writes it</span>
+               <span class="state">the section's Save writes it</span>
                <button type="button" class="stop mCancel"
                  title="discard what was typed">Cancel</button>
                <button type="button" class="danger" data-del="${esc(m.file)}"

@@ -134,6 +134,13 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9ad07a` | an informational mark, the low level |
 
+Nostromo differs from the default in:
+
+- Shape, as the rule corners says:
+-   This scheme squares all three corner tokens; the pills and the dots stay round, as everywhere.
+- Motion, as the rule fold says:
+-   This scheme asks for the fade fold with `--fold: fade` on the card: its smoked glass sliding into the title bar read as a bug, so the body fades where it stands, then the gap closes, and the cards below still ride the height.
+
 #### Rules of Nostromo's own
 
 ##### nostromo/textures
@@ -295,7 +302,8 @@ Three secondary voices: `--f-note` (a quiet explainer, in `var(--dim)`),
 colors agree everywhere: error and high are red, warning and medium yellow,
 note and low blue.
 
-What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
+A section's heading is `--f-sect` (600 14px system sans, 13px for a section
+inside a section), the one voice above a row's. What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
 
 ### space
 
@@ -504,13 +512,13 @@ the suite covers.
 Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold, action, bar, actbar, hidden
 
 A long surface is sections: `docSection(kind, id, title, status, body)`, one
-fold per concern with its status on the heading, open on a desktop and
-closed on a phone. A status is a word or a number, never a sentence. A fold
-keeps its state for the page's life and a reload starts it from the default:
-the sidebar's cards are the one arrangement that is stored, at a desk in the
-arrangement the server holds, and on a phone on the device itself, so a
-card opened there stays open across a reload without reaching the desk.
-Reset opens every card on both.
+fold per concern with its status on the heading in `--f-sect`. Every section is open by
+default and several stand open, at every width (the operator, 8 Oct: too much was hidden
+in folds); a person may shut one, and it stays shut for the page's life. A surface of four
+or more sections carries a jump bar (sectJump): their names in a line at the top, each
+scrolling to its own. A status is a word or a number, never a sentence. The sidebar's cards
+are the one arrangement that is stored, at a desk in the arrangement the server holds, and on
+a phone on the device itself. Reset opens every card on both.
 
 `hidden` means hidden. `[hidden]{display:none !important}` is global,
 because any class that sets `display` otherwise beats the attribute: a fold
@@ -545,6 +553,12 @@ A list of things to download or open is the Artifacts tab's rows
 small mono beside it, a hairline between rows, and the download or the
 action at the row's right, wrapping under it on a phone. The Profile's
 conversation logs are those rows, not a list of their own.
+
+### nothing-acted-on-in-a-fold
+
+Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js, scripts/dashboard/page-*.js, scripts/dashboard/index.html; fold, details, collapse, hidden, row, summary
+
+What a person acts on or decides by is on the row, at every width, and never only behind a fold: a row's settings (its project, where it is built from, its ports), its state and its buttons. A fold holds what is long and read now and then: a log, a list of mounts, raw output, a full compose file. A surface too long with everything shown is too long, and the fix is less on it, not a fold over part of it (the operator, 8 Oct: the Docker tab's Project picker sat in a closed Details fold on a phone and could not be found).
 
 ### long-lists
 
@@ -722,6 +736,14 @@ Applies to: scripts/dashboard/index.html, scripts/dashboard/page-panes.js, scrip
 
 A project may carry a color, one of the nine swatches in its settings, and the page says whose a thing is with it in four places and no others: its tab in the strip (a 3px stripe on the left, a tint of 10% at rest and 28% when it is the one in front), its row in the sidebar (the stripe and a 6% tint, on the card), the bar of the pane showing it (the stripe only), and the heading of its group in the Docker manager (a 4px stripe and a 16% tint, as `--gc`, the line color for containers that belong to no project). The bar keeps the ground every bar has: a tint there sat over the pane's black and made a notebook's bar the one bar that looked like no other (the operator, 29 Sep). The color arrives as `--pc` on the element; the swatches are circles of their own size, never the control height.
 
+### node-switcher
+
+Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/page-docs.js; node, picker, switcher, select
+
+A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner, the Docker manager) picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the left of the tab's bar (`.docbarrow`) with its verbs at the right, Refresh last, listing the agent nodes by name; a node that cannot be picked for this tab is in the list, disabled, its reason after its name (`sandbox: no adb`), and a quiet one says so. A tip in that bar opens under it, anchored to its right edge, so the rightmost one never hangs past a phone's pane.
+
+What is installed on the node is a list of ticked rows (`label.tc`): an installed thing is a set, dead tick with its bin at the right, a thing to add is a tick, and one **Install selected** in the action bar at the foot does them all in one job; Toolchains and the Emulator are both this, the Emulator's rows to add narrowed to one flavor picked above them. A thing the node runs (the Phone, the CI runner) opens on a state row, `.row.toolstate`: "Phone on sandbox" or "CI runners on sandbox" with its state as a pill and one sentence under it; then its controls and its add band (inset in a `.field`), and at the foot a `.field.toolfoot` hint saying how a session or a workflow reaches it. A new node-scoped tab starts from one of these two shapes, never from a picker or a layout of its own (R121, the operator 4 Oct).
+
 ## Pages
 
 Each page is a layout of labeled blocks on a frame, named for what it is for, on the platform it is built for.
@@ -729,14 +751,17 @@ Each page is a layout of labeled blocks on a frame, named for what it is for, on
 ### the dashboard (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App shell template:
-  Header (the band at the top): the brand, the build stamp, the bell, the gear and sign out, across the top, row 1 of 8
-  Sidebar (a side column): the cards: Doctor, Tools, Administration, Runner, Projects; folding, the one arrangement stored, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
-  Tabs (a strip of tabs switching one area): the tab strip: terminals and document tabs, a + to open one, on the right, columns 4 to 12 of 12, row 2 of 8
-  Content (the main reading or working area): the pane: a terminal or a document tab, one on show, two panes side by side on a wide desk, on the right, columns 4 to 12 of 12, rows 3 to 7 of 8
-  Footer (the band at the foot): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
+Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App shell template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the brand, the build stamp and uptime, the bell, the gear and sign out, across the top, row 1 of 8
+  2. Sidebar (a side column): the cards, folding; the one arrangement stored per device, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
+  3. Card (a box holding one thing): Doctor, Tools, Administration (Controller settings, Roles, Users), Runner; a button a grant forbids is not offered, on the left, columns 1 to 3 of 12, rows 7 to 8 of 8, inside block 2 (Sidebar: the cards)
+  4. Card (a box holding one thing): Projects, first: the pinned projects, and a session's state as a dot on each, on the left, columns 1 to 3 of 12, rows 2 to 6 of 8, inside block 2 (Sidebar: the cards)
+  5. List (rows of like things): a project row: name, dot, Claude, notebook, and … for shell, link, phone, report, lock, pin, on the left, columns 1 to 3 of 12, row 3 of 8, inside block 4 (Card: Projects)
+  6. Tabs (a strip of tabs switching one area): the tab strip: terminals and document tabs, a + to open one, on the right, columns 4 to 12 of 12, row 2 of 8
+  7. Content (the main reading or working area): the pane: a terminal or a document tab, one on show, two panes side by side on a wide desk, on the right, columns 4 to 12 of 12, rows 3 to 7 of 8
+  8. Footer (the band at the foot): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
 Notes:
-  A document tab is a reading surface built by docSurface: a bar band, the band list, a quiet footer. Everything that appears or changes state moves, and nothing fades its own ground.
+  A document tab is a reading surface built by docSurface: a bar band, the band list, a quiet footer. Everything that appears or changes state moves, and nothing fades its own ground. The bell fills amber and pulses while something waits on you. A project row's dot is the session's state in the one palette every dot here wears: working pulses, waiting is amber (30 Sep). The pin on the card's rows takes a project off the card; the Projects tab puts it back. A project's Claude button opens a small chooser under it when there is something to choose: Open tab and End session where your session is running, Resume and New conversation where you are signed in to Claude on its node, Sign in on that node where you are not, and for a project on several nodes each node under its name with its own. The bug on a project's row (report a bug) opens a small dialog: Category (a pulldown of what it is about), What happened, How to make it happen (optional) and Send, which puts it in the diagnostics under that project, the node and the build attached, as a session's bb report does; a person's is heard whatever the project's Claude dial for reports says. Projects is the first card and a new layout opens on the Projects tab with the controller's shell beside it (R119, 4 Oct): the projects are what a person comes for. The sidebar card's rows fold at every width (R119): Claude, the notebook and … for the rest, as a phone's; the Projects tab shows every icon on a desktop. A project's settings are its notebook's Settings view (R119 step 3): the row has no settings button.
 This page's own rules:
   the-dashboard/document-tabs: scripts/dashboard/tab-*.js; tab, document, docsurface, bar (`bb design show the-dashboard/document-tabs` reads it)
 
@@ -767,13 +792,22 @@ in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
 its siblings. Renderers run inside `renderGuarded`, so a throwing renderer is
 an error band in its own tab, never a dead dashboard.
 
+**The strip is the account's; what is in front is the browser's.** Which
+tabs are open is saved on the server per account, so a phone and a desk
+have the same strip; which tab is in front, and which tab each pane
+holds, are each browser's own, kept on the device the way a phone's
+folded cards are, so switching tabs on the phone leaves the desk where it
+was (R131).
+
 ### a notebook (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Content (the main reading or working area): the view: its head row first, then its sections (docSection folds) and lists, adding at the top, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
+Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Content (the main reading or working area): the view, across the middle, rows 2 to 7 of 8
+  3. Header (the band at the top): the head row: its one-line summary on the left, its controls and History on the right, at one height on every view, across the middle, row 2 of 8, inside block 2 (Content: the view)
+  4. Form (fields a person fills in): the add bar: the first band under the head row, a button named for what it adds, its form unrolling in its place, across the middle, row 3 of 8, inside block 2 (Content: the view)
+  5. List (rows of like things): the sections: folds with their count on the title, each remembered open or shut; rows that open on a slide, across the middle, rows 4 to 7 of 8, inside block 2 (Content: the view)
 Notes:
   One notebook per project, a clone of one template. Every view opens with the same head row at one height. A row with detail behind it is a fold that opens to be read, never as a form.
 This page's own rules:
@@ -785,12 +819,16 @@ This page's own rules:
 
 Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
 
-Every view opens with the same head row: its one-line summary on the left
-and its controls, History where it has one, on the right. That row is the
-first band of the view and sits at one height on all nine views.
+Every view opens with the same head row: a count-first lowercase fragment
+on the left (`3 open of 5`, `0 pages`, `no rules · 2 memories`, `nothing
+yet`), never a sentence, and its controls, History where it has one, on the
+right. That row is the first band of the view and sits at one height on every
+view. What a view is for is its empty state: one dim hint line
+(`.hint.nbempty`, in a `.field` band) where the list would be, never in the
+head (R119 step 4).
 
 The view strip is one row on a desktop. On a phone it wraps into rows of
-equal-width tabs rather than scrolling sideways: nine labels do not fit
+equal-width tabs rather than scrolling sideways: ten labels do not fit
 393px, and a strip that hides its last two behind an edge is a strip whose
 last two views nobody opens. Every tab stays visible at every width. The
 view a notebook is on comes back with a reload, the way the tab strip and
@@ -800,31 +838,50 @@ Adding goes at the top. The control that adds to a view is the first band
 under its head row, above the list, one shape on every view (`.addbar`, a
 button named for what it adds, `data-add`), and the form it opens unrolls
 in that band's place. Never at the foot: a phone should not scroll past the
-list to add to it.
+list to add to it. The Roadmap is no exception: Add to roadmap unrolls its
+box under the band, Reorder staying in it.
 
-Save and Revert at the notebook's foot show only on the views that stage
-something behind them (Roadmap, Briefing, Design, the version on
-Artifacts). A view that writes through or only reads (Bugs, Tests,
-Analysis, Git) has no foot.
+Every section that stages something carries its own Save and Revert at
+its foot (`.sectbar`, an action bar: its status, then Save, then Revert),
+and they write or throw away that section's changes and no other's, each
+dead while its section holds nothing (the operator, 5 Oct): one pair at the
+notebook's foot was a long scroll on a phone from the change it saved. The
+Roadmap's list carries its bar under its head row, since its changes are on
+its rows; the Memories, Your rules, each Version and the Design's Themes
+and Pages carry theirs at their own foot. A view that writes through or
+only reads (Bugs, Wiki, Tests, Analysis, Git) has none, and the notebook
+has no foot.
 
-The Design view is three folds under its head row and add bar: Pages,
-Design language and Themes, in that order, so the boards are the first
-thing seen. The pages and the themes show one at a time, chosen on a
-pulldown at the fold's top, and what is added is what is shown: every page
-and every theme at once was the whole view scrolled past (the operator, 28
-Sep). The one shown is fields like any tab's, never a box of its own. Rules
+A notebook view opens on its first section (the operator, 7 Oct). On a
+phone one section is open at a time: opening one closes its siblings, a
+section's own folds (a page's rules inside Pages) taking turns among
+themselves without closing it, and a draw that finds several open keeps the
+one last opened. On a desktop each stays as it was left.
+
+The Design view is two folds under its head row: Pages and Themes, in
+that order, both closed on a new tab so the view opens short, and each
+showing one entry at a time, chosen on a pulldown at the fold's top: every
+page and every theme at once was the whole view scrolled past (the
+operator, 28 Sep). The one shown is fields like any tab's, never a box of
+its own. Adding is inside the fold it adds to (the operator, 30 Sep): Add
+page, with its platform, its template and a page here to copy, is the first
+band inside Pages; Add theme, from blank, a preset or a copy of a theme, the
+first inside Themes; blank is the default of both, and what is added is
+what is shown. The design language is each theme's (the operator, 30 Sep):
+the first theme is the default, and its type, corners, space, motion,
+families and rules are the design's; another theme's are its own. Rules
 live inside the entry they hold for and nowhere else (the operator, 29
-Sep): a Rules section inside the Design language fold for the whole
-design, one inside each theme above its colors, one inside each page
-under its board, each following the pulldown; a rules fold below
+Sep): a Rules section inside each theme above its colors and one inside
+each page under its board, each following the pulldown; a rules fold below
 everything read as the rules. Every rules list here is the Briefing's
 (nb-rules.js): Add a rule first, a folded row a rule with its name and when
-it reaches a session, Edit turning the row into its form. A new project's design is empty, no theme and no
-page: the session that builds it chooses the look and puts it here after. The view is passive: nothing on it reaches
+it reaches a session, Edit turning the row into its form. A new project's
+design is empty, no theme and no page: the session that builds it chooses
+the look and puts it here after. The view is passive: nothing on it reaches
 into a session and nothing on it is a prompt; a session reads the design
-piece by piece, through its rules and `bb design show`, never as one dump. A theme and a page each carry rules of their own under
-them, one shown at a time like the language's, for what holds for that
-theme or that page alone; a session meets one as HOLDER/RULE.
+piece by piece, through its rules and `bb design show`, never as one dump.
+A session meets a theme's or a page's own rule as HOLDER/RULE, and the
+default theme's bare.
 
 **The Design view's board is the one surface here whose colors are data.**
 A page's blocks are painted in the project's own language (`nb-design.js`,
@@ -838,16 +895,35 @@ row's prose field growing only to the width the other tabs give a field so
 what follows it stays beside it, colors as a chip beside a seven-character
 field, prose in a proseline.
 
+The Wiki view reads like an encyclopedia (the operator, 2 Oct), not as rows: the pages listed in a
+narrow column (the wiki's own _Sidebar when it has one) beside one article at a time, its title large in
+the serif over a hairline, its sections headed the same way, a Contents box for three or more, and the
+prose in --serif at a reading width, the one place the dashboard sets text to be read at length. Read and
+Edit are tabs over the article, with Rename and Remove at their right. Its head row carries History alone;
+under it an action bar says where the wiki goes and holds Export, with Pull and Push when the project has
+a remote, so the head row fits a phone, where the column gives way to a picker above the article. Why
+Push is dead (no push rights) is said in red under that bar, never only in a tooltip. New page is the
+band under the head row, the first page offered as Home. Under Claude may: Write the wiki hidden the view is unchanged for a person; only a session is kept out.
+
+The Briefing's rules section lists the global rules under the project's own, each a row that
+opens to read with an On for this project switch, staged behind the section's own Save like the
+rules above it. An administrator's rows also carry Edit and Remove, or Off everywhere for a
+shipped one, each written at once for every project, and Add a global rule is the band over
+them; nowhere else on the dashboard edits a global rule.
+
 ### the dashboard on a phone (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the dashboard on a phone on a phone frame (6 columns by 12 rows), from the Blank template:
-  Header (the band at the top): the brand, the uptime, the bell, the gear and sign out, across the top, row 1 of 12
-  Tabs (a strip of tabs switching one area): Dashboard or Terminal: the two panels take turns, across the middle, row 2 of 12
-  Content (the main reading or working area): the sidebar's cards, or the tab strip and the pane, across the middle, rows 3 to 11 of 12
-  Footer (the band at the foot): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
+Layout of the dashboard on a phone on a phone frame (6 columns by 12 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the brand, the uptime, the bell, the gear and sign out, across the top, row 1 of 12
+  2. Tabs (a strip of tabs switching one area): Dashboard or Terminal: the two panels take turns, across the middle, row 2 of 12
+  3. Content (the main reading or working area): the panel on show, across the middle, rows 3 to 11 of 12
+  4. Card (a box holding one thing): Dashboard: the sidebar's cards, Projects open and the rest folded, as the device last left them, across the middle, rows 3 to 7 of 12, inside block 3 (Content: the panel on show)
+  5. List (rows of like things): a project row: name, dot, Claude, notebook, and … for shell, link, phone, report, lock, pin, across the middle, row 4 of 12, inside block 4 (Card: Dashboard)
+  6. Content (the main reading or working area): Terminal: the tab strip wrapping into rows, and the pane, across the middle, rows 8 to 11 of 12, inside block 3 (Content: the panel on show)
+  7. Footer (the band at the foot): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
 Notes:
-  Sections open on a desktop and shut on a phone. The notebook's strip wraps into rows of equal tabs. A bar of buttons shares the width so the last is never cut off, down to a 344px fold cover.
+  Sections open on a desktop and shut on a phone, and a card opened here stays open after a reload. The notebook's strip wraps into rows of equal tabs. A bar of buttons shares the width so the last is never cut off, down to a 344px fold cover. A row's more button slides the row over the height its controls take, whether or not the card grows (30 Sep).
 This page's own rules:
   the-dashboard-on-a-phone/both-sizes: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover (`bb design show the-dashboard-on-a-phone/both-sizes` reads it)
 
@@ -872,13 +948,18 @@ rather than each taking its text's, so the last one is never cut off: at
 a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 840, still the phone layout) and a desktop.
 
+On a phone the tab strip is a picker (`#tabPick`, R119 step 5): one button naming the tab on show, with a count of the open ones, and a list under it of every tab, each with its close or a terminal's minimize, and New terminal last; Escape or a tap elsewhere closes it. There is no strip to swipe and no paging arrows, and the pane's own caption, which only repeated the picker's name, is not drawn. A desktop keeps the strip, which wraps.
+
 ### a dialog (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a dialog on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): a modal: its h3, every line a field band, groups headed by a label, the foot with the state, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a dialog on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): a modal over the page, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+  2. Header (the band at the top): its h3: what the dialog is, in a few words, in the middle, columns 4 to 9 of 12, row 2 of 8, inside block 1 (Overlay: a modal over the page)
+  3. Form (fields a person fills in): every line a field band; groups headed by a label; the two gaps and no others, in the middle, columns 4 to 9 of 12, rows 3 to 6 of 8, inside block 1 (Overlay: a modal over the page)
+  4. Footer (the band at the foot): the foot: the state on the left, Cancel and the one filled button on the right; Escape closes it, in the middle, columns 4 to 9 of 12, row 7 of 8, inside block 1 (Overlay: a modal over the page)
 Notes:
-  Two gaps down a dialog and no others: the field gap between the things in a band, the label gap between a label and its control. It scrolls in one place; a text box and a listbox are the only things that scroll inside it.
+  Two gaps down a dialog and no others: the field gap between the things in a band, the label gap between a label and its control. It scrolls in one place; a text box and a listbox are the only things that scroll inside it. A dialog opens at its top every time, whatever was scrolled or focused last. One taller than the screen scrolls inside its box and says so: the edge darkens, a soft shadow on each edge with more past it, gone at the end; a document pane does the same, and so does a list or a log that scrolls inside a surface (a project's Reads, the notebook's lists, a job's log, the chat), with a shallower shadow. It takes the focus as it opens (its own field when the opener focuses one, else its box, so a phone raises no keyboard), Tab and Shift+Tab go round inside it and never out to the page behind, Escape closes the one on top the way its backdrop or Cancel would, and the focus goes back to what opened it. Its title names it to a screen reader by aria-labelledby.
 This page's own rules:
   a-dialog/layout: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot (`bb design show a-dialog/layout` reads it)
 
@@ -894,7 +975,11 @@ lives: a hint, a control, a list, never text at box level, which draws flush
 against the edge. A group of fields inside it is headed by a `label`, the dim
 small heading every dialog uses, never an `h4`; a dialog that is prose to
 read rather than fields to fill (About) says so with `.box.prose` and may use
-headings. The buttons are the `.foot`: a
+headings. A dialog long enough to scroll through its groups (the project
+settings) makes each group a section instead: a `details.sect` fold titled
+by its summary, the box marked `data-sects` so its sections behave as a
+tab's do, and the first that a door shows open when it opens.
+The buttons are the `.foot`: a
 `.state` first when there is one, then `.sp`, then the verbs, the primary
 first and anything destructive last. A switch is a checkbox inside its label,
 beside the thing it names, the way the Settings tab draws them
@@ -905,379 +990,421 @@ sentence and offers Close.
 ### signing in (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of signing in on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Card (a box holding one thing): one panel in the middle of the page: the mark and the name, then the form, in the middle, columns 5 to 8 of 12, rows 3 to 6 of 8
-  Form (fields a person fills in): Username, Password and Sign in, the one filled button; a refusal is said under it, in the middle, columns 5 to 8 of 12, rows 4 to 6 of 8
+Layout of signing in on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Card (a box holding one thing): one panel in the middle of the page: the mark and the name, then the form, in the middle, columns 5 to 8 of 12, rows 3 to 6 of 8
+  2. Form (fields a person fills in): Username, Password and Sign in, the one filled button; a refusal is said under it, in the middle, columns 5 to 8 of 12, rows 4 to 6 of 8, inside block 1 (Card: one panel in the middle of the page)
 Notes:
   The only page with nothing around it: the page's ground and one panel, 340px wide, centered both ways. The mark is the scheme's accent and the button is the deep accent with ink on it, as every filled surface is. Nothing else is reachable before it.
 
 ### a terminal tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a terminal tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the pane bar: which session this is, by its kind and its project, across the top, row 1 of 8
-  Content (the main reading or working area): the terminal itself, the session as tmux has it: Claude or a shell, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): Commands, Sessions and Chat; on a phone Keys joins them for what a touch keyboard lacks, across the bottom, row 8 of 8
+Layout of a terminal tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the pane bar: which session this is, by its kind and its project, across the top, row 1 of 8
+  2. Content (the main reading or working area): the terminal itself, the session as tmux has it: Claude or a shell, across the middle, rows 2 to 7 of 8
+  3. Footer (the band at the foot): Commands, Sessions and Chat; on a phone Keys joins them for what a touch keyboard lacks, across the bottom, row 8 of 8
 Notes:
   A terminal is the one surface here that is not the dashboard's to draw: the frame shows the session and the chrome stays out of it. The bar wears the project's color as a stripe. Commands types a line from the fixed tables or the operator's own list into a shell, never into a Claude session; Sessions lists what is running; Chat is between accounts.
 
 ### the Toolchains tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
-  Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
-  List (rows of like things): the toolchains by group, each a row to tick: what it is, its size, what it needs, its version, across the middle, rows 3 to 6 of 8
-  List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
-  Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
+Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
+  2. Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
+  3. Card (a box holding one thing): this machine's own: the NVIDIA driver and, under it, the container toolkit, each a row to tick like the rest, across the middle, row 3 of 8
+  4. List (rows of like things): the toolchains by group, across the middle, rows 4 to 6 of 8
+  5. Card (a box holding one thing): a row to tick: what it is, its size, what it needs, its version; installed as a pill, across the middle, row 5 of 8, inside block 4 (List: the toolchains by group)
+  6. List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
+  7. Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words. The NVIDIA driver is the machine's and not the store's (R102): its row sits above the store's list and behaves as they do, a tick into the same Install selected (last, since it ends at a restart), a bin, and the same Check for updates. Its pulldown lists the branches apt offers there, the recommended one first, and is ghosted while a driver is installed: another version means removing this one first. One line says where the driver stands (not installed, waiting for a restart, running the card, removed but still loaded), and on a guest machine the row says whose it is instead of offering a press. The NVIDIA container toolkit is a second row of the same kind under it, where the node has Docker: no pulldown, one line for where it stands (not installed, installed, installed but unknown to Docker), and its description says where it comes from, since installing it adds NVIDIA's own package source to the machine.
 
 ### the Emulator tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Emulator tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node, and Refresh, across the top, row 1 of 8
-  Text (a block of prose): the store the images live in, across the middle, row 2 of 8
-  Form (fields a person fills in): add an image: the API level, the flavor, and Add, across the middle, row 3 of 8
-  List (rows of like things): the images held: what each is and can do, its size, its package and the AVD made from it, across the middle, rows 4 to 7 of 8
-  Footer (the band at the foot): the terms the images come under, across the bottom, row 8 of 8
+Layout of the Emulator tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node, and Refresh, across the top, row 1 of 8
+  2. Text (a block of prose): the store the images live in, across the middle, row 2 of 8
+  3. Form (fields a person fills in): add an image: the API level, the flavor, and Add, across the middle, row 3 of 8
+  4. List (rows of like things): the images held, across the middle, rows 4 to 7 of 8
+  5. Card (a box holding one thing): an image: what it is and can do in a sentence, its size, its package and the AVD made from it, across the middle, row 5 of 8, inside block 4 (List: the images held)
+  6. Footer (the band at the foot): the terms the images come under, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). The flavors say what they are for in a sentence (Play services or not, rootable or not), since the package name says it to nobody.
 
 ### the Docker tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node's daemon, and how it is reached, across the top, row 1 of 8
-  List (rows of like things): containers grouped by the project that owns them; the ones with no project last, across the middle, rows 2 to 6 of 8
-  Card (a box holding one thing): one container: its state, where it came from, Details, its actions, Ports and mounts, in the middle, columns 2 to 11 of 12, rows 3 to 5 of 8
-  Button (an action to press): the container's own action bar: Up, Down, Env or Edit, Rebuild, Remove, in the middle, columns 2 to 11 of 12, row 6 of 8
-  Footer (the band at the foot): New container and Refresh, across the bottom, row 8 of 8
+Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node's daemon, and how it is reached, across the top, row 1 of 8
+  2. List (rows of like things): containers grouped by the project that owns them, the group headed in the project's color; no project last, across the middle, rows 2 to 7 of 8
+  3. Card (a box holding one thing): one container: running as a pill, where it came from, Details, Ports and mounts; why a control is dead, in red under it, in the middle, columns 2 to 11 of 12, rows 3 to 6 of 8, inside block 2 (List: containers grouped by the project that o)
+  4. Button (an action to press): the container's own action bar: Up, Down, Env or Edit, Rebuild (no cache, pull), Remove, in the middle, columns 2 to 11 of 12, row 6 of 8, inside block 3 (Card: one container)
+  5. Footer (the band at the foot): New container and Refresh, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
 
 ### the Nodes tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Nodes tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node, Create sandbox VM and Enroll node, across the top, row 1 of 8
-  Card (a box holding one thing): the node: online and live as pills, where it dials in from, its agent, and Test, across the middle, rows 2 to 3 of 8
-  List (rows of like things): its sections, each a fold with its own Apply: Health, Storage, Network, Runner and the rest, across the middle, rows 4 to 7 of 8
-  Footer (the band at the foot): what a node is for, in a sentence, across the bottom, row 8 of 8
+Layout of the Nodes tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node, Create sandbox VM and Enroll node, across the top, row 1 of 8
+  2. Card (a box holding one thing): the node: online and live as pills, where it dials in from, its agent and its Claude Code, Update, and Test, across the middle, rows 2 to 3 of 8
+  3. List (rows of like things): its sections, across the middle, rows 4 to 7 of 8
+  4. Card (a box holding one thing): a section, a fold with its own Apply: Health, Sessions, GPU, Claude Code, Storage, Network, Runner, or why not, across the middle, rows 5 to 6 of 8, inside block 3 (List: its sections)
+  5. Footer (the band at the foot): what a node is for, in a sentence, across the bottom, row 8 of 8
+  6. Form (fields a person fills in): Claude Code opens on your own sign-in on this node: who you are signed in as and Sign out, or Sign in, in the middle, columns 2 to 11 of 12, row 6 of 8, inside block 4 (Card: a section)
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it. A section the node cannot offer says why in its place rather than being missing.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it; a node whose NVIDIA driver answers adds two, gpu (how busy the card is) and vram (its own memory), under cpu and memory. A section the node cannot offer says why in its place rather than being missing. A node with an NVIDIA card has a GPU section among its folds: two switches, render the Android emulator on the card and let sessions and jobs compute on it, and one Apply, as every section here. The GPU line under Health is a status: it names the card, and with no NVIDIA driver on the machine it offers Install the driver, which opens that node's Toolchains tab. A Claude sign-in is one account's on one node, so it is drawn for whoever is looking at the top of that node's Claude Code section, each state one action bar: what is so on the state line, the press after it, and the reason a press is dead on a line under it. While a sign-in runs the bar gives way to its link, a labeled field for the code, and Cancel, Start over and Send. An account that does not administer sees the tab for the nodes its own projects are on: every control on it is ghosted but the picker and its own sign-in, and one line on the node's row says why.
 
 ### the Jobs tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Jobs tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: a filter for the ones still running, across the top, row 1 of 8
-  List (rows of like things): jobs, newest first: state as a pill, its kind, where, when, how long, who asked, and Log, across the bottom, rows 2 to 8 of 8
+Layout of the Jobs tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: a filter for the ones still running, across the top, row 1 of 8
+  2. List (rows of like things): jobs, newest first; a long list pages rather than scrolling forever, across the bottom, rows 2 to 8 of 8
+  3. Card (a box holding one thing): a job: state as a pill, its kind, where, when, how long, who asked, and Log, across the middle, row 3 of 8, inside block 2 (List: jobs)
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A long list pages rather than scrolling forever. Log opens the job's output in a dialog.
 
-### the Phone tab (Web app)
+### a node's Phone section (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Phone tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Refresh, across the top, row 1 of 8
-  Card (a box holding one thing): whether a phone is connected, as a pill, and Connect, the filled button, across the middle, rows 2 to 3 of 8
-  Form (fields a person fills in): pairing: the code from the phone, and Pair, with the steps to get one, across the middle, rows 4 to 6 of 8
-  List (rows of like things): what sessions have asked of the phone, each with its reason, Allow and Deny, across the middle, row 7 of 8
-  Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
+Layout of a node's Phone section on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Refresh, across the top, row 1 of 8
+  2. Card (a box holding one thing): whether a phone is connected, as a pill, and Connect, the filled button, across the middle, rows 2 to 3 of 8
+  3. Form (fields a person fills in): pairing: the code from the phone, and Pair, with the steps to get one, across the middle, rows 4 to 6 of 8
+  4. Card (a box holding one thing): lent to a project: for how long, the newest screenshot, the newest recording's reel and its video; Take back, across the middle, row 4 of 8
+  5. List (rows of like things): what sessions have asked of the phone, across the middle, row 7 of 8
+  6. Card (a box holding one thing): an ask: its reason, its command, Allow and Deny, across the middle, row 7 of 8, inside block 5 (List: what sessions have asked of the phone)
+  7. Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface).
+  A fold of a node's page on the Nodes tab (the operator, 2 Oct: each node with adb holds its own phone), shown on a node whose census carries adb, shut until opened: the phone and who connected it, Connect by IP, Pair, the phones the node remembers, and the asks waiting on its owner. Live for any account whatever the node's other settings allow, since a phone is its owner's. Under the connected phone, its owner's Lend to a project row: a project picker (only projects on the phone's node), For (1 hour, 4 hours, until taken back) and Lend, with why it cannot be lent in red under it when no project fits. Once lent, a row says Lent to PROJECT with the time left as a pill, which apps its sessions drive, and the newest screenshot a session took at a phone's proportions (updated on the next poll), with Look now and Take back on the owner's action bar; the section's last band says the lease's terms beside Refresh. Another account's phone is a phone, not a name and an address: connected, and whose, with no model, serial or address, and no remembered rows but the account's own (B490); an administrator keeps both, since they may disconnect anyone's.
 
 ### Controller settings (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of Controller settings on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: what this tab is, and where appearance lives instead, across the top, row 1 of 8
-  List (rows of like things): seven sections, each a group of fields with its own Apply at its foot, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): when a change takes effect: at once, or at the next start, across the bottom, row 8 of 8
+Layout of Controller settings on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: what this tab is, and where appearance lives instead, across the top, row 1 of 8
+  2. List (rows of like things): seven sections, across the middle, rows 2 to 7 of 8
+  3. Form (fields a person fills in): a section: a group of fields, a draft until its own Apply at its foot, across the middle, rows 3 to 4 of 8, inside block 2 (List: seven sections)
+  4. Footer (the band at the foot): when a change takes effect: at once, or at the next start, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Nothing here takes effect on the change: each section is a draft until its Apply. The color scheme is not here; it is in the gear, since a theme is looked at and not decided.
 
 ### the Users tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
-  List (rows of like things): accounts: the role as a pill, what each sees, its Claude sign-in, Edit and Remove, across the middle, rows 2 to 4 of 8
-  Text (a block of prose): What an account gets: a fold saying what a user and an admin each are, across the middle, row 5 of 8
-  Form (fields a person fills in): Add somebody: a name, a role, and Add, across the middle, rows 6 to 7 of 8
-  Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
+Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
+  2. List (rows of like things): accounts, across the middle, rows 2 to 4 of 8
+  3. Card (a box holding one thing): an account: admin or owner as a pill, its roles as pills, the projects it is on, its Claude sign-in, Edit and Remove, across the middle, row 3 of 8, inside block 2 (List: accounts)
+  4. Text (a block of prose): What an account gets: no role until the Roles tab gives one; admin's shell; PROJECT_owner, across the middle, row 5 of 8
+  5. Form (fields a person fills in): Add somebody: a name, the password twice, a name and an email (optional), and Add; no role, across the middle, rows 6 to 7 of 8
+  6. Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted or given another role, under the row, where a dead button would otherwise be the first you heard of it.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted, under the row, where a dead button would otherwise be the first you heard of it. The add form takes no git identity: that is the person's own, on their Profile (R134). Edit ticks the roles of your own an account carries beside its built-in one (R137). Its roles and projects are set on the Roles tab (R152): the edit dialog says what it holds, with a Roles button that opens the tab on it.
 
 ### the Profile tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Profile tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: who you are here, your role, and your Claude sign-in, across the top, row 1 of 8
-  List (rows of like things): five sections: Who you are, Password, Claude, Plugins and Conversations, each with its own Save, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): your commits carry the git name and email above, across the bottom, row 8 of 8
+Layout of the Profile tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: who you are here, your role, and your Claude sign-in, across the top, row 1 of 8
+  2. List (rows of like things): five sections: Who you are, Password, Claude, Plugins and Conversations, each with its own Save, across the middle, rows 2 to 7 of 8
+  3. List (rows of like things): Conversations: your sessions with Claude here, newest first, divided by hairlines, each a download, across the middle, rows 6 to 7 of 8, inside block 2 (List: five sections)
+  4. Footer (the band at the foot): your commits carry the git name and email above, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Conversations lists the account's own sessions with Claude, newest first, divided by hairlines as the Artifacts list is, each a download.
 
 ### the Analysis tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Analysis tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: the scanners' reports, by project, across the top, row 1 of 8
-  List (rows of like things): findings grouped by project and scanner, severity as a badge, each opening to its detail, across the bottom, rows 2 to 8 of 8
+Layout of the Analysis tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: the scanners' reports, by project, across the top, row 1 of 8
+  2. List (rows of like things): findings grouped by project and scanner, across the bottom, rows 2 to 8 of 8
+  3. Card (a box holding one thing): a finding: severity as a badge, its title; opens to its detail, across the middle, row 3 of 8, inside block 2 (List: findings grouped by project and scanner)
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). With no reports folder connected the tab says so in one line and where to read how.
 
 ### the Projects tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Projects tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar, and New project, across the top, row 1 of 8
-  List (rows of like things): every project the account may see: its branch, whether it is on the sidebar, what is wrong, across the bottom, rows 2 to 8 of 8
+Layout of the Projects tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar, and New project, across the top, row 1 of 8
+  2. List (rows of like things): every project the account may see, across the bottom, rows 2 to 8 of 8
+  3. Card (a box holding one thing): a project: its color, branch, the session's dot, Claude, shell, lock, pin, delete; what is wrong in red under it, across the middle, row 3 of 8, inside block 2 (List: every project the account may see)
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The eye on a row puts the project on the sidebar or takes it off: the sidebar shows the ones you work on, this tab all of them.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The pin on a row puts the project on the sidebar's card or takes it off, and the card's rows carry it too, so a project is unpinned from either (30 Sep): the sidebar shows the ones you work on, this tab all of them. Lock warns which sessions are running and ends them all; a user's account cannot lock or unlock.
 
 ### a notebook: Briefing (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Briefing on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: what every session here starts with, and History, across the middle, row 2 of 8
-  Chart (a chart or a meter): Code base: the languages as one bar, counted from what git tracks, across the middle, row 3 of 8
-  List (rows of like things): Your rules: standing ones in full, named ones with what calls for each, across the middle, rows 4 to 5 of 8
-  Text (a block of prose): What a session is sent: the exact text, its size, and each part against its share, across the middle, row 6 of 8
-  List (rows of like things): Memories, and Write a memory, across the middle, row 7 of 8
-  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Layout of a notebook: Briefing on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: what every session here starts with, and History, across the middle, row 2 of 8
+  3. Chart (a chart or a meter): Code base: open by default; the languages as one bar, counted from what git tracks, across the middle, row 3 of 8
+  4. List (rows of like things): Your rules: standing ones in full, named ones with what calls for each, across the middle, rows 4 to 5 of 8
+  5. Text (a block of prose): What a session is sent: the exact text, its size, and each part against its share, across the middle, row 6 of 8
+  6. List (rows of like things): Memories: a fold, shut by default, its count on the title; Write a memory inside, across the middle, row 7 of 8
+  7. Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
 Notes:
-  What a session is sent is shut by default: a thing to check, not to read every time. It turns amber when a part is over its share of a session's prompt, and says what that part left out.
+  What a session is sent is shut by default: a thing to check, not to read every time. It turns amber when a part is over its share of a session's prompt, and says what that part left out. Memories fold shut by default and Code base stays open (30 Sep): the languages are one glance, the memories a list to open when wanted.
 
 ### a notebook: Design (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Design on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: Write the file, and a new page by platform and template, across the middle, row 2 of 8
-  Content (the main reading or working area): Pages: a pulldown of them, the chosen one's board, its blocks, its rules and its notes, across the middle, rows 3 to 4 of 8
-  Form (fields a person fills in): Design language: type, corners, space and motion, the families, what it governs, its rules, across the middle, row 5 of 8
-  List (rows of like things): Themes: a pulldown of them, the chosen one's colors as name, hex and what each is for, its rules, across the middle, rows 6 to 7 of 8
-  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Layout of a notebook: Design on a desktop frame (12 columns by 14 rows: the frame shows 8 of them, and the page scrolls), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 14
+  2. Header (the band at the top): the head row: how many pages, whether docs/design-language.md is written and current, and Write the file, across the middle, row 2 of 14
+  3. Content (the main reading or working area): Pages: a fold, closed on a new tab, its count on the fold; one page shown at a time, across the middle, rows 3 to 9 of 14
+  4. Form (fields a person fills in): Add page: the platform, the template it starts from, or a copy of a page here (blank by default), across the middle, row 3 of 14, inside block 3 (Content: Pages)
+  5. Form (fields a person fills in): the page pulldown, then the page's For, Key, Platform, Frame and Rows, across the middle, row 4 of 14, inside block 3 (Content: Pages)
+  6. Content (the main reading or working area): the board: the blocks on the frame in the project's colors; drag to move, a corner to size; a child stays in its parent, on the left, columns 1 to 8 of 12, rows 5 to 7 of 14, inside block 3 (Content: Pages)
+  7. List (rows of like things): the layers, top first: each block's name; tap to select, up and down to reorder, on the right, columns 9 to 12 of 12, rows 5 to 7 of 14, inside block 3 (Content: Pages)
+  8. Form (fields a person fills in): the selected block: Kind, what it's for, Inside (the block it is part of), Remove block; Add block above it, across the middle, row 8 of 14, inside block 3 (Content: Pages)
+  9. Card (a box holding one thing): Rules: what holds for this page alone, as PAGE/RULE, the Briefing's list; then Notes and Remove page, across the middle, row 9 of 14, inside block 3 (Content: Pages)
+  10. List (rows of like things): Themes: a fold, closed on a new tab; the count and the default's type and corners on the fold; one shown at a time, across the middle, rows 10 to 13 of 14
+  11. Form (fields a person fills in): Add theme from blank, a preset's ten colors or a copy of a theme here; Governs; Theme pulldown, the first the default, across the middle, row 10 of 14, inside block 10 (List: Themes)
+  12. Form (fields a person fills in): the theme: Name, Mode, Fill from; its Type, Corners, Space and Motion, custom naming a rule of its own; Families, across the middle, row 11 of 14, inside block 10 (List: Themes)
+  13. Card (a box holding one thing): Rules: the default theme's are the design's, another's hold for it alone as THEME/RULE; the Briefing's list, across the middle, row 12 of 14, inside block 10 (List: Themes)
+  14. List (rows of like things): Colors: each a name, a hex chip and what it is for, added and cut one by one, across the middle, row 13 of 14, inside block 10 (List: Themes)
+  15. Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 14 of 14
 Notes:
-  One page and one theme on show at a time, each on its pulldown. Rules sit inside what they hold for: the language's in the language, a theme's in the theme, a page's in the page, and each list is the Briefing's rules list. The four choices of the language start on 'not chosen'. The view is passive: no prompt, no Copy, nothing sent to a session.
+  Two folds, Pages and Themes, both closed on a new tab, each showing one entry on its pulldown. The design language is each theme's: the first theme is the default and its type, corners, space, motion, families and rules are the design's; another theme's hold for it alone. A page keeps rules of its own under its board. Adding is inside the fold it adds to: a new page from a platform and a template (Blank, App shell, Dashboard, Landing page, List and detail, Settings for a desktop frame; Mobile app and Mobile feed for a phone's), or a copy of a page here (blocks, layouts, rules and notes), and a new theme blank, from a preset or as a copy of a theme (colors, choices and rules); blank is the default. The board is the width of the view with the layers list beside it, top layer first; a later layer draws over an earlier one, and a block can be inside another, drawn over it and kept within it however either moves, so a card sits in a list and a pill in a bar. The view is passive: no prompt, no Copy, nothing sent to a session; a session reads the design through bb design show and the rules that reach it.
 
 ### a notebook: Roadmap (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Roadmap on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: what is on the list, and History, across the middle, row 2 of 8
-  Form (fields a person fills in): Add an item, and Reorder, across the middle, row 3 of 8
-  List (rows of like things): the items, each with its steps; the next step can be sent to the session that is open, across the middle, rows 4 to 7 of 8
-  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Layout of a notebook: Roadmap on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: what is on the list, and History, across the middle, row 2 of 8
+  3. Form (fields a person fills in): Add an item, and Reorder, across the middle, row 3 of 8
+  4. List (rows of like things): the items, each a fold like a bug's row, across the middle, rows 4 to 7 of 8
+  5. Card (a box holding one thing): an item's row: the caret level with the words, its number, the words, which open it on a slide; the pencil edits, across the middle, row 4 of 8, inside block 4 (List: the items)
+  6. Button (an action to press): the right button group: edit, shelve, done, and Send to Claude with the Claude mark, last, on the right, columns 10 to 12 of 12, row 4 of 8, inside block 5 (Card: an item's row)
+  7. List (rows of like things): behind the fold: its steps, a done one struck with a tick where its number was; the next step sends, across the middle, rows 5 to 7 of 8, inside block 4 (List: the items)
+  8. Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
 Notes:
-  A done step is struck with a tick where its number was. A parked item is dim and carries no steps. Finished items are behind their own view, not at the foot of this one.
+  An item folds like a bug's row (30 Sep): its words open it on the same slide, its buttons act on it, the send button wears the Claude mark and sits last in the right group. A parked item is dim and carries no steps. Finished items are behind their own view, not at the foot of this one.
 
 ### a notebook: Bugs (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Bugs on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: how many are open, and History, across the middle, row 2 of 8
-  Form (fields a person fills in): Report a bug: the title, where it lives, how to reproduce it, the severity, across the middle, row 3 of 8
-  Search (a search box): the sort bar: by severity, newest, oldest, recently changed or title, across the middle, row 4 of 8
-  List (rows of like things): the bugs, open first: number, severity as a badge, title; a row opens to its fields, across the bottom, rows 5 to 8 of 8
+Layout of a notebook: Bugs on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: how many are open, and History, across the middle, row 2 of 8
+  3. Form (fields a person fills in): Report a bug: the title, where it lives, how to reproduce it, the severity, across the middle, row 3 of 8
+  4. Search (a search box): the sort bar: by severity, newest, oldest, recently changed or title, across the middle, row 4 of 8
+  5. List (rows of like things): the bugs, open first, across the bottom, rows 5 to 8 of 8
+  6. Card (a box holding one thing): a bug's row: number, severity as a badge, title; opens on a slide to its fields, notes and what fixed it, across the middle, row 5 of 8, inside block 5 (List: the bugs)
 Notes:
   Severity wears the badge palette: the same colors on every scheme.
 
 ### a notebook: Git (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Git on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: the branch and how it stands with its host, and Refresh, across the middle, row 2 of 8
-  Button (an action to press): the network bar: Fetch, Pull and Push, as the project's push rights allow, across the middle, row 3 of 8
-  List (rows of like things): Changes: what is not committed, each file opening to its diff, and Commit all, across the middle, rows 4 to 5 of 8
-  List (rows of like things): Branches, and Commits drawn as a graph in lanes, across the bottom, rows 6 to 8 of 8
+Layout of a notebook: Git on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: the branch and how it stands with its host, and Refresh, across the middle, row 2 of 8
+  3. Button (an action to press): the network bar: Fetch, Pull and Push, as the project's push rights allow, across the middle, row 3 of 8
+  4. List (rows of like things): Changes: what is not committed, each file opening to its diff, and Commit all, across the middle, rows 4 to 5 of 8
+  5. List (rows of like things): Branches, and Commits drawn as a graph in lanes, across the bottom, rows 6 to 8 of 8
+  6. List (rows of like things): CI: what the daily look found, a row each; a moving label or an action behind carries Fix, written uncommitted, across the bottom, row 8 of 8
 Notes:
-  Reads to a beginner and stays exact for a developer: the host is named (GitHub, Gitea), never 'origin'. Whose working tree it is is said to anybody else, who is offered nothing that changes it.
+  Reads to a beginner and stays exact for a developer: the host is named (GitHub, Gitea), never 'origin'. Whose working tree it is is said to anybody else, who is offered nothing that changes it. Fix commits nothing and pushes nothing (R117): the change shows in Changes, to commit or send to Claude, and a commit pin is never offered one.
 
 ### a notebook: Artifacts (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Artifacts on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: what the project ships, and Download source, across the middle, row 2 of 8
-  Card (a box holding one thing): Build: the node it builds on. Version: where the tree is, and the buttons that move it, across the middle, rows 3 to 4 of 8
-  Text (a block of prose): the dev instance: what it was built from, and whether the tree has moved past it, across the middle, row 5 of 8
-  List (rows of like things): what is in dist/, divided by hairlines, each a download; Captures apart, with their age, across the bottom, rows 6 to 8 of 8
+Layout of a notebook: Artifacts on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: what the project ships, and Download source, across the middle, row 2 of 8
+  3. Card (a box holding one thing): Build: the node it builds on. Version: where the tree is, and the buttons that move it, across the middle, rows 3 to 4 of 8
+  4. Text (a block of prose): the dev instance: what it was built from, and whether the tree has moved past it, across the middle, row 5 of 8
+  5. List (rows of like things): what is in dist/, divided by hairlines, each a download, across the bottom, rows 6 to 8 of 8
+  6. List (rows of like things): Captures apart: each with whose it is and its age, and how long they are kept, across the bottom, row 8 of 8, inside block 5 (List: what is in dist/)
 Notes:
-  Captures are not what the project ships, so they are listed apart, each saying whose it is, and go by age.
+  Captures are not what the project ships, so they are listed apart, each saying whose it is, and go by age. Each artifact row ends with a pin, the project row's own tack: lit when pinned, with a pinned tag beside the name and who pinned it on the line under. Dev builds past the newest few of each (the project's Dev builds kept, 3 unless changed, 0 for all) go when the tab draws, and a line over the list says so; a pinned one stays. An .apk or .aab row offers Sign for each key its project has. A signed build wears a signed tag beside its name and, under its provenance, which key signed it, from which build and what verified, then the whole certificate fingerprint, wrapping on a phone, with Copy for F-Droid as a link beside it.
 
 ### a notebook: Docker (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Docker on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: this project's containers, and a way to the Docker tab, across the middle, row 2 of 8
-  List (rows of like things): the project's own containers, each as the Docker tab draws one, across the bottom, rows 3 to 8 of 8
+Layout of a notebook: Docker on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: this project's containers, and a way to the Docker tab, across the middle, row 2 of 8
+  3. List (rows of like things): the project's own containers, each as the Docker tab draws one, across the bottom, rows 3 to 8 of 8
 Notes:
   The same rows as the Docker tab, for one project: a second drawing of them would be a second place to be wrong.
 
 ### a notebook: Tests (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Tests on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: the last run, and Open the run's output, across the middle, row 2 of 8
-  Search (a search box): sort and filter: by suite, by what is slow, by what is flagged, across the middle, row 3 of 8
-  Table (columns of data): the tests: suite, name, what it protects, how long it took, whether it is suspect, across the bottom, rows 4 to 8 of 8
+Layout of a notebook: Tests on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: the last run, and Open the run's output, across the middle, row 2 of 8
+  3. Search (a search box): sort and filter: by suite, by what is slow, by what is flagged, across the middle, row 3 of 8
+  4. Table (columns of data): the tests, across the bottom, rows 4 to 8 of 8
+  5. Card (a box holding one thing): a test's row: suite, name, what it protects, how long it took, whether it is suspect; opens to describe it, across the middle, row 5 of 8, inside block 4 (Table: the tests)
 Notes:
   With no run on record the view says how one is made, in one line.
 
 ### a notebook: Analysis (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Analysis on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: the scanners' findings for this project, and History, across the middle, row 2 of 8
-  List (rows of like things): findings by scanner, severity as a badge; one can be sent to the session or dismissed with a reason, across the bottom, rows 3 to 8 of 8
+Layout of a notebook: Analysis on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: the scanners' findings for this project, and History, across the middle, row 2 of 8
+  3. List (rows of like things): findings by scanner, severity as a badge; one can be sent to the session or dismissed with a reason, across the bottom, rows 3 to 8 of 8
 Notes:
   The project's share of the Analysis tab.
 
 ### a project's settings (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a project's settings on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): Project settings: name and color, the remote, the node, build and test, Claude settings, yours here, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a project's settings on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): Project settings, the longest dialog, so the one that proves the layout, down the middle, full height, columns 4 to 9 of 12
+  2. Header (the band at the top): Project settings: the project's name, in the middle, columns 4 to 9 of 12, row 1 of 8, inside block 1 (Overlay: Project settings)
+  3. Form (fields a person fills in): groups headed by a label: name and color, the remote, the node and Also sees, build and test, Claude may, yours here, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8, inside block 1 (Overlay: Project settings)
+  4. Footer (the band at the foot): the foot: Unlink and Delete apart from Save; Save lists what takes a restart and asks: end the session now, or keep it, in the middle, columns 4 to 9 of 12, row 8 of 8, inside block 1 (Overlay: Project settings)
 Notes:
-  The longest dialog, so it is the one that proves the layout: groups headed by a label, every line a field band, one foot. Claude may is seven dials, each auto, ask or deny. Yours on this project is the person's own: model, effort, replies, questions. Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays.
+  In sections, each headed by a label band drawn as a divide (small, dim, uppercase, a rule under it), and a section with no field showing hidden with its heading: The project (name, color, People), the remote (its own door, no heading), Where it runs (node, other nodes, the node's GPU, where tests run), File access (a tick to serve the project's files over FTPS, the port with the nine after it said beside it, a row per account that sees the project with its access picker: No access, Read, Read and write; under them where it runs or, in red, why it is not; an account without the ftp grant is shown only that it is on, and where), What a session sees (Reads, Also sees, Also reaches: a row per address, an address field with, when the project is on more than one node, a tick per node beside it and its bin, then Add an address, and a line saying whether the project's nodes filter at all), Build and test (commands, outputs, captures kept, dev builds kept), Android signing, Claude may (a change asked for while a test runs, then the permissions: the notebook's four and the wiki, build and test and the container, the two signing ones, reports), Yours on this project, Sessions on this project. Groups headed by a label, every line a field band, one foot. Claude may is ten dials (Write the wiki the newest), each auto, ask or deny, and Write the wiki may also be hidden, which keeps the wiki from a session, reading included. Also sees names the shares on the node a session may see, an allow-list since 29 Sep. During a test run says what a new ask does to a run going: wait for it, or interrupt it. Yours on this project is the person's own: model, effort, replies, questions. A saved change that takes a session restart (the model, the node, what it sees, the test setting) is listed at Save, which asks whether to end the running session now or keep it going (30 Sep). Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays. The node's GPU, with the Claude settings, says whether the project may compute on its node's NVIDIA card; off runs it as if the machine had none. People names the owner (a picker for the owner and BuilderBot's owner; the owner's pick is an offer, said under the picker, that waits for acceptance and shows with Withdraw) and Invite only, both staged until Save, who is on it, each invitation waiting with Withdraw, and Invite with its account picker, which acts on the press. Signing keys is a block per named key, Default key first, each a row per route (Play upload key, sideload signing key): the alias and fingerprint (made here for a generated key), Upload one or Replace opening its file and password fields, Generate on an empty slot (asking first for a sideload key), Download backup and Remove, and on a sideload row a key picker with Rotate to it; a retired sideload row says it is kept and why and has no Remove, a rotated-to row says who still sees the old key; a name field with New key under them, and Apps, each package with the key it signs with and Remove, then a package field, a key picker and Map it; a sideload key never backed up says so in red under its row.
 
 ### a new project (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a new project on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): New project: the source (a new repository, a clone, an archive), its name, its node, what Claude may do, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a new project on a desktop frame (12 columns by 10 rows: the frame shows 8 of them, and the page scrolls), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): New project, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 10
+  2. Button (an action to press): the source as one row of buttons: a new repository, a clone, an archive, in the middle, columns 4 to 9 of 12, row 3 of 10, inside block 1 (Overlay: New project)
+  3. Form (fields a person fills in): the fields under them, changing with the pick: its name, its node, what Claude may do, in the middle, columns 4 to 9 of 12, rows 4 to 6 of 10, inside block 1 (Overlay: New project)
+  4. Footer (the band at the foot): Cancel and Create, the filled button, in the middle, columns 4 to 9 of 12, row 7 of 10, inside block 1 (Overlay: New project)
+  5. Overlay (a dialog, sheet, drawer, popover or toast over the page): First session: the brief typed when the project was made, the model and effort, Build it or Start without it, in the middle, columns 4 to 9 of 12, rows 9 to 10 of 10
 Notes:
-  The three sources are one row of buttons and the fields under them change with the pick. A clone or a link runs as a job the Projects card reports; the dialog does not wait on the network.
-
-### a first session (Web app)
-
-Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a first session on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): First session: the brief typed when the project was made, the model and effort, Build it or Start without it, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
-Notes:
-  Shown the first time Claude is started on a project that has a brief. Either button takes the brief out of the tree.
+  The three sources are one row of buttons and the fields under them change with the pick. A clone or a link runs as a job the Projects card reports; the dialog does not wait on the network. Then, on the first start of Claude, the brief's dialog: Shown the first time Claude is started on a project that has a brief. Either button takes the brief out of the tree.
 
 ### a new container (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a new container on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): New container: its name, its node and project, and its definition from an image or a compose file, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a new container on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): New container: its name, its node and project, and its definition from an image or a compose file, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   The env file's values are never shown back, only its keys.
 
 ### waiting for your approval (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of waiting for your approval on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): What a session added under an ask dial: each with Approve and Deny, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of waiting for your approval on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): What a session added under an ask dial: each with Approve and Deny, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   Reached from the bell. A thing approved lands as if the session had been allowed it; a thing denied is said to the session.
 
 ### the gear (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the gear on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): Layout (reset the sidebar's cards), Color scheme (thirteen swatches), Account (Profile), in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of the gear on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): Layout (reset the sidebar's cards), Color scheme (thirteen swatches), Account (Profile), in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   A menu under the gear, not a modal. A swatch applies on the press, the one setting that does: a theme is looked at, not decided. Each swatch is drawn in its own scheme.
 
 ### about (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of about on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): About: the build, the license, Getting started and Changelog, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of about on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): About: the build, the license, Getting started and Changelog, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   The changelog is the same text the welcome panel shows after an update.
 
 ### the app: signing in (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: signing in on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): BuilderBot, and what to sign in with, across the middle, rows 4 to 5 of 12
-  Form (fields a person fills in): the dashboard's address, the account, the password, and Sign in, across the middle, rows 6 to 9 of 12
-  Text (a block of prose): over http, said before the sign-in: it travels in the clear, across the middle, row 10 of 12
+Layout of the app: signing in on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): BuilderBot, and what to sign in with, across the middle, rows 4 to 5 of 12
+  2. Form (fields a person fills in): the dashboard's address, the account, the password, and Sign in, across the middle, rows 6 to 9 of 12
+  3. Text (a block of prose): over http, said before the sign-in: it travels in the clear, across the middle, row 10 of 12
 Notes:
   The app wears the dashboard's schemes by the same names and hexes, chosen under More and kept on the device. Text buttons are the accent; a filled button is the deep accent with ink.
 
 ### the app: projects (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: projects on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): the mark, the account, the build and the host, and Refresh, across the top, row 1 of 12
-  Card (a box holding one thing): the bell's row: questions waiting and nodes that need attention, a bar down its side, across the middle, rows 2 to 3 of 12
-  Card (a box holding one thing): the doctor's problems, for an administrator, only when there are any, across the middle, row 4 of 12
-  Search (a search box): a box to find a project in, once the list is longer than a screen, across the middle, row 5 of 12
-  List (rows of like things): projects: the color down the side, the session as working or waiting on you, what is waiting, across the middle, rows 6 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: projects on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the mark, the account, the build and the host, and Refresh; with two BuilderBots, the title switches between them, across the top, row 1 of 12
+  2. Card (a box holding one thing): the bell's row: questions waiting and nodes that need attention, a bar down its side, across the middle, rows 2 to 3 of 12
+  3. Card (a box holding one thing): the doctor's problems, for an administrator, only when there are any, across the middle, row 4 of 12
+  4. Search (a search box): a box to find a project in, once the list is longer than a screen, across the middle, row 5 of 12
+  5. List (rows of like things): projects, across the middle, rows 6 to 11 of 12
+  6. Card (a box holding one thing): a project: the color down the side, the session as working or waiting on you, what is waiting, across the middle, row 7 of 12, inside block 5 (List: projects)
+  7. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   The question a phone is picked up to ask is whether it is done, so the list answers it before anything is opened. Pull down to read again, on every list.
 
 ### the app: a project (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: a project on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): the project, its color, and its session as a pill: working, or waiting on you, across the top, row 1 of 12
-  Tabs (a strip of tabs switching one area): the view strip, scrolling sideways: Claude first, then the notebook's views, Git, Settings, across the middle, row 2 of 12
-  Form (fields a person fills in): Claude: what the session is doing, and a box to say a line to it, across the middle, rows 3 to 5 of 12
-  List (rows of like things): your conversations here, each with Read the end and Share, across the middle, rows 6 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: a project on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the project, its color, and its session as a pill: working, or waiting on you, across the top, row 1 of 12
+  2. Tabs (a strip of tabs switching one area): the view strip, scrolling sideways: Claude first, then the notebook's views, Git, Settings, across the middle, row 2 of 12
+  3. Form (fields a person fills in): Claude: what the session is doing, and a box to say a line to it, across the middle, rows 3 to 5 of 12
+  4. List (rows of like things): your conversations here, each with Read the end and Share, across the middle, rows 6 to 11 of 12
+  5. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   A project opens on Claude. The terminals stay the browser's; a line said here goes into the account's own session and nowhere else. Design is read here, not edited. Docker's Start, Stop and Rebuild each ask before they act. Settings are a draft until Save.
 
 ### the app: approvals (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: approvals on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): Approvals, and Refresh, across the top, row 1 of 12
-  List (rows of like things): what waits on your answer: the ask, its reason, its command, Deny and Allow, across the middle, rows 2 to 6 of 12
-  List (rows of like things): changes a session has waiting, by project, each with Deny and Approve, across the middle, rows 7 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: approvals on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): Approvals, and Refresh, across the top, row 1 of 12
+  2. List (rows of like things): what waits on your answer: the ask, its reason, its command, Deny and Allow, across the middle, rows 2 to 6 of 12
+  3. List (rows of like things): changes a session has waiting, by project, each with Deny and Approve, across the middle, rows 7 to 11 of 12
+  4. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   Root on a node wears red down its side and everything else amber. The same asks arrive as notifications with Approve and Deny on them, which need the phone unlocked.
 
 ### the app: nodes (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: nodes on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): Nodes, and Refresh, across the top, row 1 of 12
-  List (rows of like things): nodes: live or not down the side, what the machine is, Lock system changes and Drain, across the middle, rows 2 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: nodes on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): Nodes, and Refresh, across the top, row 1 of 12
+  2. List (rows of like things): nodes: live or not down the side, what the machine is, Lock system changes and Drain, across the middle, rows 2 to 11 of 12
+  3. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   An administrator's. Enrolling and the node's sections stay the dashboard's.
 
 ### the app: more (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: more on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): More, across the top, row 1 of 12
-  Card (a box holding one thing): whether the app and the dashboard are on the same API, and Install it when the app is behind, across the middle, rows 2 to 3 of 12
-  List (rows of like things): the other pages as rows: Profile, Tools, Jobs, Users, What's new, across the middle, rows 4 to 6 of 12
-  Form (fields a person fills in): The watch: questions, a turn finished, how often to ask; one Save, across the middle, rows 7 to 9 of 12
-  List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: more on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): More, across the top, row 1 of 12
+  2. Card (a box holding one thing): whether the app and the dashboard are on the same API, and Install it when the app is behind, across the middle, rows 2 to 3 of 12
+  3. List (rows of like things): the other pages as rows: Profile, Tools, Jobs, Users, What's new, across the middle, rows 4 to 6 of 12
+  4. Form (fields a person fills in): The watch: questions, Tell me when Claude can take a message, how often to ask; one Save, across the middle, rows 7 to 9 of 12
+  5. Form (fields a person fills in): Lock: Lock the app when it opens, refused with a sentence where the phone has no screen lock, across the middle, row 6 of 12
+  6. List (rows of like things): BuilderBots: each pairing by name, the one in front ticked; Add another, and Forget, across the middle, row 7 of 12
+  7. List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
+  8. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
-  The watch's settings are a draft until Save. The scheme applies on the press, as it does on the dashboard.
+  The watch's settings are a draft until Save. The note that Claude is waiting on you names the project first and follows the project's During a test run setting: at once where a new ask interrupts a run, and when the tests finish where it waits for them (30 Sep). The scheme applies on the press, as it does on the dashboard. The lock is the phone's own (fingerprint, face or PIN), asked every time the app comes to the front; nothing of the app's own is stored for it (R133).
 
 ### the app: tools (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: tools on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): Tools, and Refresh, across the top, row 1 of 12
-  Tabs (a strip of tabs switching one area): the nodes, as chips; never the controller, across the middle, row 2 of 12
-  Text (a block of prose): the store's path on that node, across the middle, row 3 of 12
-  List (rows of like things): toolchains: what each is, its version or not installed, Install or Remove for an administrator, across the middle, rows 4 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: tools on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): Tools, and Refresh, across the top, row 1 of 12
+  2. Tabs (a strip of tabs switching one area): the nodes, as chips; never the controller, across the middle, row 2 of 12
+  3. Text (a block of prose): the store's path on that node, across the middle, row 3 of 12
+  4. List (rows of like things): toolchains: what each is, its version or not installed, Install or Remove for an administrator, across the middle, rows 4 to 11 of 12
+  5. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   Install and Remove ask first, saying the size. Android system images are not here: choosing one wants the room the dashboard's tab has.
+
+### the Roles tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Roles tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: what each account may do: roles given to people, and what each role reads and writes, across the top, row 1 of 8
+  2. Form (fields a person fills in): People: an account, its Global roles, each project's tick and its roles there; Revert, Save, across the middle, rows 2 to 4 of 8
+  3. Form (fields a person fills in): Roles: a role picker and Add role; Scope; what it is for; Read and Write per area; Revert, Save, Remove, across the middle, rows 5 to 7 of 8
+  4. Footer (the band at the foot): roles add up; Write needs Read, and an area without Read is not shown, across the bottom, row 8 of 8
+Notes:
+  Under the Administration card, beside Users, and from the People field of a project's settings for its owner (R152, the operator, 7 Oct). owner and admin are built in and read as every area, with nothing to change and no Save; the owner's account reads as fixed in People. A project's owner who is not an administrator sees only the projects they own and the roles on the user's projects. In Roles, Write waits for Read, and the global areas are off for a role on the user's projects; Remove comes last. In People, a project's roles show only once its tick is on, and Global roles are an administrator's to give. A Global role that is not built in shows On these nodes, a tick per node, under its scope: Nodes, Toolchains, Jobs and New projects hold on the ticked nodes, none ticked being every node.

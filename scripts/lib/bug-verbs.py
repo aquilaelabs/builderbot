@@ -191,7 +191,10 @@ elif op == "show":
 elif op == "add":
     here = "--here" in rest
     title, flags = pull_flags([a for a in rest if a != "--here"])
-    said = " ".join([title] + [str(v) for k, v in flags.items() if k != "severity"])
+    # The title and the area, not the repro: a project's own bug is often
+    # reproduced with bb (bb capture reel ...), and two of MediaReducer's
+    # were sent to bb report for it (7 Oct).
+    said = " ".join([title, str(flags.get("area") or "")])
     # A bug that names BuilderBot, filed in another project's tracker, is
     # usually BuilderBot's, which is what bb report is for. Asked before it is
     # filed rather than said after: said after, a session filed BuilderBot's

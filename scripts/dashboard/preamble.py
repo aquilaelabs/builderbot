@@ -68,6 +68,10 @@ def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None, prefs_mod=None):
 
 
 prefs_mod = None
+# Whether a project's node reports an NVIDIA card, from the server (R102):
+# a fact about the machine, not the tree, so the briefing's GPU section is
+# decided by it and costs a session on a node without one nothing.
+node_gpu = None
 _TESTCHANGE = "<!-- BUILDERBOT:TESTCHANGE -->"
 # What a change asked for during a test run does, in the words a session
 # reads: the project's setting (prefs.TEST_CHANGE), one answer per project
@@ -133,6 +137,28 @@ def sees_line(project):
             f"this node.")
 
 
+# registry.label, set by the server (R154): the name a project is shown
+# under, which is not its directory once a name has been used before.
+label_of = None
+
+
+def _shown(project):
+    """A project as a session should name it to a person: its shown name,
+    with its directory beside it when the two differ."""
+    lab = label_of(project) if label_of else project
+    return project if not lab or lab == project else f"{lab} (directory {project})"
+
+
+def identity_line(project):
+    """Said only when the shown name is not the directory: the person says
+    one, every path and `bb -p` take the other."""
+    lab = label_of(project) if label_of else project
+    if not lab or lab == project:
+        return ""
+    return (f"This project is shown as {lab}; its directory is /workspace/{project}, which every "
+            f"path and `bb -p` use. Call it {lab} when you speak of it.")
+
+
 def reads_line(project):
     reads = []
     if prefs_mod is not None:
@@ -142,7 +168,7 @@ def reads_line(project):
             reads = []
     if not reads:
         return ""
-    names = ", ".join(reads)
+    names = ", ".join(_shown(r) for r in reads)
     return (f"This project reads {names}: each is at /workspace/NAME, read-only, and "
             f"`bb -p NAME` in front of `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
             f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
@@ -290,7 +316,9 @@ def briefing(project):
         m = _IF.search(line)
         if m:
             bits = m.group(1).split()
-            skip = not any(_has(tree, g) for g in bits[1:])
+            # `node:gpu` is evidence the node gives rather than the tree.
+            skip = not any((bool(node_gpu and node_gpu(project)) if g == "node:gpu" else _has(tree, g))
+                           for g in bits[1:])
             continue
         if _END in line:
             skip = False
@@ -301,7 +329,8 @@ def briefing(project):
             if not line.strip() and out and not out[-1].strip():
                 continue
             if line.strip() in (_READS, _DESIGN):
-                said = "\n\n".join(x for x in (reads_line(project), sees_line(project)) if x) \
+                said = "\n\n".join(x for x in (identity_line(project), reads_line(project),
+                                                sees_line(project)) if x) \
                     if line.strip() == _READS else design_line(project)
                 if said:
                     out.append(said)

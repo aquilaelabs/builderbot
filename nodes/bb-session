@@ -52,7 +52,7 @@ file is read only after the drop, as the session.
 
     bb-session check
         exit 0 when this machine can build the view; root only
-    bb-session plan  --project P --account U --home H --cwd D [--reads R]... [--sees PATH]...
+    bb-session plan  --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... [--cuda off]
         the mounts, as JSON, without making any; anybody
     bb-session enter --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... --env FILE -- COMMAND...
         the session, inside the view; through sudo
@@ -254,6 +254,15 @@ def args(argv):
         # A place on the node this project is set to see, once per place.
         if a == "--sees" and i + 1 < len(argv):
             out.setdefault("sees", []).append(argv[i + 1])
+            i += 2
+            continue
+        # The card is not this session's to compute on (R102): the node's
+        # switch is off, or the project's. A word and its value, like every
+        # option here, so the launcher line stays one a respawn reads back.
+        if a == "--cuda" and i + 1 < len(argv):
+            if argv[i + 1] not in ("on", "off"):
+                raise Refused("bb-session: --cuda is on or off")
+            out["no_cuda"] = argv[i + 1] == "off"
             i += 2
             continue
         raise Refused(f"bb-session: '{a}' is not an option it takes")
@@ -581,6 +590,20 @@ def plan(c, a, uid):
         if is_sock and real not in covered:
             covered.add(real)
             steps.append(("hidefile", real))
+    # No computing on the NVIDIA card from this session (R102): the
+    # unified-memory device CUDA cannot start without is covered, and
+    # nothing else. The card's other nodes stay, because the emulator's GPU
+    # rendering opens those from inside the session and is its own switch;
+    # graphics never touches this one. NVENC goes with CUDA, which it rides.
+    if a.get("no_cuda"):
+        for dev in ("/dev/nvidia-uvm", "/dev/nvidia-uvm-tools"):
+            real = os.path.realpath(f"{top}{dev}")
+            try:
+                is_chr = stat.S_ISCHR(os.lstat(real).st_mode)
+            except OSError:
+                is_chr = False
+            if is_chr:
+                steps.append(("hidefile", real))
     if x11:
         steps.append(("bind", f"{STAGE}/x11", "/tmp/.X11-unix"))
     # What Claude Code keeps between the turns of one conversation (the
@@ -605,6 +628,22 @@ def plan(c, a, uid):
             continue
         if stat.S_ISDIR(st.st_mode) and st.st_uid == whose:
             steps.append(("bind", f"{STAGE}/cache{i}/{kept}", f"/tmp/claude-{whose}"))
+            break
+    # ...and its register of running sessions, ~/.claude/sessions, one file
+    # per session NAMED BY ITS PID. Each view has its own pid namespace, so
+    # Claude Code is pid 9 in every one, and an account's sessions on one
+    # node all wrote 9.json and 9.<hash>.key: the file held one session's id
+    # with another project's folder and name, and Remote Control in the
+    # Claude app did not show them (B522). A folder of the project's own,
+    # made by the launcher like the scratch one, is bound over it.
+    for i, (cache, _keep) in enumerate(caches if whose is not None else []):
+        kept = f"u/{account}/project/{project}/claude-sessions"
+        try:
+            st = os.lstat(f"{cache}/{kept}")
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode) and st.st_uid == whose:
+            steps.append(("bind", f"{STAGE}/cache{i}/{kept}", f"{home}/.claude/sessions"))
             break
     # A network of its own (R79): the agent's resolver file over the node's,
     # which names a resolver on the node's loopback that the session's own

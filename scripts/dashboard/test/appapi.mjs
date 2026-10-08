@@ -6,7 +6,7 @@
 // here, before the app finds out by drawing blanks. Moving the surface is
 // fine; moving it without the app is what this catches.
 import { ok, done, URL, DIR } from './lib.mjs';
-import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, utimesSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -33,6 +33,22 @@ ok(typeof meta.body.version === 'string' && typeof meta.body.apk === 'string',
 // move APP_API; asserted here because this is where /api/meta's shape is kept.
 ok(typeof meta.body.built === 'string',
    '...and carries the build time, which bb status on a node shows for the controller');
+// Where a newer app would be is a SIGNED build when there is one, however
+// new an unsigned one is: the phone's app was installed signed and Android
+// will not update it with a debug build (B507, 5 Oct).
+{
+  const d = `${DIR}/ws/BuilderBot/dist`;
+  mkdirSync(d, { recursive: true });
+  const signed = 'builderbot-app-0.7.0-dev.2284-b083add-signed.apk';
+  writeFileSync(`${d}/${signed}`, 'signed');
+  writeFileSync(`${d}/builderbot-app-0.7.0-dev.2290-abc1234-dirty.apk`, 'dirty');
+  writeFileSync(`${d}/builderbot-app-dev.apk`, 'a debug build');
+  const old = new Date(Date.now() - 3600_000);
+  utimesSync(`${d}/${signed}`, old, old);
+  const offered = (await get('/api/meta')).body.apk;
+  rmSync(`${DIR}/ws/BuilderBot`, { recursive: true, force: true });
+  ok(offered === signed, `the app is offered the signed build, not a newer unsigned one (${offered})`);
+}
 
 // ---- every GET the app makes answers with the fields it reads ------------------------
 // Against the fixture project alpha, which has a roadmap, bugs, rules and a

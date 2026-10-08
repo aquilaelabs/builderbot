@@ -217,8 +217,10 @@ function drawTabs(){
     // button on the Tools card carries.
     const pc = colorAttrs(projectColor(tabProject(t)));
     const icon = TABKINDS[t.kind]?.icon || "";
-    return `<span class="tab ${t.id===cur?"on":""}${held}${pc.cls}" data-id="${esc(t.id)}"${pc.style}>
-      <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${icon}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
+    // A tab to a screen reader, and which one is showing (R88); the pin
+    // and the close beside it stay buttons.
+    return `<span class="tab ${t.id===cur?"on":""}${held}${pc.cls}" data-id="${esc(t.id)}"${pc.style} role="presentation">
+      <button class="lbl" data-show="${esc(t.id)}" role="tab" aria-selected="${t.id === cur}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${icon}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
       ${t.kind === "term"
         // Its own window on a desktop (R8): the tab stays here, blank, with
@@ -350,12 +352,55 @@ function drawTabs(){
 // one scrolling row, and a tab that just became active is brought into view
 //: once, when it changes, so a strip the operator swiped away to look at
 // something else is not snapped back by the next poll.
+// ---- the phone's tab picker (R119 step 5) ----------------------------------
+// One button naming the tab on show and how many are open, and a list of
+// every tab under it, each with its close (or a terminal's minimize) and,
+// for an account with a shell, a new terminal. The rows act through the
+// strip's own functions, so a tab picked here is the same as one tapped there.
+let tabPickOpen = false;
+function tabPickShow(on){
+  tabPickOpen = !!on;
+  const list = $("tabPickList"), b = $("tabPick");
+  if (!list || !b) return;
+  b.setAttribute("aria-expanded", String(tabPickOpen));
+  if (tabPickOpen){
+    const strip = b.closest(".tabstrip");
+    list.style.top = (strip.offsetTop + strip.offsetHeight) + "px";
+    drawTabPick();
+  }
+  list.hidden = !tabPickOpen;
+}
+function drawTabPick(){
+  const b = $("tabPick"), list = $("tabPickList");
+  if (!b || !list) return;
+  const cur = panes[active], names = tabLabels();
+  const t = tabOf(cur);
+  const say = `${t ? TABKINDS[t.kind]?.icon || "" : ""}<span class="nm">${esc(t ? names.get(t.id) : "no tab open")}</span>${
+    tabs.length > 1 ? `<span class="pill">${tabs.length}</span>` : ""}<span class="chev">▾</span>`;
+  if (b.innerHTML !== say) b.innerHTML = say;
+  b.setAttribute("aria-label", `tab: ${t ? names.get(t.id) : "none"}, ${tabs.length} open; list them`);
+  if (!tabPickOpen) return;
+  list.innerHTML = tabs.map(x => `<div class="tprow${x.id === cur ? " on" : ""}" role="none">
+      <button type="button" class="lbl" role="menuitem" data-pshow="${esc(x.id)}">${
+        isClaude(x) ? stateDot(claudeOf(sessionOf(x.arg))) : ""}${TABKINDS[x.kind]?.icon || ""}${esc(names.get(x.id))}</button>
+      ${x.kind === "term"
+        ? `<button type="button" class="ic" data-pmin="${esc(x.id)}" aria-label="minimize ${esc(names.get(x.id))}">−</button>`
+        : `<button type="button" class="ic" data-pclose="${esc(x.id)}" aria-label="close ${esc(names.get(x.id))}">✕</button>`}
+    </div>`).join("")
+    + (mayShell() ? `<div class="tprow" role="none"><button type="button" class="lbl" role="menuitem" data-pnew>+ New terminal</button></div>` : "");
+  list.querySelectorAll("[data-pshow]").forEach(e => e.onclick = () => { tabPickShow(false); focusTab(e.dataset.pshow); });
+  list.querySelectorAll("[data-pclose]").forEach(e => e.onclick = ev => { ev.stopPropagation(); hideTab(e.dataset.pclose, ev); drawTabPick(); });
+  list.querySelectorAll("[data-pmin]").forEach(e => e.onclick = ev => { ev.stopPropagation(); hideTab(e.dataset.pmin, ev); drawTabPick(); });
+  list.querySelectorAll("[data-pnew]").forEach(e => e.onclick = () => { tabPickShow(false); $("bNew")?.click(); });
+}
+
 function finishTabs(cur){
   // A drag dropped where it started rebuilds nothing, so the pickup dim is
   // taken off here rather than by the rebuild that no longer happens.
   if (!drag) $("tabbar").querySelectorAll(".tab.held").forEach(el => el.classList.remove("held"));
   if (cur !== lastCur){ lastCur = cur; revealActiveTab(); }
   updateArrows();
+  drawTabPick();
 }
 
 // By offsets, not scrollIntoView: that would also scroll every ancestor it
@@ -396,6 +441,6 @@ function newShell(proj){
   // nothing.
   const pr = (state?.projects || []).find(p => p.name === proj);
   const here = !!(pr?.session_why && pr?.session_at);
-  if (here) notify(`${proj}'s node cannot take a session now; this shell is on the controller`);
+  if (here) notify(`${projLabel(proj)}'s node cannot take a session now; this shell is on the controller`);
   openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}${here ? " (here)" : ""}`, here});
 }

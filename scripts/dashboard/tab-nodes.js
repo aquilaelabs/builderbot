@@ -28,9 +28,24 @@ let nodesFocus = null;           // {id, key, i}: the field to refocus after a r
 // agent comes back with the new digest (see renderNodesInto).
 const nodesUpdating = {};
 
-function openNodesTab(){
+// `nid`, when given, is the node to show, and `what` the part of it the
+// caller is about: "agent" for the head bar where Update agent is, or a
+// section's id ("claude"), opened. A bell row about a node goes straight
+// to that node's control, not to whichever node the tab was on (the
+// operator, 4 Oct).
+let nodesReveal = null;
+function openNodesTab(nid, what){
+  if (nid){
+    nodesPick = nid;
+    nodesFocus = null;
+    if (what && what !== "agent") sectOpen["nodes:" + what] = true;
+    nodesReveal = what === "agent" ? '[data-nd="update-agent"], .ndagent'
+                : what ? `[data-sect="nodes:${what}"]` : null;
+    nodesRev++;
+  }
   openTab({kind: "nodes", arg: "__nodes", label: "Nodes"});
   loadNodes();
+  if (nid) drawPanes();
 }
 
 async function loadNodes(){
@@ -107,18 +122,88 @@ function nodeGpu(n){
   if (!card) return "";
   const st = n.reported?.gpu_display || "";
   const up = /^up/.test(st), reboot = /^reboot/.test(st);
-  const busy = (n.jobs || []).some(j => j.apply === "gpu");
+  // The display runs on NVIDIA's driver and does not install it (R102): the
+  // driver is a row on this node's Toolchains tab, and until it is on the
+  // machine this line says so and opens that tab. What the card is used
+  // for is the GPU section's two switches, below.
+  const gd = n.reported?.gpu_driver;
+  const nodriver = !!gd && !gd.installed;
   const word = up ? "display up: an emulator here renders on the card"
+    : nodriver ? "no NVIDIA driver on it yet: an emulator here renders in software"
     : reboot ? "driver installed; Reboot under Advanced lets it take the card"
     : /^down/.test(st) ? st
-    : "no display for it yet: an emulator here renders in software";
-  const cls = up ? "ok" : reboot ? "note" : "warn";
+    : "no display for it: an emulator here renders in software";
+  const cls = up ? "ok" : reboot && !nodriver ? "note" : "warn";
   return `<div class="actbar ndgpu">
     <span class="state ${cls}">gpu: ${esc(card)} · ${esc(word)}</span>
-    ${!up && n.reported?.sandbox ? `<button type="button" data-nd="gpu-display" ${busy ? "disabled" : ""}
-      title="install the NVIDIA driver and a headless X server on the card; a reboot follows">${
-      busy ? "Setting up…" : "Set up GPU display"}</button>` : ""}
+    ${nodriver ? `<button type="button" data-ndtc="${esc(n.id)}"
+      title="the driver is installed from this node's Toolchains tab">Install the driver</button>` : ""}
   </div>`;
+}
+// The sound this node has (R107), in a line: the card ALSA sees, or a
+// virtual one, and the sound server an emulator's audio would go through.
+// Today an emulator here runs with -no-audio whatever this says; the line is
+// what the steps after it need, said before anybody reaches for them.
+function nodeSound(n){
+  const s = n.reported?.sound;
+  if (!s || n.kind !== "agent") return "";
+  const card = s.cards?.[0] || (s.virtual?.[0] ? `${s.virtual[0]} (virtual)` : "");
+  const word = card && s.server ? `${card} through ${s.server}`
+    : card ? `${card}, with no sound server installed`
+    : s.server ? `no sound card; ${s.server} is installed`
+    : "none: no sound card and no sound server";
+  return `<div class="actbar ndsound"><span class="state ${card && s.server ? "ok" : ""}">sound: ${esc(word)}</span></div>`;
+}
+// What this node's NVIDIA card is for (R102): two switches and one Apply.
+// The emulator renders on it or does not, which is the headless X server
+// the display needs; and sessions and jobs may compute on it or not, which
+// decides whether a session started here finds CUDA a device. Neither is a
+// way of moving work onto the card: a program uses it only if it was
+// written to. Both wait for the driver, which is the Toolchains tab's row.
+function nodeGpuSection(n){
+  const card = n.reported?.gpu_card;
+  if (!card || n.kind !== "agent") return "";
+  const gd = n.reported?.gpu_driver;
+  const st = n.reported?.gpu_display || "";
+  const emuOn = /^(up|starting|reboot)/.test(st);
+  const compOn = !n.config?.no_gpu_compute;
+  const c = nodeDraft(n);
+  if (c.draft.gpuEmu === undefined || c.draft.gpuEmuFrom !== emuOn){ c.draft.gpuEmu = emuOn; c.draft.gpuEmuFrom = emuOn; }
+  if (c.draft.gpuComp === undefined || c.draft.gpuCompFrom !== compOn){ c.draft.gpuComp = compOn; c.draft.gpuCompFrom = compOn; }
+  const nodriver = !!gd && !gd.installed;
+  const pending = (n.jobs || []).find(j => j.apply === "gpu" || j.apply === "gpu-off");
+  const busy = !!pending;
+  // While the emulator's job runs the box shows where it is going, not
+  // where the machine still is: it read as unticked under "Applying" until
+  // the node's next report (the operator, 30 Sep).
+  if (pending){ c.draft.gpuEmu = pending.apply === "gpu"; }
+  const managed = !!n.reported?.sandbox;
+  const name = n.reported?.gpu || (String(card).match(/\[([^\]]*(?:GeForce|RTX|Quadro|Tesla|TITAN)[^\]]*)\]/)?.[1]) || card;
+  const [status, cls] = nodriver ? ["no driver", "warn"]
+    : [[emuOn ? "emulator" : "", compOn ? "compute" : ""].filter(Boolean).join(" and ") || "not used", emuOn || compOn ? "ok" : ""];
+  const emuLine = /^up/.test(st) ? `<div class="sub">An emulator started here renders on the card.</div>`
+    : /^reboot/.test(st) ? `<div class="sub warn">It starts when the machine restarts: Reboot under Advanced.</div>`
+    : /^down/.test(st) ? `<div class="sub bad">${esc(st.replace(/^down:\s*/, ""))}.</div>`
+    : `<div class="sub dim">An emulator here renders in software.</div>`;
+  const body = `
+    <div class="sub">${esc(name)}${gd?.loaded ? ` on NVIDIA's driver ${esc(gd.loaded)}` : ""}.</div>
+    ${nodriver ? `<div class="sub warn">No NVIDIA driver on this machine yet, so nothing can use the card.
+        <button type="button" class="link" data-ndtc="${esc(n.id)}">Install the driver</button></div>` : ""}
+    <label class="ndcap"><input type="checkbox" data-k="gpuemu" ${c.draft.gpuEmu ? "checked" : ""}${
+      nodriver || !managed || busy ? " disabled" : ""}>
+      render the Android emulator on the card</label>
+    ${nodriver ? "" : emuLine}
+    <label class="ndcap"><input type="checkbox" data-k="gpucomp" ${c.draft.gpuComp ? "checked" : ""}>
+      let sessions and jobs compute on it (CUDA, the hardware video encoder)</label>
+    ${compOn ? `<div class="sub dim">A project can turn this off for itself in its settings.</div>`
+             : `<div class="sub dim">A session started here from now on finds no card to compute on.</div>`}
+    <div class="actbar">
+      <span class="state"></span>
+      <button type="button" data-nd="gpu-apply"${busy ? " disabled" : ""}
+        title="apply both: the emulator's switch is a job on the node, the other takes effect for sessions started from now on">${
+        busy ? "Applying…" : "Apply"}</button>
+    </div>`;
+  return docSection("nodes", "gpu", "GPU", status, body, {cls});
 }
 function nodeGit(n){
   const v = String(n.reported?.git || "").trim();
@@ -136,14 +221,14 @@ function nodeTools(n){
   const names = Object.keys(tc);
   if (n.kind !== "agent") return "";
   if (!names.length)
-    return `<div class="sub ndtools dim">no toolchains yet: install them from the Tools tab</div>`;
+    return `<div class="sub ndtools dim">no toolchains yet: install them from the Toolchains tab</div>`;
   // Held recipes whose system libraries this machine lacks (roadmap R51),
   // said here rather than left for a build to fail on: the store is shared,
   // the libraries are each machine's own, and the Tools tab installs them.
   const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
   const sys = unmet.length
     ? `<div class="sub ndsys warn">System packages missing for ${unmet.map(([r, ps]) =>
-        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the Tools tab</div>` : "";
+        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the Toolchains tab</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
       esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
@@ -174,7 +259,7 @@ function nodeDraft(n){
       mounts: (d.mounts?.length ? d.mounts : seed).map(m => ({...m})),
       fromNode: !d.mounts?.length && seed.length > 0,
       stores: {...(d.stores || {})},
-      network: {mode: "dhcp", address: "", gateway: "", dns: [], interface: "", ...(d.network || {})},
+      network: {mode: "dhcp", address: "", gateway: "", dns: [], interface: "", routes: [], ...(d.network || {})},
     };
   }
   return c;
@@ -292,15 +377,20 @@ function nodeRunnerSection(n, c){
       </div></div>`
     : `<div class="addbar" data-add="runner"><button type="button" data-nrunnershow ${busyNow ? "disabled" : ""}
         title="a runner for another git host, or this one's under another address">Add runner</button></div>`;
-  const body = `
-      <div class="sub">One runner per git host; its labels decide which workflows land here.</div>
-      ${addbar}
-      ${rows || `<div class="sub dim ndrunnone">no runner on this node</div>`}
-      ${slots.length ? `<div class="sub ndrunpin">This node's name pins a job here:
-        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}`;
   const status = !slots.length ? "none" : worst === "bad" ? "attention" : worst === "note" ? "working"
     : reps.some(r => r.busy) ? "busy" : reps.some(r => r.active) ? "listening" : "asked for";
-  return docSection("nodes", "runner", "CI runners", status, body, {cls: worst});
+  const pill = {attention: "bad", working: "note", busy: "ok", listening: "ok"}[status] || "";
+  // The node-scoped tool's shape, the Phone tab's too (R121 step 5): the
+  // state row first, the things below it, the add band, and at the foot
+  // what a workflow (or a session) does to reach this node.
+  return `<div class="row toolstate"><div class="grow">
+        <div class="name">CI runners on ${esc(n.name)} <span class="pill ${pill}">${esc(status)}</span></div>
+        <div class="sub">One runner per git host; its labels decide which workflows land here.</div></div></div>
+      <div class="field">${addbar}</div>
+      ${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}
+      <div class="field toolfoot ndrunpin"><div class="hint">${slots.length ? `This node's name pins a job here:
+        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre>`
+        : "A workflow reaches this node through a runner added here."}</div></div>`;
 }
 
 // The node's sessions (roadmap #24): whether this machine runs them, what a
@@ -345,56 +435,42 @@ function nodeSessionsSection(n){
       ${nodeSessNetRow(n)}
       ${nodeTurnsRow(n)}`;
   }
-  return docSection("nodes", "sessions", "Sessions", status, body, {cls});
+  // ...and the node's phone and CI runner, which are tabs of their own
+  // (R121): a line at the foot of this section opens them. It was a band
+  // between sections, which read as part of Sessions yet stayed when Sessions
+  // folded, and sat without the section's inset (the operator, 7 Oct).
+  return docSection("nodes", "sessions", "Sessions", status, body + nodeToolsLine(n), {cls});
 }
 
-// Claude Code on this node (claudecode.py): what the session account runs
-// against the latest the controller knows, a check on demand, and the one
-// way it is updated. The update ends every Claude session here first and
-// starts none again: the project rows do, when a person presses them.
-// A session cannot ask for this and cannot change the copy it runs.
-// What the last press here answered, when it was a refusal: on the row,
-// not only in a toast, or a press that was refused for the agent being
-// behind read as "it said updating and nothing happened" (23 Sep).
-let nodesClaudeSaid = {};
+// Claude Code on this node: this account's sign-in here (a login is one
+// account's on one node, page-signin.js), and where the copy the session
+// account runs stands, with the way to the node's Toolchains tab, which
+// installs, updates and removes it (R145).
 function nodeClaudeSection(n){
   const cc = state?.claude_code || {};
   const me = cc.nodes?.[n.id] || {};
   const se = n.reported?.session;
   const inst = me.installed || "";
   const latest = cc.latest || "";
-  const stale = nodeStale(n);
   let status, cls;
   if (!se || typeof se !== "object" || !se.up) [status, cls] = ["no session account", "warn"];
   else if (me.updating) [status, cls] = ["updating", "warn"];
   else if (!inst) [status, cls] = ["not installed", "bad"];
   else if (me.behind) [status, cls] = [`${inst}, ${latest} is out`, "warn"];
   else [status, cls] = [latest ? `${inst}, up to date` : inst, "ok"];
-  const checked = cc.checked ? `checked ${ago(cc.checked)}` : "not checked yet";
-  const known = latest ? `latest ${latest}, ${checked}`
-    : cc.error ? `could not check: ${cc.error}` : checked;
-  const open = (state?.sessions || []).filter(s => s.node_id === n.id && tmuxBase(s.name).startsWith("claude-")).length;
-  const auto = !!state?.settings?.settings?.claude_autoupdate?.value;
-  const dead = !se?.up || me.updating || (inst && !me.behind) || stale;
+  // ...and whether the person looking is signed in here, which a folded
+  // section would otherwise keep to itself.
+  if (inst && se?.up && !me.updating && !claudeOn(n.id)) [status, cls] = [`${status}, not signed in`, "warn"];
+  // Installed, updated and removed on the node's Toolchains tab like any
+  // toolchain (R145); what stays here is the account's sign-in.
   const body = `
-    <div class="sub">${!se?.up ? "No session account here, so nothing runs Claude Code."
-      : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out.` : "."}`
-      : "No Claude Code yet: Update installs it."} Checked every six hours.</div>
-    ${stale ? `<div class="sub bad">${esc(staleWhy(n))}</div>` : ""}
-    ${nodesClaudeSaid[n.id] ? `<div class="sub bad">${esc(nodesClaudeSaid[n.id])}</div>` : ""}
+    ${signinBlock(n)}
     <div class="actbar">
-      <span class="state">${esc(known)}</span>
-      <button type="button" data-nd="claude-check" ${cc.checking ? "disabled" : ""}
-        title="ask now what the latest Claude Code is">Check for updates</button>
-      <button type="button" data-nd="claude-update" ${dead ? "disabled" : ""}
-        title="${me.updating ? "an update is queued or running here"
-               : stale ? "update the agent first"
-               : !se?.up ? "no session account to update it for"
-               : inst && !me.behind ? "already on the latest known"
-               : `install ${latest || "the current Claude Code"} here: ends the ${open} Claude session${open === 1 ? "" : "s"} open on this node first`}">Update</button>
-    </div>
-    <div class="sub dim">Update ends the Claude sessions here; start them again from the project rows.${
-      auto ? " Before a session starts on a node that is behind, Claude Code is updated there first (Controller settings)." : ""}</div>`;
+      <span class="state">${!se?.up ? "No session account here, so nothing runs Claude Code."
+        : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out` : ""}: the Toolchains tab updates it.`
+        : "Not installed: a Claude session cannot start here until the Toolchains tab installs it."}</span>
+      ${se?.up && mayToolchains() ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
+    </div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
 }
 
@@ -456,14 +532,15 @@ function nodeTurnsRow(n){
     c.draft.workersText = tw; c.draft.workersFrom = tw;
   }
   const winp = `ndWorkers-${n.id}`;
+  // What 0 means is in each label, where a phone reads it (B459).
   return `<div class="logdays setrow col">
-      ${lbl(inp, "Claude sessions working at once", "a prompt past it waits for a turn instead of starting. 0 is no limit")}
+      ${lbl(inp, "Claude sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
     </div>
     <div class="logdays setrow col">
-      ${lbl(winp, "Test workers", `how many workers a test run here may use, as BB_TEST_WORKERS in its environment. 0 uses every core${
-        n.reported?.cpu ? ` (${n.reported.cpu} here)` : ""}`)}
+      ${lbl(winp, `Test workers (0: every core${n.reported?.cpu ? `, ${n.reported.cpu} here` : ""})`,
+        "how many workers a test run here may use, as BB_TEST_WORKERS in its environment")}
       <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
         value="${esc(c.draft.workersText)}">
     </div>
@@ -481,6 +558,14 @@ function nodeTurnsRow(n){
 // pressed, and says why it is there. Still read by devapp.host_map for
 // every node addressed, so it is not gone.
 function nodeAdvancedSection(n, stale, inflight){
+  // An install or a change being applied on the machine holds Reboot and
+  // Shut down: a restart in the middle of apt, or of a storage or network
+  // apply, leaves it half done (the operator, 30 Sep). A reboot or shut
+  // down of its own is the one system job that does not.
+  const applying = (n.jobs || []).find(j => j.type === "system" && !["reboot", "poweroff"].includes(j.apply));
+  const installing = inflight("toolchain") ? "a toolchain install or removal"
+    : inflight("image") ? "a system image install" : inflight("claude-update") ? "a Claude Code update"
+    : applying ? `a change to this node (${applying.apply || "a system job"})` : "";
   const paths = n.config?.paths || {};
   const text = Object.entries(paths).map(([k, v]) => `${k}:${v}`).join(", ");
   const c = nodeDraft(n);
@@ -517,13 +602,6 @@ function nodeAdvancedSection(n, stale, inflight){
           : "keep them to the machine's own console"}">${
         n.config?.lock ? "Unlock" : "Lock system changes"}</button>
     </div>`}
-    ${state?.settings?.settings?.debug_mode?.value ? `
-    <div class="actbar nddebug">
-      <span class="state">Which machines' logs a session here may read.</span>
-      <button type="button" data-nd="debug"
-        title="which nodes' agent, runner and terminal logs a session on this node may read">Debug settings${
-        (n.config?.log_from || []).length ? ` (${(n.config.log_from || []).length})` : ""}</button>
-    </div>` : ""}
     <div class="actbar">
       <span class="state">Drain finishes what is running and takes nothing new.</span>
       <button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
@@ -543,11 +621,12 @@ function nodeAdvancedSection(n, stale, inflight){
         inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
     </div>
     ${n.kind === "agent" ? `<div class="actbar">
-      <span class="state${n.live ? "" : " bad"}">${n.live
-        ? "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on."
-        : "Reboot and Shut down need the agent dialing in, and it is away: power the machine from its console or its hypervisor."}</span>
+      <span class="state${n.live && !installing ? "" : " bad"}">${!n.live
+        ? "Reboot and Shut down need the agent dialing in, and it is away: power the machine from its console or its hypervisor."
+        : installing ? `Reboot and Shut down wait: ${installing} is running here. Stop it first, or wait for it to finish.`
+        : "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on."}</span>
       ${["reboot", "poweroff"].map(w =>
-        `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) ? "disabled" : ""}>${
+        `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) || installing ? "disabled" : ""}>${
           inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
                       : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join("")}
     </div>` : ""}`;
@@ -642,6 +721,11 @@ function nodeDrift(n){
   }else if (rn.addresses?.length){
     network = "unknown";      // dhcp: the census cannot say how it was addressed
   }
+  // Static routes, in either mode, against the ones the node reports (an
+  // agent from before 0.7.143 reports none, which reads as all to apply).
+  const have = new Set((rn.routes || []).map(r => `${r.to} ${r.via}`));
+  const routes = (net.routes || []).filter(r => !have.has(`${r.to} ${r.via}`)).map(r => `route → ${r.to} via ${r.via}`);
+  if (routes.length) network = [...(Array.isArray(network) ? network : []), ...routes];
   return {storage, network};
 }
 
@@ -798,6 +882,10 @@ function nodeConfSections(n){
         <div class="setrow col">${lbl("", "Interface", "blank means the default route's")}
         <input data-k="net:interface" value="${esc(d.network.interface || "")}" spellcheck="false"
           autocomplete="off" placeholder="${esc(net.interface || "eth0")}" aria-label="interface"></div>` : ""}
+        <div class="setrow col ndroutes">${lbl("", "Static routes", "one a line: a network with its prefix, via the router that reaches it")}
+        <textarea data-k="net:routes" rows="${Math.max(2, (d.network.routes || []).length + 1)}" spellcheck="false"
+          autocomplete="off" placeholder="10.20.0.0/24 via 192.168.1.1" aria-label="static routes">${
+          esc((d.network.routes || []).map(r => `${r.to} via ${r.via}`).join("\n"))}</textarea></div>
       </div>
       <div class="sub">${esc(now)}</div>
       <div class="actbar">
@@ -831,7 +919,6 @@ function nodeConfSections(n){
   // offering buttons the agent refuses.
   const managed = !!rep.sandbox;
   return `<div class="ndconf"><div class="ndconfbody">
-    ${nodeRunnerSection(n, c)}
     ${managed
       ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
@@ -862,6 +949,14 @@ function nodeMeters(n){
   if (n.live && mem && s.mem_used_mb)
     out.push(meter("memory", s.mem_used_mb / mem * 100,
                    `${gb(s.mem_used_mb)} / ${gb(mem)}`));
+  // The card, where the node has one whose driver answers: how busy it is
+  // and how much of its own memory is taken, the two things a model or an
+  // encode is waiting on.
+  if (n.live && typeof s.gpu_pct === "number")
+    out.push(meter("gpu", s.gpu_pct, s.gpu_pct + "%", rep.gpu || "the node's card"));
+  if (n.live && s.gpu_mem_mb)
+    out.push(meter("vram", (s.gpu_mem_used_mb || 0) / s.gpu_mem_mb * 100,
+                   `${gb(s.gpu_mem_used_mb || 0)} / ${gb(s.gpu_mem_mb)}`, "the card's own memory"));
   // Two shapes for the same fact, and mixing them said "missing" about
   // four healthy stores. The CENSUS carries the whole story per store
   // ({path, free_mb, total_mb}) and moves every ten minutes; the heartbeat
@@ -953,7 +1048,7 @@ function renderNodesInto(i){
     const askRows = rootAsks.map(a => `<div class="row ndask">
       <div class="grow"><div class="name">root: ${esc(a.why)}</div>
         <div class="phcmd"># ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project") : a.project || "a session")} asks to run this as root on ${esc(a.node_name)} · ${a.left > 60
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project ? projLabel(a.project) : "a project") : a.project ? projLabel(a.project) : "a session")} asks to run this as root on ${esc(a.node_name)} · ${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</div></div>
       <span class="acts">
@@ -967,6 +1062,11 @@ function renderNodesInto(i){
     // is being waited for, rather than offering the same press again.
     const updating = stale && (inflight("self-update")
       || Date.now() - (nodesUpdating[n.id] || 0) < 180000);
+    // ...and while it is queued the controller hands the node nothing new
+    // until what runs there has finished (B516), so the line says what it
+    // is waiting for rather than "Updating" for minutes.
+    const held = (n.jobs || []).some(j => j.type === "self-update" && j.state === "queued")
+      ? (n.jobs || []).filter(j => j.type !== "self-update" && j.state !== "queued").length : 0;
     const agentLine = n.kind === "agent" && n.agent?.version
       ? `agent ${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
           stale ? ` <span class="pill warn ndstale" title="this controller ships agent ${
@@ -978,7 +1078,9 @@ function renderNodesInto(i){
         <div class="actbar ndagent">
           <span class="lead dim${updating ? " note"
                               : stale ? (windowGap(n) ? " bad" : " warn") : ""}">${
-            updating ? `Updating to agent ${esc(nodesAgent?.version || "")}. This row refreshes when the node reports back.`
+            updating ? (held ? `Update to agent ${esc(nodesAgent?.version || "")} waits for ${held} running job${
+                held === 1 ? "" : "s"} to finish; the node takes no new work until then (10 minutes at most).`
+              : `Updating to agent ${esc(nodesAgent?.version || "")}. This row refreshes when the node reports back.`)
             : stale ? `${windowGap(n) ? "out of window" : "behind"}: ${esc(staleWhy(n))}`
             : `Test checks that this node answers.`}</span>
           ${stale ? `<button type="button" data-nd="update-agent" ${updating ? "disabled" : ""}
@@ -994,6 +1096,7 @@ function renderNodesInto(i){
         ${nodeTools(n)}
         ${nodeGit(n)}
         ${nodeGpu(n)}
+        ${nodeSound(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What
@@ -1005,11 +1108,14 @@ function renderNodesInto(i){
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
           <span class="dim">· ${esc(n.kind)}</span></div>
         <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
+        ${keepLine(n)}
+        ${state?.can?.admin === false ? `<div class="sub warn ndreadonly">An administrator changes a node's settings. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
         ${agentBar}
       </div>
       <div class="ndsections">
         ${health}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
@@ -1019,8 +1125,9 @@ function renderNodesInto(i){
   // Nothing enrolled. Said where the rows would be, rather than an empty
   // picker over an empty page: the Enroll button above is the whole of what
   // there is to do here.
-  const none = live.length ? "" :
-    `<div class="empty ndnone">No node yet. Press <b>Enroll node</b> to get the command
+  const none = live.length ? "" : state?.can?.admin === false
+    ? `<div class="empty ndnone">None of your projects is on a node yet. An administrator sets a project's node.</div>`
+    : `<div class="empty ndnone">No node yet. Press <b>Enroll node</b> to get the command
       that adds a machine for builds, tests and sessions.</div>`;
   // Enrolling is a dialog now (#ndmodal), not two panels appended here; see
   // the markup's comment. Which means a poll landing while it is open cannot
@@ -1030,9 +1137,78 @@ function renderNodesInto(i){
   d.setFoot(`A node does the work of the projects bound to it: pick one in a project's
     settings. Jobs run as the enrolled account, never root.`);
   wireNodesTab(d.el);
+  nodesReadOnly(d.el);
+  // What openNodesTab was asked to show, once it is drawn.
+  const want = nodesReveal && d.el.querySelector(nodesReveal);
+  if (want){
+    nodesReveal = null;
+    requestAnimationFrame(() => want.scrollIntoView({block: "center", behavior: noMotion() ? "instant" : "smooth"}));
+  }
+}
+
+// The node's phone (tab-phone.js), where the phone is: a node with adb is a
+// place a phone is paired, connected and lent, each node its own (the
+// operator, 2 Oct). Only on a node the phone answer lists, which is a node
+// carrying adb; the answer is fetched the first time the section is drawn.
+// The node's phone and CI runner are tools of their own now (R121): a line
+// here says so and opens them on this node, so somebody who looks for them
+// where they were is sent where they are.
+function nodeToolsLine(n){
+  return `<div class="actbar ndtoolsline"><span class="state">This node's phone and CI runner are on their own tabs.</span>
+    <button type="button" data-ndphone="${esc(n.id)}">Phone</button>
+    <button type="button" data-ndrunner="${esc(n.id)}">CI runner</button></div>`;
+}
+
+// The CI runner tab (R121): a node picked in its bar, and that node's runners
+// below, drawn and wired exactly as the Nodes tab drew them (nodeRunnerSection
+// and wireNodeConf, one draft per node), so the two cannot disagree.
+let runnerNode = "";
+function openRunnerTab(nid){
+  // The CI runner tab is a grant (R137 step 3, the operator's R136 line):
+  // the card's status stays for everybody; the tab does not open for an
+  // account without it, and the server refuses its writes regardless.
+  if (state?.can?.runner === false) return notify("the CI runner is an administrator's: its status is on the card", true);
+  if (nid) runnerNode = nid;
+  openTab({kind: "runner", arg: "__runner", label: "CI runner"});
+}
+function renderRunnerInto(i){
+  const d = docSurface(i, "runner");
+  if (!d) return;
+  if (nodesList === null){ d.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
+  if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";
+  const n = ns.find(x => x.id === runnerNode);
+  d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>
+    <button type="button" id="rnrRefresh" title="read the nodes again">Refresh</button>`);
+  d.list.innerHTML = n
+    ? `<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
+    : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
+  if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
+  const pick = d.el.querySelector("#rnrPick");
+  if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
+  const rf = d.el.querySelector("#rnrRefresh");
+  if (rf) rf.onclick = () => { busy(rf, "Reading"); loadNodes(); };
+}
+
+// An account that does not administer sees a node's settings and changes
+// none of them: every control on the tab is dead for it but the picker and
+// its own Claude sign-in, and the row says why (the operator, 30 Sep). Once,
+// after the draw and its wiring, rather than in each section: a control a
+// later section adds is dead for that account without anybody remembering.
+function nodesReadOnly(root){
+  if (state?.can?.admin !== false) return;
+  root.querySelectorAll("button, input, select, textarea").forEach(c => {
+    // A phone is its owner's, any account's (tab-phone.js): its section
+    // stays live, and the server holds who may press what there.
+    if (c.id !== "ndPick" && !c.closest("[data-signin]") && !c.closest(".phonetab")) c.disabled = true;
+  });
 }
 
 function wireNodesTab(root){
+  wireSignin(root);
+  root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
+  root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
@@ -1054,51 +1230,6 @@ function wireNodesTab(root){
   // The box narrows for the question and widens for the answer: one field
   // does not want 760px, and a shell line that wraps lies about what runs.
   const boxWidth = wide => modal.querySelector(".box").classList.toggle("wide", wide);
-  // Which nodes' MACHINE logs a session on this one may read. A tick per
-  // node, this one first and named as itself, because its own journal is as
-  // much root's as anybody else's; "it is only looking at itself" is the
-  // reasoning that makes a boundary stop meaning anything. Only reachable
-  // while the controller's debug switch is on; the switch grants nothing.
-  const debugForm = (n) => {
-    document.getElementById("ndTitle").textContent = `Debug settings: ${n.name}`;
-    boxWidth(false);
-    const rows = (nodesList || []).filter(x => x.kind === "agent" && x.state !== "retired");
-    const have = new Set(n.config?.log_from || []);
-    body.innerHTML = `<div class="field">
-        <div class="hint">Machine logs a session on ${esc(n.name)} may read, besides its own project's.</div>
-        <div class="logset">${rows.map(x => `
-          <div class="logdays setrow"><label class="ndcap">
-            <input type="checkbox" data-grant="${esc(x.id)}"${have.has(x.id) ? " checked" : ""}>
-            <span>${esc(x.name)}${x.id === n.id ? ": itself" : ""}</span></label></div>`).join("")}
-        </div>
-        ${rows.length ? "" : `<div class="hint">No other node is enrolled.</div>`}
-      </div>
-      <div class="field">
-        <div class="logdays setrow"><label class="ndcap">
-          <input type="checkbox" id="ndDiag"${n.config?.diag ? " checked" : ""}>
-          <span>The controller's diagnostics</span></label></div>
-        <div class="hint">Lets an administrator's session here run bb diag.</div>
-      </div>
-      <div class="foot">
-        <button type="button" class="primary" id="ndDbgSave">Save</button>
-        <button type="button" id="ndDbgCancel">Cancel</button>
-      </div>`;
-    body.querySelector("#ndDbgCancel").onclick = shut;
-    const go = body.querySelector("#ndDbgSave");
-    go.onclick = () => pressing(go, async () => {
-      const from = [...body.querySelectorAll("[data-grant]")]
-        .filter(c => c.checked).map(c => c.dataset.grant);
-      const diag = body.querySelector("#ndDiag").checked;
-      const j = await nodeAct({action: "log-grant", id: n.id, from, diag});
-      if (j.error){ notify(j.error, true); return; }
-      shut();
-      notify((from.length ? `${n.name} may read ${from.length} node's logs`
-                          : `${n.name} reads no machine logs`)
-             + (diag ? ", and the controller's diagnostics" : ""));
-      loadNodes();
-    });
-  };
-
   const mintForm = () => {
     document.getElementById("ndTitle").textContent = "Enroll a node";
     boxWidth(false);
@@ -1284,7 +1415,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     // and the form redraws with the real picker when it lands.
     if (!vmKinds){
       const r = await nodeAct({action: "vm-xml", hv: vmDraft.hv});
-      if (r.catalog){ vmKinds = r.catalog; if (!body.querySelector(".vmmade")) vmForm(null); }
+      // Only onto the VM form it was asked for: closed by then and another
+      // form opened in the same box (Enroll), a late catalog painted over
+      // it and took what was typed (B424).
+      if (r.catalog){ vmKinds = r.catalog;
+        if (!modal.hidden && body.querySelector("#vmGo") && !body.querySelector(".vmmade")) vmForm(null); }
     }
   };
   const en = root.querySelector("#ndEnroll");
@@ -1298,13 +1433,10 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;
+    // The driver is the Toolchains tab's row (R102): this opens it on the node.
+    box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
-      if (act === "debug"){
-        const n = (nodesList || []).find(x => x.id === id);
-        if (n){ modal.hidden = false; debugForm(n); }
-        return;
-      }
       if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
@@ -1344,13 +1476,6 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}`
               + `. Transcripts are kept; whatever they were running stops.`)) return;
       }
-      if (act === "claude-update"){
-        const here = (state?.sessions || []).filter(x => x.node_id === id && tmuxBase(x.name).startsWith("claude-"));
-        if (!confirm(`Update Claude Code on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
-              + (here.length ? `It ends the ${here.length} Claude session${here.length === 1 ? "" : "s"} open there first; `
-                             : "No Claude session is open there; ")
-              + "nothing starts again on its own: press Claude on a project's row afterwards.")) return;
-      }
       if (act === "gpu-display"
           && !confirm(`Set up the GPU display on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
                       + "This installs the NVIDIA driver and a headless X server on the card, which "
@@ -1362,27 +1487,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                       + "each re-downloads what it needs.")) return;
       // The verb, said on the button for the round trip and, for the
       // actions whose effect the row cannot see at once: beyond it.
-      busy(b, {"update-agent": "Updating", "claude-check": "Checking", "claude-update": "Updating", test: "Asking", drain: "Draining",
+      busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
-               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-display": "Setting up",
+               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
-      if (act === "claude-check"){
-        const j = await nodeAct({action: "claude-check", id});
-        nodesClaudeSaid[id] = j.error || (j.version ? "" : `checked; the download service gave no version${j.error ? ": " + j.error : ""}`);
-        if (j.error) notify(j.error, true);
-        else notify(j.version ? `the latest Claude Code is ${j.version}` : "checked; the download service gave no version");
-        refresh();
-        return;
-      }
-      if (act === "claude-update"){
-        const j = await nodeAct({action: "claude-update", id});
-        nodesClaudeSaid[id] = j.error || "";
-        if (j.error) notify(j.error, true);
-        else notify(`Claude Code update queued${j.ended?.length ? `; ${j.ended.length} session${j.ended.length === 1 ? "" : "s"} ended` : ""}: the row follows the job`);
-        loadNodes(); refresh();
-        return;
-      }
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
@@ -1439,6 +1548,34 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                              : "; a session here asking for a root command is refused";
         }
         notify(said);
+        return;
+      }
+      if (act === "gpu-apply"){
+        // The GPU section's Apply: each switch only where its tick differs
+        // from what the node has. The emulator's is a job on the node.
+        const n = nodesList.find(x => x.id === id) || {};
+        const ge = box.querySelector('[data-k="gpuemu"]'), gc = box.querySelector('[data-k="gpucomp"]');
+        const emuWas = /^(up|starting|reboot)/.test(n.reported?.gpu_display || "");
+        const compWas = !n.config?.no_gpu_compute;
+        const c = nodesConf[id];
+        const said = [];
+        if (gc && gc.checked !== compWas){
+          const k = await nodeAct({action: "gpu-compute", id, on: gc.checked});
+          if (k.error) return;
+          if (c && c.draft) c.draft.gpuComp = undefined;
+          said.push(gc.checked ? "sessions started here from now on may compute on the card"
+                               : "sessions started here from now on find no card to compute on");
+        }
+        if (ge && !ge.disabled && ge.checked !== emuWas){
+          const want = ge.checked;
+          const k = await nodeAct({action: "gpu-display", id, on: want});
+          if (k.error) return;
+          // Kept as asked until the node reports the new state, which moves
+          // gpuEmuFrom and puts the box on the machine's word again.
+          if (c && c.draft){ c.draft.gpuEmu = want; c.draft.gpuEmuFrom = emuWas; }
+          said.push(ge.checked ? "setting the emulator up on the card" : "taking the emulator off the card");
+        }
+        notify(said.length ? said.join("; ") : "nothing changed");
         return;
       }
       if (act === "paths"){
@@ -1504,6 +1641,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
     const ra = box.querySelector('[data-k="rootasks"]');
     if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked; };
+    // The GPU section's two switches (R102): drafts until its Apply.
+    const ge = box.querySelector('[data-k="gpuemu"]');
+    if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };
+    const gc = box.querySelector('[data-k="gpucomp"]');
+    if (gc) gc.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuComp = gc.checked; };
     const ti = box.querySelector('[data-k="turns"]');
     if (ti){
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };
@@ -1564,7 +1706,14 @@ function wireNodeConf(row, id){
         d.stores[k.slice(6)] = el.value;
       } else if (k.startsWith("net:")){
         const f = k.slice(4);
-        d.network[f] = f === "dns" ? el.value.split(",").map(x => x.trim()).filter(Boolean) : el.value;
+        d.network[f] = f === "dns" ? el.value.split(",").map(x => x.trim()).filter(Boolean)
+          // A route a line, "TO via VIA" (or "TO VIA"); what does not read as
+          // one is kept as typed for the server to refuse by name at Save.
+          : f === "routes" ? el.value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+              const [to, via] = l.replace(/\s+via\s+/, " ").split(/\s+/);
+              return {to: to || "", via: via || ""};
+            })
+          : el.value;
       } else if (k.startsWith("runner:")){
         // The runner's fields are sent with Install, not with Save: they
         // are not part of the storage-and-network record.
@@ -1663,4 +1812,20 @@ function wireNodeConf(row, id){
     }
     await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
   });
+}
+
+// Why an idle session's token was not refreshed on this node, as its agent
+// said it on its last hello (B419): its complaints went only to the node's
+// own journal, which nothing here reads. The newest of the last day, in the
+// warning color, with when a token was last kept beside it.
+function keepLine(n){
+  const k = n.agent?.keep;
+  if (!k) return "";
+  const day = Date.now() / 1000 - 86400;
+  const said = (k.said || []).filter(x => x.at > day);
+  if (!said.length) return "";
+  const last = said[said.length - 1];
+  return `<div class="sub warn ndkeep">session tokens: ${esc(last.msg)}, ${esc(ago(last.at))}${
+    said.length > 1 ? ` (and ${said.length - 1} more today)` : ""}${
+    k.ok ? `; one was last kept ${esc(ago(k.ok))}` : "; none kept since the agent started"}</div>`;
 }

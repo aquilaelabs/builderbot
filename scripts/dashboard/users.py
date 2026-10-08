@@ -36,6 +36,7 @@ from pathlib import Path
 # path, where a plain sibling import finds nothing.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fields import field  # noqa: E402
+import roles  # noqa: E402
 
 STATE = Path("/config")
 write_json = None
@@ -53,9 +54,16 @@ ITERATIONS = 600_000
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$")
 
 
-def configure(*, state, write_json, project_prefs=None):
+def configure(*, state, write_json, project_prefs=None, nodes_of=None):
     globals().update(STATE=Path(state), write_json=write_json,
                      project_prefs=project_prefs)
+    if nodes_of is not None:
+        globals()["nodes_of"] = nodes_of
+
+
+# nodes_of(u): the nodes of the projects an account is on, which is what a
+# node grant's scope "mine" means (R137 step 3). Set by the server from prefs.
+nodes_of = None
 
 
 def _file():
@@ -138,6 +146,8 @@ def all_users():
         out.append({"name": name, "uid": u.get("uid", ""),
                     "role": u.get("role", "user"),
                     "projects": list(u.get("projects") or []),
+                    # The roles it carries (R137): its role, and any of your own.
+                    "roles": roles.roles_of(u),
                     "created": u.get("created", 0), "seen": u.get("seen", 0),
                     # The Profile fields, for the Users tab's edit dialog:
                     # never a credential, never the theme.
@@ -160,6 +170,15 @@ def uid_of(u):
     """
     uid = (u or {}).get("uid") or ""
     return "" if uid == "\u0000server" else str(uid)
+
+
+def starts_unpinned(u):
+    """Whether this account's sidebar starts with no project pinned until it
+    pins one (projects.load_project_pins). Every account made since 7 Oct
+    does (the operator: a new user starts with nothing pinned and adds what
+    they want); one made before keeps "all of them" until it pins, so an
+    update does not empty a sidebar somebody was using."""
+    return bool((u or {}).get("pins_empty"))
 
 
 def tmux_prefix(u):
@@ -420,8 +439,9 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 #
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
-USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
-               "docker-write", "toolchains-write", "jobs", "lock", "command-pin", "version")
+USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth", "runner",
+               "docker-write", "toolchains-write", "jobs", "lock", "command-pin", "version", "debug",
+               "ftp")
 
 
 def sees_all(u):
@@ -465,8 +485,10 @@ def may_work(u, name):
     # there to be seen and never changed.
     if u.get("session"):
         return name == u["session"]
-    have = u.get("projects") or []
-    return "*" in have or name in have
+    # "*" lists every project (sees_all) and takes none on (R135): the
+    # owner works on what they added to their own list, like everybody,
+    # as a safeguard against working on the wrong one by accident.
+    return name in (u.get("projects") or [])
 
 
 def visible(u, names):
@@ -493,6 +515,24 @@ def is_admin(u):
     return u is ALL or (u or {}).get("role") in ("owner", "admin")
 
 
+def may_node(u, action, node_id=""):
+    """Whether this account may do `action` on the node `node_id`, for the
+    capabilities scoped over nodes (R137 step 3: toolchains-write, jobs,
+    node, terminal). "" when it may, else the reason, like may()."""
+    if u is ALL:
+        return ""
+    if not u:
+        return "not signed in"
+    if roles.granted(u, action, node=str(node_id or "") or None, nodes_of=nodes_of):
+        return ""
+    # A node area's answer is the node's (R152): asking again with no node
+    # would answer "anywhere" for a role held on other nodes.
+    area = roles.CAP_AREA.get(action, ("", ""))[0]
+    if area in roles.NODE_AREAS and node_id:
+        return may(u, action) or "your roles do not give that on this node"
+    return may(u, action) or "that is not one of your roles' grants on that node"
+
+
 def may(u, action, project=None):
     """Whether this account may do `action`, optionally to `project`.
 
@@ -516,7 +556,7 @@ def may(u, action, project=None):
     if project is not None and u.get("session") and project != u["session"] \
             and project in (u.get("reads") or []):
         if action in READ_ACTIONS:
-            return ""
+            return _session_account_why(u, "read", project)
         return (f"{project} is read-only from a session on {u['session']}: it reads "
                 f"{project}'s code and notebook, and a session on {project} is what changes them")
     if project is not None and not may_work(u, project):
@@ -531,12 +571,26 @@ def may(u, action, project=None):
     if action == "rules" and (u or {}).get("session"):
         return ("a session cannot change the rules it is being held to: they "
                 "are the operator's, written on the notebook's Briefing tab")
+    # ...nor hand out the project's files to people outside BuilderBot (R151).
+    if action == "ftp" and (u or {}).get("session"):
+        return "who may reach a project's files over FTP is a person's to set, not a session's"
     # ...and may not approve what it has waiting (roadmap #27): a session
     # signing off its own additions is the setting not existing.
     if action == "pending" and (u or {}).get("session"):
         return ("what a session has waiting is the operator's to approve or "
                 "deny, on the notebook; a session cannot answer for itself")
-    if is_admin(u):
+    # Setting up a project's file access over FTP (R152 (f)): an
+    # administrator's, or the project's own owner's; who may then sign in is
+    # File access on their roles, which ftp.login reads.
+    if action == "ftp" and project is not None:
+        import membership
+        if is_admin(u) or uid_of(u) == membership.owner_of(project):
+            return ""
+        return "file access over FTP is set up by the project's owner or an administrator"
+    # The grants (R137): what the account's roles allow, on this project
+    # where one is named. The built-in roles reproduce the answers from
+    # before roles existed; a role of your own says exactly what it grants.
+    if roles.granted(u, action, project, may_work):
         return ""
     if action in USER_DENIES:
         return {"rename": "renaming a project is an administrator's",
@@ -554,6 +608,10 @@ def may(u, action, project=None):
                 "node": "which node a project builds on is an administrator's: "
                         "a node is shared, so changing it reaches every project "
                         "on it",
+                # The CI runner tab (R137 step 3, the operator's R136 line):
+                # its status stays on the Tools card for everybody.
+                "runner": "the CI runner's settings are an administrator's: its "
+                          "status is on the Tools card",
                 # The one that makes the rest of the role mean something.
                 # Everything else here is enforced by this server, in Python,
                 # and a shell is the way around all of it: one uid, one tmux
@@ -578,10 +636,43 @@ def may(u, action, project=None):
                                 "administrator's: you can see what is "
                                 "running and open it",
                 "toolchains-write": "installing on a node is an administrator's: "
-                                  "these are gigabytes on shared disk"}[action]
+                                  "these are gigabytes on shared disk",
+                # Named only (roles.NAMED_ONLY): an administrator too is
+                # refused until a role grants it by name (the operator, 6 Oct).
+                "debug": "the debug options are BuilderBot's owner's, or a role's that "
+                         "grants debug by name on the Roles tab",
+                "ftp": "file access over FTP is BuilderBot's owner's, or a role's that "
+                       "grants ftp by name on the Roles tab"}[action]
     if action == "admin":
         return "that is an administrator's"
-    return ""
+    # Everything else, for a person, is what their roles give and nothing
+    # more (R152, the operator, 7 Oct: no role, no permission); it used to
+    # be allowed to anybody on the project's list. A session keeps its own
+    # project's work: its token carries no roles, and the project's Claude
+    # may settings are what hold it.
+    if not (u or {}).get("session"):
+        return _roles_why(action, project)
+    return _session_account_why(u, action, project if project is not None else u.get("session"))
+
+
+def _roles_why(action, project=None, whose="your"):
+    """The refusal for an action no role gives, naming the area and level."""
+    area, need = roles.CAP_AREA.get(action, ("projects", "write"))
+    label = next((a[1] for a in roles.AREAS if a[0] == area), area)
+    where = f" on {project}" if project else ""
+    return f"{whose} roles give no {label} {'Write' if need == 'write' else 'Read'}{where}: the Roles tab gives one"
+
+
+def _session_account_why(u, action, project):
+    """A session does no more than the account behind it (R152, the
+    operator, 7 Oct): what its own rules allow, and what that account's roles
+    give on the project, whichever is less. "" when the account may."""
+    acct = account_of(u)
+    if not acct or acct is u or not acct.get("name"):
+        return ""
+    if is_admin(acct) or roles.granted(acct, action, project, may_work):
+        return ""
+    return _roles_why(action, project, f"{acct['name']}'s") + "; a session does no more than its account"
 
 
 # --- what a session gets instead of the operator's password --------------
@@ -729,10 +820,12 @@ def claim(name, password):
         if d["users"]:
             return {"error": "this container already has an account"}
         d["users"][name] = {"uid": mint_uid(), "role": "owner",
-                            "projects": ["*"],
+                            # Sees every project by role; takes each on
+                            # like everybody (R135).
+                            "projects": [],
                             "password": hash_password(password),
                             "created": int(time.time()), "seen": 0,
-                            "prefs": {}}
+                            "prefs": {}, "pins_empty": True}
         _save(d)
     return {"ok": True, "name": name}
 
@@ -750,10 +843,15 @@ def add(name, password, role="user", projects=None):
         if name in d["users"]:
             return {"error": f"{name} already has an account"}
         d["users"][name] = {"uid": mint_uid(), "role": role,
+                            # No role, so no permission, until one is given on
+                            # the Roles tab (R152; admin is its own).
+                            "roles": [],
                             "projects": list(projects or []),
                             "password": hash_password(password),
                             "created": int(time.time()), "seen": 0,
-                            "prefs": {}}
+                            # Starts with nothing pinned, and pins what it
+                            # wants (the operator, 7 Oct): see starts_unpinned.
+                            "prefs": {}, "pins_empty": True}
         _save(d)
     return {"ok": True, "name": name}
 
@@ -791,6 +889,22 @@ def set_role(name, role):
     return {"ok": True, "name": name, "role": role}
 
 
+def set_roles(name, want):
+    """The roles of your own an account carries, beside its built-in role
+    (R137): names the roles store knows; the built-in one stays what
+    set_role made it, so is_admin keeps meaning what it meant."""
+    known = roles.all_roles()
+    want = [str(r) for r in (want if isinstance(want, list) else []) if str(r) in known and str(r) not in roles.BUILTIN]
+    with _lock:
+        d = load()
+        u = d["users"].get(name)
+        if not u:
+            return {"error": f"no account called {name}"}
+        u["roles"] = [str(u.get("role") or "user")] + sorted(set(want))[:50]
+        _save(d)
+    return {"ok": True, "name": name, "roles": u["roles"]}
+
+
 def set_projects(name, projects):
     with _lock:
         d = load()
@@ -800,6 +914,125 @@ def set_projects(name, projects):
         u["projects"] = [str(p)[:120] for p in (projects or [])][:200]
         _save(d)
     return {"ok": True, "name": name, "projects": u["projects"]}
+
+
+def migrate_star(names):
+    """An owner record that carried "*" (every project, taken on by
+    construction, until R135) gets the projects that exist now by name, so
+    nobody is locked out of what they were on; from then on a new project
+    is taken on like an administrator's. Run once at start, with the
+    projects on disk. Returns how many records moved."""
+    moved = 0
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            have = list(u.get("projects") or [])
+            if "*" not in have:
+                continue
+            kept = [p for p in have if p != "*"]
+            u["projects"] = (kept + [n for n in sorted(names) if n not in kept])[:200]
+            moved += 1
+        if moved:
+            _save(d)
+    return moved
+
+def give_owner_role(project, new_uid, old_uid=""):
+    """PROJECT_owner moves with the project (R152): off the account that
+    owned it, onto the one that does, on that project alone."""
+    name = roles.ensure_owner_role(project)
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            have = [r for r in pr.get(project) or [] if r != name]
+            if u.get("uid") == new_uid:
+                have.append(name)
+                u.setdefault("projects", [])
+                if project not in u["projects"]:
+                    u["projects"].append(project)
+            if have:
+                pr[project] = have
+            else:
+                pr.pop(project, None)
+            u["project_roles"] = pr
+        _save(d)
+    return name
+
+
+def migrate_r152(owned):
+    """Once (R152, the operator, 7 Oct): an account on `user` carries no role
+    and so no permission, and each project's owner (`owned`, {project: uid},
+    BuilderBot's owner's own projects left out, since it holds everything)
+    holds PROJECT_owner on it. Marked done in the store."""
+    with _lock:
+        d = load()
+        if d.get("r152"):
+            return False
+        for u in d["users"].values():
+            if u.get("role") not in ("owner", "admin"):
+                u["role"] = "user"
+                u["roles"] = [r for r in (u.get("roles") or []) if r not in ("user", "owner", "admin")]
+        d["r152"] = True
+        _save(d)
+    for project, uid in sorted((owned or {}).items()):
+        if uid and uid != owner_uid():
+            give_owner_role(project, uid)
+    return True
+
+
+def give_project_role(project, uid, role):
+    """Add one role on one project to an account, which puts it on the
+    project (R155): an invitation accepted."""
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            if u.get("uid") != uid:
+                continue
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            pr[project] = sorted(set((pr.get(project) or []) + [str(role)]))
+            u["project_roles"] = pr
+            u.setdefault("projects", [])
+            if project not in u["projects"] and "*" not in u["projects"]:
+                u["projects"].append(project)
+        _save(d)
+
+
+def migrate_r155():
+    """Once (R155, the operator, 8 Oct): a role on a project is given on the
+    project, never through the account's own list, and being on a project is
+    holding a role there. A project role an account held through its list
+    is given on each project it was on, so nobody gains or loses anything
+    (an account on every project, "*", gets it on each one there is now);
+    a project it was on with no role, which allowed nothing, is let go.
+    BuilderBot's owner and administrators hold everything and are left as
+    they are. Marked done in the store."""
+    import registry
+    known = roles.all_roles()
+    every = sorted(registry.labels()) if registry.FILE is not None else []
+    with _lock:
+        d = load()
+        if d.get("r155"):
+            return False
+        for u in d["users"].values():
+            if u.get("role") in ("owner", "admin"):
+                continue
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            on = list(u.get("projects") or [])
+            on = every if "*" in on else on
+            keep = []
+            for rn in u.get("roles") or []:
+                r = known.get(rn)
+                if r and r.get("scope") == "projects":
+                    for p in on:
+                        pr[p] = sorted(set((pr.get(p) or []) + [rn]))
+                else:
+                    keep.append(rn)
+            u["roles"] = keep
+            u["project_roles"] = {p: rs for p, rs in pr.items() if rs}
+            u["projects"] = sorted(u["project_roles"])
+        d["r155"] = True
+        _save(d)
+    return True
 
 
 def take_on(name, project):
@@ -814,7 +1047,7 @@ def take_on(name, project):
         if not u:
             return {"error": f"no account called {name}"}
         have = list(u.get("projects") or [])
-        if "*" in have or project in have:
+        if project in have:
             return {"ok": True, "name": name, "projects": have}
         u["projects"] = (have + [str(project)[:120]])[:200]
         _save(d)
@@ -846,6 +1079,9 @@ def remove(name):
             return {"error": "the owner cannot be deleted: rename it instead"}
         d["users"].pop(name)
         _save(d)
+    # Its invitations go, and what it owned falls back to BuilderBot's owner.
+    import membership
+    membership.forget_account(u.get("uid") or "")
     return {"ok": True, "name": name}
 
 
@@ -876,7 +1112,23 @@ def own_prefs(name, want):
     return prefs_set(name, keep), 200
 
 
-def verb(act, req, seen):
+def _members_refused(name, want, may_change):
+    """Why this change to `name`'s projects may not be made, or "": each
+    project added or taken off is asked of may_change (membership's rule:
+    an invite-only project's people are its owner's to change)."""
+    if not may_change:
+        return ""
+    have = set((get(name) or {}).get("projects") or [])
+    for p in sorted(have ^ set(want)):
+        if p == "*":
+            continue
+        why = may_change(p)
+        if why:
+            return why
+    return ""
+
+
+def verb(act, req, seen, may_change=None):
     """One of the Users tab's verbs on an account, an administrator's (the
     server holds that gate): add, a password, a role, the projects, a
     rename, the modal's one Save, remove. The store's own functions above
@@ -885,8 +1137,20 @@ def verb(act, req, seen):
     name = field(req, "name")
     pw = req.get("password") or ""
     if act == "add":
+        for p in req.get("projects") or []:
+            why = may_change(p) if may_change else ""
+            if why:
+                return {"error": why}
         r = add(name, pw, role=field(req, "role") or "user",
                 projects=req.get("projects") or [])
+        # A name and an email with it (R134), the Profile's own two fields
+        # and nothing of the git identity, which is theirs to set.
+        pr = req.get("profile") if isinstance(req.get("profile"), dict) else {}
+        pr = {k: pr[k] for k in ("full_name", "email") if pr.get(k)}
+        if not r.get("error") and pr:
+            r2 = profile_set(name, pr)
+            if r2.get("error"):
+                r = r2
     elif act == "passwd":
         r = set_password(name, pw)
     elif act == "role":
@@ -895,7 +1159,9 @@ def verb(act, req, seen):
         # Only projects this admin can see; otherwise the tab becomes a
         # way to learn what exists by handing it out.
         mine = seen()
-        r = set_projects(name, [p for p in (req.get("projects") or []) if p in mine])
+        want = [p for p in (req.get("projects") or []) if p in mine]
+        why = _members_refused(name, want, may_change)
+        r = {"error": why} if why else set_projects(name, want)
     elif act == "rename":
         r = rename(name, field(req, "to"))
     elif act == "edit":
@@ -908,9 +1174,13 @@ def verb(act, req, seen):
             r = profile_set(name, req["profile"])
         if not r.get("error") and field(req, "role"):
             r = set_role(name, field(req, "role")) if (get(name) or {}).get("role") != field(req, "role") else r
+        if not r.get("error") and isinstance(req.get("roles"), list):
+            r = set_roles(name, req["roles"])
         if not r.get("error") and isinstance(req.get("projects"), list):
             mine = seen()
-            r = set_projects(name, [p for p in req["projects"] if p in mine])
+            want = [p for p in req["projects"] if p in mine]
+            why = _members_refused(name, want, may_change)
+            r = {"error": why} if why else set_projects(name, want)
         if not r.get("error") and pw:
             r = set_password(name, pw)
         if not r.get("error") and field(req, "to").strip() and field(req, "to").strip() != name:
@@ -929,4 +1199,87 @@ def tab_view(me, projects, logins_of):
     out."""
     return {"users": logins_of(all_users()), "owner": owner_name(),
             "me": (me or {}).get("name", ""), "roles": list(ROLES),
+            # The roles of your own, for the edit dialog's picker (R137).
+            "role_names": [n for n in roles.all_roles() if n not in roles.BUILTIN],
             "projects": projects}
+
+
+# ---- R152: an account's roles and projects, from the Roles tab -------------
+
+def assignable(me):
+    """What `me` may change on the Roles tab's top section: every project
+    and Global roles for an administrator; for a project's owner who is
+    not one, the projects they own, with roles on the user's projects only
+    (R152 (c)). {"admin": bool, "projects": [names]}."""
+    import membership
+    if not me or me.get("session"):
+        return {"admin": False, "projects": []}
+    if is_admin(me):
+        return {"admin": True, "projects": None}
+    mine = uid_of(me)
+    owned = sorted(p for p, r in membership._owners()["projects"].items()
+                   if (r or {}).get("owner") == mine)
+    return {"admin": False, "projects": owned}
+
+
+def assign(me, name, global_roles=None, project_roles=None):
+    """Set an account's Everywhere roles and the roles it holds on each
+    project, as far as `me` may (assignable): what is outside that is kept
+    as it was, never refused silently. The projects it is on follow the
+    roles (R155). (payload, status)."""
+    can = assignable(me)
+    if not can["admin"] and not can["projects"]:
+        return {"error": "the Roles tab's people are an administrator's, or a project owner's for "
+                         "their own projects"}, 403
+    known = roles.all_roles()
+    with _lock:
+        d = load()
+        u = d["users"].get(str(name or ""))
+        if not u:
+            return {"error": f"no account called {name}"}, 400
+        # The owner's account is nobody's but the owner's to change (R152 (a)).
+        if u.get("role") == "owner" and (me or {}).get("role") != "owner":
+            return {"error": "the owner's roles and projects are the owner's alone"}, 403
+        if global_roles is not None:
+            if not can["admin"]:
+                return {"error": "Global roles are an administrator's to give"}, 403
+            want = [str(r) for r in global_roles if str(r) in known and str(r) != "owner"]
+            # Everywhere roles only: a role on a project is given on it (R155).
+            onp = [r for r in want if r not in roles.BUILTIN and known[r].get("scope") != "global"]
+            if onp:
+                return {"error": f"{', '.join(onp)} {'is a role' if len(onp) == 1 else 'are roles'} "
+                                 "on a project: give it on the project, under Projects"}, 400
+            if "admin" in want:
+                u["role"] = "admin"
+            elif u.get("role") == "admin":
+                u["role"] = "user"
+            u["roles"] = sorted({r for r in want if r not in roles.BUILTIN})
+        scope = None if can["admin"] else set(can["projects"])
+        if project_roles is not None:
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            for p, rs in (project_roles or {}).items():
+                p = str(p)
+                if scope is not None and p not in scope:
+                    continue
+                got = []
+                for r in rs if isinstance(rs, list) else []:
+                    role = known.get(str(r))
+                    if not role:
+                        continue
+                    # A role on a project is given on it; an Everywhere
+                    # one is the account's, above (R155).
+                    if role.get("scope") != "projects":
+                        return {"error": f"{r} holds everywhere: give it under Everywhere roles"}, 400
+                    got.append(str(r))
+                if got:
+                    pr[p] = sorted(set(got))
+                else:
+                    pr.pop(p, None)
+            u["project_roles"] = pr
+            # On a project is holding a role there (R155): the list follows
+            # the roles, kept as it was where the account has every project.
+            if "*" not in (u.get("projects") or []):
+                u["projects"] = sorted(p for p, rs in pr.items() if rs)
+        _save(d)
+        out = {k: u.get(k) for k in ("role", "roles", "projects", "project_roles")}
+    return {"ok": True, "name": name, **out}, 200

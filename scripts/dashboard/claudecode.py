@@ -6,11 +6,13 @@ account's home (the native installer). The agent probes `claude --version`
 there on every heartbeat, so the controller always knows what each node
 runs; what it did not know was what is out. This asks the installer's own
 answer, the `latest` file the install script reads first, once after the
-controller starts and every six hours after that, and on a press of Check
-for updates on the Nodes tab. A node behind is a row in the bell and a
-sentence on its Claude Code section.
+controller starts, then on the toolchains' clock (weekly, and when a node
+starts) and on a press of Check for updates on a node's Toolchains tab,
+where Claude Code is a row like any toolchain (R145): installed there on
+purpose, never by the provisioner, and required for a session. A node
+behind is a row in the bell and says so on that row.
 
-UPDATING IS A PERSON'S, NEVER A SESSION'S. Update on the Nodes tab is an
+UPDATING IS A PERSON'S, NEVER A SESSION'S. Install on the Toolchains tab is an
 administrator's action (the node handler refuses anybody else, a session's
 token included); it ends every Claude session on that node first, since a
 conversation mid-turn is the wrong place to swap the binary under, and
@@ -35,7 +37,6 @@ import urllib.request
 LATEST_URL = (os.environ.get("BB_CLAUDE_LATEST_URL")
               or "https://downloads.claude.ai/claude-code-releases/latest")
 CHECK_DELAY = float(os.environ.get("BB_CLAUDE_CHECK_DELAY") or 20)
-CHECK_EVERY = 6 * 3600
 JOB = "claude-update"
 VER = re.compile(r"(\d+\.\d+\.\d+)")
 
@@ -43,7 +44,6 @@ nodes = None               # nodes.py: node, node_list, job_add, jobs_for, sessi
 node_sessions = None       # server.node_tmux_sessions
 tmux_base = None           # server.tmux_base
 audit = None
-auto = None                # () -> the claude_autoupdate setting
 _lock = threading.Lock()
 _latest = {"version": "", "at": 0, "error": "", "checking": False}
 # {node id: when} for an update pressed and not yet queued: ending the
@@ -55,9 +55,9 @@ _latest = {"version": "", "at": 0, "error": "", "checking": False}
 _pressed = {}
 
 
-def configure(*, nodes_module, node_sessions, tmux_base, audit=None, auto=None):
+def configure(*, nodes_module, node_sessions, tmux_base, audit=None):
     globals().update(nodes=nodes_module, node_sessions=node_sessions,
-                     tmux_base=tmux_base, audit=audit, auto=auto)
+                     tmux_base=tmux_base, audit=audit)
 
 
 def check():
@@ -68,7 +68,7 @@ def check():
         _latest["checking"] = True
     version, error = "", ""
     try:
-        with urllib.request.urlopen(LATEST_URL, timeout=15) as r:   # noqa: S310 (a fixed https URL, or a test's file://)
+        with urllib.request.urlopen(LATEST_URL, timeout=15) as r:   # noqa: S310 (a fixed https URL, or a test's file://)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             text = r.read(200).decode("utf-8", "replace").strip()
         m = VER.match(text)
         if m:
@@ -117,6 +117,11 @@ def update_done(job, state):
     if state != "succeeded" or nodes is None or not job:
         return None
     full = nodes.job(job["id"], with_log=True) or {}
+    # A removal (R145): none now, so the row and the session gate say so
+    # before the next hello does.
+    if (job.get("spec") or full.get("spec") or {}).get("action") == "remove":
+        nodes.reported_set(job["node"], "session", "claude", "")
+        return None
     m = re.search(r"Claude Code (\S+) is what a session here runs now", full.get("log") or "")
     if m:
         nodes.reported_set(job["node"], "session", "claude", m.group(1) + " (Claude Code)")
@@ -166,14 +171,49 @@ def attention(project_nodes):
 
 
 def holds():
-    """{node id: why} while a node's Claude Code is being updated: no
-    session starts there until the job ends, and the row says so."""
+    """{node id: why} while no session can start on a node's Claude Code:
+    while it is being updated (the project rows start them again after),
+    and where it is not installed at all, which the node's Toolchains tab
+    does on purpose (R145: the provisioner no longer installs it)."""
     out = {}
     for n in nodes.node_list() if nodes else []:
-        if n.get("kind") == "agent" and updating(n["id"]):
+        if n.get("kind") != "agent":
+            continue
+        if updating(n["id"]):
             out[n["id"]] = (f"Claude Code is updating on {n['name']}: its Claude sessions were ended for "
                             "it, and start again from the project rows when it is done")
+        elif missing(n):
+            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Toolchains tab installs it")
     return out
+
+
+def missing(n):
+    """True when a node runs a session account and has measured no Claude
+    Code for it: a session there has nothing to run."""
+    se = (n.get("reported") or {}).get("session") or {}
+    return bool(se.get("up")) and "claude" in se and not installed(n)
+
+
+def remove(principal, node_id):
+    """End the Claude sessions on the node and queue the job that takes
+    Claude Code off it (R145), the update job's other action."""
+    n = nodes.node(node_id) if nodes else None
+    if not n or n.get("kind") != "agent":
+        return {"error": "only an agent node runs Claude Code"}
+    if not installed(n):
+        return {"error": f"Claude Code is not installed on {n['name']}"}
+    if updating(node_id):
+        return {"error": f"a Claude Code job is already queued on {n['name']}"}
+    ended = []
+    for s in node_sessions() if node_sessions else []:
+        if s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-"):
+            r = nodes.session_kill(node_id, s.get("node_name") or s["name"])
+            if not r.get("error"):
+                ended.append(s["name"])
+    r = nodes.job_add(principal, {"node": node_id}, JOB, {"timeout": 300, "action": "remove", "ended": ended})
+    if r.get("ok") and audit:
+        audit(principal, "node-claude-remove", node_id, {"ended": ended})
+    return r
 
 
 def update(principal, node_id):
@@ -213,46 +253,28 @@ def update(principal, node_id):
 
 def start_hold(project, node_id):
     """A sentence when a Claude session on this node has to wait for Claude
-    Code, or "". Two cases. An update already running there holds every
-    start until it ends. And with the setting on (claude_autoupdate), a
-    node behind what is out is updated first, right here, at the moment a
-    session is asked for: the sessions it would end are none, since this
-    one has not started and the check below refuses if any other is open,
-    and the person pressing is told to press again when the row comes
-    back. The setting is off by default, so a node stays on what it has
-    until Update is pressed."""
+    Code, or "": an update running there holds every start until it ends.
+    Nothing updates by itself: a node stays on what it has until Update is
+    pressed (the switch that updated a node behind before a session started
+    went on 7 Oct, the operator's)."""
     n = nodes.node(node_id) if nodes else None
     if not n or n.get("kind") != "agent":
         return ""
     if updating(node_id):
         return (f"Claude Code is updating on {n['name']}: press Claude on {project} again when its "
                 "row comes back")
-    if not auto or not auto() or not behind(n) or not n.get("live"):
-        return ""
-    if nodes.agent_stale(n):
-        return ""                     # the job would be refused; the row already says why
-    if any(s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-")
-           for s in (node_sessions() if node_sessions else [])):
-        return ""                     # somebody's conversation is open there: not now
-    r = update("system", node_id)
-    if r.get("error"):
-        return ""
-    return (f"Claude Code {installed(n)} on {n['name']} is being updated to {latest()['version']} before "
-            f"this session starts (Keep Claude Code current is on): press Claude on {project} "
-            "again when its row comes back")
+    return ""
 
 
 def start():
-    """The check on a schedule: once soon after the controller starts, then
-    every six hours. A daemon thread, so it dies with the server. The
-    update itself is never on this clock: a press, or a session's start
-    with the setting on (start_hold)."""
-    def loop():
+    """One check soon after the controller starts. After that it is asked on
+    the toolchains' own clock (toolchains.node_checks_due: weekly, and when
+    a node starts) and on a press of Check for updates, like every other
+    toolchain (R145). The update itself is never on a clock: a press."""
+    def once():
         time.sleep(CHECK_DELAY)
-        while True:
-            try:
-                check()
-            except Exception as e:                                  # noqa: BLE001 (a loop must not die)
-                print(f"dashboard: claude code check: {e}", flush=True)
-            time.sleep(CHECK_EVERY)
-    threading.Thread(target=loop, name="claude-code", daemon=True).start()
+        try:
+            check()
+        except Exception as e:                                      # noqa: BLE001 (a thread must not die loudly)
+            print(f"dashboard: claude code check: {e}", flush=True)
+    threading.Thread(target=once, name="claude-code", daemon=True).start()

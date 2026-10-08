@@ -3,7 +3,7 @@
 // detail and diff, and the branches with whose worktree sits on which.
 // Real git on the fixture repos, read by the checkout's server; nothing
 // here writes through the dashboard, because this step has no actions.
-import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR, openFold, member } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'node:fs';
 
@@ -51,6 +51,7 @@ await ready(page);
 await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST',
   headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
   body: JSON.stringify({ action: 'add', name: 'tabmade', password: 'tabmade-pass-1', role: 'user' }) });
+await member('tabmade');
 
 // ---- the API, first ---------------------------------------------------------
 const api = async q => (await (await fetch(URL.replace(/\/$/, '') + '/api/git?project=beta&' + q,
@@ -116,6 +117,8 @@ await page.waitForSelector(`${NB} .gfile[data-path="a.txt"] pre.diff`, { timeout
 ok(await page.$eval(`${NB} .gfile[data-path="a.txt"] pre.diff`, e => /three/.test(e.textContent)
      && !!e.querySelector('.d-add')),
    '...and opening one shows its diff, additions marked');
+// One section open at a time (the operator, 5 Oct): History is opened.
+await openFold(page, `${NB} [data-sect="git:history"]`);
 const graph = await page.$eval(`${NB} .gitgraph`, g => ({
   rows: g.querySelectorAll('.grow[data-sha]').length, nodes: g.querySelectorAll('circle').length,
   edges: g.querySelectorAll('path').length, lanes: parseInt(getComputedStyle(g).getPropertyValue('--glanes')) }));
@@ -647,6 +650,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
        JSON.stringify(grouped.remoteDel)} of ${JSON.stringify(grouped.originRows)})`);
   // Work not yet in main is a row you open: its commits and diff against
   // main, read here rather than on a pull request page.
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:branches"]');   // one section open at a time
   await page.click('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] summary');
   await page.waitForSelector('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] pre.diff', { timeout: 10000 });
   const opened = await page.$eval('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]', d => ({
@@ -655,10 +659,12 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     merge: !!d.querySelector('[data-gitmerge="old-work"][data-gitinto]') }));
   ok(opened.commit && opened.files && opened.add && opened.merge,
      `a branch with work not yet in main opens to its commits and the diff main would take, with Merge into main at its foot (${JSON.stringify(opened)})`);
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:changes"]');   // one section open at a time
   await page.fill('.nb .nbview[data-view="git"] #gitMsg', 'From the view');
   await page.click('.nb .nbview[data-view="git"] #gitCommit');
   await refreshUntil(page, () => /From the view/.test(document.querySelector('.nb .nbview[data-view="git"] .gitgraph')?.textContent || ''), { timeout: 20000 });
   ok(git('log', '-1', '--format=%s') === 'From the view', 'Commit from the view commits, and the graph shows it');
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:history"]');   // one section open at a time (the operator, 5 Oct)
   await page.click('.nb .nbview[data-view="git"] .grow[data-sha]');
   await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitrevert]', { timeout: 10000 });
   ok(true, "a picked commit's detail carries Revert and Branch here");
@@ -811,6 +817,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     git('remote', 'set-url', 'origin', origin);
     writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', how: 'key' } }));
     ok(elsewhere.status === 400 && /credentials reach only that repository/.test(elsewhere.error || '')
+       && /a private one that is another project here is read by adding that project to beta's Reads/.test(elsewhere.error || '')
        && outside.status === 400 && /not a repository on the projects share/.test(outside.error || ''),
        `a remote pointed at another repository, or at a local path off the share, is refused before git runs (${
          (elsewhere.error || '').slice(0, 50)} | ${(outside.error || '').slice(0, 50)})`);
@@ -869,6 +876,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     for (const body of [{ action: 'add', name: 'w.asker', password: 'w.asker-pass-1', role: 'user' },
                         { action: 'projects', name: 'w.asker', projects: ['beta'] }])
       await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST', headers: hh, body: JSON.stringify(body) });
+    await member('w.asker');
     const auid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.asker'].uid;
     const theirs = `${auid}~claude-beta`;
     tmuxNew(theirs, B);
@@ -887,6 +895,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await refreshUntil(page, () => !!document.querySelector('.nb .nbview[data-view="git"] [data-gitaskfile]'), { timeout: 20000 });
   // A row that is not already picked: a click on the picked row puts it
   // away, and which row that is depends on what the tests above committed.
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:history"]');   // one section open at a time (the operator, 5 Oct)
   await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:not(.on)');
   // Read in one look, and waited for as one: the view repaints on the poll,
   // and a wait for the commit's button followed by a second read of the
@@ -904,9 +913,25 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const v = await look();
   ok(v.file && v.commit && v.branch >= 1 && v.pol === 2 && v.apply === true,
      `the view offers Send to Claude on a change, a commit and a branch, and the policy with its Apply asleep (${JSON.stringify(v)})`);
+  // Every Send to Claude asks first (the operator, 6 Oct): what it sends is
+  // a prompt Claude starts on at once. Answered no here, so nothing goes.
+  {
+    const asks = [];
+    const seen = req => { if (req.url().endsWith('/api/git') && /"action":"ask"/.test(req.postData() || '')) asks.push(1); };
+    page.on('request', seen);
+    await page.evaluate(() => { window.__confirm = window.confirm; window.confirm = m => { window.__asked = m; return false; }; });
+    // Pressed from the page: the change sits in a section shut by default.
+    await page.$eval('.nb .nbview[data-view="git"] [data-gitaskfile]', b => b.click());
+    await page.waitForTimeout(300);
+    const asked = await page.evaluate(() => { const m = window.__asked; window.confirm = window.__confirm; delete window.__asked; return m || ''; });
+    page.off('request', seen);
+    ok(/^Send .* to beta's Claude session\?/.test(asked) && asks.length === 0,
+       `Send to Claude asks first, naming the session, and sends nothing when the answer is no (${asked.split('\n')[0]}; ${asks.length} sent)`);
+  }
   // The policy is a section shut by default: open it to reach the pickers.
   await page.evaluate(() => { const d = document.querySelector('.nb .nbview[data-view="git"] details[data-sect="git:policy"]'); if (d && !d.open) d.open = true; });
   await page.waitForSelector('.nb .nbview[data-view="git"] [data-gitpol="push"]', { state: 'visible', timeout: 10000 });
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:policy"]');   // one section open at a time (the operator, 5 Oct)
   await page.selectOption('.nb .nbview[data-view="git"] [data-gitpol="push"]', 'deny');
   ok(await page.$eval('.nb .nbview[data-view="git"] #gitPolApply', b => !b.disabled),
      '...picking a policy wakes Apply and saves nothing yet');
@@ -915,7 +940,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
 }
 
 // ---- the strip on a phone -------------------------------------------------
-// Nine views do not fit 393px in one row: the strip wraps, and every tab
+// Ten views do not fit 393px in one row: the strip wraps, and every tab
 // stays on screen rather than the last two hiding behind an edge.
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => setView('terminal'));
@@ -927,7 +952,7 @@ const strip = await page.$eval('.nb .nbtabs', el => {
            inside: bs.every(b => b.left >= box.left - 1 && b.right <= box.right + 1),
            over: el.scrollWidth - el.clientWidth };
 });
-ok(strip.n === 9 && strip.rows >= 2 && strip.inside && strip.over <= 0,
+ok(strip.n === 11 && strip.rows >= 2 && strip.rows <= 3 && strip.inside && strip.over <= 0,
    `on a phone the strip wraps into rows and every tab is on screen (${JSON.stringify(strip)})`);
 
 // bb projects lists what the dashboard lists: a directory carrying .bbignore
@@ -960,6 +985,7 @@ ok(strip.n === 9 && strip.rows >= 2 && strip.inside && strip.over <= 0,
   for (const n of ['w.dev', 'w.peer']) {
     await users({ action: 'add', name: n, password: `${n}-pass-1`, role: 'user' });
     await users({ action: 'projects', name: n, projects: ['beta'] });
+    await member(n);
   }
   const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.dev'].uid;
   const WT = `${DIR}/ws/.worktrees/beta/${uid}`;
@@ -1149,6 +1175,83 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
   const r = JSON.parse(said.split('\n').pop());   // the module may print a line of its own first
   ok(/no main or master branch/.test(r.error || '') && !/or on :/.test(r.error || '') && !/Switch to/.test(r.error || ''),
      `with no main or master, the merge refusal says so rather than naming an empty branch (${r.error})`);
+}
+
+// ---- the CI watch (R117) ------------------------------------------------------
+// What the daily look found, planted where ciwatch keeps it: a CI section on
+// the Git view saying it in rows, a bell row while main is red, and Look now
+// replacing it with a fresh look (beta has no workflows: nothing drifting).
+{
+  mkdirSync(`${DIR}/state/ciwatch`, { recursive: true });
+  writeFileSync(`${DIR}/state/ciwatch/beta.json`, JSON.stringify({
+    format: 3, at: Math.floor(Date.now() / 1000) - 3600, repo: 'o/beta', workflows: 1,
+    run: { id: 11, name: 'Android CI', branch: 'main', conclusion: 'failure', at: '2026-10-03T00:44:51Z' },
+    findings: [
+      { kind: 'run', sev: 'bad', where: 'run 11', url: 'https://github.com/o/beta/actions/runs/11',
+        text: 'The Android CI check failed on main (3 Oct, 00:44 UTC). A Claude session can read why with bb ci-log 11.' },
+      { kind: 'label', sev: 'warn', where: 'android.yml:10', text: 'runs on ubuntu-latest, which GitHub moves to a new release on its own date',
+        fix: { from: 'ubuntu-latest', to: 'ubuntu-24.04' } },
+      { kind: 'action', sev: 'note', where: 'android.yml:14', text: 'android-actions/setup-android@v3: v4 is out' }],
+    error: '' }));
+  const ci = await api('what=all').then(j => j.ci || {});
+  ok(ci.run?.id === 11 && ci.findings?.length === 3, `the Git view's payload carries what the watch found (${ci.findings?.length})`);
+  // Opening the view reads it again.
+  await page.evaluate(() => openNotebook('beta', 'git'));
+  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'failing',
+                             `${NB} details.sect[data-sect="git:ci"] .sst`, { timeout: 20000 }).catch(() => {});
+  const sect = await page.$eval(`${NB} details.sect[data-sect="git:ci"]`, d => ({
+    status: d.querySelector('.sst')?.textContent, bad: d.querySelector('.sst')?.classList.contains('bad'),
+    open: d.open, rows: [...d.querySelectorAll('.body .actbar .state')].map(e => e.textContent.replace(/\s+/g, ' ').trim()) }));
+  ok(sect.status === 'failing' && sect.bad && sect.open, `a red main branch opens the CI section, marked failing (${sect.status})`);
+  ok(sect.rows.some(r => /^Check: The Android CI check failed on main/.test(r))
+     && sect.rows.some(r => /^Runner: .*ubuntu-latest.*android\.yml:10/.test(r))
+     && sect.rows.some(r => /^Action: .*setup-android.*v4 is out/.test(r)),
+     `...each finding a row in words, with where it is (${JSON.stringify(sect.rows)})`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => (state?.ci_red || []).some(c => c.project === 'beta'), null, { timeout: 15000 });
+  await page.evaluate(() => toggleBell(true));
+  const bell = await page.$eval('#bellPanel', p => [...p.querySelectorAll('.bnote')].map(n => n.textContent.replace(/\s+/g, ' ').trim())
+    .find(t => /CI failing in beta/.test(t)) || '');
+  const link = await page.$eval('#bellPanel', p => [...p.querySelectorAll('.bnote a[target="_blank"]')].map(a => a.href).join());
+  ok(/The Android CI check failed on main/.test(bell) && /Git view/.test(bell) && /On GitHub/.test(bell)
+     && link === 'https://github.com/o/beta/actions/runs/11',
+     `the bell carries a row while main is red, with the way to the Git view (${bell.slice(0, 80)})`);
+  await page.evaluate(() => toggleBell(false));
+  // R117 step 4: the runner row carries Fix, which writes that one line into
+  // the working tree, uncommitted, and Changes shows it; nothing is pushed.
+  {
+    const GITENV = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.invalid',
+                     GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.invalid' };
+    const wf = `${DIR}/ws/beta/.github/workflows`;
+    mkdirSync(wf, { recursive: true });
+    writeFileSync(`${wf}/android.yml`, Array.from({ length: 12 }, (_, i) => i === 9 ? '    runs-on: ubuntu-latest' : `# line ${i + 1}`).join('\n') + '\n');
+    execFileSync('git', ['-C', `${DIR}/ws/beta`, 'add', '.github'], { env: GITENV });
+    execFileSync('git', ['-C', `${DIR}/ws/beta`, 'commit', '-qm', 'a workflow'], { env: GITENV });
+    await page.evaluate(() => openNotebook('beta', 'git'));
+    await page.waitForSelector(`${NB} [data-cifix="android.yml:10"]`, { timeout: 15000 });
+    ok(await page.$$eval(`${NB} [data-cifix]`, bs => bs.length) === 1, 'only the finding that carries a fix offers Fix');
+    await openFold(page, `${NB} [data-sect="git:ci"]`);   // one section open at a time (the operator, 5 Oct)
+    await page.click(`${NB} [data-cifix="android.yml:10"]`);
+    await page.waitForFunction(sel => [...document.querySelectorAll(sel)].some(e => /android\.yml/.test(e.textContent)),
+                               `${NB} details.gfile summary`, { timeout: 15000 });
+    const line = readFileSync(`${wf}/android.yml`, 'utf8').split('\n')[9];
+    const head = execFileSync('git', ['-C', `${DIR}/ws/beta`, 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim();
+    ok(line === '    runs-on: ubuntu-24.04' && head === 'a workflow',
+       `Fix writes the pinned label on that line and commits nothing; Changes lists the file (${line.trim()}; HEAD ${head})`);
+    // Put back as it was: the commit and the file go, so the look below
+    // still finds a beta with no workflows.
+    execFileSync('git', ['-C', `${DIR}/ws/beta`, 'reset', '-q', '--hard', 'HEAD~1'], { env: GITENV });
+    rmSync(`${DIR}/ws/beta/.github`, { recursive: true, force: true });
+  }
+  await page.click(`${NB} #gitCiLook`);
+  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'nothing drifting',
+                             `${NB} details.sect[data-sect="git:ci"] .sst`, { timeout: 20000 });
+  const fresh = JSON.parse(readFileSync(`${DIR}/state/ciwatch/beta.json`, 'utf8'));
+  ok(fresh.findings.length === 0 && fresh.workflows === 0, 'Look now looks again and keeps it: beta has no workflows, so nothing drifts');
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => !(state?.ci_red || []).length, null, { timeout: 15000 });
+  ok(true, '...and the bell row leaves with the red run');
+  rmSync(`${DIR}/state/ciwatch/beta.json`, { force: true });
 }
 
 await done(browser);

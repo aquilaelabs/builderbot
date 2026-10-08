@@ -41,7 +41,7 @@ function drawCommands(){
       <button data-m="${esc(m.name)}" title="bb ${esc(m.label)}: runs in the terminal"
         >${esc(m.label)}</button>
       <button class="tack${on ? " on" : ""}" data-tack="${esc(m.name)}"
-        data-on="${on ? "1" : "0"}" aria-label="${on ? "unpin" : "pin"}"${state?.admin === false ? " disabled" : ""}
+        data-on="${on ? "1" : "0"}" aria-label="${on ? "unpin" : "pin"}"${state?.can?.["command-pin"] === false ? " disabled" : ""}
         title="${on ? "unpin: let it fall back into the list"
                     : "pin: keep it at the top of this card"}">${TACK}</button>
     </span>`;

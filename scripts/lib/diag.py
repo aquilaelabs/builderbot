@@ -68,16 +68,20 @@ for name, v in d.items():
         for a in v:
             print(f"  {a['when']:>8}  {a['who']:<24} {a['action']}  {a['target']}")
     elif name == "reports":
-        # What sessions on other projects said about BuilderBot, unread:
-        # bb report file N or close N "why" answers one.
+        # What sessions said about BuilderBot, kept until a person clears
+        # them in Controller settings.
         if not v:
-            print("  none open")
+            print("  none")
         for r in v:
-            print(f"  #{r['id']}  {r.get('when') or ''}  {r.get('project')}"
+            print(f"  #{r['id']}  {r.get('when') or ''}  {r.get('project') or 'general (no project)'}"
                   + (f", {r['by']}'s session" if r.get("by") else "")
                   + (f" on {r['node']}" if r.get("node") else "")
                   + (f", build {r['build']}" if r.get("build") else ""))
             print(f"      {r.get('text')}")
+            if r.get("conversation"):
+                c = r["conversation"]
+                print(f"      with the reporter's conversation, {round((c.get('bytes') or 0) / 1024)} KB"
+                      + (" (its last part)" if c.get("cut") else "") + ": in bb diag --json reports, and the download")
             if r.get("area"):
                 print(f"      area: {r['area']}")
             if r.get("repro"):

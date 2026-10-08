@@ -33,13 +33,20 @@ function armModal(el){
     get(){ return this.hasAttribute("hidden") || this.classList.contains("leaving"); },
     set(v){
       if (!v){
+        const was = this.hasAttribute("hidden") || this.classList.contains("leaving");
         this.getAnimations().forEach(a => a.cancel());
         this.querySelector(":scope > .box")?.getAnimations().forEach(a => a.cancel());
         this.classList.remove("leaving");
         this.removeAttribute("hidden");
+        // A dialog opens at its top: the box kept where it was last scrolled
+        // to, and a field focused on the way in scrolled it further, so one
+        // opened on a phone could start halfway down (the operator, 30 Sep).
+        // Again after the frame, for what the opener fills and focuses.
+        if (was){ modalTop(this); modalOpened(this); requestAnimationFrame(() => { modalTop(this); scrollHints(this); }); }
         return;
       }
       if (this.hasAttribute("hidden") || this.classList.contains("leaving")) return;
+      modalClosed(this);
       if (noMotion()){ this.setAttribute("hidden", ""); return; }
       this.classList.add("leaving");
       this.querySelector(":scope > .box")?.animate(
@@ -49,6 +56,137 @@ function armModal(el){
         () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
         () => {});                        // canceled: it was shown again, and stays
     }});
+}
+
+// ---- a dialog and the keyboard ------------------------------------------
+// One place for what every dialog does with the keyboard (R88), rather than
+// an Escape listener per dialog, which seven of the sixteen had: it takes
+// the focus as it opens, so a screen reader starts in it and Tab starts
+// from it; Tab and Shift+Tab go round inside it rather than out to the page
+// behind; Escape closes it, as the design says every dialog's foot does;
+// and the focus goes back to what opened it. The stack is the order they
+// opened in, so Escape closes the one on top.
+const openModals = [];
+
+function topModal(){
+  for (let i = openModals.length - 1; i >= 0; i--){
+    const m = openModals[i];
+    if (!m.isConnected || m.hidden){ openModals.splice(i, 1); continue; }
+    // A notebook's reading room in a tab that is not showing is open but
+    // not on screen, and not the one a key is meant for.
+    if (m.getClientRects().length) return m;
+  }
+  return null;
+}
+
+function modalOpened(el){
+  const i = openModals.indexOf(el);
+  if (i >= 0) openModals.splice(i, 1);
+  openModals.push(el);
+  const a = document.activeElement;
+  el.__opener = a && a !== document.body && !el.contains(a) ? a : null;
+  // A dialog is named by its title for a screen reader, which the markup
+  // says by aria-labelledby; one made in a script gets its h3 named here.
+  const h = el.querySelector(":scope > .box h3");
+  if (h && !el.hasAttribute("aria-labelledby")){
+    if (!h.id) h.id = (el.id || "dlg") + "Title";
+    el.setAttribute("aria-labelledby", h.id);
+  }
+  // After the frame, as modalTop's second pass: the opener fills the
+  // dialog then, and may focus a field of its own, which is left alone. The
+  // box itself otherwise, not its first field: a phone would raise its
+  // keyboard over a dialog the person came to read.
+  requestAnimationFrame(() => {
+    if (el.hidden || el.contains(document.activeElement)) return;
+    const box = el.querySelector(":scope > .box") || el;
+    if (!box.hasAttribute("tabindex")) box.setAttribute("tabindex", "-1");
+    box.focus({preventScroll: true});
+  });
+}
+
+function modalClosed(el){
+  const i = openModals.indexOf(el);
+  if (i >= 0) openModals.splice(i, 1);
+  const back = el.__opener, a = document.activeElement;
+  el.__opener = null;
+  // Only when the focus was still in the dialog: a Save that opened a tab
+  // or a dialog that opened another has put it somewhere on purpose.
+  if (a && a !== document.body && !el.contains(a)) return;
+  if (!back || !back.isConnected || back.disabled || !back.getClientRects().length){ a?.blur?.(); return; }
+  // Never into a text field: on a phone that raises the keyboard for nothing.
+  if (back.matches("textarea, [contenteditable], input:not([type=checkbox]):not([type=radio]):not([type=button])")){
+    a?.blur?.(); return;
+  }
+  back.focus({preventScroll: true});
+}
+
+function modalFocusables(m){
+  return [...m.querySelectorAll(`a[href], button, input, select, textarea, [contenteditable="true"],
+                                 [tabindex]:not([tabindex="-1"])`)]
+    .filter(x => !x.disabled && x.type !== "hidden" && x.getClientRects().length);
+}
+
+// Escape closes the dialog the way it closes itself: its backdrop's "never
+// mind" where it has one (which may tidy up, as closeEditor and closeRename
+// do), else its foot's Cancel or Close, else simply hidden.
+function dismissModal(m){
+  m.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+  if (m.hidden) return;
+  const c = [...m.querySelectorAll(":scope > .box .foot button")]
+    .find(b => !b.disabled && /^(cancel|close)$/i.test(b.textContent.trim()));
+  if (c) c.click();
+  if (!m.hidden) m.hidden = true;
+}
+
+// The page's one keydown listener for dialogs, wired at load in index.html
+// ahead of the page's other Escape listeners: a dialog's Escape is its own,
+// and the menus and armed arrows under it are not closed with it. A field
+// that does something with Escape itself (a filter clearing its search)
+// stops the event first and keeps the dialog open.
+function modalKeys(e){
+  if (e.key !== "Escape" && e.key !== "Tab") return;
+  const m = topModal();
+  if (!m) return;
+  if (e.key === "Escape"){
+    e.preventDefault(); e.stopImmediatePropagation();
+    dismissModal(m);
+    return;
+  }
+  const all = modalFocusables(m), a = document.activeElement;
+  if (!all.length){ e.preventDefault(); return; }
+  const first = all[0], last = all[all.length - 1];
+  if (!m.contains(a)){ e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+  else if (e.shiftKey && (a === first || !all.includes(a))){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && a === last){ e.preventDefault(); first.focus(); }
+}
+
+// Every scroller in a dialog back at its top, the dialog's own included.
+function modalTop(el){
+  el.scrollTop = 0;
+  el.querySelectorAll(".box, .box *").forEach(x => { if (x.scrollTop) x.scrollTop = 0; });
+}
+
+// ---- scroll hints -------------------------------------------------------
+// A box that scrolls says so: a soft shadow on each edge with more past it,
+// gone at the end (the operator, 30 Sep). A phone hides its scrollbars until
+// a finger moves, and a dialog cut off at a field boundary read as the whole
+// dialog. An inset shadow rather than a painted gradient, since several
+// themes put their own texture on these grounds; the classes are set here,
+// from the box's own numbers, on scroll and on a slow clock for content that
+// grows while nobody scrolls.
+// ...and the lists and logs that scroll inside a surface: a project's Reads
+// and nodes in its settings, the notebook's lists, a job's log, the chat
+// (the operator, 30 Sep).
+const SCROLL_HINTED = ".modal:not([hidden]):not(.inline) > .box, .modal:not([hidden]):not(.inline) .sheetslot, .pane .doc.on, "
+  + ".lbox, #roadmapList, #memList, #pendList, .dllog, .dmlog, .chatlog, .mpanel.show, .abpage, .dsboardwrap";
+function scrollHint(el){
+  const more = el.scrollHeight - el.clientHeight > 2;
+  el.classList.toggle("scrollup", more && el.scrollTop > 2);
+  el.classList.toggle("scrolldown", more && el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+}
+function scrollHints(root){
+  (root || document).querySelectorAll(SCROLL_HINTED).forEach(scrollHint);
+  if (root?.matches?.(SCROLL_HINTED)) scrollHint(root);
 }
 
 function flip(els, key){

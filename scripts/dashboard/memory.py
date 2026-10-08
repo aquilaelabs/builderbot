@@ -383,9 +383,12 @@ def payload(project, live=(), home=None):
     # gone, and an unlisted memory is one Claude only sees if recall happens
     # to surface it.
     listed, present = set(byfile), {m["file"] for m in memories}
-    issues = [{"level": "warning",
-               "text": f"the index points at {h}, which is not here; "
-                       "saving takes the line out"}
+    # A line for a file that is gone has one fix, taking it out, and the
+    # view offers it as a press (fix: "tidy"). It used to say "saving takes
+    # the line out" beside a Save with nothing staged, which could not be
+    # pressed (B455).
+    issues = [{"level": "warning", "fix": "tidy",
+               "text": f"the index points at {h}, which is not here"}
               for h in sorted(listed - present)]
     issues += [{"level": "warning",
                 "text": f"{f} is not in the index: Claude sees it only when "

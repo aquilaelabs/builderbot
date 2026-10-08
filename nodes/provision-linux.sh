@@ -1093,17 +1093,9 @@ else
             warn "ttyd did not install; fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
         fi
     fi
-    # Claude Code, into the account's own home by its native installer: no
-    # node runtime to keep up, and `claude update` from inside a session
-    # keeps it current. Best effort: a node without internet at provision
-    # time is still a node; the session says so when it starts.
-    # su rather than sudo: root is already here, and a minimal Alpine or
-    # Void has no sudo to hand.
-    if ! su -s /bin/sh "$SESSION_NAME" -c 'test -x "$HOME/.local/bin/claude"'; then
-        printf '   installing Claude Code for %s\n' "$SESSION_NAME"
-        su -s /bin/bash - "$SESSION_NAME" -c 'curl -fsSL https://claude.ai/install.sh | bash' >/dev/null 2>&1 \
-            || warn "Claude Code did not install for ${SESSION_NAME}. From a shell as that account: curl -fsSL https://claude.ai/install.sh | bash"
-    fi
+    # Claude Code is not installed here: the node's Toolchains tab does it on
+    # purpose, so whoever enrolls a node sees what is put on it (R145), and a
+    # session refuses to start until it is there.
     # A login shell as this account gets what a dashboard session gets: the
     # role, the controller's address, and bb from the bundle the agent keeps
     # current under the toolchain store. That is what makes proving the node
@@ -1755,7 +1747,9 @@ cmd_uninstall() {
         [ "$a" = uninstall ] || die "left as it was"
     fi
     say "stopping the agent and the session ports rule"
-    for u in builderbot-agent builderbot-session-ports; do
+    # The GPU display's unit too (B394): left enabled, a machine BuilderBot
+    # had left still started an Xorg on the card at every boot.
+    for u in builderbot-agent builderbot-session-ports builderbot-gpu-display builderbot-gpu-nodes; do
         if have systemctl; then
             systemctl disable --now "$u" >/dev/null 2>&1 || true
             rm -f "/etc/systemd/system/$u.service"
@@ -1815,6 +1809,7 @@ cmd_uninstall() {
     # The session account's sudo rule first: it is the one grant here that
     # reaches root, and it must not outlive the helper it names (R35).
     rm -f /etc/sudoers.d/builderbot-session /etc/bb-session.conf /usr/local/sbin/bb-session
+    rm -f /etc/X11/builderbot-gpu.conf /run/builderbot-gpu-display
     rm -rf /var/lib/builderbot /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
     # ttyd only when the provisioner fetched it: a package's copy is the distribution's
     if [ -x /usr/local/bin/ttyd ]; then
@@ -1858,6 +1853,62 @@ gpu_card() {
     done
     return 0
 }
+# apt, waiting for its lock: the machine's own apt (the daily update, an
+# unattended upgrade, a toolchain's system packages) may hold it at the
+# moment a press arrives, and a removal failed on exactly that on the dev
+# node (30 Sep). Up to five minutes for the holder to finish, and apt-get
+# itself told to wait as long for the lock. An unattended upgrade is found
+# by its command line, not its name: Ubuntu keeps a helper of nearly the
+# same name (unattended-upgrade-shutdown) running from boot to shutdown,
+# whose fifteen-character name is the upgrade's own, and waiting on that
+# made every apt call here five minutes long (B403).
+apt_idle() {
+    local i
+    for i in $(seq 1 100); do
+        pgrep -x apt-get >/dev/null 2>&1 || pgrep -x dpkg >/dev/null 2>&1 \
+            || pgrep -f '(^|/)unattended-upgrade( |$)' >/dev/null 2>&1 || return 0
+        [ "$i" = 1 ] && say "waiting for the machine's own apt to finish"
+        sleep 3
+    done
+    return 0
+}
+apt_get() { apt_idle; apt-get -o DPkg::Lock::Timeout=300 "$@"; }
+# The distribution's NVIDIA driver, from apt: the Toolchains tab's driver
+# row (R102), and nothing else installs it.
+gpu_install_driver() {
+    # GPU_DRIVER_PKG, where the caller set one, is the metapackage of the
+    # branch to install (nvidia-driver-610-open) rather than the one the
+    # distribution recommends: ubuntu-drivers takes it as nvidia:610-open,
+    # which brings the kernel's prebuilt modules with it.
+    local want="${GPU_DRIVER_PKG:-}"
+    # shellcheck source=/dev/null
+    [ -r /etc/os-release ] && . /etc/os-release
+    case " ${ID:-} ${ID_LIKE:-} " in
+        *" ubuntu "*)
+            say "installing the NVIDIA driver${want:+ ($want)} with apt; this takes minutes"
+            export DEBIAN_FRONTEND=noninteractive
+            apt_get update -qq
+            apt_get install -y -qq ubuntu-drivers-common pciutils
+            apt_idle
+            if [ -n "$want" ]; then
+                # By branch through ubuntu-drivers, which brings this kernel's
+                # prebuilt modules; by package name where it will not take
+                # the branch, which builds them with dkms.
+                ubuntu-drivers install "nvidia:${want#nvidia-driver-}" \
+                    || apt_get install -y -qq "$want"
+            else
+                ubuntu-drivers install
+            fi ;;
+        *" debian "*)
+            say "installing the NVIDIA driver with apt (non-free); this takes minutes"
+            export DEBIAN_FRONTEND=noninteractive
+            apt_get update -qq
+            apt_get install -y -qq nvidia-driver firmware-misc-nonfree pciutils \
+                || die "apt could not install nvidia-driver: Debian keeps it in non-free, so add 'contrib non-free non-free-firmware' to the sources on this machine first, then try again" ;;
+        *)
+            die "the NVIDIA driver is not installed from here on ${ID:-this family} yet: install it from NVIDIA's repository for it, then try again" ;;
+    esac
+}
 cmd_gpu() {
     local card
     card="$(gpu_card)"
@@ -1867,26 +1918,21 @@ cmd_gpu() {
         return 0
     fi
     say "card: $card"
-    if ! command -v nvidia-smi >/dev/null 2>&1 || ! command -v Xorg >/dev/null 2>&1; then
-        # shellcheck source=/dev/null
-        [ -r /etc/os-release ] && . /etc/os-release
-        case " ${ID:-} ${ID_LIKE:-} " in
-            *" ubuntu "*)
-                say "installing the NVIDIA driver and a headless X server with apt; this takes minutes"
-                export DEBIAN_FRONTEND=noninteractive
-                apt-get update -qq
-                apt-get install -y -qq ubuntu-drivers-common xserver-xorg-core pciutils
-                ubuntu-drivers install ;;
-            *" debian "*)
-                say "installing the NVIDIA driver and a headless X server with apt (non-free); this takes minutes"
-                export DEBIAN_FRONTEND=noninteractive
-                apt-get update -qq
-                apt-get install -y -qq nvidia-driver firmware-misc-nonfree xserver-xorg-core pciutils \
-                    || die "apt could not install nvidia-driver: Debian keeps it in non-free, so add 'contrib non-free non-free-firmware' to the sources on this machine first, then press Set up GPU display again" ;;
-            *)
-                die "the NVIDIA driver is not installed from here on ${ID:-this family} yet: install it and Xorg from NVIDIA's repository for it, then press Set up GPU display again for the display half" ;;
-        esac
+    # The display runs on NVIDIA's driver and does not install it (the
+    # operator, 30 Sep): the driver is the Toolchains tab's row, the one
+    # place it is installed, so a machine has it because somebody chose to.
+    if [ -z "$(gpu_driver_version)" ]; then
+        gpu_state "needs the driver: install the NVIDIA driver on this node's Toolchains tab first"
+        die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains tab, then set the display up"
     fi
+    if ! command -v Xorg >/dev/null 2>&1; then
+        have apt-get || die "no Xorg on this machine, and it is not installed from here on this family: install an X server, then set the display up again"
+        say "installing a headless X server with apt"
+        export DEBIAN_FRONTEND=noninteractive
+        apt_get update -qq
+        apt_get install -y -qq xserver-xorg-core pciutils
+    fi
+    gpu_nodes_unit
     command -v Xorg >/dev/null 2>&1 || die "no Xorg on this machine after the install; the display half needs one"
     cat > "/etc/systemd/system/$GPU_UNIT.service" <<EOF
 # Written by bb-sandbox gpu. A headless X server on the NVIDIA card, for the
@@ -1917,6 +1963,17 @@ EOF
         gpu_state "reboot: the NVIDIA driver is installed and takes the card at the next boot; Reboot on this node's row"
         say "the driver is installed and takes the card at the next boot (nouveau holds it now): Reboot on this node's row, and the display comes up on its own"
     fi
+}
+# The emulator off the card (R102): the display's unit stopped and
+# disabled, the driver and the device nodes left as they are, so sessions
+# may still compute on the card. Its state line says it was switched off,
+# which is not the same as down.
+cmd_gpu_off() {
+    if have systemctl; then
+        systemctl disable --now "$GPU_UNIT" >/dev/null 2>&1 || true
+    fi
+    gpu_state "off: switched off on the Nodes tab; an emulator here renders in software"
+    say "the GPU display is off: an emulator here renders in software from its next start"
 }
 cmd_gpu_display() {
     local bus b d f busid pid reason=""
@@ -1990,11 +2047,323 @@ EOF
     return 1
 }
 
+# --- the NVIDIA driver as a row of the Toolchains tab (R102) -------------------
+# The driver alone, installed and removed from the tab, apart from the
+# emulator's display. It is the machine's and not the toolchain store's: its
+# kernel module is built for this machine's kernel and its libraries must
+# match that module exactly, so there is one per machine, installed as root,
+# and it takes the card only at the next boot, since nouveau holds it until
+# then. A session runs with no-new-privileges, so the setuid nvidia-modprobe
+# cannot make /dev/nvidia-uvm on a CUDA program's first use: a unit of this
+# machine's own makes the device nodes as root at every boot (gpu-nodes).
+GPU_NODES_UNIT=builderbot-gpu-nodes
+gpu_driver_version() {
+    local m v k newest
+    for m in modinfo /sbin/modinfo /usr/sbin/modinfo; do
+        command -v "$m" >/dev/null 2>&1 || continue
+        v="$("$m" -F version nvidia 2>/dev/null | head -1 || true)"
+        if [ -z "$v" ]; then
+            # An update Ubuntu built for the newest kernel alone, with the
+            # old version's module gone from the running one: the restart
+            # boots the newest, so that is where the driver is (8 Oct).
+            newest="$(for k in "${GPU_MODULES:-/lib/modules}"/*; do basename "$k"; done 2>/dev/null \
+                | grep -E '^[0-9]' | sort -V | tail -1 || true)"
+            if [ -n "$newest" ] && [ "$newest" != "$(uname -r)" ] \
+               && [ "$(printf '%s\n%s\n' "$(uname -r)" "$newest" | sort -V | tail -1)" = "$newest" ]; then
+                v="$("$m" -k "$newest" -F version nvidia 2>/dev/null | head -1 || true)"
+            fi
+        fi
+        printf '%s\n' "$v" | sed '/^$/d'
+        return 0
+    done
+}
+gpu_nodes_unit() {
+    have systemctl || return 0
+    cat > "/etc/systemd/system/$GPU_NODES_UNIT.service" <<EOF
+# Written by bb-sandbox. The NVIDIA device nodes a CUDA program opens, made
+# at boot as root: a session runs with no-new-privileges, so the setuid
+# nvidia-modprobe cannot make them on a program's first use.
+[Unit]
+Description=BuilderBot GPU nodes: the NVIDIA device nodes for sessions
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bb-sandbox gpu-nodes
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable "$GPU_NODES_UNIT" >/dev/null 2>&1 || true
+}
+cmd_gpu_nodes() {
+    # As NVIDIA's own install guide makes them on a machine with no X
+    # server: a node per card and the control node (major 195), then the
+    # unified-memory module and its two nodes. Quiet where the driver does
+    # not have the card yet, which is every boot until the one after the
+    # install.
+    local dev n=0 i=0 major
+    if ! modprobe nvidia 2>/dev/null; then
+        say "the nvidia module is not loaded (nouveau has the card until a reboot); no device nodes to make"
+        return 0
+    fi
+    for dev in /sys/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) n=$((n + 1)) ;; esac
+    done
+    while [ "$i" -lt "$n" ]; do
+        [ -e "/dev/nvidia$i" ] || mknod -m 666 "/dev/nvidia$i" c 195 "$i"
+        i=$((i + 1))
+    done
+    [ -e /dev/nvidiactl ] || mknod -m 666 /dev/nvidiactl c 195 255
+    if modprobe nvidia-uvm 2>/dev/null; then
+        major="$(awk '$2 == "nvidia-uvm" {print $1}' /proc/devices)"
+        if [ -n "$major" ]; then
+            [ -e /dev/nvidia-uvm ] || mknod -m 666 /dev/nvidia-uvm c "$major" 0
+            [ -e /dev/nvidia-uvm-tools ] || mknod -m 666 /dev/nvidia-uvm-tools c "$major" 1
+        fi
+    fi
+    chmod 0666 /dev/nvidia[0-9]* /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools 2>/dev/null || true
+    say "device nodes: $(printf '%s ' /dev/nvidia*)"
+}
+cmd_gpu_driver() {
+    local card ver pkgs u want="${2-}" held
+    card="$(gpu_card)"
+    case "${1-}" in
+        refresh)
+            # apt's lists brought current, so the row's pulldown and its
+            # update line say what is on offer now: Check for updates.
+            have apt-get || return 0
+            say "reading the package lists again"
+            apt_get update -qq || warn "apt-get update did not finish; the lists are as they were" ;;
+        install)
+            if [ -z "$card" ]; then
+                say "no NVIDIA card on this machine (lspci); nothing to install"
+                return 0
+            fi
+            say "card: $card"
+            if [ -n "$want" ] && ! printf '%s' "$want" | grep -qE '^nvidia-driver(-[0-9]{3})?(-open)?$'; then
+                die "$want is not a driver package: nvidia-driver-NNN or nvidia-driver-NNN-open"
+            fi
+            ver="$(gpu_driver_version)"
+            # The metapackage on the machine now, if any: the highest branch
+            # dpkg holds installed.
+            held=""
+            if command -v dpkg-query >/dev/null 2>&1; then
+                # shellcheck disable=SC2016
+                # dpkg-query exits 1 when nothing matches, which under this
+                # script's set -e and pipefail ended it without a word on a
+                # machine with no driver (found on the dev node, 30 Sep).
+                held="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 'nvidia-driver*' 2>/dev/null | awk '$2 ~ /^ii/ {print $1}' | sort -V | tail -1 || true)"
+            fi
+            if [ -n "$ver" ] && [ -n "$want" ] && [ -n "$held" ] && [ "$want" != "$held" ]; then
+                die "$held is installed: remove it first, then install $want. One branch at a time, since their libraries do not mix"
+            fi
+            if [ -n "$ver" ] && command -v nvidia-smi >/dev/null 2>&1; then
+                # Installed already: brought up to what apt has for its branch,
+                # through its metapackages (the driver's, and the kernel
+                # flavour's module one Ubuntu ships), which pull the rest.
+                # Not every NVIDIA package by name with --only-upgrade: that
+                # held the running kernel's prebuilt module, pinned to the old
+                # version with no newer build for that kernel, and refused a
+                # firmware package the new version names afresh, so apt
+                # solved nothing and the row kept offering the update (bb-sandbox,
+                # 8 Oct). Apt drops that kernel's module itself; the newest
+                # kernel's is the one the restart boots.
+                say "the NVIDIA driver $ver is installed; bringing it up to date"
+                export DEBIAN_FRONTEND=noninteractive
+                apt_get update -qq
+                # shellcheck disable=SC2016
+                pkgs="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                    | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-driver(-[0-9]+)?(-open)?|linux-(modules|objects|signatures)-nvidia-[0-9]+(-open)?-[a-z][a-z0-9-]*)$/ {print $1}' \
+                    | tr '\n' ' ' || true)"
+                [ -n "${pkgs// /}" ] || pkgs="$held"
+                [ -n "${pkgs// /}" ] || die "no NVIDIA driver package is installed through apt here, so there is nothing for apt to update"
+                # shellcheck disable=SC2086
+                apt_get install -y -qq $pkgs \
+                    || die "apt could not update it; its output above says why"
+                say "the NVIDIA driver is $(gpu_driver_version) now"
+            else
+                GPU_DRIVER_PKG="$want" gpu_install_driver
+                ver="$(gpu_driver_version)"
+                [ -n "$ver" ] || die "the install ran, but no nvidia kernel module is there for this kernel ($(uname -r)); the apt output above says why"
+                say "installed the NVIDIA driver $ver"
+            fi
+            gpu_nodes_unit
+            if [ -d /sys/module/nvidia ] && nvidia-smi -L >/dev/null 2>&1; then
+                cmd_gpu_nodes
+                say "the driver has the card: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)"
+            else
+                say "it takes the card at the next boot, since nouveau holds it now: Reboot on this node's row in the Nodes tab, which ends every session on it"
+            fi ;;
+        remove)
+            have dpkg-query || die "the driver was not installed from here on this family: remove it the way it was installed"
+            # Every NVIDIA driver package on the machine, by name, whichever
+            # of the distributions' layouts put it there: the kernel module's
+            # (dkms or Ubuntu's prebuilt modules), the libraries, the X module.
+            # shellcheck disable=SC2016
+            pkgs="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-|libnvidia-|linux-(modules|objects|signatures)-nvidia-|xserver-xorg-video-nvidia|libcuda1|libnvcuvid1|libegl-nvidia|libgl1-nvidia|libgles-nvidia|libglx-nvidia|glx-alternative-nvidia|firmware-nvidia-)/ {print $1}' \
+                | tr '\n' ' ')"
+            if [ -z "${pkgs// /}" ]; then
+                say "no NVIDIA driver packages are installed here"
+            else
+                say "removing: $pkgs"
+                export DEBIAN_FRONTEND=noninteractive
+                # shellcheck disable=SC2086
+                apt_get purge -y -qq $pkgs || die "apt could not remove them; its output above says why"
+                apt_get autoremove -y -qq >/dev/null 2>&1 || true
+            fi
+            # The packages first and these after (30 Sep): a removal apt
+            # refused used to leave the machine with its driver and without
+            # its display. The display runs on the driver, so it goes with
+            # it, and the device nodes' unit too.
+            if have systemctl; then
+                for u in "$GPU_UNIT" "$GPU_NODES_UNIT"; do
+                    systemctl disable --now "$u" >/dev/null 2>&1 || true
+                    rm -f "/etc/systemd/system/$u.service"
+                done
+                systemctl daemon-reload >/dev/null 2>&1 || true
+            fi
+            rm -f "$GPU_CONF"
+            gpu_state "none: the NVIDIA driver was removed"
+            # A blacklist an earlier hand install left keeps nouveau off the
+            # card for good; the packages' own go with them.
+            rm -f /etc/modprobe.d/blacklist-nvidia-nouveau.conf
+            if have update-initramfs; then update-initramfs -u >/dev/null 2>&1 || true; fi
+            if [ -d /sys/module/nvidia ]; then
+                say "removed; the loaded driver keeps the card until the next boot, when nouveau takes it back: Reboot on this node's row in the Nodes tab"
+            else
+                say "removed; nouveau has the card"
+            fi ;;
+        *) die "usage: bb-sandbox gpu-driver install [PACKAGE]|remove|refresh" ;;
+    esac
+}
+
+# --- the NVIDIA container toolkit as a row of the Toolchains tab (R102) --------
+# What lets a container on this machine use the card: NVIDIA's runtime hook,
+# which hands the driver's libraries and the device nodes to a container
+# that asks for a GPU. Ubuntu and Debian do not carry it, so it comes from
+# NVIDIA's own package source, added here with its signing key and taken
+# away again on removal; Docker is told about the runtime and reloads its
+# configuration, which it takes a runtime from without stopping a container.
+# A restart would stop every one, and those with no restart policy stay
+# down after it (the dev node's own, 30 Sep), so it is the fallback only
+# where a reload did not take. The machine's own, like the driver it needs.
+NVCT_LIST=/etc/apt/sources.list.d/nvidia-container-toolkit.list
+# The key as NVIDIA publishes it, armored: apt reads an .asc named by
+# signed-by as it is, so nothing here needs gpg, which a minimal Ubuntu
+# does not carry (the dev node, 30 Sep).
+NVCT_KEY=/usr/share/keyrings/nvidia-container-toolkit-keyring.asc
+NVCT_URL=https://nvidia.github.io/libnvidia-container
+NVCT_DOCKER=/etc/docker/daemon.json
+# Docker's note of the nvidia runtime, taken out of its configuration here
+# rather than by the toolkit's own tool: `nvidia-ctk runtime configure
+# --unset` left the entry in place on the dev node (30 Sep), naming a
+# runtime whose binary the purge had just removed. Everything else in the
+# file is kept as it is.
+docker_forget_nvidia() {
+    [ -s "$NVCT_DOCKER" ] || return 0
+    python3 - "$NVCT_DOCKER" <<'NVCTPY'
+import json
+import os
+import sys
+
+f = sys.argv[1]
+try:
+    with open(f) as h:
+        d = json.load(h)
+except (OSError, ValueError):
+    sys.exit(1)
+rt = d.get("runtimes") if isinstance(d.get("runtimes"), dict) else {}
+if "nvidia" not in rt and d.get("default-runtime") != "nvidia":
+    sys.exit(0)
+rt.pop("nvidia", None)
+if rt:
+    d["runtimes"] = rt
+else:
+    d.pop("runtimes", None)
+if d.get("default-runtime") == "nvidia":
+    d.pop("default-runtime")
+with open(f + ".bb-new", "w") as h:
+    json.dump(d, h, indent=4)
+    h.write("\n")
+os.replace(f + ".bb-new", f)
+NVCTPY
+}
+cmd_gpu_container() {
+    local pkgs
+    case "${1-}" in
+        install)
+            have apt-get || die "the container toolkit is installed from here on Debian and Ubuntu only: on this family, from NVIDIA's repository for it"
+            have docker || die "no docker on this machine, so there is no container to hand the card to"
+            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains tab first; the toolkit hands its libraries to a container"
+            have curl || die "curl is not on this machine, and the package source is fetched with it"
+            say "adding NVIDIA's package source for the container toolkit"
+            curl -fsSL "$NVCT_URL/gpgkey" > "$NVCT_KEY" \
+                || { rm -f "$NVCT_KEY"; die "could not fetch the package source's signing key from $NVCT_URL"; }
+            grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$NVCT_KEY" \
+                || { rm -f "$NVCT_KEY"; die "what $NVCT_URL answered with is not a signing key"; }
+            chmod 0644 "$NVCT_KEY"
+            curl -fsSL "$NVCT_URL/stable/deb/nvidia-container-toolkit.list" \
+                | sed "s#deb https://#deb [signed-by=$NVCT_KEY] https://#g" > "$NVCT_LIST" \
+                || { rm -f "$NVCT_LIST" "$NVCT_KEY"; die "could not fetch the package source's list from $NVCT_URL"; }
+            grep -q '^deb ' "$NVCT_LIST" || { rm -f "$NVCT_LIST" "$NVCT_KEY"; die "the package source's list came back empty from $NVCT_URL"; }
+            export DEBIAN_FRONTEND=noninteractive
+            apt_get update -qq
+            say "installing the NVIDIA container toolkit with apt"
+            apt_get install -y -qq nvidia-container-toolkit || die "apt could not install it; its output above says why"
+            say "telling Docker about the runtime; it reloads its configuration and running containers keep running"
+            nvidia-ctk runtime configure --runtime=docker >/dev/null || die "nvidia-ctk could not write Docker's configuration"
+            if have systemctl; then
+                systemctl reload docker 2>/dev/null || true
+                if ! docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+                    say "Docker did not take the runtime on a reload, so it is restarted: a container with no restart policy stays down until it is started again"
+                    systemctl restart docker || die "Docker did not come back after the restart: journalctl -u docker says why"
+                fi
+            fi
+            say "installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)" ;;
+        remove)
+            have dpkg-query || die "the toolkit was not installed from here on this family: remove it the way it was installed"
+            # shellcheck disable=SC2016
+            pkgs="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-container-toolkit|nvidia-container-toolkit-base|libnvidia-container1|libnvidia-container-tools)$/ {print $1}' \
+                | tr '\n' ' ' || true)"
+            if [ -n "${pkgs// /}" ]; then
+                say "removing: $pkgs"
+                export DEBIAN_FRONTEND=noninteractive
+                # shellcheck disable=SC2086
+                apt_get purge -y -qq $pkgs || die "apt could not remove them; its output above says why"
+                apt_get autoremove -y -qq >/dev/null 2>&1 || true
+            else
+                say "the NVIDIA container toolkit is not installed here"
+            fi
+            rm -f "$NVCT_LIST" "$NVCT_KEY"
+            docker_forget_nvidia || warn "could not take the nvidia runtime out of $NVCT_DOCKER: it names a runtime that is no longer installed"
+            if have systemctl && have docker; then
+                systemctl reload docker 2>/dev/null || warn "Docker did not reload its configuration"
+                # A reload takes a runtime on and does not take one off (the
+                # dev node, 30 Sep): said, since docker info goes on naming it.
+                if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+                    say "Docker goes on listing the nvidia runtime until it next restarts; nothing is behind it, and its configuration no longer names it"
+                fi
+            fi
+            say "removed, with NVIDIA's package source" ;;
+        *) die "usage: bb-sandbox gpu-container install|remove" ;;
+    esac
+}
+
 case "${1-}" in
     "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
     uninstall)   shift; cmd_uninstall "${1-}" ;;
     gpu)         cmd_gpu ;;
     gpu-display) cmd_gpu_display ;;
+    gpu-off)     cmd_gpu_off ;;
+    gpu-driver)  shift; cmd_gpu_driver "${1-}" "${2-}" ;;
+    gpu-nodes)   cmd_gpu_nodes ;;
+    gpu-container) shift; cmd_gpu_container "${1-}" ;;
     list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
     add-nfs)     shift; cmd_add_nfs "${1-}" ;;
     add-share)   shift; cmd_add_share "${1-}" ;;

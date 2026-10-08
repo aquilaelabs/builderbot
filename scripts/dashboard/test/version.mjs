@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn, openFold, registerProject } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -101,6 +101,18 @@ setPolicyFor(PROJ, 'minor');
 r = bb('bump', 'major');
 ok(r.code !== 0 && /not major/.test(r.out),
    'a policy of minor still keeps major with the operator');
+// bb version set: straight to a later version in one commit, asked of the
+// policy as the largest part it moves (report #48: 0.1.0 to 0.5.0 took four
+// minor bumps or the operator).
+r = bb('set', '1.0.0');
+ok(r.code !== 0 && /not major/.test(r.out), `set is held to the policy by the part it moves: 1.0.0 is a major (${r.out.trim().slice(0, 80)})`);
+r = bb('set', '0.3.0');
+ok(r.code !== 0 && /not after/.test(r.out), '...and only moves forward');
+r = bb('set', '0.7.0');
+ok(r.code === 0 && readFileSync(`${ROOT}/VERSION`, 'utf8').trim() === '0.7.0' && /0\.4\.0 -> 0\.7\.0 +\(minor/.test(r.out),
+   `a minor jump lands in one step, as one commit (${r.out.trim().slice(0, 80)})`);
+r = bb('unbump');
+ok(r.code === 0 && readFileSync(`${ROOT}/VERSION`, 'utf8').trim() === '0.4.0', '...and unbump takes it back as it takes a bump back');
 
 // ---- the release: the second gesture, and the outward-facing one -----------
 // A bump decides the number and closes the changelog under it. The tag says
@@ -727,6 +739,38 @@ const reopened = cl().out;
 ok(reopened.indexOf('## Unreleased') !== -1
    && reopened.indexOf('## Unreleased') < reopened.indexOf('## 0.4.1'),
    'the next entry reopens Unreleased above the dated history');
+// ---- set renumbers a version nobody released (report #49) ---------------
+// 0.1.0, bumped to 0.2.0 (which dated every entry under 0.2.0), then set to
+// 0.5.0 before anything was released: 0.2.0's notes are 0.5.0's. A tagged
+// number keeps its section, and a plain bump keeps the one it leaves.
+{
+  const R = `${WS}/renumber`;
+  rmSync(R, { recursive: true, force: true });
+  mkdirSync(R, { recursive: true });
+  execFileSync('git', ['-C', R, 'init', '-q', '.'], { env });
+  writeFileSync(`${R}/VERSION`, '0.1.0\n');
+  execFileSync('git', ['-C', R, 'add', '-A'], { env });
+  execFileSync('git', ['-C', R, 'commit', '-qm', 'init'], { env });
+  setPolicyFor('renumber', 'open');
+  const rb = (...a) => { try {
+      return { out: execFileSync('bash', [BB, ...a], { cwd: R, env }).toString(), code: 0 };
+    } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; } };
+  const file = () => readFileSync(`${R}/CHANGELOG.md`, 'utf8');
+  rb('changelog', 'add', 'First feature', '--cat', 'Added');
+  rb('version', 'bump', 'minor');
+  ok(/## 0\.2\.0/.test(file()), 'a bump dates the section as ever');
+  rb('changelog', 'add', 'Second feature', '--cat', 'Added');
+  const set = rb('version', 'set', '0.5.0');
+  const f = file();
+  ok(set.code === 0 && !/## 0\.2\.0/.test(f) && /## 0\.5\.0: [\d-]+\n\n### Added\n\n- First feature[^\n]*\n- Second feature/.test(f),
+     `set to 0.5.0 from an unreleased 0.2.0 dates 0.2.0's notes as 0.5.0's, with what came after (${JSON.stringify(f.slice(0, 400))})`);
+  ok(/never released/.test(set.out), '...and says so');
+  execFileSync('git', ['-C', R, 'tag', '-a', 'v0.5.0', '-m', 'r'], { env });
+  rb('changelog', 'add', 'Third feature', '--cat', 'Added');
+  rb('version', 'set', '0.6.0');
+  ok(/## 0\.5\.0/.test(file()) && /## 0\.6\.0/.test(file()), 'a released number keeps its section when the version is set past it');
+}
+
 // ---- what a review pass caught, kept caught ------------------------------
 // A project release tag must not stamp a component: the repo-wide vX.Y.Z
 // says nothing about the extension, even when the numbers coincide.
@@ -925,6 +969,10 @@ await ready(page);
 await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
+// One section open at a time in a notebook (the operator, 5 Oct): Build is
+// first, so Version is opened.
+await page.waitForSelector(`${NB} [data-sect="artifacts:version"]`, { timeout: 20000 });
+await openFold(page, `${NB} [data-sect="artifacts:version"]`);
 await page.waitForSelector('#verBox .verln', { timeout: 20000 });
 
 async function waitTarget(want, ms = 20000){
@@ -996,7 +1044,7 @@ await page.click(`${NB} #verBox [data-verbump="minor"]`);
 ok(!/staged:/.test(await page.$eval(`${NB} #verBox`, e => e.textContent)),
    '...and pressing it again unstages, no dialog needed');
 await page.click(`${NB} #verBox [data-verbump="minor"]`);
-await page.click(`${NB} #roadmapSaveQuiet`);
+await page.click(`${NB} [data-ssave="artifacts:version"]`);
 await waitTarget('0.5.0');
 ok((await rows())['building towards'] === '0.5.0',
    'Save commits the staged bump: the operator can, whatever the policy');
@@ -1008,14 +1056,14 @@ ok(!execFileSync('git', ['-C', A, 'status', '--porcelain'], { env }).toString().
 
 // The policy control is the answer to "when should this be incremented" for
 // a session: the operator decides how much of the decision to delegate.
-// Staged like a bump: the pick alone writes nothing, and the foot's Save
-// is what commits it (docs/design-language.md, Settings).
+// Staged like a bump: the pick alone writes nothing, and the Version
+// section's own Save is what commits it (docs/design-language.md, Settings).
 await page.selectOption(`${NB} #verPolicy`, 'minor');
 await page.waitForFunction(() => [...document.querySelectorAll('.nb #verBox .verpol')]
   .some(e => /staged: on Save/.test(e.textContent)), null, { timeout: 10000 });
 ok((await page.evaluate(async () => (await (await fetch('/api/version?project=alpha')).json()).policy)) !== 'minor',
    'picking a policy stages it and writes nothing yet');
-await page.click(`${NB} #roadmapSaveQuiet`);
+await page.click(`${NB} [data-ssave="artifacts:version"]`);
 await page.waitForFunction(async () => {
   const r = await fetch('/api/version?project=alpha');
   return (await r.json()).policy === 'minor';
@@ -1439,6 +1487,7 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
   chmodSync(`${S}/tools/version-stamp`, 0o755);
   execFileSync('git', ['-C', S, 'add', '-A'], { env });
   execFileSync('git', ['-C', S, 'commit', '-qm', 'first'], { env });
+  registerProject('stampproj');      // made here, not by create (R154)
   setPolicyFor('stampproj', 'minor');
   const sb = (...a) => { try {
       return { out: execFileSync('bash', [BB, 'version', ...a], { cwd: S, env }).toString(), code: 0 };
@@ -1566,6 +1615,7 @@ ok((await page.errors).every(e => /400/.test(e)),
   g('checkout', '-q', 'claude/polish');
 
   const LNB = nb('landproj');
+  await takeOn('landproj');            // made by hand here, so the owner takes it on (R135)
   await refreshUntil(page, () => state?.projects?.some(p => p.name === 'landproj'), { timeout: 20000 });
   await page.evaluate(() => openNotebook('landproj', 'artifacts'));
   await page.waitForSelector(`${LNB} #verBox [data-verbump="minor"]`, { timeout: 20000 });
@@ -1596,7 +1646,7 @@ ok((await page.errors).every(e => /400/.test(e)),
   });
   ok(look.warn === look.red && look.plain !== look.red && look.lefts[0] === look.lefts[1],
      `...in red beside the staged line's yellow, and in the same column (${JSON.stringify(look)})`);
-  await page.click(`${LNB} #roadmapSaveQuiet`);
+  await page.click(`${LNB} [data-ssave="artifacts:version"]`);
   await page.waitForFunction(sel => [...document.querySelectorAll(sel)]
     .some(m => /0\.8\.0 is committed on/.test(m.textContent)), `.nb #verBox .vermark`, { timeout: 20000 }).catch(() => {});
   const now = (await marks()).find(m => /is committed on/.test(m.text));
@@ -1656,4 +1706,23 @@ execFileSync('git', ['-C', A, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', B, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', A, 'remote', 'add', 'origin',
                      'git@github.com:owner/alpha.git'], { env });
+// ---- Move the version, with the other Claude may dials (B448) ---------------
+// An owner who set every dial on the settings panel to auto still found the
+// version locked, since the policy lived on the Artifacts tab alone. The
+// panel carries it now and writes the same policy.
+{
+  await page.evaluate(() => { document.querySelectorAll('.modal:not([hidden])').forEach(m => { m.hidden = true; }); renameProject('alpha'); });
+  await page.waitForSelector('#rnmodal:not([hidden]) #rnGateVersion', { timeout: 15000 });
+  const was = await page.$eval('#rnGateVersion', e => ({ v: e.value, opts: [...e.options].map(o => o.value).join() }));
+  ok(was.opts === 'locked,start,patch,minor,open', `the settings carry Move the version with the policy's five choices (${was.opts}, now ${was.v})`);
+  await page.selectOption('#rnGateVersion', 'minor');
+  await saveDialog(page);
+  await page.waitForFunction(async () => {
+    const j = await (await fetch('/api/status')).json();
+    return (j.projects || []).find(p => p.name === 'alpha')?.version_policy === 'minor';
+  }, null, { timeout: 20000, polling: 500 });
+  ok(true, '...and saving the dialog sets the policy the Artifacts tab shows');
+  await page.evaluate(() => postJSON('/api/version', { project: 'alpha', action: 'policy', policy: 'locked' }));
+}
+
 await done(browser);

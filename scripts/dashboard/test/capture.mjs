@@ -3,7 +3,7 @@
 // hard changes, so the answer is known: three frames, at 0, 2.0 and 3.5s.
 // ffmpeg is a toolchain recipe rather than a given, so a node without it
 // says so and this skips rather than failing for a tool it never had.
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { ok, done, DIR } from './lib.mjs';
 
@@ -25,6 +25,48 @@ if (ff.status !== 0){
     '-i', 'color=c=navy:size=640x400:rate=10:duration=5',
     '-vf', "drawbox=x=100:y=100:w=300:h=150:color=orange:t=fill:enable='gte(t,2)',drawbox=x=420:y=40:w=150:h=300:color=white:t=fill:enable='gte(t,3.5)'",
     `${S}/cut.mp4`]);
+  // A change the size of a typed letter on a phone screen (Shebang-DevBoard,
+  // 30 Sep): a 20x40 block on 1080x2400 scores about 0.0003, dropped at a
+  // page's threshold, which then says so and how to look closer; kept at
+  // the emulator's.
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi',
+    '-i', 'color=c=white:size=1080x2400:rate=10:duration=4',
+    '-vf', "drawbox=x=130:y=1430:w=26:h=44:color=black:t=fill:enable='gte(t,1.5)',drawbox=x=160:y=1430:w=26:h=44:color=black:t=fill:enable='gte(t,2.5)'",
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', `${S}/letters.mp4`]);
+  const coarse = reel('--video', `${S}/letters.mp4`, '--name', 'letters');
+  const fine = reel('--video', `${S}/letters.mp4`, '--name', 'letters2', '--threshold', '0.0002');
+  const kept = n => (JSON.parse(readFileSync(`${S}/dist/reel/${n}/frames.json`, 'utf8')).frames || []).map(f => f.t);
+  ok(kept('letters').length === 1 && /nothing moved past a scene score of 0.02/.test(coarse.stderr) && /--threshold lower/.test(coarse.stderr),
+     `a letter-sized change is below a page's threshold, and the reel says so and how to see it (${coarse.stderr.trim().split('\n').pop().slice(0, 90)})`);
+  ok(fine.status === 0 && kept('letters2').length === 3 && Math.abs(kept('letters2')[1] - 1.5) < 0.2 && Math.abs(kept('letters2')[2] - 2.5) < 0.2,
+     `...and at the emulator's threshold each letter is a frame at its time (${JSON.stringify(kept('letters2'))})`);
+  ok(/THRESHOLD = \{"emu": 0\.0002\}/.test(readFileSync(`${REPO}/scripts/lib/reel.py`, 'utf8')),
+     '...which is the default for a reel of the emulator');
+  cap('prune', `${S}/dist`, 'letters', 'letters2');
+  // Every frame the recording has, not ten a second of it: a 60fps capture
+  // of a 50 ms flash reels the flash; read at --fps 10, as every reel used
+  // to be, it can fall between two looks (Shebang-DevBoard, 1 Oct: the
+  // keyboard's slide could not be seen).
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi',
+    '-i', 'color=c=navy:size=320x240:rate=60:duration=2',
+    '-vf', "drawbox=x=40:y=40:w=200:h=150:color=orange:t=fill:enable='between(t,1.02,1.07)'",
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', `${S}/flash.mp4`]);
+  const all = reel('--video', `${S}/flash.mp4`, '--name', 'flash');
+  const sparse = reel('--video', `${S}/flash.mp4`, '--name', 'flash10', '--fps', '10');
+  const flashLog = JSON.parse(readFileSync(`${S}/dist/reel/flash/frames.json`, 'utf8'));
+  const sparseLog = JSON.parse(readFileSync(`${S}/dist/reel/flash10/frames.json`, 'utf8'));
+  ok(all.status === 0 && flashLog.frames.length === 3 && Math.abs(flashLog.frames[1].t - 1.02) < 0.04
+     && Math.abs(flashLog.recorded_fps - 60) < 1 && flashLog.fps === flashLog.recorded_fps,
+     `a reel looks at every frame the recording has: a 50 ms flash at 60fps is seen on and off (${
+       JSON.stringify(flashLog.frames.map(f => f.t))}, recorded ${flashLog.recorded_fps}fps)`);
+  ok(sparse.status === 0 && sparseLog.fps === 10 && Math.abs(sparseLog.recorded_fps - 60) < 1
+     && sparseLog.frames.length < flashLog.frames.length,
+     `...while --fps 10 looks ten times a second and says both rates (${sparseLog.frames.length} frames)`);
+  const slow = reel('--video', `${S}/letters.mp4`, '--name', 'slow', '--threshold', '0.0002');
+  ok(/about 10 frames a second, so anything shorter than 100 ms can fall between two of them/.test(slow.stderr),
+     `...and a recording as sparse as a software-rendered emulator's says what a frame is worth (${
+       (slow.stderr.match(/about [^;]*/) || ['nothing'])[0].slice(0, 90)})`);
+  cap('prune', `${S}/dist`, 'flash', 'flash10', 'slow');
   const r = reel('--video', `${S}/cut.mp4`, '--name', 'cut');
   const log = existsSync(`${S}/dist/reel/cut/frames.json`) ? JSON.parse(readFileSync(`${S}/dist/reel/cut/frames.json`, 'utf8')) : null;
   const ts = (log?.frames || []).map(f => f.t);
@@ -60,11 +102,156 @@ if (ff.status !== 0){
   ok(none.status !== 0 && /prune NAME\.\.\. removes those; --days N/.test(none.stderr), 'prune with nothing to go by says what it takes');
   const missing = cap('prune', `${S}/dist`, 'nope');
   ok(missing.status !== 0 && /no such capture: nope; bb capture ls names them/.test(missing.stderr), 'a name that is not there is refused, naming ls');
+  const work = JSON.parse(readFileSync(`${S}/dist/reel/cut/frames.json`, 'utf8')).work;
   const byName = cap('prune', `${S}/dist`, 'cut');
+  ok(work && !existsSync(work), `pruning a reel takes its working files on this machine with it (report 42: ${work})`);
   ok(byName.status === 0 && !existsSync(`${S}/dist/reel/cut`) && /no captures/.test(cap('ls', `${S}/dist`).stderr),
      'prune NAME lets a capture go now whatever its age');
 }
+// --emu PKG launches the package only when it is not already on the screen
+// (B387): a launch restarts its launcher activity, and the keyboard, dialog
+// or deep screen a session had just driven into place was gone from the
+// shot. adb is stood in for by a script that answers get-state, the window
+// dump from a file, and screencap with one fixed picture, and logs a launch.
+{
+  const A = `${S}/adb`; mkdirSync(A, { recursive: true });
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kAAAAABJRU5ErkJggg==', 'base64');
+  writeFileSync(`${A}/frame.png`, png);
+  writeFileSync(`${A}/adb`, `#!/bin/sh
+case "$1 $2 $3" in
+  "get-state  ") echo device ;;
+  "shell dumpsys window") cat "${A}/windows.txt" ;;
+  "shell monkey "*) echo "monkey $4 $5" >> "${A}/log" ;;
+  "exec-out screencap -p") cat "${A}/frame.png" ;;
+esac
+exit 0
+`, { mode: 0o755 });
+  const shot = (name, windows) => {
+    writeFileSync(`${A}/windows.txt`, windows);
+    writeFileSync(`${A}/log`, '');
+    const r = spawnSync('python3', [`${REPO}/scripts/lib/capture.py`, 'shot', '--emu', 'dev.x', '--now', `${A}/${name}.png`],
+                        { encoding: 'utf8', env: { ...env, BB_CAPTURE_ADB: `${A}/adb` } });
+    return { r, launched: readFileSync(`${A}/log`, 'utf8').trim() };
+  };
+  const front = shot('front', '  mCurrentFocus=Window{1a2b u0 dev.x/dev.x.Main}\n');
+  ok(front.r.status === 0 && front.launched === '' && existsSync(`${A}/front.png`),
+     `a package whose activity has the focus is not launched again (${front.launched || 'no launch'}; ${(front.r.stderr || '').trim().slice(0, 60)})`);
+  const ime = shot('ime', '  Window #7 Window{9c u0 InputMethod}\n    mOwnerUid=10123 showForAllUsers=false package=dev.x appop=NONE\n    isVisible=true\n  Window #8 Window{2d u0 com.other/.Main}\n  mCurrentFocus=Window{2d u0 com.other/com.other.Main}\n');
+  ok(ime.r.status === 0 && ime.launched === '',
+     `...nor one whose keyboard is up over another app's window (${ime.launched || 'no launch'})`);
+  const away = shot('away', '  Window #8 Window{2d u0 com.other/.Main}\n  mCurrentFocus=Window{2d u0 com.other/com.other.Main}\n');
+  ok(away.r.status === 0 && /^monkey dev\.x/.test(away.launched),
+     `...and one that is not on the screen is launched first (${away.launched})`);
+}
+
+// A timed touch (R101): touch.py finds the panel and the screen through adb
+// and sends the whole gesture as one shell of sendevent lines with sleeps,
+// in the panel's own range, turned with the screen. The same stand-in adb,
+// answering getevent -p, wm size and dumpsys input from files, and logging
+// the shell it is handed.
+{
+  const A = `${S}/adb2`; mkdirSync(A, { recursive: true });
+  writeFileSync(`${A}/adb`, `#!/bin/sh
+case "$1 $2 $3" in
+  "shell getevent -p") printf 'add device 1: /dev/input/event3\n  name:     "qwerty2"\n  events:\n    KEY (0001): 0001\nadd device 2: /dev/input/event2\n  name:     "virtio_input_multi_touch_1"\n  events:\n    ABS (0003): 002f  : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0\n                0035  : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0\n                0036  : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0\n' ;;
+  "shell wm size") echo "Physical size: 1080x2400" ;;
+  "shell dumpsys input") cat "${A}/rotation.txt" ;;
+  "shell id -u") cat "${A}/uid" 2>/dev/null || echo 0 ;;
+  "shell getprop ro.debuggable") echo 1 ;;
+  "root  ") echo 0 > "${A}/uid"; echo root >> "${A}/rooted" ;;
+  "wait-for-device  ") : ;;
+  "shell "*) printf '%s\n' "$2" >> "${A}/log" ;;
+esac
+exit 0
+`, { mode: 0o755 });
+  const touch = (...a) => {
+    writeFileSync(`${A}/log`, '');
+    const r = spawnSync('python3', [`${REPO}/scripts/lib/touch.py`, ...a],
+                        { encoding: 'utf8', env: { ...env, BB_CAPTURE_ADB: `${A}/adb` } });
+    // The gesture is the last shell it is handed; a glide's first is the
+    // measure of what one move costs (B502), which this adb cannot time.
+    return { r, sent: readFileSync(`${A}/log`, 'utf8').trim().split('\n').at(-1).split(';') };
+  };
+  writeFileSync(`${A}/rotation.txt`, '  SurfaceOrientation: 0\n');
+  const tap = touch('tap', '540', '1200');
+  ok(tap.r.status === 0 && tap.sent[0] === 'sendevent /dev/input/event2 3 47 0'
+     && tap.sent.includes('sendevent /dev/input/event2 3 53 16398') && tap.sent.includes('sendevent /dev/input/event2 3 54 16390')
+     && tap.sent.at(-2) === 'sendevent /dev/input/event2 3 57 -1' && !tap.sent.some(l => l.startsWith('sleep'))
+     && /^tap 540,1200: 11 events on \/dev\/input\/event2, about 0 ms$/.test(tap.r.stdout.trim()),
+     `a tap finds the panel, scales the screen pixel into its range, and lifts (${tap.r.stdout.trim()} ${(tap.r.stderr || '').trim().slice(0, 80)})`);
+  const hold = touch('hold', '100', '100', '--ms', '700');
+  ok(hold.r.status === 0 && hold.sent.includes('sleep 0.7') && hold.sent.indexOf('sleep 0.7') < hold.sent.indexOf('sendevent /dev/input/event2 3 57 -1'),
+     'a hold keeps the finger down for its time before lifting');
+  // The path is a hand's (R127): a sample every 10 ms. A ruler hand is the
+  // straight even stroke, 500 px at 2000 px/s, 25 samples.
+  const glide = touch('glide', '100', '1000', '600', '1000', '--hand', 'ruler', '--pre', '150', '--hold', '300');
+  const moves = glide.sent.filter(l => l === 'sleep 0.01').length;
+  ok(glide.r.status === 0 && moves === 25 && glide.sent[8] === 'sleep 0.15' && glide.sent.at(-4) === 'sleep 0.3'
+     && /about 700 ms/.test(glide.r.stdout) && /ruler hand/.test(glide.r.stdout),
+     `a ruler glide moves in samples 10 ms apart, holding first and last where asked (${moves} moves; ${glide.r.stdout.trim()})`);
+  // The default hand bows, wobbles and overshoots, and says its seed, so the
+  // same stroke can be sent again.
+  const handed = touch('glide', '100', '1000', '600', '1000');
+  const seed = (handed.r.stdout.match(/seed (\d+)/) || [])[1];
+  const ys = new Set(handed.sent.filter(l => /^sendevent \S+ 3 54 /.test(l)));
+  const again = touch('glide', '100', '1000', '600', '1000', '--seed', seed || '0');
+  ok(handed.r.status === 0 && seed && ys.size > 3 && again.sent.join('\n') === handed.sent.join('\n'),
+     `a normal hand's glide wanders off the line (${ys.size} distinct y) and repeats exactly by its seed (${seed})`);
+  // A fresh cold boot's adbd runs as shell; sendevent needs root, which a
+  // debuggable image grants on adb root, so touch asks for it first
+  // (reports 44 and 45: a quick boot had been restoring a root adbd).
+  writeFileSync(`${A}/uid`, '2000\n');
+  const rooted = touch('tap', '540', '1200');
+  ok(rooted.r.status === 0 && readFileSync(`${A}/rooted`, 'utf8').trim() === 'root'
+     && rooted.sent[0] === 'sendevent /dev/input/event2 3 47 0' && /running adb root/.test(rooted.r.stderr),
+     `a shell that is not root is made root first on a debuggable image, and the tap goes through (${(rooted.r.stderr || '').trim().slice(0, 80)})`);
+  writeFileSync(`${A}/rotation.txt`, '  SurfaceOrientation: 1\n');
+  const turned = touch('tap', '2399', '0');
+  ok(turned.r.status === 0 && turned.sent.includes('sendevent /dev/input/event2 3 53 32767') && turned.sent.includes('sendevent /dev/input/event2 3 54 32767')
+     && /rotation 1/.test(turned.r.stdout),
+     `a landscape tap is turned into the panel's own frame (${turned.r.stdout.trim()})`);
+  const bad = touch('glide', '1', '2');
+  ok(bad.r.status !== 0 && /a glide needs at least two points/.test(bad.r.stderr), 'a glide of one point is refused in words');
+  const noms = touch('hold', '1', '2');
+  ok(noms.r.status !== 0 && /hold takes --ms N/.test(noms.r.stderr), '...and a hold without its time');
+}
+
 // The sources refuse in their own words when the node lacks what they need.
+// An emulator another session holds (30 Sep): the AVD is the account's,
+// the emulator in that session's own view, so adb here lists nothing. The
+// emulator's lock on the AVD says it is running; status, start and stop
+// name it rather than saying none is running or waiting for one that
+// refuses to run twice.
+{
+  const home = `${S}/avdhome`;
+  mkdirSync(`${home}/builderbot-36.avd`, { recursive: true });
+  mkdirSync(`${home}/running`, { recursive: true });
+  writeFileSync(`${home}/builderbot-36.ini`, `path=${home}/builderbot-36.avd\n`);
+  writeFileSync(`${home}/builderbot-36.avd/config.ini`, 'image.sysdir.1=x\n');
+  writeFileSync(`${home}/builderbot-36.avd/multiinstance.lock`, '');
+  writeFileSync(`${home}/running/pid_4242.ini`, 'avd.name=builderbot-36\nport.adb=5555\n');
+  const bin = `${S}/emubin`;
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(`${bin}/adb`, '#!/bin/sh\n[ "$1" = devices ] && echo "List of devices attached"; exit 0\n', { mode: 0o755 });
+  writeFileSync(`${bin}/emulator`, '#!/bin/sh\necho "emulator ran" >&2; exit 1\n', { mode: 0o755 });
+  const emu = (...a) => spawnSync('bash', [`${REPO}/scripts/bb`, 'emu', ...a], { encoding: 'utf8',
+    env: { ...process.env, ANDROID_AVD_HOME: home, ANDROID_AVD_NAME: 'builderbot-36', PATH: `${bin}:${process.env.PATH}`,
+           BUILDERBOT_ROLE: 'node', HOME: `${S}/emuhome` } });
+  const holder = spawn('flock', [`${home}/builderbot-36.avd/multiinstance.lock`, 'sleep', '600'], { detached: true, stdio: 'ignore' });
+  await new Promise(r => setTimeout(r, 400));
+  const t0 = Date.now();
+  const st = emu('status'), start = emu('start'), stop = emu('stop');
+  // Its whole group: flock's sleep holds the lock too.
+  try { process.kill(-holder.pid, 'SIGTERM'); } catch {}
+  console.log(`[emu held] three calls took ${Date.now() - t0} ms`);
+  ok(/builderbot-36 is running in another of your sessions on this node/.test(st.stdout) && !/no emulator is running/.test(st.stdout),
+     `bb emu status names an emulator another session holds (${st.stdout.trim().split('\n').pop().slice(0, 80)})`);
+  ok(start.status !== 0 && /running in another of your sessions/.test(start.stderr) && !/emulator ran/.test(start.stderr),
+     `...bb emu start refuses at once, starting nothing (${start.stderr.trim().split('\n').pop().slice(0, 80)})`);
+  ok(/running in another of your sessions/.test(stop.stderr), '...and bb emu stop says whose it is to stop');
+  await new Promise(r => setTimeout(r, 200));
+  ok(/no emulator is running/.test(emu('status').stdout), '...and with the lock let go, none is running');
+}
 const noSrc = reel('--name', 'x');
 ok(noSrc.status !== 0 && /one source: --video FILE, --url URL, --emu \[PKG\] or --display :N/.test(noSrc.stderr || ''),
    `no source is refused naming the four (${(noSrc.stderr || '').trim().slice(0, 70)})`);
@@ -75,27 +262,43 @@ const noVid = reel('--video', `${S}/none.mp4`);
 ok(noVid.status !== 0 && /no such video/.test(noVid.stderr || ''), 'a video that is not there is refused');
 // bb capture shot at rest: shots a quarter second apart until two match, so a page
 // whose element lands late is pictured after it does. A page of this
-// suite's own, served here, draws its heading after a second and a half;
-// the immediate shot and the settled one differ, and two settled ones are
-// the same bytes, since nothing on the page moves after that. The element
-// lands inside the second bb capture shot waits for; a page that changes later than
-// that is a page bb capture shot cannot know about, and --wait is for it.
+// suite's own, served here, draws its heading at 700 ms: two settled shots
+// of it carry the heading and are the same bytes, since nothing moves after
+// that, and an immediate shot of a page whose heading comes much later
+// carries none. The heading lands inside the second bb capture shot waits
+// for; a page that changes later than that is one it cannot know about,
+// and --wait is for it.
 {
   const { spawn } = await import('node:child_process');
   const web = `${S}/web`; mkdirSync(web, { recursive: true });
-  writeFileSync(`${web}/index.html`, '<!doctype html><body style="margin:0;background:#fff">'
-    + '<script>setTimeout(() => { document.body.innerHTML = "<h1 style=\'font:48px sans-serif\'>late</h1>"; }, 700)</script></body>');
+  // Two pages (B392). The settled shots take the one whose heading lands
+  // at 700 ms, inside the second a settle waits. The --now shot takes one
+  // whose heading lands at 20 s: shooting the 700 ms page with --now had to
+  // beat its timer, and a headless shot on a box at a load near ten did not.
+  const late = ms => '<!doctype html><body style="margin:0;background:#fff">'
+    + `<script>setTimeout(() => { document.body.innerHTML = "<h1 style='font:48px sans-serif'>late</h1>"; }, ${ms})</script></body>`;
+  writeFileSync(`${web}/index.html`, late(700));
+  writeFileSync(`${web}/slow.html`, late(20000));
   const port = 30000 + Math.floor(Math.random() * 20000);
   const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: web, stdio: 'ignore' });
-  await new Promise(r => setTimeout(r, 1200));
-  const shot = (file, ...flags) => spawnSync('bash', [`${REPO}/scripts/bb`, 'capture', 'shot', `http://127.0.0.1:${port}/`, file, ...flags],
+  // Until it answers rather than a fixed 1.2 s, which a loaded box can miss.
+  for (let i = 0; i < 150; i++){
+    try { if ((await fetch(`http://127.0.0.1:${port}/`)).ok) break; } catch {}
+    await new Promise(r => setTimeout(r, 100));
+  }
+  const shot = (page, file, ...flags) => spawnSync('bash', [`${REPO}/scripts/bb`, 'capture', 'shot', `http://127.0.0.1:${port}/${page}`, file, ...flags],
     { encoding: 'utf8', env: { ...process.env, DASHBOARD_PORT: '1' } });
-  const now = shot(`${S}/now.png`, '--now'), one = shot(`${S}/one.png`, '--settle'), two = shot(`${S}/two.png`, '--settle');
+  const now = shot('slow.html', `${S}/now.png`, '--now'), one = shot('', `${S}/one.png`, '--settle'), two = shot('', `${S}/two.png`, '--settle');
   srv.kill();
   const bytes = f => existsSync(f) ? readFileSync(f) : Buffer.alloc(0);
   ok(now.status === 0 && one.status === 0 && two.status === 0 && bytes(`${S}/one.png`).length > 0
      && !bytes(`${S}/now.png`).equals(bytes(`${S}/one.png`)) && bytes(`${S}/one.png`).equals(bytes(`${S}/two.png`)),
      `bb capture shot --settle pictures a page after its late element lands, and --now pictures it before (${
         [now, one, two].map(r => r.status).join('/')}; ${(one.stderr || '').trim().slice(0, 60)})`);
+  // B535: the server is gone now. A page that does not answer is no
+  // picture and a failure, where it was Chromium's error page and exit 0.
+  const gone = shot('', `${S}/gone.png`, '--now');
+  ok(gone.status === 3 && !existsSync(`${S}/gone.png`) && /did not answer/.test(gone.stderr || ''),
+     `...and a page that does not answer is no picture and exit 3, saying so (${gone.status}; ${(gone.stderr || '').trim().slice(0, 80)})`);
 }
 await done();

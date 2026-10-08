@@ -65,11 +65,11 @@ write_json = None
 FILE = None
 STATE = None
 
-KINDS = ("roadmap", "bugs", "rules", "settings", "design")
+KINDS = ("roadmap", "bugs", "rules", "settings", "design", "wiki")
 MODES = ("auto", "ask", "deny")
 # What each tab calls an entry, for the refusal and the held line.
 NOUN = {"roadmap": "roadmap items", "bugs": "bug reports", "rules": "rules",
-        "settings": "build and test settings"}
+        "settings": "build and test settings", "wiki": "wiki pages"}
 # Held records per project. A session that files sixty things nobody has
 # looked at is a session talking to itself; the limit says so.
 MAX_PENDING = 60
@@ -143,7 +143,8 @@ def refusal(kind):
     """The sentence a session gets under deny: quotable, and it says what
     to do instead."""
     label = {"roadmap": "Add to roadmap", "bugs": "File bugs", "rules": "Add rules",
-             "settings": "Fill in build and test", "design": "Add to the design"}.get(kind, kind)
+             "settings": "Fill in build and test", "design": "Add to the design",
+             "wiki": "Write the wiki"}.get(kind, kind)
     return (f"this project's setting Claude may: {label} is deny, so this "
             f"was not filed: say it in your reply instead, and the operator adds it "
             "if they agree")

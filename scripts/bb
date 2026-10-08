@@ -22,6 +22,12 @@ set -euo pipefail
 BB_LIB="$(dirname "$(readlink -f "$0")")/lib"
 export BB_LIB
 
+# The reference's entries for one verb: each line that starts `bb VERB `,
+# with the indented lines that continue it. Fails when there are none.
+verb_help() {
+    usage | awk -v v="$1" '/^bb / { on = ($2 == v) } on { print; n++ } END { exit n ? 0 : 1 }'
+}
+
 usage() {
     # The one owner of the bb reference: README.md's block is written from
     # this by tools/readme-bb-ref.sh, and bb lint fails when the two differ
@@ -58,12 +64,36 @@ bb version bump major|minor|patch    move the target, if the policy allows it.
                    the bump rather than leaving the number moved and its twin
                    behind. A repo without one is unaffected
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
-bb version unbump      take an unreleased bump back; its changelog section
-                   dissolves into Unreleased, the code stays
+bb version set X.Y.Z   straight to a later version in one commit, allowed
+                   when the policy allows the largest part it moves; from a
+                   number never released (no tag), its changelog section is
+                   dated as the new one
+bb version unbump      take the last unreleased bump or set back; its
+                   changelog section dissolves into Unreleased, the code
+                   stays. Once: the bump before it is not taken back too.
+                   A section dated under the wrong number is fixed with
+                   unbump, then set to the number meant
+bb version release --why "..."
+                   tag this commit and publish the release, as Release on the
+                   Artifacts tab does, on the controller with the project's own
+                   credentials. The project's settings say whether Claude may
+                   (Tag and publish a release): auto releases, ask waits for
+                   the project's owner, with --why as the reason
+bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
+                   change the published release under the same setting, each
+                   edit its own ask: the notes replaced whole (- reads stdin),
+                   a build in dist/ or a committed file attached (one of the
+                   same name replaced), (asset:NAME) in the notes the address
+                   of that file on the release, for a screenshot
+bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
+                   take files off the published release, named as the forge
+                   lists them: its own ask under the same setting, never part
+                   of an edit, the names checked against the release first
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
-bb version policy  what a session may move here, and who decides. The
-                   operator picks it on the Artifacts tab, before or after
+bb version policy  what a session may move here, and who decides. A
+                   person picks it in the project's settings (Claude may:
+                   Move the version) or on the Artifacts tab, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
                    after), patch, patch and minor, or anything
@@ -100,19 +130,10 @@ bb changelog rm N        drop one that stopped being true
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
-                   run on. Nothing is copied anywhere
-bb login --check   what THIS machine is signed in as, told to the controller,
-                   and a sign-out taken here. The grant never travels: every
-                   failure this had came from one OAuth pair living on several
-                   machines: a refresh rotates the refresh token, so two
-                   copies sign each other out, and a machine that was away
-                   holds one the server has retired. Each machine signs in for
-                   itself and keeps the grant it alone refreshes. What crosses
-                   the wire is "I am signed in as X" going up and a generation
-                   coming back; behind means the account was signed out while
-                   this machine was not listening, and the answer is
-                   `claude auth logout` here. Run on every connection and
-                   every prompt
+                   run on. Nothing is copied anywhere: each node is signed in
+                   for itself, from its row on the Nodes tab or with this
+bb login --check   what THIS machine is signed in as, told to the controller.
+                   The login itself never travels
 bb git push|fetch|pull|ls-remote [ARGS]
 bb git policy      what a session may push here (its own branches, main) from
                    the project's Git view; the controller enforces it on the
@@ -121,9 +142,40 @@ bb git policy      what a session may push here (its own branches, main) from
                    are the operator's whatever the two settings say
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
-bb emu start [api] | stop | status | list | log [-p]
+bb emu start [api] | stop | status | list | log [-p] | adopt
+                   the project's own emulator: its phones are this project's
+                   alone, made on the first start; adopt moves the account's
+                   phones from before that into this project, once
+bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS] [--mark FILE]
+                   a timed touch on the running emulator, in screen pixels;
+                   a glide moves like a hand (steady, normal, shaky, or
+                   ruler for the straight even stroke), repeatable by seed,
+                   at the pace asked whatever a move costs the device;
+                   --mark FILE is made when the finger arrives to be held
+bb gpu             this node's NVIDIA card: how much of its memory is free, who is
+                   computing on it, and whether this session may
+bb gpu run [--mem MB] -- CMD
+                   CMD with a turn on the card: one heavy job at a time per node, waiting
+                   for its turn and for MB of free memory rather than failing on a full card
+bb tidy [--keep emulator|gpu|gradle|browser|server|tmp]... [--dry]
+                   after a task or a batch of them, give back what it left holding:
+                   this session's emulator (through bb emu stop), anything else of
+                   its own on the NVIDIA card, its Gradle and Kotlin daemons, the
+                   headless browsers a test left behind, a server it put in the
+                   background and left listening (a dev server, a preview), and its
+                   own files in /tmp, which in a session is memory; --keep one, with
+                   the reason in your reply
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
+bb node busy [--json]
+                   whether this node is quiet enough to time anything on: its load,
+                   memory and card (what holds the card's memory, by kind), what
+                   runs there by kind (emulators, Gradle, compilers, browsers,
+                   other Claude sessions working, other projects' jobs, counted
+                   and never named) and a verdict: quiet, busy, saturated
+bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
+                   wait until it is (quiet twice, ten seconds apart), before a
+                   measurement; exits 1, saying how busy, if it never was
 bb nodes           the machines enrolled as nodes, read-only in a terminal;
                    the Nodes tab is where they are edited
 bb settings        this project's settings as the dashboard has them: node,
@@ -186,6 +238,28 @@ bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]
                    one of those, under the same setting; --container NAME on the
                    other verbs reaches one written for this project
+bb sign FILE [--for play|sideload] [--why "..."]
+                   sign a build in dist/ with one of the project's keys, on its
+                   node, as a job this session cannot look inside: the key and
+                   its password never reach the session. --for play is the Play
+                   upload key (the default for an .aab), sideload the app signing
+                   key (the default for an .apk). The project's settings say
+                   whether Claude may (Sign a build): auto signs, ask waits for
+                   the project's owner to allow it, with --why as the reason.
+                   Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
+                   with that key; without it, the key the build's package is
+                   mapped to, else the project's default
+bb sign keys       the project's keys by name, their fingerprints and which
+                   package each signs (never a key or a password)
+bb sign key new NAME --for play|sideload --why "..."
+bb sign map PACKAGE KEY --why "..."
+bb sign rotate OLD NEW --why "..."
+                   a new key made on the controller, or an app's package mapped
+                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   keys: auto does it, ask waits for the project's owner. rotate
+                   moves the apps OLD's sideload key signs to NEW's: builds go out
+                   signed with both and a proof, Android 9 and newer take NEW,
+                   older devices keep checking OLD, which is kept for good
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -242,6 +316,8 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    image that carries its tests: one built to ship has none, and a run inside it finds
                    nothing and passes. Claude may: Run its container is not asked: a test runs in a
                    container that is already up
+bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
+                   or a browser, in under a second; preflight runs it before any suite
 bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.
@@ -273,6 +349,16 @@ bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
                    puts a design language it was given into the notebook
+bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
+                   who changed each last, and where it is pushed
+bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
+bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
+                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   for the operator, deny refuses it, hidden keeps the whole
+                   wiki from a session, reading included. A page changed since the
+                   save began is refused rather than overwritten
+bb wiki rm NAME [--why "..."]   take a page out, under the same setting
+bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
 bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile tab lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
@@ -292,6 +378,25 @@ bb phone run --why "..." -- adb args...
                    ask to reach it: the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb phone lease     whether the phone is lent to this project, for how long, and
+                   which of its apps the lease covers. While lent, each of
+                   these asks the phone's owner and runs on their Allow
+                   (--why "..." is the sentence they read), or at once
+                   once they allowed this session's commands:
+bb phone install dist/APP.apk   install one of this project's builds; its
+                   package joins the lease
+bb phone start|stop|ime|log PKG   run, stop, pick as keyboard, or read the
+                   logcat of a lease app
+bb phone shot      the screen, into dist/phone/
+bb phone record [SECONDS] | record start [SECONDS] | record stop
+                   a video into dist/phone/, with its reel beside it (the
+                   frames that changed, with their times, in one picture);
+                   start leaves it running while touches work the phone,
+                   stop collects it
+bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--seed N] |
+                   text "..." | key back|enter|del|tab|space|up|down|left|right
+                   only while a lease app is in front or is the keyboard;
+                   bb phone ui prints the screen's layout under the same rule
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,
@@ -317,7 +422,9 @@ bb catchup         what has happened here lately: commits with the first line
                    box archived, and which image it is actually running
                    (`--since 7d`, `-n COMMITS`)
 bb ci-log          what CI printed on its last run here (`--list` for the runs
-                   kept, a run id for one, `--project NAME` from elsewhere)
+                   kept, a run id for one, `--project NAME` from elsewhere);
+                   for a project on GitHub's own runners, its runs and the end
+                   of each failed job's log, read by the controller from GitHub
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -326,13 +433,12 @@ bb logs --node NAME [--agent|--runner|--terminal] [N]
                    the terminal server's. Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a
                    session cannot read them at all. Offered only while **debug
-                   mode** is on in Controller settings AND the asking node has
-                   been granted that node on its **Debug settings**, its own
-                   journal included; "it is only looking at itself" is the
-                   reasoning that makes a boundary stop meaning anything.
-                   Which node is asking is the node of the session's own
-                   project, proved by its token, never the `BB_NODE` in its
-                   environment. What can be read is a table of three streams;
+                   mode** is on in Controller settings, the session's project
+                   has been granted that node's logs under **Debug** in its
+                   settings, its own node included, and the session's account
+                   has the **debug** grant, which is the owner's unless a role
+                   names it. The project is the session's own, proved by its
+                   token. What can be read is a table of three streams;
                    anything else is refused, not run
 bb diag [--json] [SECTION...]
                    the controller's diagnostics, read-only: its build and the
@@ -340,30 +446,26 @@ bb diag [--json] [SECTION...]
                    node's agent and session half, the Claude plugins each
                    account installed on each node, the last day's jobs and the
                    failures, error lines from its own logs and the audit
-                   trail, with anything shaped like a credential redacted. An
-                   administrator's. A session reads it only while **debug
-                   mode** is on, its node is ticked for **the controller's
-                   diagnostics** on its Debug settings, and its account is an
-                   administrator's, so a tester on the same node never gets it.
-                   Its `reports` section is what sessions on other projects
-                   reported about BuilderBot and nobody has answered yet
+                   trail, with anything shaped like a credential redacted. The
+                   **debug** grant's: the owner's, or a role's that names it.
+                   A session reads it only while **debug mode** is on, its
+                   project is granted **the controller's diagnostics** under
+                   Debug in its settings, and its account has the grant.
+                   Its `reports` section is what sessions on any project
+                   reported about BuilderBot, kept until a person clears them
 bb report "..." [--area A] [--repro "..."]
                    a problem with BuilderBot itself, from a session on any
-                   project: it waits on the controller for BuilderBot's own
-                   sessions rather than going into the project's tracker (the
-                   briefing's notebook section says so), redacted like the
-                   diagnostics. `bb report` alone lists the project's reports
-                   and what became of each. A `bb bug add` whose words name
+                   project: it goes into the controller's diagnostics rather
+                   than the project's tracker (the briefing's notebook section
+                   says so), redacted like the diagnostics, and nothing comes
+                   back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
                    unless `--here` says it is the project's own. *Claude may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
-bb report file N [--sev S] [--as BUG] | close N "why"
-                   answer a report, behind the diagnostics' gate: file it as a
-                   bug in this project's tracker through `bb bug add` (or mark
-                   it as one already there), or close it with the reason its
-                   session will read
+bb report conversation N   the conversation a person sent with a report (the
+                   end of it, redacted), behind the same gate
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -372,8 +474,12 @@ bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reve
 bb dashboard status  which copy of the dashboard is serving
 bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS, by endpoint and who asked, with how long each took
 bb drift           what this checkout changed that the container is not serving
-bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
-                   draws ID|.class, suites FILE...; a session asks it before grepping
+bb map VERB ...    the code map, which a session asks before grepping: find NAME,
+                   who-calls NAME, calls NAME, defs FILE, draws ID|.class,
+                   suites FILE..., state [FILE], sections FILE, unused [FILE],
+                   addresses [FILE...], coverage, covered NAME, uncovered [FILE],
+                   affected --base REF FILES..., languages (which files it
+                   reads), build; bb map help says what each does
 bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    one picture at rest: a page, the running emulator's screen,
                    or an X display (--drive F works the surface first). At rest
@@ -381,7 +487,9 @@ bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    match, so a modal still arriving or a list still loading is
                    not the picture: the dashboard's own pages and the two other
                    sources settle by default, --settle asks it of any page, --now
-                   takes the one shot at once. Into dist/emu/ for the emulator
+                   takes the one shot at once. Into dist/emu/ for the emulator.
+                   A page that does not answer is no picture and exit 3; one
+                   that answers 4xx or 5xx is shot, and the status said
 bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
                    eyes on change over time: the frames of a recording that changed,
                    each stamped with its time, tiled into dist/reel/NAME/sheet.png
@@ -409,6 +517,22 @@ bb tool graphics CMD  pictures a session can make and then read back, with the
                    favicon SVG [DIR], a favicon set (ico + touch icon) from one mark
 bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) rendered to
                    PNG and SVG in dist/diagrams/, with the diagrams toolchain
+bb tool docs read FILE...  a PDF, Word document, slide deck or spreadsheet as
+                   Markdown on stdout, with the documents toolchain
+bb tool docs pages FILE [--pages N-M] [--dpi N]  its pages as pictures in
+                   dist/docs/NAME/, for layout, charts and scans; a file that
+                   is not a PDF is made one by the office toolchain first
+bb tool office convert FILE... [--to FORMAT]  LibreOffice with no window: a
+                   document into pdf (the default), docx, xlsx, pptx or odt
+bb tool sound make PRESET [--seed N] [--name N] [--wav]  a sound effect for an
+                   app from sfxr's presets (blip, pickup, jump, laser, hit,
+                   powerup, explosion, bloop), into dist/sound/ as OGG, with a
+                   waveform and a spectrogram beside it to check it by; tone
+                   HZ [--ms N] [--to HZ] makes a beep or a sweep, look FILE
+                   draws any sound, presets lists them; say "TEXT" speaks it
+                   into a WAV (piper) and hear FILE writes down what a
+                   recording says with its times (whisper), which need the
+                   audio toolchain
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 EOF
 }
@@ -435,6 +559,10 @@ cmd_status() {
         printf '  %-8s %s\n' machine "a node${BB_NODE:+, $BB_NODE}"
         printf '  %-8s %s\n' means \
             "builds, tests, CI and the emulator run here; pushing is bb git push"
+        # The node's NVIDIA card, where it has one (R102): what it is, how
+        # much of its memory is free, and whether this session may use it.
+        local gpul; gpul="$(python3 "$BB_LIB/gpu.py" line 2>/dev/null || true)"
+        [ -z "$gpul" ] || printf '  %-8s %s\n' gpu "$gpul"
     else
         printf '  %-8s %s\n' machine "the controller"
         printf '  %-8s %s\n' means \
@@ -536,14 +664,12 @@ cmd_projects() {
 # the server has retired (B100). Each machine signs in for itself now and
 # keeps the grant it alone refreshes.
 #
-# So this is two sentences in opposite directions and no secret in either:
-# "I am signed in as X" going up, and a GENERATION coming back. Behind means
-# the account was signed out while this machine was not listening, and the
-# answer to that is `claude auth logout` here.
+# So this is one sentence going up and no secret in it: "this account is
+# signed in here as X", or that it is not, which is what the node's row and
+# the project rows read.
 #
-# Never fatal, and quiet unless something will not fix itself: this runs on
-# every connection and every prompt, where a controller that is restarting
-# must cost a session nothing.
+# Never fatal, and quiet: this runs on every connection, where a controller
+# that is restarting must cost a session nothing.
 claude_login_check() {
     on_node || return 0
     [ -n "${BB_TOKEN:-}" ] || return 0
@@ -552,9 +678,8 @@ claude_login_check() {
 
 cmd_login() {
     # `--check` is the quiet half on its own: bb-tty runs it on every
-    # connection and bb-keep-login on every prompt, where an interactive flow
-    # would be wrong and a message about nothing having changed would be
-    # noise. `--why` past it asks for the refusals worth repeating.
+    # connection, where an interactive flow would be wrong and a message
+    # about nothing having changed would be noise.
     if [ "${1:-}" = --check ]; then
         on_node || return 0
         claude_login_check "${2:-}"
@@ -572,6 +697,21 @@ cmd_login() {
         BB_USERS_DIR="$BUILDER_USERS" python3 "$BB_LIB/login-list.py"
         return 0
     fi
+    # `--out` is the sign-out run BY THE AGENT, in a claude-logout job, for
+    # the account the dashboard asked about: `claude auth logout` in that
+    # account's home on this machine, found the way --flow finds it.
+    if [ "${1:-}" = --out ]; then
+        local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}"
+        local pinned="${BB_CLAUDE_PINNED:-/usr/local/lib/builderbot/claude}"
+        [ -n "$uid" ] || die "a sign-out names the account it is for"
+        HOME="$(user_home "$uid")" && export HOME
+        PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
+        command -v claude >/dev/null 2>&1 \
+            || die "Claude Code is not installed on this machine, so there is no login here to sign out of"
+        claude auth logout || die "claude auth logout did not complete"
+        log "signed out of Claude on ${BB_NODE:-this machine}"
+        return 0
+    fi
     # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with
     # that job's pty as its terminal (roadmap R47). The account is the one the
     # dashboard asked for and the home is resolved here, by the same user_home
@@ -579,8 +719,7 @@ cmd_login() {
     # account live", rather than a second copy in the agent.
     #
     # The grant STAYS HERE. What goes up is which Anthropic account this
-    # machine is now signed in as, so the card can name it and a second
-    # account on another node is refused.
+    # machine is now signed in as, so its row can name it.
     if [ "${1:-}" = --flow ]; then
         local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}"
         # The pinned dir is the agent's CLAUDE_DIR; BB_CLAUDE_PINNED is for
@@ -603,28 +742,21 @@ cmd_login() {
         claude_login_check --loud || true
         return 0
     fi
-    # ON A NODE the check runs first, because it is what carries a SIGN-OUT
-    # here: signed out elsewhere while this machine was away means logging out
-    # locally, not signing in again. Anything else falls through to the flow
-    # below, which runs in this terminal: this machine signs itself in and
-    # keeps the grant it alone refreshes (R47).
+    # ON A NODE the flow below runs in this terminal: this machine signs
+    # itself in and keeps the grant it alone refreshes (R47).
     if on_node; then
-        # --why, not --loud: the quiet check still obeys a sign-out and still
-        # says a refusal worth repeating, but its "not signed in on this node;
-        # the Doctor card's sign-in runs the flow here" line is exactly the
-        # wrong advice to print one line before running that flow here.
-        # Somebody who typed this, or opened a session on a node that has no
-        # login, is already in the right place.
-        claude_login_check --why || true
+        # Signed in already: said to the controller, so this node's row
+        # reads it, and nothing else to do.
         [ "$(claude auth status --json 2>/dev/null \
-             | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] || return 0
+             | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] \
+            || { claude_login_check --loud || true; return 0; }
         log "sign in here: this machine keeps its own login, and no other machine's travels"
     fi
     # And on the controller there is nothing to run: Claude Code is installed
-    # where sessions are, which is a node (R47). The dashboard's Sign in
-    # starts the flow on one and takes the code back; this says the same.
+    # where sessions are, which is a node (R47). Sign in on a node's row
+    # starts the flow there and takes the code back; this says the same.
     command -v claude >/dev/null 2>&1 \
-        || die "this machine carries no Claude Code: a sign-in runs on a node, from the dashboard's Sign in button, or by running this on the node itself"
+        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in on its row on the Nodes tab (Claude Code), or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path (start a session and use its
     # slash command) is the fallback for an image whose claude predates the
@@ -635,15 +767,94 @@ cmd_login() {
         claude /login || claude
     fi
     # ...and tell the controller who this machine is now signed in as, which
-    # is what makes the card name it. Only --flow did this, so signing in
-    # from a terminal left the card stale until a hook or the agent's own
+    # is what makes its row name it. Only --flow did this, so signing in
+    # from a terminal left the row stale until a hook or the agent's own
     # clock caught up: minutes of a dashboard saying the opposite of the
     # machine. A no-op on a controller, where the check returns at once.
     claude_login_check --loud || true
 }
 
 
-avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
+# The AVDs, read from their own files rather than from avdmanager, which
+# scans the whole SDK on the shared store first: 105 s on bb-sandbox for
+# what these .ini files say outright (B425). The emulator reads the same
+# place, ANDROID_AVD_HOME or ~/.android/avd.
+avd_home() { printf '%s' "${ANDROID_AVD_HOME:-$HOME/.android/avd}"; }
+avd_names() {
+    local ini
+    for ini in "$(avd_home)"/*.ini; do [ -f "$ini" ] && basename "$ini" .ini; done
+}
+avd_path() { sed -n 's/^path=//p' "$(avd_home)/${1}.ini" 2>/dev/null; }
+avd_exists() { [ -f "$(avd_home)/${1}.ini" ]; }
+
+# emu_adopt: the account's AVDs from before B511, moved into this
+# project's folder whole (their installed apps and settings with them), for
+# the one project that was using them; refused while one runs.
+emu_adopt() {
+    local legacy="$HOME/.android/avd" n moved="" held
+    [ -n "${ANDROID_AVD_HOME:-}" ] && [ "$ANDROID_AVD_HOME" != "$legacy" ] \
+        || { warn "bb emu adopt moves the account's shared AVDs into a project's own folder: run it inside a project"; return 1; }
+    for n in $(for f in "$legacy"/*.ini; do [ -f "$f" ] && basename "$f" .ini; done); do
+        held="$(ANDROID_AVD_HOME="$legacy" emu_held "$n")"
+        [ -z "$held" ] || { warn "$n is running ($held): stop it first, then adopt"; return 1; }
+        [ ! -e "$ANDROID_AVD_HOME/$n.ini" ] || { warn "this project already has an AVD named $n; nothing was moved"; return 1; }
+    done
+    for n in $(for f in "$legacy"/*.ini; do [ -f "$f" ] && basename "$f" .ini; done); do
+        mv "$legacy/$n.avd" "$ANDROID_AVD_HOME/$n.avd" || { warn "could not move $n.avd"; return 1; }
+        sed "s|^path=.*|path=$ANDROID_AVD_HOME/$n.avd|" "$legacy/$n.ini" > "$ANDROID_AVD_HOME/$n.ini" \
+            && rm -f "$legacy/$n.ini"
+        moved="$moved $n"
+    done
+    [ -n "$moved" ] || { warn "no shared AVDs in $legacy to adopt"; return 1; }
+    rm -f "$legacy/.heir"
+    log "adopted${moved} into $(bb_project): they are this project's alone now, with what is installed on them"
+}
+
+# emu_scrub SERIAL AVD: packages another project left on an adopted phone,
+# named one a line in its bb-scrub.txt, uninstalled once on its first boot
+# here (B511: BuilderBot's companion app, left on the phone Shebang adopts).
+emu_scrub() {
+    local f pkg
+    f="$(avd_path "$2")/bb-scrub.txt"
+    [ -f "$f" ] || return 0
+    while IFS= read -r pkg; do
+        [ -n "$pkg" ] || continue
+        adb -s "$1" uninstall "$pkg" >/dev/null 2>&1 && log "removed ${pkg}, which another project had left on this phone"
+    done < "$f"
+    rm -f "$f"
+}
+
+# emu_room AVD: nothing when this node has the memory for one more emulator
+# of that AVD, else the sentence why not. With a phone per project (B511)
+# nothing makes two projects take turns any more, so the node's memory
+# does: what the AVD is configured with, about a GB of the emulator's own
+# beside it, and EMU_RESERVE_MB (2 GB) left for the builds and the rest, so
+# a second emulator never starves a third session's Gradle (the operator, 6
+# Oct: bb is what lends the emulator, so it should know how many fit).
+# /proc/meminfo is the node's own; a session sees only its own processes,
+# so how many emulators run here is the node's count, from bb node busy.
+# Memory alone was not enough: two phones and a build left 5 GB, room by
+# memory for a third, on a node already at load 9 on 8 cores (6 Oct). A node
+# that bb node busy calls saturated has no room for another until it eases.
+emu_room() {
+    local cfg ram need avail reserve="${EMU_RESERVE_MB:-2048}" running busy
+    busy="$("$0" node busy 2>/dev/null)"
+    running="$(printf '%s\n' "$busy" | grep -o '[0-9]* emulator' | head -1 | cut -d' ' -f1)"
+    if printf '%s\n' "$busy" | head -1 | grep -q ': saturated'; then
+        printf "this node's processors are saturated (%s); %s emulator%s running on it now" \
+            "$(printf '%s\n' "$busy" | head -1 | sed -n 's/.*saturated (\(.*\))$/\1/p')" \
+            "${running:-0}" "$([ "${running:-0}" = 1 ] && echo " is" || echo "s are")"
+        return 0
+    fi
+    cfg="$(avd_path "$1")/config.ini"
+    ram="$(sed -n 's/^hw\.ramSize *= *\([0-9]*\).*/\1/p' "$cfg" 2>/dev/null | head -1)"
+    need=$(( ${ram:-2048} + 1024 ))
+    avail="$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)"
+    [ -n "$avail" ] || return 0
+    [ "$avail" -lt $((need + reserve)) ] || return 0
+    printf 'this node has %s MB of memory free, and another phone needs about %s MB with %s MB left for builds; %s emulator%s running on it now' \
+        "$avail" "$need" "$reserve" "${running:-0}" "$([ "${running:-0}" = 1 ] && echo " is" || echo "s are")"
+}
 
 # emu_avd [TARGET]: resolve which AVD to act on. A bare API level (37) maps to
 # that version's AVD; anything else is taken as a literal name. With no target:
@@ -651,15 +862,24 @@ avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
 # unsuffixed name AVDs used before this was multi-version.
 # The API levels with a system image in the store, one per line, ascending.
 emu_apis() {
-    sdk_images 2>/dev/null | cut -f2 | sed 's/^android-//' | sort -un
+    # The API levels with an image, read from the store's directory names.
+    # Not sdk_images, which measures every image with du (gigabytes each,
+    # over the share) for a size this throws away (B425).
+    local base="${ANDROID_HOME:-/opt/android-sdk}/system-images" d
+    [ -d "$base" ] || return 0
+    find -L "$base" -mindepth 3 -maxdepth 3 -type d 2>/dev/null | while IFS= read -r d; do
+        [ -n "$(ls -A "$d" 2>/dev/null)" ] && basename "$(dirname "$(dirname "$d")")"
+    done | sed 's/^android-//' | sort -un
 }
 
 emu_avd() {
     local target="${1:-}" prefix="${ANDROID_AVD_PREFIX:-builderbot}" first
     if [ -n "$target" ]; then
+        # A level is digits and a dot (37.0 is one): prefixed like 36, or
+        # the AVD was named a bare "37.0" (report #70, B531).
         case "$target" in
-            *[!0-9]*) printf '%s' "$target" ;;
-            *)        printf '%s-%s' "$prefix" "$target" ;;
+            *[!0-9.]*) printf '%s' "$target" ;;
+            *)         printf '%s-%s' "$prefix" "$target" ;;
         esac
         return
     fi
@@ -673,20 +893,16 @@ emu_avd() {
     # name and `bb emu start` said "AVD 'builderbot' not found" one minute
     # after `bb emu create 36` said its AVD was ready (B209).
     local have
-    have="$(avdmanager list avd 2>/dev/null | sed -n "s/^ *Name: \(${prefix}-[0-9][0-9.]*\)$/\1/p" | sort -V | tail -1)"
+    have="$(avd_names | grep -E "^${prefix}-[0-9][0-9.]*$" | sort -V | tail -1)"
     if [ -n "$have" ]; then
         printf '%s' "$have"
         return
     fi
-    # Nothing made yet: the newest API level the store holds an image for,
-    # which is what `bb emu create` would name, so the refusal names it.
-    first="$(emu_apis | tail -1)"
-    [ -n "$first" ] || first=36
-    if avd_exists "${prefix}-${first}"; then
-        printf '%s-%s' "$prefix" "$first"
-    else
-        printf '%s' "$prefix"
-    fi
+    # Nothing made yet: the newest whole API level the store holds an image
+    # for, which is what `bb emu create` names and what a project's first
+    # `bb emu start` makes (B511); a preview level (37.0) is never the guess.
+    first="$(emu_apis | grep -E '^[0-9]+$' | tail -1)"
+    printf '%s-%s' "$prefix" "${first:-36}"
 }
 
 # Whether the running emulator has finished booting: adb lists it as a
@@ -727,6 +943,28 @@ gpu_gles_ok() {
 emu_serial() {
     adb devices 2>/dev/null \
         | awk '$1 ~ /^emulator-[0-9]+$/ && $2 == "device" { print $1; exit }'
+}
+
+# emu_held AVD: a line saying the AVD is running somewhere this shell cannot
+# reach, or nothing. Another Claude session of the same account on this node
+# shares the AVD (it lives in the account's home) but not the view: its
+# emulator is in that session's own processes and network, so adb here
+# lists nothing, and a start here waited three minutes for an emulator that
+# refused to run twice (30 Sep). The emulator holds a lock on the AVD while
+# it runs, and writes when and how it started beside it.
+emu_held() {
+    local home="${ANDROID_AVD_HOME:-$HOME/.android/avd}" f at=""
+    local lock="$home/$1.avd/multiinstance.lock"
+    [ -e "$lock" ] || return 0
+    command -v flock >/dev/null 2>&1 || return 0
+    flock -n "$lock" true 2>/dev/null && return 0
+    for f in "$home"/running/pid_*.ini; do
+        [ -e "$f" ] || continue
+        grep -qx "avd.name=$1" "$f" 2>/dev/null || continue
+        at="$(date -d "@$(stat -c %Y "$f")" '+%H:%M' 2>/dev/null)"
+    done
+    printf '%s is running in another of your sessions on this node%s, which this one cannot reach: that session stops it with bb emu stop, or it stops when that session ends' \
+        "$1" "${at:+ (started $at)}"
 }
 
 # The project's node, from the same file the settings dialog writes; "" when
@@ -785,14 +1023,45 @@ cmd_emu() {
     if ! on_node && [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_TOOLCHAINS:-}" ]; then
         die "this project has no node, and the controller runs no emulator; bind a node in the project's settings dialog, and bb emu runs there"
     fi
+    # The virtual phone is the project's, not the account's (B511). Its
+    # AVDs lived in the account's ~/.android/avd, so every project's session
+    # of one account booted the same phone with whatever another project had
+    # installed and signed into: BuilderBot's own companion app, signed in
+    # to the dev instance, turned up on Shebang-DevBoard's home screen (the
+    # operator, 6 Oct). Each project has its own folder of AVDs now, and its
+    # first start makes its phone. An ANDROID_AVD_HOME already set (the
+    # Emulator tab's jobs, an operator's own) is left as it is.
+    if [ -z "${ANDROID_AVD_HOME:-}" ]; then
+        local eproj; eproj="$(bb_project 2>/dev/null || true)"
+        if [ -n "$eproj" ]; then
+            export ANDROID_AVD_HOME="$HOME/.android/avd-projects/$eproj"
+            mkdir -p "$ANDROID_AVD_HOME" 2>/dev/null || true
+            # The phones from before this are one project's to keep, named in
+            # their .heir (the operator chose Shebang-DevBoard, 6 Oct): its
+            # first start here takes them, rather than making a blank one.
+            if [ "${1:-}" = start ] && [ "$(cat "$HOME/.android/avd/.heir" 2>/dev/null)" = "$eproj" ] \
+               && [ -z "$(ls "$ANDROID_AVD_HOME"/*.ini 2>/dev/null)" ]; then
+                emu_adopt || warn "the shared phones were not adopted; this start makes a new one"
+            fi
+        fi
+    fi
     case "${1:-status}" in
+        adopt)
+            emu_adopt || exit 1
+            ;;
         create)
             # An AVD for an API level: the system image and platform through
             # sdkmanager if they are not here, then avdmanager, on demand,
             # for a node whose store starts empty. The only way an image
             # arrives besides the Emulator tab, since the baseline hook went.
             local api="${2:-}" pkg name
-            [ -n "$api" ] || die "bb emu create <api>: the API level to build the AVD for"
+            # A level is digits (36, 37.0), and anything else is help or a
+            # mistake: -h was taken as a level, and sdkmanager went looking for
+            # android--h (report #69, B528).
+            case "$api" in
+                -h|--help|"") echo "usage: bb emu create <api>: an AVD for that API level (36, 37.0), its system image and platform installed first if missing"; [ -n "$api" ]; return ;;
+                *[!0-9.]*) die "bb emu create <api>: an API level is a number like 36 or 37.0, not '${api}'" ;;
+            esac
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools on the Toolchains tab with this node picked"
             # Google names a level "37.0" or "36.1" in its index some years,
             # and a person says 37: the level given is looked up against what
@@ -830,10 +1099,19 @@ cmd_emu() {
             # Where avdmanager put it, by its own word, rather than where it
             # was told to: the two have differed.
             local ini
-            ini="$(avdmanager list avd 2>/dev/null | awk -v n="$name" '$1 == "Name:" { f = ($2 == n) } f && $1 == "Path:" { print $2; exit }')"
+            ini="$(avd_path "$name")"
             ini="${ini:-${ANDROID_AVD_HOME:-$HOME/.android/avd}/${name}.avd}/config.ini"
             if [ -f "$ini" ]; then
                 sed -i "s|^image.sysdir.1=.*|image.sysdir.1=system-images/android-${api}/google_apis/x86_64/|" "$ini"
+                # ...and room to install into. avdmanager's default /data is
+                # 800 MB, of which a booted 37 left 32 MB: a 27 MB debug APK
+                # did not fit, and the device tests ran none (report #70,
+                # B531). 6 GB, as the AVDs made before had.
+                if grep -q '^disk.dataPartition.size=' "$ini"; then
+                    sed -i "s|^disk.dataPartition.size=.*|disk.dataPartition.size=${EMU_DATA_SIZE:-6G}|" "$ini"
+                else
+                    printf 'disk.dataPartition.size=%s\n' "${EMU_DATA_SIZE:-6G}" >> "$ini"
+                fi
             else
                 warn "no config.ini at ${ini}; if the emulator says Broken AVD system path, that file's image.sysdir.1 is the line"
             fi
@@ -850,6 +1128,11 @@ cmd_emu() {
             # The emulator's screen at rest, into dist/ so the Artifacts tab
             # lists it: bb capture shot --emu, which is where every shot lives now.
             shift; capture_shot --emu "$@"
+            ;;
+        touch)
+            # A timed tap, hold or glide through sendevent (R101): adb's own
+            # input verbs cost 300 ms a call and cannot time a gesture.
+            shift; capture_env python3 "$BB_LIB/touch.py" "$@"
             ;;
         gfx)
             # Real per-frame timings for a package, from dumpsys gfxinfo
@@ -869,8 +1152,37 @@ cmd_emu() {
                 log "an emulator is already running"; adb devices; return 0
             fi
             avd="$(emu_avd "${2:-}")"
+            # A project's first start makes its own phone (B511): the default
+            # AVD is named for its API level, so it can be made here.
+            if ! avd_exists "$avd" && [[ "$avd" =~ ^builderbot-([0-9]+)$ ]]; then
+                log "this project has no phone of its own yet: making ${avd} (a minute or two, once)"
+                ( cmd_emu create "${BASH_REMATCH[1]}" ) || die "could not make ${avd}; bb emu create ${BASH_REMATCH[1]} says why"
+            fi
             avd_exists "$avd" \
                 || die "AVD '${avd}' not found; bb emu create <api> builds one, and bb emu list shows what is here"
+            # A share that went stale under this session (the store's shared
+            # half over NFS, 6 Oct) reads as a missing image, and the emulator
+            # said "Broken AVD system path", which sent a session after its AVD
+            # (B526). Said as what it is: a remount reaches a new session.
+            local imgs="${ANDROID_HOME:-/opt/android-sdk}/system-images" stale
+            stale="$(LC_ALL=C stat -L "$imgs" "$imgs"/* 2>&1 >/dev/null | grep -m1 'Stale file handle' || true)"
+            [ -z "$stale" ] || die "the toolchain store's system images answer 'Stale file handle' (${stale#stat: }): the share went stale under this session, not the AVD. A new session sees it mounted fresh; if a new one fails the same way, the node's mount needs remounting, which is the operator's (bb root run)"
+            local held; held="$(emu_held "$avd")"
+            [ -z "$held" ] || die "$held"
+            # Room on the node for one more (emu_room): waited for a while,
+            # since another project's emulator stopping or a build finishing
+            # frees it, then refused with the numbers rather than started
+            # into a machine that would kill something to make room.
+            local room waited_room=0
+            room="$(emu_room "$avd")"
+            if [ -n "$room" ]; then
+                log "waiting for room for another emulator: ${room}"
+                while [ -n "$room" ] && [ "$waited_room" -lt "${EMU_ROOM_WAIT:-300}" ]; do
+                    sleep 10; waited_room=$((waited_room + 10)); room="$(emu_room "$avd")"
+                done
+                [ -z "$room" ] || die "no room for another emulator: ${room}. Start it again once one stops; bb node busy says what is running"
+                log "room for it now"
+            fi
             [ -w /dev/kvm ] || warn "/dev/kvm not available; this will be very slow"
             # Software rendering by default. `-gpu host` does not work here
             # even with a GPU passed through and NVIDIA_DRIVER_CAPABILITIES=all:
@@ -892,6 +1204,16 @@ cmd_emu() {
                 gpu=host
                 export DISPLAY="${DISPLAY:-:0}"
                 log "hardware rendering: EGL answers on ${DISPLAY} (${vendor})"
+                # The card's memory is one pool for every session and job on
+                # the node; an emulator drawing on it wants a few hundred MB.
+                # Short of that, this one renders in software and says so,
+                # rather than failing on a full card or starving a job on it.
+                local vfree
+                vfree="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -dc 0-9)"
+                if [ -n "$vfree" ] && [ "$vfree" -lt "${EMU_GPU_MIN_MB:-768}" ]; then
+                    gpu=swiftshader_indirect
+                    log "the card has ${vfree} MB free, under the ${EMU_GPU_MIN_MB:-768} MB a phone draws with: rendering in software this time"
+                fi
             else
                 gpu=swiftshader_indirect
             fi
@@ -916,40 +1238,88 @@ cmd_emu() {
             # silently under load (adb goes quiet, `bb emu stop` says there is
             # nothing to stop) and the only account of why is in the log the
             # *next* start used to overwrite before anybody could read it.
-            if [ -s "$HOME/.android/emulator.log" ]; then
-                mv -f "$HOME/.android/emulator.log" "$HOME/.android/emulator.log.1"
-            fi
-            log "starting AVD '${avd}' headless, -gpu ${gpu}${propargs:+, hwui ${hwui}} (log: bb emu log)"
-            nohup emulator -avd "$avd" -no-window -no-audio -no-boot-anim \
-                -gpu "$gpu" "${propargs[@]}" \
-                > "$HOME/.android/emulator.log" 2>&1 &
-            log "waiting for the device to come up..."
-            # Bounded: a crashed emulator otherwise leaves this waiting forever
-            # for a device that is never coming, with the reason sitting unread
-            # in the log the timeout message points at.
             #
-            # Waiting for THIS emulator, not for any device. A bare
-            # wait-for-device is satisfied the instant it is asked when a phone
-            # is attached over wireless adb, and this reported the emulator
-            # ready before it had booted: a wrong answer rather than a missing
-            # one, which is worse.
-            local waited=0 serial=""
-            while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ]; do
-                serial="$(emu_serial)"
-                [ -n "$serial" ] && break
-                sleep 1; waited=$((waited + 1))
+            # Started, then waited for while it lives: up to
+            # ANDROID_BOOT_TIMEOUT (600s) for one still booting, since a cold
+            # boot of a new level on a busy node ran past the old 180 and was
+            # called failed while it booted on (Shebang-DevBoard, 6 Oct); and
+            # at once for one that has exited, whose reason is in the log.
+            local serial="" epid="" waited=0 tries=0 why="" booted=""
+            while :; do
+                tries=$((tries + 1))
+                if [ -s "$HOME/.android/emulator.log" ]; then
+                    mv -f "$HOME/.android/emulator.log" "$HOME/.android/emulator.log.1"
+                fi
+                log "starting AVD '${avd}' headless, -gpu ${gpu}${propargs:+, hwui ${hwui}} (log: bb emu log)"
+                nohup emulator -avd "$avd" -no-window -no-audio -no-boot-anim \
+                    -gpu "$gpu" "${propargs[@]}" \
+                    > "$HOME/.android/emulator.log" 2>&1 &
+                epid=$!
+                log "waiting for the device to come up..."
+                # Waiting for THIS emulator, not for any device. A bare
+                # wait-for-device is satisfied the instant it is asked when a
+                # phone is attached over wireless adb, and this reported the
+                # emulator ready before it had booted.
+                waited=0 serial=""
+                while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-600}" ] && kill -0 "$epid" 2>/dev/null; do
+                    [ -n "$serial" ] || serial="$(emu_serial)"
+                    [ -n "$serial" ] && emu_booted "$serial" && break
+                    sleep 2; waited=$((waited + 2))
+                done
+                booted=""
+                if [ -n "$serial" ] && emu_booted "$serial"; then
+                    [ "$gpu" = host ] && [ "$tries" -eq 1 ] || break
+                    # Under the card a phone has died within a minute of
+                    # booting, gfxstream saying "null ctx" (report #72,
+                    # B530): watched a little longer, so that death falls
+                    # back to software like one before the boot.
+                    booted=1
+                    local settle=0
+                    while [ "$settle" -lt "${EMU_SETTLE:-30}" ] && kill -0 "$epid" 2>/dev/null; do
+                        sleep 2; settle=$((settle + 2))
+                    done
+                    kill -0 "$epid" 2>/dev/null && break
+                fi
+                # Hardware rendering that broke: an out-of-memory from
+                # glTexImage2D (0x505), a context preempted, a GLXBadContextTag.
+                # On bb-sandbox an Android 37 phone filled the card to 7.5 GB of
+                # 8 while it booted, past the 768 MB checked before it started,
+                # and died; the session that met it retried by hand in software
+                # (6 Oct, B530). So once, in software, by itself.
+                if [ "$gpu" = host ] && [ "$tries" -eq 1 ] && ! kill -0 "$epid" 2>/dev/null \
+                    && why="$(grep -m1 -oE 'err pre.{0,12}0x505|GL_OUT_OF_MEMORY|context was preempted|GLXBadContextTag|Failed to get EGL display|error null ctx' "$HOME/.android/emulator.log")"; then
+                    warn "hardware rendering failed ${booted:+just after }as the phone booted (${why}); starting again in software, which leaves the card alone"
+                    gpu=swiftshader_indirect
+                    [ -z "$hwui" ] || propargs=(-prop "debug.hwui.renderer=${hwui}")
+                    continue
+                fi
+                kill -0 "$epid" 2>/dev/null \
+                    && die "the emulator${serial:+ appeared as ${serial} but} had not booted within ${ANDROID_BOOT_TIMEOUT:-600}s and is still running; bb emu log has what it says, and bb emu stop ends it"
+                [ -n "$booted" ] && die "the emulator exited just after it booted; bb emu log -p has what it said"
+                die "the emulator exited before it had booted; bb emu log -p has what it said"
             done
-            [ -n "$serial" ] \
-                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
-            # ...and BOOTED, on the same clock. adb lists the device the
-            # moment the emulator's adbd answers, minutes before the system
-            # is up; an install or a launch in that gap fails saying nothing.
-            while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ] && ! emu_booted "$serial"; do
-                sleep 2; waited=$((waited + 2))
-            done
-            emu_booted "$serial" \
-                || die "the emulator appeared as ${serial} but had not booted within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
+            # Root, every boot, where the build allows it: bb emu touch's
+            # sendevent and an am start of an unexported activity need it. A
+            # quick boot restores whatever the snapshot held, so this used to
+            # be root only after a session had once run adb root itself, and
+            # a cold boot took it away (reports 44 and 45, 1 Oct). A user
+            # build (a Play Store image) has none to give, and says nothing.
+            if [ "$(adb -s "$serial" shell getprop ro.debuggable 2>/dev/null | tr -d '\r')" = 1 ] \
+                && [ "$(adb -s "$serial" shell id -u 2>/dev/null | tr -d '\r')" != 0 ]; then
+                adb -s "$serial" root >/dev/null 2>&1 || true
+                adb -s "$serial" wait-for-device >/dev/null 2>&1 || true
+                local r=0
+                while [ "$r" -lt 20 ] && [ "$(adb -s "$serial" shell id -u 2>/dev/null | tr -d '\r')" != 0 ]; do
+                    sleep 0.5; r=$((r + 1))
+                done
+                if [ "$(adb -s "$serial" shell id -u 2>/dev/null | tr -d '\r')" = 0 ]; then
+                    log "adb is root on ${serial} (a debuggable image: bb emu touch and am start of any activity work)"
+                else
+                    warn "adb root did not take on ${serial}: bb emu touch will say so"
+                fi
+            fi
             log "emulator is up as ${serial}, booted"
+            emu_scrub "$serial" "$avd"
             adb devices
             ;;
         stop)
@@ -960,7 +1330,8 @@ cmd_emu() {
             if [ -n "$avd" ]; then
                 adb -s "$avd" emu kill 2>/dev/null || warn "emulator ${avd} did not stop"
             else
-                warn "no emulator to stop"
+                local held; held="$(emu_held "$(emu_avd "")")"
+                warn "${held:-no emulator to stop}"
             fi
             ;;
         status)
@@ -969,7 +1340,11 @@ cmd_emu() {
             # when a command aimed at "the device" could mean either. The
             # emulator is the one named emulator-NNNN.
             adb devices -l
-            [ -n "$(emu_serial)" ] || printf 'no emulator is running; bb emu start\n'
+            if [ -z "$(emu_serial)" ]; then
+                local held; held="$(emu_held "$(emu_avd "")")"
+                if [ -n "$held" ]; then printf '%s\n' "$held"
+                else printf 'no emulator is running; bb emu start\n'; fi
+            fi
             ;;
         gpu)
             # "Which renderer would a start use, and why", in one command,
@@ -1011,10 +1386,20 @@ cmd_emu() {
         list)
             printf 'API levels with a system image here: %s\n' "$(emu_apis | paste -sd, - | sed 's/^$/none; bb emu create <api> installs one/')"
             printf 'default for `bb emu start`: %s\n\n' "$(emu_avd)"
-            avdmanager list avd 2>/dev/null \
-                | grep -E 'Name:|Based on:' \
-                | sed 's/^ */  /' \
-                || printf '  (no AVDs)\n'
+            # Read from the AVDs' own files, not avdmanager: it scans the
+            # whole SDK on the shared store first and took 105 s on
+            # bb-sandbox to print these two lines per AVD (B425).
+            local n any=""
+            while IFS= read -r n; do
+                [ -n "$n" ] || continue
+                any=1
+                local cfg; cfg="$(avd_path "$n")/config.ini"
+                printf '  Name: %s\n  Based on: %s %s %s\n' "$n" \
+                    "$(sed -n 's/^target=//p' "$(avd_home)/${n}.ini")" \
+                    "$(sed -n 's/^tag.id *= *//p' "$cfg" 2>/dev/null)" \
+                    "$(sed -n 's/^abi.type *= *//p' "$cfg" 2>/dev/null)"
+            done < <(avd_names)
+            [ -n "$any" ] || printf '  (no AVDs)\n'
             ;;
         *) usage; exit 1 ;;
     esac
@@ -1036,6 +1421,15 @@ ci_log_dir() {
     if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
     elif [ -w /config ]; then printf '/config/ci-logs'
     else printf '%s/ci-logs' "$HOME"; fi
+}
+
+# Whether a project has workflows and none of them names a self-hosted
+# runner: its jobs run on the forge's machines and nothing here keeps a log.
+ci_hosted_only() {
+    local wf="${WORKSPACE}/$1/.github/workflows"
+    [ -d "$wf" ] || return 1
+    [ -n "$(find "$wf" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) -print -quit 2>/dev/null)" ] || return 1
+    ! grep -qs 'self-hosted' "$wf"/*.yml "$wf"/*.yaml
 }
 
 cmd_ci_log() {
@@ -1062,6 +1456,14 @@ cmd_ci_log() {
         # log is on that machine, under the same two-step path this resolves,
         # and the way to reach a node is the job channel (audited, scoped,
         # already built) rather than a share or a second credential.
+        if ci_hosted_only "$proj"; then
+            # GitHub keeps these, and hands a log only to a token: the
+            # controller asks with its own, for this project (R115).
+            local auth; auth="$(bb_auth_or_die)"
+            local a=(); [ "$list" = 1 ] && a+=(--list); [ -n "$want" ] && a+=("$want")
+            BB_CI_AUTH="$auth" BB_CI_PROJECT="$proj" python3 "$BB_LIB/cilog-hosted.py" "${a[@]}"
+            return
+        fi
         if [ -n "$(project_node 2>/dev/null)" ]; then
             log "nothing kept here; asking ${proj}'s node"
             # The project and the run name go into a shell string the node
@@ -1134,6 +1536,22 @@ project_here() {
         "$WORKSPACE"/*) here="${here#"$WORKSPACE"/}"; printf '%s' "${here%%/*}" ;;
         *) return 1 ;;
     esac
+}
+
+# dist_ignored: the briefing says a project's dist/ is gitignored, and a
+# capture or a build writing there into a tree that does not ignore it put
+# every reel in front of `git add -A` (MediaReducer B33, 7 Oct). Kept out
+# in .git/info/exclude, the clone's own, so nothing is committed for it.
+dist_ignored() {
+    local p root ex
+    p="$(project_here)" || return 0
+    root="$WORKSPACE/$p"
+    [ -e "$root/.git" ] || return 0
+    git -C "$root" check-ignore -q dist/x 2>/dev/null && return 0
+    # Through git, so a worktree (whose .git is a file) has it too.
+    ex="$(git -C "$root" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)" || return 0
+    grep -qxF '/dist/' "$ex" 2>/dev/null && return 0
+    { mkdir -p "${ex%/*}" && printf '%s\n' '/dist/' >> "$ex"; } 2>/dev/null || true
 }
 
 # trim_line TEXT: one line, capped so that a screen stays a screen. Counted in
@@ -1419,6 +1837,13 @@ cmd_catchup() {
         if [ -n "$rows" ]; then
             printf '%s\n' "$rows"
             echo "  ('bb ci-log RUN' for one in full)"
+        elif ci_hosted_only "$proj"; then
+            # Its workflows name no self-hosted runner, so its jobs run on
+            # GitHub's machines, which keep the log on GitHub: saying it is on
+            # the node sent Shebang-DevBoard's session to bb ci-log for a run
+            # it never kept (B443).
+            echo "  none here: this project's workflows run on GitHub's own runners,"
+            echo "  which keep the logs; 'bb ci-log --list' asks GitHub for them"
         elif [ -n "$(project_node 2>/dev/null)" ]; then
             # CI runs on the project's node now, so the records are there.
             # Not fetched here: catchup is read often and a job per read is
@@ -1427,6 +1852,37 @@ cmd_catchup() {
             echo "  records are there: 'bb ci-log --list' fetches them"
         else
             echo "  none kept; only a job that runs on this box archives one"
+        fi
+
+        # What the CI watch last found (R117), kept by the dashboard beside
+        # its state: a red main branch, a moving runner label, an action a
+        # major behind, a notice GitHub wrote on the newest run.
+        local cw; cw="${DASHBOARD_STATE:-/config}/ciwatch/$proj.json"
+        if [ -r "$cw" ]; then
+            echo
+            echo "== CI, as the daily look found it =="
+            python3 - "$cw" <<'EOF' || true
+import json
+import sys
+import time
+
+r = json.load(open(sys.argv[1]))
+# A look kept by older code (ciwatch.FORMAT) is no look: the dashboard looks
+# again within the hour.
+if r.get("format") != 3:
+    print("  not looked at since BuilderBot was updated; the next look is within the hour")
+    sys.exit(0)
+age = int((time.time() - r.get("at", 0)) / 3600)
+run = r.get("run") or {}
+print(f"  looked {age} h ago" + (f" at {r['repo']} on GitHub" if r.get("repo") else "")
+      + (f"; the newest run on {run.get('branch')} {run.get('ended') or 'ended ' + str(run.get('conclusion'))}" if run else ""))
+for f in r.get("findings") or []:
+    print(f"  {f.get('kind', ''):<7} {f.get('where', '')}: {f.get('text', '')[:300]}")
+if not r.get("findings"):
+    print("  nothing drifting")
+if r.get("error"):
+    print(f"  (GitHub: {r['error']})")
+EOF
         fi
     fi
 }
@@ -1441,9 +1897,9 @@ logs_are_the_controllers() {
 }
 
 # bb diag: the controller's diagnostics (scripts/dashboard/diag.py). One
-# request, so the gate is the server's: an administrator anywhere, and a
-# session only with debug mode on, its node ticked for it on Debug settings,
-# and an administrator's account behind it. Read-only; secrets are redacted
+# request, so the gate is the server's: the debug grant anywhere, and a
+# session only with debug mode on, its project granted it in its settings,
+# and an account with the debug grant behind it. Read-only; secrets are redacted
 # there, not here.
 cmd_diag() {
     local json=0 sections=()
@@ -1463,11 +1919,10 @@ cmd_diag() {
 
 # bb report: a problem with BuilderBot itself, from a session on any project
 # (reports.py). Filed in the project's own tracker it was lost to BuilderBot:
-# the operator read it second hand and the session maintaining BuilderBot
-# never saw it. It goes to the controller instead, where BuilderBot's own
-# sessions read it in the diagnostics (bb diag reports) and turn it into a
-# bug in their tracker, or close it, and the session that reported it reads
-# what became of it here.
+# the operator read it second hand. It goes to the controller's diagnostics
+# instead (bb diag reports), a log a person reads and clears; nothing comes
+# back to the session that made it, since only this one install has
+# BuilderBot's own tracker beside the sessions reporting to it.
 cmd_report() {
     local auth proj sub="${1:-}"
     auth="$(bb_auth_or_die)"
@@ -1475,15 +1930,14 @@ cmd_report() {
     case "$sub" in
         -h|--help)
             printf '%s\n' 'usage: bb report "what happened" [--area A] [--repro "..."]' \
-                '       bb report                   what became of this project'"'"'s reports' \
-                '       bb report file N [--sev S] [--as BUG] | close N "why"   (the diagnostics'"'"' gate)'
+                '       bb report conversation N    the reporter'"'"'s conversation a report carries (the diagnostics'"'"' gate)'
             return 0 ;;
-        file|close) ;;
-        ""|status|mine) sub=mine ;;
+        conversation) ;;
+        "") die 'bb report "what happened": say what went wrong; bb diag reports lists what was reported' ;;
         *) sub=add ;;
     esac
     [ "$sub" = add ] || shift || true
-    BB_R_AUTH="$auth" BB_R_PROJECT="$proj" BB_R_SUB="$sub" BB_R_SELF="$0" python3 "$BB_LIB/report.py" "$@"
+    BB_R_AUTH="$auth" BB_R_PROJECT="$proj" BB_R_SUB="$sub" python3 "$BB_LIB/report.py" "$@"
 }
 
 cmd_logs() {
@@ -1695,6 +2149,14 @@ cmd_design() {
 # project, as the Profile tab lists them; `bb -p NAME transcripts` for a
 # project this one reads (the operator, 29 Sep). Only the account's own:
 # the controller looks under its transcripts and nowhere else.
+cmd_wiki() {
+    local auth proj
+    case "${1:-}" in -h|--help) usage | sed -n '/^bb wiki /,/^bb [^w]/p' | sed '$d'; return 0 ;; esac
+    proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
+    auth="$(bb_auth_or_die)"
+    BB_WIKI_AUTH="$auth" BB_WIKI_PROJECT="$proj" python3 "$BB_LIB/wiki-verbs.py" "$@"
+}
+
 cmd_transcripts() {
     local verb="${1:-list}" auth proj
     case "$verb" in list|show) ;; -h|--help)
@@ -1743,6 +2205,10 @@ cmd_rules() {
     # The house rules: the operator's on the Briefing tab, a session's own
     # through add/edit/rm here. Each carries who wrote it, and a session may
     # change only its own; see rules.py for the ownership and the log.
+    # Its help, as every verb's -h is (B411): the lines bb help carries for it.
+    case "${1:-}" in
+        -h|--help) usage | sed -n '/^bb rules /,/^bb [^r]/p' | sed '$d'; return 0 ;;
+    esac
     local proj="${BB_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
@@ -1755,7 +2221,12 @@ cmd_rules() {
     if [ "${1:-}" = check ]; then
         shift
         local rules_json
-        rules_json="$(BB_PROJECT="$proj" bash "$0" rules --json)" || die "could not read the rules"
+        # Exit 75 (EX_TEMPFAIL) when the rules could not be read, which on a
+        # node is the controller not answering: a check that could not run,
+        # and the hand-back hook lets that pass rather than calling it a
+        # failed check (B412).
+        rules_json="$(BB_PROJECT="$proj" bash "$0" rules --json)" \
+            || { warn "could not read the rules, so no check ran: the controller may be restarting"; return 75; }
         RULES_JSON="$rules_json" python3 "$BB_LIB/rules-check.py" "$WORKSPACE/$proj" "$@"
         return $?
     fi
@@ -1874,6 +2345,16 @@ cmd_tests() {
         return
     fi
     if [ "${1:-}" = preflight ]; then shift; cmd_tests_preflight "$@"; return; fi
+    # The unit tier: the pure python modules' rules as plain unittest, no
+    # server and no browser, in well under a second. Preflight runs it first
+    # so a broken rule fails before twenty minutes of browser suites do.
+    if [ "${1:-}" = unit ]; then
+        shift
+        local u="${BB_REPO:-$PWD}/scripts/dashboard/unit"
+        [ -d "$u" ] || die "no unit tests at $u: run this from the BuilderBot checkout"
+        python3 -m unittest discover -s "$u" -t "$u" "${@:--q}"
+        return
+    fi
     # A covered run (roadmap R76): the suite, or the named suites, with the
     # counters in, and the map's account of what they reached after.
     if [ "${1:-}" = coverage ]; then
@@ -2129,7 +2610,23 @@ cmd_phone() {
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
                 python3 "$BB_LIB/phone-verbs.py" run "$@"
             ;;
-        *) die "usage: bb phone [status|run --why \"...\" -- adb args...]" ;;
+        lease|shot|record|install|start|stop|ime|log|ui|touch)
+            # The phone lent to this project (R113). Each command but lease
+            # asks the phone's owner, who allows it in their bell (R120); an
+            # optional --why is the sentence they read.
+            local a=()
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    *) a+=("$1"); shift ;;
+                esac
+            done
+            set -- "${a[@]}"
+            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
+            BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
+                python3 "$BB_LIB/phone-verbs.py" "$sub" "$@"
+            ;;
+        *) die "usage: bb phone [status | run --why \"...\" -- adb args... | lease | shot | record [S] | install FILE | start|stop|ime|log PKG | ui | touch ...]" ;;
     esac
 }
 
@@ -2222,6 +2719,51 @@ cmd_container() {
 #
 # The daemon is the controller's connection to the node, so this goes through
 # the API like `bb root` and `bb phone` rather than running docker anywhere.
+# bb sign (R106): a build in dist/ signed on the project's node with one of
+# its keys, which the session never receives. sign-verbs.py asks, follows an
+# ask to its answer and the job to its verdict.
+cmd_sign() {
+    local file="" route="" why="" key="" a
+    local auth proj
+    proj="${BB_PROJECT:-$(project_here 2>/dev/null || true)}"
+    case "${1:-}" in
+        keys|key|map|rotate)
+            local sub="$1"; shift
+            local -a rest=()
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    *) rest+=("$1"); shift ;;
+                esac
+            done
+            auth="$(bb_auth_or_die)"
+            BB_SIGN_AUTH="$auth" BB_SIGN_PROJECT="$proj" \
+                python3 "$BB_LIB/sign-verbs.py" --"$sub" "$route" "$why" "${rest[@]}"
+            return $? ;;
+    esac
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help) sed -n '/^bb sign FILE/,/which is kept for good/p' "$0"; return 0 ;;
+            --key) [ $# -ge 2 ] || die "--key needs a key's name after it"; key="$2"; shift 2 ;;
+            --key=*) key="${1#--key=}"; shift ;;
+            --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;
+            --for=*) route="${1#--for=}"; shift ;;
+            --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+            -*) die "bb sign FILE [--for play|sideload] [--why \"...\"]: no option $1" ;;
+            *) [ -z "$file" ] || die "one build at a time: bb sign FILE"; file="$1"; shift ;;
+        esac
+    done
+    [ -n "$file" ] || die "usage: bb sign FILE [--for play|sideload] [--why \"...\"] (a build in dist/)"
+    if [ -z "$route" ]; then
+        case "$file" in *.aab) route=play ;; *) route=sideload ;; esac
+    fi
+    case "$route" in play|sideload) ;; *) die "--for is play or sideload, not $route" ;; esac
+    auth="$(bb_auth_or_die)"
+    BB_SIGN_AUTH="$auth" BB_SIGN_PROJECT="$proj" BB_SIGN_KEY="$key" \
+        python3 "$BB_LIB/sign-verbs.py" "${file#dist/}" "$route" "$why"
+}
+
 cmd_devapp() {
     # --instance NAME before or after the verb, for a project with several;
     # with none named the controller answers for the project's only one.
@@ -2420,6 +2962,19 @@ bb_token_exp() {
     printf '%s' "$b" | base64 -d 2>/dev/null | cut -d'|' -f2 | tr -dc '0-9'
 }
 
+# The project a session token was minted for: its first field. The kept
+# copy is filed under it, and `bb -p NAME` repoints BB_PROJECT at the
+# project being READ, so a lookup by BB_PROJECT under -p found no kept
+# copy and sent the environment's, long dead (B497). bbapi.keep_token
+# reads the token the same way, for the same reason.
+bb_token_project() {
+    case "${1:-}" in bbs_*) ;; *) return 0 ;; esac
+    local b="${1#bbs_}"
+    b="$(printf '%s' "$b" | tr '_-' '/+')"
+    while [ $(( ${#b} % 4 )) -ne 0 ]; do b="${b}="; done
+    printf '%s' "$b" | base64 -d 2>/dev/null | cut -d'|' -f1 | tr -dc 'A-Za-z0-9._-'
+}
+
 bb_token_dead() {
     local e; e="$(bb_token_exp "${1:-}")"
     [ -n "$e" ] || return 1                  # not a session token: not ours to judge
@@ -2488,7 +3043,8 @@ bb_token_now() {
     local t="${BB_TOKEN:-}"
     local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
     # Per account (B159): the cache folder is shared between accounts on a node.
-    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/u/${BB_ACCOUNT_UID:-_none}/project/${BB_PROJECT:-}/token"
+    local own; own="$(bb_token_project "$t")"
+    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/u/${BB_ACCOUNT_UID:-_none}/project/${own:-${BB_PROJECT:-}}/token"
     local ft=""
     [ -r "$f" ] && ft="$(cat "$f" 2>/dev/null)"
     # The later-expiring of the two. The file used to be read only once the
@@ -2648,6 +3204,18 @@ EOF
 
 # run_here ROLE [GLOB...] -- CMD...: `bb run` on the node the session is on:
 # the command in this tree, and each output glob's matches into dist/.
+# A build or test failure that reads as the projects share's (B439): the
+# first matching line, with `print`, else just whether there is one. NFS
+# keeps a deleted file that is still open as .nfsXXXX, so the directory
+# around it will not go; a handle goes stale; a lock is not granted.
+share_flake() {
+    local hit
+    hit="$(grep -m1 -E -i 'Unable to delete (directory|file)|Failed to delete|Could not delete|Directory not empty|DirectoryNotEmptyException|Stale file handle|Device or resource busy|\.nfs[0-9a-f]{8,}|Timeout waiting to lock|Could not create (parent )?directory' "$1" 2>/dev/null | head -c 200)"
+    [ -n "$hit" ] || return 1
+    [ "${2:-}" = print ] && printf '%s' "$hit"
+    return 0
+}
+
 run_here() {
     local role="$1" outs=() g f
     shift
@@ -2670,19 +3238,52 @@ run_here() {
     # that does not answer costs one note's timing, never the run.
     local rid=""
     [ "$role" = test ] && rid="$(tests_going begin "$shown")"
-    local code=0
-    "$@" || code=$?
+    # Run once more, said out loud, when a failure reads as the projects
+    # share's and not the code's (B439): a tree on NFS now and then refuses a
+    # build's delete or lock, and the same command passes at once after.
+    # The output is kept while it streams, so the reason is read from what
+    # the build said rather than guessed at; a second failure stands.
+    local code=0 said
+    said="$(mktemp)"
+    "$@" 2>&1 | tee "$said" || code=$?
+    if [ "$code" -ne 0 ] && share_flake "$said"; then
+        warn "$role failed on what reads as the projects share, not the code ($(share_flake "$said" print)): running it once more"
+        # A .nfs file is one the Gradle daemon still holds open: a rerun in
+        # the same daemon fails the same way until it is stopped (B439,
+        # report #73), and this project's Gradle home is its own to stop.
+        if grep -q '\.nfs[0-9a-f]\{8,\}' "$said" && [ -x ./gradlew ]; then
+            ./gradlew --stop >/dev/null 2>&1 || true
+            log "$role: stopped this project's Gradle daemon, which held the file"
+        fi
+        code=0
+        "$@" 2>&1 | tee "$said" || code=$?
+        [ "$code" -eq 0 ] && log "$role: passed on the second run; the first failed on the share (B439)"
+    fi
+    rm -f "$said"
     [ "$role" = test ] && tests_going end "$rid" >/dev/null
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
         mkdir -p dist
+        # A build's files are named the way the briefing asks for shipped
+        # output: the project and its version before the file's own name
+        # (Shebang-DevBoard-0.1.0-dev.9-3bf328e-app-debug.apk), so two builds
+        # are two files and the Artifacts tab can say which is which. Named
+        # as the file is where the version cannot be read. A session copied
+        # every APK by hand to get that name, and never used bb build (R104).
+        local pre="" proj ver
+        if [ "$role" = build ]; then
+            proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+            ver="$(BB_PROJECT="$proj" "$0" version --file 2>/dev/null | tail -1 | tr -cd 'A-Za-z0-9._+-')" || ver=""
+            [ -z "$ver" ] || pre="${proj}-${ver}-"
+        fi
         for g in "${outs[@]}"; do
             for f in $g; do
                 [ -f "$f" ] || continue
                 # A glob that names a file already in dist/ (a build that
                 # writes there itself) is left where it is: cp onto itself
                 # prints "are the same file" and calls the build noisy.
+                case "$f" in dist/*|./dist/*) continue ;; esac
                 [ "$f" -ef "dist/$(basename "$f")" ] && continue
-                cp -f "$f" "dist/$(basename "$f")" && log "into dist/: $(basename "$f")"
+                cp -f "$f" "dist/${pre}$(basename "$f")" && log "into dist/: ${pre}$(basename "$f")"
             done
         done
     fi
@@ -3181,7 +3782,7 @@ cmd_lint() {
     need() { # need TOOL: false (and say so) when it is not installed
         command -v "$1" >/dev/null 2>&1 && return 0
         if on_node; then
-            printf '  [skip] %s is not in this node'"'"'s store; the Tools tab installs lint-tools, with this node picked\n' "$1"
+            printf '  [skip] %s is not in this node'"'"'s store; the Toolchains tab installs lint-tools, with this node picked\n' "$1"
             return 1
         fi
         printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"
@@ -3386,6 +3987,12 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
                 DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/lint-checks.py" runner \
                     "$(dirname "$(readlink -f "$0")")/dashboard/nodes.py" "$nid" 2>/dev/null
             fi
+            # A hosted job on a moving label (ubuntu-latest) builds on whatever
+            # GitHub points it at that day (R116): a note in any project, a
+            # failure in this one, whose image build must not move under it.
+            local strict=""
+            [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md && strict="--strict"
+            python3 "$BB_LIB/lint-checks.py" hosted $strict || rc=1
         fi
     else
         echo "  none found"
@@ -3707,6 +4314,7 @@ cmd_capture() {
         # and applies the one rule the Artifacts tab's sweep also does.
         ls|prune)
             local verb="$1"; shift
+            case "${1:-}" in -h|--help) cmd_capture --help; return 0 ;; esac
             local proj; proj="$(project_here 2>/dev/null || true)"
             local dist="${proj:+${WORKSPACE}/${proj}/dist}"
             [ -n "$dist" ] || dist="$PWD/dist"
@@ -3760,7 +4368,13 @@ bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N  [--second
              with $ADB in its environment
   --display  an X display grabbed for --seconds while --drive FILE (a shell
              script, DISPLAY set) drives it with xdotool
-  --threshold ffmpeg's scene score that counts as a change (0.02)
+  --threshold ffmpeg's scene score that counts as a change (0.0002 for --emu,
+              where a typed letter is about 0.0004; 0.02 otherwise)
+  --fps      look at the recording N times a second rather than at every
+             frame it has; frames.json says both (fps, recorded_fps). An
+             emulator under software rendering records about 10 a second
+             and on a card several times that, and the reel says so when a
+             recording is too sparse to show a short animation
 EOT
             return 0 ;;
     esac
@@ -3848,7 +4462,7 @@ URLs need their scheme (http:// or https://)"
     fi
 
     local chrome; chrome="$(find_chromium)"
-    local files
+    local files st=0
     files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
         "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "$settle" "${urls[@]}" <<'EOF'
@@ -3940,8 +4554,22 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...
   };
   const p = await ctx.newPage();
   const taken = new Set();
+  let unanswered = 0;
   for (const url of urls) {
-    await p.goto(url, { waitUntil: "networkidle" }).catch(() => {});
+    // A page that never goes quiet is still a page, and is shot as it is;
+    // one that never answered is not (B535): Chromium draws its own error
+    // page, and a picture of that with exit 0 read as the site being up.
+    let failed = "";
+    const res = await p.goto(url, { waitUntil: "networkidle" }).catch(e => {
+      if (!/timeout/i.test(`${e.name} ${e.message}`)) failed = String(e.message).split("\n")[0];
+      return null;
+    });
+    if (failed) {
+      console.error(`${url}: did not answer (${failed}); no picture taken`);
+      unanswered++;
+      continue;
+    }
+    if (res && res.status() >= 400) console.error(`${url}: answered ${res.status()}; shot as it is`);
     if (+wait) await p.waitForTimeout(+wait);
     let out = dest;
     if (mode === "dir") {
@@ -3986,10 +4614,12 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...
     console.log(out);
   }
   await b.close();
+  if (unanswered) process.exitCode = 3;
 })().catch(e => { console.error(String(e)); process.exit(1); });
 EOF
-)"
-    printf '%s\n' "$files"
+)" || st=$?
+    [ -z "$files" ] || printf '%s\n' "$files"
+    return "$st"
 }
 
 # bb tool graphics favicon: one SVG mark in, the favicon set a web app actually needs out:
@@ -4016,9 +4646,15 @@ cmd_tool() {
     case "$tool" in
         graphics)  tool_graphics "$@" ;;
         diagrams)  tool_diagrams "$@" ;;
+        docs)      tool_docs "$@" ;;
+        office)    tool_office "$@" ;;
+        # Sound effects (R107): the generator is bb's own python, nothing to
+        # install; the ffmpeg toolchain turns its WAV into OGG and draws the
+        # pictures a session checks it by.
+        sound)     tool_sound "$@" ;;
         "")
             local t d
-            for t in graphics diagrams; do
+            for t in graphics diagrams documents office; do
                 if d="$(sdk_find "$t" 2>/dev/null)" && [ -n "$d" ]; then
                     printf '  %-10s installed here\n' "$t"
                 else
@@ -4026,7 +4662,11 @@ cmd_tool() {
                 fi
             done
             printf '\n  bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...\n'
-            printf '  bb tool diagrams render FILE... [--out DIR]\n' ;;
+            printf '  bb tool diagrams render FILE... [--out DIR]\n'
+            printf '  bb tool docs read FILE... | pages FILE [--pages N-M] [--dpi N] [--out DIR]\n'
+            printf '  bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]\n'
+            printf '  bb tool sound make PRESET [--seed N] | tone HZ [--ms N] [--to HZ] | look FILE | presets\n'
+            printf '  bb tool sound say "TEXT" | hear FILE   (the audio toolchain)\n' ;;
         *) die "no tool called ${tool}: bb tool lists them" ;;
     esac
 }
@@ -4236,6 +4876,67 @@ tool_diagrams_render() {
     done
 }
 
+# ---- documents ---------------------------------------------------------------
+# A document a session can read: its text as Markdown (markitdown, from the
+# documents toolchain's own Python), or its pages as pictures (PyMuPDF, with
+# LibreOffice from the office toolchain making a PDF of anything else first).
+# docs.py in this library does both; this finds the toolchains' copies.
+tool_docs() {
+    local cmd="${1:-}" d py so
+    [ $# -gt 0 ] && shift
+    case "$cmd" in
+        read|pages) ;;
+        *) die "bb tool docs read FILE... | pages FILE [--pages N-M] [--dpi N] [--out DIR]" ;;
+    esac
+    d="$(sdk_find documents 2>/dev/null)" || d=""
+    py="${d:+$d/venv/bin/python}"
+    [ -n "$py" ] && [ -x "$py" ] \
+        || die "the documents toolchain is not on this node: install it on the Toolchains tab with this node picked"
+    so="$(sdk_find office 2>/dev/null)/bin/soffice" || so=""
+    [ -x "$so" ] || so=""
+    BB_DOCS_SOFFICE="$so" "$py" "$BB_LIB/docs.py" "$cmd" "$@"
+}
+
+# LibreOffice with no window: a document into another format, into dist/docs/
+# by default. A profile of its own per run, since two runs sharing one wait
+# on each other's lock and the second converts nothing without a word.
+# bb tool sound (R107): sound.py with the store's root, where it finds the
+# ffmpeg and audio toolchains.
+tool_sound() {
+    SDK_ROOT="$(sdk_root 2>/dev/null || true)" python3 "$BB_LIB/sound.py" "$@"
+}
+
+tool_office() {
+    local cmd="${1:-}"; [ $# -gt 0 ] && shift
+    case "$cmd" in
+        convert) ;;
+        *) die "bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]" ;;
+    esac
+    local to=pdf out="dist/docs" files=() f so work
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --to) to="${2:-}"; shift 2 ;;
+            --out) out="${2:-}"; shift 2 ;;
+            -*) die "unknown option: $1" ;;
+            *) img_file "$1"; files+=("$1"); shift ;;
+        esac
+    done
+    [ "${#files[@]}" -gt 0 ] || die "bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]"
+    case "$to" in pdf|docx|xlsx|pptx|odt|ods|odp|txt|html|csv) ;; *) die "--to takes pdf, docx, xlsx, pptx, odt, ods, odp, txt, html or csv" ;; esac
+    so="$(gfx_tool office soffice)"
+    mkdir -p "$out"; out="$(cd "$out" && pwd)"
+    work="$(mktemp -d "${TMPDIR:-/tmp}/bb-office.XXXXXX")"
+    for f in "${files[@]}"; do
+        HOME="$work" "$so" "-env:UserInstallation=file://$work/profile" --headless --norestore \
+            --convert-to "$to" --outdir "$out" "$f" >/dev/null 2>"$work/err" \
+            || { cat "$work/err" >&2; rm -rf "$work"; die "LibreOffice could not convert ${f}"; }
+        [ -f "$out/$(basename "${f%.*}").$to" ] \
+            || { cat "$work/err" >&2; rm -rf "$work"; die "LibreOffice wrote nothing for ${f}: it may not read that format"; }
+        log "wrote ${out}/$(basename "${f%.*}").${to}"
+    done
+    rm -rf "$work"
+}
+
 tool_graphics_favicon() {
     local svg="" out="" bg=""
     while [ $# -gt 0 ]; do
@@ -4438,7 +5139,7 @@ cmd_doctor() {
     # expired token cannot keep reading [ok] here.
     runner_ids="$(sudo -n /opt/builderbot/scripts/mint-runner-token --list 2>/dev/null || true)"
     if [ -z "$runner_ids" ]; then
-        printf '  [skip] no runner token stored for any node (the runner section of a node on the Nodes tab takes one)\n'
+        printf '  [skip] no runner token stored for any node (the CI runner tab takes one)\n'
     else
         while read -r rid rslot; do
             [ -n "$rid" ] || continue
@@ -4533,9 +5234,8 @@ cmd_doctor() {
     # container carrying no Claude Code at all reported "Claude Code
     # credentials present in /home/builder", which was three kinds of wrong.
     # The credential is one file, and it lives on a node.
-    # On the controller: not a line. The card above the pills already says
-    # which account this login is, from the node that reported it, and a
-    # pill saying "no login here" beside it read as a contradiction.
+    # On the controller: not a line. A login is a node's, and each node's
+    # row on the Nodes tab says who is signed in there.
     if ! on_node; then
         :
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
@@ -4544,8 +5244,8 @@ cmd_doctor() {
         printf '  [ok]   signed in to Claude on this machine%s\n' \
             "$(python3 "$BB_LIB/doctor-probes.py" login 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine: the dashboard\n'
-        printf '         Sign in runs the flow here, or `bb login` in this shell\n'
+        printf '  [warn] not signed in to Claude on this machine: Sign in on its row on the\n'
+        printf '         Nodes tab (Claude Code) runs the flow here, or `bb login` in this shell\n'
     fi
     return $ok
 }
@@ -4560,7 +5260,23 @@ cmd_doctor() {
 # and two implementations of "what version is this" would drift the week one of
 # them was touched. This resolves which project is being asked about and prints
 # what the module returns.
+# bb version release --edit (R139): the session's notes and files read here,
+# the edit asked of the controller over its API (lib/release-edit.py).
+cmd_version_edit() {
+    local proj
+    proj="${BB_VERSION_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
+    fi
+    export BB_VERSION_AUTH; BB_VERSION_AUTH="$(bb_auth_or_die)"
+    BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/release-edit.py" "$proj" "$@"
+}
+
 cmd_version() {
+    case " $* " in *" release "*"--edit "*|*" --edit "*"release "*|*" release "*"--remove "*)
+        case " $* " in *" -h "*|*" --help "*) ;; *) cmd_version_edit "$@"; return $? ;; esac ;;
+    esac
     local py proj
     py="$(dirname "$(readlink -f "$0")")/dashboard/version.py"
     [ -f "$py" ] || die "version.py is missing from this image"
@@ -4574,6 +5290,9 @@ cmd_version() {
     # runs this in the caller's cwd, so a node's session gets the same.
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
+    # A release is the controller's to make (R138): the verb asks it, with
+    # this session's credential.
+    case " $* " in *" release "*) export BB_VERSION_AUTH; BB_VERSION_AUTH="$(bb_auth_or_die)" ;; esac
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/version-verbs.py" "$py" "$proj" "$@"
 }
@@ -4613,7 +5332,34 @@ if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
     export BB_PROJECT="$2" BB_ROADMAP_PROJECT="$2" BB_BUG_PROJECT="$2" BB_VERSION_PROJECT="$2"
     export BB_TREE="$WORKSPACE/$2"
     shift 2
+    # Said rather than answered for this project or for nothing
+    # (MediaReducer, 7 Oct): `bb -p X status` printed this session's own
+    # status, and `bb -p X map find` said "nothing defines" a function X
+    # has, because X was added to the reads after the session started and
+    # its tree was not in view.
+    case "${1:-}" in
+        status|node|gpu|toolchains|emu|phone|tidy|doctor|lint|drift|build|test|run)
+            die "bb -p: bb ${1} answers for this machine and this project, not for $BB_PROJECT" ;;
+        map)
+            [ -d "$BB_TREE" ] || die "$BB_PROJECT's tree is not in this session's view: a project added to the reads is mounted when a session starts, so start a new one (its notebook answers already)" ;;
+    esac
 fi
+
+# `bb VERB -h`: the verb's own entries in the reference above, answered here
+# for every verb alike (B536). Each verb had grown its own answer, and those
+# with none fell to their usage error: `bb devapp -h` printed its usage as
+# "[builderbot] ERROR:" and exited 1, so asking for help read as a failure.
+# Help is the same text on a node as on the controller, so it is never
+# relayed. A verb the reference does not name falls through to its own.
+case "${2:-}" in
+    -h|--help) [ -n "${1:-}" ] && verb_help "$1" && exit 0 ;;
+esac
+# ...and `bb bug add -h` for a notebook verb, whose words after the
+# subcommand are a title: it filed a bug called "-h" (MediaReducer, 7 Oct).
+case "${1:-}:${3:-}" in
+    bug:-h|bug:--help|roadmap:-h|roadmap:--help|rules:-h|rules:--help|changelog:-h|changelog:--help)
+        verb_help "$1" && exit 0 ;;
+esac
 
 if on_node && [ -z "${BB_RELAYED:-}" ]; then
     # One verb is relayed except for one of its subcommands. `bb tests` reads
@@ -4639,11 +5385,19 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
-        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
+        # `rules -h` is help, the bb beside it answers (B411).
+        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests unit"|"tests coverage"|"rules check"|"rules -h"|"rules --help"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and
             # then died with "bugs.py is missing from this image".
+            # `version release --edit` reads its notes and files where the
+            # session wrote them and only calls the API (report 60): relayed,
+            # a scratchpad file was not there and stdin arrived empty.
+            if [ "${1:-}" = version ]; then
+                case " $* " in *" -h "*|*" --help "*) ;;
+                    *" release "*"--edit "*|*" --edit "*"release "*|*" release "*"--remove "*) cmd_version_edit "${@:2}"; exit $? ;; esac
+            fi
             case "$BB_RELAY_VERBS" in
                 # The controller's answer IS this command's answer. It used to
                 # be `exit 0` whatever came back, so a refused roadmap edit, a
@@ -4672,7 +5426,15 @@ case "${1:-help}" in
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
     login)    shift; cmd_login "$@" ;;
-    emu)      shift; cmd_emu "$@" ;;
+    emu)      shift; dist_ignored; cmd_emu "$@" ;;
+    gpu)      shift; BB_PROJECT="$(bb_project 2>/dev/null || true)" exec python3 "$BB_LIB/gpu.py" "$@" ;;
+    tidy)     shift; exec python3 "$BB_LIB/tidy.py" "$@" ;;
+    node)     shift
+              case "${1:-busy}" in
+                  -h|--help) sed -n '/^bb node busy/,/if it never was/p' "$0"; exit 0 ;;
+              esac
+              BB_BUSY_AUTH="$(bb_auth_or_die)" BB_BUSY_PROJECT="$(bb_project 2>/dev/null || true)" \
+                  BB_BUSY_NODE="${BB_NODE:-}" exec python3 "$BB_LIB/busy-verbs.py" "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     token)    shift; cmd_token "$@" ;;
@@ -4683,8 +5445,9 @@ case "${1:-help}" in
     run)   shift; cmd_run "$@" ;;
     git)   shift; cmd_git "$@" ;;
     devapp) shift; cmd_devapp "$@" ;;
+    sign)   shift; dist_ignored; cmd_sign "$@" ;;
     ci-labels) shift; cmd_ci_labels "$@" ;;
-    build) shift; cmd_build_or_test build "$@" ;;
+    build) shift; dist_ignored; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;
     roadmap)  shift; cmd_roadmap "$@" ;;
     bug) shift; cmd_bug "$@" ;;
@@ -4693,6 +5456,7 @@ case "${1:-help}" in
     brief) shift; cmd_brief "$@" ;;
     transcripts) shift; cmd_transcripts "$@" ;;
     design) shift; cmd_design "$@" ;;
+    wiki) shift; cmd_wiki "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
@@ -4700,15 +5464,15 @@ case "${1:-help}" in
     report)   shift; cmd_report "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
-    phone)    shift; cmd_phone "$@" ;;
+    phone)    shift; dist_ignored; cmd_phone "$@" ;;
     root)     shift; cmd_root "$@" ;;
     container) shift; cmd_container "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
     map)      shift; cmd_map "$@" ;;
-    capture)  shift; cmd_capture "$@" ;;
-    tool)     shift; cmd_tool "$@" ;;
+    capture)  shift; dist_ignored; cmd_capture "$@" ;;
+    tool)     shift; dist_ignored; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;

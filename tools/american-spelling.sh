@@ -24,7 +24,11 @@ words="$words|(cance|labe|trave|mode)ll(ed|ing|er)|whil${s}t|art${r#r}fact"
 SKIP='^$'
 mode="${1:-}"
 
-strip_code () { sed -e 's/`[^`]*`//g'; }
+# An identifier somebody else spells is theirs: aria-labelledby is the ARIA
+# attribute's own name (two l's in the spec), and the British-looking
+# "labeledby" is no attribute at all, which is what B499 was.
+l=l
+strip_code () { sed -e 's/`[^`]*`//g' -e "s/aria-labe${l}${l}edby//gI"; }
 
 if [ "$mode" = --all ]; then
     git ls-files -z | xargs -0 grep -ciIE "$words" 2>/dev/null \

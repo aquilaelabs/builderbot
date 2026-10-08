@@ -28,6 +28,13 @@ function nbGitView({$, nb, project}){
   // the controller and typed into the project's session the way a roadmap
   // step arrives; then the tab, so the answer is watched.
   async function gitAsk(kind, args, btn){
+    // Asked first (sendSure), except where the caller already asked about
+    // this very send: another session's branch to merge or rebase.
+    const what = args?.path ? `${args.path} (${kind})`
+      : args?.branch ? `the branch ${args.branch} (${kind})`
+      : args?.sha ? `the commit ${String(args.sha).slice(0, 7)} (${kind})`
+      : `the ${kind}`;
+    if (!args?.confirmed && !sendSure(project, what)) return;
     if (btn) busy(btn, "Sending");
     try{
       const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}});
@@ -69,7 +76,10 @@ function nbGitView({$, nb, project}){
     const tree = treeOf();
     hint.textContent = `${tree.notMine ? `${tree.owner}'s working tree, ` : ""}on ${st.branch || "no branch"} · ${files.length
       ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
-      local.length} branch${local.length === 1 ? "" : "es"}${
+      // A branch with no commit is not listed by git, so "0 branches" sat
+      // beside "on master" (B456): the honest word is that nothing is
+      // committed yet.
+      !commits.length ? "no commits yet" : `${local.length} branch${local.length === 1 ? "" : "es"}`}${
       st.upstream ? (st.ahead || st.behind
         ? ` · ${st.ahead ? st.ahead + " to push" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " to pull" : ""} (${git.host?.name || "the remote"})`
         : ` · in step with ${git.host?.name || "the remote"}`) : ""}`;
@@ -123,6 +133,35 @@ function nbGitView({$, nb, project}){
   const gitBusy = (btn, verb) => { btn.dataset.label = btn.dataset.label || btn.textContent; return btn; };
   $("gitNet")?.querySelectorAll("[data-gitact]").forEach(b => b.onclick = () =>
     gitAct(b.dataset.gitact, {}, gitBusy(b), {fetch: "Fetching", pull: "Pulling", push: "Pushing"}[b.dataset.gitact]));
+
+  // The project's CI as the watch last found it (R117): looked at once a
+  // day and when the project is linked, from the workflows in the tree and,
+  // for a project on GitHub, its newest run on the main branch and the
+  // notices GitHub wrote on it. Shown only where there are workflows.
+  function ciSection(){
+    const ci = git.ci || {};
+    if (!ci.at && !ci.workflows && !git.remote) return "";
+    const fs = ci.findings || [];
+    const red = fs.some(f => f.sev === "bad");
+    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : "nothing drifting";
+    const cls = red ? "bad" : fs.length ? "note" : ci.at ? "ok" : "";
+    const word = {run: "Check", label: "Runner", action: "Action", notice: "GitHub says"};
+    // A moving label and an action a major behind carry their fix (R117
+    // step 4): Fix writes that one line into the working tree, uncommitted,
+    // for Changes to show; nothing is committed or pushed by the press.
+    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const mayFix = !locked && !treeOf().barred;
+    const rows = fs.map(f => `<div class="actbar"><span class="state ${f.sev === "bad" ? "bad" : f.sev === "warn" ? "warn" : ""}">${
+        esc(word[f.kind] || f.kind)}: ${esc(f.text)} <code>${esc(f.where || "")}</code></span>${
+        f.fix && mayFix ? `<button type="button" data-cifix="${esc(f.where)}"
+          title="write ${esc(f.fix.to)} on that line, in the working tree; you commit it">Fix</button>` : ""}</div>`).join("");
+    const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";
+    const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
+        "Not looked at yet."} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
+      ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
+      <div class="actbar"><button type="button" id="gitCiLook">Look now</button></div>`;
+    return docSection("git", "ci", "CI", status, body, {cls, open: red, loud: red});
+  }
 
   function drawGit(){
     const body = $("gitBody");
@@ -283,8 +322,20 @@ function nbGitView({$, nb, project}){
       + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
       + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
-      + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy, {open: false}) : "");
+      + ciSection()
+      + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy) : "");
     wireSections(body);
+    body.querySelectorAll("[data-cifix]").forEach(b => b.onclick = () => gitAct("ci-fix", {where: b.dataset.cifix}, b, "Fixing"));
+    const cl = $("gitCiLook");
+    if (cl) cl.onclick = async () => {
+      busy(cl, "Looking");
+      try{
+        const j = await (await postJSON("/api/ci-watch", {project})).json();
+        if (j.error) notify(j.error, true);
+        else { git.ci = j; drawGit(); }
+      }catch(e){ notify("could not reach the controller: " + e, true); }
+      finally{ if (cl.isConnected) unbusy(cl, "Look now"); }
+    };
     body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {
       const saved = (state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {};
       if (sel.value === (saved[sel.dataset.gitpol] || (sel.dataset.gitpol === "push" ? "allow" : "deny"))) delete gitPolDraft[sel.dataset.gitpol];

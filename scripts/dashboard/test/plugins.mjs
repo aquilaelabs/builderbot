@@ -81,8 +81,8 @@ ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a h
   const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
   await page.goto(URL); await ready(page);
   await page.evaluate(() => { profile = null; openProfileTab(); loadProfile(); });
-  await page.waitForFunction(() => /Claude plugins/.test(document.querySelector('.doc')?.textContent || ''), null, { timeout: 15000 });
-  const text = await page.evaluate(() => [...document.querySelectorAll('.doc h4')]
+  await page.waitForFunction(() => /Claude plugins/.test(document.querySelector('.doc.on')?.textContent || ''), null, { timeout: 15000 });
+  const text = await page.evaluate(() => [...document.querySelectorAll('.doc.on h4')]
     .find(h => h.textContent === 'Claude plugins')?.nextElementSibling?.textContent.replace(/\s+/g, ' ').trim() || '');
   ok(/On plugbox: code-simplifier 1\.0\.0, feature-dev 1\.0\.0 \(alpha\), pyright-lsp 1\.0\.0 off/.test(text)
      && /\/plugin in a Claude session/.test(text),
@@ -93,7 +93,7 @@ ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a h
   // to add one.
   await beat([{ uid: owner, email: '', plugins: null }]);
   await page.evaluate(() => loadProfile()); await sleep(500);
-  const empty = await page.evaluate(() => [...document.querySelectorAll('.doc h4')]
+  const empty = await page.evaluate(() => [...document.querySelectorAll('.doc.on h4')]
     .find(h => h.textContent === 'Claude plugins')?.nextElementSibling?.textContent.replace(/\s+/g, ' ').trim() || '');
   ok(/None installed/.test(empty) || !/plugbox/.test(empty),
      `a node that says the account has none takes them off (${empty.slice(0, 60)})`);

@@ -21,7 +21,7 @@ FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.title="BuilderBot" \
       org.opencontainers.image.description="Claude Code workstation and build-node controller" \
-      org.opencontainers.image.source="https://github.com/Stencil-Projects/BuilderBot" \
+      org.opencontainers.image.source="https://github.com/aquilaelabs/BuilderBot" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -189,6 +189,10 @@ RUN set -eux; \
 # link rather than a directory.
 # ---------------------------------------------------------------------------
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+# A project's own Playwright installing its browsers here (or into the store
+# the path is moved to) adds them without sweeping the ones it did not ask
+# for, which took the store's own browsers on 7 Oct (B548).
+ENV PLAYWRIGHT_SKIP_BROWSER_GC=1
 
 # DS-0017 suppressed: the apt-get update below feeds `playwright
 # install-deps`, which runs apt-get install itself in this same layer; the

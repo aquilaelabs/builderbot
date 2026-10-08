@@ -97,11 +97,35 @@ ok(names.includes('toolchains') && !names.some(n => n.startsWith('lab-')),
 const pre = (...files) => execFileSync('bash', [`${REPO}/scripts/bb`, 'tests', 'preflight', '--dry', '--files', ...files],
                                        { encoding: 'utf8', env: { ...process.env, BB_TREE: REPO } });
 const plan = pre('scripts/dashboard/tab-docker.js');
-ok(/suites:.*\bdevapp\b/.test(plan) && /checks:\s+lint voice design/.test(plan),
-   `a dashboard change plans its suites and the design check (${plan.match(/suites:.*/)?.[0].slice(0, 60)})`);
+ok(/suites:.*\bdevapp\b/.test(plan),
+   `a dashboard script change plans the suites that reach it (${plan.match(/suites:.*/)?.[0].slice(0, 60)})`);
+// The design check is uniform.mjs whole: planned for a file that carries
+// style, which no function map sees, and left to the map for a script when
+// a covered run is on record (30 Sep).
+ok(/checks:\s+lint voice design/.test(pre('scripts/dashboard/index.html'))
+   && /checks:\s+lint voice design/.test(pre('docs/design-language.md')),
+   'a change to the stylesheet or the design language plans the design check');
 ok(/suites:\s+ALL/.test(pre('scripts/dashboard/server.py')), 'a change to server.py is the whole suite, said as such');
 ok(/suites:\s+none/.test(pre('README.md')) && /checks:\s+lint voice$/m.test(pre('README.md')),
    'a change with no suite still gets the lint and voice checks');
+// A file named with --files is asked of the map whole, never by its changed
+// lines: with a covered run on record, scripts/lib/preflight.sh asked
+// coverage which suites reach the lines changed, and a named file with
+// none changed placed nothing (B472, page-bell.js). The copy here has no
+// covered run, so this holds the answer, and the dry runs on the fix hold
+// the branch.
+ok(/suites:.*\bphone\b/.test(pre('scripts/dashboard/page-bell.js')),
+   'a file named outright is placed by the suites that reach it, changed lines or none');
+
+// A file no browser suite reaches but a unit file runs (the provisioner's
+// root helper, which test_sandbox_gpu.py runs as the bash it is) is placed
+// by that unit file, since the unit tier is the first thing a preflight
+// runs: before this a change there could never come out clean.
+{
+  const prov = pre('nodes/provision-linux.sh');
+  ok(/unit:\s+nodes\/provision-linux\.sh is run by .*test_sandbox_gpu\.py/.test(prov) && !/no suite reaches/.test(prov),
+     `a change only the unit tier runs is placed by the unit file that names it (${prov.match(/unit:.*/)?.[0].slice(0, 80)})`);
+}
 
 // The other C-shaped languages: the companion app's Kotlin. `fun` opens a
 // definition, a trailing lambda (Row(...) { ... }) is a call and not a
@@ -232,7 +256,7 @@ ok(/page-poll\.js:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLi
 const sec = map('sections', 'scripts/dashboard/index.html');
 ok(/^scripts\/dashboard\/index\.html: \d+ sections, \d+ top-level definitions$/m.test(sec)
    && /^\s+\d+  the welcome panel: the guide, and the changelog: \d+ functions, \d+ callers? from outside/m.test(sec)
-   && /^\s+\d+  tabs: \d+ functions, \d+ callers from outside/m.test(sec),
+   && /^\s+\d+  tabs: \d+ functions?, \d+ callers? from outside/m.test(sec),
    'sections lists a file by its headers with each section\'s functions and outside callers');
 
 // Nested definitions are shown under their parent.

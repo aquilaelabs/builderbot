@@ -23,7 +23,7 @@ function drawRunner(){
   const el = $("runner");
   const rows = state?.node_runners || [];
   if (!rows.length){
-    paint(el, `<div class="empty">no runner on any node: the Nodes tab installs one</div>`);
+    paint(el, `<div class="empty">no runner on any node: the CI runner tab adds one</div>`);
     return;
   }
   const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
@@ -40,10 +40,12 @@ function drawRunner(){
       : n.installed ? ["installed, not listening", "bad"]
       : n.failed ? [`install failed ${when(n.failed.ended)}: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
       : ["install asked for; not reported yet", "warn"];
-    return `<div class="row"><span class="grow"><b>${esc(n.node)}</b>${n.url ? ` <span class="dim">${esc(n.url.replace(/^https?:\/\//, ""))}</span>` : ""}
+    return `<div class="row" data-runnode="${esc(n.id || "")}" role="button" tabindex="0" title="open the CI runner tab on ${esc(n.node)}"><span class="grow"><b>${esc(n.node)}</b>${n.url ? ` <span class="dim">${esc(n.url.replace(/^https?:\/\//, ""))}</span>` : ""}
       <span class="sub ${cls}">${esc(word)}</span>${n.labels.length
         ? `<div class="sub dim">runs-on: [self-hosted, ${esc(n.node)}]</div>` : ""}</span></div>`;
   }).join(""));
+  // A row opens the CI runner tab on its node (R121), where it is managed.
+  el.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => openRunnerTab(r.dataset.runnode));
 }
 
 // What gets folded away is what the button says: projects with an *error*, and
@@ -134,9 +136,71 @@ function wireProjectRows(root){
   root.querySelectorAll("[data-p]").forEach(b => b.onclick = () =>
     setProjectPinned(b.dataset.p, b.dataset.on === "1"));
   root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
-    renameProject(b.dataset.rn));
+    openProjectSettings(b.dataset.rn));
+  root.querySelectorAll("[data-bug]").forEach(b => b.onclick = () =>
+    openReport(b.dataset.bug));
+  root.querySelectorAll("[data-ph]").forEach(b => b.onclick = e => phoneRowPress(b, e));
   root.querySelectorAll("[data-del]").forEach(b => b.onclick = () =>
     deleteProject(b.dataset.del));
+}
+
+// ---- a phone, from a project's row (R120) -----------------------------------
+// A phone is the person's who connected it, and only they lend it to a
+// project: the row's Phone button is live for exactly them, on a project
+// whose node their phone is on. Lent here, it takes it back. Everybody else
+// sees why it is not theirs on its tip, and the lease on the row's line.
+function phoneWhy(p){
+  const ph = p.phone;
+  if (!p.node_name) return "no node: a phone is connected on a project's node, and this one has none";
+  if (!ph) return `no phone is connected on ${p.node_name}: connect yours in the Phone tab, on that node`;
+  if (!ph.mine) return `the phone on ${p.node_name} is ${ph.owner}'s: only they lend it`;
+  if (ph.lease && ph.lease.project !== p.name) return `your phone is lent to ${projLabel(ph.lease.project)}: take it back there first`;
+  return "";
+}
+function phoneButton(p){
+  const why = phoneWhy(p), here = p.phone?.lease?.project === p.name;
+  return `<button class="eye${here ? " on acc" : ""}" data-ph="${esc(p.name)}"${why ? " disabled" : ""}
+    aria-label="${here ? "take the phone back" : "lend your phone"}"
+    title="${esc(why || (here ? "your phone is lent here: take it back" : `lend your phone on ${p.node_name} to ${projLabel(p.name)}: each command its session runs asks you`))}"
+    >${TOOL_ICONS.phone}</button>`;
+}
+async function phoneRowPress(b, e){
+  e.stopPropagation();
+  const p = (state?.projects || []).find(x => x.name === b.dataset.ph);
+  if (!p?.phone?.mine) return;
+  const nid = p.phone.node || "";
+  const post = async body => {
+    busy(b, "");
+    try{
+      const j = await (await postJSON("/api/phone", body)).json();
+      if (j.error) notify(j.error, true);
+      else notify(body.action === "lend" ? `your phone is lent to ${projLabel(p.name)}: each command asks you` : `your phone is back from ${projLabel(p.name)}`);
+    }catch(err){ notify("could not reach the controller: " + err, true); }
+    unbusy(b);
+    refresh();
+  };
+  if (p.phone.lease?.project === p.name){
+    if (confirm(`Take your phone back from ${projLabel(p.name)}? Its session stops reaching it.`))
+      post({action: "take-back", node: p.phone.node || nid});
+    return;
+  }
+  openPhoneLend(p.name, hours => post({action: "lend", node: nid, project: p.name, hours}));
+}
+// The lend dialog: how long, and Lend. #phoneLendModal is index.html's.
+function openPhoneLend(name, lend){
+  const p = (state?.projects || []).find(x => x.name === name) || {name};
+  const m = $("phoneLendModal");
+  armModal(m);
+  $("phoneLendTitle").textContent = `Lend your phone to ${projLabel(p.name)}`;
+  $("phoneLendHint").textContent = `${p.phone?.model || "Your phone"} on ${p.node_name || "its node"}. Each command ${projLabel(p.name)}'s `
+    + "session runs on it asks you in your bell first, and only its own app is reachable.";
+  m.hidden = false;
+  m.onclick = ev => { if (ev.target === m) m.hidden = true; };
+  $("phoneLendCancel").onclick = () => { m.hidden = true; };
+  $("phoneLendGo").onclick = () => {
+    m.hidden = true;
+    lend?.(Number($("phoneLendFor").value));
+  };
 }
 
 // One project's row. Extracted so the sidebar card and the Projects tab
@@ -153,7 +217,7 @@ function projectRow(p, live, cls, inTab){
   return `
     <div class="row stack2${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
       <div class="grow">
-        <div class="namerow"><div class="name">${esc(p.name)}${p.locked
+        <div class="namerow"><div class="name">${esc(p.label || p.name)}${p.locked
           // After the name, because it is a fact about the project rather
           // than a control: the row reads "StreamLift, locked" at a glance
           // without hunting for which of six icons is lit.
@@ -190,13 +254,11 @@ function projectRow(p, live, cls, inTab){
           // Claude session runs on a node and this container carries no
           // Claude Code, so there is nothing for a press to do.
           || (!p.session_at && !!p.session_why && !live.has(myClaude(p.name)))
-          // Not signed in is a REPORT, not a fact: the credential is on the
-          // node, and the controller knows only what a session there last
-          // told it (claudegrant.py). So it ghosts nothing on a project that
-          // HAS a node: the session would start and say so itself.
-          // Ghosting on the report would be a deadlock: no button, so no
-          // session, so nothing ever reports.
-          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
+          // ...and none on a node that was un-enrolled (the operator, 5 Oct):
+          // it still names a place, which is gone.
+          || (p.node_removed && !live.has(myClaude(p.name)))
+          // Not signed in on its node ghosts nothing: the press opens the
+          // chooser, which offers that node's sign-in, the way in.
           || heldWhy(p))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
@@ -210,11 +272,11 @@ function projectRow(p, live, cls, inTab){
                  : p.session_why ? p.session_why
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own: start yours`
-                 : !signedIn() && !live.has(myClaude(p.name))
-                   ? "not signed in to Claude on any node: sign in from the Doctor card"
+                 : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(p.name))
+                   ? `Claude: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
                  : p.session_at
-                   ? `Claude: a session on ${p.session_at}, this project's node; sign in there from a shell if it asks`
-                 : live.has(myClaude(p.name)) ? "Claude: session running, go to its tab"
+                   ? `Claude: a session on ${p.session_at}, this project's node`
+                 : live.has(myClaude(p.name)) ? "Claude: your session is running; open its tab or end it"
                  : p.last_claude ? "Claude: no session running; resume or start one"
                  : "Claude: start a session here"}">${SPARK}</button>`}
       ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
@@ -225,9 +287,11 @@ function projectRow(p, live, cls, inTab){
                 : "shell: open another terminal here"}"
         >${TERM}</button>` : ""}
       ${p.git_ok && !isBroken(p)
-        ? `<button class="eye" data-l="${esc(p.name)}"
+        ? `<button class="eye" data-l="${esc(p.name)}"${state?.can?.["git-auth"] === false ? " disabled" : ""}
              aria-label="${p.linked ? `${p.forge_name || "remote"} settings` : "link to a git host"}"
-             title="${p.linked
+             title="${state?.can?.["git-auth"] === false
+               ? "how this project authenticates to its remote is not one of your roles' grants"
+               : p.linked
                ? `${esc(p.forge_host || p.forge_name || "its remote")}: the credential this project pushes with, and Unlink`
                : "no remote: link this repo to an empty repository on GitHub, Gitea, GitLab or another git host"}">${LINK}</button>`
         : ""}
@@ -238,12 +302,13 @@ function projectRow(p, live, cls, inTab){
                          : "notebook: readable while this project is locked, not writable")
                  : nb ? "notebook: open, go to its tab"
                  : "notebook: roadmap, memory and bugs for this project"}">${BOOK}</button>`}
-      <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
-        title="settings: name, node, and what Claude runs on here">${GEAR}</button>
+      ${isBroken(p) ? "" : phoneButton(p)}
+      ${p.mine === false ? "" : `<button class="eye" data-bug="${esc(p.name)}" aria-label="report a bug"
+        title="report a bug in BuilderBot, from this project: it goes to the diagnostics">${BUG}</button>`}
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
-        data-on="${p.locked ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
+        data-on="${p.locked ? "0" : "1"}"${state?.can?.lock === false ? " disabled" : ""}
         aria-label="${p.locked ? "unlock" : "lock"}"
-        title="${state?.admin === false ? "locking a project is an administrator's"
+        title="${state?.can?.lock === false ? "locking a project is not one of your roles' grants"
           : p.locked
           ? "unlock: let Claude start sessions here and write its notebook again"
           : "lock: run this project yourself. No Claude session starts here "
@@ -252,8 +317,7 @@ function projectRow(p, live, cls, inTab){
       <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
-        title="${state?.admin === false ? "the pins are one set for everybody, so moving them is an administrator's"
-          : p.pinned
+        title="${p.pinned
           ? "unpin: take it off the sidebar; it stays on the Projects tab"
           : "pin: show it on the sidebar's Projects card"}"
         >${TACK}</button>
@@ -262,6 +326,10 @@ function projectRow(p, live, cls, inTab){
       <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
         aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
       </span>
+      ${p.phone?.lease?.project === p.name ? `<div class="sub sessline">${esc(p.phone.model || "a phone")} lent here by ${
+          esc(p.phone.lease.by_name || p.phone.owner)}${p.phone.lease.left != null ? `, ${Math.max(1, Math.round(p.phone.lease.left / 60))} min left` : ""}: each command asks ${
+          p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
+      ${p.testing ? `<div class="sub sessline testing">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
       ${sessionRows(p.name) ? `<div class="sub sesslist">${sessionRows(p.name)}</div>`
         // WHO is here, or WHY nobody can be. Which machine they are on is
         // neither: it is on the project's settings, it is the same for every
@@ -281,11 +349,15 @@ function projectRow(p, live, cls, inTab){
         // (23 Sep). The same line for a node whose agent is out of window
         // (held), unless the row is already saying the map is building.
         : (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked
-          ? `<div class="sub sessline bad">${esc(shortWhy(p.session_why || p.held))}</div>` : ""}
+          ? `<div class="sub sessline ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(shortWhy(p.session_why || p.held))}</div>` : ""}
     </div>
 `;
 }
 
+// Projects by name, as a person reads a list: case aside and numbers as
+// numbers (the operator, 7 Oct). The server's order is the directory's, in
+// which every capitalised name came before every lower-case one.
+function byProjectName(a, b){ return String(a.label || a.name).localeCompare(String(b.label || b.name), undefined, {sensitivity: "base", numeric: true}); }
 function drawProjects(all){
   const el = $("projects");
   // The card is the pinned view; the Projects tab is the whole list. Filtered
@@ -298,7 +370,7 @@ function drawProjects(all){
   // Excluded last: it is not a problem waiting to be fixed like the rest of
   // what is folded away here, it is a decision already made.
   const shown   = (showAllProjects ? ps : ps.filter(p => !isBroken(p)))
-                  .slice();
+                  .slice().sort(byProjectName);
 
   // Declared above the empty-list branch below, which READS it. It used to
   // sit past that branch's `return`, so a card with nothing pinned threw
@@ -406,7 +478,9 @@ function pJobWire(){
   // and a button that earns an error is worse than one that waits.
   const busy = !!state?.project_job?.running;
   const nb = $("bNewProj"); if (nb) nb.disabled = busy;
-  document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy);
+  // ...and never re-enabled past the grant (R137 step 4): the busy pass
+  // undid the row's disabled for an account without git-auth.
+  document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy || state?.can?.["git-auth"] === false);
 }
 
 // ---- a project's job: the clone or the first push -----------------------
@@ -459,7 +533,7 @@ async function setLocked(name, on){
   const running = !who.length ? "No Claude session is running here."
     : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} Claude session here ends now.`
     : `${who.length} Claude sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
-  if (on && !confirm(`Lock ${name}?\n\n${running}\n\n`
+  if (on && !confirm(`Lock ${projLabel(name)}?\n\n${running}\n\n`
         + `No Claude session starts here and its notebook goes read-only. Your `
         + `shells, findings, artifacts and dev instance keep working. Unlock `
         + `reverses it.`)) return;
@@ -471,7 +545,7 @@ async function setLocked(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === s);
       if (t) dropTab(t.id);
     }
-    if (on && j.ended?.length) notify(`${name} locked: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
+    if (on && j.ended?.length) notify(`${projLabel(name)} locked: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
     applyNow(p => { p.locked = (j.locked || []).includes(p.name); });
   }catch(e){ notify("lock failed: " + e, true); }
   refresh();

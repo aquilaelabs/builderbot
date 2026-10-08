@@ -115,12 +115,12 @@ credential mode** (shielded vs in-environment), **SSH auth against GitHub**
 it actually answers, and says it is a sandbox; and, when a GPU is passed through,: whether its **graphics stack** is usable or
 only CUDA is.
 
-Each person signs in to Claude from the dashboard's
-**Sign in** button, under the doctor verdict. The flow runs on a node: the
-machine Claude Code is installed on, and the code is pasted back into the
-card. Each node signs in for itself and keeps the grant it alone refreshes;
-the controller holds no credential, only which Anthropic account you are
-bound to.
+Each person signs in to Claude on each node they work on, from that node's
+row on the Nodes tab: **Sign in** under Claude Code, which a project's
+Claude button offers the first time. The flow runs on that node, the
+machine Claude Code is installed on, and the code is pasted back on the
+row. Each node keeps the login it alone refreshes; the controller holds no
+credential, only which Anthropic account each node reported for you.
 
 **CI runs on a node, not in this container.** Enroll one (a token from
 the Nodes tab, then `provision-linux.sh` on the machine; `docs/nodes.md`
@@ -172,7 +172,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 ## Building locally instead of pulling
 
 ```bash
-git clone https://github.com/Stencil-Projects/BuilderBot.git && cd BuilderBot
+git clone https://github.com/aquilaelabs/BuilderBot.git && cd BuilderBot
 cp .env.example .env && nano .env
 docker compose build && docker compose up -d
 ```

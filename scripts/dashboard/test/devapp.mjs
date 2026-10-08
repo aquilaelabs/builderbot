@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -83,7 +83,23 @@ async function openManager(){
 }
 async function dmClick(act){
   await openManager();
-  await page.click(`${DM} [data-dm="${act}"]`);
+  // A button that stays dead is the shape of B477: say what the row showed
+  // (its state line, the button's title, the row's own record), so the
+  // next failure names whether it read running, busy or short of env.
+  const b = `${DM} [data-dm="${act}"]`;
+  const live = await page.waitForFunction(sel => { const e = document.querySelector(sel); return e && !e.disabled; },
+                                          b, { timeout: 45000 }).then(() => true, () => false);
+  if (!live){
+    const seen = await page.evaluate(([sel, row]) => {
+      const r = document.querySelector(row), e = document.querySelector(sel);
+      const list = Array.isArray(dockerList) ? dockerList : (dockerList?.instances || dockerList?.rows || []);
+      const d = list.find(x => x.project === 'ep.silon') || {};
+      return { state: r?.querySelector('.state')?.textContent.trim(), title: e?.title,
+               running: d.running, exists: d.exists, missing_env: d.missing_env, job: d.job };
+    }, [b, DM]);
+    throw new Error(`B477: ${act} stayed disabled 45s: ${JSON.stringify(seen).slice(0, 400)}`);
+  }
+  await page.click(b);
 }
 async function dmDisabled(act){
   await openManager();
@@ -97,7 +113,17 @@ async function dmDisabled(act){
 // attachment instead.
 async function showRow(){
   await page.click('#projects .row:has(.name:text-is("ep.silon")) [data-m]');
+  await openDev();
   await page.waitForSelector('#devRow', { timeout: 20000 });
+}
+// The dev instance is a section of the Artifacts view now, and Files is the
+// one open when the view shows (the operator, 6 Oct): opened before its row
+// is pressed.
+async function openDev(){
+  await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
+  const sel = await page.evaluate(() => { const d = document.getElementById('devRow')?.closest('details.sect');
+    return d ? `[data-sect="${d.dataset.sect}"]` : ''; });
+  if (sel) await openFold(page, `.nbview:not([hidden]) ${sel}`);
 }
 async function dmRefresh(){
   // Awaited: loadDocker returns when its answer has been drawn. The rows come
@@ -169,15 +195,28 @@ const pillIs = async (want) => {
 // that came and went with each one blinked through every build.
 {
   await dmRefresh();
-  const seen = await page.evaluate(async () => {
-    let said = 0;
-    const mo = new MutationObserver(() => { if (document.querySelector('.dmfresh')) said++; });
+  // Per reload: whether the word came, and how long the fetch took. It is
+  // right to show on one slower than DM_SLOW_MS, which a busy box makes,
+  // so that is not counted against it; one that came on a quick fetch is
+  // (B421: the check counted every showing and failed under load).
+  const runs = await page.evaluate(async () => {
+    const out = [];
+    let said = false;
+    const mo = new MutationObserver(() => { if (document.querySelector('.dmfresh')) said = true; });
     mo.observe(document.querySelector('.dmtab').parentElement, { childList: true, subtree: true });
-    for (let i = 0; i < 4; i++){ dockerList = null; dockerRev++; await loadDocker(); }
+    for (let i = 0; i < 4; i++){
+      said = false;
+      const t0 = performance.now();
+      dockerList = null; dockerRev++; await loadDocker();
+      out.push({ ms: Math.round(performance.now() - t0), said });
+    }
     mo.disconnect();
-    return said;
+    return { out, slow: DM_SLOW_MS };
   });
-  ok(seen === 0, `four quick reloads in a row never show "refreshing" (shown ${seen} times)`);
+  const quickSaid = runs.out.filter(r => r.said && r.ms < runs.slow);
+  ok(quickSaid.length === 0,
+     `four quick reloads in a row never show "refreshing" on a fetch quicker than ${runs.slow} ms (${
+       runs.out.map(r => `${r.ms}ms${r.said ? ' shown' : ''}`).join(', ')})`);
   const slow = await page.evaluate(async () => {
     const f = window.fetch;
     window.fetch = (...a) => String(a[0]).startsWith('/api/docker')
@@ -646,6 +685,27 @@ await page.waitForFunction(() => {
 }, { timeout: 20000 });
 ok(true, '...and Up is manual after the gate, exactly as asked');
 
+// Start on boot on an instance's row reads the instance's own containers
+// (R122): the listing's top-level containers are the ones that belong to no
+// instance, and the switch read those, so it said off whatever docker said
+// (found walking the dev instance, 5 Oct).
+{
+  await page.evaluate(() => openDocker());
+  await page.waitForSelector(`${DM} [data-dmboot]`, { timeout: 20000 }).catch(() => {});
+  const drawn = await page.evaluate(sel => {
+    const d = (dockerList?.instances || []).find(x => x.exists);
+    if (!d) return null;
+    d.boot = true; dockerRev++; drawPanes();
+    const on = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    d.boot = false; dockerRev++; drawPanes();
+    const off = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    return { on, off, server: 'boot' in d };
+  }, DM);
+  ok(drawn && drawn.on === true && drawn.off === false && drawn.server,
+     `an instance's Start on boot reads its own row's boot, which the listing carries (${JSON.stringify(drawn)})`);
+}
+
+
 // Down, from the row.
 await dmClick('down');
 await pillIs('down');
@@ -814,6 +874,33 @@ const probs = await devLines("bad");
 ok(probs.length === 1 && /this container's path/.test(probs[0]),
    'a bind the host cannot resolve is named on its own line, before anything starts');
 
+// A compose that reserves the NVIDIA GPU on a node that cannot hand it to a
+// container (R102): Docker's own answer is "could not select device driver
+// nvidia", after the build. Said on the row as a compose that cannot start
+// as written, with the reason, and a rebuild asked anyway is refused by its
+// job in the same words.
+{
+  writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
+    deploy: { resources: { reservations: { devices: [{ driver: 'nvidia', count: 1, capabilities: ['gpu'] }] } } } } } }));
+  await nudge();
+  await page.waitForFunction(() => /reserves the NVIDIA GPU/.test(
+    document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
+  const held = await devLines("bad");
+  ok(held.length === 1 && /^app reserves the NVIDIA GPU in the compose file, and .*NVIDIA card/.test(held[0]),
+     `a compose that reserves the GPU where the node cannot give it is named on the row, with why (${(held[0] || '').slice(0, 110)})`);
+  const r = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', action: 'rebuild', ack: '' }) })).json()));
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  let job = null;
+  for (let i = 0; i < 60 && r.job && !(job && ['failed', 'succeeded', 'canceled'].includes(job.state)); i++){
+    await sleep(500);
+    job = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + r.job, { headers: H })).json();
+  }
+  ok(job?.state === 'failed' && /reserves the NVIDIA GPU/.test(job.error || ''),
+     `...and a rebuild asked anyway is refused by its job, in the same words (${r.error || job?.state}: ${String(job?.error).slice(0, 60)})`);
+}
+
 risky(['/:/host']);
 await nudge();
 await page.waitForFunction(() => /asks for more than its own directory/.test(
@@ -874,6 +961,7 @@ writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.'
           { target: 81, published: '8081', protocol: 'tcp' }] } } }));
 await nudge();
 await showRow();
+await openDev();
 await page.waitForSelector('#devOpen', { timeout: 20000 });
 ok(!await page.$('#devRow a.btn'),
    '...and two of them get a chooser instead: nothing here knows which is the web UI');
@@ -1164,29 +1252,12 @@ verified(False)
 out['proxy'] = [m._dev_data_env('alpha'), calls[:]]
 verified(True)
 
-# A rename reaches over there too, or the instance's data is orphaned under
-# the old name with nothing said about it.
+# The sandbox VM's daemon, and a store with a default and a named instance,
+# as what follows reads them.
 calls.clear()
 sethost('ssh://bb@vm')
-# ...and refused outright when the target is already a directory over there:
-# 'mv a b' with b existing does not fail, it buries a inside b.
-calls.clear()
-out['onto'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-alpha'),
-               [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
-calls.clear()
-out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
-                  [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
-
-# Renaming a PROJECT, which is asked per project rather than per directory:
-# only the default instance's directory is named for the project, so that one
-# moves and a named instance's does not, since its name never carried the project.
-# Asked as was == now rather than known, so a change to _pname is picked up
-# here rather than orphaning what it renames.
-calls.clear()
 m._load = lambda: {'beta': {'main': {}, 'staging': {}}}
-out['project'] = [m.rename_project_data('alpha', 'beta'),
-                  [[a for a in c['argv'] if a.startswith('/d/')]
-                   for c in calls if 'mv' in c['argv']]]
+calls.clear()
 
 # Bind directories on the DAEMON's side. The shares are mounted over there
 # and not here, which is the shipped arrangement, and which shares the VM has
@@ -1255,20 +1326,6 @@ ok(!DDD.ours.includes('/devdata-not-here'),
 ok(!Object.keys(DDD.proxy[0]).length && !DDD.proxy[1].length,
    'a daemon that is not the sandbox VM is never asked to run one, and the compose '
    + 'says so rather than mounting a directory docker invented');
-ok(DDD.renamed[0][0] === true && !DDD.renamed[0][1]
-   && JSON.stringify(DDD.renamed[1]) === JSON.stringify(
-      [['/d/bbdev-alpha'], ['/d/bbdev-beta'], ['/d/bbdev-alpha', '/d/bbdev-beta']]),
-   'a rename moves the data over there too, rather than orphaning it');
-ok(DDD.onto[0][0] === false && /already has a data directory/.test(DDD.onto[0][1])
-   && DDD.onto[1].every(paths => paths.length === 1),
-   '...and refuses onto a name the sandbox already has: every call it made names '
-   + 'one directory, so the two-path mv that would bury one never ran');
-ok(JSON.stringify(DDD.project[1]) === JSON.stringify([['/d/alpha', '/d/beta']]),
-   'renaming a project moves the data of every instance named after it, which '
-   + 'is the default one, and only it');
-ok(DDD.project[0][0].length === 1 && !DDD.project[0][1].length,
-   '...and a named instance is left alone rather than reported as a failure: '
-   + 'its directory never carried the project\'s name');
 ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
      .every(([, v]) => !!v),
    'the guard allows those exact commands and nothing else wearing the same verb');
@@ -1880,8 +1937,13 @@ print(json.dumps(m.session_net_own('n1')))
 # node is not alpha's, so gamma stays out.
 m.reads_of = lambda p: {'alpha': ['beta', 'gamma']}.get(p, [])
 print(json.dumps(m.session_net_own('n1')))
+# ...and what a project's settings let its sessions reach besides (Also
+# reaches, the operator, 7 Oct): a whole machine, or one port on one.
+m.reads_of = None
+m.reaches_of = lambda p, nid: {('beta', 'n1'): ['192.168.1.50', '192.168.1.60:8123']}.get((p, nid), [])
+print(json.dumps(m.session_net_own('n1')))
 `], { encoding: 'utf8' });
-  const [own, withReads] = sn.trim().split('\n').slice(-2).map(l => JSON.parse(l));
+  const [own, withReads, withReach] = sn.trim().split('\n').slice(-3).map(l => JSON.parse(l));
   const same = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => [k, a[k]])) === JSON.stringify(Object.keys(b).sort().map(k => [k, b[k]]));
   ok(same(own.alpha, { compose: ['aux'], hosts: ['192.168.1.40'], names: [],
        peers: [['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] }),
@@ -1890,6 +1952,9 @@ print(json.dumps(m.session_net_own('n1')))
        peers: [['192.168.1.17', 1234], ['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] })
      && same(withReads.beta, own.beta),
      `a project that reads others reaches their containers here and on its own other nodes, never on a node it is not on, and the read project's own set is unchanged (${JSON.stringify(withReads.alpha)})`);
+  ok(same(withReach.beta, { compose: ['beta'], hosts: ['192.168.1.50'], names: [], peers: [['192.168.1.60', 8123]] })
+     && same(withReach.alpha, own.alpha),
+     `Also reaches gives a project's sessions a whole machine or one port on one, and nobody else's (${JSON.stringify(withReach.beta)})`);
   ok(same(own.beta, { compose: ['beta'], hosts: [], names: [], peers: [] }) && !own.gamma,
      `...a project on this node alone reaches nothing else, and one not on this node is not named at all (${JSON.stringify(own.beta)}; gamma ${JSON.stringify(own.gamma)})`);
 }
@@ -1929,6 +1994,7 @@ print(json.dumps(m.session_net_own('n1')))
 await showRow();
 ok(!await page.$('#devRow [data-devact]'),
    'the artifact row carries no docker controls any more');
+await openDev();
 await page.click('#devSend');
 await page.waitForSelector('#dnmodal:not([hidden])');
 // No cursor anywhere: a focused field brings the on-screen keyboard up over
@@ -2509,47 +2575,26 @@ ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
 // ---- a row on a phone (R68 step 5) ---------------------------------------
-// A project's row carries its ports, its services, its route and three
-// settings, which at 390px was most of a screen each: the list stopped being
-// a list. The detail is a fold there and open on a desktop, where its
-// summary is not drawn at all, so that surface is what it always was.
+// What a row carries is on the row at every width, never behind a fold (the
+// operator, 8 Oct: too much was hidden; the Project picker was not found).
 {
   await openManager();
-  const wide = await page.evaluate(() => {
-    const d = document.querySelector('.dmtab .dmdet');
-    return d ? { open: d.open, sum: getComputedStyle(d.querySelector('.dmsum')).display } : null;
-  });
-  ok(wide && wide.open && wide.sum === 'none',
-     `on a desktop the detail is open with no summary drawn (${JSON.stringify(wide)})`);
   await page.setViewportSize({ width: 390, height: 844 });
   // A phone shows one thing at a time, and the manager is in the pane behind
   // the sidebar: without this the row measures zero and says nothing.
   await page.evaluate(() => { setView('terminal'); dockerList = null; dockerRev++; loadDocker(); });
-  await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === false,
-                             null, { timeout: 15000 });
+  await page.waitForSelector('.dmtab .dmowner select', { state: 'visible', timeout: 15000 });
   const narrow = await page.evaluate(() => {
     const t = document.querySelector('.dmtab');
-    const d = document.querySelector('.dmtab .dmdet');
     const acts = document.querySelector('.dmtab .dmacts');
-    return { open: d.open, sum: getComputedStyle(d.querySelector('.dmsum')).display,
+    return { fold: !!document.querySelector('.dmtab details.dmdet, .dmtab .dmsum'),
              sideways: t.scrollWidth > t.clientWidth + 2,
              actsVisible: !!acts && acts.getBoundingClientRect().height > 0 };
   });
-  ok(!narrow.open && narrow.sum !== 'none',
-     `on a phone it is shut, behind a summary that can be pressed (${JSON.stringify(narrow)})`);
-  ok(!narrow.sideways && narrow.actsVisible,
-     '...nothing scrolls sideways, and the row keeps its buttons whether it is open or shut');
-  await page.click('.dmtab .dmsum');
-  ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and it opens on a press');
-  // ...and stays open. The manager repaints on every step of a job, and a
-  // fold that went back to its default each time could not be read during one.
-  await sleep(300);              // the slide, and the toggle it ends in
-  await page.evaluate(() => { dockerRev++; drawPanes(); });
-  ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and a redraw leaves it open, rather than putting it back');
+  ok(!narrow.fold, `on a phone the row's detail and its Project picker are on the row, no fold (${JSON.stringify(narrow)})`);
+  ok(!narrow.sideways && narrow.actsVisible, '...nothing scrolls sideways, and the row keeps its buttons');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { setView('dashboard'); dockerList = null; dockerRev++; loadDocker(); });
-  await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === true,
-                             null, { timeout: 15000 });
 }
 
 // ---- a manager, not a list (R68 steps 1 and 2) ---------------------------
@@ -2682,6 +2727,7 @@ ok(!existsSync(`${DIR}/state/containers/radarr`),
 
 // The same name twice is refused rather than silently reusing the first.
 await showRow();
+await openDev();
 await page.click('#devSend');
 await page.waitForSelector('#dnmodal:not([hidden])');
 await page.fill('#dnName', 'staging-two');
@@ -3184,11 +3230,13 @@ ok(await page.$('#devSend'),
                         && [...e.options].map(o => o.value).join() === 'auto,ask,deny'),
      "the project's settings carry it, on auto, with the other Claude may dials");
   // The Claude section holds the test-run setting too (25 Sep): what a
-  // change asked for during a run does, saved with the rest of the dialog.
-  ok(await page.$eval('#rnGateLabel', e => e.textContent) === 'Claude settings'
+  // change asked for during a run does, saved with the rest of the dialog,
+  // under the section's heading since the dialog was put in sections (1 Oct).
+  ok(await page.$eval('#rnGateField', e => e.closest('.rngroup').querySelector('summary .t').textContent) === 'Claude may'
+     && await page.$eval('#rnGateLabel', e => e.textContent) === 'While a test runs'
      && await page.$eval('#rnTestChange', e => e.value === 'wait' && [...e.options].map(o => o.value).join() === 'wait,restart')
      && await page.$eval('#rnReply', e => e.value === ''),
-     'the dialog groups what Claude may do under Claude settings, with what a change does during a test run; replies are the person\'s own pick');
+     'the dialog groups what Claude may do under its Claude may heading, with what a change does during a test run; replies are the person\'s own pick');
   await page.selectOption('#rnTestChange', 'restart');
   await page.selectOption('#rnReply', 'minimal');
   await page.selectOption('#rnAsks', 'fewer');
@@ -3222,8 +3270,7 @@ ok(await page.$('#devSend'),
   // ...and the control is there, offered only where there is a container to
   // run in: a project with no compose file is not asked the question.
   await page.evaluate(() => { openProjectsTab(); });
-  await page.waitForSelector('.doc .projtab [data-rn="ep.silon"]', { timeout: 15000 });
-  await page.click('.doc .projtab [data-rn="ep.silon"]');
+  await page.evaluate(n => renameProject(n), 'ep.silon');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   ok(await page.$eval('#rnTestWhere', e => !e.hidden)
      && await page.$eval('#rnDevTest', e => [...e.options].map(o => o.value).join() === 'node,up,only'
@@ -3235,7 +3282,7 @@ ok(await page.$('#devSend'),
     .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].tests_in === 'only',
      '...and saving it there is what writes the setting');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   ok(await page.$eval('#rnTestWhere', e => e.hidden),
      '...while a project with no compose file is not asked the question at all');
@@ -3540,6 +3587,49 @@ print(json.dumps(out))
      `the manager's answer says whose each row is: a written one its pick, a project's its own unless sent with no project, another's nobody's (${
        JSON.stringify((listed.instances || []).map(d => [d.name, d.owner]))})`);
 
+  // ---- a project's own container moved to another project (8 Oct) ------------
+  // Rekeyed under the other project with the name it had, so its env and
+  // data stay; a person's on the Docker tab, never a session's. The two it
+  // moves between share ep.silon's node, as a container's project must.
+  const epNode = (await api('/api/status')).projects.find(p => p.name === 'ep.silon')?.prefs?.node || '';
+  for (const p of ['alpha', 'gamma']) await api('/api/prefs', { project: p, node: epNode, nodes: epNode ? [epNode] : [] });
+  writeFileSync(`${DIR}/ws/alpha/docker-compose.yml`, 'services:\n  app:\n    image: alpha-dev\n');
+  const nowhere = await api('/api/devapp', { project: 'ep.silon', action: 'move', instance: 'loose', to: 'no-such' });
+  ok(nowhere.status === 400 && /no project called no-such/.test(nowhere.error || ''), `a move names a project there is (${nowhere.error})`);
+  const moveTok = execFileSync('bash', [fileURLToPath(new globalThis.URL('../../bb', import.meta.url)), 'users', 'token', 'ep.silon', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const bySess = await fetch(URL.replace(/\/$/, '') + '/api/devapp', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + moveTok },
+    body: JSON.stringify({ project: 'ep.silon', action: 'move', instance: 'main', to: 'alpha' }) })
+    .then(async r => ({ status: r.status, ...(await r.json()) }));
+  ok(bySess.status === 403 && !(await api('/api/docker')).instances.some(d => d.project === 'alpha'),
+     `...and is never a session's (${bySess.error})`);
+  const moved = await api('/api/devapp', { project: 'ep.silon', action: 'move', instance: 'loose', to: 'alpha' });
+  const after = await api('/api/docker');
+  const movedRow = (after.instances || []).find(d => d.project === 'alpha' && d.instance === 'loose');
+  ok(moved.ok && movedRow && movedRow.name === 'loose'
+     && !(after.instances || []).some(d => d.project === 'ep.silon' && d.instance === 'loose'),
+     `Move puts it under alpha with the name it had (${JSON.stringify(moved).slice(0, 160)})`);
+  const back = await api('/api/devapp', { project: 'alpha', action: 'move', instance: 'loose', to: 'ep.silon' });
+  ok(back.ok, `...and back again (${back.error || 'ok'})`);
+  rmSync(`${DIR}/ws/alpha/docker-compose.yml`, { force: true });
+  // A deleted project's containers keep its name, drawn "X (deleted)", and
+  // come back with it from the trash (8 Oct).
+  const zc = await api('/api/container', { action: 'create', name: 'helper-for-gamma', owner: 'gamma',
+                                          compose: 'services:\n  app:\n    image: alpine\n', env: '' });
+  const zrow = l => (l.instances || []).find(d => d.project === 'helper-for-gamma') || {};
+  const gone1 = await api('/api/trash', { name: 'gamma' });
+  const whileGone = await api('/api/docker');
+  ok(zc.ok && gone1.ok && zrow(whileGone).owner === 'gamma' && zrow(whileGone).owner_gone === true,
+     `a deleted project's container is still its, marked gone (${JSON.stringify(zrow(whileGone)).slice(0, 120)} ${zc.error || gone1.error || ''})`);
+  await openManager();
+  await page.waitForFunction(() => [...document.querySelectorAll('.dmgroup b')].some(b => b.textContent === 'gamma (deleted)'));
+  ok(true, '...drawn under "gamma (deleted)" on the Docker tab');
+  const back2 = await api('/api/trash-restore', { name: (gone1.to || '').split('/').pop() });
+  ok(back2.ok && zrow(await api('/api/docker')).owner_gone === false, `...and a restore gives it back (${back2.error || 'ok'})`);
+  await api('/api/devapp', { project: 'helper-for-gamma', action: 'remove' });
+  for (const p of ['alpha', 'gamma']) await api('/api/prefs', { project: p, node: '', nodes: [] });
+
   // ---- the manager, grouped by project ---------------------------------------
   await openManager();
   const groups = () => page.evaluate(() => {
@@ -3758,10 +3848,10 @@ print(json.dumps({'gone': sorted(gone),
      `...and leaves a live instance that merely ends the same way, and a partial match (${FC.left.join(', ')})`);
 }
 
-// ---- what a container belongs to, read and renamed ---------------------------
+// ---- what a container belongs to ---------------------------------------------
 // owner_of reads `for` by presence: none means the default (the project it is
 // built from, or no project for a written one), and an empty one is none on
-// purpose. A project renamed takes what belongs to it along, in both files.
+// purpose. A rename moves nothing (R154): the directory is the key.
 {
   const out = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
@@ -3778,15 +3868,11 @@ wj(d + '/devapps.json', {'media': {'main': {}, 'loose': {'for': ''}},
                          'scratch': {'main': {'source': 'file'}}})
 wj(d + '/docker-owners.json', {'n1': {'plex': 'media', 'other': 'alpha'}})
 before = [m.owner_of('media'), m.owner_of('media', 'loose'), m.owner_of('radarr'), m.owner_of('scratch')]
-moved = m.rename_owner('media', 'media2')
-print(json.dumps({'before': before, 'moved': moved, 'after': m.owner_of('radarr'),
-                  'owners': json.load(open(d + '/docker-owners.json'))}))
+print(json.dumps({'before': before}))
 `], { encoding: 'utf8' });
   const R = JSON.parse(out.trim().split('\n').pop());
   ok(JSON.stringify(R.before) === JSON.stringify(['media', '', 'media', '']),
      `a container belongs to its project by default, to none when sent to none, and to its pick when written here (${R.before})`);
-  ok(R.moved && R.after === 'media2' && R.owners.n1.plex === 'media2' && R.owners.n1.other === 'alpha',
-     `...and a project renamed takes what belongs to it, in both stores (${JSON.stringify(R.owners)})`);
 }
 
 // ---- a container compose refuses never reaches the list (B239) ----------------
@@ -3992,6 +4078,33 @@ print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
      && /rebuilt bbb; alpha-dev is up/.test(run.stdout || ''),
      `bb devapp rebuild waits three minutes for the controller, and a timeout there watches for the build rather than giving up (${
        JSON.stringify(got).slice(0, 90)} ${(run.stderr || '').split('\n').filter(Boolean).pop() || ''})`);
+}
+
+// B537: an empty listing says what the session can do next. With a compose
+// file at the root that is its own bb devapp new, not the operator's Docker
+// tab, which is what it said to the aquilaeLabs session before its first
+// instance existed.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const said = compose => spawnSync('python3', ['-c', `
+import importlib.util, os, sys
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def call(path, body=None, auth="", method="", timeout=30):
+    if path.startswith("/api/docker"):
+        return {"instances": [], "containers": []}
+    return {"state": {"compose": ${compose ? '"docker-compose.yml"' : '""'}}}
+m.bbapi.call = call
+os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x")
+try:
+    m.ls()
+except SystemExit:
+    pass`], { encoding: 'utf8' }).stdout || '';
+  const withFile = said(true), without = said(false);
+  ok(/bb devapp new builds its dev instance/.test(withFile) && !/Docker tab/.test(withFile)
+     && /compose file at its root/.test(without),
+     `bb devapp ls with nothing yet points at bb devapp new, and says a compose file is what it needs where there is none (${withFile.trim().slice(0, 70)})`);
 }
 
 // bb devapp rebuild follows the job its answer names (B312): a rebuild of an

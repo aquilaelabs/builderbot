@@ -139,9 +139,16 @@ def _plan(project, instance, action, extra=None):
         # agent puts its directory in for {cdir}.
         ienv = {"BB_INSTANCE_ENV": "{cdir}/instance.env"}
     env = ienv | devapp._dev_data_env(project, instance) | devapp._build_env(project, instance)
-    up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800, "env": env}
+    # The commit and the time read where and when the build runs, not when
+    # it was queued: a rebuild that waited in the node's queue built the tree
+    # as it was then and was stamped with the commit from before (B479).
+    # The queued values stay as the fallback, for a source that is no git
+    # checkout.
+    stamped = ["sh", "-c", 'r="$(git -C "$1" rev-parse HEAD 2>/dev/null)" && export BB_BUILD_REV="$r"; '
+               'export BB_BUILD_AT="$(date -u +%Y-%m-%dT%H:%MZ)"; shift; exec "$@"', "sh", pdir]
+    up = {"name": "starting", "argv": stamped + base + ["up", "-d"], "timeout": 1800, "env": env}
     down = {"name": "stopping", "argv": base + ["down"], "timeout": 180, "env": ienv}
-    build = {"name": "building", "argv": base + ["build"], "timeout": 3600, "env": env}
+    build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
     # settings stops after `down`, and the controller rewrites the env and
@@ -607,6 +614,11 @@ def state(project, instance=devapp.MAIN):
         rs = devapp.risks(project, cfg)
         out["risks"] = rs
         out["problems"] = devapp.problems(project, cfg) + devapp.host_map()[1]
+        # A compose that reserves the GPU on a node that cannot hand it to a
+        # container is the same kind of thing: it cannot start as written.
+        nogpu = devapp.gpu_gate(project, instance, cfg)
+        if nogpu:
+            out["problems"].append(nogpu)
         out.update(devapp.wiring(cfg))
         # ...and the ports somebody else is already on. After wiring(), which
         # is what says which ports this instance wants. Its own field rather
@@ -677,7 +689,7 @@ def up(project, instance=devapp.MAIN, ack=""):
     if clash:
         return {"error": clash}
     return _submit(project, instance, "up",
-                   check=lambda: devapp._risk_gate(project, instance, ack))
+                   check=lambda: devapp.gpu_gate(project, instance) or devapp._risk_gate(project, instance, ack))
 
 
 def _job_up(project, instance, run):
@@ -737,8 +749,8 @@ def test(project, instance=devapp.MAIN, cmd="", args=()):
     cmd = str(cmd or "").strip()
     if not cmd:
         return {"error": f"no test command is set for {project}: bb settings set test "
-                         "'...' fills it in, or the operator does in the project's "
-                         "settings dialog (Build and test)"}
+                         "'...' fills it in, or the operator does on the project's "
+                         "notebook Settings (Build and test)"}
     bad = [a for a in args if not _ARG.fullmatch(str(a))]
     if bad:
         return {"error": f"an argument the test command cannot take: {bad[0]!r}"}
@@ -835,8 +847,11 @@ def rebuild(project, instance=devapp.MAIN, ack="", gate=True):
     moved = sync_work_tree(project, instance)
     if moved:
         return {"error": moved}
+    # The GPU's gate is for a session's build too: it is about what the node
+    # can do, not about who confirmed what.
     return _submit(project, instance, "rebuild",
-                   check=lambda: devapp._risk_gate(project, instance, ack) if gate else "")
+                   check=lambda: devapp.gpu_gate(project, instance)
+                   or (devapp._risk_gate(project, instance, ack) if gate else ""))
 
 
 def run_compose_job(job, run):
@@ -998,6 +1013,13 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # had its say in the handler, so this is an administrator's like
         # every other thing that changes what a container IS.
         r = devapp.set_ref(project, instance, f(req, "ref"))
+        return r, (400 if r.get("error") else 200)
+    if action == "move":
+        # Into another project, as its own instance (devapp.move_instance).
+        # Not while a job builds it: the job names the old project.
+        if _active_job(project, instance) is not None:
+            return {"error": "a job is running on it: wait for it, or Stop it, then move it"}, 400
+        r = devapp.move_instance(project, instance, f(req, "to"))
         return r, (400 if r.get("error") else 200)
     if action == "owner":
         # Which project it belongs to. An administrator's too, and the name

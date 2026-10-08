@@ -1,12 +1,12 @@
-// The Phone tab: a handset on wireless adb, driven from a node. Its own
-// classic script beside index.html, per the new-surface rule: same page,
-// same global scope, one file per surface. Chrome comes from docSurface()
-// and the hard rules are held by uniform.mjs; this file only fills slots.
+// The Phone tab: a handset on wireless adb, driven from a node picked in its
+// bar (R121, the operator 4 Oct: inside a node's page it was hard to find,
+// and the Nodes tab is a machine's configuration). Several nodes may each
+// carry adb and hold a phone; the picker lists those, and the panel below is
+// the picked one's. Its own classic script beside index.html.
 //
 // The controller has no adb and holds no phone. Every node whose census
 // reports adb is a place a phone can be paired and connected, each holding
-// its own; the picker in the bar says which one this tab is about, and every
-// press below it is a job on that node, waited for.
+// its own, and every press in its section is a job on that node, waited for.
 //
 // One owner per connection. Whoever connects a phone is the only account
 // that can disconnect it, and the only one asked when a session wants to
@@ -20,14 +20,33 @@
 
 "use strict";
 
-let ph = null, phBusy = "", phRev = 0;
+let ph = null, phBusy = "", phRev = 0, phFetching = false;
 let phNode = "";                 // the picked node's id; "" until the first answer
 // Held outside the render, because the tab is rebuilt whole on every draw and
 // a field that emptied itself mid-sentence would be unusable.
 let phIp = "", phPort = "", phCode = "";
+// The lend controls' picks, kept across a redraw (R113).
+let phLendTo = "", phLendFor = "1";
 
+// The Phone tab, on the node that holds a phone (or the first that can).
 function openPhoneTab(){
+  const n = (ph?.nodes || []).find(x => x.phone);
+  if (n && !phNode) phNode = n.id;
   openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
+}
+
+function renderPhoneInto(i){
+  const d = docSurface(i, "phone");
+  if (!d) return;
+  if (!ph){ d.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  const nodes = ph.nodes || [];
+  const n = nodes.find(x => x.id === phNode) || nodes[0];
+  d.setBar(`${nodePick("phPick", nodes, n?.id)}<span class="sp"></span>
+    <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button>`);
+  d.list.innerHTML = n ? phonePanel(n)
+    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the Toolchains tab.</div>`;
+  if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
+  wirePhoneTab(d.el);
 }
 
 // Connecting, pairing and disconnecting are any account's: a phone is its
@@ -62,55 +81,42 @@ async function phFetch(body, probe){
   drawBell();          // the same asks, in the header
 }
 
-function renderPhoneInto(i){
-  const d = docSurface(i, "phone");
-  if (!d) return;
-  if (!ph){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
-    return;
-  }
-  // The root asks share the list (one bell, one fetch) and are the Nodes
-  // tab's to show: they are about a machine, not a handset.
-  const nodes = ph.nodes || [], asks = (ph.asks || []).filter(a => a.kind !== "root");
-  const n = nodes.find(x => x.id === phNode) || nodes[0];
+// The section's body for one node: its phone, connecting and pairing, the
+// lease, the phones it remembers, and what a session waits on. `n` is that
+// node's row in the phone answer (ph.nodes).
+function phonePanel(n){
+  if (!ph) return `<div class="loading">loading…</div>`;
+  phNode = n.id;
   const dev = n?.phone;
+  const asks = (ph.asks || []).filter(a => a.kind !== "root" && (!a.node || a.node === n.id));
   // This browser's own address wins when it is the phone: viewing the
   // dashboard ON the device is the one case where the number is not something
   // anybody has to go and read. The node's remembered IP is the fallback.
   if (!phIp) phIp = ph.you || n?.ip || "";
-  if (!nodes.length){
-    d.setBar(`<span class="sp"></span>
-      <button type="button" id="phRefresh" title="ask again now">Refresh</button>`);
-    d.list.innerHTML = `<div class="hint">No node has adb yet: install android-tools on one from the Tools tab.</div>`;
-    wirePhoneTab(d.el);
-    return;
-  }
   const held = n && n.owner && !n.mine;   // somebody else's connection
   const off = held || !n.live || !mayPhone();
   const offWhy = held ? `connected by ${esc(n.owner.name)}: only they can change it`
     : !n.live ? "the node is not dialing in"
     : "";
-  d.setBar(`${nodes.length ? `<label class="pick">Node <select id="phPick" aria-label="node">${
-      nodes.map(x => `<option value="${esc(x.id)}"${x.id === n?.id ? " selected" : ""}>${
-        esc(x.name)}${x.phone ? `: ${esc(x.phone.model || "phone")}` : ""}${
-        x.live ? "" : ", quiet"}</option>`).join("")}</select></label>` : ""}
-    <span class="sp"></span>
-    <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button>`);
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.
   const state = phBusy
     ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
     : dev ? `<span class="pill ok">${esc(dev.model || "phone")}</span>`
           : `<span class="pill">not connected</span>`;
+  // The node-scoped tool's shape, the CI runner tab's too (R121 step 5):
+  // the state row first, then the ways in, what it is lent to and what it
+  // remembers, and at the foot how a session reaches it.
   const rows = [
-    `<div class="row">
-       <div class="grow"><div class="name">${state}${
+    `<div class="row toolstate">
+       <div class="grow"><div class="name">Phone on ${esc(n.name)} ${state}${
            n.owner ? ` <span class="dim">· connected by ${esc(n.owner.name)}${n.mine ? " (you)" : ""}</span>` : ""}</div>
          <div class="sub">${!n.live
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
-           : dev ? esc(dev.serial)
+           : dev ? (dev.serial ? esc(dev.serial) : `connected by ${esc(n.owner?.name || "somebody")}; which phone is theirs to know`)
            : "try Connect first: a pairing outlives a restart, so it is usually already done"}</div></div>
-       ${dev && n.mine && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"
+       ${dev && (n.mine || state?.admin) && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"${
+         n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
          >Disconnect</button></span>` : ""}
      </div>`,
     // An IP and no port. Android hands out a new connect port every time
@@ -145,6 +151,52 @@ function renderPhoneInto(i){
             Keep that dialog open.`}</div>
      </div>`,
   ];
+  // Lent to a project (R113): its sessions drive that project's own app on
+  // the phone with no ask per command, and the owner watches and takes it
+  // back here. The lend controls are the owner's; everybody sees the lease.
+  const L = n.lease;
+  if (dev && L){
+    const left = L.left === null || L.left === undefined ? "until taken back"
+      : L.left > 3600 ? `${Math.floor(L.left / 3600)} h ${Math.round((L.left % 3600) / 60)} min left`
+      : `${Math.max(1, Math.round(L.left / 60))} min left`;
+    rows.push(`<div class="row phlease">
+       <div class="grow"><div class="name">Lent to ${esc(projLabel(L.project))} <span class="pill go">${esc(left)}</span></div>
+         <div class="sub">${(L.pkgs || []).length
+           ? `its sessions drive ${esc(L.pkgs.join(", "))}, and nothing else, without asking`
+           : "its sessions may install one of its builds; then that app, and nothing else, without asking"}</div>${
+         L.shot ? `<img class="phshot" alt="the phone's screen, as last seen" src="/api/artifact?project=${
+           encodeURIComponent(L.project)}&path=${encodeURIComponent(L.shot)}">
+           <div class="sub">${esc(L.shot.split("/").pop())}</div>` : ""}${
+         // The newest recording as its reel: the frames that changed, each
+         // with its time, in one picture, and the video itself a link away
+         // (the operator, 5 Oct).
+         L.reel ? `<div class="phreelbox"><img class="phreel" alt="the newest recording, as the frames that changed with their times" src="/api/artifact?project=${
+           encodeURIComponent(L.project)}&path=${encodeURIComponent(L.reel)}"></div>
+           <div class="sub">${esc(L.reel.split("/").pop())}${L.video ? ` · <a href="/api/artifact?project=${
+             encodeURIComponent(L.project)}&path=${encodeURIComponent(L.video)}" target="_blank" rel="noopener">the video</a>` : ""}</div>` : ""}${
+         L.recording ? `<div class="sub"><span class="pill warn">recording</span> a session is recording the screen</div>` : ""}
+         ${n.mine ? `<div class="actbar"><span class="state">the screen updates as a session takes shots and recordings</span>
+           <button type="button" id="phLook">Look now</button>
+           <button type="button" class="danger" id="phTakeBack">Take back</button></div>` : ""}</div>
+     </div>`);
+  } else if (dev && n.mine && mayPhone()){
+    const ps = n.lendable || [];
+    rows.push(`<div class="row phlend">
+       <div class="grow">
+         <div class="name">Lend to a project</div>
+         <div class="prefrow">
+           <label class="pick">Project <select id="phLendTo" aria-label="the project to lend the phone to"${ps.length ? "" : " disabled"}>${
+             ps.map(p => `<option value="${esc(p)}"${p === phLendTo ? " selected" : ""}>${esc(projLabel(p))}</option>`).join("")}</select></label>
+           <label class="pick">For <select id="phLendFor" aria-label="how long">
+             <option value="1"${phLendFor === "1" ? " selected" : ""}>1 hour</option>
+             <option value="4"${phLendFor === "4" ? " selected" : ""}>4 hours</option>
+             <option value="0"${phLendFor === "0" ? " selected" : ""}>until taken back</option></select></label>
+         </div>
+         <div class="actbar"><span class="state">its sessions then install, run, see and touch its own app here without asking; anything else still asks you</span>
+           <button type="button" id="phLend"${ps.length ? "" : " disabled"}>Lend</button></div>
+         ${ps.length ? "" : `<div class="sub bad">No project of yours runs on ${esc(n.name)}, so there is none to lend it to.</div>`}
+       </div></div>`);
+  }
   // The phones this node has paired or connected, newest first. The pairing
   // outlives everything (the key is in the node account's ~/.android), so a
   // remembered phone is one press: its address goes in the field above and
@@ -167,6 +219,17 @@ function renderPhoneInto(i){
             <button type="button" class="danger" data-kforget="${esc(k.ip)}">Forget</button>
           </div>
         </div></div>`));
+  // What the owner allowed for a session (the operator, 4 Oct): its
+  // commands to this phone run without asking until this is taken back,
+  // the lease ends or the phone is disconnected.
+  for (const g of (n.trust || []))
+    rows.push(`<div class="row phtrust">
+      <div class="grow"><div class="name">Allowed for ${esc(g.asker || "a")}'s sessions in ${esc(projLabel(g.project))}</div>
+        <div class="sub">their commands to this phone run without asking ${g.until
+          ? `until ${esc(fmtTime(g.until * 1000, {hour: "2-digit", minute: "2-digit"}))}`
+          : "while it is lent to " + esc(g.project)}</div></div>
+      <span class="acts"><button type="button" data-untrust="${esc(g.project)}" data-asker="${esc(g.asker_uid || "")}">Ask every time</button></span>
+    </div>`);
   // What a session is waiting on, above everything else it could be doing:
   // somebody is blocked on it, and that somebody asked YOU: a request only
   // ever reaches the account that connected the phone it is about.
@@ -174,18 +237,22 @@ function renderPhoneInto(i){
     rows.push(`<div class="row phask">
       <div class="grow"><div class="name">${esc(a.why)}</div>
         <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project") : a.project || "a session")} on ${esc(a.node_name)} · ${a.left > 60
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project ? projLabel(a.project) : "a project") : a.project ? projLabel(a.project) : "a session")} on ${esc(a.node_name)} · ${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</div></div>
       <span class="acts">
         <button type="button" data-deny="${a.id}">Deny</button>
+        <button type="button" data-allow="${a.id}" data-session="1"
+          title="this one, and the rest this session sends to the phone, without asking">Allow for this session</button>
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
       </span></div>`);
-  d.list.innerHTML = rows.join("");
-  d.setFoot(`A session reaches this phone only by asking; the request lands here, with its reason.`);
-  if (!tcDotsTimer && d.list.querySelector(".dots"))
-    tcDotsTimer = setInterval(tcTickDots, 400);
-  wirePhoneTab(d.el);
+  const L2 = n.lease;
+  // Refresh is the tab's bar's (R121); this says how a session gets in.
+  rows.push(`<div class="field toolfoot phbar"><div class="hint">${L2
+      ? `Lent to ${esc(projLabel(L2.project))}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.`
+      : "A session reaches this phone only by asking; the request lands with its owner, with its reason."}</div></div>`);
+  if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);
+  return `<div class="phonetab">${rows.join("")}</div>`;
 }
 
 function wirePhoneTab(root){
@@ -205,8 +272,14 @@ function wirePhoneTab(root){
     phBusy = "looking for the phone"; phRev++; drawPanes();
     phFetch({action: "connect", ip: phIp.trim()});
   });
-  on("phDisconnect", () => { phBusy = "disconnecting"; phRev++; drawPanes();
-                             phFetch({action: "disconnect"}); });
+  on("phDisconnect", () => {
+    // An administrator ending somebody else's connection is told whose it
+    // is, and that its lease goes with it (R120).
+    const other = document.getElementById("phDisconnect")?.dataset.other;
+    if (other && !confirm(`Disconnect ${other}'s phone? Its lease to a project ends too.`)) return;
+    phBusy = "disconnecting"; phRev++; drawPanes();
+    phFetch({action: "disconnect"});
+  });
   on("phPair", () => {
     phBusy = "pairing"; phRev++; drawPanes();
     phFetch({action: "pair", ip: phIp.trim(), port: phPort.trim(), code: phCode.trim()});
@@ -220,8 +293,21 @@ function wirePhoneTab(root){
     phFetch({action: "forget", ip: b.dataset.kforget}));
   root.querySelectorAll("[data-allow]").forEach(b => b.onclick = () => {
     phBusy = "running it"; phRev++; drawPanes();
-    phFetch({action: "allow", id: Number(b.dataset.allow)});
+    phFetch({action: "allow", id: Number(b.dataset.allow), session: !!b.dataset.session});
   });
+  root.querySelectorAll("[data-untrust]").forEach(b => b.onclick = () =>
+    phFetch({action: "untrust", project: b.dataset.untrust, asker_uid: b.dataset.asker || ""}));
   root.querySelectorAll("[data-deny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.deny)}));
+  const lt = $$("phLendTo"), lf = $$("phLendFor");
+  if (lt) lt.onchange = () => { phLendTo = lt.value; };
+  if (lf) lf.onchange = () => { phLendFor = lf.value; };
+  on("phLend", () => {
+    const project = lt?.value || "";
+    if (!project) return notify("pick the project to lend it to", true);
+    phBusy = "lending"; phRev++; drawPanes();
+    phFetch({action: "lend", project, hours: Number(lf?.value || 1)});
+  });
+  on("phTakeBack", () => { phBusy = "taking it back"; phRev++; drawPanes(); phFetch({action: "take-back"}); });
+  on("phLook", () => { phBusy = "looking"; phRev++; drawPanes(); phFetch({action: "look"}); });
 }

@@ -34,46 +34,97 @@ import org.json.JSONObject
 object Watch {
     const val ID_PENDING = 2
     const val ID_ATTENTION = 3
+    const val ID_INVITES = 4
     const val ID_TURN_BASE = 5000
     const val ID_ASK_BASE = 1000
+    const val ID_ONGOING_BASE = 20000
     // In the background, no oftener than this: an inexact alarm is batched
     // by the system anyway, and a phone in a pocket is not a dashboard tab.
     const val BACKGROUND_MIN_S = 60L
 
     /** One round: ask, and post what is new. Called from the open app on
      *  its own clock and from the alarm's receiver in the background. */
-    suspend fun tick(context: Context, api: Api, store: Store) {
+    suspend fun tick(context: Context, api: Api, store: Store, p: Pairing) {
         val nm = context.getSystemService(NotificationManager::class.java)
+        val mem = store.memory(p.id)
+        // Each pairing's notes in a slot of ids of its own (R132), and
+        // named for it once there is more than one.
+        val base = slotBase(p)
+        val from = if (store.pairings.size > 1) "${p.label}: " else ""
         val ph = api.phone()
         val asks = ph.arr("asks")
-        val seen = store.notifiedAsks.toMutableSet()
+        val seen = mem.notifiedAsks.toMutableSet()
         val live = asks.map { it.int("id").toString() }.toSet()
         for (a in asks) {
             val id = a.int("id")
             if (id.toString() in seen) continue
-            nm.notify(ID_ASK_BASE + id, askNotification(context, a))
+            nm.notify(base + ID_ASK_BASE + id, askNotification(context, a, p, from))
             seen.add(id.toString())
         }
         // An ask that was answered elsewhere, or expired, leaves the shade.
         for (gone in seen - live) {
-            gone.toIntOrNull()?.let { nm.cancel(ID_ASK_BASE + it) }
+            gone.toIntOrNull()?.let { nm.cancel(base + ID_ASK_BASE + it) }
         }
-        store.notifiedAsks = seen.intersect(live)
+        mem.notifiedAsks = seen.intersect(live)
+
+        // What stays on while it lasts (the operator, 4 Oct): your phone lent
+        // to a project, and a session allowed to drive it without asking.
+        // Tapping either ends it: the lend taken back and adb disconnected,
+        // or the session asking every time again.
+        val up = mutableSetOf<String>()
+        for (n in ph.arr("nodes")) {
+            if (!n.bool("mine")) continue
+            val node = n.str("id")
+            val lease = n.optJSONObject("lease")
+            if (lease != null && lease.str("project").isNotBlank()) {
+                val key = "${p.id}|lend|$node"
+                up.add(key)
+                nm.notify(base + ongoingId(key), ongoingNote(context, key,
+                    from + "Your phone is lent to ${lease.str("project")}",
+                    "Tap to take it back and disconnect adb on ${n.str("name")}",
+                    EndReceiver.intent(context, p, key, "lend", node)))
+            }
+            for (g in n.arr("trust")) {
+                val key = "${p.id}|trust|$node|${g.str("project")}|${g.str("asker_uid")}"
+                up.add(key)
+                nm.notify(base + ongoingId(key), ongoingNote(context, key,
+                    from + "${g.str("asker").ifBlank { "A" }}'s sessions in ${g.str("project")} drive your phone",
+                    "Allowed for the session, without asking. Tap to be asked every time again",
+                    EndReceiver.intent(context, p, key, "trust", node, g.str("project"), g.str("asker_uid"))))
+            }
+        }
+        for (gone in mem.ongoing - up) nm.cancel(base + ongoingId(gone))
+        mem.ongoing = up
 
         val st = api.status()
         // Changes a session has waiting, per project: one note naming them all.
         val waiting = st.arr("projects").filter { it.int("pending") > 0 }
         val pendKey = waiting.joinToString(",") { "${it.str("name")}:${it.int("pending")}" }
-        if (pendKey != store.lastPending) {
-            if (waiting.isEmpty()) nm.cancel(ID_PENDING)
-            else nm.notify(ID_PENDING, NotificationCompat.Builder(context, App.CH_NOTE)
+        if (pendKey != mem.lastPending) {
+            if (waiting.isEmpty()) nm.cancel(base + ID_PENDING)
+            else nm.notify(base + ID_PENDING, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
-                .setContentTitle("Waiting for your approval")
-                .setContentText(waiting.joinToString("; ") { "${it.int("pending")} in ${it.str("name")}" })
+                .setContentTitle(from + "Waiting for your approval")
+                .setContentText(waiting.joinToString("; ") { "${it.int("pending")} in ${it.str("label").ifBlank { it.str("name") }}" })
                 .setContentIntent(openApp(context, "approvals"))
                 .setAutoCancel(true)
                 .build())
-            store.lastPending = pendKey
+            mem.lastPending = pendKey
+        }
+        // An invitation to a project, or a project offered to this account:
+        // Accept and Decline are on the Approvals screen, as in the bell.
+        val invites = st.arr("invites")
+        val invKey = invites.joinToString(",") { it.str("id") }
+        if (invKey != mem.lastInvites) {
+            if (invites.isEmpty()) nm.cancel(base + ID_INVITES)
+            else nm.notify(base + ID_INVITES, NotificationCompat.Builder(context, App.CH_NOTE)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle(from + (if (invites.size == 1) inviteLine(invites[0]) else "${invites.size} invitations to projects"))
+                .setContentText("Accept or Decline on Approvals")
+                .setContentIntent(openApp(context, "approvals"))
+                .setAutoCancel(true)
+                .build())
+            mem.lastInvites = invKey
         }
         // A turn finished: a session of the account's own that was busy at
         // the last look and can take a message now. Told once, on the
@@ -95,73 +146,109 @@ object Watch {
         }.map { it.first.str("name") }.toSet()
         for ((p, claude, testing) in own) {
             val project = p.str("name")
-            val note = ID_TURN_BASE + (project.hashCode() and 0xfff)
+            val note = base + ID_TURN_BASE + (project.hashCode() and 0xfff)
             if (project in busy) { nm.cancel(note); continue }
-            if (project !in store.lastWorking || !store.turns) continue
+            if (project !in mem.lastWorking || !store.turns) continue
             val task = claude.str("task").ifBlank { "it finished what it was on" }
             val text = if (testing != null) "tests are running, and a new ask cuts into them: $task"
-                       else if (p.obj("prefs").str("test_change") != "restart" && wasTesting(store, project)) "its tests finished: $task"
+                       else if (p.obj("prefs").str("test_change") != "restart" && wasTesting(mem, project)) "its tests finished: $task"
                        else task
             nm.notify(note, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
-                .setContentTitle("$project: Claude is waiting on you")
+                .setContentTitle(from + "${p.str("label").ifBlank { project }}: Claude is waiting on you")
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(openApp(context, "project/$project"))
                 .setAutoCancel(true)
                 .build())
         }
-        store.lastWorking = busy
-        store.lastTesting = own.filter { it.third != null }.map { it.first.str("name") }.toSet()
+        mem.lastWorking = busy
+        mem.lastTesting = own.filter { it.third != null }.map { it.first.str("name") }.toSet()
         // Nodes that need attention: an agent behind or out of window, or
         // Claude Code behind what is out.
         val att = st.arr("attention")
         // The server names the projects on the node as a list (B275).
         val attKey = att.joinToString(",") { "${it.str("kind")}:${it.str("id")}${it.strs("projects").joinToString("+")}:${it.str("to")}" }
-        if (attKey != store.lastAttention) {
-            if (att.isEmpty()) nm.cancel(ID_ATTENTION)
+        if (attKey != mem.lastAttention) {
+            if (att.isEmpty()) nm.cancel(base + ID_ATTENTION)
             else {
                 val red = att.any { it.bool("window") }
-                nm.notify(ID_ATTENTION, NotificationCompat.Builder(context, App.CH_NOTE)
+                nm.notify(base + ID_ATTENTION, NotificationCompat.Builder(context, App.CH_NOTE)
                     .setSmallIcon(R.drawable.ic_stat_bb)
-                    .setContentTitle(if (red) "Work is stopped on a node" else "A node needs attention")
+                    .setContentTitle(from + (if (red) "Work is stopped on a node" else "A node needs attention"))
                     .setContentText(att.joinToString("; ") { attentionLine(it) })
                     .setStyle(NotificationCompat.BigTextStyle().bigText(att.joinToString("\n") { attentionLine(it) }))
                     .setContentIntent(openApp(context, "nodes"))
                     .setAutoCancel(true)
                     .build())
             }
-            store.lastAttention = attKey
+            mem.lastAttention = attKey
         }
     }
 
     /** Whether a project's tests were running at the last look: what the
      *  note says when a session under "wait" comes free. */
-    private fun wasTesting(store: Store, project: String) = project in store.lastTesting
+    private fun wasTesting(mem: Store.Memory, project: String) = project in mem.lastTesting
 
     /** The password changed, or the account went: asking on would be a
      *  refused request every minute for good, and the person would never
-     *  learn why the questions stopped arriving. */
-    fun signedOut(context: Context) {
-        context.getSystemService(NotificationManager::class.java).notify(ID_ATTENTION,
+     *  learn why the questions stopped arriving. That pairing is forgotten
+     *  and said; the others go on, and the watch stops only with the last. */
+    fun signedOut(context: Context, p: Pairing) {
+        val store = Store(context)
+        store.forget(p.id)
+        context.getSystemService(NotificationManager::class.java).notify(slotBase(p) + ID_ATTENTION,
             NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
-                .setContentTitle("BuilderBot no longer accepts this sign-in")
-                .setContentText("Open the app and sign in again; the watch has stopped until you do")
+                .setContentTitle("${p.label} no longer accepts this sign-in")
+                .setContentText("Open the app and sign in to it again" +
+                    (if (store.signedIn) "" else "; the watch has stopped until you do"))
                 .setContentIntent(openApp(context, "more"))
                 .setAutoCancel(true)
                 .build())
-        stop(context)
+        if (!store.signedIn) { stop(context); Live.stop(context) }
     }
 
-    private fun askNotification(context: Context, a: JSONObject): Notification {
+    /** One round over every pairing (R132). A refused sign-in forgets that
+     *  pairing; anything else is one missed round for it. */
+    suspend fun tickAll(context: Context, store: Store) {
+        for (p in store.pairings) {
+            try { tick(context, store.api(p), store, p) }
+            catch (e: ApiError) { if (e.status == 401 || e.status == 403) signedOut(context, p) }
+            catch (e: Exception) { /* a missed round; the next one asks again */ }
+        }
+    }
+
+    /** Where a pairing's notification ids start: a million apart, so two
+     *  dashboards' asks with the same number are two notes. */
+    fun slotBase(p: Pairing) = p.slot * 1_000_000
+
+    fun ongoingId(key: String) = ID_ONGOING_BASE + (key.hashCode() and 0xffff)
+
+    private fun ongoingNote(context: Context, key: String, title: String, text: String,
+                            end: PendingIntent): Notification =
+        NotificationCompat.Builder(context, App.CH_HELD)
+            .setSmallIcon(R.drawable.ic_stat_bb)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setColor(0xFFD29922.toInt())
+            .setContentIntent(end)
+            .addAction(NotificationCompat.Action.Builder(0,
+                if (key.contains("|lend|")) "Take back" else "Ask every time", end)
+                .setAuthenticationRequired(true).build())
+            .build()
+
+    private fun askNotification(context: Context, a: JSONObject, p: Pairing, from: String): Notification {
         val id = a.int("id")
         val kind = a.str("kind")
         val who = a.str("asker").ifBlank { a.str("project").ifBlank { "a session" } }
         val text = "${a.str("why")}\n${askCommand(a)}\n$who's session in ${a.str("project")}"
         return NotificationCompat.Builder(context, App.CH_ASK)
             .setSmallIcon(R.drawable.ic_stat_bb)
-            .setContentTitle(askTitle(a) + ": needs your answer")
+            .setContentTitle(from + askTitle(a) + ": needs your answer")
             .setContentText(a.str("why"))
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -177,9 +264,16 @@ object Watch {
                 .setContentTitle("A session needs your answer")
                 .setContentText("Unlock to see what it asks")
                 .build())
-            .addAction(NotificationCompat.Action.Builder(0, "Deny", DecideReceiver.intent(context, id, false))
+            .addAction(NotificationCompat.Action.Builder(0, "Deny", DecideReceiver.intent(context, p, id, false))
                 .setAuthenticationRequired(true).build())
-            .addAction(NotificationCompat.Action.Builder(0, "Approve", DecideReceiver.intent(context, id, true))
+            .apply {
+                // The rest of this session's phone commands without asking.
+                if (kind == "phone" || kind == "phone-use")
+                    addAction(NotificationCompat.Action.Builder(0, "This session",
+                        DecideReceiver.intent(context, p, id, true, session = true))
+                        .setAuthenticationRequired(true).build())
+            }
+            .addAction(NotificationCompat.Action.Builder(0, "Approve", DecideReceiver.intent(context, p, id, true))
                 .setAuthenticationRequired(true).build())
             .setAutoCancel(true)
             .build()
@@ -228,15 +322,25 @@ object Watch {
     // four kinds: the phone, root on a node, a rebuild of a dev instance,
     // and a container to be made. Shared with the Approvals screen so the
     // notification and the row agree.
+    fun inviteLine(i: JSONObject): String =
+        if (i.str("kind") == "owner") "${i.str("by").ifBlank { "Somebody" }} offers you ${i.str("project")}"
+        else "${i.str("by").ifBlank { "Somebody" }} invited you to ${i.str("project")}"
+
     fun askTitle(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "Root on ${a.str("node_name")}"
         "rebuild" -> "Rebuild in ${a.str("project").ifBlank { "a project" }}"
         "container" -> "Container ${a.str("name")} on ${a.str("node_name").ifBlank { "the default node" }}"
+        // Signing (R106): asked of the project's owner.
+        "sign" -> "Sign a build of ${a.str("project").ifBlank { "a project" }}"
+        "sign-key" -> "A signing key change in ${a.str("project").ifBlank { "a project" }}"
+        "release" -> "Release ${a.str("project").ifBlank { "a project" }} ${a.str("tag")}"
+        "release-edit" -> "Edit the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
+        "release-remove" -> "Remove files from the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
         else -> "The phone on ${a.str("node_name")}"
     }
     fun askCommand(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "# "
-        "rebuild", "container" -> "bb "
+        "rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove" -> "bb "
         else -> "adb "
     } + a.strs("cmd").joinToString(" ")
 }
@@ -247,19 +351,13 @@ object Watch {
 class WatchReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val store = Store(context)
-        val api = store.api()
-        if (api == null || !store.watch) { Watch.stop(context); return }
+        if (!store.signedIn || !store.watch) { Watch.stop(context); return }
         val pending = goAsync()
         Thread {
             try {
-                runBlocking { Watch.tick(context, api, store) }
-                Watch.startIfWanted(context)
-            } catch (e: ApiError) {
-                if (e.status == 401 || e.status == 403) Watch.signedOut(context)
-                else Watch.startIfWanted(context)
-            } catch (e: Exception) {
-                Watch.startIfWanted(context)
+                runBlocking { Watch.tickAll(context, store) }
             } finally {
+                Watch.startIfWanted(context)
                 pending.finish()
             }
         }.start()
@@ -272,18 +370,22 @@ class DecideReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getIntExtra("id", 0)
         val allow = intent.getBooleanExtra("allow", false)
+        val session = intent.getBooleanExtra("session", false)
+        val store = Store(context)
+        val p = store.pairing(intent.getStringExtra("pairing") ?: "") ?: return
+        val base = Watch.slotBase(p)
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.cancel(Watch.ID_ASK_BASE + id)
-        val api = Store(context).api() ?: return
+        nm.cancel(base + Watch.ID_ASK_BASE + id)
+        val api = store.api(p)
         val pending = goAsync()
         Thread {
             val said = try {
-                runBlocking { api.decide(id, allow) }
-                if (allow) "Allowed: the node is running it" else "Denied"
+                runBlocking { api.decide(id, allow, session) }
+                if (session) "Allowed for this session" else if (allow) "Allowed: the node is running it" else "Denied"
             } catch (e: Exception) {
                 "Could not answer: ${e.message}"
             }
-            nm.notify(Watch.ID_ASK_BASE + id, NotificationCompat.Builder(context, App.CH_NOTE)
+            nm.notify(base + Watch.ID_ASK_BASE + id, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
                 .setContentTitle(said)
                 .setContentIntent(Watch.openApp(context, "approvals"))
@@ -295,11 +397,65 @@ class DecideReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        fun intent(context: Context, id: Int, allow: Boolean): PendingIntent {
+        fun intent(context: Context, p: Pairing, id: Int, allow: Boolean, session: Boolean = false): PendingIntent {
             val i = Intent(context, DecideReceiver::class.java).apply {
-                putExtra("id", id); putExtra("allow", allow)
+                putExtra("id", id); putExtra("allow", allow); putExtra("session", session); putExtra("pairing", p.id)
             }
-            return PendingIntent.getBroadcast(context, id * 2 + (if (allow) 1 else 0), i,
+            return PendingIntent.getBroadcast(context, (Watch.slotBase(p) + id) * 3 + (if (session) 2 else if (allow) 1 else 0), i,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
+    }
+}
+
+// Ending what an ongoing note stands for, from the note: a lent phone taken
+// back and its adb disconnected, or a session allowed asking every time
+// again. One POST or two, the note gone, and a short note of the answer.
+class EndReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val key = intent.getStringExtra("key") ?: return
+        val what = intent.getStringExtra("what") ?: return
+        val node = intent.getStringExtra("node") ?: return
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val store = Store(context)
+        val p = store.pairing(intent.getStringExtra("pairing") ?: "") ?: return
+        val api = store.api(p)
+        val pending = goAsync()
+        Thread {
+            val said = try {
+                runBlocking {
+                    if (what == "lend") {
+                        api.phoneTakeBack(node)
+                        api.phoneDisconnect(node)
+                    } else {
+                        api.phoneUntrust(node, intent.getStringExtra("project") ?: "",
+                                         intent.getStringExtra("asker") ?: "")
+                    }
+                }
+                nm.cancel(Watch.slotBase(p) + Watch.ongoingId(key))
+                store.memory(p.id).let { it.ongoing = it.ongoing - key }
+                if (what == "lend") "Taken back, and adb disconnected" else "Asking every time again"
+            } catch (e: Exception) {
+                "Could not end it: ${e.message}"
+            }
+            nm.notify(Watch.slotBase(p) + Watch.ongoingId(key) + 1, NotificationCompat.Builder(context, App.CH_NOTE)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle(said)
+                .setContentIntent(Watch.openApp(context))
+                .setAutoCancel(true)
+                .setTimeoutAfter(20_000)
+                .build())
+            pending.finish()
+        }.start()
+    }
+
+    companion object {
+        fun intent(context: Context, p: Pairing, key: String, what: String, node: String,
+                   project: String = "", asker: String = ""): PendingIntent {
+            val i = Intent(context, EndReceiver::class.java).apply {
+                putExtra("key", key); putExtra("what", what); putExtra("node", node)
+                putExtra("project", project); putExtra("asker", asker); putExtra("pairing", p.id)
+            }
+            return PendingIntent.getBroadcast(context, Watch.slotBase(p) + Watch.ongoingId(key), i,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
     }

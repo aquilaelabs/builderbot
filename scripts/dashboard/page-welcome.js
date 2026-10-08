@@ -18,15 +18,16 @@ const GUIDE_USER = `
   <ul>
     <li><b>Your profile</b> (the gear): your name, and the git name and email
       your commits carry. No session starts until they are set.</li>
-    <li><b>Sign in to Claude</b> (the card under Doctor): your own Anthropic
-      account, once. Sessions do not start without it.</li>
+    <li><b>Claude Code</b> on each node you work on: its <b>Toolchains</b> tab
+      installs it, then a project's <b>Claude</b> button takes you to the
+      node's sign-in the first time.</li>
     <li><b>A project</b>: its name opens the notebook, <b>Claude</b> starts a
       session, the terminal button opens a shell.</li>
     <li><b>The notebook</b>: Briefing, Roadmap (sent to Claude a step at a
       time), Bugs, Git, Artifacts, Tests, Analysis.</li>
     <li><b>The bell</b>: what needs your answer.</li>
-    <li><b>Your phone</b>: Tools, then Phone, connects a handset to a node; a
-      session asks before it touches it.</li>
+    <li><b>Your phone</b>: the Phone tab, under Tools, connects a handset to a
+      node you pick; a session asks before it touches it.</li>
   </ul>
   <h4>When something says no</h4>
   <p>A refusal names the way out, so read it rather than retry.</p>

@@ -205,7 +205,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   const ranArgv = async r => ((((await api(`/api/v1/jobs?n=20`)).body.jobs || [])
     .find(j => j.id === r.body.job) || {}).spec?.config?.argv || []).join(' ');
   await set(true);
-  await api('/api/v1/nodes', { action: 'log-grant', id: sandbox.id, from: [sandbox.id] });
+  await api('/api/prefs', { project: 'alpha', log_from: [sandbox.id] });
 
   // THE RUNNER'S OUTPUT GOES TO ONE OF TWO PLACES and only the node knows
   // which: the journal when svc.sh made it a service, runner.log under the
@@ -256,7 +256,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
      '...and the terminal server writes a file under the data store');
 
   await census(null);
-  await api('/api/v1/nodes', { action: 'log-grant', id: sandbox.id, from: [] });
+  await api('/api/prefs', { project: 'alpha', log_from: [] });
   await set(false);
 }
 

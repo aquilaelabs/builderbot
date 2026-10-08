@@ -119,6 +119,16 @@ export async function newPage(browser, opts = {}){
   for (const m of ["waitForFunction", "waitForSelector"]){
     const real = page[m].bind(page);
     page[m] = async (...args) => {
+      // waitForFunction(fn, arg, options): options passed second, where the
+      // function's argument goes (208 waits did), were the 30s default with
+      // the object handed to the page (B556). Moved to where they belong
+      // when there is nothing third, never below that default, which every
+      // one of them has run on: a 40s wait now waits 40s, and a 10s one
+      // keeps the 30s it was proven against.
+      if (m === "waitForFunction" && args.length === 2 && args[1] && typeof args[1] === "object"
+          && !Array.isArray(args[1]) && Object.keys(args[1]).every(k => k === "timeout" || k === "polling"))
+        args = [args[0], null, { ...args[1], ...(typeof args[1].timeout === "number"
+          ? { timeout: Math.max(args[1].timeout, 30000) } : {}) }];
       const last = args[args.length - 1];
       if (last && typeof last === "object" && typeof last.timeout === "number")
         args[args.length - 1] = { ...last, timeout: patience(last.timeout) };
@@ -202,6 +212,44 @@ export async function newPage(browser, opts = {}){
   });
   page.on('pageerror', e => page.errors.push(String(e)));
   page.on('dialog', d => { page.dialogs.push(d.message()); d.accept(); });
+  // The project settings are sections, one open at a time (the operator,
+  // 7 Oct). A person opens the section a field is in before using it, and so
+  // does a suite: before an action on, or a wait for, a field inside a shut
+  // section, its heading is pressed. Only those sections; a check of which
+  // one a door opens reads the folds with $eval, which this leaves alone.
+  const openRnFor = async (sel, timeout) => {
+    if (typeof sel !== 'string' || !/#rn|rnmodal|rngroup/.test(sel)) return;
+    // Until the field shows: a section another press is sliding shut still
+    // reads open for a third of a second, and pressing it then does nothing
+    // before it finishes closing; so it is looked at again until it is shut
+    // (and pressed) or the field is on screen.
+    const press = () => page.evaluate(s => {
+      let el = null;
+      try { el = document.querySelector(s); } catch { return 'done'; }
+      if (!el) return 'wait';
+      const d = el.closest('details.rngroup');
+      if (!d) return 'done';
+      // Mid-slide either way: wait for it to land (page-motion.js's fold).
+      if (d.getAnimations().some(a => a.id === 'fold' && a.playState === 'running')) return 'wait';
+      if (!d.open){ d.querySelector(':scope > summary').click(); return 'wait'; }
+      if (getComputedStyle(d).display === 'none' || el.closest('[hidden]')) return 'done';
+      return el.checkVisibility?.() ?? el.offsetParent !== null ? 'done' : 'wait';
+    }, sel).catch(() => 'done');
+    const until = Date.now() + Math.min(timeout ?? patience(30000), patience(30000));
+    for (;;){
+      if (await press() === 'done' || Date.now() > until) return;
+      await new Promise(r => setTimeout(r, 100));
+    }
+  };
+  for (const m of ['fill', 'selectOption', 'click', 'check', 'uncheck', 'type', 'press', 'setChecked', 'waitForSelector']){
+    const real = page[m].bind(page);
+    page[m] = async (sel, ...rest) => {
+      const opts = rest[rest.length - 1];
+      const hidden = m === 'waitForSelector' && ['hidden', 'detached', 'attached'].includes(opts?.state);
+      if (!hidden) await openRnFor(sel, typeof opts?.timeout === 'number' ? opts.timeout : undefined);
+      return real(sel, ...rest);
+    };
+  }
   return page;
 }
 
@@ -389,6 +437,21 @@ export const freePoll = page => page.evaluate(() => {
   if (window.__heldRefresh){ refresh = window.__heldRefresh; window.__heldRefresh = null; }
 });
 
+// One section is open at a time on a tab and in a notebook view (5 and
+// 6 Oct): a check opens the one it works in first, by its key
+// (`nodes:advanced`), the way a person does, through its summary.
+// `scope` names where: the same key is on every node's row of the Nodes tab.
+export async function openSection(page, key, scope = ''){
+  const sel = `${scope ? scope + ' ' : ''}details.sect[data-sect="${key}"]`;
+  // There first: a node picked a moment ago is still being drawn.
+  await page.waitForSelector(sel, { state: 'attached', timeout: 10000 }).catch(() => {});
+  await page.evaluate(s => {
+    const d = document.querySelector(s);
+    if (d && !d.open) d.querySelector(':scope > summary').click();
+  }, sel);
+  await page.waitForFunction(s => document.querySelector(s)?.open, sel, { timeout: 5000 }).catch(() => {});
+}
+
 export async function openFold(page, sel){
   // Resolved to a handle first, and the wait done through that rather than
   // through the selector: these are often Playwright's own selector flavor
@@ -406,6 +469,9 @@ export async function openFold(page, sel){
     const el = await page.$(sel);
     if (!el) throw new Error(`openFold: nothing matches ${sel}`);
     try{
+      // Open already is done: a click would shut it, which with one section
+      // open at a time a suite meets often (5 Oct).
+      if (await el.evaluate(d => d.open && !d.getAnimations().length)) return;
       await (await el.$("summary")).click();
       await page.waitForFunction(d => d.open && !d.getAnimations().length,
                                  el, { timeout: 10000 });
@@ -482,3 +548,84 @@ export const nbTab = async (page, v) => {
 export const nbGone = (page) =>
   page.waitForFunction(() => !document.querySelector('.pane .nb'),
                        { timeout: 20000 });
+
+// A project row on the sidebar card folds all but Claude and the notebook
+// behind … at every width (R119, 4 Oct): a check that presses one of the
+// others opens the fold first, the way a person would.
+export async function unfold(page, project){
+  await page.evaluate(name => {
+    const row = document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)?.closest('.row');
+    if (row && !row.classList.contains('moreon')) row.querySelector('[data-more]').click();
+  }, project);
+  await page.waitForFunction(name => document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)
+    ?.closest('.row')?.classList.contains('moreon') ?? true, project, { timeout: 5000 }).catch(() => {});
+}
+
+// The owner takes a project on (R135): a suite that drops a project
+// directory into the workspace, or makes one outside the create dialog,
+// gives it to the owner's own list the way the Users tab does, since "*"
+// lists every project and takes none on.
+// A folder made by hand is no project since R154 (the operator, 8 Oct): only
+// create, clone and import record one. A suite that drops a project directory
+// into the workspace records it the way an import would, in projects.json,
+// which the server reads again when the file changes.
+export function registerProject(...names) {
+  const f = `${DIR}/state/projects.json`;
+  // Not there yet: the server's first scan records every folder present,
+  // this one with them, and a file written first would stop that.
+  let d;
+  try { d = JSON.parse(readFileSync(f, 'utf8')); } catch { return; }
+  d.projects = d.projects || {};
+  for (const n of names) {
+    const r = d.projects[n];
+    if (r) r.state = 'live';
+    else d.projects[n] = { id: d.next++, name: n, state: 'live', at: Math.floor(Date.now() / 1000) };
+  }
+  writeFileSync(f, JSON.stringify(d));
+}
+
+export async function takeOn(...names) {
+  registerProject(...names);
+  const h = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  // Once the listing carries the project: the scan of the workspace is
+  // cached briefly, and the verb keeps only names it lists.
+  for (let i = 0; i < 40; i++) {
+    const listed = ((await (await fetch(`${base}/api/status`, { headers: h })).json()).projects || []).map(p => p.name);
+    if (names.every(n => listed.includes(n))) break;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  const me = (await (await fetch(`${base}/api/users`, { headers: h })).json()).users.find(u => u.name === 'test');
+  const have = me?.projects || [];
+  const want = [...have, ...names.filter(n => !have.includes(n))];
+  const r = await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'projects', name: 'test', projects: want }) });
+  return (await r.json()).projects || [];
+}
+
+// What a plain account could do before R152 (the operator, 7 Oct: there is
+// no user role now, and an account holds nothing until given a role), as a
+// role a suite gives the accounts it makes, the way an administrator would
+// on the Roles tab: work on the projects the account is on, and read their
+// settings, releases, credential and containers, with the shielded console.
+export const MEMBER = { projects: 'write', settings: 'read', releases: 'read', gitauth: 'read',
+                        files: 'write', containers: 'read', terminal: 'read' };
+export async function member(...names) {
+  const h = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'set', name: 'member', scope: 'projects', perms: MEMBER, note: 'a suite\'s plain account' }) });
+  // A role on a project is given on the project (R155). A suite's plain
+  // account holds it on every project, and the projects it is on (set
+  // before this or after) decide which it reaches, as its list did before.
+  const d = await (await fetch(`${base}/api/roles`, { headers: h })).json();
+  for (const name of names) {
+    const users = (await (await fetch(`${base}/api/users`, { headers: h })).json()).users || [];
+    const was = users.find(u => u.name === name)?.projects || [];
+    const project_roles = Object.fromEntries((d.projects || []).map(p => [p, ['member']]));
+    await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
+      body: JSON.stringify({ action: 'assign', name, project_roles }) });
+    await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+      body: JSON.stringify({ action: 'projects', name, projects: was }) });
+  }
+}

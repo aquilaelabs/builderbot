@@ -258,13 +258,34 @@ def target(project, comp=""):
     p = d / VERSION_FILE
     try:
         raw = p.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None, None                      # simply not adopted here yet
+    except OSError as e:
+        # Every failed read was "not adopted here yet", and the answer then
+        # fell back to git describe: Shebang-DevBoard, whose VERSION says
+        # 0.5.5, got v0.5.4-13-g7766f70 from bb version --file for a minute
+        # and filed builds under it, and the next call was right again (B524;
+        # the share answered this read with an error the controller's git
+        # did not meet). The committed VERSION is asked for next; only a
+        # file that is in neither place is a project that has not opted in.
+        raw = _committed(project, p)
+        if raw is None:
+            if isinstance(e, FileNotFoundError):
+                return None, None              # simply not adopted here yet
+            return None, f"{VERSION_FILE} could not be read: {e.strerror or e}"
     line = raw.strip().splitlines()[0].strip() if raw.strip() else ""
     if not TARGET_RE.match(line):
         return None, (f"{VERSION_FILE} should hold one line of "
                       f"MAJOR.MINOR.PATCH; it holds {line[:40]!r}")
     return line, None
+
+
+def _committed(project, path):
+    """The VERSION file as HEAD has it, or None: what target() reads when the
+    file on disk cannot be (B524)."""
+    try:
+        rel = path.resolve().relative_to(root(project).resolve())
+    except (OSError, ValueError):
+        return None
+    return _git(project, "show", f"HEAD:{rel.as_posix()}")
 
 
 def _relspec(project, where):
@@ -280,6 +301,15 @@ def _relspec(project, where):
         return str(where.relative_to(root(project).resolve()))
     except (AttributeError, ValueError):
         return None
+
+
+def no_history(project):
+    """Why HEAD has no commit, in the one sentence that is true: the
+    Artifacts view said "not a git repository, or no commits yet" beside a
+    Git view showing the repository (B456)."""
+    if _git(project, "rev-parse", "--git-dir") is not None:
+        return "no commits yet: the version is counted from the first commit"
+    return "not a git repository: Init on the Git view makes one"
 
 
 def _repo(project):
@@ -307,7 +337,7 @@ def parts(project, comp="", repo=None):
     tgt, err = target(project, comp)
     repo = _repo(project) if repo is None else repo
     if repo is None:
-        return {"target": tgt, "error": err or "not a git repository (Init on the Git view makes one), or no commits yet",
+        return {"target": tgt, "error": err or no_history(project),
                 "ordinal": None, "sha": None, "tag": "", "dirty": False,
                 "describe": None, "released": False}
     where = _sub(project, comp)
@@ -582,6 +612,47 @@ def lands(project, comp="", facts=None):
     return out
 
 
+def current_tag(project, comp=""):
+    """The tag of the version this tree is on, once it is released: (tag,
+    "") or ("", why). What bb version release --edit edits unless it names
+    another (R139)."""
+    tgt, err = target(project, comp)
+    if err:
+        return "", err
+    if tgt is None:
+        return "", "there is no version here yet"
+    name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
+    if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is None:
+        return "", f"{name} is not released yet: bb version release makes it, or --tag names an older one"
+    return name, ""
+
+
+def release_plan(project, comp=""):
+    """What a release here would tag, without doing it: {tag, sha, target}
+    or {error}, from the same refusals release() makes first. A session's
+    ask is made from this (bb version release, R138), so the person asked
+    reads which tag on which commit, and a release that could not happen is
+    refused before anybody is asked."""
+    tgt, err = target(project, comp)
+    if err:
+        return {"error": err}
+    if tgt is None:
+        thing = f"{project}/{comp}" if comp else project
+        return {"error": f"{thing} has no version to release yet; give it one first"}
+    if _sub(project, comp) is None:
+        return {"error": f"no such component here: {comp}"}
+    sha = _git(project, "rev-parse", "--short=7", "HEAD")
+    if sha is None:
+        return {"error": no_history(project)}
+    name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
+    if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
+        return {"error": f"{name} already exists: bump to the next number first"}
+    if (_git(project, "status", "--porcelain") or "").strip():
+        return {"error": "there are uncommitted changes in the project directory: commit or "
+                         "discard them first, so the tag marks what is actually in the commit"}
+    return {"tag": name, "sha": sha, "target": tgt}
+
+
 def release(project, comp="", env=None, may_push=True, push=True):
     """Cut the release: an annotated tag on this commit, pushed.
 
@@ -614,7 +685,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         return {"error": f"no such component here: {comp}"}
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
-        return {"error": "not a git repository (Init on the Git view makes one), or no commits yet"}
+        return {"error": no_history(project)}
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Which commit it is on, because "it already exists" and "it is on
@@ -672,7 +743,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         # gets its marker, and the sentence says what is missing rather than
         # undoing the half that worked.
         out["note"] = (f"{name} is on this commit here. This project has no push "
-                       f"rights, so nothing was sent to GitHub.")
+                       f"rights, so nothing was pushed.")
         return out
     r = _git(project, "push", "origin", f"refs/tags/{name}", timeout=120, env=env)
     if r is None:
@@ -858,8 +929,7 @@ def init(project, value, by="claude", comp="", env=None):
         return {"error": f"{comp + '/' if comp else ''}{VERSION_FILE} already "
                          f"exists; use a bump to change it"}
     if _git(project, "rev-parse", "--short=7", "HEAD") is None:
-        return {"error": "not a git repository, or no commits yet: a version "
-                         "needs history to count"}
+        return {"error": no_history(project)}
     why = _cl_guard(project, where)
     if why:
         return {"error": why}
@@ -900,7 +970,30 @@ def candidates(project):
     return out
 
 
-def bump(project, part, by="claude", comp="", env=None):
+def jump(project, value, by="claude", comp="", env=None):
+    """Move the target straight to `value`, forward only, and commit it the
+    way a bump is. The part it moves is the largest that changes (0.1.0 to
+    0.5.0 is a minor), and the policy is asked about that part, so a session
+    allowed minors may go to 0.5.0 in one step rather than four (report #48,
+    Shebang-DevBoard, 3 Oct)."""
+    value = str(value or "").strip()
+    if not TARGET_RE.match(value):
+        return {"error": f"a version is MAJOR.MINOR.PATCH, like 0.5.0, not {value[:40]!r}"}
+    tgt, err = target(project, comp)
+    if err:
+        return {"error": err}
+    if tgt is None:
+        return bump(project, "patch", by=by, comp=comp, env=env)     # its own sentence
+    a = [int(x) for x in tgt.split("-")[0].split("+")[0].split(".")[:3]]
+    b = [int(x) for x in value.split("-")[0].split("+")[0].split(".")[:3]]
+    if b <= a:
+        return {"error": f"{value} is not after {tgt}: a version only moves forward "
+                         "(bb version unbump takes the last bump back)"}
+    part = PARTS[next(i for i in range(3) if a[i] != b[i])]
+    return bump(project, part, by=by, comp=comp, env=env, to=value, fold=True)
+
+
+def bump(project, part, by="claude", comp="", env=None, to=None, fold=False):
     """Move the target and commit that one file.
 
     Committing rather than leaving the tree dirty is the whole reason this is
@@ -951,7 +1044,22 @@ def bump(project, part, by="claude", comp="", env=None):
     why = _cl_guard(project, where)
     if why:
         return {"error": why}
-    new = next_version(tgt, part)
+    new = to or next_version(tgt, part)
+    # A set (jump) renumbers: "it is 0.5.0, not 0.2.0". When the number being
+    # left was never released (no tag, unbump's own test), its dated section
+    # is notes for a release that will not happen under that number, so they
+    # go back into Unreleased and are dated with this one. Otherwise 0.1.0 to
+    # 0.2.0 to 0.5.0 left every entry under a 0.2.0 nobody shipped, and
+    # 0.5.0's notes held only what came after (report #49, 3 Oct). A bump is
+    # a step and keeps the section it leaves: a project that never tags still
+    # shipped what each bump dated (version.mjs holds that).
+    folded, cl_was = False, None
+    if fold and changelog is not None and not _release_tag_exists(project, tgt, comp):
+        try:
+            cl_was = (where / changelog.FILE).read_text(encoding="utf-8")
+        except OSError:
+            cl_was = None
+        folded = changelog.unroll(where, tgt)
     p = where / VERSION_FILE
     try:
         p.write_text(new + "\n", encoding="utf-8")
@@ -976,12 +1084,20 @@ def bump(project, part, by="claude", comp="", env=None):
         if why:
             try:
                 p.write_text(tgt + "\n", encoding="utf-8")
+                # ...and the section the fold dissolved, put back as it was.
+                if folded and cl_was is not None:
+                    (where / changelog.FILE).write_text(cl_was, encoding="utf-8")
             except OSError:
                 pass
             return {"error": why}
+    if folded:
+        msg += f"\n\n{tgt} was never released: its changelog section is dated {new} with the rest."
     r = _seal(project, where, rel, new, msg, env=env, extra=extra)
     if r.get("ok"):
         r.update(was=tgt, part=part, component=comp, stamped=extra)
+        if folded:
+            r["note"] = ((r.get("note") or "") + "; " if r.get("note") else "") + \
+                f"{tgt} was never released, so its changelog notes moved to {new}"
     return r
 
 
@@ -1306,7 +1422,8 @@ CREDS_ENV = None
 MAY_PUSH = None
 SESSIONS = None
 AUDIT = None
-_VERB_PARTS = ("PANEL", "GIT_ENV", "CREDS_ENV", "MAY_PUSH", "SESSIONS", "AUDIT")
+FORGE = None        # (project, tag, version, sha, comp) -> the forge's release (forgerelease.publish)
+_VERB_PARTS = ("PANEL", "GIT_ENV", "CREDS_ENV", "MAY_PUSH", "SESSIONS", "AUDIT", "FORGE")
 
 
 def configure_verbs(**parts):
@@ -1336,15 +1453,22 @@ def verb(name, act, req, who, principal):
     if act == "release":
         # The other half of a release, and the outward-facing one: the
         # bump decided the number, this says it happened and pushes the
-        # tag. The operator's alone: a policy governs moving the
-        # number, and publishing a marker other people fetch is not
-        # the same decision.
+        # tag. A person's from here; a session asks through its own
+        # dial (Claude may: Tag and publish a release, R138), whose Allow
+        # comes back through this same branch.
         r = release(name, comp=comp, env={**CREDS_ENV(), **GIT_ENV(who, name)},
                     may_push=MAY_PUSH(name))
         if r.get("error"):
             return r, 400
+        # A tag on GitHub gets GitHub's release beside it (R123): titled with
+        # the version, the changelog's section as its notes, the builds of
+        # that commit attached. Only once the tag is there, and a forge that
+        # says no leaves the tag as the release, with its reason.
+        if r.get("pushed") and FORGE:
+            r["forge"] = FORGE(name, r["tag"], r["target"], r["sha"], comp)
         AUDIT(principal, "version-release", name,
-              {"tag": r.get("tag"), "pushed": bool(r.get("pushed"))})
+              {"tag": r.get("tag"), "pushed": bool(r.get("pushed")),
+               "forge": (r.get("forge") or {}).get("url") or ""})
         return PANEL(name) | {"released": r}, 200
     if act == "init":
         r = init(name, field(req, "value"), by="operator", env=GIT_ENV(who, name), comp=comp)

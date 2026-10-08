@@ -99,8 +99,11 @@ map unused` what nothing calls or passes by name. R76: a refactor knows
 its regression net before it starts.
 
 `bb tests preflight` is what a session runs before a push: the files the
-branch changed, the suites that reach them, and the lint, voice and design
-checks, run together; `--dry` prints the plan. With a covered run on
+branch changed, the python unit tier first (under a second), the suites
+that reach them, and the lint and voice checks, run together, with the
+design check when a file carrying style changed; `--dry` prints the plan.
+The suites are shared across the node's workers by the seconds each took
+there last, longest first. With a covered run on
 record the suites are the ones that reached the functions the changed
 lines fall in, and the ones naming an id or class those lines draw
 (`bb map affected`), which is why a change to one handler is a
@@ -151,6 +154,97 @@ renders exactly what a tab will show) and ImageMagick packs the `.ico`.
 The dashboard's own tab icon is this command's output, from
 `scripts/dashboard/static/favicon.svg`.
 
+**Dev builds do not pile up.** A build named with `bb version --file` carries
+its dev version (`0.1.0-dev.17-9e09ad3`). Of each product (the name before
+the version: `Shebang-DevBoard-`, `Shebang-Voice-`) `dist/` keeps every file
+of its newest few builds, whatever follows the version (the project's
+settings say how many, Dev builds kept: 3 unless changed, and 0 keeps
+everything), and a build that has been signed keeps its signed copy alone,
+since the unsigned file was only the signing's input. The rest go every few
+minutes, when a node's build lands, and when the Artifacts tab draws, not
+only on the last. A release (no `-dev.N`) and an artifact somebody
+**pinned** (the pin on its row, kept by the controller with who pinned it)
+are never removed by count, and a pinned build is not one of those kept
+beside it. A build named with no version cannot be judged, so its row says
+so and offers Remove. One day of a session building a keyboard left seven
+debug APKs, 133 MB, before the first of this; counting by name rather than
+by build left Shebang's renamed first builds for good, and unsigned twins
+were 350 MB of its 811 (6 Oct).
+
+**CI on GitHub's own runners.** A job on a hosted runner keeps no log
+anywhere BuilderBot reaches, and GitHub hands a run's log only to a token,
+even on a public repository. So when every workflow of a project names a
+hosted label rather than `self-hosted`, `bb ci-log` asks the controller
+(`/api/ci-runs`, `cilogs.py`), which asks GitHub with the project's own
+token or the shared PAT: `--list` is the newest runs, and a run (the newest
+finished one when none is named) is its jobs, the step that failed, and the
+last 400 lines of each failed job's log. The log answers with a redirect to
+GitHub's storage, and the token is not sent on to it. R115.
+
+**CI watched without anybody asking.** A project's CI drifts on GitHub's
+schedule, not the project's: a runner label is repointed, an action's old
+major stops working when GitHub retires the Node it runs on. Shebang-DevBoard
+failed for weeks that way. The controller looks at every project with
+workflows once a day, and at once when one is linked (`ciwatch.py`): the
+tree's workflows for a hosted job on a moving `-latest` label and for each
+action against its newest release, and on GitHub, with the token `bb ci-log`
+uses, whether the newest run on the main branch passed and what GitHub wrote
+on it (its warnings about a retired Node or a label about to move). What it
+finds is kept under `ciwatch/` in the state, shown as the Git view's CI
+section (with Look now), printed by `bb catchup`, and, while main is red,
+a bell row. It reads and never changes anything; nothing in a repository
+needs setting up, so every BuilderBot and every project gets it. R117.
+
+**Sound effects a session can make.** `bb tool sound make PRESET [--seed N]`
+is a port of sfxr's synthesizer (stdlib python, nothing to install): blip,
+pickup, jump, laser, hit, powerup, explosion and bloop, each a family a seed
+picks one from, so the same seed makes the same sound again. `bb tool sound
+tone HZ [--ms N] [--to HZ]` is a plain beep or sweep. Each lands in
+`dist/sound/` as OGG, made by the ffmpeg toolchain, with a waveform and a
+spectrogram beside it, since a session cannot listen to what it made; with no
+ffmpeg on the node it is a WAV and no pictures, and says so. It is a verb of
+bb's rather than a toolchain of its own because there is nothing to fetch.
+Speech is the **audio** toolchain's, which is a download (about 800 MB):
+`bb tool sound say "TEXT"` is piper with one English voice, a WAV ready for
+an app's microphone, and `bb tool sound hear FILE` is faster-whisper's
+base.en on the CPU, the words with their times, for a session to check what
+an app said. hear puts half a second of silence before the recording, since
+speech starting on the first sample lost its first word without it. R107.
+
+**Documents a session can read.** `bb tool docs read FILE...` prints a PDF,
+a Word document, a slide deck or a spreadsheet as Markdown, through
+markitdown; `bb tool docs pages FILE [--pages N-M] [--dpi N]` draws its pages
+as PNGs in `dist/docs/NAME/` through PyMuPDF, the first twenty when no range
+is given, for the layout, a chart or a scan that text alone loses. A file
+that is not a PDF is made one first by LibreOffice, headless, which is also
+`bb tool office convert FILE... --to pdf|docx|xlsx|pptx|odt` on its own.
+Two toolchains carry them: **documents** (markitdown and PyMuPDF in a Python
+of uv's own inside the toolchain's directory, so nothing depends on the
+node's Python, and pandoc; about 650 MB) and **office** (LibreOffice's
+AppImage unpacked; about 750 MB). The Python environment holds absolute
+paths, so a store mounted at another path on another node needs the
+toolchain installed from that node. The documents toolchain also puts a
+`pdftoppm` and a `pdfinfo` on the node's PATH, drawn with PyMuPDF
+(`scripts/lib/poppler.py`): they are what Claude Code's own PDF reader asks
+for, and no node carries poppler, so without them a session could not read
+a PDF it had fetched.
+
+**Is the machine quiet enough to measure on?** A session times things (a
+decoder's latency, a build, a suite) on a machine it shares, and its view
+holds only its own processes: the load average it can read says the machine
+is busy and never why. `bb node busy` asks the controller, which joins the
+node agent's last heartbeat (CPU over the last 25 s, the load against its
+cores, memory, the card's load and memory and how many compute on it, and
+what runs there by kind: emulators, Gradle, other Java, compilers,
+browsers, media, docker builds, Claude) with the jobs active on the node and
+the Claude sessions working there, and answers quiet, busy, saturated or
+unknown, with the reasons. Another project's work is counted and never
+named. The load right now is read in the session as well, since a heartbeat
+is up to 25 s old. `bb node wait-quiet` waits for two quiet readings ten
+seconds apart and exits 1, saying how busy, when the time runs out. A test
+run's log ends with the load it ran under, and `bb tests ingest` keeps it on
+the run, so a busy run's seconds are not read as a quiet one's.
+
 `bb` re-execs as `builder` automatically: `docker exec` lands as root, which
 would break file ownership. A bare `docker exec -it BuilderBot bash` is still
 root; use `bb shell` for the normal user.
@@ -179,7 +273,7 @@ directory.
 ```bash
 bb toolchains                     # what is installed, where, and how much room is left
 bb toolchains install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
-bb toolchains install android:ndk        # or cmake · emulator · platform-tools
+bb toolchains install android:ndk        # or cmake · emulator · platform-tools · platforms · build-tools
 bb toolchains list                # every toolchain the catalog offers
 bb toolchains plan swift          # what installing it would fetch and run, exactly
 bb toolchains versions            # what is installed, asking nobody
@@ -188,6 +282,88 @@ bb toolchains update flutter      # each the way its own tooling expects
 bb toolchains remove flutter
 bb toolchains env                 # the PATH lines; new shells get them automatically
 ```
+
+The NDK, CMake, the SDK platform and build-tools are versioned rows: each
+is a family of packages side by side, so the check asks whether the newest
+the repository offers is on the store, and Update installs it beside the
+older ones rather than in their place. The platform row's newest is the
+newest level's base (`platforms;android-37.0`, what `compileSdk = 37`
+names), not a quarterly minor or an extension level. A session cannot
+write the store, so the Android Gradle plugin cannot fetch a missing
+platform itself: a project wanting a level the store lacks names it, and
+the operator ticks the row. Before these two rows, a platform arrived only
+with an emulator image of its level, and platform 37 never arrived at all.
+
+**The NVIDIA driver is the machine's, not the store's.** On a node whose
+census names an NVIDIA card, the Toolchains tab shows the driver as a row of
+its own above the store's. It behaves as the other rows do: a tick box, so
+it goes into Install selected with whatever else is ticked (last, since it
+ends at a restart), a bin to remove it, and **Check for updates** reads
+apt's lists again on the node, so the row says when a newer version of the
+installed branch is there to tick. It is not a recipe, though: the kernel
+module is built for that machine's kernel and the libraries must match it,
+so it is installed as root on that node alone, through `bb-sandbox
+gpu-driver`, and it takes the card only when the machine restarts, since
+nouveau holds it until then. The row's pulldown lists the branches apt
+offers there, the one recommended for the card first, then newer ones and
+the open-kernel variants; a beta appears in it when the distribution or a
+source the machine has publishes one, since apt has no separate label for
+it. The pulldown is live only while no driver is installed: one branch at a
+time, so another version means removing this one first. The row reads where
+the driver stands from the census (not installed, installed and waiting for
+a restart, running the card, removed but still loaded). A guest machine's
+driver is its owner's, so there the row says so and offers nothing. Nothing
+else installs the driver: not enrolling a node, and not the emulator's GPU
+display, which needs the driver and says so until it is there. The install
+also writes a boot unit that makes the card's device nodes,
+`/dev/nvidia-uvm` among them, as root: a session runs with
+no-new-privileges, so CUDA's setuid helper cannot make them on a program's
+first use. `bb toolchains` names where the driver stands too.
+
+**The NVIDIA container toolkit is the row under it**, shown where the node
+has the card and Docker: what lets a container there reserve the card. It
+is the machine's as well, and it needs the driver, so ticked alone on a
+machine with no driver it is refused by name, and ticked with the driver
+the two are one job, the driver first; removed together, the toolkit comes
+off first. Neither Ubuntu nor Debian carries it, so installing it adds
+NVIDIA's own package source and its signing key to the machine
+(`bb-sandbox gpu-container install`), which the press asks about first,
+and tells Docker about the runtime; Docker reloads its configuration for
+it, so running containers keep running (a restart, which leaves a container
+with no restart policy down, is the fallback only where a reload did not
+take). Removing it takes the package, the
+runtime's entry and the package source away again. The row reads installed,
+newer on offer (Check for updates reads NVIDIA's list with apt's), and
+whether Docker lists the runtime, which is the thing a container needs. A
+compose file asks for the card the way compose always has
+(`deploy.resources.reservations.devices` with `driver: nvidia`, or
+`runtime: nvidia`, or `gpus:`), and one that asks is checked before it
+starts: where the node has no card, no running driver or no toolkit, or the
+node's switch or the project's *The node's GPU* setting says the card is
+not for it, the Docker tab's row says the compose cannot start as written
+and why, and an Up or a Rebuild asked anyway (a session's `bb devapp
+rebuild` included) is refused in the same words, rather than failing after
+the build with Docker's "could not select device driver".
+
+**What the card is used for** is three settings and a queue, none of which
+moves work onto it: a program uses a GPU only if it was written to, through
+CUDA or the video encoder. A node with a card has a **GPU** section on the
+Nodes tab with two switches and one Apply: *render the Android emulator on
+the card*, which starts or stops the headless X server the emulator needs,
+and *let sessions and jobs compute on it*, on by default. A project has its
+own setting in its dialog, *The node's GPU*, for running as if the machine
+had none. Where either says no, a session started from then on has
+`CUDA_VISIBLE_DEVICES` empty and the unified-memory device CUDA cannot start
+without covered in its view, so a program finds no card and takes its CPU
+path; the card's other device files stay, because the emulator's rendering
+opens those from inside the session and is its own switch. `bb gpu` says
+what the card is, how much of its memory is free, who is computing on it and
+whether this session may, and `bb status` carries the same in a line. The
+card's memory is one pool for every session on the node, so a heavy job is
+started as `bb gpu run [--mem MB] -- CMD`, which takes a lease (one at a
+time per node), waits for its turn and for that much free memory, and lets
+go when the command ends. The briefing tells a session all of this only
+where its project's node reports a card.
 
 The Android system images live on the same store without being toolchains
 (one exists at every API level at once), so they have verbs of their own:
@@ -475,8 +651,10 @@ SwiftShader.
 So the card needs a real `Xorg` on the NVIDIA driver, started by the
 machine, because a session runs unprivileged with no capabilities and cannot
 become DRM master. **Set up GPU display** on the node's row (Nodes tab,
-Health) is that: `bb-sandbox gpu` installs the distribution's NVIDIA driver
-and a headless Xorg on the card as a unit of the machine's own, which writes
+Health) is that: `bb-sandbox gpu` starts a headless Xorg on the card as a
+unit of the machine's own, on the driver the Toolchains tab's row installed
+(it installs none itself, and the row's line opens that tab until the driver
+is there), which writes
 what it found to `/run/builderbot-gpu-display` and restarts a dead server
 three times before saying so. The driver takes the card only after a reboot,
 which the row says and Reboot under Advanced does; bb-session binds the
@@ -572,7 +750,7 @@ because it is a state light first and a control second: a red dot means
 something unread, an **amber** one means a session is blocked on an answer.
 That second case is the reason it exists: a request to reach the phone shows
 up there with **Approve** and **Deny** on it, for the account that connected
-that phone and nobody else, so answering does not depend on the Phone tab
+that phone and nobody else, so answering does not depend on the Nodes tab
 being open. Clearing empties the page's own log and never an ask: a
 question somebody is still waiting on is not this button's to dismiss. The log
 is this tab's, so a reload draws a line under it; the asks are the server's and
@@ -635,36 +813,6 @@ on a header is never a misfire. The
 headers hold nothing but the title and a chevron: every control a card has
 lives in its body. The cards:
 
-- **who this container is signed in to Claude as**, under the doctor verdict,
-  with the action attached: **Sign out** when it is signed in, **Sign in** when
-  it is not. **There is no terminal in it.** `claude auth login` is
-  interactive, printing a URL and waiting for the code the browser gives back,
-  which looked like a job for a terminal, and got one: a tmux session behind
-  ttyd behind a tab. Every part of that was somewhere for it to go wrong. ttyd
-  reconnects a dropped socket, so closing the flow started another; a phone
-  cannot select a wrapped URL out of a canvas, and a paste into one silently
-  does not arrive, so the code reaching the prompt empty read as a *rejected*
-  code; and the tab zooms and reflows under a thumb while you are working in
-  it. None of that was the sign-in. The sign-in is two lines of text going in
-  opposite directions, and a program that wants a terminal only wants a pty,
-  so the server holds one. What you see is a link and a text field, and what
-  the flow says when it refuses a code is said on the card, in its own words.
-  The field passes the code through rather than judging it: the authorize URL
-  the code page glues to it is cut off, whitespace and control junk are
-  stripped, and whatever remains goes to the flow: whose verdict is the only
-  one that counts. The only pastes refused outright are the two that cannot
-  be wrong to refuse: one with no code left in it (the link alone), and one
-  far too long to be a code.
-  Signing out is one command with no conversation in it, so it is a button,
-  and it asks first because every session here stops working. **It is dead
-  while any Claude session is running** and names the ones in the way; the
-  server refuses it too, since a page can be fifteen seconds behind the
-  answer. And with the container signed out, **every project's Claude button
-  goes dead with it**: as does the terminal URL behind them, which refuses
-  with the way in rather than letting a session start and die on Claude's own
-  error. On a claude too old to have `auth status` the row simply is not
-  there: not knowing is not the same as being signed out, and offering to sign
-  somebody out of nothing is worse than offering nothing
 - container uptime, **and which build of the image is serving it**: the short
   commit beside the uptime, with the whole one and the time it was built on
   hover. The two are different questions: an Unraid container keeps running
@@ -755,9 +903,10 @@ lives in its body. The cards:
   Every repo wears a chain icon beside its eye, and it is the **remote**
   whichever state the project is in: for one with **no remote at all** it is
   **link**, and for one that already has a remote it opens that project's
-  remote settings: the access token, which credential git reaches for, and
-  **Unlink**, all described under
-  [An access token for one project](#an-access-token-for-one-project) and
+  remote settings: the access token, which credential git reaches for, the
+  repository's address, and **Unlink**, all described under
+  [An access token for one project](#an-access-token-for-one-project),
+  [A new address for the same repository](#a-new-address-for-the-same-repository) and
   [Unlinking](#unlinking).
   Linking asks **which host**: GitHub, Gitea, Forgejo, Codeberg, GitLab,
   Bitbucket, or another git host, because a hostname does not say what is
@@ -829,9 +978,11 @@ lives in its body. The cards:
   PATH reaches a session when the session starts, so its row says how many
   sessions open on that node started before it was installed, and to reopen
   them. Beside it, **Docker manager…**, **Emulator** (a node's Android
-  system images: which it has, which AVDs are built on each, and adding or
-  removing one; ghosted until some node has the command-line tools and the
-  emulator), **Static analysis** and **Nodes**, each a tab of its own
+  system images: which it has, which AVDs are built on each, and ticking
+  the ones to add as on Toolchains; ghosted until some node has the
+  command-line tools and the emulator, with the reason in red under the
+  card's buttons), **Analysis** (the scanner reports) and **Nodes**, each a
+  tab of its own
 - a **checklist** per project, carrying how much is still to hand over here,
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens
@@ -882,8 +1033,10 @@ lives in its body. The cards:
   and nobody else's, and nothing else: it keeps every control on the **All
   projects** tab at the foot of the card, which lists everything under
   `/workspace` with the same buttons on each row. Pins live per account in
-  `/config/pinned-projects.json`; an account with no set sees everything
-  pinned, which is what a fresh install sees
+  `/config/pinned-projects.json`. An account made since 7 Oct starts with
+  nothing pinned and pins what it wants from **All projects**; one made
+  before that with no set yet still sees everything pinned. The card and the
+  tab both list projects by name, case aside
 - a **bin**, which moves a project to `/workspace/.trash/<name>` with every
   file kept: a second delete of the same name is numbered rather than
   overwriting the first, and `/config` is not touched, so putting one back is
@@ -896,11 +1049,18 @@ lives in its body. The cards:
   what a session may enter into the notebook, and how much of the tree it may
   change without asking. GitHub is not in it; that is the chain, on the same
   row, so a credential has one home whether or not the project has a remote
-  yet. Renaming moves the directory and everything
-  keyed to its old name: the roadmap and bugs, the versions, the dev instance's
-  data and env, the archived CI logs, and Claude's own transcripts and
-  memories. It refuses while a terminal is open on it or its dev instance still
-  has containers, and it reports what moved rather than only that it worked
+  yet. Renaming changes the name it is shown under and nothing else (R154):
+  a project has a permanent id and a directory that is never handed out again,
+  and everything (the notebook, the containers, the sessions, Claude's own
+  transcripts and memories) is keyed by the directory, so a rename moves
+  nothing and needs nothing closed first. Two live projects are never shown
+  under one name: a second gets Name (2), whether it was created, cloned or
+  put back from the trash. A name ever used gives a new project the next free
+  directory (Name-2), so it never inherits an old project's notebook or
+  containers, and a project put back from the trash always fits where it was.
+  Only BuilderBot makes a project (create, clone, or start from an imported
+  archive): a folder made by hand on the share is not listed, and the folders
+  already there when this arrived were recorded once, as they were
 - a **padlock** per project, which locks it: the row stays whole and every
   control you use stays live (notebook, artifacts, dev instance, shell) and
   the only thing that goes is Claude starting a session there. For a project
@@ -996,8 +1156,9 @@ rule on the node rewritten if the controller's own address is what moved,
 and its agent (with
 **Update agent** when this container ships a newer one, busy until the node
 comes back on it), then **sections**, each a fold with its status on the
-heading so a phone reads the headings and opens one: Health (the meters,
-the toolchains its census found, which is what a project bound to it can
+heading so a phone reads the headings and opens one: Health (the meters:
+cpu, memory, the card's load and its own memory where an NVIDIA driver
+answers, and each store's room; the toolchains its census found, which is what a project bound to it can
 build), Sessions (whether it runs them, and which are open), CI runner,
 Storage (mounts and stores), Network, and Advanced, which holds the node's
 **name** (Rename changes what it is called everywhere here: the pickers,
@@ -1097,8 +1258,12 @@ enrolled node needs nothing renewed.
 available* when the node's agent is not the file this controller ships, and
 **Update agent** hands it over as a job: the agent checks the download
 against the digest, swaps itself in place and re-execs, so nothing on the
-node restarts and no running job is interrupted (it waits for its own to
-finish). Re-running `provision-linux.sh` on an enrolled node does the same thing
+node restarts and no running job is interrupted. The agent will not swap
+itself in under a running job, so while the update is queued the controller
+hands that node nothing new and hands it the update once what was running
+has finished, the row saying how many it waits for; a node that does not go
+quiet within ten minutes fails the update with what kept it busy, and works
+on. Re-running `provision-linux.sh` on an enrolled node does the same thing
 from the console, with the node's own token. Nothing updates an agent
 unasked.
 
@@ -1186,7 +1351,15 @@ puts the previous config back on its own and says so when it reconnects.
 The job names the address and never the tool: the agent detects what owns
 the node's network: netplan, NetworkManager, systemd-networkd, wicked,
 `/etc/network/interfaces` or dhcpcd, and writes it through that one, and
-refuses, saying so, on a node with none of them. **Lock system changes**,
+refuses, saying so, on a node with none of them. **Static routes** ride the
+same apply, in dhcp mode or static, one a line as `10.20.0.0/24 via
+192.168.1.1` (the operator, 7 Oct): each backend writes them its own way
+(netplan's routes, NetworkManager's ipv4.routes, a `[Route]` section,
+`up ip route add` lines, wicked's ifroute), dhcpcd, which has no setting
+for one, refuses them by name, and the node reports the routes it has so
+the row says which are still to apply. A network with no prefix, the
+default route (the gateway is that) and a router that is not an address are
+refused at Save. **Lock system changes**,
 under the node's Advanced section, keeps all of that at the machine's own
 console: while it is on, Apply storage, Apply network and a root command
 are refused here with the reason, the desired configuration stays on the
@@ -1276,18 +1449,22 @@ driving a browser through Playwright, which declares it.
 
 **Two machines may share one toolchain store, and BuilderBot recognizes the
 pair.** An NFS export mounted by the controller and by a node is one
-directory, and installing into it from both at once is version skew nobody
-can debug, so a toolchain job waits for any other on a machine that shares
-the store, in both directions. What identifies the pair is a marker file
+directory, and two machines unpacking one toolchain into it at once is a
+broken install nobody can debug, so a job waits for one on a machine that
+shares the store only when both touch the same toolchain (the Android SDK,
+one tree that sdkmanager keeps, counting as one), in both directions; two
+different toolchains install on two machines side by side, and a check, the
+NVIDIA driver, the container toolkit and system packages, which write no
+store, wait for nothing there. One machine still runs one toolchain job at a
+time. What identifies the pair is a marker file
 inside the store itself, not the mount: this container reaches the toolchain store
 through Unraid's FUSE layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
 `sdk-env.sh`, whose every line is an absolute path, lives on the home volume
-for that reason. **A store is never shared across architectures**: the path
-carries no arch, so an arm64 machine pointed at an x86-64 store would get
-binaries that cannot run, and the install is refused with the reason rather
-than failing later.
+for that reason. Two architectures may share one: each machine installs under
+its own `<os>-<arch>` scope in the store (R19), so an arm64 machine never
+runs an x86-64 binary another put there.
 
 **A project's node does not decide where its CI runs, and nothing can make
 it.** That setting governs BuilderBot's own queue: `bb build`, `bb test`,
@@ -1301,7 +1478,7 @@ pinning is one word:
 runs-on: [self-hosted, alpha-vm]
 ```
 
-The node's runner section prints that line for you, and `bb lint` says when
+The CI runner tab prints that line for each node, and `bb lint` says when
 a project has a node and its workflows do not carry it: a note, not a
 failure, because the workflow file is the repo's and this is advice. A
 `runs-on` built from an expression is left alone: choosing the runner at
@@ -1449,8 +1626,8 @@ re-executes itself. Projects are trashed from the Projects tab, one at a
 time, the way they always were. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
-a developer of BuilderBot reaches for and nobody else should meet (letting
-two accounts share one Claude login, for one person testing two accounts).
+a developer of BuilderBot reaches for and nobody else should meet (offering
+the untested git hosts, hypervisors and node systems).
 
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it: parsing a compose file is the one thing the page
@@ -1610,6 +1787,28 @@ own address, so closing the dashboard leaves it working.
 - **✕ appears on document tabs**, the notebook and Analysis, because a document
   has no session to keep. The notebook asks first if anything in it is unsaved;
   nothing else does.
+### Reporting a problem with BuilderBot
+
+A problem with BuilderBot itself goes to the **diagnostics**, where whoever
+looks after this BuilderBot reads it (`bb diag reports`). It is a log, not a
+conversation: nothing goes back to whoever sent it, and **Clear reports**
+empties it. A session sends one with `bb report "what happened"`, under the
+project's **Claude may: Report BuilderBot bugs**. A person sends one from a
+project's row: the bug button opens **Report a bug**, with a category to
+pick, what happened and how to make it happen, and **Send** puts it in the
+diagnostics under that project with its node and the build it was seen on,
+marked as from the dashboard. A person's report is heard whatever that
+project's Claude dial says, from a project they are on: an administrator
+shown every project but not on this one cannot start a session there, so
+the row has no bug button for them and the server refuses one. A
+project's report can carry the reporter's latest conversation on it,
+ticked in the dialog: its last 400 KB, redacted, kept as a file of its own
+beside the report. The diagnostics name that file, the download beside the
+logs is a zip of `diagnostics.json` with a `conversations/` folder holding
+each one, and `bb report conversation N` prints it for a session. The bug in
+the header is the same dialog about no project in particular, for anybody
+signed in, and the diagnostics list it as general.
+
 ### The notebook
 
 Every project has one, reachable from the **Notebook** button on its row: a tab
@@ -1667,13 +1866,42 @@ the notebook writes the same record with `bb design save`, which keeps a
 record as it was sent or refuses it whole with everything wrong with it
 listed, never moving a block to fit or dropping a layout; and Write the
 file puts `docs/design-language.md` into the tree for every session to
-read), the
+read), **Wiki** (the project's wiki, described below), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
 **Git**, **Artifacts**, **Docker** (every container that belongs to this
 project, with the manager's rows and controls, so a dev radarr for a media
 project is found beside that project rather than among every project's on
 the Docker tab),
 **Tests**, and **Analysis** (the scanner's findings for this project alone).
+
+The **Wiki** is the project's wiki, for whoever uses or works on it: pages
+of Markdown that a person writes on the view or a session writes with
+`bb wiki save`, under the project's dial Claude may: Write the wiki (auto
+lands a page, ask holds it on the notebook for approval with its text, deny
+refuses it, and hidden keeps the wiki from sessions altogether, reading
+included, for notes that are the people's alone). It reads like an encyclopedia: one article at a time, its title over a
+rule, a Contents box for a page with three or more sections, the prose in a
+serif at a reading width, and the pages listed beside it (the wiki's own
+`_Sidebar` when it has one, a picker above the article on a phone), with
+`[[Another page]]` opening that page in place. Read and Edit are tabs over
+the article, Save writes it through, and a page somebody changed since it
+was opened is refused rather than overwritten. The controller keeps it as a git
+repository of its own (`/config/wiki/PROJECT`) in the shape a forge's wiki
+has, one `Page-Name.md` per page with `Home`, `_Sidebar` and `_Footer` as
+GitHub reads them, so every change has a history and the wiki is never in
+the project's tree, where a session could rewrite what the controller then
+pushes. **Export** is a zip of the pages, which works for any project, with
+a remote or without. A project with push rights on GitHub, Gitea or GitLab
+gets **Push**, which sends the wiki to the repository's own `.wiki.git`
+with the project's credentials, and **Pull**, which takes in what was
+changed there (a page changed on both sides is named and nothing is taken
+until one side matches). A forge makes a wiki's repository only when its
+first page is saved on the web, so a first push to a repository with no
+wiki says to make one page there; that page (GitHub calls it Home) is then
+the forge's own, and Push offers to replace the forge's wiki with this one,
+which is what a first push wants, or Pull to merge the two. GitHub's fine-grained tokens cannot write
+a wiki; a classic token with the repo scope can. Pushing and pulling are a
+person's: they reach outside BuilderBot.
 
 **Unsaved work does not cross those views.** Leaving a view asks, and answering
 yes throws the change away rather than carrying it to the next tab.
@@ -1735,8 +1963,33 @@ it was. The one exception is the send arrow: it types into a live session,
 which no Save button can take back, so it flushes whatever is staged first and
 then goes.
 
-While a session has a batch open, **the panel's Saves are held**, and only
-the Saves. You can still type, edit, drop and revert; what waits is writing
+**Each project has its own emulator.** A virtual phone's AVDs lived in the
+account's home, so every project's session of one account booted the same
+phone, with whatever another project had installed and signed into on it:
+BuilderBot's own companion app, signed in to the dev instance, turned up on
+Shebang-DevBoard's home screen (B511). `bb emu` keeps each project's AVDs in
+a folder of its own (`~/.android/avd-projects/PROJECT`), and a project's
+first `bb emu start` makes its phone. With nothing making projects take
+turns, `bb emu start` decides whether the node has room for another: not
+while the node is saturated, and only with the phone's memory, the
+emulator's own and 2 GB for builds free, waiting up to five minutes for
+room and then refusing with the numbers; a card short of a few hundred MB
+free renders that phone in software. The phones from before are one
+project's to keep (`bb emu adopt`, or automatically for the project named
+in the old folder's `.heir`), and a `bb-scrub.txt` beside an adopted phone
+names packages another project left there, removed on its first boot.
+
+**Each section saves its own.** A notebook section that stages anything (the
+roadmap's list, the Memories, Your rules, each Version, the Design's Themes
+and Pages) carries its own Save and Revert at its foot, which write or throw
+away that section's changes and nothing else's; there is no notebook-wide
+Save, since one at the bottom was a long scroll on a phone from the change it
+saved. A view opens on its first section; on a phone one is open at a
+time, opening one closing the others, and on a desktop several may stand
+open (the operator, 7 Oct).
+
+While a session has a batch open, **the roadmap's Save is held**, and only
+that Save. You can still type, edit, drop and revert; what waits is writing
 back, because what is on your screen was read before the session started and
 saving over a list that has moved underneath is how two writers lose each
 other's work. The block is one-way: nothing in the panel ever makes a session
@@ -2680,9 +2933,9 @@ dashboard's own process.
 ### A phone, and asking before touching it
 
 The container carries no adb and holds no phone. A handset is driven from a
-**node** (whichever one has adb in its toolchain store) and the **Phone**
-tab (from the Tools card) picks the node, pairs and connects there over
-Android's wireless debugging, and lists what a session is waiting to do.
+**node** (whichever one has adb in its toolchain store), and that node's
+**Phone** section on the Nodes tab pairs and connects it over Android's
+wireless debugging and lists what a session is waiting to do there.
 Several nodes can each hold their own phone; a project's sessions reach the
 phone on the project's node and no other.
 
@@ -2718,7 +2971,7 @@ anyway. The node scans for it, on its own network.
 **A connection has one owner.** The account that connects a phone is the
 only one that can disconnect it; everybody else sees the connection with
 its controls grayed and the owner named. Every command a session asks for
-goes to that account (on their Phone tab and their bell, nobody else's),
+goes to that account (on the Phone tab and in their bell, nobody else's),
 because the phone is on their desk and they are the one who said yes to it.
 
 **A session never touches the phone itself.** It is kept on an adb server of
@@ -2726,9 +2979,36 @@ its own on the node, so a plain `adb devices` in a session shows the emulator
 and nothing else. To reach the handset a session runs `bb phone run --why
 "..." -- …`, which puts the reason and the exact command in front of the
 phone's owner and waits; on **Allow** the node runs it and hands back the
-output. There is no setting that skips the question. The reason is required,
-not optional: approving a command you did not write, with no sentence saying
-what it is for, is a guess.
+output. The reason is required, not optional: approving a command you did
+not write, with no sentence saying what it is for, is a guess.
+
+**Lent to a project, a phone is driven without asking, and only for that
+project's app.** Its owner lends it from the project's row to one project on its
+node, for an hour, four hours or until taken back. That project's sessions
+then install one of its own builds (`bb phone install dist/APP.apk`, whose
+package the lease learns), start, stop or pick it as the keyboard, read its
+logcat, take screenshots and recordings into `dist/phone/`, read the
+screen's layout, and tap, swipe, glide and type, the last two only while one
+of the lease's apps is in front or is the keyboard. Everything else, another
+app, Settings, a shell, still goes through `bb phone run --why`. The section
+shows the lease, the newest screenshot a session took (it updates on the
+next poll as a session works), Look now and Take back; a lease also ends
+when its time is up or the phone disconnects. All of it is adb from the node,
+nothing on the phone's side, so the companion app gains no permission for it
+and looks to Play Protect as it did.
+
+**The companion app connects the phone it runs on.** Its *This phone*
+screen (under More) picks the node and the address the node reaches the
+phone on, its VPN address first when a VPN is up, and offers Open Developer
+options, Connect and Pair. Pair waits for Android's *Pair device with
+pairing code* screen to announce its port on the phone's own network,
+then posts a notification whose reply box takes the six digits over that
+screen, since leaving it cancels it; the controller pairs the node and
+connects it on the port debugging announces. The same screen lends the
+phone to a project and takes it back. Android still wants Wireless
+debugging switched on by hand: no app can read the code or turn it on. Over a VPN it is the same: pair and
+connect by the phone's VPN address, and the node finds the port; Android
+still wants the phone on Wi-Fi for wireless debugging.
 
 **Root on a node has the same shape.** A session has no sudo there and gets
 none; what it can do is `bb root run --why "..." -- CMD`, which puts the
@@ -2949,6 +3229,21 @@ no session starts on that node until it works or the switch is turned off.
 A container in Docker's host network mode is not reachable from an isolated
 session, since it has no address of its own to allow.
 
+**Also reaches**, under What a session sees in a project's settings, opens
+the rest by hand (the operator, 7 Oct): a machine its sessions may still
+reach, by its address, or one service on it, as `address:port`, without
+making the project read another. Each address applies on the project's
+nodes ticked beside it when the project is on more than one, on all of them
+when every one is ticked, which also covers a node added later. It is
+handed to the node with what the project owns there and lands in the same
+sets, so sessions already running reach it within a poll, without a
+restart. Setting it is an administrator's, since it is a hole in a shared
+node's firewall that reaches past the project; a session cannot. An IPv4 address only:
+a name or a range is refused by name, as are this machine, multicast, the
+sessions' own range and a project's own node, which a session reaches only
+through its containers. On a node whose switch is off it does nothing yet,
+and the field says so.
+
 ### Push rights
 
 A clone is read-only unless you tick **I want to push to this repository**, and
@@ -2988,7 +3283,7 @@ never asked and no container-wide token authenticates the fetch.
 That last part is the point. A token minted to reach one private repo usually
 reaches every repo it was scoped to; in the environment it also reaches them
 from every project and every session. Here it opens the one project you gave it
-to, and renaming that project takes it along.
+to, and stays with that project whatever it is renamed to.
 
 A project that already has push rights can be given a token from the **chain**
 on its row, including one that pushes with a **deploy key**. Setting one there
@@ -3019,6 +3314,19 @@ dangerous case sayable: **clearing a token while the switch still says
 where you put it and the reason is stated, rather than sliding to another mode
 on your behalf: being corrected without being asked is how you end up on a
 credential you did not choose.
+
+**Test**, under the segment, says whether it works before a session finds
+out (the operator, 7 Oct). It runs `git ls-remote` for the read and `git push
+--dry-run` of HEAD to a branch nobody has for the write, which the host refuses
+at the handshake when a deploy key is read-only or a token cannot push, and
+which sends nothing; the project's own pre-push hook is skipped, so a clone
+without push rights is still asked about its credential. For a token it also
+asks the host's API what git cannot see: on GitHub a classic token's scopes
+(without `workflow` a push touching `.github/workflows` is refused) and the
+repository's push permission, on GitLab the role and the token's scopes, on
+Gitea the push permission. What is missing is listed in red under the button
+in the host's own words with what to change; a token typed and not saved yet
+is what is tested, from a credential file of its own that is gone after.
 
 The https address it writes is the **host the remote is actually on**, not a
 constant: a deploy-key remote names a `bb-<key>-<host>` alias, and the server
@@ -3081,7 +3389,221 @@ The deploy-key alias in `~/.ssh/config` stays as well. It is named after the
 
 Unlinking is also **how a project moves from one host to another**: linking
 refuses a repository that already has a remote, so this is the first half of
-the move and pointing it at the new host is the second.
+the move and pointing it at the new host is the second. The same repository
+at a new address on the same host is not a move, and needs no unlinking:
+
+### A new address for the same repository
+
+Renaming your account or an organization on the host changes every
+repository's address under it. The host redirects the old one only until
+somebody claims the old name, so the remote should follow. **Repository
+address**, in the same dialog, is where: type the new address and Save.
+
+Only the path changes. The remote keeps its form (https, ssh, or a deploy
+key's alias, which is named after the key and reaches the same host), the
+access token stays filed under the host it always was, and the push grant
+moves to the new path, so pushing carries on with nothing typed again.
+Before this the push rights still named the old path, and the relay refused
+every push to a remote pointed at the new one by hand.
+
+Saving asks the new address for its branches and needs one of them to be a
+commit this project already has: a renamed owner keeps every commit, while a
+typo or another repository has none. Refused, with the remote left where it
+was: an address on another host, a repository another project may push to,
+and one that shares no history. A fork shares history too, so this checks
+that it is the same history, not the same repository on the host's books;
+that difference is why it is the administrator's control.
+
+Changing it does not wait for the project's terminals to close: the address,
+like the token and the authentication switch, is `.git/config` and the
+store, which a running session reads on its next push. Only a new name, which
+moves the directory, still asks for them to be closed first.
+
+### Android signing keys
+
+A project keeps up to two keys, set by an administrator under **Signing keys**
+in its settings (the gear):
+
+- **Play upload key**, for Google Play with Play App Signing. Google holds the
+  key the app is really signed with; this one only proves an upload is yours,
+  and Play Console resets it when it is lost or leaks.
+- **Sideload signing key**, for a build handed out directly or through another
+  store. It is the app's identity for good: lose it and no update can reach an
+  existing install, leak it and anybody can ship one that installs over yours.
+  The row says so in red until it has been downloaded once with **Download
+  backup**, a copy to keep offline. A backup goes to an administrator who has
+  the project on their own list, not to every administrator who can see it.
+  The project's owner puts a **backup password** on its keys before the
+  first one: until there is one, no key is uploaded, generated or proposed,
+  and a key from before the rule goes on signing. Every download then asks
+  for it, BuilderBot's owner's included. Handing the project to another
+  owner leaves it as it is, and the new owner changes it only with it; one
+  nobody passed on leaves the keys' backups out of the dashboard's reach,
+  which for a sideload key means a new key and a new app. It is kept as a hash,
+  changed or removed only with the current one, carried in a request's body
+  and never a URL, and five wrong in a row hold the downloads for fifteen
+  minutes. It closes the dashboard's door, not the disk's: somebody with a
+  shell on the controller can read `/config/signing/` either way.
+
+The keystore (`.jks` or `.p12`) and its passwords are kept by the controller
+under `/config/signing/PROJECT/`, owner-only, beside the git tokens and like
+them outside every session's view. A key is checked before it is kept: the
+store's own `keytool` (the jdk toolchain) has to open it with the password
+given, find the alias (or the only key in it) and see a private key, and its
+certificate's SHA-256 fingerprint is what the dialog shows. A session never
+receives the key or a password, and is refused even the list of which keys
+exist: it signs with `bb sign`, which runs on the project's node as a job the
+session cannot look inside. Renaming the project leaves its keys where they are, with it.
+
+**A signing is a job on the project's node.** It fetches the build from
+`dist/` as a job input and the key over the agent's own channel, which hands
+it only to that running job's node, once, and audits it; the job's spec names
+which key and never holds it. Both land in a 0700 directory of the enrolled
+account, never the session account: `zipalign`, `apksigner sign` and
+`apksigner verify` for an `.apk`, `jarsigner` and its `-verify` for an `.aab`,
+the passwords in the tools' environment only. The signed build has to carry
+the kept key's certificate, arrives in `dist/` as `NAME-signed.apk` (or
+`.aab`), and the directory is removed whatever happened. A node whose jobs
+and sessions run as one account is refused, since a session there could read
+the key while it is used.
+
+Picking a keystore, typing its password and marking one for removal are staged
+like everything else in the dialog: nothing is sent until Save.
+
+**Several apps, several keys.** A project keeps as many named keys as it needs,
+each with both slots; the first is **default**, which is where keys from
+before there were names went. **Generate** makes one on the controller with
+the store's `keytool` (RSA 4096, ten thousand days) behind a random password
+kept with it, so nobody types or sees one, and its backup is a zip of the
+keystore and that password. Under **Apps** an app's package is mapped to a
+key; a sign job reads the package from the build (`aapt2` for an `.apk`, the
+bundle's manifest for an `.aab`) and the controller hands it the mapped key, or
+the default for a package with no line, unless the signing named one
+(`bb sign FILE --key NAME`). Sharing one key between apps is allowed, and
+sensible for apps meant to trust each other; a key of their own keeps one
+app's lost key from being every app's. A session reads which keys exist and
+proposes a new one or a mapping (`bb sign keys`, `bb sign key new NAME --for
+sideload`, `bb sign map PACKAGE KEY`) under **Claude may: Manage signing
+keys**, ask by default, which puts it in front of the project's owner.
+
+**Moving an app to another sideload key.** **Rotate to it** on a key's
+sideload row (or `bb sign rotate OLD NEW`, under the same dial) makes a proof
+of rotation on the controller with the store's `apksigner`, signed by both
+keys, and keeps it with the new one. From then on every build that would have
+used the old key is signed with both and the proof, with the new key from
+Android 9 on (`--rotation-min-sdk-version 28`): Android 9 and newer accept
+updates signed by the new key, and older devices keep checking the old one.
+The apps mapped to the old key move to the new. The old key is **retired**:
+never signs alone again, and cannot be removed, since the proof and every
+device before Android 9 still need it. It cannot be done without the old key,
+which is the other reason a sideload key is backed up. A bundle carries no
+proof, so an `.aab` is signed with the new key alone; Play upgrades its own
+app signing key (which reaches Android 13 and newer), and F-Droid's own key
+cannot be rotated into, since F-Droid holds it. The Artifacts row of a build
+that carries a rotation says so, and which key older devices still see.
+
+**Signing a build.** A person signs from the **Artifacts** tab: an `.apk` or
+`.aab` row offers **Sign** for each key the project has. A session runs
+`bb sign FILE [--for play|sideload] [--why "..."]` (Play for an `.aab` and
+sideload for an `.apk` unless it says), under the project's dial **Claude
+may: Sign a build**: auto signs, **ask** (the default) puts the build, the
+key and the reason in front of the project's owner in their bell, and deny
+refuses naming the setting. Either way it is the same job, and the session
+follows it to the signed file's name. A signing that could not happen (no
+such key, no such build, no node) is refused before anybody is asked.
+
+**A release from a session.** `bb version release --why "..."` tags the
+commit and publishes the release the way **Release** on the Artifacts tab
+does, on the controller and with the project's own credentials, which the
+session never holds (R138). It is its own dial, **Claude may: Tag and
+publish a release**, named apart from signing, which makes a build rather
+than a release: auto releases at once, **ask** (the default) puts the tag
+and the commit it would mark in front of the project's owner in their bell
+and the app, and deny refuses naming the setting. A release that could not
+happen (no version, a tag already there, uncommitted changes) is refused
+before anybody is asked.
+
+**The forge's release.** Once the tag is pushed, Release makes the forge's
+own release beside it: titled with the version, the changelog's section for
+it as the notes, and the released commit's builds attached (the signed ones
+when there are any). On GitHub with the project's token or the shared PAT;
+on Gitea, Forgejo and Codeberg with the token the project's link stored,
+asked at the address that token was stored for, plain http on a port for a
+Gitea on a LAN; on GitLab the same, with each build put in the project's
+generic package registry under the version and linked from the release,
+since a GitLab release holds links rather than files (R124). A forge that
+says no leaves the tag as the release and the Artifacts row says why, and a
+host with no release API (Bitbucket, plain git) says that instead.
+
+**Editing a published release.** `bb version release --edit --why "..."`
+changes the release of the version this tree is on (or `--tag TAG`): the
+notes replaced whole with `--notes FILE`, and files attached with
+`--attach FILE`, each a build in dist/ or a file the project's history
+has, so what a page shows can be found again; one of the same name is
+replaced rather than doubled. `(asset:NAME)` in the notes becomes the
+address of the file of that name on the release, which is how a
+screenshot attached by the same edit is shown. It is under the release's
+own dial, and on ask every edit is its own ask: the project's owner reads
+the notes whole and each file by its name and size before Allow. Nothing
+deletes a release or moves its tag (R139).
+
+A file comes off a release with `bb version release --remove NAME --why
+"..."` (once for each name), and only that way: its own ask under the same
+dial, never part of an edit, since it is the one change that takes
+something away from the people downloading. The names are checked against
+the forge's own list of the release's files before anybody is asked, so
+the ask names files that are there, with their sizes, and the bell shows it
+in the destructive color. On GitLab the release's link to the file goes;
+the file itself stays in the package registry.
+
+**What is signed says so.** The node reports what `apksigner verify` (or
+`jarsigner -verify` for a bundle) found: the certificate's SHA-256 and the
+signature schemes that verified. The controller keeps that in the file's
+provenance, and its Artifacts row wears a *signed* tag, says which key and
+from which build, and gives the whole fingerprint with **Copy for F-Droid**,
+which copies it the way F-Droid's `AllowedAPKSigningKeys` takes it (lowercase,
+no colons). A signed file is not offered Sign again.
+
+### File access over FTP
+
+A project's tree can be reached from outside BuilderBot with an FTP client
+(R151, the operator, 7 Oct): the **File access** section of its settings
+turns it on, picks the port, and gives each account that sees the project
+**Read** or **Read and write**. Setting it up is the project owner's or an
+administrator's; signing in also needs File access on the account's roles
+on that project (R152), and gets the lesser of the two, so a role without it
+refuses even the project's owner. A session never may set it. Anybody else on the project
+is shown only that it is on, and where.
+
+The server is the project's primary node's: the **ftp** toolchain's
+`bb-ftpd` (pyftpdlib), one per project, which the agent starts from what
+hello hands it, as the session account, rooted at `/workspace/NAME`, so a
+file written over FTP is owned as a session's would be. It listens on the
+port and uses the nine after it for passive data, which is why two projects
+on one node are kept ten ports apart; the first free block from 2121 is
+offered. TLS is required on the control and the data connection (FTPS,
+explicit), because the password is the account's own BuilderBot password and
+plain FTP would carry it as written. The certificate is made on the node the
+first time and kept in the session account's home, so a client asks to trust
+it once.
+
+`bb-ftpd` knows nobody's password. Each login goes up its stdout to the
+agent, which asks the controller's `ftp-auth`, and the answer goes back down
+its stdin: the name and password checked as the dashboard's sign-in checks
+them, then the access the project's settings give that account, and none for
+an account since taken off the project. Nothing is cached, so an access taken
+away holds from the next login. Ten failed logins from one address in five
+minutes refuse that address for the rest of the window, and every login,
+failed or not, is in the audit log. The project's `.git` is read-only over
+FTP whatever the access, and nothing outside the tree is reachable, a
+symlink pointing out of it included. A node whose store has no ftp
+toolchain is said in red under the section as soon as it is ticked, from
+the node's last report, before anything is tried; the tick stays usable,
+so the port and the access can be set before the install. Save, when it
+turns the server on or moves its port, asks the node's address from the
+controller whether anything answers on the port or the nine after it and
+refuses, naming the ports, when something does; the project's own running
+server is not asked about.
 
 ### Locking a project
 
@@ -3132,28 +3654,73 @@ Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped
 session token a Claude session is given, for proving a node by hand, where
 `bb` reaches the controller with `BB_TOKEN` and nothing else; with an
-account named it is the token a node-bound terminal carries, which also
-fetches that account's Claude login onto the node.
+account named it is the token a node-bound terminal carries, which is also
+what reports that account's Claude sign-in on the node.
 
-**Claude Code on a node is updated from the Nodes tab, and by nothing a
-session can do.** Each node's row has a Claude Code section: the version
-its session account runs against the latest the controller knows, which
-it asks the installer's own `latest` for after it starts and every six
-hours, or on **Check for updates**. A node behind is a row in the bell.
-**Update** ends every Claude session on that node first, then the agent
-runs the installer as the session account and, on a managed node, pins
-the binary where the account cannot write it, so `claude update` typed in
-a session changes nothing that runs (the auto-updater is off there too).
-Nothing starts again on its own: the project rows do, when you press
-them, and until the job ends those rows are held with the reason. The
-node action is an administrator's, so a session's token is refused, and
-no `bb` verb reaches it. **Update Claude Code before a session starts**,
-a switch on the Settings tab and on each node's section, is off by
-default: off, a node stays on what it has until you press Update; on,
-pressing Claude on a node that is behind updates it first, the start is
-held with the reason, and you press again when the row comes back. An
-open conversation is never ended for it. A press refused for any reason
-says so on the section, not only in a toast.
+**A Claude sign-in is one account's, on one node.** A person signs in on
+each node they work on, and the login stays in that account's home on that
+machine: nothing carries it to another node, and the controller holds no
+credential, only what each node reported. A refresh rotates the refresh
+token, so one login on two machines signs each of them out in turn; a login
+per machine is the shape Claude supports. The sign-in is at the top of the
+node's Claude Code section on the Nodes tab, for whoever is looking: *You
+are signed in here as* the Anthropic account that node reported, with **Sign
+out**, or *You are not signed in to Claude on* that node, with **Sign in**.
+**There is no terminal in it.** `claude auth login` is interactive, printing
+a URL and waiting for the code the browser gives back, and a terminal is the
+worst place for both on a phone: a wrapped URL cannot be selected out of a
+canvas and a paste into one silently does not arrive. The flow runs on the
+node under a pty, as a job; the row shows its link to tap and a field for
+the code, which goes down to the node on the job's own channel, and what the
+flow says when it refuses a code is said on the row in its own words. The
+field passes the code through rather than judging it: the authorize URL the
+code page glues to it is cut off, whitespace and control junk are stripped,
+and the only pastes refused outright are one with no code left in it and
+one far too long to be a code. A running flow, with its link, is shown to
+the account it was started for and to nobody else. Sign out asks first and
+runs `claude auth logout` on that node, in that account's home; it is dead
+while that account has a Claude session open there, which the row names,
+and a sign-in on any other node is untouched. A node that is not answering
+offers neither, with the reason on the row.
+
+**A project's Claude button knows which node it is about.** Where this
+account's session is already running, the press opens the chooser rather
+than jumping to the tab: **Open tab** and **End session** for the node it
+runs on, and the project's other nodes offered beside it, so a session on a
+second node can be started from the same place. Where this account is
+signed in on the project's node, the press starts the session or opens the
+chooser with Resume and New conversation, as it always has. Where
+it is not, the chooser offers **Sign in on** that node in their place, which
+opens the Nodes tab on that node with its Claude Code section unfolded. A
+project on several nodes lists each under its name: Resume and New
+conversation for a node this account is signed in on, the sign-in for one it
+is not, and the reason alone for one where a session cannot start.
+
+**An account that does not administer sees the Nodes tab and changes
+nothing on it but its own sign-in.** Its picker lists the nodes its own
+projects work on and no others; every control on the node's page is
+ghosted for it, updating Claude Code and enrolling included, and a line on
+the row says so; the verbs behind those controls are an administrator's on
+the server as well.
+
+**Claude Code is a toolchain of each node, installed on purpose, and by
+nothing a session can do.** The provisioner does not install it: a node's
+Toolchains tab has a Claude Code row, with the version its session account
+runs against the latest the controller knows, asked on the toolchains' own
+clock (weekly, when a node starts, and on **Check for updates**). Until it
+is installed no Claude session starts there: the project's Claude button
+is ghosted with the reason, and the terminal refuses with the same
+sentence. Tick it and press **Install selected** to install or update it:
+that ends every Claude session on the node first, then the agent runs the
+installer as the session account and, on a managed node, pins the binary
+where the account cannot write it, so `claude update` typed in a session
+changes nothing that runs (the auto-updater is off there too). The bin
+removes it. Nothing starts again on its own: the project rows do, when you
+press them, and until the job ends those rows are held with the reason. A
+node behind is a row in the bell, and stays on what it has until you
+install the update: nothing updates it before a session starts (a switch
+that did went on 7 Oct). The node's Claude Code section on the Nodes tab
+keeps each account's sign-in, and a button to the Toolchains tab.
 
 **A token lasts twelve hours, and a conversation can last longer.** One is
 minted per connection, so opening the session's tab refreshes it, but the
@@ -3195,7 +3762,78 @@ from somebody who administers the box only sends them looking for it, with
 the ones they have not taken on marked read-only, and they can add any of them
 to their own list themselves. A user is shown only what you give them, and
 cannot grant themselves anything. So for an admin the list is a seatbelt
-against working on the wrong project; for a user it is the boundary.
+against working on the wrong project; for a user it is the boundary. The
+owner wears the same seatbelt (R135): they see every project by role and
+work on the ones on their own list, which an owner record from before
+carried as `*` and now carries by name; the one difference from an
+administrator is that the owner may add themselves to an invite-only
+project without an invitation.
+
+**Roles and permissions.** Everything an account may do comes from its
+roles, set on the **Roles** tab and nowhere else (R152, the operator, 7 Oct).
+A role is a **scope** (**Global**, which holds everywhere and is the only one
+that reaches the machinery, or **the user's projects**) and, per area,
+**Read** and **Write**: Projects, Project settings, Releases and versions, Git
+authentication, File access (FTP), Containers and Terminal on a project;
+Nodes, Toolchains, Jobs, New projects, CI runner, Accounts and roles and
+Controller beside them. A Global role may name the nodes it holds on (**On
+these nodes**, none ticked being every node) for Nodes, Toolchains, Jobs and
+New projects: a role with New projects to write on bb-sandbox alone lets an
+account make projects there and nowhere else, a project made elsewhere or on
+no node being refused by name, and the account owns what it makes, so it
+holds PROJECT_owner on it. Write needs Read, and an area without Read is not shown. Terminal's
+Read is the shielded Claude console and its Write the full tmux shell, which
+reaches every account's files on its node.
+
+**owner** and **admin** are built in with everything; an admin may not change
+the owner's account or roles. There is no built-in user role: an account
+added holds none and may do nothing until it is given one, and the accounts
+that were on `user` were moved to none, once. A project's owner holds
+`PROJECT_owner` on it, every project area to write, made when the project is
+and moved with it when it changes hands; it is an ordinary role, so cutting
+it back (taking File access off it, say) holds for whoever owns the project.
+
+A person may do what their roles give and nothing else: an account on a
+project's list with no role there works on nothing. A Claude session does no
+more than the person behind it: what its own rules (its project's Claude may
+dials, a session's limits) allow and what its account's roles give on the
+project, whichever is less, the projects it reads included, so a session of
+somebody who may only read a project can only read it.
+
+An area without Read is not offered (the status carries each area's level,
+and the page hides the tab or card), and the server holds the same line: the
+Users and Roles reads, a Claude console without Terminal Read (no terminal
+at all), the Jobs listing (a person's own projects' jobs alone) and the
+Docker listing (the projects whose Containers they may read). Without Nodes
+or Toolchains Read those reads answer only for the nodes of the person's own
+projects, which a Claude sign-in there needs, and never for another machine.
+
+The tab is two sections, each with its own **Save** and **Revert**. **People**
+picks an account: its Global roles, the projects it is on, and the roles it
+holds on each. **Roles** picks a role or adds one: its scope, what it is for,
+and a Read and a Write per area. A project's owner who is not an
+administrator opens the tab from the People field of their project's
+settings and sees the people and roles of the projects they own: they put
+people on those projects and give them roles there, and nothing Global. Every
+gate on the server reads the same roles (`users.may` through
+`roles.CAP_AREA`), which keeps the tabs and the refusals consistent.
+
+**Every project has an owner, and an owner can close it to administrators.**
+Whoever made a project owns it; one from before there were owners belongs to
+BuilderBot's owner. Under **People** in the project's settings (the gear)
+BuilderBot's owner hands it to another account at once, and the project's own
+owner offers it: the offer waits in the other person's bell like an
+invitation, and the project changes hands when they accept (and only if the
+one who offered still owns it then). Either can make it
+**invite only**: then nobody else changes who is on it, so an administrator
+can still see it but cannot add themselves, or anybody, on the Users tab or
+anywhere, and people join by invitation. BuilderBot's owner is never kept
+out. **Invite** there picks an existing account, user or admin; the
+invitation waits in that person's bell with **Accept** and **Decline**, and
+accepting puts the project on their list. Whoever invited, the owner, or
+BuilderBot's owner can **Withdraw** one still waiting. On a project that is
+not invite only any administrator may invite too, as they could always add
+people. A session has no say in any of it.
 
 Each account works as itself:
 
@@ -3257,10 +3895,10 @@ somebody else has that file open. It does not refuse it: each session is in its
 own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
-What *is* refused is a second session on one **Anthropic account**; they would
-share its limits, and afterwards nothing could say which of them did what. Each
-account signs in to its own from the Doctor card. That refusal is where `/term`
-is proxied, not only in the page, because the ttyd URL is reachable directly.
+Each account signs in to Claude for itself, on each node it works on, from
+that node's row. Which Anthropic account that is is the person's own choice:
+the Users tab says when two BuilderBot accounts are on one, since Anthropic's
+terms allow one person per Claude account, and nothing is refused for it.
 
 The notebook (roadmap, bugs, analysis) stays shared, because it is about the
 project; memories do not, because they are about the person.
@@ -3323,6 +3961,18 @@ then the house rules in effect, then the open roadmap and the open bugs. The
 Briefing tab shows a person exactly that string, byte for byte, because it is
 the same assembly rather than another rendering of it.
 
+What a session is told is split by one question: is there value in turning
+it off? An obligation somebody might reasonably not want (sessions filing
+what they notice, chasing a bug they meet, installing nothing, walking a
+change in the app before calling it done) is a **global rule**, and what
+nobody would switch off (no credential in a repository, a true report,
+another person's branch left alone, the project's own files) is a line of
+the briefing. The global rules are listed in every project's notebook,
+under the project's own rules on the Briefing view: anybody who works on
+the project can switch one off for that project alone, staged behind the
+rules section's own Save, and an administrator also adds, edits and removes them,
+or turns a shipped one off, for every project from the same place.
+
 None of it is copied into the project. There is no file to render, push, or
 keep in step, and nothing to go stale: the briefing is one file in the image
 (`config/templates/briefing.md`), the rules live in `/config`, and a project
@@ -3359,10 +4009,20 @@ an agent from another window, and the Nodes tab's Update is what clears it.
   and typescript-language-server, for pyright-lsp and typescript-lsp) and
   **kotlin-lsp** (JetBrains' server, for kotlin-lsp). rust-analyzer and clangd
   already come with the rust and swift toolchains.
+- **Training or running a model on the card**: the **pytorch** toolchain is a
+  Python of its own, run as `python-ml`, with PyTorch built for CUDA (13 today, so a driver of 580 or newer),
+  numpy and ONNX. PyTorch's wheels carry the CUDA libraries, so a node needs
+  only its NVIDIA driver; a heavy job runs as `bb gpu run --mem MB --
+  python-ml train.py`. A project wanting more packages makes its own
+  environment over it (`python-ml -m venv --system-site-packages .venv`), so
+  the store's copy stays as installed. Its install works in a folder beside
+  itself on the store rather than in the node's `/tmp`, since the download is
+  gigabytes and a node's own disk may not have them.
 - **Publishing**: from a session, whatever the project's own credentials
   allow on its node (`gh release create`, Gradle publish tasks); from a shell
-  on the controller, `npm publish` with `NPM_TOKEN`. Signing keys belong in CI
-  secrets, never the image.
+  on the controller, `npm publish` with `NPM_TOKEN`. An Android build is
+  signed with `bb sign`, on the node, with a key the session never sees;
+  any other signing key belongs in CI secrets, never the image.
 
 ## Logs
 
@@ -3400,8 +4060,7 @@ or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
 the reports sessions made about BuilderBot among it, redacted and on the audit
 trail), and clears the kept generations without touching the ones being
 written. Below it, **Clear reports** deletes every report sessions made about
-BuilderBot, open ones included, after a confirmation that says how many nobody
-has answered; the numbers carry on, so a bug that names report #3 never meets a
+BuilderBot, after a confirmation that says how many; the numbers carry on, so a bug that names report #3 never meets a
 second one, and a session cannot clear them.
 
 Two deliberate omissions from *this session*. `ttyd.log` is the terminal
@@ -3452,6 +4111,19 @@ the approvals, the nodes, the jobs, the accounts and your profile, in the
 shape an Android app takes, screens and a bottom bar, not the tabs a
 browser page needs. Sign in with the dashboard's address and your account;
 the credential is kept in the device's encrypted preferences.
+
+**More than one BuilderBot.** The app pairs with as many dashboards as
+you have (R132): **Add another** under More signs in to the next, with a
+name for it (home, work), and the one in front is picked from Home's title
+or the list under More. Every pairing is watched, and each note names the
+dashboard it came from once there are two, so an ask from one is never
+answered on the other; the phone is lent from the one in front. **Forget**
+takes a pairing off, with what the watch remembered about it.
+
+**Its lock.** **Lock the app when it opens**, under More, asks for the
+phone's own lock, a fingerprint, a face or its PIN, every time the app
+comes to the front (R133). Nothing of the app's own is stored for it, and
+a phone with no screen lock set is told to set one first.
 
 **Claude, from the phone.** A project opens on its Claude view. Where a
 session of your own is open on it, the view says whether it is working or

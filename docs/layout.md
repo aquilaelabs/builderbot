@@ -37,24 +37,36 @@ scripts/
   lib/devapp-verbs.py            `bb devapp`: status, rebuild, test, new, env, remove, ls, log, start, stop, restart
   lib/capture.py                 `bb capture`: the sources anything that draws gives (a page, the emulator, an X display) and a shot at rest
   lib/reel.py                    `bb capture reel`: the frames of a recording that changed, stamped and tiled
+  lib/touch.py                   `bb emu touch` and a drive script's $BB_TOUCH: a tap, hold or glide with its timing kept, through sendevent
+  lib/hand.py                    a finger's path through points for a glide (curved, eased, overshooting, wobbling, by seed), played by `bb emu touch` and `bb phone touch`
+  lib/sound.py                   `bb tool sound`: sound effects from sfxr's presets and plain tones, into dist/sound/ as OGG with a waveform and a spectrogram (ffmpeg)
+  lib/cilog-hosted.py            `bb ci-log` for a project on GitHub's own runners: the runs and a run's failed jobs, from the controller
+  lib/docs.py                    `bb tool docs`: a document as Markdown (markitdown) or its pages as pictures (PyMuPDF), run with the documents toolchain's Python
+  lib/poppler.py                 the pdftoppm and pdfinfo Claude Code's PDF reader asks for, drawn with PyMuPDF; the documents toolchain installs them
+  lib/bbftp.py                   bb-ftpd: one project's tree over FTPS, each login asked of the controller through the agent; the ftp toolchain installs it (R151)
+  lib/gradle-local-build.gradle  the Gradle init script bb-tty puts in a project's Gradle home: its build folders on the node's disk, linked from app/build (B439)
+  lib/gpu.py                     `bb gpu`: the node's NVIDIA card from where a session stands, and a turn on it for a heavy job
+  lib/tidy.py                    `bb tidy`: what a task left holding (its emulator, the card, build daemons, browsers, /tmp) given back
   lib/container-verbs.py         `bb container`: status and new
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run
   lib/report.py                  `bb report`, and file/close from BuilderBot's side
   lib/diag.py                    `bb diag`
   lib/node-log.py                `bb logs --node`
-  lib/login-check.py             whether this machine is signed in to Claude, for `bb claude` and the doctor
+  lib/login-check.py             `bb login --check`: who this account is signed in to Claude as on this machine, told to the controller
   lib/emu-job.py                 `bb emu` as a job on the project's node
   lib/run-job.py                 `bb run`: the snapshot, the job, the log back
   lib/build-or-test.py           the command, place and outputs `bb build` and `bb test` read from the settings
   lib/git-policy.py              `bb git policy`
   lib/relay.py                   a notebook verb relayed from a node to the controller
+  lib/release-edit.py            `bb version release --edit`: the notes and files read where it is typed, the edit asked over the API
   lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
   lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
   lib/roadmap-verbs.py           `bb roadmap`
   lib/bug-verbs.py               `bb bug`
   lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
   lib/design-verbs.py            `bb design`: a project's design language and pages, as the notebook's Design view keeps them
+  lib/wiki-verbs.py              `bb wiki`: a project's wiki pages, listed, shown, saved and removed under Claude may: Write the wiki
   lib/transcripts-verbs.py       `bb transcripts`: the account's own conversations with Claude on a project, listed and printed
   lib/nb-history.py              `bb history`: the notebook's logs merged
   lib/rules-verbs.py             `bb rules`, except check
@@ -64,6 +76,8 @@ scripts/
   lib/preamble-verbs.py          `bb preamble`
   lib/findings-verbs.py          `bb findings history` and `bb findings sample`
   lib/settings-verbs.py          `bb settings`: show, and set for build, test and outputs
+  lib/sign-verbs.py              `bb sign`: a build signed on the node with one of the project's keys, and its keys and mapping
+  lib/busy-verbs.py              `bb node busy` and `bb node wait-quiet`: how busy this node is before a measurement
   lib/users-verbs.py             `bb users`: list, passwd, add, token
   lib/nodes-verbs.py             `bb nodes` and `bb ci-labels`
   lib/jobs-verbs.py              `bb jobs`
@@ -89,10 +103,11 @@ scripts/
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
     bb-check-relay               the relay's own check, run by bb tests preflight
     bb-gate                      the hook every tool call asks before it runs, on a node
-    bb-keep-login                keeps a node session's Claude login in step, once per prompt
     bb-prompt-relay              a node session's prompts and answers, back to the controller
     bb-work-note                 what a session is changing, for the overlap warning
+    bb-keep-login                a hook that does nothing, for sessions an earlier build of this window started with it
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
+    roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
     prefs.py                     which model and effort a project's Claude session runs on
     settings.py                  controller settings, the things that used to be environment variables
     statefile.py                 writing a state file, and holding it while you read-modify-write one
@@ -103,9 +118,15 @@ scripts/
     preamble.py                  what every session on a project starts with, assembled once
     brief.py                     a new project's brief: kept out of CLAUDE.md, handed to its first session through a dialog
     design.py                    the notebook's Design view: a project's design language and pages, the prompts a session is pointed at, and docs/design-language.md written from them
+    cilogs.py                    a project's CI on GitHub's own runners: its runs and the end of a failed job's log, read with the controller's token for `bb ci-log`
+    BbGlide.java                 a lent phone's glide as one held stroke: built on the node with javac and d8, run with app_process (R126)
+    forgerelease.py              Release's forge half: the GitHub, Gitea or GitLab release beside a pushed tag, its notes the changelog's section and its builds attached
+    ciwatch.py                   a project's CI watched once a day and at link: a moving runner label, an action a major behind, a red main branch and GitHub's notices on it, for the Git view, bb catchup and the bell
+    wiki.py                      the notebook's Wiki view: a project's wiki kept as a forge-shaped git repository of its own, exported as a zip and pushed to or pulled from the repository's wiki
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
+    ftp.py                       a project's file access over FTP: on, the port, each account's access, and the login a node relays (R151)
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
@@ -120,15 +141,20 @@ scripts/
     version.py                   one version identity per project, rendered for whatever is asking
     changelog.py                 the user-facing record beside it: categories, and the editor's writes
     artifacts.py                 what a project built: dist/, and what a row may offer
+    signing.py                   a project's Android signing keys, kept by the controller, never a session's (R106)
+    membership.py                a project's owner, whether it is invite only, and the invitations to it
+    registry.py                  projects by id (R154): each directory's permanent number and the name it is shown under, in projects.json; a directory is never handed out twice
+    busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
     phone.py                     a paired handset on a node: install, push, and the asking
+    phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
     nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md); the Nodes tab's verbs; a build job from the controller
     channel.py                   the node agent's verbs behind /api/v1/agent/: enroll, hello, work, a job's files, log and result
     claudecode.py                Claude Code on each node: which version, checking for and installing an update
-    claudegrant.py               a session's Claude login handed to the node it runs on, and taken back
+    claudegrant.py               which nodes each account is signed in to Claude on, as each node reported it
     mapping.py                   a new project's code map built in the background as it is created
     plugins.py                   the Claude Code plugins a project carries, listed and installed
     turns.py                     how many prompts a node lets run at once, and the queue when more ask
@@ -155,8 +181,9 @@ scripts/
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
-    signin.py                    the Claude sign-in, under a pty rather than in a terminal
+    signin.py                    the Claude sign-in and sign-out on one node, as jobs there
     test/                        its Playwright suite: `bb dashboard test`, isolated
+    unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
   agent/ruff.toml                the linter's settings for it, pinned to the python a Rocky node carries
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin

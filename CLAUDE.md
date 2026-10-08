@@ -33,11 +33,11 @@ operator opens with *"it finally built"*; it exists because reconstructing that
 by hand cost four commands and still could not see the failed builds.
 
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
-  builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
+  builds and pushes `ghcr.io/aquilaelabs/builderbot` on pushes to `main`
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`), plus a
   weekly cron rebuild, so the base image stays fresh. Claude Code is in
   neither the image nor the boot: a session runs on a node, which carries its
-  own. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
+  own. It runs on a hosted `ubuntu-24.04`, deliberately (pinned, since `bb lint` fails on a moving `-latest` label here, R116): hosted minutes cost more,
   but building the image on the box that runs the image is circular: a bad
   image would take down the runner that has to build the fix. **A pull request
   does not build it.** That used to be two hosted builds for one answer, the
@@ -115,11 +115,11 @@ by hand cost four commands and still could not see the failed builds.
   never its own tracker (the briefing says so), and the
   reports wait on the controller. This project turns it off in its settings
   (Claude may: Report BuilderBot bugs), so its own problems go into its own
-  tracker as ever. `bb diag reports` lists the open ones;
-  `bb report file N` files one into this tracker as a bug (`--as B123` for
-  one this tracker already has) and `bb report close N "why"` answers one
-  that needs nothing. The session that reported it reads the outcome with
-  `bb report`, so the close's words are addressed to it.
+  tracker as ever. `bb diag reports` lists them, and one worth fixing is
+  added here with `bb bug add` like anything else met. Nothing goes back to
+  the session that reported it: the reports are a log the operator clears,
+  and a distributed BuilderBot has no tracker of its own beside the
+  sessions reporting to it, so a loop that answered them worked here alone.
 - **What the page is asking for:** `bb dashboard trace [SECONDS]` prints
   what the server was asked over that window, by endpoint and by who
   asked (browser, session, agent, the companion app), from a ring the
@@ -139,8 +139,14 @@ by hand cost four commands and still could not see the failed builds.
   name anywhere. R76.
 - **Before a push:** `bb tests preflight` lists the files the branch
   changed (against `origin/main`, plus the working tree), asks the map
-  which suites reach them, and runs those with the lint, voice and design
-  checks the house rules name; `--dry` prints the plan, `--files F...`
+  which suites reach them, and runs the python unit tier (`bb tests unit`,
+  under a second) first, then those suites with the lint and voice checks,
+  and the design check when a file carrying style changed (index.html,
+  static/, the design language, uniform.mjs); for script and python the map
+  already puts uniform in the suites when it reaches the change. The worker
+  plan balances suites by the seconds each took on this node
+  (`.bb-map/suite-times.tsv`), and `BB_TEST_PHASES=1` times a suite's set-up.
+  `--dry` prints the plan, `--files F...`
   names the files instead, and `--base HEAD` measures the working tree
   alone when the branch is long and the default would be everything.
   With a covered run on record (`.bb-map/coverage.json`) the suites are
@@ -155,7 +161,7 @@ by hand cost four commands and still could not see the failed builds.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).
-  Ask it before grepping; `test/codemap.mjs` holds it to the tree. `find`
+  Use it where it is quicker than grep, and fix it whenever it answers wrong; `test/codemap.mjs` holds it to the tree. `find`
   and `who-calls` also hand over what a function says about itself, the
   comment directly above it or its docstring's first sentence: the notes
   live in the code, never in the map, and the map reads them out.

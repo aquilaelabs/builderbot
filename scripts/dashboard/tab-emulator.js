@@ -69,46 +69,64 @@ async function loadEmulator(){
   drawPanes();
 }
 
-// Adding an image is a pick, not a tick. There are forty-odd of them (every
-// API level Google still ships, times four flavors) and a checkbox list that
-// long would bury the few that are installed. The sizes come from
+// Adding images is Toolchains' gesture (R121, the operator 4 Oct): tick
+// rows, press Install selected. Forty-odd images (every API level Google
+// still ships, times four flavors) would bury the few installed, so the
+// rows to add are one flavor's at a time, chosen above them, and the
+// installed ones stay in a list of their own. The sizes come from
 // sdkmanager's own index, the only place they exist before the download.
-function emuAdder(d, why){
+// A tick survives a change of flavor, and the button counts them all.
+const emuTicked = new Set();
+
+function emuFlavorNow(d){
+  const flavors = d.flavors || [];
+  return emuFlavor && flavors.some(f => f.kind === emuFlavor) ? emuFlavor : (flavors[0]?.kind || "");
+}
+
+function emuAddRows(d, why){
   const rows = d.addable || [], flavors = d.flavors || [];
   // Google's index is read off the request, so the first draw does not wait
-  // for it; saying so beats the picker appearing a second later unexplained.
+  // for it; saying so beats the rows appearing a second later unexplained.
   if (!rows.length) return d.loading
-    ? `<div class="imgadd"><span class="sub">reading the list of available
+    ? `<div class="tchead emadd"><span class="sub">reading the list of available
          images<span class="dots"></span></span></div>`
     : "";
-  const chosen = emuFlavor && flavors.some(f => f.kind === emuFlavor)
-    ? emuFlavor : (flavors[0]?.kind || "");
+  const chosen = emuFlavorNow(d);
   const mine = rows.filter(r => r.kind === chosen);
   const about = flavors.find(f => f.kind === chosen)?.about || "";
   const job = d.job || {};
-  return `<div class="imgadd">
-    <select id="imgFlavor"${why ? " disabled" : ""} aria-label="image flavor">${
-      flavors.map(f => `<option value="${esc(f.kind)}"${f.kind === chosen ? " selected" : ""}
-        >${esc(f.label)}</option>`).join("")}</select>
-    <select id="imgApi"${why ? " disabled" : ""} aria-label="API level">${
-      mine.map(r => `<option value="${esc(r.id)}">API ${esc(r.api)} · ${esc(r.size)}</option>`)
-          .join("") || `<option value="">none left to add</option>`}</select>
-    ${mayToolchains() ? `<button id="imgAdd"${why || !mine.length ? " disabled" : ""}${
-      why ? ` title="${esc(why)}"` : ""}>Add</button>` : ""}
-    ${job.running ? `<span class="tcworking">${job.action === "remove" ? "Removing" : "Adding"} ${
-      esc(job.image || "")}<span class="dots"></span></span>` : ""}
-    ${about ? `<div class="sub imgabout">${esc(about)}</div>` : ""}
-  </div>`;
+  const writing = job.running && job.action === "add" ? new Set(job.images || [job.image]) : new Set();
+  // Adding images is an administrator's (the server's gate on /api/emulator):
+  // not offered without the grant (R137 step 4), the list above is everybody's.
+  if (state?.can?.admin === false) return "";
+  return `<div class="imgadd emadd"><label for="imgFlavor">Images to add</label>
+      <select id="imgFlavor">${
+        flavors.map(f => `<option value="${esc(f.kind)}"${f.kind === chosen ? " selected" : ""}
+          >${esc(f.label)}</option>`).join("")}</select>
+      ${about ? `<span class="sub imgabout">${esc(about)}</span>` : ""}</div>
+    <div class="tcs emaddrows">${mine.map(r => {
+      const now = writing.has(r.id);
+      return `<label class="tc emnew">
+        <input type="checkbox" value="${esc(r.id)}"${why || job.running || !mayToolchains() ? " disabled" : ""}${
+          emuTicked.has(r.id) || now ? " checked" : ""}>
+        <span class="grow">
+          <span class="nm">API ${esc(r.api)}${r.size ? ` <span class="pill">${esc(r.size)}</span>` : ""}</span>
+          ${now ? `<span class="sub prog plain">${job.current === r.id ? "adding" : "waiting its turn"}<span class="dots"></span></span>`
+                : `<span class="sub where">${esc(r.id)}</span>`}
+        </span></label>`;
+    }).join("") || `<div class="tchead">every ${esc(flavors.find(f => f.kind === chosen)?.label || "")} image is here already</div>`}</div>`;
 }
 
-// One installed image. Which AVDs are built on it, because that is the
-// question anybody asking "can this go?" is really asking: an AVD names one
-// image exactly, and two flavors at one API level are not interchangeable.
+// One installed image, drawn as an installed toolchain is: its tick set and
+// dead, its bin at the right. Which AVDs are built on it, because that is
+// the question anybody asking "can this go?" is really asking: an AVD names
+// one image exactly, and two flavors at one API level are not interchangeable.
 function emuRow(im, why){
   const avds = (im.avds || []).length
     ? `<span class="sub">${im.avds.length === 1 ? "AVD" : "AVDs"}: ${esc(im.avds.join(", "))}</span>`
     : `<span class="sub dim">no AVD uses it</span>`;
-  return `<div class="tc emimg">
+  return `<label class="tc done emimg">
+    <input type="checkbox" checked disabled title="installed">
     <span class="grow">
       <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span>
         ${im.size ? `<span class="pill"${im.size_from
@@ -119,7 +137,7 @@ function emuRow(im, why){
     ${mayToolchains() ? `<button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
       why ? ` disabled title="${esc(why)}"`
            : ` title="remove this system image"`}>${BIN}</button>` : ""}
-  </div>`;
+  </label>`;
 }
 
 function renderEmulatorInto(i){
@@ -148,10 +166,8 @@ function renderEmulatorInto(i){
     : job.running ? "another job is writing to this store"
     : stale ? staleWhy(pnode)
     : d.sdkmanager === false ? `${d.name} needs the Android command-line tools first` : "";
-  surf.setBar(`<label class="pick">Images on <select id="emuNodeSel" aria-label="node">
-        ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === emuNode ? " selected" : ""}>${
-          esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
-      </select></label>
+  // The one node switcher (page-docs.js nodePick, R121).
+  surf.setBar(`${nodePick("emuNodeSel", pnodes, emuNode)}
     <span class="sp"></span>
     <button type="button" id="emuRefresh" title="read this node's images again">Refresh</button>`);
   const free = typeof d.free_mb === "number"
@@ -172,33 +188,46 @@ function renderEmulatorInto(i){
     ${job.state === "failed" && job.error ? `<div class="tchead bad">${
       job.action === "remove" ? "Removing" : "Adding"} ${esc(job.image)} failed: ${esc(job.error)}.
       The Jobs tab has its log.</div>` : ""}
-    ${d.wrong_platform ? "" : emuAdder(d, held)}
     ${(d.images || []).length
       ? `<div class="tcs">${d.images.map(im => emuRow(im, held)).join("")}</div>`
       : d.wrong_platform ? ""
       : `<div class="tchead">${d.known === false
           ? `${esc(d.name)}'s agent is too old to report its system images: update it from the Nodes tab.`
           : `No image yet: ${esc(d.name)}'s emulator has nothing to boot.`}</div>`}
-    <div class="hint tcterms">Adding an image accepts
+    ${d.wrong_platform ? "" : emuAddRows(d, held)}
+    ${d.wrong_platform ? "" : `<div class="hint tcterms">Adding an image accepts
       <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
-      Android SDK terms</a>.</div>
-    ${job.running && mayToolchains() ? `<div class="actbar macros">
-      <button data-emu="abort"${job.aborting ? " disabled" : ""}>${job.aborting ? "Stopping…" : "Abort"}</button>
-    </div>` : ""}`;
+      Android SDK terms</a>.</div>`}
+    ${d.wrong_platform || !mayToolchains() ? "" : `<div class="actbar macros">
+      ${job.running ? `<span class="state tcworking">${job.action === "remove" ? "Removing" : "Adding"} ${
+        esc(job.current || job.image || "")}<span class="dots"></span></span>` : ""}
+      ${held && !job.running ? `<span class="state bad">${esc(held)}</span>` : ""}
+      <button class="primary" data-emu="install"${held || job.running ? " disabled" : ""}>Install selected${
+        emuTickedHere(d).length > 1 ? ` (${emuTickedHere(d).length})` : ""}</button>
+      ${job.running ? `<button data-emu="abort"${job.aborting ? " disabled" : ""}>${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+    </div>`}`;
 
   const sel = el.querySelector("#emuNodeSel");
-  if (sel) sel.onchange = () => { emuNode = sel.value; emu = null;
+  if (sel) sel.onchange = () => { emuNode = sel.value; emu = null; emuTicked.clear();
                                   try{ localStorage.setItem("bb.emunode", emuNode); }catch(e){ /* private */ }
                                   emuRev++; drawPanes(); loadEmulator(); };
   el.querySelector("#emuRefresh").onclick = () => loadEmulator();
   const toTc = el.querySelector("#emuToTc");
   if (toTc) toTc.onclick = e => { e.preventDefault(); tcNode = emuNode; openToolchains(); };
-  const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
+  const fl = el.querySelector("#imgFlavor");
   if (fl) fl.onchange = () => { emuFlavor = fl.value; emuRev++; drawPanes(); };
-  const add = el.querySelector("#imgAdd");
-  // Straight in, no confirmation: a download into free space, and the size
-  // is on the option that was just picked.
-  if (add) add.onclick = () => { if (api?.value) emuAct("add", api.value, add); };
+  el.querySelectorAll(".tc.emnew input").forEach(b => b.onchange = () => {
+    b.checked ? emuTicked.add(b.value) : emuTicked.delete(b.value);
+    emuRev++; drawPanes();          // the button counts them
+  });
+  const add = el.querySelector('[data-emu="install"]');
+  // Straight in, no confirmation: a download into free space, and each
+  // row says its size.
+  if (add) add.onclick = () => {
+    const ids = emuTickedHere(emu);
+    if (!ids.length) return notify("tick something first", true);      // Toolchains' word for it
+    emuAct("add", ids, add);
+  };
   el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = () => {
     const id = b.dataset.rmimg;
     const users = (emu?.images || []).find(im => im.id === id)?.avds || [];
@@ -223,14 +252,26 @@ function renderEmulatorInto(i){
   if (ticking && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
 }
 
+// The ticks that are still images this node could add: one added since,
+// or offered no more, is not sent.
+function emuTickedHere(d){
+  const can = new Set((d?.addable || []).map(r => r.id));
+  return [...emuTicked].filter(id => can.has(id));
+}
+
 async function emuAct(action, image, btn){
   if (btn) busy(btn, action === "add" ? "Adding" : "Removing");
+  const many = Array.isArray(image);
   try{
-    const r = await postJSON("/api/emulator", {action, image, node: emuNode});
+    const r = await postJSON("/api/emulator", {action, node: emuNode, ...(many ? {images: image} : {image})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) notify(j.error || `could not start (HTTP ${r.status})`, true);
-    else notify(`${action === "add" ? "adding" : "removing"} ${image} on ${
-      emu?.name || "the node"}; this can take minutes`);
+    else {
+      if (many) image.forEach(id => emuTicked.delete(id));
+      notify(`${action === "add" ? "adding" : "removing"} ${many && image.length > 1
+        ? `${image.length} images` : (many ? image[0] : image)} on ${
+        emu?.name || "the node"}; this can take minutes`);
+    }
   }catch(e){ notify("could not start: " + e, true); }
   loadEmulator();
 }

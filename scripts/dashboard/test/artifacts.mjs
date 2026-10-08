@@ -1,8 +1,8 @@
 // The notebook's Artifacts view: what a project has built, from its dist/.
 // The convention IS the feature: the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
-import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil } from './lib.mjs';
-import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync, existsSync } from 'node:fs';
+import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil, openFold } from './lib.mjs';
+import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync, existsSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // alpha ships an APK and an XPI; the XPI is a real zip with a manifest, since
@@ -60,6 +60,26 @@ writeFileSync(`${DIR}/ws/alpha/dist/emu/loose.png`, Buffer.from([0x89, 0x50, 0x4
 writeFileSync(`${DIR}/ws/alpha/secret.txt`, 'not yours');
 symlinkSync(`${DIR}/ws/alpha/secret.txt`, `${DIR}/ws/alpha/dist/leak.txt`);
 
+// Five dev builds of one APK and its release (R105): the tab keeps the
+// newest three dev builds and never the release's place.
+{
+  const t0 = Math.floor(Date.now() / 1000) - 5000;
+  for (let n = 1; n <= 5; n++){
+    const f = `${DIR}/ws/alpha/dist/alpha-1.2.0-dev.${n}-abcdef${n}-debug.apk`;
+    writeFileSync(f, 'dev build');
+    utimesSync(f, t0 + n * 100, t0 + n * 100);
+  }
+  writeFileSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-debug.apk`, 'release');
+  utimesSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-debug.apk`, t0, t0);
+  // A build a sign job delivered (R106 step 4), with the provenance the
+  // controller writes for it: what signed it and the certificate.
+  writeFileSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-signed.apk`, 'signed');
+  mkdirSync(`${DIR}/ws/alpha/dist/.provenance`, { recursive: true });
+  writeFileSync(`${DIR}/ws/alpha/dist/.provenance/alpha-1.2.0-signed.apk.json`, JSON.stringify({
+    job: 'j_sign1', node: 'n_x', type: 'sign', at: t0, sha256: 'ab'.repeat(32), path: 'dist/alpha-1.2.0-signed.apk',
+    signed: { route: 'sideload', cert: '6557990CCC68E19D2F4CE5731C8D59F9845D87C9952DF09D30DFF05609488C2D',
+              schemes: ['v2', 'v3'], from: 'alpha-1.2.0-debug.apk', key: 'watch', rotated_from: 'default' } }));
+}
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(URL);
@@ -70,8 +90,99 @@ await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('.artrow', { timeout: 15000 });
 
+// The files are a section of their own, like the rest of the view, and open
+// when the view first shows (the operator, 6 Oct): they were a band under
+// Version, the one part of the tab that did not fold. On a desktop the
+// view's first section is open beside them (the operator, 7 Oct).
+{
+  const s = await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
+    .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
+  ok(s.includes('artifacts:files:open') && s.every(x => x.endsWith(':open')),
+     `the files are their own section, and every section is open when the view shows (${s.join(' ')})`);
+}
+// ...and on a phone every one is open too (the operator, 8 Oct: too much
+// was hidden in folds).
+{
+  const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL);
+  await ready(phone);
+  await phone.evaluate(() => { try{ localStorage.clear(); }catch{} for (const k of Object.keys(sectOpen)) delete sectOpen[k]; });
+  await phone.evaluate(() => { setView("terminal"); openNotebook("alpha", "artifacts"); });
+  await phone.waitForSelector('.nb .nbview[data-view="artifacts"] details.sect[data-sect="artifacts:files"]', { timeout: 15000 });
+  await phone.waitForTimeout(500);
+  const p = await phone.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
+    .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
+  ok(p.length && p.every(x => x.endsWith(':open')),
+     `...on a phone too, every one open (the operator, 8 Oct) (${p.join(' ')})`);
+  await phone.close();
+}
+
+// ---- a signed build (R106 step 4) --------------------------------------------
+{
+  const r = await page.$eval('.artrow:has(b:text-is("alpha-1.2.0-signed.apk"))', e => ({
+    pill: !!e.querySelector('.pill.ok'), text: e.textContent.replace(/\s+/g, ' '),
+    copy: !!e.querySelector('[data-artfp]'), sign: !!e.querySelector('[data-artsign]') }));
+  ok(r.pill && /signed with the watch key's sideload signing key from alpha-1\.2\.0-debug\.apk, verified v2, v3, rotated from default: Android 8\.1 and older still see default/.test(r.text)
+     && /SHA-256 65:57:99:0C:CC:68:E1:9D:2F:4C:E5:73:1C:8D:59:F9:84:5D:87:C9:95:2D:F0:9D:30:DF:F0:56:09:48:8C:2D/.test(r.text)
+     && r.copy && !r.sign,
+     `a signed build says so, with the key, what verified and the whole fingerprint to copy, and offers no Sign again (${r.text.slice(0, 120)})`);
+}
+
 // ---- the listing -----------------------------------------------------------
 const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));
+{
+  const dev = names.filter(n => /^alpha-1\.2\.0-dev\./.test(n)).sort();
+  const note = await page.$eval('#artList', e => [...e.querySelectorAll('.hint')].map(h => h.textContent).join(' '));
+  ok(dev.join() === ['alpha-1.2.0-dev.3-abcdef3-debug.apk', 'alpha-1.2.0-dev.4-abcdef4-debug.apk', 'alpha-1.2.0-dev.5-abcdef5-debug.apk'].join()
+     && names.includes('alpha-1.2.0-debug.apk') && !existsSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-dev.1-abcdef1-debug.apk`),
+     `of five dev builds of one APK the newest three are kept and the release beside them stays (${dev.join(', ')})`);
+  ok(/newest 3 builds/.test(note) && /signed copy alone/.test(note) && /A release is kept/.test(note) && /anything pinned/.test(note),
+     `...and the tab says so (${note.replace(/\s+/g, ' ').slice(0, 120)})`);
+  // A pin keeps one whatever comes after it (the operator, 30 Sep): the
+  // oldest kept is pinned on its row, two newer builds arrive, and it is
+  // still there, marked, while the ones beside it went.
+  const oldest = 'alpha-1.2.0-dev.3-abcdef3-debug.apk';
+  await page.evaluate(n => [...document.querySelectorAll('#artList .artrow')]
+    .find(r => r.querySelector('b')?.textContent === n)?.querySelector('[data-artpin]')?.click(), oldest);
+  await page.waitForFunction(n => [...document.querySelectorAll('#artList .artrow')]
+    .some(r => r.querySelector('b')?.textContent === n && /pinned/.test(r.textContent)), oldest, { timeout: 15000 });
+  const t1 = Math.floor(Date.now() / 1000);
+  for (const n of [6, 7]){
+    const f = `${DIR}/ws/alpha/dist/alpha-1.2.0-dev.${n}-abcdef${n}-debug.apk`;
+    writeFileSync(f, 'dev build');
+    utimesSync(f, t1 - 100 + n, t1 - 100 + n);
+  }
+  const after = await page.evaluate(async () => (await (await fetch('/api/artifacts?project=alpha')).json()).artifacts
+    .filter(a => /-dev\./.test(a.name)).map(a => a.name + (a.pinned ? '*' : '')).sort());
+  ok(after.join() === ['alpha-1.2.0-dev.3-abcdef3-debug.apk*', 'alpha-1.2.0-dev.5-abcdef5-debug.apk',
+                       'alpha-1.2.0-dev.6-abcdef6-debug.apk', 'alpha-1.2.0-dev.7-abcdef7-debug.apk'].join(),
+     `a pinned build stays when newer ones arrive, and is not one of the three kept beside it (${after.join(', ')})`);
+  // How many are kept is the project's setting (Dev builds kept, 3 unless
+  // it says): at 2, one more goes on the next read; at 0 nothing does; a
+  // value that is not a count is refused.
+  const setKeep = v => page.evaluate(async v => (await (await fetch('/api/prefs', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', dev_keep: v }) })).json()), v);
+  const devNow = () => page.evaluate(async () => { const j = await (await fetch('/api/artifacts?project=alpha')).json();
+    return { keep: j.dev_keep, names: j.artifacts.filter(a => /-dev\./.test(a.name) && !a.pinned).map(a => a.name).sort() }; });
+  const bad = await setKeep('lots');
+  await setKeep(2);
+  const two = await devNow();
+  ok(/dev builds kept is a number of builds/.test(bad.error || '') && two.keep === 2
+     && two.names.join() === 'alpha-1.2.0-dev.6-abcdef6-debug.apk,alpha-1.2.0-dev.7-abcdef7-debug.apk',
+     `the project's Dev builds kept says how many of each stay (2: ${two.names.join(', ')}), and a value that is not a count is refused`);
+  await setKeep(0);
+  const t2 = Math.floor(Date.now() / 1000);
+  for (const n of [8, 9]){
+    const f = `${DIR}/ws/alpha/dist/alpha-1.2.0-dev.${n}-abcdef${n}-debug.apk`;
+    writeFileSync(f, 'dev build'); utimesSync(f, t2 - 50 + n, t2 - 50 + n);
+  }
+  const all = await devNow();
+  ok(all.keep === 0 && all.names.length === 4, `...and 0 keeps every one (${all.names.length})`);
+  await setKeep(3);
+  const unpin = await page.evaluate(async n => (await (await fetch('/api/artifacts', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', action: 'unpin', path: `dist/${n}` }) })).json()), oldest);
+  ok(unpin.ok && unpin.pinned === false, '...and unpinned, it goes like any other build');
+}
 ok(names.includes('streamlift-1.2.apk') && names.includes('companion-0.2.0.xpi'),
    `dist/ is listed, subdirectories included (${names.join(', ')})`);
 ok(await page.$eval('#artBuild', e => !e.hidden && /No node/.test(e.textContent)
@@ -118,10 +229,8 @@ ok(acts.every(a => a.dl), '...and everything can be downloaded');
   await page.waitForSelector('#artCaptures details.sect', { timeout: 15000 });
   const head = await page.$eval('#artCaptures summary', e => e.textContent);
   ok(/Captures/.test(head) && /3, kept 7 days/.test(head)
-     && await page.$eval('#artCaptures details.sect', d => !d.open),
-     `the tab draws them as one fold, shut, saying how many and for how long (${head.trim()})`);
-  await page.click('#artCaptures summary');
-  await page.waitForFunction(() => document.querySelector('#artCaptures details.sect')?.open, null, { timeout: 10000 });
+     && await page.$eval('#artCaptures details.sect', d => d.open),
+     `the tab draws them as one section, open like every other (8 Oct), saying how many and for how long (${head.trim()})`);
   // By text, not by position: the one with no record goes by its file's
   // time, which is whenever this suite wrote it.
   const rows = await page.$$eval('#artCaptures .artrow', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ').trim()));
@@ -185,6 +294,9 @@ ok(acts.every(a => a.dl), '...and everything can be downloaded');
        viewable.filter(a => a.view).map(a => a.name).join(', ')})`);
   // Read over the panel, the way a History is, with the file's own line
   // breaks. Nothing here runs it and the tab has no way to.
+  // One section open at a time (the operator, 5 Oct): Captures was opened
+  // above, so Files is opened again before a file's View is pressed.
+  await openFold(page, '.nb [data-sect="artifacts:files"]');
   await page.click('.artrow:has(b:text-is("setup-1.2.sh")) [data-artview]');
   await page.waitForFunction(
     () => /setting up/.test(document.querySelector('.nb #sheetSlot')?.textContent || ''),
@@ -282,9 +394,10 @@ await page.click('.nbtabs [data-v="artifacts"]:visible');
 // Scoped to the pane: alpha's notebook is parked but its own artifacts view
 // is still the active one inside that instance, so an unscoped selector finds
 // the wrong project's rows.
-await page.waitForFunction(() => /dist\//.test(
-  document.querySelector('.pane .nb [data-view="artifacts"] #artList .hint')?.textContent || ''),
-  null, { timeout: 15000 });
+// ...and by its words, since a list can carry another line (R105's note on
+// dev builds) before them.
+await page.waitForFunction(() => [...document.querySelectorAll('.pane .nb [data-view="artifacts"] #artList .hint')]
+  .some(h => /Nothing in dist\//.test(h.textContent)), null, { timeout: 15000 });
 ok(true, 'a project with no dist/ is told the convention, not shown a blank');
 
 // ---- a build on a branch, in an account's own worktree (B237) -------------
@@ -342,6 +455,26 @@ ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 // Put alpha back as it was found. fresh() between files resets state and
 // removes stray projects, but it does not reach inside a fixture project, so
+// ---- a build named with no version (the operator, 6 Oct) ----------------------
+// Nothing can tell when it is out of date, so the sweep leaves it and its row
+// says so in the warning color, with a Remove that a person presses.
+{
+  writeFileSync(`${DIR}/ws/alpha/dist/app-debug.apk`, 'a build copied in by hand');
+  await page.evaluate(() => getNotebook('alpha').view('artifacts'));
+  await page.waitForFunction(() => [...document.querySelectorAll('#artList .artrow')]
+    .some(r => r.querySelector('b')?.textContent === 'app-debug.apk'), null, { timeout: 15000 });
+  const r = await page.evaluate(() => { const row = [...document.querySelectorAll('#artList .artrow')]
+    .find(x => x.querySelector('b')?.textContent === 'app-debug.apk');
+    return { said: row.querySelector('.vermark')?.textContent || '', rm: !!row.querySelector('[data-artunnamed]') }; });
+  ok(/named with no version/.test(r.said) && r.rm,
+     `a build named with no version says nothing can tell when it is out of date, and offers Remove (${r.said})`);
+  await page.evaluate(() => [...document.querySelectorAll('#artList .artrow')]
+    .find(x => x.querySelector('b')?.textContent === 'app-debug.apk')?.querySelector('[data-artunnamed]')?.click());
+  await page.waitForFunction(() => ![...document.querySelectorAll('#artList .artrow b')].some(b => b.textContent === 'app-debug.apk'),
+                             null, { timeout: 15000 });
+  ok(!existsSync(`${DIR}/ws/alpha/dist/app-debug.apk`), '...and Remove takes it out of dist/');
+}
+
 // a file that plants a dist/ tree and a symlink there has to clear them
 // itself, or every later file runs against a project this one changed.
 rmSync(`${DIR}/ws/alpha/dist`, { recursive: true, force: true });

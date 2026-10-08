@@ -12,9 +12,11 @@ import os
 import pathlib
 import re
 import sys
-import xml.dom.minidom
-import xml.etree.ElementTree as ET
-import xml.parsers.expat
+# The XML read here is this repository's own (the Unraid template, the
+# workflows): no input from outside, so defusedxml would guard nothing.
+import xml.dom.minidom  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+import xml.etree.ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+import xml.parsers.expat  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 
 import dash
 
@@ -52,6 +54,33 @@ def runner():
             print("         job to whichever is idle, which may be a machine without the")
             print("         toolchain. To land on this project's node:")
             print(f"           runs-on: [self-hosted, {label}]")
+
+
+# A hosted runner named by a moving label: GitHub repoints ubuntu-latest at a
+# new release on its own date (Ubuntu 26 from 19 Oct 2026), and a workflow
+# that built yesterday fails tomorrow with nothing in the repository changed.
+# A pinned image moves only when somebody moves it, in a commit (R116).
+PINNED = {"ubuntu": "ubuntu-24.04", "windows": "windows-2025", "macos": "macos-15"}
+
+
+def hosted():
+    strict = "--strict" in args
+    found = []
+    for f in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
+        for i, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            m = re.match(r"\s*runs-on:\s*(.+?)\s*(#.*)?$", line)
+            if not m or "${{" in m.group(1):
+                continue
+            for os_ in re.findall(r"\b(ubuntu|windows|macos)-latest\b", m.group(1)):
+                found.append((f"{f.name}:{i}", f"{os_}-latest", PINNED[os_]))
+    if not found:
+        print("  [ok]   every hosted job names a pinned image")
+        sys.exit(0)
+    tag = "[FAIL]" if strict else "[note]"
+    for where, label, pin in found:
+        print(f"  {tag} {where} runs on {label}, which GitHub moves to a new release on its own date;"
+              f" runs-on: {pin} moves only when a commit moves it")
+    sys.exit(1 if strict else 0)
 
 
 def xml_():
@@ -158,4 +187,4 @@ def settings():
     sys.exit(1 if bad else 0)
 
 
-{"runner": runner, "xml": xml_, "settings": settings, "layout": layout}[verb]()
+{"runner": runner, "xml": xml_, "settings": settings, "layout": layout, "hosted": hosted}[verb]()

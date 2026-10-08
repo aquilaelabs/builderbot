@@ -153,7 +153,7 @@ function renderProfileInto(i){
 function profilePlugins(rows){
   if (!rows.length) return `<div class="dim">None installed. <code>/plugin</code> in a Claude session adds one, for you alone.</div>`;
   const one = p => `<code>${esc(p.id.replace(/@claude-plugins-official$/, ""))}</code>${
-    p.version ? ` ${esc(p.version)}` : ""}${p.scope === "project" ? ` (${esc(p.project || "a project")})` : ""}${
+    p.version ? ` ${esc(p.version)}` : ""}${p.scope === "project" ? ` (${esc(p.project ? projLabel(p.project) : "a project")})` : ""}${
     p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
   return rows.map(n => `<div class="sub">On ${esc(n.name)}: ${n.plugins.map(one).join(", ")}</div>`).join("")
     + `<div class="dim">Change them with <code>/plugin</code> in a Claude session.</div>`;
@@ -174,7 +174,7 @@ function profileLogs(rows){
   return `<div class="cvlogs">${rows.map(r => `
     <div class="artrow">
       <div class="grow">
-        <div class="top"><b>${esc(r.project)}</b> <span class="dim">${esc(fmtTime(r.at * 1000))} · ${esc(size(r.bytes))}</span></div>
+        <div class="top"><b>${esc(projLabel(r.project))}</b> <span class="dim">${esc(fmtTime(r.at * 1000))} · ${esc(size(r.bytes))}</span></div>
         ${r.first ? `<div class="dim first">${esc(r.first)}</div>` : ""}</div>
       <div class="acts"><a class="btn" href="/api/transcript?project=${encodeURIComponent(r.project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a></div>
     </div>`).join("")}</div>

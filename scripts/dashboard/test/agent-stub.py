@@ -218,7 +218,27 @@ def run_exec(job):
     os.makedirs(CDIR_ROOT, exist_ok=True)
     env = dict(os.environ)
     env.update({str(k): str(v) for k, v in (spec.get("env") or {}).items()})
-    state, code = stream(job, [0], argv, CDIR_ROOT, env, timeout=120)
+    # Where it runs: the job's cwd when it names one, as the real agent's
+    # (a lent phone's shot names /tmp, report #56), else the data store.
+    cwd = str(spec.get("cwd") or CDIR_ROOT)
+    state, code = stream(job, [0], argv, cwd, env, timeout=120)
+    # Its outputs uploaded as the real agent's deliver() does: by basename,
+    # as the raw body, after a command that succeeded (report #53's shot).
+    if state == "succeeded":
+        import glob
+        for pat in (spec.get("outputs") or [])[:4]:
+            for hit in sorted(glob.glob(os.path.join(cwd, str(pat)))):
+                if os.path.isfile(hit):
+                    with open(hit, "rb") as f:
+                        req = urllib.request.Request(
+                            f"{URL}/api/v1/agent/artifact?job={job['id']}&name={os.path.basename(hit)}",
+                            method="POST", data=f.read(),
+                            headers={"Authorization": f"Bearer {TOKEN}",
+                                     "Content-Type": "application/octet-stream", "X-Forwarded-For": "stub"})
+                    try:
+                        urllib.request.urlopen(req, timeout=60).read()
+                    except OSError:
+                        pass
     return state, code, []
 
 

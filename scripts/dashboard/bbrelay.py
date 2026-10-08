@@ -56,6 +56,8 @@ users = None
 projects = None
 prefs = None
 gitrelay = None
+# registry.py (R154): a shown name to the directory it is.
+registry = None
 WORKSPACE = None
 STATE = None
 
@@ -141,7 +143,19 @@ def admit(me, req):
                 return None, ({"error": f"{project} is read-only from a session on "
                                         f"{me['session']}: {why}"}, 403)
         else:
-            return None, ({"error": "this session's token is for another project"}, 403)
+            # Said by name (MediaReducer, 7 Oct): "this session's token is
+            # for another project" sent a session guessing at spellings, and
+            # read the same for a project that does not exist.
+            if not project or not (WORKSPACE / project).is_dir():
+                # A shown name (R154) is not a directory: say which one it is.
+                d = registry.resolve(project) if registry else ""
+                if d and d in (me.get("reads") or []):
+                    return None, ({"error": f"{project} is shown under that name; its directory, "
+                                            f"which bb -p takes, is {d}: bb -p {d}"}, 400)
+                return None, ({"error": f"there is no project called {project}"}, 400)
+            return None, ({"error": f"{me['session']} does not read {project}: its owner adds it "
+                                    f"under Reads in {me['session']}'s settings, and a session "
+                                    "started after that sees it"}, 403)
     # git's network half runs under the account's author like everything
     # else it does with a repository: none set, none run. Push, fetch and
     # pull write with git, and git wants an author; a policy read and an
@@ -154,7 +168,7 @@ def admit(me, req):
             and users.uid_of(me) and not users.git_ready(me, project):
         return None, ({"error": "no name and email for commits yet: set them on your "
                                 "Profile (the gear in the dashboard's header), or for "
-                                "this project alone in its settings dialog"}, 403)
+                                "this project alone on its notebook's Settings"}, 403)
     if not project or (WORKSPACE / project).name != project \
             or not (WORKSPACE / project).is_dir():
         return None, ({"error": "not a project"}, 400)

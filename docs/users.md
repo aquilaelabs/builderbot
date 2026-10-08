@@ -20,8 +20,29 @@ whoever opened the page. Three things follow.
 
 ## The model
 
-Three roles and one special account. Not a permission matrix: a matrix is a
-thing nobody maintains, and it answers questions nobody asked.
+Three built-in roles, one special account, and since R137 (5 Oct) roles of
+your own: named sets of grants, made on the Roles tab under the
+Administration card. The first version of this page said "not a permission
+matrix", and for a long time that held; what changed is that the three
+roles grew combinations nobody could read off them (a user who may push,
+an administrator who may not touch a node), and the operator asked for a
+person to be given a group of permissions instead.
+
+A **grant** is a capability on a scope. The capabilities are the actions
+the gate already asks about: `read` and `work` on a project (`work` is
+everything a person does there that is not listed on its own), `version`,
+`lock`, `rename`, `trash`, `git-auth`, `docker-write` and `command-pin` on
+a project, `node`, `toolchains-write`, `jobs` and `terminal` on a node,
+`create`, `runner` and `admin` for the controller. A scope on a project is
+every project, the projects the account is on, or named ones; on a node it
+is every node, the nodes of the account's projects, or named ones. A
+**role** is a named set of grants; an account carries its built-in role
+and any of your own, and their grants add up: a role never takes anything
+away, so the sum is readable. The built-in roles below are grants too, the
+ones that reproduce what each could do before roles existed, and they are
+not edited: Copy makes one of your own from a built-in. The page's buttons
+and tabs are drawn from the same answer the server refuses on
+(`state.can`), which is what keeps them consistent.
 
 | Role | What it is |
 |---|---|
@@ -67,6 +88,12 @@ directory is the owner's working tree: from the Git view nobody else
 commits, discards, reverts, pulls or switches branches in it, an admin only
 after being asked, and merging into main stays everybody's (git.py
 `not_yours`, projsessions.py; the operator, 24 Sep).
+
+Which other projects a project's sessions may read (its settings' Reads) is
+BuilderBot's owner's alone: it hands one project's sessions another's code
+and notebook, so no administrator or user grants it on their own say,
+whatever their roles. They see the list and save the rest of the dialog;
+a change to it is refused, and the row says why (the operator, 6 Oct).
 
 ## Storage
 

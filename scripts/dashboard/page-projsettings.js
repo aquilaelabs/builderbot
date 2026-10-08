@@ -62,8 +62,8 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", nodes: "", reads: "", sees: "", build: "", test: "", outputs: "",
-                 capture_days: "7", gate: "", color: ""};
+                 node: "", nodes: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
+                 capture_days: "7", dev_keep: "3", gate: "", color: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -79,6 +79,11 @@ const colorAttrs = name => {
 };
 const projectColor = name =>
   (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
+// The name a project is shown under (R154): its directory is `name` and the
+// key everywhere, and what a person reads is the registry's `label`. A name
+// not in the poll (a project since deleted) is shown as it is.
+const projLabel = name =>
+  (state?.projects || []).find(x => x.name === name)?.label || String(name ?? "");
 // The project a tab is about, for its color: a notebook's, or the project
 // whose Claude session a terminal tab holds. A plain shell has none.
 const tabProject = t => t.kind === "notebook" ? t.arg
@@ -93,8 +98,13 @@ function rnFillColor(cur){
 }
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
+// A dial's choices beyond those three, by the kind it gates: the wiki may
+// also be hidden, kept from a session altogether, reading included
+// (prefs.GATE_EXTRA; the operator, 2 Oct).
+const GATE_EXTRA = {wiki: [["hidden", "hidden"]]};
+const gateChoices = k => [...GATE_MODES, ...(GATE_EXTRA[k] || [])];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules", settings: "rnGateSettings",
-                  design: "rnGateDesign"};
+                  design: "rnGateDesign", wiki: "rnGateWiki"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
@@ -106,15 +116,23 @@ function rnFillPrefs(p){
                nodes: (p?.prefs?.nodes || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
                sees: (p?.prefs?.sees || []).join(", "),
+               reaches: JSON.stringify(p?.prefs?.reaches || []),
+               debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
+               dev_keep: String(p?.prefs?.dev_keep ?? 3),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
+               gpu: p?.prefs?.gpu || "on",
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
+               sign: p?.prefs?.sign || "ask",
+               release: p?.prefs?.release || "ask",
+               keys: p?.prefs?.keys || "ask",
+               version: p?.version_policy || "locked",
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
@@ -125,9 +143,14 @@ function rnFillPrefs(p){
     ? "Your commits here use these instead of your Profile."
     : "Empty uses your Profile. Set these to commit here under a different name.";
   $("rnSees").value = rnPrefWas.sees;
+  // The last project's rows go before this one's draft is drawn, or the
+  // first draw would read them back into it.
+  $("rnReachRows").innerHTML = "";
+  rnReachDraft = JSON.parse(rnPrefWas.reaches || "[]");
   rnFillNode();
   rnFillPrefsRest(p);
   rnFillReads();
+  rnFillDebug();
   rnLoadModelNow(rnFor);
 }
 
@@ -143,26 +166,110 @@ function rnFillPrefs(p){
 // container restart, then the first press of Settings.
 function rnFillNode(){
     const sel = $("rnNode"), wrap = $("rnNodeField");
-    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
+    // A node un-enrolled is out of every picker, by the node list's word or,
+    // where that list is from before the removal, by the project rows' (the
+    // server marks a row whose node was removed).
+    const removed = new Set((state?.projects || []).filter(p => p.node_removed).map(p => p.prefs?.node).filter(Boolean));
+    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && !removed.has(n.id));
     if (nodesList === null){
       const opened = rnFor;
-      loadNodes().then(() => { if (opened !== null && rnFor === opened) rnFillNode(); });
+      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); } });
     }
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
     wrap.hidden = rnMode === "git" || !pick.length;
+    // Shown to everybody on the project and changed by grant (R137 step 4):
+    // a node is shared, so the picker is read-only without `node`.
+    sel.disabled = state?.can?.node === false;
     // The places a session is shown are places on a node, so the field is
     // there when a node is.
-    $("rnSeesField").hidden = wrap.hidden;
+    $("rnSeesField").hidden = $("rnReachField").hidden = wrap.hidden;
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
+    // The node this project was on, when it has since been un-enrolled: kept,
+    // selected and marked "(removed)" in italics, so the person sees where it
+    // used to run (the operator, 5 Oct). Offered on this project's picker
+    // only, never on another's.
+    const row = (state?.projects || []).find(p => p.name === rnFor);
+    const gone = row?.node_removed && rnPrefWas.node && !pick.some(n => n.id === rnPrefWas.node)
+      ? `<option value="${esc(rnPrefWas.node)}" class="removed" selected>${esc(row.node_name || rnPrefWas.node)} (removed)</option>` : "";
     sel.innerHTML = `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`
+      + gone
       + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
           esc(n.name)} (${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
           tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""})</option>`).join("");
-    sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
+    sel.value = gone ? rnPrefWas.node : pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
+    // The closed picker is italic while the removed node is the one shown.
+    sel.classList.toggle("removed", !!gone && sel.value === rnPrefWas.node);
+    // ...and the field shows for it even when no other node is enrolled.
+    if (gone) wrap.hidden = $("rnSeesField").hidden = $("rnReachField").hidden = rnMode === "git";
     rnFillNodesMore();
+}
+
+// Also reaches (the operator, 7 Oct): addresses a session here may still
+// reach where its node filters, each on the project's nodes ticked beside
+// it, every one when the project is on one node. A draft until Save; all
+// ticked is stored as none named, which also covers a node added later.
+let rnReachDraft = [];
+
+function rnReachNodes(){
+  const primary = $("rnNode").value;
+  const more = [...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value);
+  const ids = primary ? [primary, ...more.filter(x => x !== primary)] : [];
+  return ids.map(id => (nodesList || []).find(n => n.id === id) || {id, name: id});
+}
+
+// What is typed and ticked, back into the draft before a redraw or a save.
+function rnReachSync(){
+  const ns = rnReachNodes();
+  $("rnReachRows").querySelectorAll(".rnreach").forEach(row => {
+    const e = rnReachDraft[+row.dataset.i];
+    if (!e) return;
+    e.addr = row.querySelector("[data-reach]").value.trim();
+    const ticks = [...row.querySelectorAll("[data-reachnode]")];
+    if (ticks.length){
+      const on = ticks.filter(t => t.checked).map(t => t.value);
+      e.nodes = on.length === ns.length ? [] : on;
+    }
+  });
+}
+
+function rnDrawReach(focus){
+  if (rnMode === "git") return;
+  const box = $("rnReachRows");
+  if (box.childElementCount) rnReachSync();
+  const ns = rnReachNodes(), ro = !state?.admin;
+  box.innerHTML = rnReachDraft.map((e, i) => `<div class="rnreach" data-i="${i}">
+      <input data-reach value="${esc(e.addr)}" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or 192.168.1.20:8080"
+        aria-label="an address a session here may reach"${ro ? " disabled" : ""}>
+      ${ns.length > 1 ? `<span class="rnreachnodes">${ns.map(n => `<label class="ndcap"><input type="checkbox" data-reachnode value="${esc(n.id)}"${
+        !e.nodes.length || e.nodes.includes(n.id) ? " checked" : ""}${ro ? " disabled" : ""}> ${esc(n.name)}</label>`).join("")}</span>` : ""}
+      ${ro ? "" : `<button type="button" class="eye rm" data-reachrm aria-label="remove this address" title="remove this address">${BIN}</button>`}
+    </div>`).join("");
+  // Empty is no box at all, so the field keeps its rhythm under the label.
+  box.hidden = !rnReachDraft.length;
+  $("rnReachAdd").hidden = ro;
+  box.querySelectorAll("[data-reachrm]").forEach(b => b.onclick = () => {
+    rnReachSync();
+    rnReachDraft.splice(+b.closest(".rnreach").dataset.i, 1);
+    // Read already: the rows on screen no longer line up with the draft.
+    $("rnReachRows").innerHTML = "";
+    rnDrawReach();
+  });
+  if (focus) box.querySelector(".rnreach:last-child [data-reach]")?.focus();
+  // Whether it does anything yet: only where a node filters (its row's switch).
+  const off = ns.filter(n => !n.config?.session_net).map(n => n.name);
+  $("rnReachHint").textContent = !ns.length ? ""
+    : off.length === ns.length ? `${off.join(", ")} lets sessions reach the whole network now, so this applies once it keeps each session to its own project's.`
+    : off.length ? `Applies on the nodes that keep sessions to their own network; ${off.join(", ")} does not yet.`
+    : "An address for the whole machine, or address:port for one service.";
+}
+
+// What Save sends: the rows with an address, in the stored shape.
+function rnReachNow(){
+  rnReachSync();
+  return rnReachDraft.filter(e => e.addr).map(e => ({addr: e.addr, nodes: [...e.nodes].sort()}));
 }
 
 // A listbox row: a checkbox, the name, and a quiet note at the right.
@@ -183,12 +290,35 @@ function rnFillNodesMore(){
   box.hidden = hint.hidden = label.hidden = rnMode === "git" || !primary || !others.length;
   box.innerHTML = others.map(n => lrow(n.id, n.name, `${n.kind}, ${n.state}${n.live === false ? ", quiet" : ""}`,
                                        first ? was.has(n.id) : checked.has(n.id))).join("");
+  // Read-only without the `node` grant, like the primary above (R137 step 4).
+  if (state?.can?.node === false) box.querySelectorAll("input").forEach(i => { i.disabled = true; });
   box.dataset.drawn = "1";
+  // Also reaches ticks among these, so it is drawn after them.
+  rnDrawReach();
 }
 
 // The projects a session here may read: every other project this account
 // sees, a listbox row each, ticked from the settings. Read-only there by
 // construction (users.with_reads), so the hint under it can say so plainly.
+// What a session here may read for debugging (the operator, 6 Oct): the
+// controller's diagnostics, then each node's machine logs, a listbox row
+// each. The debug grant's, and not drawn at all for an account without it.
+const rnDebugKey = (diag, from) => (diag ? "diag;" : "") + [...(from || [])].sort().join(",");
+function rnFillDebug(){
+  const box = $("rnDebug"), wrap = $("rnDebugField");
+  if (!box) return;
+  const p = (state?.projects || []).find(x => x.name === rnFor);
+  const was = new Set(p?.prefs?.log_from || []);
+  const rows = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  wrap.hidden = rnMode === "git" || state?.can?.debug === false;
+  box.innerHTML = lrow("@diag", "The controller's diagnostics", "bb diag", !!p?.prefs?.diag)
+    + rows.map(n => lrow(n.id, n.name, "machine logs", was.has(n.id))).join("");
+}
+function rnDebugNow(){
+  const on = [...$("rnDebug").querySelectorAll("input:checked")].map(i => i.value);
+  return {diag: on.includes("@diag"), log_from: on.filter(v => v !== "@diag")};
+}
+
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
@@ -196,7 +326,12 @@ function rnFillReads(){
   const others = (state?.projects || []).filter(p => p.name !== rnFor)
     .sort((a, b) => a.name.localeCompare(b.name));
   wrap.hidden = rnMode === "git" || !others.length;
-  box.innerHTML = others.map(p => lrow(p.name, p.name, p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
+  box.innerHTML = others.map(p => lrow(p.name, projLabel(p.name), p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
+  // BuilderBot's owner's alone (the operator, 6 Oct): shown to everybody,
+  // changed by the owner, and why not said on the row (not a tooltip).
+  const mine = state?.can?.reads !== false;
+  box.querySelectorAll("input").forEach(i => { i.disabled = !mine; });
+  $("rnReadsWhy").hidden = mine;
 }
 
 function rnFillPrefsRest(p){
@@ -209,14 +344,16 @@ function rnFillPrefsRest(p){
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
+  $("rnGpu").value = p?.prefs?.gpu || "on";
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
+  $("rnDevKeep").value = String(p?.prefs?.dev_keep ?? 3);
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
     if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.innerHTML = gateChoices(k).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
       el.dataset.built = "1";
     }
     el.value = p?.prefs?.gate?.[k] || "auto";
@@ -232,14 +369,46 @@ function rnFillPrefsRest(p){
     el.value = p?.prefs?.report || "auto";
   }
   {
+    const el = $("rnGateSign");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.prefs?.sign || "ask";
+  }
+  {
+    const el = $("rnGateRelease");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.prefs?.release || "ask";
+  }
+  {
+    const el = $("rnGateKeys");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.prefs?.keys || "ask";
+  }
+  {
+    const el = $("rnGateVersion");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = Object.entries(POLICY_LABEL).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.version_policy || "locked";
+  }
+  {
     const el = $("rnGateDocker");
     if (el.dataset.built !== "1"){
       el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
       el.dataset.built = "1";
     }
     el.value = devClaudeMode(rnFor);
-    // An administrator's to change (docker-write), so not offered otherwise.
-    el.closest("label").hidden = !state?.admin;
+    // docker-write's to change (the grant, R137 step 4), so not offered otherwise.
+    el.closest("label").hidden = state?.can?.["docker-write"] === false;
   }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
                                   ["rnEffort", EFFORTS, rnPrefWas.effort]]){
@@ -289,7 +458,7 @@ function rnDrawPrefs(){
 async function unlinkProject(name){
   const p = (state?.projects || []).find(x => x.name === name);
   const where = p?.forge_host || p?.forge_name || "its remote";
-  if (!confirm(`Unlink ${name} from ${where}?\n\n`
+  if (!confirm(`Unlink ${projLabel(name)} from ${where}?\n\n`
       + `The remote and its stored token go; every commit and branch stays. `
       + `You can link it elsewhere afterwards.`)) return;
   const stop = m => { $("rnErr").textContent = m; $("rnErrWrap").hidden = false;
@@ -301,7 +470,7 @@ async function unlinkProject(name){
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) return stop(j.error || `unlink failed (HTTP ${r.status})`);
     closeRename();
-    notify(`${name} is unlinked: ${(j.removed || []).join(", ")}`
+    notify(`${projLabel(name)} is unlinked: ${(j.removed || []).join(", ")}`
            + (j.others?.length ? `. Its other remotes are untouched: ${j.others.join(", ")}` : ""));
   }catch(e){ return stop("unlink failed: " + e); }
   refresh();
@@ -327,7 +496,35 @@ function rnAskReset(){
 }
 let rnMode = "all";                      // "all" from the gear, "git" from the chain
 
+// The form shown in a notebook's Settings view instead of the dialog (R119
+// step 3): one form, moved to where it is wanted. `rnHost` is the view's
+// .modal.inline while the form is there, else null and the form is the
+// dialog's.
+let rnHost = null;
+function settingsOut(){
+  if (!rnHost) return;
+  const box = rnHost.querySelector(":scope > .box");
+  if (box) $("rnmodal").appendChild(box);
+  rnHost = null;
+  $("rnCancel").textContent = "Cancel";
+}
+function settingsInto(name, host){
+  if (!host) return;
+  renameProject(name);
+  $("rnmodal").hidden = true;
+  const box = $("rnmodal").querySelector(":scope > .box");
+  if (box) host.appendChild(box);
+  // A view, never a dialog to shut: whatever hid it is undone here.
+  host.removeAttribute("hidden");
+  rnHost = host;
+  // In place there is nothing to cancel out of: Revert puts the fields back.
+  $("rnCancel").textContent = "Revert";
+}
+// A project's settings: its notebook's Settings view.
+function openProjectSettings(name){ openNotebook(name, "settings"); }
+
 function renameProject(name, mode = "all"){
+  settingsOut();
   rnFor = name;
   rnMode = mode;
   const p = (state?.projects || []).find(x => x.name === name);
@@ -338,20 +535,19 @@ function renameProject(name, mode = "all"){
   // Named rather than assumed: a project on somebody's own Gitea should not
   // read "GitHub settings", and the host is the one fact this door is about.
   const where = p?.forge_name || "its remote";
-  $("rnTitle").textContent = git ? `${where} settings for ${name}` : name;
+  $("rnTitle").textContent = git ? `${where} settings for ${projLabel(name)}` : projLabel(name);
   for (const id of ["rnNameField", "rnColorField", "rnMineField",
                     "rnGateField", "rnBuildField", "rnReadsField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
   // own further down, and each of those consults the mode too.
-  $("rnName").value = name;
+  $("rnName").value = projLabel(name);
   $("rnToken").value = "";
   $("rnErrWrap").hidden = true;
   $("rnPreview").hidden = true;
   $("rnName").classList.remove("bad");
-  // The warning about what a rename moves is shown once the name is
-  // edited (rnShow), not to everyone opening the dialog for a setting.
-  $("rnHint").textContent = "";
+  // Where the project is on disk and its id (R154), said from the start.
+  $("rnHint").textContent = rnFolderLine(name);
   // Offered where a token would mean something: a project that already has
   // one, and a project that may push but pushes with a deploy key; that
   // second case is the way off deploy keys, and without it there was no way
@@ -381,7 +577,7 @@ function renameProject(name, mode = "all"){
   $("rnGitNone").hidden = !(git && $("rnTokenField").hidden);
   if (!$("rnGitNone").hidden)
     $("rnGitNone").firstElementChild.textContent =
-      `${name} has a remote it can only read, so there is no credential to set here.`;
+      `${projLabel(name)} has a remote it can only read, so there is no credential to set here.`;
   // Unlink is the chain's, never the gear's: it is about the remote, and it
   // is the way a project moves from one host to another, since linking
   // refuses a repo that already has one.
@@ -390,6 +586,9 @@ function renameProject(name, mode = "all"){
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
   rnLoadAuth(name);
+  rnLoadSigning(name);
+  rnLoadPeople(name);
+  rnLoadFtp(name);
   rnFillPrefs(p);
   // The sessions at the foot: the gear's door, and an administrator's.
   $("rnSessField").hidden = true;
@@ -401,12 +600,436 @@ function renameProject(name, mode = "all"){
   // the only honest way out of this door, but Unlink still is one.
   $("rnGo").hidden = !$("rnGitNone").hidden;
   $("rnmodal").hidden = false;
+  rnFolds();
+}
+
+// Sections, every one open unless this person shut it here (the operator,
+// 8 Oct: too much was hidden in folds), with the jump bar over them.
+function rnFolds(){
+  const all = [...document.querySelectorAll("details.rngroup")];
+  // Moved by a door, not by a hand: the press mark comes off first, so the
+  // toggle this fires does not record a fold shut as this person shutting it.
+  for (const d of all){
+    const want = sectOpen[d.dataset.sect] !== false;
+    if (d.open === want) continue;
+    delete d.dataset.pressed;
+    d.open = want;
+  }
+  const box = document.querySelector("#rnmodal [data-sects]");
+  if (box) sectJump(box);
 }
 
 // What the remote uses now, and what the operator has picked instead. Both
 // null until this open's /api/project-auth answers: the dialog draws without
 // them rather than waiting, so the token field is typeable before the request
 // lands and the switch appears under it when it does.
+// ---- people (membership.py) ----
+// The project's owner, whether it is invite only, who is on it and who is
+// invited. The owner and the restriction are a draft until Save; Invite and
+// Withdraw act on the press, as the actions they are.
+let rnPeople = null, rnPeopleDraft = {};
+
+function rnLoadPeople(name){
+  rnPeople = null; rnPeopleDraft = {};
+  $("rnPeopleField").hidden = true;
+  if (rnMode === "git") return;
+  postJSON("/api/members", {action: "view", project: name})
+    .then(r => r.json())
+    .then(j => { if (rnFor !== name || j.error) return; rnPeople = j; rnDrawPeople(); })
+    .catch(() => {});
+}
+
+function rnDrawPeople(){
+  // The chain's door is the remote's alone, and a load the gear's door
+  // started can land after it opens (B539).
+  if (!rnPeople || rnMode === "git") return;
+  const v = rnPeople, d = rnPeopleDraft;
+  const owner = d.owner ?? v.owner, only = d.invite_only ?? v.invite_only;
+  const invitable = v.accounts.filter(n => !v.members.includes(n) && !v.invites.some(i => i.name === n));
+  $("rnPeopleField").hidden = false;
+  $("rnPeople").innerHTML = `
+    <div class="setrow">${v.may_manage
+      ? `<label class="ndcap" for="rnOwner">Owner</label>
+         <select id="rnOwner">${v.accounts.map(n => `<option value="${esc(n)}"${n === owner ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>`
+      : `<span>Owner: ${esc(v.owner || "BuilderBot's owner")}</span>`}</div>
+    ${v.may_manage && !v.bb_owner && d.owner && d.owner !== v.owner
+      ? `<div class="sub">Saving offers it to ${esc(d.owner)}, who becomes its owner on accepting from their bell.</div>` : ""}
+    ${v.offer ? `<div class="rninvite">Ownership offered to ${esc(v.offer.name)} <span class="dim">${esc(ago(v.offer.at))}, waiting for them to accept</span>
+      ${v.may_manage ? `<button type="button" class="link" data-withdraw="${v.offer.id}">Withdraw</button>` : ""}</div>` : ""}
+    <label class="ndcap"><input type="checkbox" id="rnInviteOnly"${only ? " checked" : ""}${v.may_manage ? "" : " disabled"}>
+      Invite only</label>
+    <div class="sub dim">${only
+      ? "Administrators cannot add themselves or anybody else: people join by accepting an invitation."
+      : "Any administrator can add people, themselves included."}${v.may_manage ? "" : " Its owner decides this."}</div>
+    <div class="sub">On it: ${v.members.length ? v.members.map(esc).join(", ") : "nobody yet"}${
+      v.may_manage ? ` <button type="button" class="link" id="rnRolesGo">Roles on this project</button>` : ""}</div>
+    ${v.invites.map(i => `<div class="rninvite">${esc(i.name)} <span class="dim">invited${i.role ? ` as ${esc(i.role)}` : ""} by ${esc(i.by || "somebody")} ${esc(ago(i.at))}</span>
+      <button type="button" class="link" data-withdraw="${i.id}">Withdraw</button></div>`).join("")}
+    ${v.may_invite && invitable.length ? (v.roles || []).length ? `<div class="rninvitebar">
+      <select id="rnInviteWho" aria-label="account to invite">${invitable.map(n => `<option>${esc(n)}</option>`).join("")}</select>
+      <select id="rnInviteRole" aria-label="the role they are invited as">${v.roles.map(n => `<option>${esc(n)}</option>`).join("")}</select>
+      <button type="button" id="rnInviteGo">Invite</button></div>`
+      : `<div class="sub bad">No role on a project to invite anybody as yet: an administrator adds one on the Roles tab.</div>` : ""}
+    <div class="sub dim">Who holds which role here is the same thing the Roles tab sets: a role on this project is what puts somebody on it.</div>`;
+  const o = $("rnOwner");
+  if (o) o.onchange = () => { d.owner = o.value; rnDrawPeople(); };
+  // What each person may do here is the Roles tab's (R152): a project's
+  // owner gives its roles there, on the projects they own.
+  const rg = $("rnRolesGo");
+  if (rg) rg.onclick = () => openRolesTab();
+  const io = $("rnInviteOnly");
+  if (io && v.may_manage) io.onchange = () => { d.invite_only = io.checked; rnDrawPeople(); };
+  const act = async body => {
+    const j = await (await postJSON("/api/members", body)).json();
+    if (j.error) return notify(j.error, true);
+    rnPeople = j; rnDrawPeople();
+  };
+  const go = $("rnInviteGo");
+  if (go) go.onclick = () => act({action: "invite", project: rnFor, name: $("rnInviteWho").value,
+                                   role: $("rnInviteRole").value})
+    .then(() => notify(`invited to ${projLabel(rnFor)}: they say yes or no from their bell`));
+  $("rnPeople").querySelectorAll("[data-withdraw]").forEach(b =>
+    b.onclick = () => act({action: "withdraw", id: Number(b.dataset.withdraw)}));
+}
+
+// The staged owner and restriction, sent by Save; "" when they landed.
+async function rnSavePeople(name){
+  const d = rnPeopleDraft, v = rnPeople;
+  if (!v) return "";
+  const owner = d.owner && d.owner !== v.owner ? d.owner : "";
+  const only = d.invite_only !== undefined && d.invite_only !== v.invite_only ? d.invite_only : undefined;
+  if (!owner && only === undefined) return "";
+  const j = await (await postJSON("/api/members", {action: "set", project: name, owner,
+                                                   ...(only !== undefined ? {invite_only: only} : {})})).json();
+  if (j.offered) notify(`${projLabel(name)}: offered to ${j.offered}, who becomes its owner on accepting from their bell`);
+  return j.error || "";
+}
+
+// ---- file access over FTP (R151) ----
+// The project's tree over FTPS on its node, for the accounts given read or
+// read and write (ftp.py). Who may set it is the ftp grant; anybody else is
+// shown whether it is on and where. On, the port and each account's access
+// are a draft until Save.
+const RN_FTP_ACCESS = [["", "No access"], ["r", "Read"], ["rw", "Read and write"]];
+let rnFtp = null, rnFtpDraft = {};
+
+function rnLoadFtp(name){
+  rnFtp = null; rnFtpDraft = {};
+  $("rnFtpField").hidden = true;
+  if (rnMode === "git") return;
+  postJSON("/api/project-ftp", {project: name})
+    .then(r => r.json())
+    .then(j => { if (rnFor !== name || j.error) return; rnFtp = j; rnDrawFtp(); })
+    .catch(() => {});
+}
+
+function rnFtpWhere(v){
+  const st = v.status || {};
+  return st.addr && st.port ? `${st.addr}:${st.port}` : "";
+}
+
+function rnDrawFtp(){
+  if (!rnFtp || rnMode === "git") return;
+  const v = rnFtp, d = rnFtpDraft;
+  const on = d.on ?? v.on, st = v.status || {}, where = rnFtpWhere(v);
+  const box = $("rnFtp");
+  if (!v.may_set){
+    $("rnFtpField").hidden = !v.on;
+    box.innerHTML = `<div>On${where ? `, at ${esc(where)}` : ""}.</div>
+      <div class="hint">Sign in with your BuilderBot name and password over FTPS, if you were given access.
+        Who may is set by BuilderBot's owner, or a role that grants ftp.</div>`;
+    return;
+  }
+  $("rnFtpField").hidden = false;
+  const port = d.port ?? v.port;
+  // Said as soon as it is ticked, before anything is tried (the operator, 7 Oct).
+  const status = on && !v.on && v.missing ? `<div class="hint bad">${esc(v.missing)}</div>`
+    : !v.on ? ""
+    : st.up ? `<div class="hint">Running at ${esc(where)}. Use FTPS (FTP over explicit TLS, not SFTP) and
+        your BuilderBot name and password. The certificate is the node's own, so the client asks to trust it once.</div>`
+    : st.why ? `<div class="hint bad">Not running: ${esc(st.why)}</div>`
+    : `<div class="hint">Starting on its node.</div>`;
+  box.innerHTML = `
+    <label class="ndcap"><input type="checkbox" id="rnFtpOn"${on ? " checked" : ""}> Serve this project's files over FTPS</label>
+    ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Where it runs.</div>`}
+    <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-tip="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
+      <input id="rnFtpPort" type="number" min="1024" max="65526" step="1" inputmode="numeric" value="${esc(String(port))}" aria-label="the port its FTP server listens on">
+      <span class="dim">and the ${v.span - 1} after it</span></div>
+    ${status}
+    <div class="rnftppeople"${on ? "" : " hidden"}>${v.people.map(p => {
+      const a = d.access?.[p.uid] ?? p.access;
+      return `<div class="rnftprow"><span class="grow">${esc(p.name)}</span>
+        <select data-ftpuid="${esc(p.uid)}" aria-label="${esc(p.name)}'s file access">${RN_FTP_ACCESS.map(([k, w]) =>
+          `<option value="${k}"${k === a ? " selected" : ""}>${w}</option>`).join("")}</select></div>`;
+    }).join("")}</div>`;
+  $("rnFtpOn").onchange = e => { d.on = e.target.checked; rnDrawFtp(); };
+  const pi = $("rnFtpPort");
+  if (pi) pi.oninput = () => { d.port = pi.value.trim(); };
+  box.querySelectorAll("[data-ftpuid]").forEach(sel => sel.onchange = () => {
+    d.access = {...(d.access || {}), [sel.dataset.ftpuid]: sel.value};
+  });
+}
+
+// What the draft changes, or null when nothing.
+function rnFtpChange(){
+  if (!rnFtp?.may_set) return null;
+  const d = rnFtpDraft, v = rnFtp, out = {};
+  if (d.on !== undefined && d.on !== v.on) out.on = d.on;
+  if (d.port !== undefined && String(d.port) !== String(v.port)) out.port = d.port;
+  // A port shown for a project turned on now is its offer, and is sent.
+  if (out.on && out.port === undefined) out.port = v.port;
+  const acc = Object.fromEntries(Object.entries(d.access || {})
+    .filter(([uid, a]) => a !== (v.people.find(p => p.uid === uid)?.access ?? "")));
+  if (Object.keys(acc).length) out.access = acc;
+  return Object.keys(out).length ? out : null;
+}
+
+async function rnSaveFtp(name, change){
+  const j = await (await postJSON("/api/project-ftp", {action: "set", project: name, ...change})).json();
+  return j.error || "";
+}
+
+// ---- signing keys (R106) ----
+// A project's Android keys, an administrator's: named keys (default first),
+// each with a Play upload slot and a sideload signing slot, and which of the
+// project's apps (by package) signs with which key. The controller keeps
+// them and bb sign uses them on the node; the dialog only ever sees aliases
+// and fingerprints. An upload, a removal and a mapping are a draft until
+// Save; Generate and Download backup are actions and act on the press.
+const RN_SIGN = [
+  ["play", "Play upload key",
+   "For Google Play with Play App Signing, which can reset a lost upload key."],
+  ["sideload", "Sideload signing key",
+   "Signs a build handed out directly. Lose it and no update reaches an existing install: keep a copy offline."]];
+let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [],
+    rnSignBackup = false, rnSignLocked = false, rnSignMayLock = false, rnSignLockOpen = false, rnSignPw = {};
+
+function rnLoadSigning(name){
+  rnSignKeys = null; rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = [];
+  $("rnSignField").hidden = true;
+  if (rnMode === "git" || !state?.admin) return;
+  postJSON("/api/signing", {action: "list", project: name})
+    .then(r => r.json())
+    .then(j => {
+      if (rnFor !== name || j.error) return;
+      rnSignKeys = j.keys || {}; rnSignMap = j.map || {}; rnSignTool = !!j.keytool;
+      rnSignBackup = !!j.may_backup;
+      rnSignLocked = !!j.backup_locked; rnSignMayLock = !!j.may_lock;
+      rnDrawSigning();
+    })
+    .catch(() => {});
+}
+
+const rnFp = sha => sha ? `${sha.slice(0, 8)}…${sha.slice(-8)}` : "";
+
+function rnDrawSigning(){
+  if (!rnSignKeys || rnMode === "git") return;     // the remote's door alone (B539)
+  $("rnSignField").hidden = false;
+  const name = rnFor;
+  const names = [...new Set([...Object.keys(rnSignKeys), ...rnSignNew])];
+  if (!names.includes("default")) names.unshift("default");
+  const slot = (key, route, word, about) => {
+    const k = (rnSignKeys[key] || {})[route], d = rnSignDraft[`${key}:${route}`] || {};
+    const now = d.remove ? `${word}: removed when you Save`
+      : d.file ? `${word}: ${esc(d.file.name)}, kept when you Save`
+      : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(rnFp(k.sha256))}${k.generated ? ", made here" : ""}</span>`
+      : `${word}: none`;
+    const never = k && !d.remove && !d.file && route === "sideload" && !k.backed_up;
+    // Rotation (R106 step 7): what this key was rotated to or from, and the
+    // keys it could hand an app to.
+    const retired = route === "sideload" && k?.retired_for, rotated = route === "sideload" && k?.rotated_from;
+    const targets = route === "sideload" && k && !retired ? Object.entries(rnSignKeys)
+      .filter(([n, s]) => n !== key && s.sideload && !s.sideload.retired_for && !s.sideload.rotated_from).map(([n]) => n) : [];
+    return `<div class="rnsign" data-key="${esc(key)}" data-route="${route}">
+      <div>${now}</div>
+      <div class="sub dim">${esc(about)}${k && !d.remove && !d.file
+        ? ` ${k.backed_up ? `Backed up ${esc(ago(k.backed_up))}.` : "Not backed up yet."}` : ""}</div>
+      ${never ? `<div class="sub bad">Never backed up: ${rnSignBackup ? "download a copy and keep it offline"
+        : "an administrator on this project downloads a copy to keep offline"}, since losing it is final.</div>` : ""}
+      ${retired ? `<div class="sub">Retired: rotated to ${esc(k.retired_for)}. Kept, since the proof and every device before Android 9 still need it.</div>` : ""}
+      ${rotated ? `<div class="sub">Rotated from ${esc(k.rotated_from)}: Android 9 and newer see this key, older devices still see ${esc(k.rotated_from)}.</div>` : ""}
+      ${rnSignPw[`${key}:${route}`] ? `<div class="rnsignbar">
+        <input type="password" data-signbackuppass autocomplete="current-password" placeholder="the backup password" aria-label="the backup password">
+        <button type="button" class="link" data-signbackupgo>Download</button></div>` : ""}
+      ${d.open ? `<div class="rnsignform">
+        <input type="file" data-signfile accept=".jks,.p12,.pfx,.keystore" aria-label="${esc(word)} keystore">
+        <input type="password" data-signpass autocomplete="new-password" placeholder="keystore password" aria-label="keystore password">
+        <input data-signalias autocomplete="off" spellcheck="false" placeholder="alias, when it holds several" aria-label="key alias">
+        <input type="password" data-signkeypass autocomplete="new-password" placeholder="key password, if not the same" aria-label="key password">
+      </div>` : ""}
+      <div class="rnsignbar">
+        ${rnSignLocked || d.open ? `<button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Upload one"}</button>` : ""}
+        ${!k && !d.open && rnSignTool && rnSignLocked ? `<button type="button" class="link" data-signgen>Generate</button>` : ""}
+        ${k && rnSignBackup ? (rnSignLocked
+          ? `<button type="button" class="link" data-signbackuppw>Download backup</button>`
+          : `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>`) : ""}
+        ${k ? `
+        ${retired ? "" : `<button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>`}` : ""}
+        ${targets.length ? `<select data-rotateto aria-label="the key to rotate ${esc(key)} to">${
+          targets.map(n => `<option>${esc(n)}</option>`).join("")}</select>
+        <button type="button" class="link" data-rotate>Rotate to it</button>` : ""}
+      </div>
+    </div>`;
+  };
+  const maps = {...rnSignMap, ...rnSignMapDraft};
+  // The backup password (the operator, 1 Oct): the project's owner's to set,
+  // and every download's to give, BuilderBot's owner's included.
+  const lockRow = `<div class="rnsign rnsignlock">
+      <div>Backup password: ${rnSignLocked ? "set" : "none"}</div>
+      <div class="sub dim">${rnSignLocked ? "Every key backup asks for it, whoever downloads it."
+        : "Every key backup will ask for it, whoever downloads it."}${rnSignMayLock ? "" : " The project's owner sets it."}</div>
+      ${rnSignLocked ? "" : `<div class="sub bad">No key can be added or made until it has one${rnSignMayLock ? ": set it first" : ""}.</div>`}
+      ${rnSignMayLock && rnSignLockOpen ? `<div class="rnsignform">
+        ${rnSignLocked ? `<input type="password" id="rnLockCur" autocomplete="current-password" placeholder="the backup password now" aria-label="the backup password now">` : ""}
+        <input type="password" id="rnLockNew" autocomplete="new-password" placeholder="${rnSignLocked ? "a new one, or empty to remove it" : "at least ten characters"}" aria-label="the new backup password">
+        <input type="password" id="rnLockAgain" autocomplete="new-password" placeholder="the new one again" aria-label="the new backup password again">
+        <div class="rnsignbar"><button type="button" class="link" id="rnLockGo">${rnSignLocked ? "Change it" : "Set it"}</button></div>
+      </div>` : ""}
+      ${rnSignMayLock ? `<div class="rnsignbar"><button type="button" class="link" id="rnLockOpen">${
+        rnSignLockOpen ? "Never mind" : rnSignLocked ? "Change or remove" : "Set a backup password"}</button></div>` : ""}
+    </div>`;
+  $("rnSignRows").innerHTML = lockRow + names.map(key => `<div class="rnsignkey">
+      <div class="rnsignname">${key === "default" ? "Default key" : `Key: ${esc(key)}`}</div>
+      ${RN_SIGN.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`).join("")
+    + `<div class="rnsignbar"><input id="rnSignNewName" autocomplete="off" spellcheck="false" placeholder="name, e.g. watch"
+         aria-label="a new key's name"><button type="button" class="link" id="rnSignNewGo">New key</button></div>
+    <div class="rnsignname">Apps</div>
+    <div class="sub dim">Which app signs with which key, by its package; one not listed signs with the default key.</div>
+    ${Object.entries(maps).filter(([, k]) => k !== null).map(([pkg, k]) => `<div class="rninvite" data-pkg="${esc(pkg)}">
+      <code>${esc(pkg)}</code> <span class="dim">signs with</span> <b>${esc(k)}</b>
+      <button type="button" class="link" data-unmap>Remove</button></div>`).join("")}
+    <div class="rninvitebar"><input id="rnMapPkg" autocomplete="off" spellcheck="false" placeholder="com.example.app"
+        aria-label="an app's package"><select id="rnMapKey" aria-label="the key it signs with">${
+        names.map(k => `<option>${esc(k)}</option>`).join("")}</select>
+      <button type="button" class="link" id="rnMapGo">Map it</button></div>`;
+  $("rnSignHint").textContent = rnSignTool ? ""
+    : "No keytool here to check or make a key with: install the jdk toolchain, then add one.";
+  for (const row of $("rnSignRows").querySelectorAll(".rnsign[data-key]")){
+    const key = row.dataset.key, route = row.dataset.route;
+    const d = rnSignDraft[`${key}:${route}`] = rnSignDraft[`${key}:${route}`] || {key, route};
+    const op = row.querySelector("[data-signopen]");
+    if (op) op.onclick = () => {
+      d.open = !d.open;
+      if (!d.open){ delete d.file; d.pass = d.alias = d.keypass = ""; }
+      else d.remove = false;
+      rnDrawSigning();
+    };
+    const gen = row.querySelector("[data-signgen]");
+    if (gen) gen.onclick = async () => {
+      if (route === "sideload" && !confirm(`Make a new sideload signing key named ${key}? `
+            + "Once a build signed with it is out, it is that app's identity for good: download a backup straight after."))
+        return;
+      gen.disabled = true;
+      const j = await (await postJSON("/api/signing", {action: "generate", project: name, key, route})).json();
+      if (j.error){ gen.disabled = false; return notify(j.error, true); }
+      notify(`${key}: a ${route === "play" ? "Play upload" : "sideload signing"} key was made; download a backup`);
+      rnSignNew = rnSignNew.filter(n => n !== key);
+      rnLoadSigning(name);
+    };
+    const rot = row.querySelector("[data-rotate]");
+    if (rot) rot.onclick = async () => {
+      const to = row.querySelector("[data-rotateto]").value;
+      if (!confirm(`Rotate ${key}'s sideload key to ${to}? Builds then go out signed with both and a proof: `
+            + `Android 9 and newer move to ${to}, older devices keep checking ${key}, and ${key} is kept for good.`)) return;
+      rot.disabled = true;
+      const j = await (await postJSON("/api/signing", {action: "rotate", project: name, from: key, to})).json();
+      if (j.error){ rot.disabled = false; return notify(j.error, true); }
+      notify(`${key} is rotated to ${to}: the apps it signed now sign with ${to} and the proof`);
+      rnLoadSigning(name);
+    };
+    const rm = row.querySelector("[data-signremove]");
+    if (rm) rm.onclick = () => { d.remove = !d.remove; if (d.remove){ d.open = false; delete d.file; } rnDrawSigning(); };
+    const bp = row.querySelector("[data-signbackuppw]");
+    if (bp) bp.onclick = () => { rnSignPw[`${key}:${route}`] = !rnSignPw[`${key}:${route}`]; rnDrawSigning(); };
+    const bg = row.querySelector("[data-signbackupgo]");
+    if (bg) bg.onclick = async () => {
+      const pw = row.querySelector("[data-signbackuppass]").value;
+      bg.disabled = true;
+      const r = await postJSON("/api/signing-backup", {project: name, key, route, password: pw});
+      if (!r.ok){ bg.disabled = false; return notify((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`, true); }
+      const fname = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `${name}-${key}-${route}`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(await r.blob()); a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      delete rnSignPw[`${key}:${route}`];
+      rnLoadSigning(name);
+    };
+    const bk = row.querySelector("[data-signbackup]");
+    if (bk) bk.onclick = () => setTimeout(() => rnLoadSigning(name), 1500);
+    const f = row.querySelector("[data-signfile]");
+    if (f){
+      f.onchange = () => { d.file = f.files[0] || null; };
+      for (const [sel, k] of [["[data-signpass]", "pass"], ["[data-signalias]", "alias"], ["[data-signkeypass]", "keypass"]]){
+        const el = row.querySelector(sel);
+        el.value = d[k] || "";
+        el.oninput = () => { d[k] = el.value; };
+      }
+    }
+  }
+  const lo = $("rnLockOpen");
+  if (lo) lo.onclick = () => { rnSignLockOpen = !rnSignLockOpen; rnDrawSigning(); };
+  const lg = $("rnLockGo");
+  if (lg) lg.onclick = async () => {
+    const cur = $("rnLockCur")?.value || "", nw = $("rnLockNew").value, again = $("rnLockAgain").value;
+    if (nw !== again) return notify("the two new passwords differ", true);
+    if (!nw && !rnSignLocked) return notify("type a password to set", true);
+    lg.disabled = true;
+    const j = await (await postJSON("/api/signing", {action: "backup-password", project: name, current: cur, new: nw})).json();
+    if (j.error){ lg.disabled = false; return notify(j.error, true); }
+    notify(j.backup_locked ? `${projLabel(name)}'s key backups now ask for the password` : `${projLabel(name)}'s key backups no longer ask for a password`);
+    rnSignLockOpen = false;
+    rnLoadSigning(name);
+  };
+  $("rnSignNewGo").onclick = () => {
+    const n = $("rnSignNewName").value.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(n)) return notify("a key's name is lowercase letters, digits and dashes", true);
+    if (!names.includes(n)) rnSignNew.push(n);
+    rnDrawSigning();
+  };
+  $("rnMapGo").onclick = () => {
+    const pkg = $("rnMapPkg").value.trim();
+    if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(pkg)) return notify("a package name looks like com.example.app", true);
+    rnSignMapDraft[pkg] = $("rnMapKey").value;
+    rnDrawSigning();
+  };
+  $("rnSignRows").querySelectorAll("[data-unmap]").forEach(b => b.onclick = () => {
+    const pkg = b.closest("[data-pkg]").dataset.pkg;
+    if (rnSignMap[pkg]) rnSignMapDraft[pkg] = null; else delete rnSignMapDraft[pkg];
+    rnDrawSigning();
+  });
+}
+
+const fileB64 = f => new Promise((ok, bad) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).split(",")[1] || "");
+  r.onerror = () => bad(r.error);
+  r.readAsDataURL(f);
+});
+
+// What the draft changes, for Save: uploads, removals and mappings.
+const rnSignPending = () => Object.values(rnSignDraft).some(d => d.remove || d.file)
+  || Object.keys(rnSignMapDraft).length > 0;
+
+// The draft's writes, in Save's order; "" when they all landed, else why.
+async function rnSaveSigning(name){
+  for (const d of Object.values(rnSignDraft)){
+    const word = (RN_SIGN.find(([r]) => r === d.route) || [])[1] || d.route;
+    let body = null;
+    if (d.remove) body = {action: "remove", project: name, key: d.key, route: d.route};
+    else if (d.file) body = {action: "put", project: name, key: d.key, route: d.route, keystore: await fileB64(d.file),
+                             password: d.pass || "", alias: (d.alias || "").trim(), key_password: d.keypass || ""};
+    if (!body) continue;
+    const j = await (await postJSON("/api/signing", body)).json();
+    if (j.error) return `${d.key} ${word}: ${j.error}`;
+  }
+  for (const [pkg, key] of Object.entries(rnSignMapDraft)){
+    const j = await (await postJSON("/api/signing", {action: "map", project: name, package: pkg, key: key || ""})).json();
+    if (j.error) return `${pkg}: ${j.error}`;
+  }
+  return "";
+}
+
 let rnAuthNow = null, rnAuthPick = null, rnAuthOpts = null;
 // Staged, like the name and the token: pressing Clear changes what the dialog
 // says and nothing on disk. Rename is the only verb here that touches the
@@ -422,6 +1045,10 @@ function rnLoadAuth(name){
   rnAuthNow = rnAuthPick = rnAuthOpts = null;
   rnClearToken = false;
   $("rnAuthField").hidden = true;
+  $("rnAddrField").hidden = true;
+  $("rnAddr").value = "";
+  $("rnTestField").hidden = true;
+  $("rnTestOut").hidden = true;
   if (rnMode !== "git") return;
   fetch("/api/project-auth", {method:"POST",
     headers:{"Content-Type":"application/json"},
@@ -431,6 +1058,12 @@ function rnLoadAuth(name){
       if (rnFor !== name || j.error) return;   // closed, or reopened elsewhere
       rnAuthOpts = j;
       rnAuthNow = rnAuthPick = j.now || null;
+      // Any project with a remote, a read-only clone included: its owner can
+      // be renamed too, and it has nothing else here to save.
+      $("rnAddr").value = j.url || "";
+      $("rnAddrField").hidden = !j.url;
+      $("rnTestField").hidden = !j.url;
+      if (j.url) $("rnGo").hidden = false;
       rnDrawAuth();
     })
     .catch(() => {});                          // the rename itself still works
@@ -509,26 +1142,74 @@ function rnDrawAuth(){
         : "Switching keeps every credential it has; nothing is removed either way.");
 }
 
-const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
-
-const RN_MOVES = "Renaming moves the project and everything named after it. Close its "
-  + "terminals and bring its dev instance down first.";
-
-function rnShow(){
-  const raw = $("rnName").value, clean = projName(raw);
-  $("rnHint").textContent = clean && clean !== rnFor ? RN_MOVES : "";
-  const taken = clean && clean !== rnFor
-                && (state?.projects || []).some(p => p.name === clean);
-  $("rnName").classList.toggle("bad", !!taken);
-  $("rnPreview").classList.toggle("bad", !!taken);
-  $("rnPreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
-  $("rnPreview").textContent = taken
-    ? `${clean} already exists under /workspace`
-    : clean ? `Will be renamed to ${clean}`
-    : "That leaves nothing to name a directory after";
+// Test (the operator, 7 Oct): a read and a dry-run push with what the
+// project authenticates with, or with the token typed above and not saved
+// yet, and what it is missing in red under the button (projects.auth_test).
+async function rnTestAuth(){
+  const btn = $("rnTest"), out = $("rnTestOut"), name = rnFor;
+  if (!name || btn.disabled) return;
+  busy(btn, "Testing");
+  out.hidden = true;
+  let j;
+  try{
+    j = await (await postJSON("/api/project-auth", {name, action: "test",
+      token: $("rnToken").disabled ? "" : $("rnToken").value.trim()})).json();
+  }catch{ j = {error: "no answer from the dashboard"}; }
+  btn.disabled = false;
+  btn.removeAttribute("aria-busy");
+  btn.textContent = "Test";
+  if (rnFor !== name) return;                   // closed, or reopened elsewhere
+  const missing = j.missing || [];
+  const good = !j.error && !missing.length;
+  out.classList.toggle("bad", !good);
+  out.classList.toggle("ok", good && j.push !== null);
+  out.innerHTML = j.error ? esc(j.error)
+    : missing.length
+      ? `With ${esc(j.using)} it is missing:<ul>${missing.map(m => `<li>${esc(m)}</li>`).join("")}</ul>`
+      : `With ${esc(j.using)} it can read${j.push ? " and push" : ""}.`;
+  if (!j.error && (j.notes || []).length)
+    out.innerHTML += `<div class="sub">${j.notes.map(esc).join(" ")}</div>`;
+  out.hidden = false;
 }
 
-function closeRename(){ $("rnmodal").hidden = true; rnFor = null; rnAskReset(); }
+const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
+
+// A rename is the name shown and nothing else (R154): the directory, the
+// notebook, the sessions and the containers stay where they are, so nothing
+// has to be closed first.
+// Where the project is on disk, and its id, under the name (the operator,
+// 8 Oct): the name shown is a label, the folder is the project's for good.
+function rnFolderLine(name){
+  const pid = (state?.projects || []).find(p => p.name === name)?.pid;
+  return `Folder: /workspace/${name}${pid ? ` · project #${pid}` : ""}. Renaming changes the name shown, never the folder.`;
+}
+
+function rnShow(){
+  const raw = $("rnName").value.trim().replace(/\s+/g, " ");
+  $("rnHint").textContent = rnFolderLine(rnFor);
+  const taken = raw && raw.toLowerCase() !== projLabel(rnFor).toLowerCase()
+                && (state?.projects || []).some(p => p.name !== rnFor
+                     && String(p.label || p.name).toLowerCase() === raw.toLowerCase());
+  $("rnName").classList.toggle("bad", !!taken || !raw);
+  $("rnPreview").classList.toggle("bad", !!taken || !raw);
+  $("rnPreview").hidden = !taken && !!raw;
+  $("rnPreview").textContent = taken ? `${raw} is already a project's name` : "A project needs a name";
+}
+
+function closeRename(){
+  // In place, closing is reading again: the saved values, once the poll has
+  // them (or Revert's, the ones it had).
+  if (rnHost){
+    const n = rnFor, h = rnHost;
+    settingsOut();
+    rnFor = null; rnAskReset();
+    Promise.resolve(refresh()).finally(() => {
+      if (h.isConnected && (state?.projects || []).some(p => p.name === n)) settingsInto(n, h);
+    });
+    return;
+  }
+  $("rnmodal").hidden = true; rnFor = null; rnAskReset();
+}
 
 async function rnSubmit(){
   const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
@@ -539,29 +1220,50 @@ async function rnSubmit(){
   // A typed token replaces rather than clears, so the two never both go: the
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
+  // Sent only when it was changed: "" leaves the remote where it points.
+  const addrNow = $("rnAddr").value.trim();
+  const address = !$("rnAddrField").hidden && rnAuthOpts?.url && addrNow && addrNow !== rnAuthOpts.url
+    ? addrNow : "";
   const model = rnModelPick(), effort = $("rnEffort").value;
   const node = $("rnNode").value;
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const reads = [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value);
   const sees = $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean);
+  const reaches = rnReachNow();
+  // Sent only where it was drawn: an account without the debug grant is
+  // never shown it, so it never sends it, and the server never asks.
+  const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const capture_days = $("rnCaptureDays").value.trim();
+  const dev_keep = $("rnDevKeep").value.trim();
   const gate = rnGateNow();
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
   const test_change = $("rnTestChange").value || "wait";
+  const gpu = $("rnGpu").value || "on";
   const reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
+  const sign = $("rnGateSign").value || "ask";
+  const keys = $("rnGateKeys").value || "ask";
+  const release = $("rnGateRelease").value || "ask";
+  const verPol = $("rnGateVersion").value || "locked";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
+    || JSON.stringify(reaches) !== rnPrefWas.reaches
+    || (dbg && rnDebugKey(dbg.diag, dbg.log_from) !== rnPrefWas.debug)
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
+    || dev_keep !== rnPrefWas.dev_keep
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
+    || gpu !== rnPrefWas.gpu
     || devbuild !== rnPrefWas.devbuild
-    || report !== rnPrefWas.report;
+    || report !== rnPrefWas.report
+    || sign !== rnPrefWas.sign
+    || keys !== rnPrefWas.keys
+    || release !== rnPrefWas.release;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
@@ -582,14 +1284,23 @@ async function rnSubmit(){
     [node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes, "Node"],
     [reads.join(",") !== rnPrefWas.reads, "Reads"], [sees.join(", ") !== rnPrefWas.sees, "Also sees"],
     [test_change !== rnPrefWas.test_change, "During a test run, a change asked for"],
+    [gpu !== rnPrefWas.gpu, "The node's GPU"],
     [capture_days !== rnPrefWas.capture_days, "Captures kept"],
+    [dev_keep !== rnPrefWas.dev_keep, "Dev builds kept"],
   ].filter(([changed]) => changed).map(([, label]) => label);
   const launchChanged = takesAtStart.length > 0;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
+  const signDraft = rnSignPending() ? [1] : [];
+  if (Object.values(rnSignDraft).some(d => d.open && !d.file && (d.pass || d.alias)))
+    return fail("pick the keystore file for the key whose password you typed");
+  if (Object.values(rnSignDraft).some(d => d.file && !d.pass))
+    return fail("type the keystore's password: a key is checked with it before it is kept");
   if (capture_days !== "" && !/^\d{1,3}$/.test(capture_days))
     return fail("captures kept is a number of days, 0 to 365");
+  if (dev_keep !== "" && !/^\d{1,2}$/.test(dev_keep))
+    return fail("dev builds kept is a number of builds, 0 to 99");
   // The one combination the dialog will not write: authenticating with a token
   // it is being told to throw away. The hint has been saying so; this is what
   // makes it true rather than advice.
@@ -626,8 +1337,8 @@ async function rnSubmit(){
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
-  const renaming = to.trim() !== name;
-  const needRename = renaming || !!token || !!auth || clear_token;
+  const renaming = to.trim().replace(/\s+/g, " ") !== projLabel(name);
+  const needRename = renaming || !!token || !!auth || clear_token || !!address;
   $("rnGo").disabled = true; $("rnGo").textContent = "Saving…";
   const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
                       rnAskReset(); return fail(m); };
@@ -636,10 +1347,12 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, nodes, reads, sees, build, test, gate, color,
-                              tests_in, test_change, reply, asks, devbuild, report,
+                              node, nodes, reads, sees, reaches, build, test, gate, color,
+                              ...(dbg || {}),
+                              tests_in, test_change, gpu, reply, asks, devbuild, report, sign, keys, release,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
+                              ...(dev_keep !== "" ? {dev_keep: +dev_keep} : {}),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.
                               restart: restartNow})});
@@ -651,32 +1364,53 @@ async function rnSubmit(){
       // running is not a fault to color red.
       if (running && launchChanged && !j.ended)
         notify(restartNow
-                 ? `${name}: saved, but the session was not ended: `
+                 ? `${projLabel(name)}: saved, but the session was not ended: `
                    + (j.why || "it is still on what it started with")
-                 : `${name}: saved. Its running session keeps what it started `
+                 : `${projLabel(name)}: saved. Its running session keeps what it started `
                    + `with until you end it and press Claude again.`,
                restartNow);
       else if (restartNow && j.ended)
-        notify(`${name}: saved, and its session ended: press Claude to start `
+        notify(`${projLabel(name)}: saved, and its session ended: press Claude to start `
                + `one on it, resuming the conversation`);
+    }
+    const peopleChanged = !!rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
+      || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only));
+    if (peopleChanged){
+      const why = await rnSavePeople(name);
+      if (why) return stop(why);
+    }
+    // Move the version is version.py's policy: written where the Artifacts
+    // tab writes it, so the two never disagree.
+    if (verPol !== rnPrefWas.version){
+      const j = await (await postJSON("/api/version", {project: name, action: "policy", policy: verPol})).json();
+      if (j.error) return stop(j.error);
+    }
+    const ftpChange = rnFtpChange();
+    if (ftpChange){
+      const why = await rnSaveFtp(name, ftpChange);
+      if (why) return stop(why);
+    }
+    if (signDraft.length){
+      const why = await rnSaveSigning(name);
+      if (why) return stop(why);
+      notify(`${projLabel(name)}: signing keys saved`);
     }
     if (!needRename){
       closeRename();
-      if (!prefChanged && !nodeChanged) return;   // nothing changed
+      if (!prefChanged && !nodeChanged && !signDraft.length && !peopleChanged && !ftpChange
+          && verPol === rnPrefWas.version) return;   // nothing changed
       refresh();
       return;
     }
-    const r = await postJSON("/api/rename", {name, to, token, auth, clear_token});
+    const r = await postJSON("/api/rename", {name, to, token, auth, clear_token, address});
     const j = await r.json();
     if (j.error) return stop(j.error);
     closeRename();
-    // Named rather than assumed: sanitizing may have changed what was typed,
-    // and the operator should see the name that actually exists.
-    notify(j.failed?.length
-      ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
-        + `move: ${j.failed.join("; ")}`
-      : renaming ? `${name} is now ${j.name}` : `${name} saved`,
-      !!j.failed?.length);
+    // Named rather than assumed: the server tidies what was typed, and the
+    // operator should see the name that actually took.
+    notify(renaming ? `${j.from || projLabel(name)} is now ${j.label || to}`
+      : address ? `${projLabel(name)}: ${(j.moved || []).find(m => /points at/.test(m)) || "saved"}`
+      : `${projLabel(name)} saved`);
   }catch(e){ return stop("save failed: " + e); }
   refresh();
 }
@@ -689,9 +1423,10 @@ async function rnSubmit(){
 // touched at all. Putting one back is a mv. Friction proportionate to a
 // reversible act, and the dialog names the path so the reversal is obvious.
 async function deleteProject(name){
-  if (!confirm(`Delete ${name}?\n\n`
+  if (!confirm(`Delete ${projLabel(name)}?\n\n`
       + `It moves to /workspace/.trash/${name}, with every file kept. Its `
-      + `roadmap, bugs, versions and memories stay where they are.\n\n`
+      + `roadmap, bugs, versions, memories and containers stay where they are, `
+      + `and Put back in the trash returns all of it.\n\n`
       + `Close its terminals first, and bring its dev instance down.`)) return;
   try{
     const r = await postJSON("/api/trash", {name});
@@ -700,7 +1435,7 @@ async function deleteProject(name){
     // The path is named back because it may not be the one the dialog said:
     // a second delete of the same name is numbered rather than overwriting the
     // first, and the first is exactly the copy somebody would want back.
-    notify(`${name} moved to ${j.to}`);
+    notify(`${projLabel(name)} moved to ${j.to}`);
   }catch(e){ notify("delete failed: " + e, true); }
   refresh();
 }

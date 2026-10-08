@@ -40,7 +40,7 @@ function nbPendingView({$, nb, project, root}){
     el.hidden = !n;
     if (!n){ el.innerHTML = ""; return; }
     const c = nb.pendData.counts || {};
-    const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"], ["settings", "setting"], ["design", "design save"]]
+    const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"], ["settings", "setting"], ["design", "design save"], ["wiki", "wiki change"]]
       .filter(([k]) => c[k]).map(([k, w]) => `${c[k]} ${w}${c[k] === 1 || w === "roadmap" ? "" : "s"}`);
     el.innerHTML = `<div><span>${n} change${n === 1 ? "" : "s"} from a session
         ${n === 1 ? "is" : "are"} waiting for your approval${parts.length ? ": " + esc(parts.join(", ")) : ""}.</span>
@@ -90,7 +90,7 @@ let pendFor = null;
 
 async function openPending(project){
   pendFor = project;
-  $("pendTitle").textContent = `Waiting for your approval: ${project}`;
+  $("pendTitle").textContent = `Waiting for your approval: ${projLabel(project)}`;
   $("pendModal").hidden = false;
   $("pendList").innerHTML = "";
   $("pendEmpty").hidden = true;
@@ -117,7 +117,7 @@ function drawPendingModal(j){
   $("pendHintF").hidden = !rows.length && !$("pendHint").textContent;
   $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
   $("pendApprove").hidden = $("pendDeny").hidden = !rows.length;
-  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test", design: "Design"};
+  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test", design: "Design", wiki: "Wiki"};
   const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
              : r.kind === "bugs" && r.number != null ? `B${r.number}`
              : r.kind === "rules" && r.number ? String(r.number) : "";
@@ -141,6 +141,9 @@ function drawPendingModal(j){
       (L.themes || []).forEach(t => bits.push(`theme ${t.name} (${t.mode}): ${(t.colors || []).length} colors`));
       (L.rules || []).forEach(r2 => bits.push(`rule ${r2.name}: ${(r2.text || "").slice(0, 120)}`));
       (a.pages || []).forEach(p => bits.push(`page ${p.name || "(unnamed)"}: ${(p.blocks || []).length} blocks on a ${p.frame || "desktop"}`));
+    } else if (r.kind === "wiki"){
+      // The page as it would land, so approving it is reading it.
+      if (a.text !== undefined) bits.push(String(a.text).slice(0, 4000));
     }
     return bits.filter(Boolean).join("\n");
   };
@@ -190,7 +193,7 @@ async function pendAct(action){
     if (j.denied?.length) said.push(`${j.denied.length} denied`);
     if (j.skipped?.length) said.push(`${j.skipped.length} skipped: ${j.skipped[0].why}`);
     if (j.failed?.length) said.push(`${j.failed.length} could not be applied: ${j.failed[0].why}`);
-    notify(`${project}: ${said.join(", ") || "nothing changed"}`, !!j.failed?.length);
+    notify(`${projLabel(project)}: ${said.join(", ") || "nothing changed"}`, !!j.failed?.length);
     drawPendingModal(j);
     // The lists moved under the notebook: re-read whichever views exist.
     const nb = notebooks.get(project);

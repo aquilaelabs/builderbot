@@ -25,6 +25,11 @@ const DOTS = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/>
   <circle cx="12.8" cy="8" r="1.3"/></svg>`;
 
+// A bug, for Report a bug on a project's row: a body, a head, and legs.
+const BUG = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <ellipse cx="8" cy="9.4" rx="3.3" ry="4"/><path d="M6.3 5.7a1.7 1.7 0 0 1 3.4 0"/>
+  <path d="M8 6.1v7.2M4.7 8.2 2.4 7.3M4.7 10.6H2.2M5.1 12.6l-1.8 1.4M11.3 8.2l2.3-.9M11.3 10.6h2.5M10.9 12.6l1.8 1.4M6.6 4.3 5.4 2.8M9.4 4.3l1.2-1.5"/></svg>`;
+
 const GEAR = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/>
   <circle cx="8" cy="8" r="2.1"/></svg>`;

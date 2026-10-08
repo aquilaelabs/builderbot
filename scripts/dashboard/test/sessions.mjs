@@ -3,7 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage, unfold, member } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -263,16 +263,20 @@ ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' 
 // runs, and the question names who is running one (the operator, 29 Sep).
 await page.evaluate(async () => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ action: 'add', name: 'w.lock', password: 'w.lock-pass-1', role: 'user' }) })).json());
+await member('w.lock');
 const lockUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.lock'].uid;
 // (The Sessions card lists this account's own sessions, so the other
 // account's is checked in tmux itself.)
 tmuxNew(`${lockUid}~claude-ep_silon`);
 await page.evaluate(() => refresh());
 const ndx = page.dialogs.length;
+await unfold(page, 'ep.silon');
 await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the sessions
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
-ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now/.test(page.dialogs[ndx]) && /Lock ep\.silon\?/.test(page.dialogs[ndx])
+// Either wording is the design's: the other account's session is named when
+// the poll has seen it by the click, and that is timing (B388).
+ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claude sessions here end now: yours, w\.lock\./.test(page.dialogs[ndx]) && /Lock ep\.silon\?/.test(page.dialogs[ndx])
    && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
    `dotted project: locking it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
@@ -385,16 +389,25 @@ const deskbox = await bapi('/api/v1/nodes', { action: 'enroll', name: 'deskbox' 
 await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
     cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
     session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
-               workspace: true, writable: true, boot: '9.9', up_s: 5000 } } },
+               workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } } },
   { Authorization: 'Bearer ' + deskbox.token });
 await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
+// ...with the tester signed in to Claude there, as that node would have
+// reported it: a Claude press on a node with no sign-in offers the sign-in
+// instead of Resume and New conversation, which is signin.mjs's to show.
+{
+  const rec = `${DIR}/home/.claude/.bb-grant.json`;
+  const d = JSON.parse(readFileSync(rec, 'utf8'));
+  d.nodes[deskbox.id] = { email: 'tester@example.com', plan: 'max', at: 1 };
+  writeFileSync(rec, JSON.stringify(d));
+}
 // Under a full run this wait has crashed the file more than once (B124): a
 // node is live for LIVE_S after its hello, and a slow box can spend that
 // before the poll reads deskbox back. So the hello is repeated between
 // shorter waits rather than one long wait on a liveness that lapses.
 const deskboxCensus = { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
   session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
-             workspace: true, writable: true, boot: '9.9', up_s: 5000 } };
+             workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } };
 for (let tries = 0; ; tries++){
   try {
     await refreshUntil(phone, () => (state?.projects || [])
@@ -454,8 +467,10 @@ await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => 
   await pressAlpha();
   await phone.waitForSelector('.resumemenu', { timeout: 10000 });
 });
-ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
-   'phone: Claude on a project with history shows the Resume/New chooser');
+const chooser = await phone.$eval('.resumemenu', el => ({ shown: getComputedStyle(el).display !== 'none',
+  buttons: [...el.querySelectorAll('button')].map(b => b.textContent.trim()), text: el.textContent.trim().slice(0, 120) }));
+ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.buttons[0]) && chooser.buttons[1] === 'New conversation',
+   `phone: Claude on a project with history shows the Resume/New chooser (${chooser.buttons.join(' | ') || chooser.text})`);
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
 // the card, and pressing Claude on a project whose session has ended opens
 // this and NOTHING ELSE, so one drawn below the fold is a press with no
@@ -500,8 +515,10 @@ ok(true, 'phone: New conversation opens the Claude tab and switches to the termi
 // here finds it.
 await bapi('/api/prefs', { project: 'alpha', node: '' });
 await bapi('/api/v1/nodes', { action: 'retire', id: deskbox.id });
-ok(await phone.$eval('#tabL', el => getComputedStyle(el).display !== 'none') && await phone.$eval('#tabbar', el => getComputedStyle(el).flexWrap === 'nowrap'),
-   'strip is one row with scroll arrows');
+// A picker rather than a strip to swipe (R119 step 5).
+ok(await phone.$eval('#tabPick', el => getComputedStyle(el).display !== 'none')
+   && await phone.$eval('#tabbar', el => getComputedStyle(el).display === 'none'),
+   'the tab strip is the tab picker on a phone');
 
 // Swapping one flyout for another: the outgoing one stays under the incoming
 // slide and the terminal changes size once, when the new one lands. Commands
@@ -559,11 +576,14 @@ await phone.waitForFunction(() => document.getElementById('sespanel').classList.
 await phone.click('#sessions [data-go="shell-7"]');
 ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sessions flyout');
 
-// Keys over a document tab: the toggle is disabled and says why.
+// Keys over a document tab: not in the bar at all, so Sessions and Chat
+// have it (B460).
 await phone.evaluate(() => openNotebook('alpha'));
 await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'notebook');
-ok(await phone.$eval('#mKeys', b => b.disabled && /not one/.test(b.title)), 'Keys is disabled over a document tab');
-ok(await phone.$eval('#mMacros', b => b.disabled), '...and so is Commands');
+ok(await phone.$eval('#mKeys', b => b.hidden && getComputedStyle(b).display === 'none'), 'Keys leaves the bar over a document tab');
+ok(await phone.$eval('#mMacros', b => b.hidden), '...and so does Commands');
+ok(await phone.$$eval('#mobar button', bs => bs.filter(b => b.offsetWidth).every(b => b.scrollWidth <= b.clientWidth + 1)),
+   '...and what is left is not cut short');
 // A Claude tab is a terminal, but not one to type keys or macros into: they
 // go to a conversation with its own idea of what a keystroke means.
 await phone.evaluate(() => {
@@ -571,24 +591,26 @@ await phone.evaluate(() => {
   if (t) { panes[active] = t.id; render(); }
 });
 ok(await phone.evaluate(() => !tabs.some(t => t.arg.startsWith('claude:')))
-   || (await phone.$eval('#mKeys', b => b.disabled)
-       && await phone.$eval('#mMacros', b => b.disabled)),
-   '...and both are disabled over a Claude tab');
+   || (await phone.$eval('#mKeys', b => b.hidden)
+       && await phone.$eval('#mMacros', b => b.hidden)),
+   '...and both leave it over a Claude tab');
 
-// Opening a tab that sits off the end of the strip scrolls it into view, and
-// the arrows gray at the ends they cannot go past.
+// With many open, the picker names the one in front, whichever it is: no
+// tab is ever off the end of anything.
 await phone.evaluate(() => { for (let i = 0; i < 6; i++) newShell(''); });
-await phone.waitForFunction(() => { const b = document.getElementById('tabbar'); return b.scrollWidth > b.clientWidth + 50; });
-await phone.evaluate(() => { document.getElementById('tabbar').scrollTo({left: 0, behavior: 'instant'}); focusTab(tabs[0].id); });
 await phone.evaluate(() => focusTab(tabs[tabs.length - 1].id));
-await phone.waitForFunction(() => { const b = document.getElementById('tabbar'), t = b.querySelector('.tab.on');
-  return t.offsetLeft + t.offsetWidth <= b.scrollLeft + b.clientWidth + 1; }, { timeout: 5000 });
-ok(true, 'focusing a tab off the end of the strip scrolls it into view');
-await phone.waitForFunction(() => document.getElementById('tabR').disabled, { timeout: 5000 });   // the smooth scroll lands
-ok(await phone.$eval('#tabL', b => !b.disabled), 'at the right end › is grayed and ‹ is live');
-await phone.evaluate(() => { document.getElementById('tabbar').scrollTo({left: 0, behavior: 'instant'}); });
-await phone.waitForFunction(() => document.getElementById('tabL').disabled);
-ok(await phone.$eval('#tabR', b => !b.disabled), 'at the left end ‹ is grayed and › is live');
+await phone.waitForFunction(() => document.querySelector('#tabPick .nm')?.textContent === tabLabels().get(tabs[tabs.length - 1].id)
+  && document.querySelector('#tabPick .pill')?.textContent === String(tabs.length), { timeout: 5000 });
+ok(true, 'the picker names the last tab opened and counts them all');
+await phone.click('#tabPick');
+const last = await phone.evaluate(() => tabs[tabs.length - 1].id);
+await phone.click(`#tabPickList [data-pmin="${last}"]`);
+await phone.waitForFunction(id => !document.querySelector(`#tabPickList [data-pshow="${id}"]`), last, { timeout: 5000 });
+ok(await phone.$eval('#tabPickList', l => !l.hidden),
+   '...and a terminal minimized from its list leaves its row and keeps the list open for the next');
+await phone.keyboard.press('Escape');
+await phone.waitForFunction(() => document.getElementById('tabPickList').hidden, { timeout: 5000 });
+ok(true, '...which Escape closes');
 
 // The view a phone was on comes back after a reload.
 await phone.evaluate(() => setView('terminal'));
@@ -608,7 +630,10 @@ await closePage(phone);
 const land = await newPage(browser, { viewport: { width: 844, height: 390 } });
 await land.goto(URL);
 await land.waitForFunction(() => state !== null, { timeout: 30000 });
-await land.evaluate(() => { setView('terminal'); mobPanel('macros'); });
+// A terminal in front first: Commands opens only over a shell, and since
+// R131 a fresh browser starts on the front tab as of the strip's last
+// change, which may be a document (B494).
+await land.evaluate(() => { setView('terminal'); const t = tabs.find(x => x.kind === 'term'); if (t) focusTab(t.id); mobPanel('macros'); });
 await land.waitForFunction(() => document.getElementById('macpanel').classList.contains('show') && !document.getElementById('macpanel').classList.contains('sliding'));
 const fit = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
 ok(fit.bar <= 390 && fit.panes >= 90, `landscape: the bar stays on screen with a flyout open (bar bottom ${Math.round(fit.bar)}px, terminal ${fit.panes}px)`);

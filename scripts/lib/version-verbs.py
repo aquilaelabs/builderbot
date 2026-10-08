@@ -45,8 +45,17 @@ USAGE = ("bb version [--for DIR] "
          "[--semver|--code|--quad|--win|--msi|--pep440|--file|--json]\n"
          "bb version --list                 every version this repo carries\n"
          "bb version [--for DIR] bump major|minor|patch\n"
+         "bb version [--for DIR] set X.Y.Z     straight to a later version, as one bump; from a\n"
+         "                                     number never released, its changelog notes come along\n"
+         "bb version [--for DIR] unbump        take the last bump or set back, while unreleased: its\n"
+         "                                     changelog section returns to Unreleased (once: the one\n"
+         "                                     before it stays)\n"
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
-         "bb version policy")
+         "bb version policy                    what a session may move here\n"
+         "bb version [--for DIR] release --why \"...\"   tag this commit and publish the release, as\n"
+         "                                     Release on the Artifacts tab does (Claude may: Tag and\n"
+         "                                     publish a release)\n"
+         "A section dated under the wrong number: unbump, then set the number you meant.")
 
 
 def fail(msg):
@@ -92,6 +101,19 @@ if argv and argv[0] == "bump":
     lands_line()
     raise SystemExit(0)
 
+if argv and argv[0] == "set":
+    if len(argv) < 2:
+        fail("bb version set X.Y.Z: a later version, moved to in one commit")
+    r = version.jump(proj, argv[1], by="claude", comp=comp)
+    if r.get("error"):
+        fail(r["error"])
+    print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
+          f"({r['part']}, committed {r['commit']}, not pushed)")
+    if r.get("note"):
+        print(f"note: {r['note']}")
+    lands_line()
+    raise SystemExit(0)
+
 if argv and argv[0] == "unbump":
     r = version.unbump(proj, by="claude", comp=comp)
     if r.get("error"):
@@ -113,11 +135,69 @@ if argv and argv[0] == "init":
     lands_line()
     raise SystemExit(0)
 
+if argv and argv[0] == "release":
+    # bb version release (R138): the tag on this commit and the forge's
+    # release, made on the controller with the project's own credentials,
+    # which this session never holds. Under Claude may: Tag and publish a
+    # release: auto releases at once, ask waits for the project's owner.
+    import bbapi
+    import waits
+    rest = argv[1:]
+    # Help is help: `bb version release -h` was sent on as a release with
+    # no reason (Shebang-DevBoard, 5 Oct), refused only because the tag
+    # already existed. Anything but --why and its sentence is refused by name.
+    if "-h" in rest or "--help" in rest:
+        print('bb version [--for DIR] release --why "..."   tag this commit, push the tag and publish the\n'
+              "    forge's release (GitHub, Gitea or GitLab), as Release on the Artifacts tab does. Under\n"
+              "    Claude may: Tag and publish a release: auto releases at once, ask waits for the\n"
+              "    project's owner, deny refuses.\n"
+              'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
+              "    change the published release: its notes replaced whole (- reads stdin), a file from\n"
+              "    dist/ or the committed tree attached (one of the same name replaced), (asset:NAME) in\n"
+              "    the notes the address of an attached file, for a screenshot. TAG is the version's own\n"
+              "    unless named. The same dial; on ask, every edit is its own ask.\n"
+              'bb version [--for DIR] release --remove NAME [--remove NAME]... --why "..." [--tag TAG]\n'
+              "    take files off the published release, named as the forge lists them: its own ask,\n"
+              "    never part of an edit, the names checked against the release before anybody is asked.")
+        raise SystemExit(0)
+    why = ""
+    if "--why" in rest:
+        i = rest.index("--why")
+        if i + 1 >= len(rest):
+            fail("--why needs the sentence after it")
+        why = rest[i + 1]
+        rest = rest[:i] + rest[i + 2:]
+    if rest:
+        fail(f"bb version release takes --why \"...\" and nothing else, not {rest[0]}")
+    auth = os.environ.get("BB_VERSION_AUTH", "")
+    r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why},
+                   auth=auth, timeout=240)
+    if r.get("error"):
+        fail(f"[builderbot] ERROR: {r['error']}")
+    if r.get("id") and not r.get("released"):
+        print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}) to release, waiting up "
+              "to 15 minutes for Approve in their bell", file=sys.stderr)
+        o = waits.outcome(auth, r["id"], "the release was not allowed")
+        if o.get("code"):
+            fail(f"[builderbot] ERROR: {o.get('out') or 'it was not released'}")
+        print(o.get("out") or "released")
+        raise SystemExit(0)
+    rel = r.get("released") or {}
+    print(f"{rel.get('tag')} on {rel.get('sha')}" + (", pushed" if rel.get("pushed") else "")
+          + (f"; {rel['note']}" if rel.get("note") else ""))
+    forge = rel.get("forge") or {}
+    if forge.get("url"):
+        print(f"the release: {forge['url']}")
+    elif forge.get("error"):
+        print(f"no release on the forge: {forge['error']}")
+    raise SystemExit(0)
+
 if argv and argv[0] == "policy":
     # Read-only on purpose: a session should be able to see the limit it is
     # held to and never to move it.
     print(f"{proj}: {policy_line()}")
-    print("the operator changes this on the project's Artifacts tab")
+    print("a person changes this with Claude may: Move the version in the project's settings,"
+          " or on its Artifacts tab; bb version set X.Y.Z moves to a later version in one step")
     raise SystemExit(0)
 
 if argv and argv[0] == "--list":

@@ -45,10 +45,14 @@ function drawChat(){
   const unread = c.unread || {};
   if (!chatWith){
     const here = new Set(c.online || []);
+    // When each was last here, beside the name (the operator, 4 Oct): "here
+    // now" for whoever is, the time since for everybody else.
+    const seenAt = c.seen || {};
+    const lastSeen = n => here.has(n) ? "here now" : seenAt[n] ? ago(seenAt[n]) : "never signed in";
     const people = (c.people || []).map(n =>
       `<button class="row chatrow" data-who="${esc(n)}">
          <span class="dot ${here.has(n) ? "ok" : ""}"></span>
-         <span class="grow">${esc(n)}</span>
+         <span class="grow">${esc(n)} <span class="dim chatseen">(${esc(lastSeen(n))})</span></span>
          ${unread["dm:" + n] ? `<span class="pill">${unread["dm:" + n]}</span>` : ""}
        </button>`);
     // A project channel is the group chat for everybody on it, and it is where
@@ -58,7 +62,7 @@ function drawChat(){
     // first, so "mine" and "everything else on the box" are one glance apart
     // rather than one read of a list of forty.
     const ps = [...(state?.projects || [])]
-      .sort((a, b) => (notMine(a) - notMine(b)) || a.name.localeCompare(b.name));
+      .sort((a, b) => (notMine(a) - notMine(b)) || byProjectName(a, b));
     const projs = ps.map(p => {
       // Unread is only ever marked on a channel that is YOURS. An admin is
       // shown every project's channel and most are somebody else's business:
@@ -67,7 +71,7 @@ function drawChat(){
       return `<button class="row chatrow${notMine(p) ? " notmine" : ""}${
         n ? " unread" : ""}" data-proj="${esc(p.name)}"
          ${notMine(p) ? `title="you have not taken this project on; you can read it"` : ""}>
-         <span class="grow">#${esc(p.name)}</span>
+         <span class="grow">#${esc(projLabel(p.name))}</span>
          ${n ? `<span class="pill">${n}</span>` : ""}
        </button>`;
     });
@@ -81,7 +85,10 @@ function drawChat(){
       b.onclick = () => chatOpen({ project: b.dataset.proj }));
     return;
   }
-  const title = chatWith.project ? "#" + chatWith.project : chatWith.who;
+  // A person's name carries when they were last here, as it does in the list.
+  const lastIn = n => new Set(c.online || []).has(n) ? "here now"
+    : c.seen?.[n] ? ago(c.seen[n]) : "never signed in";
+  const title = chatWith.project ? "#" + projLabel(chatWith.project) : `${chatWith.who} (${lastIn(chatWith.who)})`;
   const key = chatKey(chatWith);
   // Painted only when the conversation changed: the poll every four seconds
   // repainted the panel whole and pinned the log to its end, and a reader

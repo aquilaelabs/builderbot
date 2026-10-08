@@ -190,7 +190,7 @@ def _safe_name(name):
     return "/".join(parts)
 
 
-def artifact_put(job, name, stream, length):
+def artifact_put(job, name, stream, length, extra=None):
     """A file a job uploaded, into the project's dist/. {path, size, sha256}
     or {error}. Streamed to a temp file beside the target and renamed, so
     the tab never lists a half-written APK."""
@@ -229,12 +229,21 @@ def artifact_put(job, name, stream, length):
             "source": job.get("source") or {}, "argv": spec.get("argv") or [],
             "requested_by": job.get("requested_by", ""), "at": int(time.time()),
             "sha256": h.hexdigest(), "size": got, "path": "dist/" + rel}
+    # What the job adds about it: a sign job, what signed it (R106).
+    prov.update(extra or {})
     pdir = root / "dist" / ".provenance"
     try:
         (pdir / (rel + ".json")).parent.mkdir(parents=True, exist_ok=True)
         (pdir / (rel + ".json")).write_text(json.dumps(prov, indent=1))
     except OSError:
         pass                                 # the artifact landed; the chain is best effort
+    # A build landing is when the older ones are superseded, not when the
+    # tab is next opened (the operator, 6 Oct).
+    if "/" not in rel:
+        try:
+            artifacts.sweep_dev_builds(project, artifacts.dev_keep(project) if artifacts.dev_keep else artifacts.DEV_KEEP)
+        except Exception as e:  # noqa: BLE001 (the artifact landed; the sweep is housekeeping)
+            print(f"dashboard: dist sweep of {project}: {e}", flush=True)
     return {"path": "dist/" + rel, "size": got, "sha256": h.hexdigest()}
 
 
@@ -290,9 +299,8 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/pr
                 # controller is not answering, so a node's sessions stop for
                 # an update the same way the controller's do.
                 "scripts/dashboard/bb-gate",
-                # ...and the hook that keeps the account's Claude grant in
-                # step while a session runs, which only matters ON a node and
-                # so only ever runs from here (B100).
+                # A hook that does nothing, for the sessions an earlier
+                # build of this window started with it in their settings.
                 "scripts/dashboard/bb-keep-login")
 
 

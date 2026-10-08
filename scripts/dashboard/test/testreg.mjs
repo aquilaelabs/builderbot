@@ -579,18 +579,36 @@ const going = await testingOf();
 ok(going && going.cmd === 'npm test cards' && typeof going.by === 'string' && !('id' in going)
    && Math.abs(going.since - Date.now() / 1000) < 60,
    `...and the row says what is running, by whom and since when, without the id (${JSON.stringify(going)})`);
+// The dashboard says it where the app reads it (R99): on the registry's
+// payload, at the head of the Tests view before the last run's numbers,
+// and on the project's row as the poll draws it.
+const reg = await page.evaluate(async () => (await (await fetch('/api/tests?project=alpha')).json()).running);
+ok(reg && reg.cmd === 'npm test cards', `the registry's payload carries the run going (${JSON.stringify(reg)})`);
+await nbTab(page, 'bugs');
+await nbTab(page, 'tests');
+await page.waitForFunction(() => /tests running/.test(document.querySelector('.nb #tstHint')?.textContent || ''), null, { timeout: 15000 });
+const headGoing = await page.$eval('.nb #tstHint', e => e.textContent.replace(/\s+/g, ' ').trim());
+ok(/^tests running, started just now(?: by \w+)?: npm test cards · \d+ tests/.test(headGoing),
+   `the Tests view's head names the run first: when it started, by whom, the command (${headGoing.slice(0, 90)})`);
+await page.waitForFunction(() => [...document.querySelectorAll('#projects .row')].some(r =>
+  r.querySelector('.name')?.textContent.trim() === 'alpha' && /tests running, started just now/.test(r.querySelector('.sessline.testing')?.textContent || '')),
+  null, { timeout: 20000 });
+ok(true, "...and the project's row says tests running, started just now");
 const other = await post({ project: 'alpha', action: 'end', id: 'not-this-run' });
 ok(other.body.ended === false && (await testingOf()) !== null,
    "another run's end does not end this one");
 const ended = await post({ project: 'alpha', action: 'end', id: begun.body.testing.id });
 ok(ended.body.ended === true && (await testingOf()) === null, 'its own end clears it');
+await page.waitForFunction(() => ![...document.querySelectorAll('#projects .row')].some(r =>
+  r.querySelector('.name')?.textContent.trim() === 'alpha' && r.querySelector('.sessline.testing')), null, { timeout: 20000 });
+ok(true, "...and the row's line goes with it");
 ok((await post({ project: 'alpha', action: 'end', id: '' })).body.ended === false,
    '...and an end with no run going says so rather than failing');
 // A run whose end never came (the session under it killed) is forgotten
 // after four hours: the module's own clock, read in process.
 const stale = execFileSync('python3', ['-c', `
 import sys, time; sys.path.insert(0, '${dirname(BB)}/dashboard'); import testreg
-testreg.begin('alpha', 'x'); testreg.RUNNING['alpha']['since'] -= testreg.STALE_S + 1
+testreg.RUNNING['alpha'] = {'id': 'x', 'since': int(time.time()) - testreg.STALE_S - 1, 'cmd': 'x', 'by': ''}
 print(testreg.running('alpha'), 'alpha' in testreg.RUNNING)`]).toString().trim();
 ok(stale === 'None False', `a run with no end is forgotten after four hours (${stale})`);
 

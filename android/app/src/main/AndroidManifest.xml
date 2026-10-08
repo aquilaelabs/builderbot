@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Hearing asks at once (R125): one connection held open while it is
+         switched on, and the way to ask Android to leave it running while
+         the phone sleeps. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Installing the newer build of this app, which the More screen offers
          when the dashboard serves an API this build is behind. Android still
          asks the person, every time; this permission is what lets the app put
@@ -54,6 +60,14 @@
         <receiver
             android:name=".DecideReceiver"
             android:exported="false" />
+        <service
+            android:name=".LiveService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
+        <!-- Ends a lent phone or a session allowed, from its ongoing note. -->
+        <receiver
+            android:name=".EndReceiver"
+            android:exported="false" />
         <!-- Hands the downloaded APK to the installer. An installer runs in
              another process, so a file:// path would be unreadable to it and
              a world-readable copy would be the wrong fix: the provider grants
@@ -67,6 +81,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- The six pairing digits typed into a notification's reply box,
+             over Android's own pairing screen (R114, PhonePair.kt). -->
+        <receiver
+            android:name=".PairReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".BootReceiver"

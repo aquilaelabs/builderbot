@@ -263,8 +263,10 @@ function nbRoadmapView({$, nb}){
       n + (r.shelved || nextStep(r) === null ? 0 : 1), 0);
     const parked = rows.filter(r => r.shelved).length;
     const held = nb.nbUnsaved();
+    // Count first; what the list is for is its empty state (R119 step 4).
+    $("roadmapEmpty").hidden = !!rows.length;
     $("roadmapHint").textContent = !rows.length
-      ? "Nothing yet. What goes here is read at the start of every Claude session in this project."
+      ? "nothing yet"
       : held
         ? `${left} still to send${parked ? `, ${parked} shelved` : ""}: ${held} `
           + `not saved, so nothing can be sent until you Save or Revert`
@@ -367,6 +369,8 @@ function nbRoadmapView({$, nb}){
     nb.drawBatchNote();
     nb.syncSave();
     $("roadmapOrder").hidden = !rows.length;
+    // An empty band (the box open, nothing to reorder) is not drawn.
+    $("roadmapAddBar").hidden = !$("roadmapForm").hidden && $("roadmapOrder").hidden;
     $("roadmapOrder").classList.toggle("on", nb.roadmapOrdering);
     $("roadmapLog").classList.toggle("on", nb.roadmapLogOn);
     drawSendBox(live);
@@ -793,6 +797,18 @@ function nbRoadmapView({$, nb}){
 
 
   $("roadmapAdd").onclick = addRoadmap;
+  // The add band unrolls the box under it, and Cancel (or Escape in an
+  // empty box) rolls it back; a line half typed keeps the box open. Only
+  // Add to roadmap steps aside: Reorder stays in the band, live.
+  const roadmapForm = on => {
+    $("roadmapForm").hidden = !on;
+    $("roadmapShow").hidden = on;
+    $("roadmapAddBar").hidden = on && $("roadmapOrder").hidden;
+    if (on) $("roadmapText").focus();
+  };
+  nb.roadmapForm = roadmapForm;
+  $("roadmapShow").onclick = () => roadmapForm(true);
+  $("roadmapCancel").onclick = () => { $("roadmapText").value = ""; roadmapForm(false); };
   $("roadmapOrder").onclick = () => {
     // Entering the mode throws nothing away either: whatever is already staged
     // stays staged, and the moves join it.
@@ -981,9 +997,12 @@ function nbRoadmapView({$, nb}){
   }
   $("roadmapText").onkeydown = e => {
     if (e.key === "Enter"){ e.preventDefault(); addRoadmap(); }
-    // Escape in a field with something in it clears the field, not the panel.
+    // Escape in a field with something in it clears the field, not the
+    // panel; in an empty one it rolls the band back up.
     if (e.key === "Escape" && e.target.value){
       e.preventDefault(); e.stopPropagation(); e.target.value = "";
+    } else if (e.key === "Escape"){
+      e.preventDefault(); e.stopPropagation(); nb.roadmapForm(false);
     }
   };
 

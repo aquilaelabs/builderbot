@@ -37,29 +37,80 @@ function nbRulesView({$, nb, project}){
         && revs[`rules:${project}`] !== nb.ruleData.rev && !ruleDirty()) return loadRulesNow(true);
   }
 
-  // The global rules, read-only, under the project's own. The server has always
-  // sent them and the page never drew them, so somebody writing a project rule
-  // could not see what was already in force: the conflict worth preventing
-  // starts with not knowing. Under the project's list rather than above it, so
-  // Add stays the first band and what is this project's own comes first. A
-  // class of their own, NOT .rulerow: every handler and every selector in
-  // here means "one of this project's rules" by that class, and a read-only
-  // row wearing it was wired for an Edit button it does not have.
+  // The global rules, under the project's own: every project's sessions
+  // are handed them, and each can be switched off for THIS project by
+  // anybody who works on it (the operator, 2 Oct), staged with the rest of
+  // the Briefing behind the notebook's Save. An administrator also changes
+  // the rules themselves here, for every project at once, written as each
+  // row's own Save; there is no dialog for them anywhere else. A class of
+  // their own, NOT .rulerow: every handler here means "one of this
+  // project's rules" by that class.
+  const offHere = () => nb.globalOffPending || new Set((nb.ruleData?.global || []).filter(g => g.off_here).map(g => g.name));
   function globalRules(gs){
-    gs = gs.filter(g => !g.disabled);
-    if (!gs.length) return "";
+    const may = !!nb.ruleData?.may_global;
+    if (!gs.length && !may) return "";
+    const off = offHere();
     const cond = r => (r.paths || []).length || (r.words || []).length;
-    return `<div class="sub dim ggroup">also in force here, set for every project in Controller settings</div>
-      <div class="field" id="rlGlobal">${gs.map(g => `
-        <details class="bug grule"${sectAttr(`rules:global:${project}|${g.name}`)}>
-          <summary><span class="btitle">${esc(g.name || "")}</span>
+    const ed = nb.globalEditing;
+    const row = (g, i) => {
+      const editing = ed && ed.i === i;
+      const here = !off.has(g.name);
+      return `
+        <details class="bug grule${editing ? " editing" : ""}" data-gi="${i}"${editing ? " open" : sectAttr(`rules:global:${project}|${g.name || i}`)}>
+          <summary><span class="btitle">${esc(g.name || "(new)")}</span>
             <span class="rlkind ${cond(g) ? "cond" : ""}">${cond(g) ? "on its triggers" : "every session"}</span>
-            <span class="pill">global</span></summary>
-          <div class="body"><div class="bfield"><label>rule</label><div class="bval">${esc(g.text || "")}</div></div>${
+            <span class="pill">global</span>${
+            g.disabled ? `<span class="pill warn">off everywhere</span>` : !here ? `<span class="pill warn">off here</span>` : ""}</summary>
+          <div class="body">${editing ? `
+            ${lbl("", "Name", "a short name the rule is known by")}
+            <input class="grName" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(ed.r.name || "")}" aria-label="global rule name">
+            ${lbl("", "The rule")}
+            <textarea class="grText" spellcheck="false" maxlength="2000">${esc(ed.r.text || "")}</textarea>
+            <div class="two">
+              <div>${lbl("", "Files it covers")}<input class="grPaths" autocomplete="off" spellcheck="false" value="${esc((ed.r.paths || []).join(", "))}" aria-label="paths"></div>
+              <div>${lbl("", "Words that raise it")}<input class="grWords" autocomplete="off" spellcheck="false" value="${esc((ed.r.words || []).join(", "))}" aria-label="words"></div>
+            </div>
+            <div class="actbar macts"><span class="state">Save writes it for every project</span>
+              <button type="button" class="stop grCancel">Cancel</button>
+              <button type="button" class="primary grSave">Save</button></div>` : `
+            <div class="bfield"><label>rule</label><div class="bval">${esc(g.text || "")}</div></div>${
             (g.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc(g.paths.join(", "))}</div></div>` : ""}${
-            (g.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc(g.words.join(", "))}</div></div>` : ""}</div>
-        </details>`).join("")}</div>`;
+            (g.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc(g.words.join(", "))}</div></div>` : ""}
+            <div class="bfield"><label class="ndcap"><input type="checkbox" class="grHere"${here ? " checked" : ""}${g.disabled ? " disabled" : ""}> On for this project</label>${
+              g.disabled ? `<div class="sub">An administrator has turned it off for every project.</div>` : ""}</div>
+            <div class="actbar macts"><span class="state">${g.builtin ? "shipped with BuilderBot" : "an administrator's"}${here ? "" : " · Save applies the switch"}</span>${
+              may ? (g.builtin
+                ? `<button type="button" class="grEvery">${g.disabled ? "On everywhere" : "Off everywhere"}</button>`
+                : `<button type="button" class="danger grRm">Remove</button><button type="button" class="grEdit">Edit</button>`) : ""}</div>`}
+          </div>
+        </details>`;
+    };
+    const adding = ed && ed.i === -1 ? row(ed.r, -1) : "";
+    return `<div class="sub dim ggroup">Global rules: every project's sessions are handed these. Switch one off for this project here${
+        may ? "; as an administrator you also change them for every project" : ""}.</div>${
+      may && !(ed && ed.i === -1) ? `<div class="addbar" data-add="global"><button type="button" id="grAddHere">Add a global rule</button></div>` : ""}
+      <div class="field" id="rlGlobal">${adding}${gs.map(row).join("")}</div>`;
   }
+
+  // An administrator's change to the global rules, written at once for
+  // every project: the operator's own list whole, and which shipped ones
+  // are off everywhere, as /api/global-rules takes them.
+  async function saveGlobal(mutate){
+    const gs = (nb.ruleData?.global || []).map(g => ({...g}));
+    const own = gs.filter(g => !g.builtin);
+    const shippedOff = new Set(gs.filter(g => g.builtin && g.disabled).map(g => g.name));
+    mutate(own, shippedOff);
+    const r = await postJSON("/api/global-rules", {action: "save",
+      rules: own.map(g => ({name: g.name, text: g.text, paths: g.paths || [], words: g.words || []})),
+      disabled: [...shippedOff]});
+    let j = {};
+    try{ j = await r.json(); }catch{ j = {error: `the controller answered ${r.status}`}; }
+    if (!r.ok || j.error){ notify(j.error || `the controller answered ${r.status}`, true); return false; }
+    nb.globalEditing = null;
+    await loadRules(true);
+    return true;
+  }
+
   // What a project rule shares with a global one, in a sentence for its row.
   const overlapLine = r => (r.overlaps || []).map(o =>
     `the global rule ${o.name} also fires on ${[...(o.words || []), ...(o.paths || [])].join(", ")}`).join("; ");
@@ -67,7 +118,7 @@ function nbRulesView({$, nb, project}){
   // What is on screen: the staged copy if anything has been typed, otherwise
   // what the server last said.
   const ruleRows = () => nb.rulePending || (nb.ruleData?.rules || []);
-  const ruleDirty = () => nb.rulePending !== null;
+  const ruleDirty = () => nb.rulePending !== null || nb.globalOffPending !== null;
 
   function ruleStage(fn){
     nb.rulePending = (nb.rulePending || (nb.ruleData?.rules || [])).map(r => ({...r}));
@@ -142,7 +193,7 @@ function nbRulesView({$, nb, project}){
                 value="${esc(r.check || "")}" aria-label="check"></div>
             </div>
             <div class="actbar macts">
-              <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
+              <span class="state">${ruleWhen(r)} · the section's Save writes it</span>
               <button type="button" class="stop rlCancel" title="discard what was typed">Cancel</button>
               <button type="button" class="danger rlRm">Remove</button>
             </div>` : `
@@ -177,10 +228,17 @@ function nbRulesView({$, nb, project}){
         <div class="actbar"><span class="state">nothing has been written</span>
           <button type="button" id="rlKeepTheirs">Keep theirs</button>
           <button type="button" class="primary" id="rlUseMine">Use mine</button></div></div>`;
+    // The rules' own Save and Revert, at the section's foot (the operator,
+    // 5 Oct): registered before the bar is drawn, which asks it.
+    nb.stage("briefing:rules", {
+      count: () => (ruleDirty() ? 1 : 0),
+      what: () => "the edited rules",
+      save: async () => { await saveRules(); return ""; },
+      revert: () => nb.ruleClearStaged()});
     box.innerHTML = nb.codebaseSection()
       + nb.briefSection()
       + docSection("briefing", "rules", "Your rules",
-      rows.length ? `${rows.length}` : "none", clash + body,
+      rows.length ? `${rows.length}` : "none", clash + body + nb.sectBar("briefing:rules"),
       // Shut on both sizes: the rules are read once and edited rarely, and
       // open they push the code base off the first screen. The count on the
       // heading says there is something behind it.
@@ -194,7 +252,8 @@ function nbRulesView({$, nb, project}){
     if (mine) mine.onclick = () => saveRules(true);
     wireSections(box);
     nb.ruleStagedCount = () => (ruleDirty() ? 1 : 0);
-    nb.ruleClearStaged = () => { nb.rulePending = null; nb.ruleEditing.clear(); nb.ruleOpen.clear(); nb.ruleWas.clear(); drawRules(); };
+    nb.ruleClearStaged = () => { nb.rulePending = null; nb.globalOffPending = null; nb.globalEditing = null;
+                                 nb.ruleEditing.clear(); nb.ruleOpen.clear(); nb.ruleWas.clear(); drawRules(); };
     nb.ruleCommitStaged = saveRules;
     box.querySelectorAll(".rulerow").forEach(row => {
       const i = Number(row.dataset.i);
@@ -252,6 +311,54 @@ function nbRulesView({$, nb, project}){
       nb.ruleEditing.add(rows.length);          // the new row, which is a form until it has words
       ruleStage(rs => rs.push({name: "", text: "", paths: [], words: []}));
     };
+    wireGlobal(box);
+  }
+
+  function wireGlobal(box){
+    const gs = nb.ruleData?.global || [];
+    box.querySelectorAll(".grule").forEach(el => {
+      const i = Number(el.dataset.gi);
+      const g = i >= 0 ? gs[i] : nb.globalEditing?.r;
+      if (!g) return;
+      const on = (sel, fn) => { const b = el.querySelector(sel); if (b) b.onclick = fn; };
+      const here = el.querySelector(".grHere");
+      // Staged like the project's rules: the foot's Save sends it with them.
+      if (here) here.onchange = () => {
+        const off = new Set(offHere());
+        if (here.checked) off.delete(g.name); else off.add(g.name);
+        const was = new Set(gs.filter(x => x.off_here).map(x => x.name));
+        const same = off.size === was.size && [...off].every(n => was.has(n));
+        nb.globalOffPending = same ? null : off;
+        drawRules(); nb.syncSave();
+      };
+      on(".grEvery", async ev => {
+        busy(ev.target, "Saving");
+        await saveGlobal((own, shippedOff) => { if (g.disabled) shippedOff.delete(g.name); else shippedOff.add(g.name); });
+      });
+      on(".grEdit", () => { nb.globalEditing = {i, r: {...g, paths: [...(g.paths || [])], words: [...(g.words || [])]}}; drawRules(); });
+      on(".grCancel", () => { nb.globalEditing = null; drawRules(); });
+      on(".grRm", async ev => {
+        if (!confirm(`Remove the global rule ${g.name}? Every project's sessions stop being handed it.`)) return;
+        busy(ev.target, "Removing");
+        await saveGlobal(own => { const k = own.findIndex(x => x.name === g.name); if (k >= 0) own.splice(k, 1); });
+      });
+      const put = (cls, key, list) => {
+        const f = el.querySelector(cls);
+        if (f) f.oninput = () => { nb.globalEditing.r[key] = list ? f.value.split(/[,\s]+/).filter(Boolean) : f.value; };
+      };
+      put(".grName", "name"); put(".grText", "text"); put(".grPaths", "paths", true); put(".grWords", "words", true);
+      on(".grSave", async ev => {
+        const r = nb.globalEditing.r;
+        if (!(r.text || "").trim()){ notify("a rule needs its words", true); return; }
+        busy(ev.target, "Saving");
+        await saveGlobal(own => {
+          if (i === -1) own.push(r);
+          else { const k = own.findIndex(x => x.name === g.name); if (k >= 0) own[k] = r; }
+        });
+      });
+    });
+    const addG = $("grAddHere");
+    if (addG) addG.onclick = () => { nb.globalEditing = {i: -1, r: {name: "", text: "", paths: [], words: []}}; drawRules(); };
   }
 
   // Typed into rather than redrawn: a repaint on every keystroke would take
@@ -279,9 +386,10 @@ function nbRulesView({$, nb, project}){
   // `force` is the person's answer to the clash band, never a default.
   async function saveRules(force){
     if (!ruleDirty()) return;
-    const body = nb.rulePending;
+    const body = nb.rulePending || (nb.ruleData?.rules || []);
     try{
       const r = await postJSON("/api/rules", {project, action: "save", rules: body,
+                                              ...(nb.globalOffPending ? {globals_off: [...nb.globalOffPending]} : {}),
                                               rev: nb.ruleData?.rev, ...(force === true ? {force: true} : {})});
       const j = await r.json();
       // Somebody else wrote these rules while they were open here (B195).
@@ -292,6 +400,7 @@ function nbRulesView({$, nb, project}){
       nb.ruleClash = null;
       nb.ruleData = j;
       nb.rulePending = null;
+      nb.globalOffPending = null;
       nb.ruleEditing.clear();                   // written: back to reading them
       nb.ruleOpen.clear(); nb.ruleWas.clear();
       drawRules();

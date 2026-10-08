@@ -30,9 +30,10 @@ const row = n => `#projects .row:has(.name:text-is("${n}"))`;
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
 await page.click('.pane .nb .nbtabs [data-v="bugs"]');
-await page.waitForFunction(() => /Nothing reported/.test(
+await page.waitForFunction(() => /^nothing reported$/.test(
   document.getElementById('bugHint')?.textContent || ''), { timeout: 15000 });
-ok(true, 'the Bugs tab opens empty, and says where reports end up');
+ok(await page.$eval('#bugList .nbempty', e => /reaches every Claude session/.test(e.textContent)),
+   'the Bugs tab opens empty: its head a fragment, and where reports end up its empty state (R119 step 4)');
 
 // ---- reporting one from the panel -----------------------------------------
 await page.click('#bugAdd button');

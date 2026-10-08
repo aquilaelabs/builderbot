@@ -31,6 +31,8 @@ one that can disconnect it, and the only one asked when a session wants to
 touch it: a request from a session goes to the owner's bell and Phone tab and
 nobody else's. Everybody else sees the connection and cannot drive it.
 """
+import hashlib
+import json
 import ipaddress
 import re
 import threading
@@ -62,6 +64,23 @@ remover = None
 # container_builds whether the file would build from an empty directory
 # (B329), asked at the same moment.
 container_maker = None
+# signing.start(principal, project, file, route), set by the server: what
+# Allow on a session's `bb sign` runs (R106), queued as the session asked.
+signer = None
+# What Allow on a session's key change runs (R106 step 6), set by the
+# server: keymaker(action, project, args) -> (payload, status), where
+# action is generate (args: key, route) or map (args: package, key).
+keymaker = None
+# releaser(project, comp, asker_name, principal) -> (payload, status): the
+# release a session asked for, run as Release on the Artifacts tab runs it
+# (R138). Set by the server.
+releaser = None
+# (project, plan, asker_name, principal) -> (payload, status): an edit of a
+# published release (R139), the controller's, with the project's token.
+release_editor = None
+# (project, plan, asker_name, principal) -> (payload, status): files taken
+# off a published release, its own ask (the operator, 5 Oct).
+release_remover = None
 container_free = None
 container_builds = None
 # ...and what verb() needs to know about the one asking, set by server.py
@@ -70,6 +89,7 @@ container_builds = None
 # node held to its project's (R79), the dial's refusal, and the sessions'
 # networks told when a container is made (R79).
 users = None
+leasing = None        # phonelease, set by server.py: a phone lent to a project (R113)
 project_names = None
 project_node = None
 dial = None
@@ -130,6 +150,24 @@ def _rec(nid):
     return load()["nodes"].get(nid)
 
 
+def by_node(uid):
+    """{node id: {owner, mine, lease}} for every node with a phone connected,
+    from one read of the store and no adb: what a project row says about its
+    node's phone (R120). `lease` is {project, by_name, left} or None."""
+    out, now = {}, time.time()
+    for nid, rec in (load().get("nodes") or {}).items():
+        if not isinstance(rec, dict):
+            continue
+        got = rec.get("lease") if isinstance(rec.get("lease"), dict) else None
+        if got and got.get("until") and now > got["until"]:
+            got = None
+        out[nid] = {"node": nid, "owner": rec.get("owner_name") or "somebody", "mine": rec.get("owner") == uid,
+                    "model": rec.get("model") or "",
+                    "lease": ({"project": got.get("project") or "", "by_name": got.get("by_name") or "",
+                               "left": int(got["until"] - now) if got.get("until") else None} if got else None)}
+    return out
+
+
 def _put(nid, rec):
     d = load()
     if rec is None:
@@ -171,7 +209,7 @@ def known(nid):
     return [r for r in (load().get("known", {}).get(nid) or []) if isinstance(r, dict)]
 
 
-def forget(nid, ip):
+def forget(nid, ip, me=None, admin=False):
     """Drop one remembered phone by address. The pairing key on the node
     stays (this is the list's memory, not adb's), so the phone can be
     connected again by typing its address."""
@@ -182,6 +220,11 @@ def forget(nid, ip):
     keep = [r for r in rows if r.get("ip") != ip]
     if len(keep) == len(rows):
         return {"error": f"nothing remembered at {ip} on this node"}
+    # A row is its maker's to forget, or an administrator's (B490).
+    if me is not None and not admin:
+        for r in rows:
+            if r.get("ip") == ip and (r.get("by") or "") != me:
+                return {"error": f"that phone was remembered by {r.get('by') or 'somebody else'}: theirs to forget"}
     d.setdefault("known", {})[nid] = keep
     save(d)
     return {"ok": True}
@@ -429,12 +472,14 @@ def connect(nid, ip, port, uid, name):
     return {"ok": True, "serial": f"{ip}:{n}"}
 
 
-def disconnect(nid, uid, name):
-    """The owner ends it. Nobody else: a connection somebody else made is
-    theirs to drop, and the refusal names them."""
-    held = _held_by_other(nid, uid)
+def disconnect(nid, uid, name, admin=False):
+    """The owner ends it, or an administrator (R120, the operator 4 Oct): a
+    phone left connected and lent is a machine-wide fact somebody has to be
+    able to end. Nobody else: a connection another person made is theirs to
+    drop, and the refusal names them. Its lease goes with it."""
+    held = None if admin else _held_by_other(nid, uid)
     if held:
-        return held
+        return {"error": held["error"].replace("only they can", "only they, or an administrator, can")}
     p = phone_on(nid)
     target = (p or {}).get("serial") or (_rec(nid) or {}).get("serial") or ""
     if not target and not _rec(nid):
@@ -442,31 +487,52 @@ def disconnect(nid, uid, name):
     if target:
         _adb(nid, "disconnect", target, timeout=15, by=f"user:{name}")
     _put(nid, None)
+    _forget_trust(nid)              # a phone gone takes what it allowed with it
     phone_on(nid, force=True)
     return {"ok": True}
 
 
 # ---- what the tab and the Artifacts view read ------------------------------
 
-def _node_row(n, uid, probe):
+def _node_row(n, uid, probe, who=None):
     rec = _rec(n["id"])
     dev = phone_on(n["id"], force=probe) if n["live"] else None
+    mine = bool(rec and rec.get("owner") == uid)
+    admin = bool(who is not None and users.is_admin(who))
+    me = (who or {}).get("name") or ""
+    # Another account's phone (B490): that one is connected, and whose, and
+    # nothing that names it (no model, no serial, no address); the remembered
+    # rows are the account's own, every row an administrator's.
+    shown = dev
+    if dev and rec and not mine:
+        shown = {"kind": dev.get("kind", ""), "state": dev.get("state", "")}
+    rows = known(n["id"])
+    if not admin:
+        rows = [r for r in rows if r.get("by") == me]
     return {"id": n["id"], "name": n["name"], "live": n["live"],
-            "phone": dev, "ip": load().get("ips", {}).get(n["id"], ""),
-            "known": known(n["id"]),
+            "phone": shown, "ip": load().get("ips", {}).get(n["id"], "") if (mine or admin or not rec) else "",
+            "known": rows,
             "owner": owner_of(n["id"]) if rec else None,
-            "mine": bool(rec and rec.get("owner") == uid),
-            "may_drive": may_drive(n["id"], uid)}
+            "mine": mine,
+            "may_drive": may_drive(n["id"], uid),
+            # R113: who the phone is lent to, and (for its owner) which
+            # projects on this node it could be.
+            "lease": leasing.view(n["id"]) if leasing is not None else None,
+            # Allowed for a session (the owner's to see and take back).
+            "trust": trusts(n["id"]) if rec and rec.get("owner") == uid else [],
+            "lendable": (sorted(p for p in project_names(who) if project_node(p) == n["id"])
+                         if rec and rec.get("owner") == uid and who is not None
+                         and project_names and project_node else [])}
 
 
-def payload(uid, node="", probe=False, admin=False, project=""):
+def payload(uid, node="", probe=False, admin=False, project="", who=None):
     """The tab's data for one account: every node a phone can be driven
     from, which of them holds one and whose it is, and the requests waiting
     on THIS account: phone requests on the phone's owner, root requests on
     an administrator. `probe` asks the picked node's adb again now."""
     rows = []
     for n in (nodes.phone_nodes() if nodes is not None else []):
-        rows.append(_node_row(n, uid, probe and n["id"] == node))
+        rows.append(_node_row(n, uid, probe and n["id"] == node, who))
     return {"nodes": rows, "asks": requests_open(uid, admin, project)}
 
 
@@ -630,12 +696,23 @@ def stop_push(uid, by="phone"):
 _reqs = []
 _req_seq = 0
 MAX_REQS = 20
+USE_OUT_MAX = 256 * 1024     # a lent phone's command's answer, kept whole up to this
 
 # How long a session will wait before giving up. Fifteen minutes: the
 # ordinary case is that the tab is behind three others and the request is
 # noticed on the next glance, and a request that expires before it is seen
 # is worse than one that waits.
 WAIT_SECONDS = 900
+
+
+def _forge_said(fg):
+    """The forge's half of a release, for the session that asked: the
+    release's address, or why there is none (the tag is pushed either way)."""
+    if fg.get("url"):
+        return f"; {fg['url']}"
+    if fg.get("error"):
+        return f"; no release on {fg.get('forge') or 'the forge'}: {fg['error']}"
+    return ""
 
 
 def _req_public(r):
@@ -653,6 +730,18 @@ def _req_public(r):
     # keys are, so the reader knows what it sets.
     # ...and a rebuild that creates the container or writes its env says so,
     # with the env's keys for the same reason.
+    # A release names the tag and the commit it would mark (R138).
+    if r.get("kind") == "release":
+        out["tag"], out["sha"] = r.get("tag") or "", r.get("sha") or ""
+    # ...and an edit of one (R139) is approved by reading it: the notes it
+    # would put on the page, whole, and each file with its size.
+    if r.get("kind") == "release-edit":
+        out["tag"] = r.get("tag") or ""
+        out["detail"] = r.get("notes") or ""
+        out["files"] = [{"name": x["name"], "size": x["size"], "signed": x["signed"]} for x in r.get("files") or []]
+    if r.get("kind") == "release-remove":
+        out["tag"] = r.get("tag") or ""
+        out["files"] = [{"name": x["name"], "size": x["size"]} for x in r.get("files") or []]
     if r.get("kind") == "rebuild":
         out["create"] = bool(r.get("create"))
         out["ctl"] = r.get("ctl") or ""
@@ -682,6 +771,10 @@ def _for(r, uid, admin):
     # docker-write, which a user does not have on a project they otherwise own.
     if r.get("kind") in ("root", "rebuild", "container") and not admin:
         return False
+    # A signing, or a key change, waits on the project's owner, whatever
+    # their role.
+    if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove"):
+        return r["to"] == uid
     if r["to"] == "admins":
         return bool(admin)
     return r["to"] == uid
@@ -704,7 +797,7 @@ def requests_open(uid=None, admin=False, project=""):
                 if r["state"] == "pending" and (uid is None or _for(r, uid, admin))]
 
 
-def ask(why, argv, nid, node_name, project, by="claude", asker=""):
+def ask(why, argv, nid, node_name, project, by="claude", asker="", asker_uid=""):
     """A session asking to reach the phone on its project's node. The
     request goes to whoever connected that phone, the asker when it is
     their own. `asker` names the account whose session asks, for the row.
@@ -725,9 +818,114 @@ def ask(why, argv, nid, node_name, project, by="claude", asker=""):
     rec = _rec(nid)
     if not rec or not phone_on(nid):
         return {"error": f"no phone is connected on {node_name or nid}: somebody "
-                         "connects one on the Phone tab with that node picked"}
-    return _queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
-                  rec.get("owner_name") or "the owner", asker)
+                         "connects one in the Phone tab, on that node"}
+    return _allow_if_trusted(_queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
+                                     rec.get("owner_name") or "the owner", asker,
+                                     extra={"asker_uid": asker_uid}))
+
+
+# ---- Allow for this session (the operator, 4 Oct) ----------------------------
+# Answering every command a session sends to a phone was too much: the
+# owner's second answer, "Allow for this session", lets the commands that
+# account's sessions in that project send to that phone run without asking
+# again, for as long as the phone is lent to the project (an hour where it
+# is not lent), until the owner takes it back from the Phone tab, the lease
+# ends or the phone is disconnected. Kept in memory with the asks, so a
+# controller restart asks again. A command so allowed is still an ask on
+# the record, answered at once in the owner's name, so the log and the
+# session's own wait read the same as for a press.
+TRUST_S = 3600
+_trust = {}             # (node id, project, asker uid) -> unix time it ends
+
+
+def _trust_end(nid, project):
+    got = leasing.lease(nid) if leasing is not None else None
+    if got and got.get("project") == project:
+        return got.get("until") or 0          # 0: until taken back
+    return int(time.time()) + TRUST_S
+
+
+def trusted(nid, project, asker_uid):
+    """True while the owner has allowed this account's sessions in this
+    project to drive the phone on this node without asking."""
+    key = (nid, project, asker_uid)
+    with _lock:
+        if key not in _trust:
+            return False
+        end = _trust[key]
+    got = leasing.lease(nid) if leasing is not None else None
+    lent_here = bool(got and got.get("project") == project)
+    # A grant made under a lease lasts the lease, not past it.
+    if (end == 0 and not lent_here) or (end and end < time.time()):
+        with _lock:
+            _trust.pop(key, None)
+        return False
+    return True
+
+
+def trusts(nid):
+    """What the owner has allowed for a session on this node, for the Phone
+    tab: [{project, asker, until}]."""
+    out = []
+    with _lock:
+        keys = [k for k in _trust if k[0] == nid]
+    for k in keys:
+        if trusted(*k):
+            with _lock:
+                end = _trust.get(k)
+                who = _trust_names.get(k, "")
+            out.append({"project": k[1], "asker_uid": k[2], "asker": who, "until": end})
+    return out
+
+
+_trust_names = {}
+
+
+def untrust(nid, uid, project="", asker_uid="", all_=False):
+    """The owner asking every time again: one grant, or every one on the node."""
+    rec = _rec(nid) or {}
+    if rec.get("owner") != uid:
+        return {"error": "only the account that connected the phone changes what it allows"}
+    with _lock:
+        for k in [k for k in _trust if k[0] == nid and (all_ or (k[1] == project and k[2] == asker_uid))]:
+            _trust.pop(k, None)
+            _trust_names.pop(k, None)
+    return {"ok": True}
+
+
+def wait_token(uid, admin=False):
+    """What the companion app's live connection waits on (R125): a short
+    hash of the asks waiting on this account, the lease revision and the
+    grants. It moves exactly when the app has something new to post or to
+    take out of the shade."""
+    ids = sorted(r["id"] for r in requests_open(uid, admin))
+    with _lock:
+        held = sorted([*k, v] for k, v in _trust.items())
+    lease = leasing.rev() if leasing is not None else ""
+    raw = json.dumps([ids, lease, held], default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _forget_trust(nid):
+    with _lock:
+        for k in [k for k in _trust if k[0] == nid]:
+            _trust.pop(k, None)
+            _trust_names.pop(k, None)
+
+
+def _allow_if_trusted(q):
+    """A request just queued, answered at once in the owner's name when they
+    allowed its session already; the request as _queue returned it."""
+    if not q.get("ok"):
+        return q
+    with _lock:
+        r = _find(q["id"])
+    if r and r.get("kind") in ("phone", "phone-use") and trusted(r["node"], r["project"], r.get("asker_uid") or ""):
+        with _lock:
+            r["auto"] = True
+        decide(r["id"], True, r["to"], "")
+        q = {**q, "allowed": True}
+    return q
 
 
 def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker="",
@@ -789,6 +987,101 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
                       asker_name)
     return _queue("root", why, argv, nid, node_name, project, by, "admins",
                   "the administrators", asker_name)
+
+
+def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principal="", key=""):
+    """A session asking to sign a build with one of its project's keys, on a
+    project whose dial is `ask` (Claude may: Sign a build, R106). It goes
+    to the project's owner, who reads which build and which key; Allow
+    queues the signing as the session's own."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (a release for testers, the Play upload ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    cmd = ["sign", str(file), "--for", str(route)] + (["--key", str(key)] if key else [])
+    return _queue("sign", why, cmd, "", "", project, "claude",
+                  to_uid, to_name, asker_name,
+                  extra={"file": str(file), "route": str(route), "principal": principal, "key": str(key or "")})
+
+
+def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal=""):
+    """A session asking to tag and publish a release, on a project whose
+    dial is `ask` (Claude may: Tag and publish a release, R138). It goes to
+    the project's owner, who reads the tag and the commit it would mark;
+    Allow runs Release as the Artifacts tab does, with the project's own
+    credentials, which the session never holds."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (0.5.4 for testers, the store upload ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    cmd = ["version", "release", f"{plan['tag']} on {plan['sha']}"] + (["--for", comp] if comp else [])
+    return _queue("release", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"comp": str(comp or ""), "tag": plan["tag"], "sha": plan["sha"],
+                         "principal": principal, "asker_name": str(asker_name or "")})
+
+
+def ask_release_edit(why, project, plan, to_uid, to_name, asker_name="", principal=""):
+    """A session asking to change its project's published release (R139):
+    the notes replaced, files attached. Every edit is its own ask, to the
+    project's owner, who reads the notes whole and each file by its name
+    and size before Allow."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (screenshots for the page, the APKs ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    files = plan.get("files") or []
+    cmd = ["version", "release", "--edit", plan["tag"]] + (
+        [f"notes ({len(plan['notes'])} characters)"] if plan.get("notes") is not None else []) + [
+        f"attach {x['name']} ({_size(x['size'])}{', signed' if x['signed'] else ''})" for x in files]
+    return _queue("release-edit", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"tag": plan["tag"], "notes": plan.get("notes"), "files": files,
+                         "principal": principal, "asker_name": str(asker_name or "")})
+
+
+def ask_release_remove(why, project, plan, to_uid, to_name, asker_name="", principal=""):
+    """A session asking to take files off its project's published release:
+    always its own ask, never part of an edit, since it is the one change
+    that takes something away from the people downloading (the operator,
+    5 Oct). The files are named as the forge listed them, with their sizes."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say why they come off: --why \"...\" (a build that was broken, a duplicate ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    cmd = ["version", "release", "--remove", plan["tag"]] + [
+        f"{x['name']}" + (f" ({_size(x['size'])})" if x.get("size") else "") for x in plan.get("files") or []]
+    return _queue("release-remove", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"tag": plan["tag"], "files": plan.get("files") or [],
+                         "principal": principal, "asker_name": str(asker_name or "")})
+
+
+def _size(n):
+    return f"{n / 1_000_000:.1f} MB" if n >= 100_000 else f"{max(1, n // 1000)} KB"
+
+
+def ask_keys(why, project, action, args, to_uid, to_name, asker_name=""):
+    """A session proposing a new key or a package's key, on a project whose
+    Manage signing keys dial is `ask` (R106 step 6). It goes to the project's
+    owner: a new sideload key is an app's identity for good, which is why a
+    person says yes to it."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\""}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    if action == "generate":
+        cmd = ["sign", "key", "new", str(args.get("key")), "--for", str(args.get("route"))]
+    elif action == "map":
+        cmd = ["sign", "map", str(args.get("package")), str(args.get("key") or "default")]
+    elif action == "rotate":
+        cmd = ["sign", "rotate", str(args.get("from")), str(args.get("to"))]
+    else:
+        return {"error": f"not a key change: {action}"}
+    return _queue("sign-key", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"action": action, "args": dict(args)})
 
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
@@ -876,7 +1169,7 @@ def _find(rid):
     return None
 
 
-def decide(rid, allow, uid, name="", admin=False):
+def decide(rid, allow, uid, name="", admin=False, session=False):
     """The answer. Allowing runs it on the node, so the session never
     reaches the phone (or root) itself. Anybody else is refused: a phone
     question was put to the person who connected the phone, a root one to
@@ -899,6 +1192,14 @@ def decide(rid, allow, uid, name="", admin=False):
         if r["state"] != "pending":
             return {"error": f"that one was already {r['state']}"}
         r["state"] = "running" if allow else "denied"
+    # Allow for this session: this one runs, and the next ones from the same
+    # account's sessions in this project to this phone do not ask.
+    if allow and session and r.get("kind") in ("phone", "phone-use"):
+        key = (r["node"], r["project"], r.get("asker_uid") or "")
+        end = _trust_end(r["node"], r["project"])
+        with _lock:
+            _trust[key] = end
+            _trust_names[key] = r.get("asker") or ""
     if not allow:
         return {"ok": True}
     if r.get("kind") == "rebuild":
@@ -961,6 +1262,55 @@ def decide(rid, allow, uid, name="", admin=False):
         if res.get("error"):
             return {"error": res["error"]}
         return {"ok": True}
+    if r.get("kind") == "sign":
+        # Queued as the session's own, the way the auto path does it; the
+        # job's id is what the session follows next.
+        res = (signer(r.get("principal") or "", r["project"], r.get("file") or "", r.get("route") or "",
+                      r.get("key") or "")
+               if signer is not None else ({"error": "nothing here signs"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("job") or "started"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release":
+        res = (releaser(r["project"], r.get("comp") or "", r.get("asker_name") or "", r.get("principal") or "")
+               if releaser is not None else ({"error": "nothing here releases"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        rel = got.get("released") or {}
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or rel.get("note") or
+                             f"{rel.get('tag') or r.get('tag')} tagged on {rel.get('sha') or r.get('sha')}"
+                             + (" and pushed" if rel.get("pushed") else "")
+                             + _forge_said(rel.get("forge") or {})))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release-remove":
+        plan = {"tag": r.get("tag") or "", "files": r.get("files") or []}
+        res = (release_remover(r["project"], plan, r.get("asker_name") or "", r.get("principal") or "")
+               if release_remover is not None else ({"error": "nothing here removes from a release"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("said") or "removed"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release-edit":
+        plan = {"tag": r.get("tag") or "", "notes": r.get("notes"), "files": r.get("files") or []}
+        res = (release_editor(r["project"], plan, r.get("asker_name") or "", r.get("principal") or "")
+               if release_editor is not None else ({"error": "nothing here edits a release"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("said") or "edited"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "sign-key":
+        res = (keymaker(r.get("action") or "", r["project"], r.get("args") or {})
+               if keymaker is not None else ({"error": "nothing here makes keys"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or "done"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "container":
         # Two steps and both said: the container registered through the
         # Docker tab's own path, which refuses a file compose cannot read,
@@ -988,6 +1338,25 @@ def decide(rid, allow, uid, name="", admin=False):
         if res.get("error"):
             return {"error": res["error"]}
         return {"ok": True}
+    if r.get("kind") == "phone-use":
+        # A lent phone's command, allowed by its owner (R120): run as the
+        # lease would have run it, on a thread (a recording takes its
+        # seconds), its answer kept as JSON for the session's verb to read.
+        def finish_use():
+            try:
+                res, st = leasing.use(r["project"], r.get("op") or "", r.get("args") or {})
+            except Exception as e:                                     # noqa: BLE001 (said, not raised)
+                res, st = {"error": str(e)}, 500
+            # The answer's own output is what is cut, never the JSON around
+            # it: cut at 8 KB, a layout dump stopped parsing and bb phone ui
+            # printed its tail as an ERROR (report #56). 256 KB holds a
+            # screen's whole hierarchy.
+            if isinstance(res, dict) and isinstance(res.get("out"), str) and len(res["out"]) > USE_OUT_MAX:
+                res["out"] = res["out"][:USE_OUT_MAX]
+            with _lock:
+                r.update(state="done", out=json.dumps(res), code=0 if st == 200 else 1)
+        threading.Thread(target=finish_use, daemon=True, name=f"phone-use-{rid}").start()
+        return {"ok": True, "state": "running"}
     if r.get("kind") == "root":
         # Answered at once, run on a thread: a root command may take ten
         # minutes, and the browser's Allow, behind whatever proxy, must
@@ -1091,6 +1460,19 @@ def _install_worker(nid, serial, rel, size, project, dest, by):
         _install.update(running=False, state="done" if ok else "failed", error=err)
 
 
+def install_dest(node, project, rel):
+    """Where the agent fetches a dist/ file for an install on this node: its
+    artifacts store for the project, or its data store without one. A node's
+    record keeps its stores under `reported`; a caller may hand them at the
+    top instead. Reading only the top sent a lease's install (which hands
+    the record) to /tmp while the agent fetched into the store (report #52)."""
+    stores = node.get("stores") or (node.get("reported") or {}).get("stores") or {}
+    root = (stores.get("artifacts") or {}).get("path") or (stores.get("data") or {}).get("path") or "/tmp"
+    if (stores.get("artifacts") or {}).get("path"):
+        root = f"{root}/{re.sub(r'[^A-Za-z0-9._-]', '_', str(project or '')) or '_'}"
+    return f"{root}/{Path(rel).name}"
+
+
 def install_apk(nid, node, rel, size, project, label="", by="phone"):
     """Install (or update) one APK from the project's dist/ on the phone
     connected to its node. The agent fetches the file into the node's
@@ -1102,11 +1484,7 @@ def install_apk(nid, node, rel, size, project, label="", by="phone"):
     dev = phone_on(nid)
     if not dev:
         return {"error": "no phone is connected on this project's node"}
-    stores = node.get("stores") or {}
-    root = (stores.get("artifacts") or {}).get("path") or (stores.get("data") or {}).get("path") or "/tmp"
-    if (stores.get("artifacts") or {}).get("path"):
-        root = f"{root}/{re.sub(r'[^A-Za-z0-9._-]', '_', str(project or '')) or '_'}"
-    dest = f"{root}/{Path(rel).name}"
+    dest = install_dest(node, project, rel)
     with _lock:
         _install.update(running=True, what=label or Path(rel).name,
                         state="installing", error="", at=int(time.time()))
@@ -1119,7 +1497,7 @@ def install_apk(nid, node, rel, size, project, label="", by="phone"):
 # ---------------------------------------------------------------------------
 # the Phone tab's verbs and the asking, one call from the dashboard
 
-def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", addr=""):
+def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", addr="", who=None):
     """The tab's data for this account, plus this browser's own address when
     it is a phone.
 
@@ -1133,13 +1511,17 @@ def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", ad
     is the desktop's, which is emphatically not the phone, and filling the
     field with it would be a confident wrong answer, the worst kind.
     """
-    out = payload(uid, node=node, probe=probe, admin=admin, project=project)
+    out = payload(uid, node=node, probe=probe, admin=admin, project=project, who=who)
     # The rows are the nodes this account's projects build on, as every
     # node-shaped surface is (the server's _node_scope, handed in as scope):
     # the list carried every phone node's name, address and handset to a
     # session (the probe of 26 Sep).
+    # The row's node is its `id`: filtering on a `node` key no row has
+    # emptied the list for every scoped asker, so a session's bb phone status
+    # said "no node carries adb" beside a phone connected on its node
+    # (report #51, 4 Oct).
     if scope is not None and isinstance(out.get("nodes"), list):
-        out["nodes"] = [r for r in out["nodes"] if r.get("node") in scope]
+        out["nodes"] = [r for r in out["nodes"] if r.get("id") in scope]
     if "Android" in ua:
         try:
             ip = ipaddress.ip_address(addr)
@@ -1172,9 +1554,9 @@ def verb(action, req, who, fresh):
     elif act == "connect":
         r = connect(nid, field(req, "ip"), field(req, "port") or None, uid, me)
     elif act == "disconnect":
-        r = disconnect(nid, uid, me)
+        r = disconnect(nid, uid, me, admin=users.is_admin(who))
     elif act == "forget":
-        r = forget(nid, field(req, "ip"))
+        r = forget(nid, field(req, "ip"), me=me, admin=users.is_admin(who))
     elif act == "ask":
         # A session asking to reach the phone on its project's node,
         # or, with kind "root", for one command as root there (roadmap
@@ -1273,9 +1655,60 @@ def verb(action, req, who, fresh):
                          locked=(nodes.node_locked(pn) or nodes.root_refused(pn)) if pn else "")
         else:
             r = ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
-                    pn["name"] if pn else "", proj, asker=asker_name)
+                    pn["name"] if pn else "", proj, asker=asker_name, asker_uid=str(asker_uid or ""))
+    elif act == "lend":
+        if not nid or not _rec(nid):
+            return {"error": "no phone is connected on that node"}, 400
+        r = leasing.lend(nid, who, field(req, "project"), req.get("hours"))
+    elif act == "take-back":
+        r = leasing.take_back(nid, who, admin=users.is_admin(who))
+        if r.get("ok"):
+            _forget_trust(nid)          # what was allowed for a session went with the lease
+    elif act == "look":
+        # The owner watching what a session does: a screenshot of the lent
+        # phone now, into the project's dist/phone/ beside the session's.
+        got = leasing.lease(nid) if nid else None
+        if not got or (_rec(nid) or {}).get("owner") != uid:
+            return {"error": "only the owner looks at a lent phone from here"}, 403
+        r, st = leasing.use(got["project"], "shot", {})
+        if st != 200:
+            return r, st
+    elif act == "use":
+        # A session's verb on the phone lent to its project (R113): its own
+        # project only, and phonelease says what a lease allows. Since R120
+        # (the operator, 4 Oct) every one but reading the lease ASKS the
+        # phone's owner, and runs on their Allow: whether a session drives a
+        # phone is its owner's call each time, not a project's setting.
+        proj = who.get("session") or field(req, "project")
+        if not proj or (not who.get("session") and not users.may_see(who, proj)):
+            return {"error": "which project's phone?"}, 400
+        op = field(req, "op")
+        if op == "status" or not who.get("session"):
+            return leasing.use(proj, op, req.get("args"))
+        lnid, got = leasing.leased_to(proj)
+        # What would be refused anyway is refused now, not after its owner
+        # was asked (report #52): no lease, a file outside dist/, an app
+        # that is not the lease's.
+        no = leasing.check(proj, op, req.get("args"))
+        if no:
+            return no
+        rec = _rec(lnid) or {}
+        args = req.get("args") if isinstance(req.get("args"), dict) else {}
+        shown = ["bb", "phone", str(op)[:20]] + [f"{k}={str(v)[:120]}" for k, v in sorted(args.items())][:8]
+        why = " ".join(str(req.get("why") or "").split())[:300] or f"{op} on the phone lent to {proj}"
+        nname = (nodes.node(lnid) or {}).get("name") if nodes is not None else lnid
+        acct = users.account_of(who) or {}
+        r = _allow_if_trusted(_queue("phone-use", why, shown, lnid, nname, proj, f"session:{proj}",
+                                     rec.get("owner") or "", rec.get("owner_name") or "its owner",
+                                     asker=acct.get("name") or who.get("name") or "",
+                                     extra={"op": str(op)[:20], "args": args,
+                                            "asker_uid": str(who.get("uid") or "")}))
+        return {"asked": r["id"], "to": r["to"], "allowed": bool(r.get("allowed"))}, 200
     elif act == "allow" or act == "deny":
-        r = decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
+        r = decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who),
+                   session=act == "allow" and bool(req.get("session")))
+    elif act == "untrust":
+        r = untrust(nid, uid, field(req, "project"), field(req, "asker_uid"), all_=bool(req.get("all")))
     elif act == "outcome":
         r = outcome(req.get("id"), project=who.get("session") or "")
         if not r.get("error"):
@@ -1306,8 +1739,8 @@ def artifact_verb(project, act, req, *, uid, me, by):
                              "driven from the project's node"}, 400
         if not phone_on(nid):
             return {"error": f"no phone is connected on {node['name']}: "
-                             "connect one on the Phone tab with that "
-                             "node picked"}, 400
+                             "connect one in the Phone tab, on that node"
+                             ""}, 400
         held = owner_of(nid)
         if held and held["uid"] != uid:
             return {"error": f"the phone on {node['name']} was connected "
@@ -1315,7 +1748,7 @@ def artifact_verb(project, act, req, *, uid, me, by):
                              "it or install on it"}, 400
         if not held:
             return {"error": f"the phone on {node['name']} has no owner: "
-                             "connect it on the Phone tab first"}, 400
+                             "connect it in the Phone tab, on its node first"}, 400
     if act == "push":
         # A temporary add-on, through web-ext on the phone's node. A push
         # is a decision, made each time; nothing auto-pushes on a change.

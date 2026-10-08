@@ -6,9 +6,9 @@
 // assertion is a round trip through the channel, which is the thing phase 3
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
-         tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
+         tmuxNew, tmuxKill, tmuxFmt, tmuxCapture, openSection } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync, symlinkSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -80,6 +80,60 @@ ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(mint
 // a JSON list the same verbs edit, and netplan as a log of what was applied.
 // Neither needs root; what the agent does with them is what is under test.
 const SANDBOX_STATE = `${DIR}/sandbox-mounts.json`;
+// A card of its own for the agent to find (R102): a sysfs tree with an
+// NVIDIA display device bound to nouveau, and a modinfo that finds a
+// module only once the stand-in bb-sandbox has "installed" one, so the
+// census reads the same on any box the suite runs on.
+{
+  const dev = `${DIR}/sys/bus/pci/devices/0000:04:00.0`;
+  mkdirSync(dev, { recursive: true });
+  mkdirSync(`${DIR}/sys/bus/pci/drivers/nouveau`, { recursive: true });
+  writeFileSync(`${dev}/vendor`, '0x10de\n'); writeFileSync(`${dev}/class`, '0x030000\n'); writeFileSync(`${dev}/device`, '0x2482\n');
+  try { symlinkSync(`${DIR}/sys/bus/pci/drivers/nouveau`, `${dev}/driver`); } catch {}
+  // What apt says about the driver, the same on any box the suite runs on:
+  // two branches on offer, 595 recommended, and installed once the stand-in
+  // bb-sandbox has "installed" one. Anything else goes to the real tool.
+  const real = t => `for d in /usr/bin /bin /usr/sbin /sbin; do [ -x "$d/${t}" ] && exec "$d/${t}" "$@"; done; exit 1`;
+  writeFileSync(`${DIR}/bin/apt-cache`, `#!/bin/sh
+case "$1 $3" in
+  "search ^nvidia-driver"*) printf 'nvidia-driver-590 - NVIDIA driver metapackage (transitional package)\\nnvidia-driver-595 - NVIDIA driver metapackage\\nnvidia-driver-610 - NVIDIA driver metapackage\\n'; exit 0 ;;
+esac
+case "$1 $2" in
+  "policy nvidia-container-toolkit") f="\${BB_CTK_STATE:-/nonexistent}"
+    if [ -s "$f" ]; then printf 'nvidia-container-toolkit:\\n  Installed: %s\\n  Candidate: %s\\n' "$(cat "$f")" "$(cat "$f")"
+    else printf 'nvidia-container-toolkit:\\n  Installed: (none)\\n  Candidate: (none)\\n'; fi; exit 0 ;;
+  "policy nvidia-driver"*) printf 'nvidia-driver-595:\\n  Installed: (none)\\n  Candidate: 595.91.07-0ubuntu1\\nnvidia-driver-610:\\n  Installed: (none)\\n  Candidate: 610.57.04-0ubuntu1\\n'; exit 0 ;;
+esac
+${real('apt-cache')}
+`, { mode: 0o755 });
+  writeFileSync(`${DIR}/bin/dpkg-query`, `#!/bin/sh
+for a in "$@"; do case "$a" in "nvidia-driver*")
+  f="\${BB_NV_STATE:-/nonexistent}"
+  [ -s "$f" ] && printf '%s %s-0ubuntu1 ii \\n' "$(sed -n 2p "$f")" "$(sed -n 1p "$f")"
+  exit 0 ;;
+  nvidia-container-toolkit)
+  f="\${BB_CTK_STATE:-/nonexistent}"
+  [ -s "$f" ] && printf '%s ii \\n' "$(cat "$f")"
+  exit 0 ;; esac; done
+${real('dpkg-query')}
+`, { mode: 0o755 });
+  // ...and the toolkit's own tool, which a node with the real one (bb-sandbox
+  // since 30 Sep) would otherwise answer for: installed once the stand-in
+  // bb-sandbox has "installed" the toolkit, and not there before.
+  writeFileSync(`${DIR}/bin/nvidia-ctk`, `#!/bin/sh
+f="\${BB_CTK_STATE:-/nonexistent}"
+[ -s "$f" ] || exit 127
+echo "NVIDIA Container Toolkit CLI version $(cat "$f")"
+`, { mode: 0o755 });
+  writeFileSync(`${DIR}/bin/ubuntu-drivers`, `#!/bin/sh
+printf 'vendor   : NVIDIA Corporation\\ndriver   : nvidia-driver-595 - distro non-free recommended\\ndriver   : nvidia-driver-610 - distro non-free\\n'
+`, { mode: 0o755 });
+  writeFileSync(`${DIR}/bin/modinfo`, `#!/bin/sh
+f="\${BB_NV_STATE:-/nonexistent}"
+if [ -s "$f" ]; then sed -n 1p "$f"; exit 0; fi
+echo "modinfo: ERROR: Module nvidia not found." >&2; exit 1
+`, { mode: 0o755 });
+}
 writeFileSync(`${DIR}/bin/bb-sandbox`, `#!/usr/bin/env python3
 import json, os, sys
 f = os.environ["BB_SANDBOX_STATE"]
@@ -88,6 +142,28 @@ except Exception: ms = []
 a = sys.argv[1:]
 def save(): json.dump(ms, open(f, "w"))
 if a[:2] == ["list", "--json"]: print(json.dumps(ms)); sys.exit(0)
+if a[0] == "gpu-driver":
+    # The driver row's verb (R102): "installed" is the version the stand-in
+    # modinfo answers with, as a real install puts a module there.
+    if a[1] == "refresh": print("reading the package lists again"); sys.exit(0)
+    if a[1] == "install":
+        pkg = a[2] if len(a) > 2 else "nvidia-driver-595"
+        open(os.environ["BB_NV_STATE"], "w").write({"nvidia-driver-610": "610.57.04"}.get(pkg, "595.91.07") + "\\n" + pkg + "\\n")
+    elif os.path.exists(os.environ["BB_NV_STATE"]): os.remove(os.environ["BB_NV_STATE"])
+    print(f"gpu-driver {' '.join(a[1:])}: done; it takes effect at the next boot"); sys.exit(0)
+if a[0] == "gpu-container":
+    # The container toolkit's verb (R102): "installed" is what the stand-in
+    # dpkg-query answers with, and the docker stub lists the runtime.
+    kit, rt = os.environ["BB_CTK_STATE"], os.path.join(os.environ["DOCKER_STUB_STATE"], "nvidia-runtime")
+    if a[1] == "install":
+        open(kit, "w").write("1.17.8-1"); open(rt, "w").write("1")
+    else:
+        for x in (kit, rt):
+            if os.path.exists(x): os.remove(x)
+    print(f"gpu-container {a[1]}: done"); sys.exit(0)
+if a[0] == "gpu-off":
+    open(os.environ["BB_GPU_STATE"], "w").write("off: switched off on the Nodes tab; an emulator here renders in software\\n")
+    print("the GPU display is off"); sys.exit(0)
 if a[0] == "gpu":
     open(os.environ["BB_GPU_STATE"], "w").write("reboot: the NVIDIA driver is installed and takes the card at the next boot\\n")
     print("card: NVIDIA Test Card [10de:0000]"); print("the driver is installed and takes the card at the next boot: Reboot on this node's row"); sys.exit(0)
@@ -272,6 +348,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_ACT_RUNNER_BIN: `${DIR}/bin/act_runner`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
   BB_GPU_STATE: `${DIR}/gpu-state`, BUILDERBOT_GPU_DISPLAY_STATE: `${DIR}/gpu-state`,
+  BUILDERBOT_SYS_ROOT: `${DIR}/sys`, BB_NV_STATE: `${DIR}/nv-installed`, BB_CTK_STATE: `${DIR}/ctk-installed`,
   BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
 {
   let out = '';
@@ -603,6 +680,42 @@ os.unlink(stamp)
       ok(r.off[0] === false && r.off[1].length === 0 && r.guest[0] === false && r.guest[1].length === 0,
          '...and leaves it alone when it is already off, and on a guest, whose services are its owner\'s');
     }
+    // B538: a unit installed before B107 kept systemd's default KillMode, and
+    // needrestart's restart of it after an upgrade ended every session. The
+    // agent writes the drop-in and needrestart's exception itself, once.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.os.geteuid = lambda: 0
+m.shutil.which = lambda n: '/usr/bin/' + n
+root = tempfile.mkdtemp()
+stamp = os.path.join(root, 'bb-sandbox'); open(stamp, 'w').close()
+m.UNIT_DROPIN = os.path.join(root, 'unit.d', 'builderbot.conf')
+m.NEEDRESTART_DIR = os.path.join(root, 'needrestart'); os.makedirs(m.NEEDRESTART_DIR)
+def case(mode, sandbox=True):
+    seen = []
+    def run(argv, timeout=5):
+        seen.append(argv[1])
+        return mode if argv[1] == 'show' else ''
+    m.SANDBOX_BIN = stamp if sandbox else '/nonexistent/bb-sandbox'
+    return [m.Agent.keep_sessions_through_restart(object.__new__(m.Agent), run), seen]
+first = case('control-group')
+dropin = open(m.UNIT_DROPIN).read()
+conf = open(os.path.join(m.NEEDRESTART_DIR, 'conf.d', 'builderbot.conf')).read()
+print(json.dumps({'first': first, 'again': case('process'), 'guest': case('control-group', False),
+                  'dropin': dropin, 'conf': conf}))
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(JSON.stringify(r.first) === JSON.stringify([['unit', 'needrestart'], ['show', 'daemon-reload']])
+         && r.dropin === '[Service]\nKillMode=process\n'
+         && r.conf.includes('$nrconf{override_rc}{qr(^builderbot-agent\\.service$)} = 0;'),
+         `a unit that would take the sessions on a stop gets KillMode=process in a drop-in, and needrestart is told to leave it alone (${said.slice(0, 120)})`);
+      ok(r.again[0].length === 0 && JSON.stringify(r.again[1]) === '["show"]' && r.guest[0].length === 0,
+         '...once: a unit that already stops only itself and a needrestart already told are left as they are, and a guest is never touched');
+    }
     // R27's refresh, run against the bundle's real layout: bb is at
     // <store>/.bb/current/scripts/bb. The agent looked for .bb/current/bb,
     // which no bundle has, and returned in silence, so no idle session's
@@ -632,6 +745,38 @@ print(json.dumps(open(seen).read().splitlines() if os.path.exists(seen) else [])
       const rows = JSON.parse(said);
       ok(rows.length === 1 && rows[0] === 'token keep alpha u_12345678 bbs_fresh',
          `the agent hands each live session's fresh token to the bundle's own bb, found where the bundle keeps it (${said})`);
+    }
+    // ...and a keep that fails is said in the agent's log, once an hour per
+    // session: it was silent, so a token ran out with nothing saying why
+    // (B419).
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+logged = []
+m.log = lambda msg, *a, **k: logged.append(msg)
+store = tempfile.mkdtemp()
+os.makedirs(os.path.join(store, '.bb', 'current', 'scripts'))
+bb = os.path.join(store, '.bb', 'current', 'scripts', 'bb')
+with open(bb, 'w') as f:
+    f.write('#!/bin/sh\\necho "[builderbot] ERROR: the session token was not kept under /nowhere: PermissionError" >&2\\nexit 1\\n')
+os.chmod(bb, 0o755)
+m.tc_root = lambda st: store
+a = object.__new__(m.Agent)
+a.state = {}
+a.session_account = lambda: 'whoever'
+rows = [{'project': 'alpha', 'uid': 'u_12345678', 'token': 'bbs_fresh'}]
+a.keep_session_tokens(rows)
+a.keep_session_tokens(rows)
+print(json.dumps({"logged": logged, "report": a.keep_report()}))
+`], { encoding: 'utf8' }).trim();
+      const { logged, report } = JSON.parse(said);
+      ok(logged.length === 1 && /session tokens: bb token keep failed \(exit 1\): .*not kept under \/nowhere/.test(logged[0]),
+         `...and one it could not keep is said in the agent's log with bb's reason, once, not on every hello (${said.slice(0, 160)})`);
+      ok(report.said.length === 1 && report.said[0].key === 'u_12345678/alpha' && /not kept under \/nowhere/.test(report.said[0].msg)
+         && report.ok === 0,
+         `...and kept for the hello, which carries it to the controller: the journal was the only place it went (B419) (${JSON.stringify(report).slice(0, 160)})`);
     }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a
@@ -965,8 +1110,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        && typeof JSON.parse(settings.out).locked === 'boolean',
        'bb settings --json relays the project\'s settings, lock included: what bb-tty and bb build read on a node');
     const other = await relay({ argv: ['roadmap'], project: 'ep.silon' });
-    ok(other.status === 403 && /another project/.test(other.error),
-       'a token for alpha cannot ask about another project');
+    ok(other.status === 403 && /alpha does not read ep\.silon/.test(other.error),
+       `a token for alpha cannot ask about another project, and says it does not read it (${other.error})`);
     const sdk = await relay({ argv: ['sdk'] });
     ok(sdk.status === 400 && /not relayed/.test(sdk.error),
        'bb toolchains is refused: it answers for the machine the session is on');
@@ -975,44 +1120,49 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const nobody = await relay({ argv: ['roadmap'] }, 'Bearer bbs_nonsense');
     ok(nobody.status === 401, 'a token that does not verify gets nothing');
 
-    // ---- the login belongs to the MACHINE, and the identity to the account --
-  // The grant never travels now (R47). Every failure this had came from one
+    // ---- a Claude login belongs to one account on one MACHINE ---------------
+  // The grant never travels (R47). Every failure this had came from one
   // OAuth pair living on several machines: a refresh rotates the refresh
   // token, so two copies sign each other out (bug #64), and a machine that
-  // was away holds one the server has retired (B100). Each machine signs in
-  // for itself and keeps the grant it alone refreshes.
+  // was away holds one the server has retired (B100). Each machine is signed
+  // in for itself, from its own row, and keeps the grant it alone refreshes.
   //
-  // So what crosses the wire is two sentences and no secret: "I am signed in
-  // as X" going up, and a generation coming back.
+  // So what crosses the wire is one sentence and no secret: "this account is
+  // signed in here as X", or that it is not.
   {
+    const seed = readFileSync(`${DIR}/home/.claude/.bb-grant.json`, 'utf8');
     const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
       { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
     const api = async (body) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
-      { method: body ? 'POST' : 'GET',
+      { method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + forMe },
-        ...(body ? { body: JSON.stringify(body) } : {}) });
+        body: JSON.stringify(body) });
       return { status: r.status, ...(await r.json()) }; };
+    // Where this account is signed in, as the page is told it.
+    const where = async () => ((await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: auth })).json()).claude_auth || {}).nodes || {};
 
-    // Which node is REPORTING is not taken from the request: it is the node
-    // of the session's own project, which the token proves. A machine that
-    // could name itself could bind the account to whatever it liked.
+    // Which node is REPORTING is the node of the session's own project,
+    // which the token proves. A session names the node it is on, since a
+    // project may work on several, and is believed only when that node is
+    // one of the project's: a machine that could name any node could report
+    // for another.
     await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
       headers: { 'Content-Type': 'application/json',
                  Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
       body: JSON.stringify({ project: 'alpha', node: minted.id }) });
-    ok(!('credentials' in (await api())),
-       'the controller hands out no credential at all: there is none here to hand');
-    // The harness seeds this account as signed in to tester@example.com, the
-    // way a first sign-in would have bound it, so reporting that is a node
-    // agreeing, and reporting anything else is the rule biting.
     let w = await api({ email: 'tester@example.com', plan: 'max', signed_in: true });
-    ok(w.ok && w.gen >= 0, 'a node reports which Anthropic account it signed in as');
-    ok((await api()).email === 'tester@example.com',
-       '...and that is what the account is bound to, for the card to name');
+    ok(w.ok && w.plan === 'max' && Object.keys(w).every(k => ['status', 'ok', 'plan'].includes(k)),
+       `a node reports which Anthropic account it signed this one in as, and the answer carries no credential (${Object.keys(w).join()})`);
+    ok((await where())[minted.id]?.email === 'tester@example.com',
+       '...which is what that node\'s row names, for that account');
+    await api({ email: 'tester@example.com', plan: 'max', signed_in: true, node: 'n_somebody_elses' });
+    ok(!('n_somebody_elses' in await where()), 'a session cannot report for a node that is not one of its project\'s');
+    // Another Anthropic account on this node is another sign-in there, not
+    // a refusal: the login is the machine's, and the row says which.
     const two = await api({ email: 'two@example.invalid', signed_in: true });
-    ok(two.status === 400 && /One Anthropic account per BuilderBot account/.test(two.error || ''),
-       `...so a second Anthropic account is refused rather than recorded (${
-         (two.error || '').slice(0, 56)})`);
+    ok(two.ok && two.plan === '' && (await where())[minted.id]?.email === 'two@example.invalid',
+       `a node signed in to a different Anthropic account is recorded as that, without the last one's plan (${two.error || two.plan})`);
+    await api({ email: 'tester@example.com', plan: 'max', signed_in: true });
 
     // The flow itself finds Claude Code where a SESSION finds it: the session
     // account's own ~/.local/bin (the provisioner's install) and the pinned
@@ -1037,6 +1187,25 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            second.out.trim().split('\n').pop().slice(0, 70)})`);
       ok(existsSync(`${base}/users/u_0badf00d/.claude`),
          "...with the credential's home the second account's own");
+      // ...and the sign-out the node's row asks for is the same shape the
+      // other way: `claude auth logout` in that account's home here, and in
+      // nobody else's. Run here with a home and a Claude Code of its own: a
+      // job on this suite's agent would find the machine's real ones.
+      const out = (uid) => { try {
+        return { code: 0, out: execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--out'],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, BUILDERBOT_ROLE: 'node', BUILDER_HOME: base, HOME: base,
+                   BB_ACCOUNT_UID: uid, BB_TOKEN: '', PATH: '/usr/bin:/bin',
+                   BB_CLAUDE_PINNED: `${base}/no-pin` } }) };
+      } catch (e) { return { code: e.status, out: String(e.stdout) + String(e.stderr) }; } };
+      writeFileSync(`${base}/.local/bin/claude`, '#!/bin/sh\necho "fake claude $* in $HOME"\n');
+      chmodSync(`${base}/.local/bin/claude`, 0o755);
+      const gone = out('u_0badf00d');
+      ok(gone.code === 0 && new RegExp(`fake claude auth logout in ${base}/users/u_0badf00d`).test(gone.out),
+         `the sign-out runs claude auth logout in that account's home on this machine (${gone.out.trim().split('\n')[0].slice(-60)})`);
+      const whose = out('');
+      ok(whose.code !== 0 && /names the account/.test(whose.out) && !/fake claude/.test(whose.out),
+         '...and with no account named it signs nobody out');
       rmSync(`${base}/.local/bin/claude`);
       const none = run('u_0badf00d');
       ok(none.code !== 0 && /Update in the Nodes tab/.test(none.out),
@@ -1044,34 +1213,28 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
-    // and cannot bind one.
+    // and cannot report for one.
     const anon = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
-      { headers: { Authorization: 'Bearer ' + tok } });
+      { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'x@example.invalid', signed_in: true }) });
     ok(anon.status === 403, 'a token for the project alone cannot speak for an account');
 
     // ...and the AGENT can say it too, on its heartbeat, without a session
-    // having to run (B104). Before this the controller learned of a login
-    // from a session's hook and nothing else, so a node signed in with
-    // nothing running stayed "not signed in" on the card, and after a
-    // sign-out the way back needed the session the sign-out had stopped.
+    // having to run (B104): a node signed in with nothing running reads as
+    // signed in on its row, and a sign-out made there shows without one.
     const owner = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
     const nodeTok = JSON.parse(readFileSync(NODE_JSON, 'utf8')).token;
     const beat = (logins) => fetch(URL.replace(/\/$/, '') + '/api/v1/agent/work',
       { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok,
                                    'Content-Type': 'application/json' },
         body: JSON.stringify({ sample: { cpu_pct: 1, logins }, running: [], wait: 0 }) });
-    // Counted per node rather than as "signed in or not", because the
-    // harness seeds one node on this account already: what is under test is
-    // whether THIS node's heartbeat puts it on the record and takes it off.
-    const onNodes = async () => (await api()).nodes;
-    await api({ email: 'tester@example.com', plan: 'max', signed_in: false });
-    const before = await onNodes();
+    await api({ signed_in: false });
+    ok(!(minted.id in await where()), 'a node saying this account is not signed in there takes it off the record');
     await beat([{ uid: owner, email: 'tester@example.com' }]);
-    ok(await onNodes() === before + 1 && (await api()).email === 'tester@example.com',
-       `the node's own heartbeat puts its login on the record, with no session in it (${
-          before} -> ${await onNodes()})`);
+    ok((await where())[minted.id]?.email === 'tester@example.com',
+       'the node\'s own heartbeat puts its login on the record, with no session in it');
     await beat([{ uid: owner, email: '' }]);
-    ok(await onNodes() === before,
+    ok(!(minted.id in await where()),
        '...and a heartbeat saying that home holds no credential takes it off again');
     // The node's sessions, sent the moment one changes rather than on the
     // heartbeat's turn (the operator, 25 Sep): who has a session where and
@@ -1085,10 +1248,20 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const get = async p => (await fetch(URL.replace(/\/$/, '') + p, { headers: auth })).json();
       const live = () => get('/api/live');
       const tok = async () => (await get('/api/revs?p=')).live;
-      const t0 = await tok();
-      await tell('◐ Reading the tests');
-      const busy = await live();
-      ok((busy.claude_with.alpha || []).includes('test') && (busy.claude_busy.alpha || []).includes('test') && await tok() !== t0,
+      // The suite's own agent is running and heartbeats its own report of
+      // this node's sessions, which can land between a tell and the reads
+      // after it (B427): idle, read, busy, read, and once more when a
+      // heartbeat came between, which leaves the token as the agent had it.
+      let busy = {}, moved = false;
+      for (let tries = 0; tries < 3 && !moved; tries++){
+        await tell('Claude Code');
+        const t0 = await tok();
+        await tell('◐ Reading the tests');
+        busy = await live();
+        moved = (busy.claude_with.alpha || []).includes('test') && (busy.claude_busy.alpha || []).includes('test')
+          && await tok() !== t0;
+      }
+      ok(moved,
          `a node says its sessions changed and /api/live shows the session working at once, the revs token moving with it (${JSON.stringify(busy).slice(0, 80)})`);
       await tell('Claude Code');
       const idle = await live();
@@ -1098,29 +1271,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok, 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessions: [] }) });
     }
-    await beat([{ uid: owner, email: 'tester@example.com' }]);
-    ok((await api()).email === 'tester@example.com', '...both ways, as the machine changes');
-
-    // The sign-out: the generation moves, and a machine compares its own
-    // against it. That is the only thing that can carry "you were signed out"
-    // to a node that was not listening: being signed out has no date.
-    tmuxKill('claude-alpha');
-    const so = await page.evaluate(async () => {
-      const r = await fetch('/api/signout', { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      return { status: r.status, ...(await r.json()) };
-    });
-    ok(so.ok && so.gen > (w.gen || 0),
-       `signing out moves the generation, which is what reaches a node (${so.gen})`);
-    ok((await api()).email === '',
-       '...and releases the binding, so the next sign-in may be a different account');
-    tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
-    // The seed goes back. A signed-out record left behind makes every suite
-    // after this one read the box as signed out, which is what it now MEANS,
-    // and that is the cascade that reddened four files twice.
-    writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, JSON.stringify({
-      gen: 9, email: 'tester@example.com', plan: 'max',
-      nodes: { n_fixture: { email: 'tester@example.com', at: 1 } } }));
+    // The seed goes back, and alpha to having no node.
+    writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, seed);
     await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
       headers: { 'Content-Type': 'application/json',
                  Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
@@ -1560,23 +1712,99 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(fin?.state === 'failed' && /refused: a reboot is root's/.test(fin.log || '') && /sudo reboot/.test(fin.log || ''),
          `...which an agent that is not root refuses, naming the command (${fin?.state}: ${(fin?.log || '').trim().slice(0, 80)})`);
     }
-    // The GPU display (R20): a system job the agent answers with bb-sandbox
-    // gpu, whose words are the job's, and whose state line the next hello
-    // carries into the census, so the row says what the machine found.
+    // The NVIDIA driver row (R102), end to end with the real agent: the
+    // census reads the card, where its driver stands and what apt offers;
+    // a branch picked on the row is a name of the toolchain job, which the
+    // agent runs as bb-sandbox gpu-driver install PACKAGE; the hello after
+    // it says the driver is installed and waiting for a restart; another
+    // branch is then refused until this one is removed; and a check reads
+    // apt's lists again on the node. The waits are long: each state arrives
+    // with a census, which under a whole run's load took more than 40 s.
     {
-      const g = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
-      ok(g.ok && /^j_/.test(g.job), `Set up GPU display queues a system job on a sandbox node (${g.job || g.error})`);
-      const fin = await until(async () => {
-        const r = await api(`/api/v1/jobs?id=${g.job}`);
+      const drv = async () => ((await api(`/api/toolchains?node=${minted.id}`)).machine || [])[0];
+      const job = async id => until(async () => {
+        const r = await api(`/api/v1/jobs?id=${id}`);
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-      }, 30000);
-      ok(fin?.state === 'succeeded' && /takes the card at the next boot/.test(fin.log || ''),
-         `...bb-sandbox gpu runs and its words are the job's (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
-      const told = await until(async () => {
-        const n = await nodeById(minted.id);
-        return /^reboot/.test(n.reported?.gpu_display || '') ? n : null;
-      }, 30000);
-      ok(told !== null, `...and the display's state line reaches the row with the hello that follows (${told?.reported?.gpu_display})`);
+      }, 120000);
+      const first = await until(async () => { const x = await drv(); return x?.state && x.state !== 'unknown' && x.options?.length ? x : null; }, 120000);
+      ok(first?.state === 'absent' && first.managed && /10de:2482/.test(first.card) && first.bound === 'nouveau' && !first.here,
+         `the agent reports the card and no driver on it, nouveau holding it (${first?.state}, ${first?.bound})`);
+      ok(first?.options.map(o => o.pkg).join(',') === 'nvidia-driver-610,nvidia-driver-595' && first.recommended === 'nvidia-driver-595',
+         `...with the branches apt offers, newest first, the transitional one left out, and the recommended one (${first?.options.map(o => o.pkg + ' ' + o.version).join(', ')}; ${first?.recommended})`);
+      const nodisp = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
+      ok(/install it on that node's Toolchains tab first/.test(nodisp.error || ''),
+         `the display is not set up on a machine with no driver: it installs none itself (${nodisp.error})`);
+      const q = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-610', node: minted.id });
+      ok(q.ok && /^j_/.test(q.job || ''), `a branch picked on the row queues a toolchain job (${q.job || q.error})`);
+      const fin = await job(q.job);
+      ok(fin?.type === 'toolchain' && fin.state === 'succeeded' && /gpu-driver install nvidia-driver-610: done/.test(fin.log || ''),
+         `...which the agent runs as bb-sandbox gpu-driver install nvidia-driver-610 (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
+      const after = await until(async () => { const x = await drv(); return x?.state === 'waiting' ? x : null; }, 120000);
+      ok(after?.installed === '610.57.04' && after.package === 'nvidia-driver-610' && after.here && !after.newer,
+         `...and the hello after it says installed, waiting for a restart (${after?.state} ${after?.installed} ${after?.package})`);
+      const other = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-595', node: minted.id });
+      ok(/nvidia-driver-610 is installed.*remove it first/.test(other.error || ''), `another branch waits for this one to be removed (${other.error})`);
+      // The display, now that the driver is on the machine (it was refused
+      // before, above): set up below as its own system job.
+      // The GPU display (R20): a system job the agent answers with bb-sandbox
+      // gpu, whose words are the job's, and whose state line the next hello
+      // carries into the census, so the row says what the machine found.
+      {
+        const g = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
+        ok(g.ok && /^j_/.test(g.job), `Set up GPU display queues a system job on a sandbox node (${g.job || g.error})`);
+        const fin = await until(async () => {
+          const r = await api(`/api/v1/jobs?id=${g.job}`);
+          return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+        }, 30000);
+        ok(fin?.state === 'succeeded' && /takes the card at the next boot/.test(fin.log || ''),
+           `...bb-sandbox gpu runs and its words are the job's (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
+        const told = await until(async () => {
+          const n = await nodeById(minted.id);
+          return /^reboot/.test(n.reported?.gpu_display || '') ? n : null;
+        }, 30000);
+        ok(told !== null, `...and the display's state line reaches the row with the hello that follows (${told?.reported?.gpu_display})`);
+      }
+      // ...and taken off again: bb-sandbox gpu-off, whose state line says
+      // it was switched off, which the row then reads.
+      {
+        const o = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id, on: false });
+        const of = o.ok ? await job(o.job) : null;
+        const told = await until(async () => { const n = await nodeById(minted.id); return /^off/.test(n.reported?.gpu_display || '') ? n : null; }, 30000);
+        ok(of?.state === 'succeeded' && /gpu-off/.test(of.log || '') && told !== null,
+           `the emulator is taken off the card by bb-sandbox gpu-off, and the row reads it as switched off (${o.error || of?.state}; ${told?.reported?.gpu_display})`);
+      }
+      // The container toolkit, the machine's second row, end to end: the
+      // census says it is not there and that the driver it needs is; its
+      // install is a name of the toolchain job, run as bb-sandbox
+      // gpu-container install; and the hello after it says installed, with
+      // Docker listing the runtime.
+      const KIT = 'nvidia-container-toolkit';
+      const kit = async () => ((await api(`/api/toolchains?node=${minted.id}`)).machine || []).find(m => m.name === KIT);
+      {
+        const k0 = await until(async () => { const x = await kit(); return x?.state === 'absent' && x.driver ? x : null; }, 120000);
+        ok(k0 !== null && k0.managed && !k0.here, `the agent reports no container toolkit beside the driver (${k0?.state})`);
+        const kq = await api('/api/toolchains', { action: 'install', names: [KIT], node: minted.id });
+        const kf = kq.ok ? await job(kq.job) : null;
+        ok(kf?.state === 'succeeded' && /== bb-sandbox gpu-container install/.test(kf.log || '') && /gpu-container install: done/.test(kf.log || ''),
+           `its install is a toolchain job the agent runs as bb-sandbox gpu-container install (${kq.error || kf?.state}: ${(kf?.log || '').trim().slice(-60)})`);
+        const k1 = await until(async () => { const x = await kit(); return x?.state === 'ready' ? x : null; }, 120000);
+        ok(k1?.installed === '1.17.8-1' && k1.here && !k1.newer,
+           `...and the hello after it says installed, with Docker listing the runtime (${k1?.state} ${k1?.installed})`);
+      }
+      const ck = await api('/api/toolchains', { action: 'check', names: ['zig'], node: minted.id });
+      const ckf = ck.ok ? await job(ck.job) : null;
+      ok(/bb-sandbox gpu-driver refresh/.test(ckf?.log || '') && /reading the package lists again/.test(ckf?.log || ''),
+         `Check for updates reads apt's lists again on the node (${ck.error || ckf?.state})`);
+      const rm = await api('/api/toolchains', { action: 'remove', names: ['nvidia-driver', KIT], node: minted.id });
+      const rmf = rm.ok ? await job(rm.job) : null;
+      const gone = await until(async () => { const x = await drv(); return x?.state === 'absent' ? x : null; }, 120000);
+      ok(rmf?.state === 'succeeded' && /gpu-driver remove: done/.test(rmf.log || '') && gone !== null,
+         `Remove takes it off again, and the row reads not installed (${rm.error || rmf?.state}, ${gone?.state})`);
+      const kgone = await until(async () => { const x = await kit(); return x?.state === 'absent' ? x : null; }, 120000);
+      ok(/gpu-container remove: done[\s\S]*gpu-driver remove: done/.test(rmf?.log || '') && kgone !== null,
+         `removed together, the toolkit comes off before the driver it needs (${kgone?.state})`);
+      rmSync(`${DIR}/nv-installed`, { force: true });
+      rmSync(`${DIR}/ctk-installed`, { force: true });
     }
 
     // ---- a store under a share that is not mounted ------------------------
@@ -1740,7 +1968,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const nonode = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['true'] });
     // A project with no node is a normal state: the refusal says what is
     // missing and names the fallback, and never suggests building here.
-    ok(/has no node/.test(nonode.error || '') && /settings dialog/.test(nonode.error || '')
+    ok(/has no node/.test(nonode.error || '') && /notebook Settings/.test(nonode.error || '')
        && /Reading and editing the code needs no node/.test(nonode.error || ''),
        `a project with no node set is refused, and told where to set one (${JSON.stringify(nonode).slice(0, 160)})`);
     const onlocal = await api('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'local', argv: ['true'] });
@@ -2095,7 +2323,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         argv: ['sh', '-c', 'flutter build apk'] });
       // alpha can push in the fixtures, so the refusal names CI as the way
       // out; the no-push-rights branch says so instead.
-      ok(/has no flutter/.test(gap.error || '') && /Tools tab/.test(gap.error || '')
+      ok(/has no flutter/.test(gap.error || '') && /Toolchains tab/.test(gap.error || '')
          && /let CI build it/.test(gap.error || ''),
          `a build needing a toolchain the node lacks is refused up front (${gap.error})`);
       const have = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
@@ -2129,6 +2357,34 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       catch (e) { other = String(e.stdout) + String(e.stderr); }
       ok(/ran on this node/.test(here) && !/ran on this node/.test(other) && /no node called elsewhere/.test(other),
          `on a node, bb run runs here, and --node naming another machine goes to the controller instead of running here (${other.trim().split('\n').pop().slice(0, 90)})`);
+      // ...and bb build there puts what the outputs name into dist/ under
+      // the project and its version, the name the briefing asks shipped
+      // output to carry, so a session need not copy it by hand (R104).
+      // A version needs a repository with a commit, which this fixture's
+      // alpha is not: made one for the check and put back after it. Without
+      // one the file keeps its own name, which the check below it holds.
+      const plain = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: onNode, stdio: 'pipe' });
+      ok(/into dist\/: app-1\.0\.apk/.test(plain), 'on a node, a build of a project with no version keeps its file\'s own name');
+      const hadGit = existsSync(`${DIR}/ws/alpha/.git`), hadVersion = existsSync(`${DIR}/ws/alpha/VERSION`);
+      if (!hadVersion) writeFileSync(`${DIR}/ws/alpha/VERSION`, '1.2.0\n');
+      const git = (...a) => execFileSync('git', ['-C', `${DIR}/ws/alpha`, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a], { stdio: 'pipe' });
+      // The fixture's alpha may be a repository with no commit yet, which
+      // has no version either: one commit for the check, taken back after.
+      if (!hadGit) git('init', '-q');
+      let hadHead = true;
+      try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch { hadHead = false; }
+      if (!hadHead){ git('add', 'VERSION'); git('commit', '-qm', 'v', '--', 'VERSION'); }
+      const b = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: onNode, stdio: 'pipe' });
+      if (!hadGit) rmSync(`${DIR}/ws/alpha/.git`, { recursive: true, force: true });
+      else if (!hadHead){ git('update-ref', '-d', 'HEAD'); git('rm', '-q', '--cached', 'VERSION'); }
+      if (!hadVersion) rmSync(`${DIR}/ws/alpha/VERSION`, { force: true });
+      rmSync(`${DIR}/ws/alpha/dist/app-1.0.apk`, { force: true });
+      const m = /into dist\/: (alpha-[0-9][^\s]*-app-1\.0\.apk)/.exec(b);
+      ok(!!m && existsSync(`${DIR}/ws/alpha/dist/${m[1]}`),
+         `on a node, bb build names what it puts in dist/ with the project and its version (${m ? m[1] : b.trim().split('\n').pop().slice(0, 90)})`);
+      if (m) rmSync(`${DIR}/ws/alpha/dist/${m[1]}`, { force: true });
     }
     const built = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
@@ -2786,8 +3042,9 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
 echo "Installing Claude Code (stub) for $USER into $HOME"
 echo "stub-installed" >> "${DIR}/claude-installer.log"
 `, { mode: 0o755 });
-    const cu = await api('/api/v1/nodes', { action: 'claude-update', id: minted.id });
-    ok(cu.ok && /^j_/.test(cu.job), `Update queues the claude-update job on this node (${cu.job || cu.error})`);
+    // From the node's Toolchains tab, where Claude Code is a row (R145).
+    const cu = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['claude-code'] });
+    ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains tab queues the claude-update job on this node (${cu.job || cu.error})`);
     const cfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cu.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
@@ -2990,6 +3247,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     {
       const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="sessnet"]`;
       const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="turns"]`;
+      await openSection(page, 'nodes:sessions', `.nodestab .ndrow[data-node="${minted.id}"]`);
       await page.waitForSelector(sw, { timeout: 15000 });
       ok(!(await page.$eval(sw, e => e.checked)), 'the Sessions section offers the switch, off to begin with');
       await page.click(sw);

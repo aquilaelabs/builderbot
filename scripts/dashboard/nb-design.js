@@ -6,7 +6,7 @@
 // themes show one at a time, chosen on a pulldown, and each entry, the
 // language included, carries its rules as a section inside it, every rules
 // list the Briefing's.
-// Every edit is staged and the notebook's Save writes the whole record at
+// Every edit is staged and its section's Save (Themes or Pages) writes it at
 // once, the way the roadmap saves. Nothing here is a prompt: a session reads
 // the design piece by piece with bb design show (design.py), which is what
 // docs/design-language.md is written from too. One classic script beside
@@ -66,7 +66,7 @@ function nbDesignView({$, nb, project, root}){
     const f = nb.dsData?.file || {};
     const n = (nb.dsPages || []).length;
     const pages = n ? `${n} page${n === 1 ? "" : "s"}` : "no pages yet";
-    const file = nb.dsDirty ? "unsaved changes: Save at the foot"
+    const file = nb.dsDirty ? "unsaved changes: Save in their section"
       : !f.exists ? `${f.path || "docs/design-language.md"} not written yet`
       : f.current ? `${f.path} is written and current`
       : `${f.path} is behind what is saved: Write the file`;
@@ -126,14 +126,14 @@ function nbDesignView({$, nb, project, root}){
       if (j.error) notify(j.error, true);
       else{
         if (nb.dsData) nb.dsData.file = j.file;
-        notify(`${j.path} written into ${project}: the Git view shows it until a session commits it`);
+        notify(`${j.path} written into ${projLabel(project)}: the Git view shows it until a session commits it`);
       }
     }catch(e){ notify("design: " + e, true); }
     unbusy(b, "Write the file");
     drawHint();
   };
 
-  // Something changed: the foot's Save wakes, and the prompts follow.
+  // Something changed: its section's Save wakes, and the prompts follow.
   function touched(){
     nb.dsDirty = true;
     nb.syncSave();
@@ -224,7 +224,8 @@ function nbDesignView({$, nb, project, root}){
         ${pick("dsThemePick", "Theme", rows, String(nb.dsShow.theme), "each a named set of colors, dark or light, with its own type, corners, space, motion and rules; the first is the default, whose choices and rules are the design's")}
       </div></div>` : ""}
       ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one, or leave it: a session that builds the project chooses the colors, the type, corners, space and motion, and puts them here.</div></div>`}`;
-    return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}${status ? " · " + status : ""}`, body, {open: false});
+    return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}${status ? " · " + status : ""}`,
+                      body + nb.sectBar("design:themes"), {open: false});
   }
 
   // The design's rules, the Briefing's shape (nb-rules.js, drawRules): Add a
@@ -257,7 +258,7 @@ function nbDesignView({$, nb, project, root}){
               <input class="rlWords" autocomplete="off" spellcheck="false" placeholder="dialog, modal" value="${esc((r.words || []).join(", "))}" aria-label="words"></div>
             </div>
             <div class="actbar macts">
-              <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
+              <span class="state">${ruleWhen(r)} · the section's Save writes it</span>
               <button type="button" class="stop rlCancel" title="discard what was typed">Cancel</button>
               <button type="button" class="danger rlRm">Remove</button>
             </div>` : `
@@ -293,7 +294,7 @@ function nbDesignView({$, nb, project, root}){
         const kind = row.querySelector(".rlkind");
         kind.textContent = cond(r) ? "on its triggers" : "every session";
         kind.classList.toggle("cond", !!cond(r));
-        row.querySelector(".actbar .state").textContent = `${ruleWhen(r)} · Save at the foot writes it`;
+        row.querySelector(".actbar .state").textContent = `${ruleWhen(r)} · the section's Save writes it`;
         touched();
       };
       const put = (sel, fn) => { const el = row.querySelector(sel); if (el) el.oninput = () => { fn(el.value); typed(); }; };
@@ -396,7 +397,8 @@ function nbDesignView({$, nb, project, root}){
       </div></div>
       ${p ? pageBody(p) : ""}`
       : `<div class="field"><div class="hint">No pages yet: pick a platform and a template and press Add page.</div></div>`);
-    return docSection("design", "pages", "Pages", n ? `${n} page${n === 1 ? "" : "s"}` : "none yet", body, {open: false});
+    return docSection("design", "pages", "Pages", n ? `${n} page${n === 1 ? "" : "s"}` : "none yet",
+                      body + nb.sectBar("design:pages"), {open: false});
   }
 
   function pageBody(p){
@@ -904,41 +906,59 @@ function nbDesignView({$, nb, project, root}){
   // the rules the briefing names and bb design show, and a person who wants
   // it applied now copies the prompt into one.
 
-  // ---- what the notebook's Save and Revert do here ----------------------------------
-  nb.designStagedCount = () => nb.dsDirty ? 1 : 0;
-  nb.designClearStaged = () => {
+  // ---- each section's Save and Revert (the operator, 5 Oct) -------------------------
+  // The design is one record, but its two sections stage apart: Themes holds
+  // the language (its themes, choices, notes and rules), Pages the pages. A
+  // section's Save writes its half over what is saved of the other, and its
+  // Revert puts back only its own.
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const langDirty = () => !!nb.dsData && !!nb.dsLang && !same(nb.dsLang, nb.dsData.language);
+  const pagesDirty = () => !!nb.dsData && !!nb.dsPages && !same(nb.dsPages, nb.dsData.pages);
+  nb.designStagedCount = () => (langDirty() ? 1 : 0) + (pagesDirty() ? 1 : 0);
+  nb.designClearStaged = part => {
     if (!nb.dsData) return;
-    nb.dsLang = clone(nb.dsData.language);
-    nb.dsPages = clone(nb.dsData.pages);
-    nb.dsDirty = false;
-    nb.dsSel = {};
+    if (part !== "pages") nb.dsLang = clone(nb.dsData.language);
+    if (part !== "themes"){ nb.dsPages = clone(nb.dsData.pages); nb.dsSel = {}; }
+    nb.dsDirty = langDirty() || pagesDirty();
     if (!root.querySelector('[data-view="design"]').hidden) drawDesign();
   };
-  nb.designCommitStaged = async () => {
-    if (!nb.dsDirty) return "";
+  nb.designCommitStaged = async part => {
+    const lang = part === "pages" ? nb.dsData.language : nb.dsLang;
+    const pages = part === "themes" ? nb.dsData.pages : nb.dsPages;
+    if (part === "themes" ? !langDirty() : part === "pages" ? !pagesDirty() : !nb.dsDirty) return "";
+    // The half not being saved keeps its edits only if it has any: the
+    // server answers with the record normalized, and an untouched half
+    // compared against that read as edited (5 Oct).
+    const keepLang = part === "pages" && langDirty(), keepPages = part === "themes" && pagesDirty();
     let j;
     try{
-      j = await (await postJSON("/api/design", {project, action: "save", language: nb.dsLang,
-                                                  pages: nb.dsPages.map(p => ({...p, id: p.id > 0 ? p.id : undefined}))})).json();
-    }catch(e){ notify("design: " + e, true); return ""; }
-    if (j.error){ notify("design: " + j.error, true); return ""; }
+      j = await (await postJSON("/api/design", {project, action: "save", language: lang,
+                                                  pages: pages.map(p => ({...p, id: p.id > 0 ? p.id : undefined}))})).json();
+    }catch(e){ notify("design: " + e, true); return null; }
+    if (j.error){ notify("design: " + j.error, true); return null; }
     // The saved pages come back with their ids, and a board keyed by a
     // temporary number is keyed by its id from here.
-    const sel = {};
-    nb.dsPages.forEach((p, i) => {
-      if (nb.dsSel[keyOf(p)] != null && j.pages[i]) sel[`p${j.pages[i].id}`] = nb.dsSel[keyOf(p)];
-      if (nb.dsShow.page === keyOf(p) && j.pages[i]) nb.dsShow.page = `p${j.pages[i].id}`;
-    });
-    nb.dsSel = sel;
+    if (part !== "themes"){
+      const sel = {};
+      nb.dsPages.forEach((p, i) => {
+        if (nb.dsSel[keyOf(p)] != null && j.pages[i]) sel[`p${j.pages[i].id}`] = nb.dsSel[keyOf(p)];
+        if (nb.dsShow.page === keyOf(p) && j.pages[i]) nb.dsShow.page = `p${j.pages[i].id}`;
+      });
+      nb.dsSel = sel;
+    }
     nb.dsData = {...nb.dsData, language: j.language, pages: j.pages};
-    nb.dsLang = clone(j.language);
-    nb.dsPages = clone(j.pages);
-    nb.dsDirty = false;
+    if (!keepLang) nb.dsLang = clone(j.language);
+    if (!keepPages) nb.dsPages = clone(j.pages);
+    nb.dsDirty = langDirty() || pagesDirty();
     // The file's state is a question for the server, now that what it would
     // write has changed.
     await loadDesign();
-    return "design saved";
+    return part === "themes" ? "the design's themes saved" : part === "pages" ? "the design's pages saved" : "design saved";
   };
+  nb.stage("design:themes", {count: () => (langDirty() ? 1 : 0), what: () => "the edited themes",
+                             save: () => nb.designCommitStaged("themes"), revert: () => nb.designClearStaged("themes")});
+  nb.stage("design:pages", {count: () => (pagesDirty() ? 1 : 0), what: () => "the edited pages",
+                            save: () => nb.designCommitStaged("pages"), revert: () => nb.designClearStaged("pages")});
 
   return {loadDesign, drawDesign};
 }

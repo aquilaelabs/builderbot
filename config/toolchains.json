@@ -23,7 +23,7 @@
     "           that supplies it.",
     "  layout     where this toolchain lands, once, for everybody who needs to",
     "           know. `bin` are directories under it to put on PATH, `env` the",
-    "           variables it sets (valued as a path under it, \"\" meaning the",
+    "           variables it sets (valued as a path under it, or =VALUE for a value, \"\" meaning the",
     "           toolchain directory itself), `tool` the file whose presence",
     "           proves it is installed, and `reports` the name the census",
     "           summary calls it. Written here because it was written in four",
@@ -84,7 +84,8 @@
     "             \"approximate\" is a number written down, for the one recipe whose",
     "             download cannot be measured before it happens: a git clone has",
     "             no content length. It is marked as an approximation everywhere",
-    "             it is shown."
+    "             it is shown.",
+    "terms: what installing it is under, each {label, url}, with accept: true for an agreement installing accepts (Google's, NVIDIA's, Apple's) rather than an open-source license. Drawn on the row."
   ],
   "android_images": {
     "_comment": [
@@ -145,7 +146,7 @@
         "darwin/arm64",
         "darwin/amd64"
       ],
-      "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's toolchain store does not, so this is the first thing a node needs for Android work. On a Mac the same recipe fetches Temurin's macOS build.",
+      "about": "Java 21, which Gradle, sdkmanager and the emulator tools need. The first thing a node needs for Android work.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -167,7 +168,13 @@
           "resolver": "approximate",
           "bytes": 200000000
         }
-      }
+      },
+      "terms": [
+        {
+          "label": "GPLv2 with the Classpath Exception",
+          "url": "https://openjdk.org/legal/gplv2+ce.html"
+        }
+      ]
     },
     {
       "name": "android-tools",
@@ -187,7 +194,7 @@
       "requires": [
         "jdk"
       ],
-      "about": "sdkmanager and avdmanager: the bootstrap every other android:* toolchain installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager, through which every other Android toolchain installs. Sets this node's ANDROID_HOME.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -215,7 +222,14 @@
           "resolver": "approximate",
           "bytes": 150000000
         }
-      }
+      },
+      "terms": [
+        {
+          "label": "Google's Android SDK terms",
+          "url": "https://developer.android.com/studio/terms",
+          "accept": true
+        }
+      ]
     },
     {
       "name": "android:cmake",
@@ -243,7 +257,14 @@
           ]
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Google's Android SDK terms",
+          "url": "https://developer.android.com/studio/terms",
+          "accept": true
+        }
+      ]
     },
     {
       "name": "android:emulator",
@@ -264,7 +285,7 @@
         "android-tools",
         "android:platform-tools"
       ],
-      "about": "The emulator binary. System images are per API level and come from the image picker above, or from bb emu create on the node. Google ships it for x86_64 Linux only, and the image abi is x86_64 (B278).",
+      "about": "The Android emulator. Its system images, one per API level, are added on the Emulator tab. Google ships it for x86_64 Linux only.",
       "system": {
         "apt": [
           "libpulse0",
@@ -316,7 +337,14 @@
           ]
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Google's Android SDK terms",
+          "url": "https://developer.android.com/studio/terms",
+          "accept": true
+        }
+      ]
     },
     {
       "name": "android:platform-tools",
@@ -336,7 +364,7 @@
       "requires": [
         "android-tools"
       ],
-      "about": "adb, and the rest of the tools that talk to a device or an emulator. Every `bb emu` verb goes through adb, so the emulator is unusable without it. Google ships it for x86_64 Linux only, and the image abi is x86_64 (B278).",
+      "about": "adb and the other tools that talk to a phone or an emulator; the emulator and the Phone tab need it. Google ships it for x86_64 Linux only.",
       "source": {
         "kind": "sdkmanager",
         "package": "platform-tools",
@@ -347,7 +375,84 @@
           ]
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Google's Android SDK terms",
+          "url": "https://developer.android.com/studio/terms",
+          "accept": true
+        }
+      ]
+    },
+    {
+      "name": "android:platforms",
+      "label": "Android SDK Platform (newest level)",
+      "probe": "android:platforms",
+      "layout": {
+        "bin": [],
+        "env": {}
+      },
+      "platforms": [
+        "linux/*"
+      ],
+      "requires": [
+        "android-tools"
+      ],
+      "about": "The android.jar a build compiles against (compileSdk), at the newest level Google publishes. Update adds the next level beside it, so older projects keep building. Removing this removes every level.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "platforms;android",
+        "versioned": true,
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
+      },
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Google's Android SDK terms",
+          "url": "https://developer.android.com/studio/terms",
+          "accept": true
+        }
+      ]
+    },
+    {
+      "name": "android:build-tools",
+      "label": "Android SDK Build-Tools (newest)",
+      "probe": "android:build-tools",
+      "layout": {
+        "bin": [],
+        "env": {}
+      },
+      "platforms": [
+        "linux/*"
+      ],
+      "requires": [
+        "android-tools"
+      ],
+      "about": "aapt2, d8, zipalign and apksigner at the newest stable version. Update adds the next beside it.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "build-tools",
+        "versioned": true,
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
+      },
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Google's Android SDK terms",
+          "url": "https://developer.android.com/studio/terms",
+          "accept": true
+        }
+      ]
     },
     {
       "name": "android:ndk",
@@ -375,7 +480,14 @@
           ]
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Google's Android SDK terms",
+          "url": "https://developer.android.com/studio/terms",
+          "accept": true
+        }
+      ]
     },
     {
       "name": "flutter",
@@ -393,7 +505,7 @@
         "linux/*",
         "darwin/*"
       ],
-      "about": "Flutter with the bundled Dart SDK. Builds Android APKs on a Linux node; on a Mac node, with Xcode beside it, the iOS half too.",
+      "about": "Flutter with its Dart SDK. Builds Android apps on Linux, and iOS too on a Mac with Xcode.",
       "source": {
         "kind": "git",
         "url": "https://github.com/flutter/flutter.git",
@@ -411,7 +523,13 @@
           "bytes": 520000000
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Flutter's BSD license",
+          "url": "https://github.com/flutter/flutter/blob/master/LICENSE"
+        }
+      ]
     },
     {
       "name": "go",
@@ -431,7 +549,7 @@
         "darwin/arm64",
         "darwin/amd64"
       ],
-      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH: no extra toolchain, no target to install.",
+      "about": "Go, which cross-compiles to Windows, macOS, Linux and ARM with nothing else to install.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -451,7 +569,13 @@
           "{dir}/bin/go",
           "version"
         ]
-      }
+      },
+      "terms": [
+        {
+          "label": "Go's BSD license",
+          "url": "https://go.dev/LICENSE"
+        }
+      ]
     },
     {
       "name": "dotnet",
@@ -534,7 +658,17 @@
           "match": "URL #0[^:]*:\\s+(\\S+)"
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": ".NET SDK (MIT)",
+          "url": "https://github.com/dotnet/sdk/blob/main/LICENSE.TXT"
+        },
+        {
+          "label": ".NET MAUI (MIT)",
+          "url": "https://github.com/dotnet/maui/blob/main/LICENSE.txt"
+        }
+      ]
     },
     {
       "name": "node",
@@ -554,7 +688,7 @@
         "darwin/arm64",
         "darwin/amd64"
       ],
-      "about": "The JavaScript runtime and npm. Not needed to BE a node (the agent is Python and the provisioner installs that), but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
+      "about": "Node.js and npm, for a project built with npm and for anything that drives a browser with Playwright.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -573,17 +707,76 @@
           "{dir}/bin/node",
           "--version"
         ]
-      }
+      },
+      "terms": [
+        {
+          "label": "Node.js's license",
+          "url": "https://github.com/nodejs/node/blob/main/LICENSE"
+        }
+      ]
+    },
+    {
+      "name": "python",
+      "label": "Python (uv)",
+      "probe": "python",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/uv",
+        "reports": "uv"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "uv and a Python 3.12 with pip and venv, for a project's own dependencies: uv venv, then uv pip install -r requirements.txt. The node's own python3 has neither.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 90000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1; \"$dst/libexec/uv\" python install -q 3.12; py=\"$(\"$dst/libexec/uv\" python find 3.12)\"; ln -sf ../libexec/uv \"$dst/bin/uv\"; ln -sf \"$(realpath --relative-to=\"$dst/bin\" \"$py\")\" \"$dst/bin/python3.12\"; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/python3.12",
+          "-c",
+          "import venv, ensurepip"
+        ]
+      },
+      "terms": [
+        {
+          "label": "uv (MIT or Apache 2.0)",
+          "url": "https://github.com/astral-sh/uv/blob/main/LICENSE-MIT"
+        },
+        {
+          "label": "Python's license (PSF)",
+          "url": "https://docs.python.org/3/license.html"
+        }
+      ]
     },
     {
       "name": "playwright",
       "label": "Playwright browsers",
       "probe": "playwright",
       "layout": {
-        "bin": [],
+        "bin": [
+          "node_modules/.bin"
+        ],
         "env": {
           "PLAYWRIGHT_BROWSERS_PATH": "",
-          "NODE_PATH": "node_modules"
+          "NODE_PATH": "node_modules",
+          "PLAYWRIGHT_SKIP_BROWSER_GC": "=1"
         },
         "needs": "node_modules/.bin/playwright"
       },
@@ -754,7 +947,7 @@
       "requires": [
         "node"
       ],
-      "about": "Chromium, Firefox and WebKit, and the playwright module that drives them, together in the store. The image carries a copy of the module and the system libraries; a node carries neither, so the module lands here beside the browsers and NODE_PATH points at it: what bb capture shot and the dashboard's own tests require().",
+      "about": "Chromium, Firefox and WebKit with the module that drives them, for bb capture shot and browser tests. Needs node.",
       "source": {
         "kind": "command",
         "requires": "npm",
@@ -785,7 +978,13 @@
           "match": "Download url:\\s+(\\S+)"
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Playwright (Apache 2.0)",
+          "url": "https://github.com/microsoft/playwright/blob/main/LICENSE"
+        }
+      ]
     },
     {
       "name": "lint-tools",
@@ -802,7 +1001,7 @@
       "platforms": [
         "linux/amd64"
       ],
-      "about": "What bb lint runs: shellcheck, hadolint, actionlint and ruff, with yq and fd beside them. The image carries all six; a node's store does not, so bb lint on a node skips its checks until this is installed. Static binaries from each project's latest GitHub release.",
+      "about": "What bb lint runs: shellcheck, hadolint, actionlint and ruff, with yq and fd. Without it, bb lint on a node skips its checks.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -824,7 +1023,33 @@
           "bytes": 70000000
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "shellcheck (GPLv3)",
+          "url": "https://github.com/koalaman/shellcheck/blob/master/LICENSE"
+        },
+        {
+          "label": "hadolint (GPLv3)",
+          "url": "https://github.com/hadolint/hadolint/blob/master/LICENSE"
+        },
+        {
+          "label": "actionlint (MIT)",
+          "url": "https://github.com/rhysd/actionlint/blob/main/LICENSE.txt"
+        },
+        {
+          "label": "ruff (MIT)",
+          "url": "https://github.com/astral-sh/ruff/blob/main/LICENSE"
+        },
+        {
+          "label": "yq (MIT)",
+          "url": "https://github.com/mikefarah/yq/blob/master/LICENSE"
+        },
+        {
+          "label": "fd (MIT)",
+          "url": "https://github.com/sharkdp/fd/blob/master/LICENSE-MIT"
+        }
+      ]
     },
     {
       "name": "ffmpeg",
@@ -842,7 +1067,7 @@
         "linux/amd64",
         "linux/arm64"
       ],
-      "about": "ffmpeg, ffprobe and ffplay, statically built with the codecs a recording actually uses: H.264, H.265, VP9, AV1 and Opus. A Claude session cannot watch a video, so what this is really for is turning one into frames it CAN look at (ffmpeg -i clip.mp4 -vf fps=1 dist/frames/%03d.png), plus the ordinary work of cutting, converting and sizing what a build produced. The image carries ffmpeg for the controller; a node carries nothing until this is installed.",
+      "about": "ffmpeg, ffprobe and ffplay, for cutting, converting and sizing video and audio, and for turning a recording into frames a session can look at.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -855,7 +1080,119 @@
           "{dir}/bin/ffmpeg",
           "-version"
         ]
-      }
+      },
+      "terms": [
+        {
+          "label": "FFmpeg's license (GPL for these builds)",
+          "url": "https://ffmpeg.org/legal.html"
+        }
+      ]
+    },
+    {
+      "name": "audio",
+      "label": "Speech in and out (piper, whisper)",
+      "probe": "audio",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/piper",
+        "reports": "piper"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What bb tool sound say and hear run: piper turns text into speech, and whisper turns a recording back into text with its times. About 800 MB.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 330000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; mkdir -p \"$dst/bin\" \"$dst/libexec\" \"$dst/models/voices\" \"$dst/models/whisper\"; rm -rf \"$dst\"/.work.* 2>/dev/null || true; t=\"$(mktemp -d \"$dst/.work.XXXXXX\")\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1 UV_LINK_MODE=copy HF_HUB_DISABLE_TELEMETRY=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" piper-tts faster-whisper \"av<16\"; \"$dst/venv/bin/python\" -m piper.download_voices --download-dir \"$dst/models/voices\" en_US-lessac-medium; \"$dst/venv/bin/python\" -c \"import sys; from faster_whisper import download_model; download_model('base.en', output_dir=sys.argv[1])\" \"$dst/models/whisper/base.en\"; ln -sf ../venv/bin/piper \"$dst/bin/piper\"; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../venv/bin/python\" \"$@\"\\n' > \"$dst/bin/python-audio\"; chmod +x \"$dst/bin/python-audio\"; rm -rf \"$t\" 2>/dev/null || true",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/python-audio",
+          "-c",
+          "import piper, faster_whisper; print('piper and faster-whisper', faster_whisper.__version__)"
+        ]
+      },
+      "tool": "sound",
+      "terms": [
+        {
+          "label": "piper (MIT)",
+          "url": "https://github.com/rhasspy/piper/blob/master/LICENSE.md"
+        },
+        {
+          "label": "the lessac voice, trained on a research-licensed dataset",
+          "url": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/lessac/medium/MODEL_CARD"
+        },
+        {
+          "label": "faster-whisper (MIT)",
+          "url": "https://github.com/SYSTRAN/faster-whisper/blob/master/LICENSE"
+        }
+      ]
+    },
+    {
+      "name": "pytorch",
+      "label": "PyTorch with CUDA (python-ml, numpy, ONNX)",
+      "probe": "pytorch",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/python-ml",
+        "reports": "python-ml"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "PyTorch with CUDA, numpy and ONNX, run as python-ml, for training or running a model on the node's NVIDIA card (driver 580 or newer); without a card it runs on the CPU. About 6 GB.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 3500000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; rm -rf \"$dst\"/.work.* 2>/dev/null || true; t=\"$(mktemp -d \"$dst/.work.XXXXXX\")\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1 UV_LINK_MODE=copy; \"$dst/libexec/uv\" python install -q 3.12; py=\"$(find \"$dst/python\" -path '*/bin/python3.12' -type f | head -1)\"; test -x \"$py\"; \"$dst/libexec/uv\" pip install -q --python \"$py\" --break-system-packages torch numpy onnx onnxscript onnxruntime; rel=\"${py#\"$dst\"/}\"; for n in python-ml torchrun; do if [ \"$n\" = torchrun ]; then a='-m torch.distributed.run'; else a=''; fi; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../%s\" %s \"$@\"\\n' \"$rel\" \"$a\" > \"$dst/bin/$n\"; chmod +x \"$dst/bin/$n\"; done; rm -rf \"$t\" 2>/dev/null || true",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/python-ml",
+          "-c",
+          "import torch, numpy, onnx; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+        ]
+      },
+      "terms": [
+        {
+          "label": "PyTorch's BSD license",
+          "url": "https://github.com/pytorch/pytorch/blob/main/LICENSE"
+        },
+        {
+          "label": "NVIDIA's CUDA license",
+          "url": "https://docs.nvidia.com/cuda/eula/index.html",
+          "accept": true
+        }
+      ]
     },
     {
       "name": "graphics",
@@ -873,7 +1210,7 @@
         "linux/amd64"
       ],
       "updatable": true,
-      "about": "What bb tool graphics runs: ImageMagick's magick for resizing, cropping, composing, annotating and comparing rasters; resvg for SVG to PNG without a browser; oxipng, pngquant and cwebp for what an app ships. A session cannot see a picture it has not rendered, so this is how it makes one it can then read back. Static builds from each project's release; ImageMagick's AppImage is unpacked at install, so nothing here needs FUSE.",
+      "about": "What bb tool graphics runs: ImageMagick for resizing, cropping and comparing images, resvg for SVG to PNG, and oxipng, pngquant and cwebp for shrinking what an app ships.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -918,7 +1255,29 @@
           "media-fonts/dejavu"
         ]
       },
-      "tool": "graphics"
+      "tool": "graphics",
+      "terms": [
+        {
+          "label": "ImageMagick's license",
+          "url": "https://imagemagick.org/script/license.php"
+        },
+        {
+          "label": "resvg (MIT)",
+          "url": "https://github.com/linebender/resvg/blob/main/LICENSE-MIT"
+        },
+        {
+          "label": "oxipng (MIT)",
+          "url": "https://github.com/oxipng/oxipng/blob/master/LICENSE"
+        },
+        {
+          "label": "pngquant (GPLv3)",
+          "url": "https://github.com/kornelski/pngquant/blob/main/COPYRIGHT"
+        },
+        {
+          "label": "libwebp (BSD)",
+          "url": "https://github.com/webmproject/libwebp/blob/main/COPYING"
+        }
+      ]
     },
     {
       "name": "diagrams",
@@ -936,7 +1295,7 @@
         "linux/amd64"
       ],
       "updatable": true,
-      "about": "What bb tool diagrams runs: PlantUML for UML, sequence and architecture diagrams from text, and Mermaid's command line for the flowcharts and sequence diagrams written in Markdown. A session draws from text and reads the PNG back. PlantUML is one jar and runs on this store's JDK; Mermaid renders through the Chromium the playwright toolchain puts here, so both of those are needed beside this.",
+      "about": "What bb tool diagrams runs: PlantUML and Mermaid, diagrams drawn from text. Needs jdk and playwright beside it.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -964,7 +1323,166 @@
         "node",
         "playwright"
       ],
-      "tool": "diagrams"
+      "tool": "diagrams",
+      "terms": [
+        {
+          "label": "PlantUML's license",
+          "url": "https://plantuml.com/license"
+        },
+        {
+          "label": "Mermaid (MIT)",
+          "url": "https://github.com/mermaid-js/mermaid/blob/develop/LICENSE"
+        }
+      ]
+    },
+    {
+      "name": "documents",
+      "label": "Document readers (markitdown, PyMuPDF, pandoc)",
+      "probe": "documents",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/markitdown",
+        "reports": "markitdown"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What bb tool docs runs: reads a PDF, Word document, slide deck or spreadsheet as Markdown, draws a PDF's pages as pictures, and converts with pandoc. Also lets Claude Code read PDFs. About 650 MB.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 230000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; get() { curl -fsSL --retry 3 -o \"$2\" \"$1\"; }; tag() { curl -fsSIL -o /dev/null -w '%{url_effective}' \"https://github.com/$1/releases/latest\" | sed 's#.*/tag/##'; }; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" 'markitdown[pdf,docx,pptx,xlsx,xls]' pymupdf; ln -sf ../venv/bin/markitdown \"$dst/bin/markitdown\"; v=\"$(tag jgm/pandoc)\"; get \"https://github.com/jgm/pandoc/releases/download/$v/pandoc-$v-linux-amd64.tar.gz\" \"$t/pandoc.tgz\"; tar -xzf \"$t/pandoc.tgz\" -C \"$t\"; cp \"$(find \"$t\" -path '*/bin/pandoc' -type f | head -1)\" \"$dst/bin/pandoc\"; chmod +x \"$dst/bin/pandoc\"; test -f \"${BB_LIB:-}/poppler.py\" || { echo \"poppler.py is not beside bb: install this from bb toolchains\" >&2; exit 1; }; cp \"$BB_LIB/poppler.py\" \"$dst/libexec/poppler.py\"; for n in pdftoppm pdfinfo; do printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../venv/bin/python\" \"$here/../libexec/poppler.py\" %s \"$@\"\\n' \"$n\" > \"$dst/bin/$n\"; chmod +x \"$dst/bin/$n\"; done; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/markitdown",
+          "--version"
+        ]
+      },
+      "tool": "docs",
+      "terms": [
+        {
+          "label": "markitdown (MIT)",
+          "url": "https://github.com/microsoft/markitdown/blob/main/LICENSE"
+        },
+        {
+          "label": "PyMuPDF (AGPL)",
+          "url": "https://pymupdf.readthedocs.io/en/latest/about.html"
+        },
+        {
+          "label": "pandoc (GPL)",
+          "url": "https://github.com/jgm/pandoc/blob/main/COPYRIGHT"
+        }
+      ]
+    },
+    {
+      "name": "office",
+      "label": "LibreOffice, headless",
+      "probe": "office",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/soffice",
+        "reports": "soffice"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What bb tool office runs: LibreOffice without a window, to turn documents, decks and spreadsheets into PDFs. About 750 MB.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 300000000
+        },
+        "url": "https://appimages.libreitalia.org/LibreOffice-fresh.basic-x86_64.AppImage",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\"; cp \"$1\" \"$t/lo.AppImage\"; chmod +x \"$t/lo.AppImage\"; (cd \"$t\" && ./lo.AppImage --appimage-extract >/dev/null); rm -rf \"$dst/lo\"; mv \"$t/squashfs-root\" \"$dst/lo\"; so=\"$(find \"$dst/lo/opt\" -maxdepth 3 -path '*/program/soffice' | head -1)\"; test -x \"$so\"; ln -sf \"../${so#\"$dst\"/}\" \"$dst/bin/soffice\"; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/soffice",
+          "--version"
+        ]
+      },
+      "tool": "office",
+      "terms": [
+        {
+          "label": "LibreOffice's licenses (MPL 2.0)",
+          "url": "https://www.libreoffice.org/about-us/licenses/"
+        }
+      ]
+    },
+    {
+      "name": "ftp",
+      "label": "File access server (FTPS)",
+      "probe": "ftp",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/bb-ftpd"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "The server behind a project's File access setting: FTPS on the project's node, where people sign in with their own BuilderBot name and password. About 60 MB.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 60000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" pyftpdlib pyopenssl; test -f \"${BB_LIB:-}/bbftp.py\" || { echo \"bbftp.py is not beside bb: install this from bb toolchains\" >&2; exit 1; }; cp \"$BB_LIB/bbftp.py\" \"$dst/libexec/bbftp.py\"; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../venv/bin/python\" \"$here/../libexec/bbftp.py\" \"$@\"\\n' > \"$dst/bin/bb-ftpd\"; chmod +x \"$dst/bin/bb-ftpd\"; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/venv/bin/python",
+          "-c",
+          "import pyftpdlib, OpenSSL"
+        ]
+      },
+      "terms": [
+        {
+          "label": "pyftpdlib (MIT)",
+          "url": "https://github.com/giampaolo/pyftpdlib/blob/master/LICENSE"
+        },
+        {
+          "label": "pyOpenSSL (Apache 2.0)",
+          "url": "https://github.com/pyca/pyopenssl/blob/main/LICENSE"
+        }
+      ]
     },
     {
       "name": "language-servers",
@@ -985,7 +1503,7 @@
       "requires": [
         "node"
       ],
-      "about": "What Claude Code's pyright-lsp and typescript-lsp plugins run, so a session sees type errors as it edits instead of at the next build. A session cannot npm install -g into the store, so the servers live here. TypeScript is held at 5, the line typescript-language-server drives; a project's own node_modules copy wins where it has one.",
+      "about": "Python and TypeScript language servers, so a session sees type errors as it edits rather than at the next build.",
       "source": {
         "kind": "command",
         "requires": "npm",
@@ -1001,7 +1519,21 @@
           "bytes": 46000000
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "pyright (MIT)",
+          "url": "https://github.com/microsoft/pyright/blob/main/LICENSE.txt"
+        },
+        {
+          "label": "typescript-language-server (Apache 2.0)",
+          "url": "https://github.com/typescript-language-server/typescript-language-server/blob/master/LICENSE"
+        },
+        {
+          "label": "TypeScript (Apache 2.0)",
+          "url": "https://github.com/microsoft/TypeScript/blob/main/LICENSE.txt"
+        }
+      ]
     },
     {
       "name": "kotlin-lsp",
@@ -1019,7 +1551,7 @@
         "linux/amd64",
         "linux/arm64"
       ],
-      "about": "What Claude Code's kotlin-lsp plugin runs: JetBrains' standalone Kotlin server, with the Java runtime it needs inside it, from the project's latest release. Named kotlin-lsp the way JetBrains' own Homebrew formula names it.",
+      "about": "JetBrains' Kotlin language server, so a session sees Kotlin errors as it edits. Carries its own Java.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -1041,7 +1573,13 @@
           "bytes": 368000000
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "kotlin-lsp (Apache 2.0)",
+          "url": "https://github.com/Kotlin/kotlin-lsp/blob/main/LICENSE.txt"
+        }
+      ]
     },
     {
       "name": "rust",
@@ -1061,7 +1599,7 @@
       "platforms": [
         "linux/amd64"
       ],
-      "about": "rustup, cargo and the stable toolchain, kept in one directory. A Windows target needs a linker as well: gcc-mingw-w64 via EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild.",
+      "about": "rustup, cargo and the stable toolchain. Building for Windows also needs a linker: mingw, or zig with cargo-zigbuild.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -1091,7 +1629,13 @@
           "url": "https://static.rust-lang.org/dist/channel-rust-stable.toml",
           "match": "\\[pkg\\.(?:rustc|cargo|rust-std)\\.target\\.x86_64-unknown-linux-gnu\\][^\\[]*?xz_url = \"([^\"]+)\""
         }
-      }
+      },
+      "terms": [
+        {
+          "label": "Rust's licenses (MIT or Apache 2.0)",
+          "url": "https://www.rust-lang.org/policies/licenses"
+        }
+      ]
     },
     {
       "name": "swift",
@@ -1126,7 +1670,13 @@
           "--version"
         ]
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "Swift's license (Apache 2.0)",
+          "url": "https://www.swift.org/legal/license.html"
+        }
+      ]
     },
     {
       "name": "zig",
@@ -1142,7 +1692,7 @@
       "platforms": [
         "linux/amd64"
       ],
-      "about": "A C and C++ cross-compiler as much as a language: `zig cc -target x86_64-windows-gnu` turns this box into a Windows toolchain, and it links for Rust too.",
+      "about": "Zig, and a C and C++ cross-compiler (zig cc) for Windows, macOS and Linux; it also links Rust for those.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -1156,7 +1706,13 @@
           "{dir}/zig",
           "version"
         ]
-      }
+      },
+      "terms": [
+        {
+          "label": "Zig (MIT)",
+          "url": "https://github.com/ziglang/zig/blob/master/LICENSE"
+        }
+      ]
     },
     {
       "name": "xcodes",
@@ -1173,7 +1729,7 @@
       "platforms": [
         "darwin/*"
       ],
-      "about": "The tool that installs and switches Xcode versions on a Mac, from Apple's own downloads: `xcodes install --latest` in a shell on the node, with an Apple ID the first time. Xcode itself is 15GB and Apple's to serve, so it is not a recipe.",
+      "about": "Installs and switches Xcode versions on a Mac: run xcodes install --latest on the node, with an Apple ID the first time.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -1195,7 +1751,18 @@
           "bytes": 12000000
         }
       },
-      "updatable": true
+      "updatable": true,
+      "terms": [
+        {
+          "label": "xcodes (MIT)",
+          "url": "https://github.com/XcodesOrg/xcodes/blob/main/LICENSE"
+        },
+        {
+          "label": "Apple's Xcode license, for the Xcode it installs",
+          "url": "https://www.apple.com/legal/sla/docs/xcode.pdf",
+          "accept": true
+        }
+      ]
     }
   ]
 }

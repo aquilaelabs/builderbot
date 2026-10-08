@@ -34,7 +34,7 @@ await ready(page);
 
 // The listing's name column is as wide as its longest name (B233): the
 // shipped no-credentials-in-the-repo ran straight into its own text.
-ok(/no-credentials-in-the-repo\s+Never write/.test(bb()),
+ok(/ask-do-not-install\s+Never install/.test(bb()),
    'bb rules pads the name column past its longest name');
 
 // ---- the tab ---------------------------------------------------------------
@@ -100,12 +100,21 @@ await page.fill(`${two} .rlPaths`, 'scripts/agent');
 await page.fill(`${two} .rlWords`, 'agent, protocol');
 ok((await page.$eval(`${two} .rlkind`, e => e.textContent)).includes('on its triggers'),
    '...and one with a trigger says so the moment the trigger is typed');
-ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
-   'a written rule arms the panel\'s one Save, like everything else here');
+ok(!await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
+   'a written rule arms the Your rules section\'s own Save');
 ok(read().length === 0, '...and nothing is on disk until it is pressed');
+// Each section saves its own (the operator, 5 Oct): the rules' edit wakes
+// their Save and Revert and nothing else's, and the Briefing view opens on
+// its first section (the operator, 7 Oct).
+ok(await page.$eval('[data-ssave="briefing:memories"]', b => b.disabled)
+   && await page.$eval('[data-srevert="briefing:rules"]', b => !b.disabled),
+   '...that section\'s own Save and Revert, and not the Memories section\'s');
+ok(await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="briefing"] details.sect')]
+     .filter(d => !d.parentElement.closest('details.sect') && d.checkVisibility())[0]?.open),
+   'the Briefing view has its first section open');
 
-await page.click('#roadmapSaveQuiet');
-await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
+await page.click('[data-ssave="briefing:rules"]');
+await page.waitForFunction(() => document.querySelector('[data-ssave="briefing:rules"]')
                              .getAttribute('aria-busy') !== 'true', { timeout: 15000 });
 const saved = read();
 ok(saved.length === 2 && saved[0].name === 'voice',
@@ -147,13 +156,13 @@ await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 
 ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
    'Edit opens that rule\'s fields and no other\'s');
 await page.fill('#rulesBox .rulerow[data-i="1"] .rlText', 'typed, then thought better of');
-ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
+ok(!await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
    'typing into a rule arms the panel\'s Save');
 await page.click('#rulesBox .rulerow[data-i="1"] .rlCancel');
 await page.waitForFunction(() => !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(/add, do not change/.test(await page.$eval('#rulesBox .rulerow[data-i="1"] .rlBody', e => e.textContent)),
    '...and Cancel puts them away, reading what was there before Edit');
-ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
+ok(await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
    '...with nothing left staged, so the Save goes quiet again');
 // A row Add made has nothing to go back to: canceling it is removing it.
 await page.click('#rlAdd');
@@ -164,7 +173,7 @@ await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow')
 await page.$eval('#rulesBox .rulerow[data-i="2"] .rlCancel', b => b.click());
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
-ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
+ok(await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
    'canceling a row that Add made takes the row away and stages nothing');
 
 // ---- what a session is handed ----------------------------------------------
@@ -241,6 +250,15 @@ ok(/nothing changed here that a rule/.test(bb('check')),
      'the Stop hook refuses the stop with the failing check named');
   ok(stop({ stop_hook_active: true }) === '',
      '...but lets a stop through that a hook already refused once, so it never loops');
+  // Rules that cannot be read (the controller restarting, from a node) are a
+  // check that did not run, not one that failed: the stop goes, and nothing
+  // is stamped, so the next hand-back checks for real (B412).
+  const away = execFileSync('python3', [join(HERE, '..', 'bb-check-relay'), 'alpha', 'u_test'],
+    { env: { ...ENV, BB_TREE: `${DIR}/ws/alpha`, XDG_CACHE_HOME: `${DIR}/cache-away`, BUILDERBOT_ROLE: 'node',
+             BB_CONTROLLER: 'http://127.0.0.1:9', BB_TOKEN: 'bbs_nothing' },
+      input: JSON.stringify({ stop_hook_active: false }) }).toString();
+  ok(away === '' && !existsSync(`${DIR}/cache-away/builderbot/u/_none/project/alpha/checked`),
+     `with the controller not answering, the Stop hook lets the stop go and stamps nothing (${away.slice(0, 80)})`);
   bb('edit', 'design', '--check', 'test -d .git');
   ok(stop({ stop_hook_active: false }) === '' && existsSync(`${cache}/builderbot/u/_none/project/alpha/checked`),
      'a passing check lets the stop go and stamps the tree');
@@ -250,6 +268,17 @@ ok(/nothing changed here that a rule/.test(bb('check')),
 }
 
 // ---- reading them from a session -------------------------------------------
+ok(/^bb rules show NAME/m.test(execFileSync(BB, ['rules', '-h'], { env: ENV }).toString()),
+   'bb rules -h is its help, as every verb\'s is (B411)');
+{
+  // B536: every verb's -h is its entries in the reference, exit 0, never
+  // its usage error: devapp's and container's said "ERROR:" and exited 1.
+  const help = v => { try { return [0, execFileSync(BB, [v, '-h'], { env: ENV, stdio: 'pipe' }).toString()]; }
+                      catch (e) { return [e.status, String(e.stdout) + String(e.stderr)]; } };
+  const said = ['devapp', 'container', 'capture', 'jobs'].map(v => [v, ...help(v)]);
+  ok(said.every(([v, st, out]) => st === 0 && new RegExp(`^bb ${v}\\b`).test(out) && !/ERROR/.test(out)),
+     `bb VERB -h prints that verb's entries from the reference and exits 0 (${said.map(([v, st]) => v + ':' + st).join(' ')})`);
+}
 ok(/No em dashes/.test(bb('list')) && /agent-compat/.test(bb('list')),
    'bb rules lists what is in effect');
 ok(/add, do not change/.test(bb('show', 'agent-compat')),

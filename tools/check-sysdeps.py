@@ -36,7 +36,7 @@ import urllib.request
 # entities, so XXE is not reachable; the remaining risk needs the mirror
 # itself to serve a hostile index, and a dependency to defend against that
 # is not worth it in a stdlib-only tool.
-import xml.etree.ElementTree as ET  # nosemgrep: use-defused-xml
+import xml.etree.ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 from pathlib import Path
 
 try:
@@ -87,7 +87,7 @@ def fetch(url, fresh):
         if not url.startswith(("https://", "http://")):    # the mirrors above, only
             raise ValueError(f"not a web address: {url[:60]}")
         req = urllib.request.Request(url, headers={"User-Agent": "builderbot-check-sysdeps"})
-        with urllib.request.urlopen(req, timeout=120) as r:
+        with urllib.request.urlopen(req, timeout=120) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             f.write_bytes(r.read())
     return f.read_bytes()
 

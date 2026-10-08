@@ -30,14 +30,15 @@ async function drawTrash(){
     return;
   }
   el.innerHTML = items.map(t => `<div class="row trow" data-t="${esc(t.name)}">
-      <div class="grow"><div class="name">${esc(t.name)}</div>
-        <div class="sub">deleted ${esc(ago(t.at))}${t.taken
-          ? ` · <span class="warn">${esc(t.was)} exists again</span>` : ""}</div></div>
+      <div class="grow"><div class="name">${esc(t.was || t.name)}</div>
+        <div class="sub">deleted ${esc(ago(t.at))}${t.was && t.was !== t.name
+          ? ` · directory ${esc(t.name)}` : ""}${t.taken
+          ? ` · <span class="warn">its directory is in use again</span>` : ""}</div></div>
       <span class="acts">
         <button type="button" data-trestore="${esc(t.name)}"${t.taken ? " disabled" : ""}
           title="${t.taken
-            ? "a project called " + esc(t.was) + " is back under /workspace: rename it first"
-            : "move it back to /workspace/" + esc(t.was)}">Put back</button>
+            ? "a directory of that name is back under /workspace: move it first"
+            : "move it back to /workspace, as " + esc(t.was || t.name)}">Put back</button>
         <button type="button" class="danger" data-tpurge="${esc(t.name)}"
           title="delete it and every file in it, for good">${BIN}</button>
       </span></div>`).join("");
@@ -45,7 +46,7 @@ async function drawTrash(){
     b.disabled = true;
     const r = await postTrash("/api/trash-restore", {name: b.dataset.trestore});
     if (r?.error) notify(r.error, true);
-    else notify(`${r.name} is back under /workspace`);
+    else notify(`${r.label || r.name} is back`);
     await drawTrash(); refresh();
   });
   el.querySelectorAll("[data-tpurge]").forEach(b => b.onclick = () => askPurge(b.dataset.tpurge));
@@ -61,7 +62,7 @@ function askPurge(name){
   box.className = "dropbox";
   box.innerHTML = `<div class="hint bad">This deletes every file in
       <b>${esc(name)}</b>. It is not moved anywhere and there is nothing to
-      undo it with. Type the name to confirm.</div>
+      undo it with. Type its directory's name, ${esc(name)}, to confirm.</div>
     <input autocomplete="off" placeholder="${esc(name)}">
     <div class="foot"><span class="sp"></span>
       <button type="button" class="stop">Keep it</button>
@@ -110,11 +111,11 @@ function renderProjectsInto(i){
   }
   const live = liveSessions();
   const cls = {error:"bad", warning:"warn", locked:"locked"};
-  // Pinned first, then by name: the sidebar's order, so moving between the two
-  // does not mean finding everything again. Sorted here rather than by the
-  // server, which reports the directory order every other reader wants.
-  const ordered = ps.slice().sort((a, b) =>
-    (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.name.localeCompare(b.name));
+  // By name, pinned or not, the sidebar's order (the operator, 7 Oct): pinned
+  // first split one list into two alphabets, and the thumbtack on each row
+  // already says which is pinned. Sorted here rather than by the server,
+  // which reports the directory order every other reader wants.
+  const ordered = ps.slice().sort(byProjectName);
   // paint() rather than innerHTML, the same as the card: this runs on every
   // render pass, and rebuilding a list of rows nobody changed throws away the
   // handlers on it for no reason.
@@ -166,7 +167,7 @@ const PMODES = {
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pUrlField", "pForgeField",
                     "pPushField", "pTokenField", "pKeyField"] },
-  link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
+  link:  { title: () => `Link ${projLabel(pLink)} to a git host`, btn: "Link", focus: "pUrl",
            fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
                     "pTokenField"] },
 };
@@ -244,7 +245,7 @@ function pDraw(){
   $("pPushHint").textContent =
     "Off is read-only. It cannot be turned on later, and only one project may push to a repository.";
   $("pTokenHint").textContent = pMode === "link"
-    ? `Used for ${pLink} only.` + (fg.creates ? ` Checked with ${fg.name} first.` : "")
+    ? `Used for ${projLabel(pLink)} only.` + (fg.creates ? ` Checked with ${fg.name} first.` : "")
     : "Leave empty for a public repository. Kept for this project alone.";
   $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
@@ -353,7 +354,7 @@ const pHost = () => {
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
   $("pPubWrap").hidden = !k;
-  if (k) $("pPub").value = k.pub;
+  if (k) $("pPub").textContent = k.pub;
 }
 
 // Each open is a generation; closing bumps it too. Everything asynchronous:
@@ -369,20 +370,30 @@ let pFetch = null;                       // this open's /api/pubkeys, parsed
 // dialog draws from, and auto on every open: what a session may enter is
 // asked once here so it is a choice made rather than a default found later.
 const P_GATE_IDS = {roadmap: "pGateRoadmap", bugs: "pGateBugs", rules: "pGateRules", settings: "pGateSettings",
-                    design: "pGateDesign"};
+                    design: "pGateDesign", wiki: "pGateWiki"};
 const pGateNow = () => Object.fromEntries(
   Object.entries(P_GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
+// What a new project starts on (the operator, 1 Oct). Auto where what a
+// session does lands in the notebook or the settings with its history and
+// is undone in a press: the roadmap, bugs, rules, build and test, the
+// design, the wiki (each page's history is kept), and a report to
+// BuilderBot's own tracker. Ask where it reaches
+// past that: its container, which runs the project's code on a shared
+// machine and publishes ports (ask rather than the deny a project has
+// without a choice, so a session can propose a rebuild at all, having no
+// docker of its own), a signed build, which leaves, and a signing key,
+// which is an app's identity for good.
+const P_GATE_DEFAULT = {pGateDocker: "ask", pGateSign: "ask", pGateKeys: "ask", pGateRelease: "ask", pGateReport: "auto"};
 function pFillGates(){
-  for (const id of [...Object.values(P_GATE_IDS), "pGateDocker"]){
+  for (const id of [...Object.values(P_GATE_IDS), "pGateDocker", "pGateSign", "pGateKeys", "pGateRelease", "pGateReport"]){
     const el = $(id);
     if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      // A report has nothing to hold for approval: auto or deny.
+      el.innerHTML = (id === "pGateWiki" ? gateChoices("wiki") : GATE_MODES).filter(([v]) => id !== "pGateReport" || v !== "ask")
+        .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
       el.dataset.built = "1";
     }
-    // Running its container starts at deny, the setting's own default: it
-    // runs the project's code on a shared machine, which the notebook's
-    // four do not.
-    el.value = id === "pGateDocker" ? "deny" : "auto";
+    el.value = P_GATE_DEFAULT[id] || "auto";
   }
 }
 
@@ -478,23 +489,21 @@ const projName = (raw) => (raw || "").trim()
   .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
 
 function pNameShow(){
-  const raw = $("pName").value, clean = projName(raw);
-  // Cloning with the field left empty still takes the repository's name, so
-  // the collision has to be checked against THAT and not against an empty
-  // string: otherwise the one case that needs the warning most is the one
-  // that never gets it.
-  const eff = clean || (pMode === "clone" ? projName(repoOfUrl($("pUrl").value)) : "");
-  const taken = eff && (state?.projects || []).some(p => p.name === eff);
-  $("pName").classList.toggle("bad", !!taken);
-  $("pNamePreview").classList.toggle("bad", !!taken);
-  // Shown when it differs from what was typed, when it is taken, or when
-  // there is nothing left of it, and quiet otherwise, because repeating a
-  // name back unchanged is noise on a dialog that already carries three hints.
-  $("pNamePreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
-  $("pNamePreview").textContent = taken
-    ? `${eff} already exists under /workspace: give this one another name`
-    : clean ? `Will be created as ${clean}`
-    : "That leaves nothing to name a directory after";
+  const raw = $("pName").value.trim().replace(/\s+/g, " ");
+  // Cloning with the field left empty takes the repository's name, so a
+  // second copy is checked against THAT, not against an empty string.
+  const eff = raw || (pMode === "clone" ? repoOfUrl($("pUrl").value) : "");
+  // Since R154 a name in use is no refusal: the new project gets a
+  // directory of its own and is shown as Name (2) beside the first.
+  const shown = new Set((state?.projects || []).map(p => String(p.label || p.name).toLowerCase()));
+  let as = eff, n = 2;
+  while (as && shown.has(as.toLowerCase())) as = `${eff} (${n++})`;
+  const empty = !!raw && !projName(raw);
+  $("pName").classList.toggle("bad", empty);
+  $("pNamePreview").classList.toggle("bad", empty);
+  $("pNamePreview").hidden = !empty && as === eff;
+  $("pNamePreview").textContent = empty ? "A name needs at least one letter or digit in it"
+    : `${eff} is already a project's name, so this one is shown as ${as}`;
 }
 
 // The repository's own name out of a clone URL: the same rule the server
@@ -521,7 +530,7 @@ async function createProject() {
   const file = mode === "init" ? $("pArchive").files[0] : null;
   const fail = m => gen === pGen
     ? ($("pErr").textContent = m, $("pErrWrap").hidden = false)
-    : notify(`${mode === "link" ? linkName : name || mode}: ${m}`, true);
+    : notify(`${mode === "link" ? projLabel(linkName) : name || mode}: ${m}`, true);
   if (mode === "init"){ if (!name) return fail("a name is required"); }
   else if (!url) return fail("a repository address is required");
   $("pErrWrap").hidden = true;
@@ -582,6 +591,10 @@ async function createProject() {
                                 version: mode === "init" ? $("pVersion").value.trim() : "",
                                 gate: $("pGateField").hidden ? null : pGateNow(),
                                 devbuild: $("pGateField").hidden ? null : ($("pGateDocker").value || "deny"),
+                                sign: $("pGateField").hidden ? null : ($("pGateSign").value || "ask"),
+                                keys: $("pGateField").hidden ? null : ($("pGateKeys").value || "ask"),
+                                release: $("pGateField").hidden ? null : ($("pGateRelease").value || "ask"),
+                                report: $("pGateField").hidden ? null : ($("pGateReport").value || "auto"),
                                 key: mode === "clone" ? key : "",
                                 // Only ever consulted for a host that does not
                                 // name itself: the server prefers the host.
@@ -600,7 +613,7 @@ async function createProject() {
                 name: j.name || linkName, step: "starting", for: 0});
       pJobPoll();
     } else {
-      notify(`${j.name || name || linkName} ${mode === "link" ? "linked" : "created"}: ${j.note || "ready"}`);
+      notify(`${mode === "link" ? projLabel(linkName) : j.label || name || j.name} ${mode === "link" ? "linked" : "created"}: ${j.note || "ready"}`);
       refresh();                        // the new state, without waiting a poll
     }
   }catch(e){

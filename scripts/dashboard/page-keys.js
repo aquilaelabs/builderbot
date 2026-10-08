@@ -139,14 +139,15 @@ function drawKeys(){
     el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => sendKey(b.dataset.k));
   // Content is otherwise kept while a close tweens shut: emptying it
   // mid-slide would collapse an already-shrinking box to nothing.
+  // Not there at all where there is no shell to type into (B460): ghosted,
+  // Keys took a quarter of a phone's bar on every document tab and cut
+  // Sessions and Commands short beside it, to say a thing nobody needed.
   const mk = $("mKeys");
   mk.classList.toggle("on", on);
-  mk.disabled = !term;                           // a dead-looking toggle said
-  mk.title = term ? "" : "keys go to a shell; this tab is not one";  // nothing on its own
+  mk.hidden = !term;
   const mm = $("mMacros");
   mm.classList.toggle("on", showMacros);
-  mm.disabled = !term;
-  mm.title = term ? "" : "commands run in a shell; this tab is not one";
+  mm.hidden = !term;
   $("mSessions").classList.toggle("on", showSessions);
   const mc = $("mChat");
   mc.classList.toggle("on", showChat);

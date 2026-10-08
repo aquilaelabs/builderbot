@@ -134,8 +134,17 @@ def captures(dist):
 
 
 def remove(c):
-    """One capture gone: a reel's directory, a shot and its record."""
+    """One capture gone: a reel's directory, a shot and its record, and a
+    reel's working files on this machine (the recording, the full-size
+    frames), which frames.json names in `work`. Only a directory under the
+    capture scratch: the record is a file on the share, and it names what
+    is deleted (report 42: the work stayed behind)."""
     if c["kind"] == "reel":
+        work = str(record_of(os.path.join(c["file"], "frames.json")).get("work") or "")
+        base = os.path.realpath(os.environ.get("BB_CAPTURE_SCRATCH") or os.path.join(
+            os.environ.get("TMPDIR") or "/tmp", f"bb-capture-{os.getuid()}"))
+        if work and os.path.dirname(os.path.realpath(work)) == base and os.path.isdir(work):
+            shutil.rmtree(work, ignore_errors=True)
         shutil.rmtree(c["file"], ignore_errors=True)
     else:
         for p in (c["file"], os.path.join(os.path.dirname(c["file"]), f".{c['name']}.json")):
@@ -170,6 +179,43 @@ def emu_ready(adb):
     r = run([adb, "get-state"], timeout=20)
     if r.returncode or "device" not in (r.stdout or ""):
         die("no emulator is running: bb emu start boots one")
+
+
+def in_front(adb, pkg):
+    """Whether PKG already owns the screen: the focused window is its (an
+    activity, a dialog of its), or its keyboard is up, since an IME's
+    window is never the focused one. Read from the window manager's dump,
+    where the focus line names the package and every window its own."""
+    r = run([adb, "shell", "dumpsys", "window", "windows"], timeout=20)
+    out = r.stdout or ""
+    m = re.search(r"mCurrentFocus=Window\{[^}]*\s([\w.]+)(?:/[^\s}]*)?\}", out)
+    if m and m.group(1) == pkg:
+        return True
+    for block in re.split(r"(?=\n\s*Window #\d+ )", out):
+        if "InputMethod" in block.split("\n", 1)[0] and re.search(rf"package={re.escape(pkg)}\b", block) \
+                and re.search(r"isVisible=true|mHasSurface=true", block):
+            return True
+    # ...and asked directly, since the window dump's wording moves between
+    # releases: an app that is also the keyboard, up over its own setup
+    # screen, read as not in front, and the launch took the keyboard down
+    # (report #68, B529). The input method service says whose keyboard is
+    # showing; the activity manager names the activity resumed on top.
+    ime = run([adb, "shell", "dumpsys", "input_method"], timeout=20).stdout or ""
+    cur = re.search(r"mCurMethodId=([\w.]+)/", ime)
+    if cur and cur.group(1) == pkg and re.search(r"mInputShown=true", ime):
+        return True
+    act = run([adb, "shell", "dumpsys", "activity", "activities"], timeout=20).stdout or ""
+    top = re.search(r"(?:topResumedActivity|mResumedActivity|ResumedActivity)[=:][^\n]*?\s([\w.]+)/", act)
+    return bool(top and top.group(1) == pkg)
+
+
+def bring_up(adb, pkg):
+    """Put PKG on the screen when it is not already there. Not when it is:
+    a launch restarts its launcher activity, which takes down the dialog,
+    the deep screen or the keyboard a session just drove into place, and
+    the shot came back with the app's front page instead (B387)."""
+    if pkg and not in_front(adb, pkg):
+        run([adb, "shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"], timeout=30)
 
 
 def display_ready(display):
@@ -228,11 +274,16 @@ def at_rest(grab, settle=True, quiet=4, cap=6.0):
     return last
 
 
+# A timed touch for a drive script on the emulator ($BB_TOUCH tap|hold|glide,
+# touch.py): adb's input verbs are too slow to time a gesture (R101).
+TOUCH = f"python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'touch.py')}"
+
+
 def drive(script, env):
     """The script that works the surface before the picture, with the
-    surface's own handle in its environment ($ADB, or DISPLAY)."""
+    surface's own handle in its environment ($ADB and $BB_TOUCH, or DISPLAY)."""
     if script:
-        subprocess.run(["sh", script], timeout=600, check=False, env=dict(os.environ, **env))
+        subprocess.run(["sh", script], timeout=600, check=False, env=dict(os.environ, BB_TOUCH=TOUCH, **env))
 
 
 def shot(a):
@@ -241,8 +292,7 @@ def shot(a):
     if a.emu is not None:
         adb = _adb()
         emu_ready(adb)
-        if a.emu:
-            run([adb, "shell", "monkey", "-p", a.emu, "-c", "android.intent.category.LAUNCHER", "1"], timeout=30)
+        bring_up(adb, a.emu)
         drive(a.drive, {"ADB": adb})
         png = at_rest(lambda: frame_emu(adb), a.settle)
     else:
@@ -320,13 +370,13 @@ def from_emu(pkg, seconds, drive, work, out):
     if r.returncode or "device" not in (r.stdout or ""):
         die("no emulator is running: bb emu start boots one")
     if pkg:
-        run([adb, "shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"], timeout=30)
+        bring_up(adb, pkg)
         run([adb, "shell", "dumpsys", "gfxinfo", pkg, "reset"], timeout=20)
     rec = subprocess.Popen([adb, "shell", "screenrecord", "--time-limit", str(seconds), "/sdcard/bb-reel.mp4"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if drive:
         subprocess.run(["sh", drive], timeout=seconds + 60, check=False,
-                       env=dict(os.environ, ADB=adb, BB_CAPTURE_SECONDS=str(seconds)))
+                       env=dict(os.environ, ADB=adb, BB_TOUCH=TOUCH, BB_CAPTURE_SECONDS=str(seconds)))
     rec.wait(timeout=seconds + 60)
     video = os.path.join(work, "screen.mp4")
     r = run([adb, "pull", "/sdcard/bb-reel.mp4", video], timeout=120)

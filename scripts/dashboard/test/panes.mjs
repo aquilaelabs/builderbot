@@ -24,7 +24,9 @@ await page.waitForFunction(() => tabs.filter(t => t.kind === 'term').length >= 3
 const ids = await page.evaluate(() => tabs.filter(t => t.kind === 'term').map(t => t.id));
 
 const show = id => page.evaluate(id => { panes[0] = id; render(); }, id);
-const seen = () => page.evaluate(() => [...document.querySelectorAll('#pane0 .stack > *')]
+// The terminals the pane keeps: its slots. A page opens on the Projects tab
+// now (R119), whose document is in the same stack and is not a terminal.
+const seen = () => page.evaluate(() => [...document.querySelectorAll('#pane0 .stack > .slot')]
   .map(c => ({ key: c.dataset.key, on: c.classList.contains('on') })));
 
 await show(ids[0]);
@@ -56,7 +58,8 @@ ok(await page.$eval('#pane0 .slot.on', el => el.dataset.mark === 'first'),
 ok(await page.$$eval('#pane0 .slot.on iframe', f => f.length === 1),
    '...and exactly one terminal is on screen');
 
-// The ceiling. A fourth terminal drops the one used longest ago.
+// No ceiling below the strip's own (the operator, 6 Oct): every terminal tab
+// on the strip stays attached, and Minimize is what detaches one.
 await show(ids[2]);
 const fourth = await page.evaluate(() => { newShell('gamma'); return null; });
 await page.waitForFunction(() => tabs.filter(t => t.kind === 'term').length >= 4,
@@ -64,18 +67,31 @@ await page.waitForFunction(() => tabs.filter(t => t.kind === 'term').length >= 4
 const id4 = await page.evaluate(() => tabs.filter(t => t.kind === 'term').at(-1).id);
 await show(id4);
 rows = await seen();
-ok(rows.length === 3, `a pane keeps three terminals, not every one ever opened (${rows.length})`);
-ok(!rows.some(r => r.key?.startsWith(ids[1] + '|')),
-   '...and the one dropped is the one used longest ago');
+const before = rows.length;
+ok([...ids, id4].every(id => rows.some(r => r.key?.startsWith(id + '|'))),
+   `a pane keeps every terminal on the strip attached, the fourth included (${rows.map(r => r.key).join(' ')})`);
+await page.evaluate(id => hideTab(id), id4);
+await page.waitForFunction(id => ![...document.querySelectorAll('#pane0 .stack > .slot')]
+  .some(c => c.dataset.key?.startsWith(id + '|')), id4, { timeout: 5000 }).catch(() => {});
+rows = await seen();
+ok(rows.length === before - 1 && !rows.some(r => r.key?.startsWith(id4 + '|')),
+   `...and Minimize detaches one: its frame goes with its tab (${rows.length})`);
+void fourth;
 
 // A document tab is not kept: it redraws from state instantly, and one #docN
 // per pane is what renders into it.
 await page.evaluate(() => openTab({kind: 'toolchains', arg: '__toolchains', label: 'toolchains'}));
 await page.waitForSelector('#pane0 .doc.on');
-ok(await page.$$eval('#pane0 .stack > .doc', d => d.length === 1
-     && d[0].id === 'doc0'),
-   'a document tab is one per pane, and keeps the id that renders into it');
-ok(await page.$$eval('#pane0 .stack > .slot', s => s.length === 3),
+// One #docN per pane is the invariant: the element of a tab shown before is
+// kept behind, unnamed, so bringing it back is its own painted ground on the
+// first frame (uniform.mjs holds that), and a page opening on the Projects
+// tab (R119) leaves its document there.
+ok(await page.$$eval('#pane0 .stack > .doc', d => d.filter(x => x.id === 'doc0').length === 1
+     && d.find(x => x.id === 'doc0').classList.contains('on')),
+   `a document tab is one per pane, and keeps the id that renders into it (${
+     await page.$$eval('#pane0 .stack > .doc', d => d.map(x => x.id + ':' + x.className).join(' '))})`);
+const slotsBefore = rows.length;
+ok(await page.$$eval('#pane0 .stack > .slot', (s, n) => s.length === n, slotsBefore),
    `...and opening it did not disturb the terminals behind it (${
      await page.$$eval('#pane0 .stack > *', c => c.map(x => x.dataset.key).join(' '))})`);
 

@@ -1,40 +1,28 @@
 #!/usr/bin/env python3
-"""One Anthropic account per BuilderBot account, without copying a grant.
+"""Which nodes each BuilderBot account is signed in to Claude on, and as whom.
 
-**The credential does not travel, and this file is why.** Every failure this
-has had came from one OAuth grant living on several machines: a refresh
-ROTATES the refresh token, so two copies sign each other out (bug #64); a node
-that was away holds one the server has retired (B100); and the machinery built
-to make copying safe is itself something that can break, which it did. Claude
-issues a grant per login. Two machines sharing one is the unsupported shape,
-and the rotation is what punishes it.
+**A Claude login belongs to one account on one node.** A person signs in on
+each node they want Claude to work on, from that node's row on the Nodes
+tab, and signs out there. Nothing carries a login from one machine to
+another and the controller holds no credential at all, which is also what
+lets this container carry no Claude.
 
-So each machine signs in for itself and keeps its own grant, which it alone
-refreshes. Nothing is pushed anywhere and the controller holds no credential
-at all, which is also what lets this container carry no Claude.
+That is not a convenience given up lightly: every failure this has had came
+from one OAuth grant living on several machines. A refresh ROTATES the
+refresh token, so two copies sign each other out (bug #64), and a node that
+was away holds one the server has retired (B100). Claude issues a grant per
+login, so a login per machine is the supported shape.
 
-**What the controller keeps instead is the IDENTITY**, per BuilderBot account:
+**What the controller keeps is what each node reported**, per BuilderBot
+account:
 
-    email, plan   the Anthropic account this BuilderBot account is bound to,
-                  as the first node to sign in reported it
-    gen           a counter, moved by a sign-out
-    nodes         {node id: {email, at}}: who reports being signed in, and
-                  as whom, which is what the card reads and what makes a
-                  second Anthropic account visible the moment it appears
+    nodes   {node id: {email, plan, at}}: the Anthropic account that node
+            says this BuilderBot account is signed in as there
 
-**The one-account rule is enforced by observation, and that is honest.** A
-node reporting a different Anthropic account is refused and told to sign out
-first; its sessions do not get to run as somebody else's login. It is not
-enforcement by construction: nothing can stop a person typing another
-account into `claude auth login` on a machine they have a shell on. What it
-replaces is worse: before, that second account was silently copied to every
-other node.
-
-**Signing out reaches a machine that is not listening.** The generation moves
-and the record is cleared; every node compares generations on its next check
-(every connection, every prompt) and runs `claude auth logout` when its own is
-behind. A node that is offline does it when it comes back. There is no queue,
-because the node is the one that asks.
+It is a report, not a rule: a person may sign one node in to one Anthropic
+account and another node in to another, and the row of each says which.
+The Users tab says when two BuilderBot accounts are on one Anthropic
+account, since Anthropic's terms allow one person per Claude account.
 
 Path-pure, like changelog.py: handed the account's home, never resolving one.
 """
@@ -43,14 +31,9 @@ import os
 import time
 from pathlib import Path
 
-# What the dashboard's verbs below need from the server, set by server.py: the
-# cached answer to who each home is signed in as, cleared when this changes
-# it; nodes' names by id, [] when the node store is not up; and the answer
-# itself for a home, read afresh.
-forget_auth = None
-node_names = None
-claude_auth = None
-home_for = None           # an account's uid -> its home, where its Claude record is
+# What logins_of needs from the server, set by server.py: an account's uid
+# to its home, where its record is.
+home_for = None
 
 MARK = ".bb-grant.json"
 MAX_NODES = 64
@@ -77,150 +60,76 @@ def _write(home, d):
     os.replace(tmp, p / MARK)
 
 
-def state(home):
-    """{signed_in, email, plan, gen, nodes}: what the card draws and what a
-    node compares itself against.
-
-    `signed_in` is "some node reports being signed in", because that is the
-    only place a credential exists now. An account bound to an Anthropic
-    account with no node signed in is a real state: everything was signed out,
-    or the nodes are all away.
-    """
+def nodes_of(home):
+    """{node id: {email, plan, at}}: every node that reports this account
+    signed in, which is what the node rows and the project rows draw."""
     if not home:
-        return {"signed_in": False, "email": "", "plan": "", "gen": 0, "nodes": {}}
+        return {}
     d = _read(home)
-    on = d.get("nodes") if isinstance(d.get("nodes"), dict) else {}
-    return {"signed_in": bool(on), "email": str(d.get("email") or ""),
-            "plan": str(d.get("plan") or ""), "gen": int(d.get("gen") or 0),
-            "nodes": on}
+    on = d.get("nodes")
+    # A record from when the plan was the account's carries it beside the
+    # nodes: read from there once, and each node's next report writes its own.
+    return {str(k): {"email": str(v.get("email") or ""),
+                     "plan": str(v.get("plan") or d.get("plan") or ""),
+                     "at": int(v.get("at") or 0)}
+            for k, v in (on.items() if isinstance(on, dict) else [])
+            if isinstance(v, dict) and v.get("email")}
+
+
+def on(home, node_id):
+    """What this account is signed in as on one node: {email, plan, at}, or
+    {} when that node reports no login of theirs."""
+    return nodes_of(home).get(str(node_id or ""), {})
 
 
 def report(home, node_id, email, plan="", signed_in=True):
-    """A node saying what it is signed in as. Returns {ok, gen} or {error}.
-
-    This is the whole of the one-account rule: the first report binds the
-    BuilderBot account to an Anthropic one, and a later report of a different
-    one is refused rather than recorded. Refused, not merely flagged: a node
-    whose sessions would run as somebody else's login is not a warning.
-    """
+    """A node saying what this account is signed in as there, or that it is
+    not. {ok, plan} or {error}. An empty plan leaves a stored one be, and
+    the answer carries what is stored: the plan is asked of Claude Code only
+    when the controller has none, which is once after a sign-in."""
     if not home:
         return {"error": "this account has no home here"}
     if not node_id:
         return {"error": "a report says which node it is from"}
     d = _read(home)
+    rows = d.get("nodes") if isinstance(d.get("nodes"), dict) else {}
     email = " ".join(str(email or "").split())[:120]
-    on = d.get("nodes") if isinstance(d.get("nodes"), dict) else {}
     if not signed_in:
-        on.pop(str(node_id), None)
-        d["nodes"] = on
-        # The binding survives a node signing out on its own: what releases it
-        # is a SIGN-OUT, which is a decision, not a machine going quiet.
-        _write(home, d)
-        return {"ok": True, "gen": int(d.get("gen") or 0)}
+        rows.pop(str(node_id), None)
+        _write(home, {"nodes": rows})
+        return {"ok": True}
     if not email:
         return {"error": "a node reporting a sign-in says which Anthropic account"}
-    bound = str(d.get("email") or "")
-    if bound and email.lower() != bound.lower():
-        return {"error": f"this BuilderBot account is signed in to {bound}, and "
-                         f"that machine is signed in as {email}. One Anthropic "
-                         "account per BuilderBot account: sign out first, which "
-                         "signs out every node, or sign that machine in to "
-                         f"{bound}."}
-    d["email"] = bound or email
-    if plan:
-        d["plan"] = " ".join(str(plan).split())[:40]
-    on[str(node_id)] = {"email": email, "at": int(time.time())}
-    d["nodes"] = dict(list(on.items())[:MAX_NODES])
-    d.setdefault("gen", 0)
-    _write(home, d)
-    return {"ok": True, "gen": int(d["gen"])}
-
-
-def sign_out(home):
-    """Sign the account out, everywhere.
-
-    The generation moves and the record is cleared. Every node compares
-    generations on its next check and runs `claude auth logout` when its own
-    is behind, so a node that is offline signs itself out when it comes back.
-    Nothing is delivered and nothing is queued.
-
-    The binding is released too: signing out is what makes the next sign-in
-    free to be a different Anthropic account.
-    """
-    if not home:
-        return {"error": "this account has no home here"}
-    d = _read(home)
-    was = str(d.get("email") or "")
-    where = list((d.get("nodes") or {}).keys())
-    gen = int(d.get("gen") or 0) + 1
-    _write(home, {"gen": gen, "email": "", "plan": "", "nodes": {}})
-    return {"ok": True, "gen": gen, "was": was, "nodes": where}
-
-
-# ---- the dashboard's verbs, one call each --------------------------------------
-
-def sign_out_verb(home):
-    """Sign an account out of Claude, on every machine it is on, once the
-    server has said none of its conversations is running. There is nothing
-    here to delete (the credentials are the nodes'), so what this does is
-    move the generation and clear the record: each node compares
-    generations on its next sync (every connection, every prompt) and signs
-    ITSELF out when its own is behind, which is what reaches one that is
-    not listening. (payload, status)."""
-    r = sign_out(home)
-    forget_auth()
-    if r.get("error"):
-        return r, 500
-    return {"ok": True, "gen": r["gen"],
-            # What it reaches, said rather than assumed: a node that is not
-            # dialing in signs itself out when it comes back, and the
-            # sentence should not pretend they all go at once.
-            "nodes": node_names(r["nodes"]),
-            "auth": claude_auth(home=home)}, 200
-
-
-def identity(home):
-    """What a node asks: who this BuilderBot account is bound to and what
-    the generation is. No credential leaves here, because none is kept
-    here: a machine signs in for itself and keeps the grant it alone
-    refreshes. Behind means sign yourself out. (payload, status)."""
-    st = state(home)
-    return {"email": st["email"], "plan": st["plan"],
-            "gen": st["gen"], "signed_in": st["signed_in"],
-            "nodes": len(st["nodes"])}, 200
-
-
-def report_from(home, nid, req):
-    """A node reporting what it is signed in AS, never the grant itself,
-    once the server has said which node it is from the token. (payload,
-    status)."""
-    r = report(home, nid, req.get("email") or "", req.get("plan") or "",
-               signed_in=bool(req.get("signed_in", True)))
-    forget_auth()
-    return r, (400 if r.get("error") else 200)
+    was = rows.get(str(node_id)) if isinstance(rows.get(str(node_id)), dict) else {}
+    # Another Anthropic account on the same node is another sign-in, and its
+    # plan is not the last one's.
+    kept = str(was.get("plan") or d.get("plan") or "") if str(was.get("email") or "").lower() == email.lower() else ""
+    row = {"email": email, "plan": " ".join(str(plan or "").split())[:40] or kept,
+           "at": int(time.time())}
+    rows[str(node_id)] = row
+    _write(home, {"nodes": dict(list(rows.items())[:MAX_NODES])})
+    return {"ok": True, "plan": row["plan"]}
 
 
 def logins_of(rows):
-    """Which Anthropic account each BuilderBot account is signed in as, and
-    whether two of them share one, for the Users tab.
+    """Which Anthropic accounts each BuilderBot account is signed in as, on
+    any node, and whether two of them share one, for the Users tab.
 
-    From the RECORD, not from a credential: no login lives on this container
-    (R47), and what it keeps instead is which Anthropic account each of its
-    accounts is bound to, as the node that signed in reported it.
+    From the record, not from a credential: no login lives on this container
+    (R47), and what it keeps instead is what each node reported.
 
     Anthropic's consumer terms allow one person per Claude account, so two
-    BuilderBot accounts on one login is the thing the per-account homes exist
-    to avoid, said on the row rather than left for somebody to work out.
+    BuilderBot accounts on one login is said on the row rather than left for
+    somebody to work out.
     """
     out = []
     for u in rows:
         home = home_for(u.get("uid", "")) or os.environ.get("BUILDER_HOME", str(Path.home()))
-        out.append(u | {"claude": state(home)["email"]})
-    seen = {}
+        emails = sorted({v["email"] for v in nodes_of(home).values()}, key=str.lower)
+        out.append(u | {"claude": ", ".join(emails), "_emails": {e.lower() for e in emails}})
     for u in out:
-        if u["claude"]:
-            seen.setdefault(u["claude"], []).append(u["name"])
+        u["claude_shared_with"] = [o["name"] for o in out
+                                   if o["name"] != u["name"] and o["_emails"] & u["_emails"]]
     for u in out:
-        others = [n for n in seen.get(u["claude"], []) if n != u["name"]]
-        u["claude_shared_with"] = others
+        del u["_emails"]
     return out

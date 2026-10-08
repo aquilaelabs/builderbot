@@ -8,9 +8,9 @@
 // a phone that is always present. That is not a shortcut: a real adb answers
 // from whatever is actually paired to the box the suite runs on, which makes
 // the result a fact about the room rather than the code.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, URL, DIR } from './lib.mjs';
 import { execSync, execFileSync } from 'node:child_process';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -39,10 +39,14 @@ await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 
 await page.evaluate(() => openPhoneTab());
 await page.waitForSelector('.phonetab .row', { timeout: 20000 });
-ok(await page.$eval('.phonetab #phPick', s => [...s.options].some(o => o.textContent.includes('sandbox'))),
-   'the tab opens with a node picker naming the node that carries adb');
-ok(await page.$('.card[data-card="phone"]') === null && await page.$('#bPhone') !== null,
-   'the phone is a tab reached from Tools, not a card in the sidebar');
+// A phone is a tool of its own again (R121, the operator 4 Oct): a Tools
+// button and a tab with a Node picker of the nodes that carry adb; the Nodes
+// tab, a machine's configuration, only points at it.
+ok(await page.$('#bPhone') !== null && await page.evaluate(() => tabs.some(t => t.kind === 'phone'))
+   && await page.$eval('.doc.on #phPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
+   'the Tools card opens a Phone tab, its Node picker listing the node that carries adb');
+ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
+   '...and the Nodes tab carries no Phone section of its own');
 
 // ---- what the server refuses ----------------------------------------------
 for (const [what, body] of [
@@ -101,14 +105,28 @@ const other = asUser('visitor', 'visitorpass1');
 await api('/api/users', { action: 'projects', name: 'visitor', projects: ['alpha'] });
 const theirs = (await api('/api/phone?node=' + sandbox.id, undefined, other)).body;
 const seen = theirs.nodes.find(n => n.id === sandbox.id);
-ok(seen.phone?.model === 'Test Phone' && !seen.mine && !seen.may_drive && seen.owner?.name === 'test',
-   'another account sees the phone and who connected it, and may not drive it');
-const theirDisc = await api('/api/phone', { action: 'disconnect', node: sandbox.id }, other);
-ok(theirDisc.status === 400 && /connected by test/.test(theirDisc.body.error),
-   'only the account that connected a phone can disconnect it, and the refusal names them');
+ok(seen.phone && !seen.phone.model && !seen.phone.serial && !seen.mine && !seen.may_drive && seen.owner?.name === 'test',
+   `another account is told a phone is connected and whose, nothing that names it, and may not drive it (${JSON.stringify(seen.phone)})`);
+// A plain account for the refusals: an administrator may disconnect
+// somebody else's phone since R120 (the unit tier holds that half).
+execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'plainuser', '--role', 'user'],
+  { input: 'plainpass1\nplainpass1\n', encoding: 'utf8',
+    env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+const plain = asUser('plainuser', 'plainpass1');
+// A user-role account (B490): no address either, and no remembered rows
+// but its own (an administrator keeps both: they may disconnect anyone's).
+// On the project, so the node is listed to them at all.
+await api('/api/users', { action: 'projects', name: 'plainuser', projects: ['alpha'] });
+const plainSeen = (await api('/api/phone?node=' + sandbox.id, undefined, plain)).body.nodes.find(n => n.id === sandbox.id);
+ok(plainSeen.phone && !plainSeen.phone.model && !plainSeen.ip && (plainSeen.known || []).length === 0 && plainSeen.owner?.name === 'test',
+   `a user-role account is told the same, with no address and nobody else's remembered phones (${JSON.stringify([plainSeen.ip, plainSeen.known])})`);
+await api('/api/users', { action: 'projects', name: 'plainuser', projects: ['alpha'] });
+const theirDisc = await api('/api/phone', { action: 'disconnect', node: sandbox.id }, plain);
+ok(theirDisc.status === 400 && /connected by test/.test(theirDisc.body.error) && /or an administrator/.test(theirDisc.body.error),
+   'only the account that connected a phone, or an administrator, can disconnect it, and the refusal names them');
 const theirConn = await api('/api/phone', { action: 'connect', node: sandbox.id, ip: '192.168.9.9', port: '5555' }, other);
 ok(theirConn.status === 400 && /connected by test/.test(theirConn.body.error),
-   '...nor connect over it');
+   '...nor connect over it, an administrator included');
 
 // ---- a session asking, and who is asked ------------------------------------
 // The point of the whole arrangement: a session does not touch the handset,
@@ -119,10 +137,19 @@ ok((await api('/api/phone', { action: 'ask', why: '', cmd: ['shell', 'ls'], proj
 const noNode = await api('/api/phone', { action: 'ask', why: 'look around', cmd: ['shell', 'ls'], project: 'beta' });
 ok(/has no node/.test(noNode.body.error || ''),
    'a project with no node has no phone to ask for, and is told so');
+// The companion app's live connection (R125): a wait held open answers the
+// moment an ask lands, rather than at the app's next alarm.
+const since = (await api('/api/phone/wait?since=')).body.token;
+const t0 = Date.now();
+const held = api('/api/phone/wait?since=' + since);
+await sleep(700);
 const asked = await api('/api/phone', { action: 'ask', why: 'read the Firefox version',
                                         cmd: ['shell', 'getprop', 'ro.build.version.release'], project: 'alpha' });
 ok(asked.body.id > 0 && asked.body.to === 'test',
    `a session can ask, and is told who was asked (${JSON.stringify(asked.body).slice(0, 80)})`);
+const woke = await held;
+ok(woke.body.token && woke.body.token !== since && Date.now() - t0 < 10000,
+   `...and the app's held wait answers as it lands, not at its next alarm (${Date.now() - t0} ms)`);
 ok((await api('/api/phone', undefined, other)).body.asks.length === 0,
    'the other account is not asked: the question goes to the connection\'s owner alone');
 await page.evaluate(() => phFetch());
@@ -156,7 +183,12 @@ await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
 const theirAllow = await api('/api/phone', { action: 'allow', id: asked.body.id }, other);
 ok(theirAllow.status === 400 && /account that connected/.test(theirAllow.body.error),
    'another account cannot answer for it');
-await page.click('.phask [data-allow]');
+// Two answers that run it (the operator, 4 Oct): Allow, for this one, and
+// Allow for this session, for the rest of that session's too.
+ok(await page.$eval('.phask', r => /Allow for this session/.test(r.textContent)
+     && !!r.querySelector('[data-allow]:not([data-session])')),
+   'a phone ask offers Allow and Allow for this session');
+await page.click('.phask [data-allow]:not([data-session])');
 await page.waitForFunction(() => !document.querySelector('.phask'), null, { timeout: 20000 });
 await page.waitForFunction(() => document.title === 'BuilderBot', null, { timeout: 15000 });
 ok(true, '...and the badge clears when nothing is waiting');
@@ -168,6 +200,10 @@ await page.evaluate(() => phFetch());
 await page.click('#bBell');
 await page.waitForSelector('#bellPanel .bnote.ask [data-bdeny]', { timeout: 10000 });
 await page.click('#bellPanel .bnote.ask [data-bdeny]');
+// Any press in the drawer closes it, Deny included (the operator, 7 Oct).
+ok(await page.waitForFunction(() => document.getElementById('bellPanel').hidden, null, { timeout: 5000 })
+     .then(() => true, () => false),
+   'pressing Deny closes the drawer');
 await page.waitForFunction(() => !document.querySelector('.phask'), null, { timeout: 20000 });
 ok((await api('/api/phone', { action: 'outcome', id: denied.body.id })).body.state === 'denied',
    'Deny stops it, and the session is told no rather than left hanging');
@@ -284,6 +320,103 @@ const asPhone = !lan ? { you: 'no LAN address on this box: nothing to ask with' 
 ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPhone.you)),
    `from an Android browser it offers that browser's own address (${asPhone.you})`);
 
+// ---- lent to a project (R113, R120) ------------------------------------------
+// The owner lends the phone to alpha; alpha's sessions then reach its own app
+// and nothing else, each command waiting on the owner's Allow in their bell
+// (R120: whether a session drives a phone is its owner's call each time, not
+// a project's), and an administrator's Allow is not the owner's. Take back
+// ends it.
+{
+  const token = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const session = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
+  const use = (op, args) => api('/api/phone', { action: 'use', op, args, why: `${op} for the test` }, session);
+  // Asked, allowed by the owner, and what it answered, as bb phone reads it.
+  const allowed = async (op, args) => {
+    const r = await use(op, args);
+    if (!r.body.asked) return { status: r.status, body: r.body };
+    const ok_ = await api('/api/phone', { action: 'allow', id: r.body.asked });
+    if (ok_.body.error) return { status: 409, body: ok_.body };
+    for (let i = 0; i < 100; i++){
+      const o = (await api('/api/phone', { action: 'outcome', id: r.body.asked }, session)).body;
+      if (o.state === 'done') return { status: o.code ? 400 : 200, body: JSON.parse(o.out || '{}'), asked: r.body.asked };
+      await new Promise(res => setTimeout(res, 100));
+    }
+    return { status: 504, body: {} };
+  };
+  ok((await use('shot')).status === 403, 'before a lease a session gets nothing without asking');
+  const bad = await api('/api/phone', { action: 'lend', node: sandbox.id, project: 'alpha', hours: 1 }, other);
+  ok(bad.status === 400 && /only the account that connected/.test(bad.body.error),
+     `only the owner lends it, an administrator included (${bad.body.error})`);
+  const lent = await api('/api/phone', { action: 'lend', node: sandbox.id, project: 'alpha', hours: 1 });
+  ok(lent.status === 200, `the owner lends it to a project on its node (${lent.status} ${lent.body.error || ''})`);
+  await page.evaluate(() => phFetch());
+  await page.waitForSelector('.phonetab .phlease', { timeout: 15000 });
+  ok(/Lent to alpha/.test(await page.$eval('.phonetab .phlease', e => e.textContent)) && !!(await page.$('.phonetab #phTakeBack')),
+     'the tab says whom it is lent to, for how long, with Take back');
+  // The project's row says it to everybody on it, and its Phone button is the
+  // owner's way to take it back (R120).
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => /lent here by/.test(document.querySelector('#projects .row:has([data-ph="alpha"])')?.textContent || ''),
+                             null, { timeout: 15000 });
+  ok(await page.$eval('#projects [data-ph="alpha"]', b => !b.disabled && b.classList.contains('on')),
+     'the row shows the lease, and its Phone button is live for the owner, to take it back');
+  const first = await use('shot');
+  ok(first.status === 200 && first.body.asked > 0, `a lent phone's command is an ask, not a run (${JSON.stringify(first.body)})`);
+  ok(((await api('/api/phone?node=' + sandbox.id)).body.asks || []).some(a => a.id === first.body.asked && a.kind === 'phone-use'),
+     '...in the owner\'s bell');
+  ok(!((await api('/api/phone?node=' + sandbox.id, undefined, other)).body.asks || []).length,
+     '...and nobody else\'s, an administrator\'s included');
+  const theirs_ = await api('/api/phone', { action: 'allow', id: first.body.asked }, other);
+  ok(/connected the phone/.test(theirs_.body.error || ''), `an administrator cannot allow it (${theirs_.body.error})`);
+  await api('/api/phone', { action: 'deny', id: first.body.asked });
+  const shot = await allowed('shot');
+  ok(shot.status === 200 && /^dist\/phone\/shot-.*\.png$/.test(shot.body.path || ''),
+     `allowed by its owner, a screenshot lands in dist/phone/ (${shot.body.path || shot.body.error})`);
+  await page.waitForSelector('.phonetab .phlease img.phshot', { timeout: 15000 });
+  ok(true, '...and the owner\'s tab shows it on the next poll');
+  // A recording comes back the same way, as a pulled file the node
+  // uploads, so it is whole (report #57: read out of the log it was cut
+  // short, with no moov box).
+  const rec = await allowed('record', { seconds: 1 });
+  ok(rec.status === 200 && /^dist\/phone\/record-.*\.mp4$/.test(rec.body.path || '')
+     && readFileSync(`${DIR}/ws/alpha/${rec.body.path}`).includes(Buffer.from('moov')),
+     `...and a recording lands whole in dist/phone/ (${rec.body.path || rec.body.error})`);
+  // One left running while touches work the phone, then collected (the
+  // operator, 5 Oct): a fixed-length one runs alone, so a glide sent during
+  // it landed after it.
+  const started = await allowed('record', { action: 'start', seconds: 30 });
+  ok(started.status === 200 && /record stop/.test(started.body.out || ''),
+     `a recording can be started and left running (${started.body.out || started.body.error})`);
+  const again = await allowed('record', { action: 'start' });
+  ok(/already going/.test(again.body.error || ''), `...a second one is refused while it runs (${again.body.error})`);
+  const stopped = await allowed('record', { action: 'stop' });
+  ok(stopped.status === 200 && /^dist\/phone\/record-.*\.mp4$/.test(stopped.body.path || ''),
+     `...and stop collects it into dist/phone/ (${stopped.body.path || stopped.body.error})`);
+  // Its reel, the frames that changed with their times, is what the owner's
+  // tab shows beside the shot, with the video a link away. The stand-in MP4
+  // has no frames to tile, so the sheet is put beside it here.
+  const video = stopped.body.path.split('/').pop();
+  writeFileSync(`${DIR}/ws/alpha/dist/phone/${video.replace('.mp4', '-sheet.png')}`,
+    Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+  await page.waitForSelector('.phonetab .phlease img.phreel', { timeout: 15000 });
+  const vlink = await page.$eval('.phonetab .phlease .phreelbox + .sub a', a => a.getAttribute('href')).catch(() => '');
+  ok(vlink.includes(encodeURIComponent(stopped.body.path)), `...and the owner's tab shows its reel, with a link to the video (${vlink})`);
+  const box = await page.$eval('.phonetab .phreelbox', b => getComputedStyle(b).overflowY + ' ' + getComputedStyle(b).maxHeight);
+  ok(/auto/.test(box) && !/none/.test(box), `...in a box of its own height, so a long reel scrolls there rather than the page (${box})`);
+  // Refused before its owner is asked (report #52): an Allow spent on a
+  // command that cannot run is a question nobody needed.
+  const other_app = await use('start', { pkg: 'com.android.settings' });
+  ok(other_app.status === 403 && !other_app.body.asked && /not one of this lease's apps/.test(other_app.body.error),
+     `another app on the phone is refused, before its owner is asked (${other_app.body.error})`);
+  const sneaky = await allowed('touch', { kind: 'tap', x: '1;reboot', y: '2' });
+  ok(sneaky.status === 400, 'a touch takes numbers only');
+  ok((await use('status')).body.project === 'alpha', 'reading the lease is the one thing that asks nobody');
+  await page.click('.phonetab #phTakeBack');
+  await page.waitForFunction(() => !document.querySelector('.phonetab .phlease'), null, { timeout: 15000 });
+  ok((await use('shot')).status === 403, 'Take back ends it: the session is back to asking');
+}
+
 // ---- the owner ends it ------------------------------------------------------
 await page.click('.phonetab #phDisconnect');
 await page.waitForFunction(() => !document.querySelector('.phonetab #phDisconnect'), null, { timeout: 20000 });
@@ -305,6 +438,12 @@ page.errors = [];
   const after = await known();
   ok(after.length === 1 && after[0].ip === '192.168.9.9' && after[0].model === 'Test Phone',
      'the connect above put the phone on the node\'s remembered list, by model and address');
+  // Another account's view has no such row (B490), and Forget on it is
+  // refused: a remembered phone is its maker's.
+  const theirKnown = (await api('/api/phone?node=' + sandbox.id, undefined, plain)).body.nodes.find(n => n.id === sandbox.id).known || [];
+  const theirForget = await api('/api/phone', { action: 'forget', node: sandbox.id, ip: '192.168.9.9' }, plain);
+  ok(theirKnown.length === 0 && theirForget.status !== 200 && /remembered by test/.test(theirForget.body.error || ''),
+     `...which another account is not shown and cannot forget (${theirForget.status}: ${theirForget.body.error})`);
   ok((await api('/api/phone', { action: 'forget', node: sandbox.id, ip: '192.168.9.9' })).body.ok
      && (await known()).length === 0,
      '...and Forget takes it off');
@@ -316,12 +455,17 @@ page.errors = [];
   ok(merged.length === 1 && merged[0].model === 'Test Phone' && merged[0].ip === '192.168.9.9',
      '...and the connect fills the model in on the same row rather than adding a second');
   await page.click('.phonetab #phRefresh');
-  await page.waitForFunction(() => document.querySelector('.phonetab .phknown[data-ip="192.168.9.9"]'),
-                             null, { timeout: 20000 });
-  ok(await page.$eval('.phonetab .phknown', r => /Test Phone/.test(r.textContent)
-       && /connected/.test(r.querySelector('.pill')?.textContent || '')
-       && r.querySelector('[data-kconnect]') && r.querySelector('[data-kforget].danger')),
-     'the tab lists it by model, marks it as the phone connected now, and offers Connect and Forget');
+  // Waited for whole (B437): the row can be drawn from a poll that left
+  // before the connect, and the one after it marks it connected, so a row
+  // read the moment it appears was read without its pill now and then.
+  const drawn = await page.waitForFunction(() => {
+    const r = document.querySelector('.phonetab .phknown[data-ip="192.168.9.9"]');
+    return !!r && /Test Phone/.test(r.textContent)
+      && /connected/.test(r.querySelector('.pill')?.textContent || '')
+      && !!r.querySelector('[data-kconnect]') && !!r.querySelector('[data-kforget].danger');
+  }, null, { timeout: 20000 }).then(() => true, () => false);
+  ok(drawn, 'the tab lists it by model, marks it as the phone connected now, and offers Connect and Forget ('
+     + await page.$eval('.phonetab .phknown', r => r.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)).catch(() => 'no row') + ')');
   await page.click('.phonetab #phDisconnect');
   await page.waitForFunction(() => !document.querySelector('.phonetab #phDisconnect'), null, { timeout: 20000 });
   // The stub adb goes on listing the device after a disconnect, so the
@@ -370,4 +514,5 @@ if (page.errors.length) console.log(page.errors);
 // The admin account made above is not the fixture's; users.json outlives
 // this file, so it goes with it.
 await api('/api/users', { action: 'remove', name: 'visitor' });
+await api('/api/users', { action: 'remove', name: 'plainuser' });
 await done(browser);

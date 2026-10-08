@@ -34,9 +34,11 @@ capture prune` applies on a node.
 """
 import importlib.util
 import io
+import json
 import os
 import re
 import subprocess
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -58,6 +60,11 @@ DIST = "dist"
 UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
 # The project's "captures kept" days, set by server.py from prefs.
 capture_days = None
+# ...and how many dev builds of each kind it keeps (R105), from prefs too.
+dev_keep = None
+# The routes this project has a signing key for (signing.py, R106), set by
+# the server: what Sign on an .apk or .aab row may offer.
+sign_routes = None
 # scripts/lib/capture.py, loaded by path: captures(dist) and prune(dist, days, names).
 _capture = None
 
@@ -81,9 +88,11 @@ MAX_VIEW = 256 * 1024
 MAX_DEPTH = 2
 
 
-def configure(*, workspace, worktrees=None, capture=None):
+def configure(*, workspace, worktrees=None, capture=None, state=None, write_json=None):
     globals().update(WORKSPACE=Path(workspace),
-                     WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees")
+                     WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
+                     PINS=Path(state) / "artifact-pins.json" if state else None,
+                     _write_json=write_json)
     path = Path(capture) if capture else Path(__file__).resolve().parent.parent / "lib" / "capture.py"
     spec = importlib.util.spec_from_file_location("bb_capture", path)
     mod = importlib.util.module_from_spec(spec)
@@ -156,6 +165,9 @@ def listing(project, tree=""):
                 # file IS is also the place that decides what can be done
                 # with it.
                 "view": kind == "script" and st.st_size <= MAX_VIEW,
+                # A build at dist/'s top named with no version: the sweep
+                # cannot tell when it is superseded, so the row says so.
+                **({"unversioned": True} if depth == 0 and unversioned(p.name) else {}),
                 "size": st.st_size,
                 "at": int(st.st_mtime),
             })
@@ -325,12 +337,189 @@ def forget_capture(project, name):
 
 # ---- the tab's read and its downloads, one call each from the dashboard --------
 
+# ---- pins: an artifact a person does not want to lose --------------------------
+# {project: {path under the project, "dist/...": {by, at}}}, under /config, so
+# a pin is the controller's record of a person's choice and not a file in the
+# tree a build or a session could overwrite. A pinned artifact is never swept
+# and does not count toward the dev builds kept beside it (the operator, 30
+# Sep). A pin on a file that is gone is left and harmless: the listing only
+# marks files that are there.
+PINS = None
+_write_json = None
+_pins_lock = threading.Lock()
+
+
+def _pins_all():
+    try:
+        with open(PINS, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def pins(project):
+    """{path: {by, at}} pinned in this project's dist/."""
+    got = _pins_all().get(project) if PINS else None
+    return got if isinstance(got, dict) else {}
+
+
+def pin(project, rel, on, by=""):
+    """Pin or unpin one artifact in the project's dist/. (payload, status)."""
+    if PINS is None or _write_json is None:
+        return {"error": "pins are not kept on this controller"}, 500
+    rel = str(rel or "")
+    f = resolve(project, rel)
+    if on and f is None:
+        return {"error": "no such artifact"}, 404
+    if rel.split("/")[1:2] and rel.split("/")[1] in _capture.CAPTURE_DIRS:
+        return {"error": "a capture goes by the project's days; pin what the project ships"}, 400
+    with _pins_lock:
+        d = _pins_all()
+        mine = d.get(project) if isinstance(d.get(project), dict) else {}
+        if on:
+            mine[rel] = {"by": str(by or "")[:60], "at": int(time.time())}
+        else:
+            mine.pop(rel, None)
+        if mine:
+            d[project] = mine
+        else:
+            d.pop(project, None)
+        _write_json(PINS, d)
+    return {"ok": True, "path": rel, "pinned": bool(on)}, 200
+
+
+# ---- dev builds: the newest few builds of each product (R105) ---------------------
+# A dev build carries its version in its name the way bb version --file
+# spells it (0.1.0-dev.17-9e09ad3, -dirty when the tree was), and a session
+# building all day leaves one file per build: seven debug APKs, 133 MB, in
+# one day on Shebang-DevBoard (30 Sep). Of each product (the name before its
+# version: Shebang-DevBoard-, Shebang-Voice-) the files of its newest few
+# builds stay, whatever follows the version (the project's "dev builds
+# kept", DEV_KEEP unless it says; 0 keeps them all), and the rest go.
+#
+# It counted by the whole name with the version taken out once, which made
+# a renamed build a new kind: Shebang's first builds were -debug.apk and its
+# later -release.apk, so the three oldest debug builds were "the newest of
+# their kind" for good (85 MB, the operator, 6 Oct). A build that has been
+# signed keeps its signed copy only: the unsigned file was the signing's
+# input, and a signed one signs again (350 MB of Shebang's 811). A release
+# (no -dev.N) is never swept, nor a file whose name carries no version:
+# nothing here can tell those are superseded, so the tab says so instead.
+DEV_KEEP = 3
+DEV_VERSION = re.compile(r"(?<![0-9A-Za-z])\d+\.\d+\.\d+-dev\.(\d+)-[0-9a-f]{7,40}(?:-dirty)?(?![0-9A-Za-z])")
+# A file a build ships, for the unnamed check: what a release would attach.
+SHIPPED = re.compile(r"\.(apk|aab|zip|xpi|tar\.gz|tgz|exe|msi|dmg|deb|rpm|AppImage|jar|whl)$", re.I)
+VERSIONISH = re.compile(r"\d+\.\d+\.\d+|(?<![0-9A-Za-z])[0-9a-f]{7,40}(?![0-9A-Za-z])")
+SIGNED = re.compile(r"-signed(\.(?:apk|aab))$")
+
+
+
+def unversioned(name):
+    """A shipped file named with no version, which nothing can sweep."""
+    return bool(SHIPPED.search(name)) and not VERSIONISH.search(name)
+
+
+def sweep_dev_builds(project, keep=DEV_KEEP):
+    """The project's dist/ (its top level, where a build lands) brought to
+    the newest `keep` builds of each product, each signed one by its signed
+    copy alone. Returns the names removed; `keep` 0 removes nothing."""
+    root = dist_dir(WORKSPACE / project) if WORKSPACE else None
+    if not keep or root is None or not root.is_dir():
+        return []
+    # A pinned one is kept, and is not one of the `keep` beside it.
+    held = {Path(r).name for r in pins(project) if r.count("/") == 1}
+    files = []
+    try:
+        files = [p for p in root.iterdir() if p.is_file() and not p.name.startswith(".") and p.name not in held]
+    except OSError:
+        return []
+    builds = {}
+    for p in files:
+        m = DEV_VERSION.search(p.name)
+        if m:
+            builds.setdefault(p.name[:m.start()], {}).setdefault(int(m.group(1)), []).append(p)
+    gone = set()
+    for by in builds.values():
+        for n in sorted(by, reverse=True)[keep:]:
+            gone.update(by[n])
+    names = {p.name for p in files}
+    for p in files:
+        if SIGNED.sub(r"\1", p.name) != p.name:
+            continue
+        twin = re.sub(r"(\.(?:apk|aab))$", r"-signed\1", p.name)
+        if twin != p.name and twin in names:
+            gone.add(p)
+    out = []
+    for p in gone:
+        try:
+            p.unlink()
+            out.append(p.name)
+        except OSError:
+            pass
+    return sorted(out)
+
+
+def forget_unnamed(project, rel):
+    """A shipped file named with no version, removed by the person who
+    decided: the row's Remove, which is the one way such a file goes.
+    (payload, status)."""
+    root = dist_dir(WORKSPACE / project) if WORKSPACE else None
+    name = Path(str(rel or "")).name
+    if root is None or not name or str(rel).strip("/") not in (name, f"dist/{name}") or not unversioned(name):
+        return {"error": "only a build named with no version is removed from here"}, 400
+    p = root / name
+    if not p.is_file():
+        return {"error": f"no {name} in dist/: it may have been removed already"}, 404
+    try:
+        p.unlink()
+    except OSError as e:
+        return {"error": f"could not remove {name}: {e.strerror}"}, 500
+    return {"ok": True, "removed": name}, 200
+
+
+SWEEP_EVERY = 300
+
+
+def sweep_all():
+    """Every project's dist/ swept: the builds a session copies straight
+    into dist/ go by whether anybody opened the Artifacts tab, which is all
+    the sweep used to wait for."""
+    if WORKSPACE is None or not WORKSPACE.is_dir():
+        return
+    for d in sorted(WORKSPACE.iterdir()):
+        if d.is_dir() and not d.name.startswith(".") and (d / "dist").is_dir():
+            try:
+                sweep_dev_builds(d.name, dev_keep(d.name) if dev_keep else DEV_KEEP)
+            except Exception as e:  # noqa: BLE001 (one project's trouble is not the next one's)
+                print(f"dashboard: dist sweep of {d.name}: {e}", flush=True)
+
+
+def _sweep_loop():
+    while True:
+        time.sleep(SWEEP_EVERY)
+        try:
+            sweep_all()
+        except Exception as e:      # noqa: BLE001 (a sweeper must not die)
+            print(f"dashboard: dist sweep: {e}", flush=True)
+
+
+def start():
+    threading.Thread(target=_sweep_loop, name="dist-sweep", daemon=True).start()
+
+
 def tab_view(name, uid):
     """The Artifacts tab's whole read for one project, as account `uid`
     sees it: what it built, each account's own builds from its worktree
     (B237) apart from dist/, which is what ships, what the project can and
     cannot do off this box, its dev instances, and the phone."""
-    return ({"artifacts": listing_of(name),
+    keep = dev_keep(name) if dev_keep else DEV_KEEP
+    sweep_dev_builds(name, keep)
+    held = pins(name)
+    return ({"artifacts": [a | ({"pinned": True, "pinned_by": held[a["path"]].get("by", "")}
+                                if a.get("path") in held else {}) for a in listing_of(name)],
+             "dev_keep": keep,
+             "sign_routes": sign_routes(name) if sign_routes else [],
              "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
                           for g in branches(name)],
              "build": build_state(name)}

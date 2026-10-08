@@ -10,8 +10,10 @@ while a script drives it, the emulator's screenrecord, an X display.
 Arguments: the source (--video FILE | --url URL | --emu PKG | --display :N),
 --seconds N for a recording, --drive FILE for the script that works the
 surface meanwhile, --name NAME for the reel's directory under dist/reel/,
---threshold T (ffmpeg's scene score, 0..1, that counts as a change) and
---fps N (how often the recording is looked at). BB_CAPTURE_OUT is dist/reel,
+--threshold T (ffmpeg's scene score, 0..1, that counts as a change; see
+THRESHOLD for the defaults) and
+--fps N (how often the recording is looked at: every frame it has unless
+this says fewer; see recorded_fps). BB_CAPTURE_OUT is dist/reel,
 BB_CAPTURE_FFMPEG the ffmpeg binary, BB_CAPTURE_NODE_PATH and BB_CAPTURE_CHROME what
 the page source needs, BB_CAPTURE_ADB the emulator's adb.
 
@@ -37,6 +39,42 @@ from capture import die, ffmpeg, font, from_display, from_emu, from_url, maker, 
 
 # ---- the reel itself: from a video to a sheet and a log ------------------------
 
+# What counts as a change, by source. ffmpeg's scene score is the whole
+# frame's mean difference, so it scales with how much of the screen moved:
+# measured on a 1080x2400 keyboard screen (30 Sep), a typed letter scores
+# about 0.0004, a key's preview bubble 0.0026, a blinking text cursor 0.0001,
+# and a still frame 0.00005. At 0.02 every one of those was dropped, and a
+# reel of eight seconds of typing was one frame (Shebang-DevBoard, 30 Sep).
+# The emulator's is 0.0002: every letter, not the cursor. A page and an X
+# display keep 0.02, where a change is usually a region and a browser's
+# encoder is noisier; --threshold asks for another.
+THRESHOLD = {"emu": 0.0002}
+THRESHOLD_DEFAULT = 0.02
+
+
+def recorded_fps(video):
+    """Frames a second the recording actually has, measured, or 0.0.
+
+    Counted rather than read off the header: screenrecord writes variable
+    frame rate, and its header's rate is a ceiling, not what it managed.
+    Under software rendering the emulator manages about 10; on a card,
+    several times that. The reel used to look at every recording 10 times
+    a second whatever it had, so a 60fps capture of a keyboard's slide was
+    cut back to the 10fps a software one had (Shebang-DevBoard, 1 Oct)."""
+    r = run([ffmpeg(), "-hide_banner", "-nostdin", "-i", video, "-map", "0:v:0", "-c", "copy", "-f", "null", "-"])
+    err = r.stderr or ""
+    frames = re.findall(r"frame=\s*(\d+)", err)
+    # The input's whole duration, not the time= of the last frame copied,
+    # which stops a frame short and read 10 as 10.5.
+    secs = (re.findall(r"Duration:\s*(\d+):(\d+):([0-9.]+)", err)
+            or re.findall(r"time=(\d+):(\d+):([0-9.]+)", err))
+    if not frames or not secs:
+        return 0.0
+    h, m, s = secs[-1]
+    t = int(h) * 3600 + int(m) * 60 + float(s)
+    return round(int(frames[-1]) / t, 1) if t > 0 else 0.0
+
+
 def reel(video, out, work, threshold, fps):
     """The frames that changed, stamped and tiled: the sheet and frames.json
     into `out` (the reel's directory under dist/), the frames themselves
@@ -49,7 +87,7 @@ def reel(video, out, work, threshold, fps):
     # ffmpeg picks the frames: the first, and each whose scene score against
     # the one before is over the threshold. `metadata=print` writes that
     # score per kept frame and showinfo its time; both are read back below.
-    vf = (f"fps={fps},select='gt(scene,{threshold})+eq(n,0)',"
+    vf = (f"{f'fps={fps},' if fps else ''}select='gt(scene,{threshold})+eq(n,0)',"
           f"metadata=print:file={meta},showinfo")
     r = run([ffmpeg(), "-hide_banner", "-nostdin", "-i", video, "-vf", vf, "-fps_mode", "vfr",
              os.path.join(frames, "%04d.png")])
@@ -72,7 +110,7 @@ def reel(video, out, work, threshold, fps):
                     "t": round(times[i], 2) if i < len(times) else None,
                     # One score per kept frame, in order; the first is kept
                     # whatever it scored, and its score is against nothing.
-                    "change": round(scores[i], 3) if i and i < len(scores) else 0.0})
+                    "change": round(scores[i], 5) if i and i < len(scores) else 0.0})
     # The sheet: each frame scaled to one width and stamped with its time in
     # the corner, tiled four across. Without a font the stamp is left off and
     # frames.json is the map from position to time.
@@ -104,7 +142,11 @@ def reel(video, out, work, threshold, fps):
             pass
         os.unlink(x)
     with open(os.path.join(out, "frames.json"), "w", encoding="utf-8") as f:
-        json.dump(maker() | {"source": video, "work": work, "threshold": threshold, "fps": fps,
+        # fps: how often it was looked at; recorded_fps: what it had. The
+        # same number unless --fps asked for fewer.
+        had = recorded_fps(video)
+        json.dump(maker() | {"source": video, "work": work, "threshold": threshold,
+                             "fps": fps or had, "recorded_fps": had,
                              "frames": log}, f, indent=1)
     return log
 
@@ -118,12 +160,14 @@ def main():
     ap.add_argument("--seconds", type=int, default=10)
     ap.add_argument("--drive")
     ap.add_argument("--name")
-    ap.add_argument("--threshold", type=float, default=0.02)
-    ap.add_argument("--fps", type=int, default=10)
+    ap.add_argument("--threshold", type=float)
+    ap.add_argument("--fps", type=int, default=0)
     a = ap.parse_args()
     picked = [k for k in ("video", "url", "emu", "display") if getattr(a, k) is not None]
     if len(picked) != 1:
         die("one source: --video FILE, --url URL, --emu [PKG] or --display :N")
+    if a.threshold is None:
+        a.threshold = THRESHOLD.get(picked[0], THRESHOLD_DEFAULT)
     base = os.environ.get("BB_CAPTURE_OUT") or os.path.join(os.getcwd(), "dist", "reel")
     name = a.name or (os.path.splitext(os.path.basename(a.video))[0] if a.video
                       else time.strftime("%Y%m%d-%H%M%S"))
@@ -145,7 +189,21 @@ def main():
           + f": {os.path.join(out, 'sheet.png')} and frames.json beside it; the frames are under {work}",
           file=sys.stderr)
     for f in log:
-        print(f"  {f['frame']:>3}  {f['t'] if f['t'] is not None else '?':>7}s  change {f['change']:.3f}")
+        print(f"  {f['frame']:>3}  {f['t'] if f['t'] is not None else '?':>7}s  change {f['change']:.5f}")
+    # What a frame here is worth: a 250 ms slide is two or three frames of a
+    # software-rendered emulator, so where the recording is that sparse the
+    # reel says so, and where the real timing is.
+    had = recorded_fps(video)
+    if had and had < 20:
+        print(f"[builderbot] the recording has about {had:g} frames a second, so anything shorter than "
+              f"{1000 / had:.0f} ms can fall between two of them"
+              + (": framestats.txt beside the reel has the app's own frame timing" if a.emu is not None
+                 else "") + "; a reel does not show motion finer than that", file=sys.stderr)
+    # One frame is the first one alone: nothing moved enough to count, which
+    # is not the same as nothing having happened, and says how to look closer.
+    if len(log) == 1:
+        print(f"[builderbot] nothing moved past a scene score of {a.threshold}: a smaller change (a typed "
+              f"letter is about 0.0004 on a phone screen) needs --threshold lower", file=sys.stderr)
 
 
 if __name__ == "__main__":

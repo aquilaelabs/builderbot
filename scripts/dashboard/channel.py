@@ -10,22 +10,26 @@ Authorization header, a file streamed, a body read, the long-poll's empty
 answer) and calls one function here, which says what the verb means. Each
 answers (payload, status), a file as {path or body, ctype, headers}.
 """
+import base64
 import re
 
 import claudegrant
 import db
+import ftp
 import nodes
 import plugins
 import runners
+import signing
 import toolchains
 import workspace
 from fields import field
 
-# The server's, set by configure(): an account's home (home_for), and the
-# cached answer to who each home is signed in as, cleared when a node
-# reports a change (the server's _auth.clear).
+# The server's, set by configure(): an account's home (home_for).
 home_for = None
-forget_auth = None
+
+# The sign jobs a key has been handed to (R106): once per job, so a node
+# that asks twice is refused the second time rather than given it again.
+_keys_given = set()
 
 # The last fault auto_sysdeps met on each node, by id: hello logs one when
 # it changes, not on every poll.
@@ -120,7 +124,24 @@ def artifact(auth, q, stream, length):
         return {"error": "not this node's job"}, 403
     if j["state"] not in nodes.JOB_ACTIVE:
         return {"error": "the job has ended"}, 409
-    r = workspace.artifact_put(j, q.get("name", [""])[0], stream, length)
+    # A signed build says what signed it (R106 step 4): the route, the
+    # certificate the node verified, and the schemes that verified. Only a
+    # sign job's, and only in the shape it can have.
+    extra = {}
+    if j.get("type") == "sign":
+        cert = q.get("cert", [""])[0].upper()
+        schemes = q.get("schemes", [""])[0]
+        route = q.get("signed", [""])[0]
+        key = q.get("key", [""])[0] or signing.DEFAULT
+        if re.fullmatch(r"[0-9A-F]{64}", cert) and route in ("play", "sideload") \
+                and re.fullmatch(r"[a-z0-9.,]{0,40}", schemes) and signing.KEY_NAME.fullmatch(key):
+            extra = {"signed": {"route": route, "cert": cert, "key": key,
+                                "schemes": [x for x in schemes.split(",") if x],
+                                "from": str((j.get("spec") or {}).get("file") or "")}}
+            rotated = q.get("rotated", [""])[0]
+            if rotated and signing.KEY_NAME.fullmatch(rotated):
+                extra["signed"]["rotated_from"] = rotated
+    r = workspace.artifact_put(j, q.get("name", [""])[0], stream, length, extra=extra)
     if not r.get("error"):
         db.audit(auth["principal"], "artifact", j["id"],
                  {"path": r["path"], "sha256": r["sha256"]})
@@ -158,10 +179,53 @@ def verb(name, auth, req, addr):
         r = runners.mint(kind, nid, slot, field(req, "runner_id"))
         db.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
         return _answer(r)
+    if name == "signing-key":
+        # A project's signing key for the sign job running on this node
+        # (R106): only that job's own node, only while it runs, once. The
+        # spec names the route and never carries a secret, so a session
+        # reading the job sees which key and not the key.
+        j = nodes.job(field(req, "job"), with_log=False)
+        if not j or j.get("type") != "sign" or j["node"] != nid or j["state"] not in nodes.JOB_ACTIVE:
+            return {"error": "not this node's running sign job"}, 403
+        if j["id"] in _keys_given:
+            return {"error": "the key was handed to this job already"}, 409
+        spec = j.get("spec") or {}
+        route = str(spec.get("route") or "")
+        project = j.get("project") or ""
+        # Which key: the one the job names, else the one the build's package
+        # is mapped to, which the node read from the build (step 6), else
+        # the project's default.
+        package = field(req, "package")
+        key = str(spec.get("key") or "") or signing.key_for(project, package, route)
+        # A retired sideload key signs nothing alone: its builds go out with
+        # the key it was rotated to and the proof (R106 step 7).
+        if route == "sideload":
+            key = signing.successor(project, key)
+        got = signing.secret(project, route, key)
+        if not got:
+            return {"error": f"{project} has no {signing.WORDS.get(route, route)} named {key}"
+                             + (f" (what {package} is mapped to)" if package and not spec.get("key") else "")}, 404
+        blob, rec = got
+        _keys_given.add(j["id"])
+        db.audit(auth["principal"], "signing-key", j["id"],
+                 {"project": project, "route": route, "key": key, "package": package,
+                  "sha256": rec.get("sha256")})
+        out = {"keystore": base64.b64encode(blob).decode(), "alias": rec.get("alias"),
+               "type": rec.get("type"), "store_pass": rec.get("store_pass"), "key": key,
+               "key_pass": rec.get("key_pass"), "sha256": rec.get("sha256")}
+        if route == "sideload" and rec.get("rotated_from"):
+            prev = signing.secret(project, route, rec["rotated_from"])
+            proof = signing.lineage(project, key)
+            if prev and proof:
+                out["previous"] = {"keystore": base64.b64encode(prev[0]).decode(), "alias": prev[1].get("alias"),
+                                   "store_pass": prev[1].get("store_pass"), "key_pass": prev[1].get("key_pass"),
+                                   "key": rec["rotated_from"], "sha256": prev[1].get("sha256")}
+                out["lineage"] = base64.b64encode(proof).decode()
+        return out, 200
     if name == "hello":
         r = nodes.hello(nid, req.get("census"), addr,
                         field(req, "version"), field(req, "digest"),
-                        req.get("running"))
+                        req.get("running"), keep=req.get("keep"))
         # A managed node whose store holds a toolchain it lacks the
         # system libraries for installs them itself (toolchains.py).
         # Broad because this rides every hello, and a fault in the
@@ -175,6 +239,19 @@ def verb(name, auth, req, addr):
                 _sysdeps_said[nid] = msg
                 print(f"[dashboard] auto sysdeps on {nid} skipped: {msg}", flush=True)
         return _answer(r)
+    if name == "beat":
+        # Alive, while its loop is held by a census (nodes.beat).
+        nodes.beat(nid)
+        return {"ok": True}, 200
+    if name == "ftp-auth":
+        # One FTP login on this node's bb-ftpd (R151), relayed by its agent:
+        # the name and password checked as a sign-in checks them, and the
+        # access this project gives that account. Never kept.
+        return ftp.login(nid, field(req, "project"), req.get("user"), req.get("password"),
+                         field(req, "addr")), 200
+    if name == "ftp":
+        # What the node's servers are doing, after each change.
+        return ftp.report(nid, req.get("servers"))
     if name == "sessions":
         # The node's sessions as they are now, sent when one changed
         # rather than on the poll's turn.
@@ -216,21 +293,19 @@ def _logins(nid, rows):
     """What a node's agent says each account on it is signed in to Claude
     as (B104). Absent from most heartbeats, and then nothing happens.
 
-    This is the ONLY report that does not come from a session's own token,
-    and it is worth being clear about what that means: a node could name
-    an account and an email that are not so. It could also read every
+    This is the report that does not come from a session's own token, and
+    it is worth being clear about what that means: a node could name an
+    account and an email that are not so. It could also read every
     session's token and run as those accounts, because it runs them, so
-    the weakening is small, and what it buys is a card that is true when
-    nothing is running, and a way back from a sign-out that does not need
-    the session the sign-out just stopped.
+    the weakening is small, and what it buys is a row that is true when
+    nothing is running: a sign-in or a sign-out made there shows without a
+    session having to open first.
 
     Written only when it says something new, because a heartbeat must not
-    cost a write per node per poll, and the cached answer is cleared only
-    then.
+    cost a write per node per poll.
     """
     if not isinstance(rows, list):
         return
-    moved = False
     for r in rows[:64]:
         if not isinstance(r, dict):
             continue
@@ -241,16 +316,10 @@ def _logins(nid, rows):
         if not home:
             continue
         email = " ".join(str(r.get("email") or "").split())[:120]
-        was = claudegrant.state(home)
-        on = (was["nodes"] or {}).get(nid) or {}
+        on = claudegrant.on(home, nid)
         if email:
             if on.get("email") == email:
                 continue                       # already what we have
             claudegrant.report(home, nid, email, str(r.get("plan") or ""))
-        else:
-            if not on:
-                continue                       # never was on this node
+        elif on:
             claudegrant.report(home, nid, "", signed_in=False)
-        moved = True
-    if moved:
-        forget_auth()

@@ -5,10 +5,12 @@ The first argument is the verb (status or run); for run the rest are the adb
 arguments. BB_PHONE_AUTH is the auth header, BB_PHONE_WHY the sentence the
 operator reads, BB_PHONE_PROJECT the project asking.
 """
+import json
 import os
 import sys
 
 import bbapi
+import hand
 import waits
 
 
@@ -17,14 +19,28 @@ def status():
     if d.get("error"):
         sys.exit(f"[builderbot] ERROR: could not reach the dashboard at {bbapi.url()}: {d['error']}")
     rows = d.get("nodes") or []
+    proj = os.environ.get("BB_PHONE_PROJECT", "")
     if not rows:
-        print("phone:   no node carries adb; a phone is driven from a node")
+        print("phone:   no node of this project's to drive a phone from: the project's settings name its node")
     for n in rows:
         p = n.get("phone")
         who = (n.get("owner") or {}).get("name")
         print("{:<16} {}".format(n.get("name", "?") + ":",
               "{} ({}){}".format(p.get("model") or "phone", p.get("serial"), f", connected by {who}" if who else "")
-              if p else ("not dialing in" if not n.get("live") else "no phone connected")))
+              if p else ("not dialing in" if not n.get("live") else
+                         "no phone connected: somebody connects theirs in the Phone tab, on this node")))
+        # What is missing for a session to use it, said rather than left to
+        # the next refusal (report #51).
+        lease = n.get("lease") or {}
+        if p and who and proj:
+            if lease.get("project") == proj:
+                print(f"{'':<16} lent to {proj} by {lease.get('by_name') or who}: bb phone install, start, shot and touch work")
+            elif lease.get("project"):
+                print(f"{'':<16} lent to {lease['project']}, not {proj}")
+            else:
+                print(f"{'':<16} not lent to {proj}: {who} lends it from the project's row or the Phone tab; bb phone run --why asks them for one command meanwhile")
+        elif p and not who:
+            print(f"{'':<16} seen by adb but connected outside the Phone tab, so nobody answers for it: connect it there")
     for a in d.get("asks") or []:
         print("waiting: #{} {} ({} on {})".format(a.get("id"), a.get("why"), a.get("project") or "a session", a.get("node_name")))
 
@@ -40,8 +56,12 @@ def run():
     if r.get("error"):
         print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
     rid = r["id"]
-    print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}), waiting up to 15 minutes "
-          "for Allow on the dashboard's Phone tab", file=sys.stderr)
+    if r.get("allowed"):
+        print(f"[builderbot] #{rid}: {r.get('to') or 'the owner'} allowed this session's commands to the phone",
+              file=sys.stderr)
+    else:
+        print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}), waiting up to 15 minutes "
+              "for Allow in the bell, or the Phone tab", file=sys.stderr)
     # Polled rather than pushed: this is a shell command waiting on a person, and
     # a person is slow in a way no callback improves.
     o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the operator said no")
@@ -49,7 +69,118 @@ def run():
     sys.exit(o.get("code") or 0)
 
 
-VERBS = {"status": status, "run": run}
+# ---- a phone lent to this project (R113, R120) -------------------------------
+# The owner lent the phone to this project, and the controller allows only the
+# project's own app on it (phonelease.py). Every command but reading the lease
+# asks the phone's owner and runs on their Allow (R120): whether a session
+# drives somebody's phone is theirs to say each time. BB_PHONE_WHY, from --why,
+# is the sentence they read.
+
+def use(op, args=None, quiet=False):
+    r = bbapi.call("/api/phone", {"action": "use", "op": op, "args": args or {},
+                                  "why": os.environ.get("BB_PHONE_WHY", ""),
+                                  "project": os.environ.get("BB_PHONE_PROJECT", "")},
+                   auth=os.environ["BB_PHONE_AUTH"], timeout=900)
+    if r.get("asked"):
+        if r.get("allowed"):
+            print(f"[builderbot] #{r['asked']}: {r.get('to') or 'its owner'} allowed this session's commands "
+                  "to the phone", file=sys.stderr)
+        else:
+            print(f"[builderbot] asked {r.get('to') or 'its owner'} (#{r['asked']}), waiting up to 15 minutes "
+                  "for Allow in their bell", file=sys.stderr)
+        o = waits.outcome(os.environ["BB_PHONE_AUTH"], r["asked"], f"{r.get('to') or 'its owner'} said no")
+        try:
+            r = json.loads(o.get("out") or "{}")
+        except ValueError:
+            r = {"error": o.get("out") or "no answer"}
+        if o.get("code") and not r.get("error"):
+            r["error"] = "it did not run"
+    if r.get("error"):
+        print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr)
+        sys.exit(1)
+    if not quiet and r.get("out"):
+        sys.stdout.write(r["out"] if r["out"].endswith("\n") else r["out"] + "\n")
+    if r.get("code"):
+        sys.exit(r["code"])
+    return r
+
+
+def flag(argv, name, default=None):
+    if name in argv:
+        i = argv.index(name)
+        if i + 1 >= len(argv):
+            sys.exit(f"[builderbot] ERROR: {name} takes a value")
+        v = argv[i + 1]
+        del argv[i:i + 2]
+        return v
+    return default
+
+
+def lent():
+    argv = sys.argv[1:]
+    op = argv[0]
+    rest = argv[1:]
+    if op == "lease":
+        r = use("status", quiet=True)
+        left = r.get("left")
+        print(f"{r['model']}, lent to {os.environ.get('BB_PHONE_PROJECT')} by {r.get('by') or 'its owner'}"
+              + (f", {left // 60} min left" if left is not None else ", until taken back"))
+        print("apps: " + (", ".join(r.get("pkgs") or []) or "none yet: bb phone install dist/APP.apk"))
+    elif op == "shot":
+        print(use("shot", quiet=True)["path"])
+    elif op == "record" and rest[:1] == ["start"]:
+        print(use("record", {"action": "start", "seconds": rest[1] if len(rest) > 1 else 60}, quiet=True)["out"])
+    elif op == "record" and rest[:1] == ["stop"]:
+        r = use("record", {"action": "stop"}, quiet=True)
+        print(r["path"])
+        if r.get("sheet"):
+            print(f"{r['sheet']}  (the frames that changed, with their times)")
+    elif op == "record":
+        r = use("record", {"seconds": rest[0] if rest else 10}, quiet=True)
+        print(r["path"])
+        if r.get("sheet"):
+            print(f"{r['sheet']}  (the frames that changed, with their times)")
+    elif op == "install":
+        if not rest:
+            sys.exit("usage: bb phone install dist/APP.apk")
+        print(f"installed {use('install', {'file': rest[0]}, quiet=True)['pkg']}")
+    elif op in ("start", "stop", "ime"):
+        use(op, {"pkg": rest[0] if rest else ""})
+    elif op == "log":
+        lines = flag(rest, "--lines", 500)
+        use("log", {"pkg": rest[0] if rest else "", "lines": lines})
+    elif op == "ui":
+        use("ui")
+    elif op == "touch":
+        if not rest:
+            sys.exit("usage: bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--seed N] "
+                     "| text \"...\" | key NAME")
+        kind = rest[0]
+        ms = flag(rest, "--ms")
+        a = {"kind": kind}
+        if kind in ("tap", "hold"):
+            a.update(x=rest[1] if len(rest) > 1 else None, y=rest[2] if len(rest) > 2 else None)
+            if ms:
+                a["ms"] = ms
+        elif kind == "glide":
+            # The path is a hand's (R127): its flags ride along, checked here
+            # and again on the controller.
+            try:
+                pts, hopts = hand.parse(rest[1:])
+            except ValueError as e:
+                sys.exit(f"[builderbot] ERROR: {e}")
+            a.update(points=pts, hand=hopts)
+            if ms:
+                a["ms"] = ms
+        elif kind == "text":
+            a["text"] = " ".join(rest[1:])
+        elif kind == "key":
+            a["key"] = rest[1] if len(rest) > 1 else ""
+        use("touch", a)
+
+
+VERBS = {"status": status, "run": run, "lease": lent, "shot": lent, "record": lent, "install": lent,
+         "start": lent, "stop": lent, "ime": lent, "log": lent, "ui": lent, "touch": lent}
 
 if __name__ == "__main__":
     VERBS[sys.argv[1]]()

@@ -37,7 +37,7 @@ const DRIVERS = {
   },
   docker: {
     open: () => page.evaluate(() => openDocker()),
-    readyWhen: '.dmtab .macros',
+    readyWhen: '.dmtab .dmpick',
   },
   toolchains: {
     open: () => page.evaluate(() => openToolchains()),
@@ -68,22 +68,31 @@ const DRIVERS = {
     open: () => page.evaluate(() => openSettingsTab()),
     readyWhen: '.settingstab .logdays',
   },
+  // The Phone and the CI runner, tools of their own again (R121).
+  phone: {
+    open: () => page.evaluate(() => openPhoneTab()),
+    readyWhen: '.phonetab .row, .doc.on .hint',
+  },
+  runner: {
+    open: () => page.evaluate(() => openRunnerTab()),
+    readyWhen: '.runnertab .ndconf, .runnertab .hint',
+  },
   jobs: {
     // Whether the queue has anything in it depends on which suites ran
     // before this one; either drawing carries the bar and the foot band.
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
   },
-  phone: {
-    // The fixture's sandbox node carries adb, so the tab draws its rows.
-    open: () => page.evaluate(() => openPhoneTab()),
-    readyWhen: '.phonetab .row, .phonetab .hint',
-  },
   users: {
     // There is always at least one row: the owner, seeded on the first boot,
     // which cannot be deleted and so cannot be absent.
     open: () => page.evaluate(() => openUsersTab()),
     readyWhen: '.userstab .urow',
+  },
+  roles: {
+    // The built-in roles are always there, each a fold.
+    open: () => page.evaluate(() => openRolesTab()),
+    readyWhen: '.rolestab .sect',
   },
   profile: {
     open: () => page.evaluate(() => openProfileTab()),
@@ -426,6 +435,15 @@ async function lineup(){
     // under the notebook's foot inside the view's scroller still has a
     // box, and it grouped with the foot's buttons as one line (29 Sep,
     // when the Design view's board grew and pushed its rows down).
+    // ...and nothing inside a shut fold: its content keeps a box in Chrome,
+    // and the point under it is its own parent's, so a Save at the foot of
+    // a shut section read as on screen beside a shut row of another
+    // (one section open at a time, 6 Oct).
+    const folded = e => {
+      for (let d = e.parentElement?.closest('details'); d; d = d.parentElement?.closest('details'))
+        if (!d.open && !d.querySelector(':scope > summary')?.contains(e)) return true;
+      return false;
+    };
     const shown = e => {
       const r = e.getBoundingClientRect();
       const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -433,7 +451,7 @@ async function lineup(){
     };
     const ctls = [...box.querySelectorAll(CTL)]
       .filter(e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0
-                   && !e.closest('.slot, .dmlog, .pagemore') && shown(e))
+                   && !e.closest('.slot, .dmlog, .pagemore') && !folded(e) && shown(e))
       .map(e => ({ e, r: e.getBoundingClientRect() }))
       .sort((a, b) => a.r.top - b.r.top);
     // One line = boxes whose vertical spans overlap by more than half the
@@ -453,7 +471,9 @@ async function lineup(){
       const lo = Math.min(...line.map(c => c.r.bottom));
       const hi = Math.max(...line.map(c => c.r.bottom));
       if (hi - lo > 1.5)
-        off.push(`${line.map(c => `${name(c.e)}@${Math.round(c.r.bottom)}`).join(' ')}`);
+        // Where each one is, so a line that should not be one says why it is.
+        off.push(`${line.map(c => `${name(c.e)}@${Math.round(c.r.bottom)}${
+          c.e.closest('[data-sect]') ? `[${c.e.closest('[data-sect]').dataset.sect}]` : ''}`).join(' ')}`);
       // ...and one height (the operator, 29 Sep: a field, a pulldown and a
       // button on one row were three sizes). A prose box that has wrapped
       // to a second line is taller by design and left out; a swatch is a
@@ -678,11 +698,15 @@ for (const kind of kinds){
                                v, { timeout: 20000 });
     // The notebook on screen, not the first in the DOM: a second project's
     // notebook may be parked before it.
-    foots[v] = await page.evaluate(() => [...document.querySelectorAll('.nb')]
-      .find(n => n.checkVisibility())?.querySelector('#nbFoot')?.checkVisibility() || false);
+    // Waited on, since a view draws its sections when it is first shown.
+    foots[v] = await page.waitForFunction(w => !!([...document.querySelectorAll('.nb')]
+      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`)), v, { timeout: ["bugs", "analysis", "tests", "git"].includes(v) ? 3000 : 15000 })
+      .then(() => true, () => false);
   }
-  ok(foots.roadmap && foots.briefing && foots.artifacts && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
-     `the notebook's foot shows on the views that stage and on no other (${JSON.stringify(foots)})`);
+  // Artifacts carries one only where a Version can stage a bump, which this
+  // fixture's alpha, with no commits, cannot (version.mjs holds that one).
+  ok(foots.roadmap && foots.briefing && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
+     `a section's own Save and Revert are on the views that stage and on no other (the operator, 5 Oct: there is no foot) (${JSON.stringify(foots)})`);
 }
 
 // ---- the notebook's head row ------------------------------------------------
@@ -748,6 +772,45 @@ for (const kind of kinds){
 }
 ok(seenSects.size <= 1,
    `a section heading wears one skin everywhere (${JSON.stringify([...seenSects])})`);
+{
+  // B495: a password manager offers itself only where a password or an
+  // account is asked for; every other field on the page says so, drawn
+  // late or not.
+  const loud = await page.$$eval('input, textarea', es => es.filter(e => {
+    const t = (e.getAttribute('type') || 'text').toLowerCase();
+    if (['password', 'hidden', 'checkbox', 'radio', 'file'].includes(t)) return false;
+    if (['username', 'current-password', 'new-password', 'one-time-code', 'email'].includes((e.getAttribute('autocomplete') || '').toLowerCase())) return false;
+    return e.dataset.bwignore === undefined;
+  }).map(e => e.id || e.name || e.className).slice(0, 8));
+  ok(loud.length === 0, `every field that is not a password or an account tells password managers to stay away (${JSON.stringify(loud)})`);
+  // B533: Bitwarden honors data-bwignore only when its user opts in, and
+  // reads one textarea that names a public key as an add-an-SSH-key form,
+  // then offers itself on every field labeled name, title or description.
+  // So no textarea on the page may read as one, by Bitwarden's own words.
+  const sshy = await page.$$eval('textarea', es => es.filter(e => {
+    // Each attribute is split on its own, as Bitwarden does: whole, by
+    // word, and by word with the spaces taken out ("public key" is publickey).
+    const said = [e.id, e.name, e.className, e.title, e.placeholder,
+                  e.getAttribute('aria-label'), ...[...(e.labels || [])].map(l => l.textContent)]
+      .filter(Boolean).map(v => v.toLowerCase().replace(/-/g, ''));
+    const words = new Set(said.flatMap(v => [v, ...v.split(/[^\p{L}\d]+/u),
+                                             ...v.replace(/\s/g, '').split(/[^\p{L}\d]+/u)]));
+    return ['publickey', 'sshkey'].some(w => words.has(w))
+      || said.some(v => /ssh(rsa|ed25519|dss)|ecdsasha2/.test(v));
+  }).map(e => e.id || e.className));
+  ok(sshy.length === 0, `...and no text box reads to Bitwarden as an SSH public key (${JSON.stringify(sshy)})`);
+}
+{
+  // The header's buttons are one box (the operator, 5 Oct): the bell stood
+  // taller and wider than the bug, gear and sign-out beside it on a desk.
+  const hb = await page.$$eval('header > button', bs => bs.filter(b => b.offsetParent).map(b => {
+    const r = b.getBoundingClientRect();
+    return { id: b.id, h: Math.round(r.height), w: Math.round(r.width) };
+  }));
+  const icons = hb.filter(b => b.id !== 'bAbout');
+  ok(new Set(hb.map(b => b.h)).size === 1 && new Set(icons.map(b => b.w)).size === 1,
+     `the header's buttons share one height, and its icon buttons one width (${JSON.stringify(hb)})`);
+}
 ok(seenReds.size <= 1,
    `a verb that cannot be undone is the same color everywhere (${JSON.stringify([...seenReds])})`);
 
@@ -766,12 +829,15 @@ ok(seenReds.size <= 1,
   await page.waitForFunction(() => /renderer failed/.test(
     document.querySelector('.doc.on')?.textContent || ''), null, { timeout: 8000 });
   ok(true, 'a throwing renderer becomes an error band in its own tab');
-  const alive = await page.evaluate(() => {
-    // The page is still a page: another kind renders, the strip answers.
+  // The page is still a page: another kind renders, the strip answers. The
+  // Docker tab opened early in this file may have left the strip by now
+  // (one more document kind, the Roles tab, pushed it out, 5 Oct), so it is
+  // opened again where it is gone, and its picker waited for.
+  await page.evaluate(() => {
     const t = tabs.find(x => x.kind === 'docker');
-    if (t) focusTab(t.id);
-    return !!document.querySelector('.dmtab .macros');
+    if (t) focusTab(t.id); else openDocker();
   });
+  const alive = await page.waitForSelector('.dmtab .dmpick', { timeout: 15000 }).then(() => true, () => false);
   ok(alive, '...and the rest of the dashboard keeps working around it');
   ok(page.errors.length > errsBefore
      && /boom \(deliberate\)/.test(page.errors[page.errors.length - 1]),
@@ -1125,8 +1191,18 @@ const sideways = () => page.evaluate(() => {
     .filter(e => !['checkbox', 'radio'].includes(e.type));
   const edge = (box?.getBoundingClientRect().right || document.documentElement.clientWidth) + 1;
   let widest = null;
+  // Inside a box that scrolls sideways by design (a diff's pre), what is
+  // wide is that box's to scroll, never the page's: all sections stand open
+  // on a phone since 8 Oct, so a diff is measured there now.
+  const scrolls = e => {
+    for (let a = e.parentElement; a && a !== box; a = a.parentElement)
+      if (/(auto|scroll)/.test(getComputedStyle(a).overflowX)
+          && a.getBoundingClientRect().right <= edge) return true;
+    return false;
+  };
   for (const e of box?.querySelectorAll('*') || []){
     if (e.closest('.nbtabs')) continue;
+    if (scrolls(e)) continue;
     const r = e.getBoundingClientRect();
     if (r.width && r.right > edge && (!widest || r.right > widest.right)){
       // Named with its text and its parents, so the failure says where to
@@ -1310,13 +1386,14 @@ for (const kind of kinds){
 // price of adding one.
 const DIALOGS = {
   about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
-  globalrules: () => openGlobalRules(), pending: () => openPending('alpha'),
+  pending: () => openPending('alpha'), report: () => openReport('alpha'),
+  phonelend: () => openPhoneLend('alpha'),
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
   // A new project's first session: opened for a project with no brief, which
   // draws the same dialog with an empty text box.
   firstsession: () => openBrief('alpha', ''),
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
-  projsettings: () => document.querySelector('[data-rn="alpha"]')?.click(),
+  projsettings: () => renameProject('alpha'),
   // The Debugging group's dialog. It draws from SETTING_GROUPS rather than
   // from what is on screen, so it opens whether or not the Settings tab is
   // the one showing, and debug mode decides the BUTTON rather than this.
@@ -1336,7 +1413,9 @@ async function dialogShape(pg = page){
     if (!m) return { err: 'no dialog opened' };
     const box = m.querySelector('.box');
     const loose = [...box.querySelectorAll('*')].filter(e => {
-      if (e.offsetHeight === 0 || e.closest('h3, .field, .foot')) return false;
+      // A section's heading is a heading, as the h3 is: a long dialog's
+      // groups are sections (the project settings, 7 Oct).
+      if (e.offsetHeight === 0 || e.closest('h3, .field, .foot, details.sect > summary')) return false;
       return [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
     }).map(e => `${e.tagName.toLowerCase()} "${e.textContent.trim().slice(0, 24)}"`);
     // One scroller, not two: a box that scrolls around a part that scrolls
@@ -1453,9 +1532,9 @@ for (const [name, open] of Object.entries(DIALOGS)) {
     .filter(e => { const r = e.getBoundingClientRect(); return r.height < 30 || r.width < 30; })
     .map(e => `${e.className || e.tagName} "${e.textContent.trim().slice(0, 12)}" ${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}`));
   ok(small.length === 0, `on a touch phone the tab strip, the notebook and the bar are a thumb's size${small.length ? ': ' + small.slice(0, 4).join(', ') : ''}`);
-  await phone.evaluate(() => openGlobalRules());
-  await phone.waitForSelector('#grmodal:not([hidden]) .foot button', { timeout: 10000 });
-  const shortFoot = await phone.$$eval('#grmodal .foot button', bs => bs.filter(b => b.getBoundingClientRect().height < 36).length);
+  await phone.evaluate(() => openNewProject());
+  await phone.waitForSelector('.modal:not([hidden]) .foot button', { timeout: 10000 });
+  const shortFoot = await phone.$$eval('.modal:not([hidden]) .foot button', bs => bs.filter(b => b.getBoundingClientRect().height < 36).length);
   ok(shortFoot === 0, `...and a dialog's buttons are the tap height (${shortFoot} short)`);
   await phone.setViewportSize({ width: 344, height: 882 });
   await phone.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));

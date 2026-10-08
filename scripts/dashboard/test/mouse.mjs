@@ -1,13 +1,21 @@
 // Desktop mouse: tab drag reorders in place with a slide, the click ending a
 // drag does not switch tabs, a plain click does, tab enter/exit animations.
-import { launch, newPage, ok, done, layoutSettled, URL, animatedDuring } from './lib.mjs';
+import { launch, newPage, ok, done, ready, layoutSettled, URL, animatedDuring } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await page.waitForFunction(() => document.querySelectorAll('#commands [data-m]').length > 0, { timeout: 40000 });
+// The drag is among three shells: the Projects tab a page opens on since R119
+// is closed first, leaving the workspace shell, and two more are opened.
+await page.evaluate(() => { const t = tabs.find(x => x.kind === 'projects'); if (t) dropTab(t.id); });
 await page.evaluate(() => { newShell(''); newShell(''); });
 await page.waitForFunction(() => document.querySelectorAll('.tab[data-id]').length === 3);
+// ...and the strip at rest: the closed tab's exit and the new ones' entrance
+// move the others, and boxes measured mid-tween aim the drag at nothing.
+await page.waitForFunction(() => !document.querySelector('.tab.leaving, .tab.entering')
+  && document.getAnimations().every(a => a.playState !== 'running'), null, { timeout: 5000 }).catch(() => {});
+await page.waitForTimeout(300);
 const ids0 = await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id));
 const activeBefore = await page.evaluate(() => panes[0]);
 const lb = await (await page.$(`.tab[data-id="${ids0[2]}"] .lbl`)).boundingBox();
@@ -81,6 +89,32 @@ const stale = await page.evaluate(() => {
   return tabs.map(t => t.id).join() === before && myRev >= 0;
 });
 ok(stale, 'a layout one revision behind is ignored');
+
+// R131: which tab is in front is this browser's own. A layout another
+// browser wrote with a different tab in front still brings its tabs, and
+// leaves this browser's front tab where it was; a reload keeps it; and a
+// switch here writes nothing to the server.
+await page.waitForFunction(() => !savePending && !pushing, null, { timeout: 10000 });   // the strip's last push landed
+const front = await page.evaluate(() => {
+  const was = tabs[tabs.length - 1].id;
+  panes[0] = was; active = 0; render();
+  const theirs = tabs.map(t => ({id:t.id, kind:t.kind, arg:t.arg, label:t.label}));
+  theirs.push({id:'r131', kind:'jobs', arg:'', label:'theirs'});
+  adoptLayout({ rev: myRev + 1, tabs: theirs, panes:[tabs[0].id, null], active: 0 });
+  return { kept: panes[0] === was, added: tabs.some(t => t.id === 'r131'), was };
+});
+ok(front.kept && front.added, `a strip another browser wrote brings its new tab and leaves this browser's front tab alone (${JSON.stringify(front)})`);
+await page.reload({ waitUntil: 'domcontentloaded' });
+await ready(page);
+const kept = await page.evaluate(() => panes[0]);
+ok(kept === front.was, `...and a reload keeps this browser's front tab (${kept})`);
+const quiet = await page.evaluate(async () => {
+  const rev = myRev, other = tabs.find(t => t.id !== panes[0]).id;
+  focusTab(other);
+  await new Promise(r => setTimeout(r, 900));          // past the 400 ms save debounce
+  return { rev, now: myRev, front: panes[active], other };
+});
+ok(quiet.now === quiet.rev && quiet.front === quiet.other, `...and switching tabs writes nothing to the server (rev ${quiet.rev} still ${quiet.now}, ${quiet.front} in front)`);
 
 // A pin menu whose tab is minimized goes with it.
 await page.evaluate(() => togglePin(tabs[0].id, new Event('click')));

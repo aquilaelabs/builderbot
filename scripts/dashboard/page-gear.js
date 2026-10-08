@@ -55,7 +55,9 @@ function applyTheme(id){
   }
   if (use === "default") delete root.dataset.theme;
   else root.dataset.theme = use;
-  try{ localStorage.setItem("bb.theme", use); }catch(e){ /* private mode */ }
+  // ...with whose it is (B491): a browser's choice wins for the account
+  // that made it, and another account signing in here gets its own.
+  try{ localStorage.setItem("bb.theme", use); localStorage.setItem("bb.theme.who", state?.me || ""); }catch(e){ /* private mode */ }
   themeSaved = use;
   // ...and onto the account, which is the truth behind it (roadmap #25).
   // localStorage stays the PAINT path: the scheme is applied at the top of
@@ -78,13 +80,20 @@ function applyTheme(id){
 // here too rather than being fought over.
 let themeSaved = null;
 
-function adoptTheme(t){
+function adoptTheme(t, who){
+  let had, whose;
   try{
-    if (localStorage.getItem("bb.theme")) return;
+    had = localStorage.getItem("bb.theme"); whose = localStorage.getItem("bb.theme.who");
   }catch(e){ return; }              // no storage: leave the default alone
-  if (!t || t === themeSaved || !/^[a-z]{2,12}$/.test(t)) return;
-  themeSaved = t;
-  applyTheme(t);
+  // The browser's own choice stands for the account that made it. Another
+  // account signing in here takes its own scheme, the default for one that
+  // never picked (B491: a new account inherited the first one's colors).
+  const same = !who || !had || (whose || "") === who;
+  if (had && same) return;
+  const use = t && /^[a-z]{2,12}$/.test(t) ? t : "default";
+  if (same && (!t || use === themeSaved)) return;
+  themeSaved = use;
+  applyTheme(use);
 }
 
 // Only the marks, never a rebuild. Replacing the grid's innerHTML from inside
@@ -156,16 +165,19 @@ function logSection(){
         <button type="button" id="logApply"
           title="save it, and crop anything already past it">Apply</button>
       </div>
-      <div class="logacts">
+      <!-- An action bar like every other: what the links are on the left,
+           the verbs at the right (R119 step 6). -->
+      <div class="actbar logacts">
+        <span class="state">download the logs, or clear the old ones</span>
         <a class="btnish" href="/logs/download?what=session" download
            title="this container start: the boot, the dashboard and docker"
            >This session</a>
         <a class="btnish" href="/logs/download?what=archive" download
            title="every log kept, plus the archived CI runs, as a .tar.gz"
            >All logs</a>
-        <a class="btnish" href="/logs/download?what=diag" download
+        ${state?.can?.debug === false ? "" : `<a class="btnish" href="/logs/download?what=diag" download
            title="the controller's diagnostics as one file, with what sessions reported about BuilderBot"
-           >Diagnostics</a>
+           >Diagnostics</a>`}
         <button type="button" id="logClear" class="danger"
            title="delete every kept log except this session's">Clear</button>
       </div>

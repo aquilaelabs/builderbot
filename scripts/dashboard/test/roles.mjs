@@ -5,7 +5,7 @@
 // and every notebook view they can, changes the settings that are theirs, is
 // refused the ones that are not, and meets the others' changes. Console
 // errors and server errors are collected per person across the whole walk.
-import { launch, newPage, ok, done, ready, sleep, refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, refreshUntil, URL, DIR, member } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -33,6 +33,9 @@ const CAST = [
   { name: 'w.user3', role: 'user', projects: [] },
 ];
 for (const p of CAST.filter(c => c.role !== 'owner')) { p.pw = `pw-${p.name}-1`; make(p.name, p.role, p.projects); }
+// What a plain account did before R152 is a role now, given as an
+// administrator would (lib.mjs member).
+await member('w.user1', 'w.user2', 'w.user3');
 
 const browser = await launch();
 const pageFor = async (who) => {
@@ -58,7 +61,7 @@ const api = async (page, path, body) => {
 const ALL = ['alpha', 'beta', 'delta', 'ep.silon', 'gamma', 'vendored-junk'];
 const VIEWS = ['roadmap', 'bugs', 'briefing', 'tests', 'git', 'artifacts', 'analysis', 'docker'];
 const ADMIN_TABS = { settings: 'openSettingsTab', users: 'openUsersTab', nodes: 'openNodesTab', jobs: 'openJobsTab',
-                     docker: 'openDocker', toolchains: 'openToolchains', findings: 'openFindingsTab', phone: 'openPhoneTab' };
+                     docker: 'openDocker', toolchains: 'openToolchains', findings: 'openFindingsTab' };
 
 for (const who of CAST) {
   const page = await pageFor(who);
@@ -118,10 +121,14 @@ for (const who of CAST) {
   }
 
   // Settings that are not theirs: refused, with a reason, and nothing moved.
-  const ctl = await api(page, '/api/settings', { set: { offer_unvetted: true } });
-  if (isAdmin) {
+  // A real change: the value flipped from what it is now.
+  const was = !!(await api(page, '/api/settings')).settings?.offer_unvetted?.value;
+  const ctl = await api(page, '/api/settings', { set: { offer_unvetted: !was } });
+  if (who.role === 'owner' || isAdmin) {
+    // Admin is built in with everything the owner may do since R152 (the
+    // operator, 7 Oct), the debug settings included.
     ok(ctl.status === 200, `${tag} changes a controller setting (${ctl.status})`);
-    await api(page, '/api/settings', { set: { offer_unvetted: false } });
+    await api(page, '/api/settings', { set: { offer_unvetted: was } });
   } else {
     ok(ctl.status === 403, `${tag} is refused the controller's settings (${ctl.status})`);
     for (const [path, body] of [['/api/users', { action: 'add', name: 'x.nope', password: 'nopenope1', role: 'user' }],

@@ -51,7 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import dev.builderbot.app.Api
 import dev.builderbot.app.BuildConfig
+import dev.builderbot.app.MainActivity
 import dev.builderbot.app.Store
+import dev.builderbot.app.Live
 import dev.builderbot.app.Watch
 import dev.builderbot.app.arr
 import dev.builderbot.app.bool
@@ -113,9 +115,9 @@ fun <T> load(key: Any?, fetch: suspend () -> T): Pair<Loaded<T>, () -> Unit> {
     return state to { tick++ }
 }
 
-// Pull down to re-read, on every list: the gesture a phone expects, beside
-// the Refresh button each screen keeps for a thumb that is already at the
-// top. `reload` is a load()'s second half; the indicator shows while the
+// Pull down to re-read, on every list: the gesture a phone expects, and the
+// only way to (the operator, 2 Oct: a Refresh button beside it said the same
+// thing twice). `reload` is a load()'s second half; the indicator shows while the
 // pull is held and goes when the fetch it started has landed.
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -132,19 +134,25 @@ fun Pull(loading: Boolean, reload: () -> Unit, content: @Composable () -> Unit) 
 // ---- sign in -----------------------------------------------------------------
 
 @Composable
-fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
-    var server by remember { mutableStateOf(store.server.ifBlank { "https://" }) }
-    var user by remember { mutableStateOf(store.user) }
+fun LoginScreen(store: Store, adding: Boolean = false, onDone: (admin: Boolean) -> Unit) {
+    // Adding another BuilderBot (R132) starts blank; the first sign-in
+    // offers what was there before.
+    var server by remember { mutableStateOf(if (adding) "https://" else store.server.ifBlank { "https://" }) }
+    var user by remember { mutableStateOf(if (adding) "" else store.user) }
+    var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Ink)
-        Dim("Sign in with your dashboard account. The address is the one you open in a browser: on your network, or over your tailnet.")
+        Text(if (adding) "Another BuilderBot" else "BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Ink)
+        Dim(if (adding) "Sign in to a second dashboard. The app watches every one it is paired with, and shows one at a time."
+            else "Sign in with your dashboard account. The address is the one you open in a browser: on your network, or over your tailnet.")
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(server, { server = it }, label = { Text("Dashboard address") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(name, { name = it }, label = { Text("Call it (home, work; the address when blank)") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth())
         OutlinedTextField(user, { user = it }, label = { Text("Account") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
@@ -158,7 +166,7 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
                     val api = Api(server, user, password)
                     val st = api.status()
                     if (st.str("me").isBlank()) throw Exception("that address answers, but not as a BuilderBot")
-                    store.server = server; store.user = user; store.password = password
+                    store.add(name, server, user, password)
                     onDone(st.obj("can").optBoolean("admin", false))
                 } catch (e: Exception) {
                     error = e.message ?: e.toString()
@@ -177,11 +185,20 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
 // ---- home: the bell's items, then the projects -------------------------------
 
 @Composable
-fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Unit = {}, openProject: (String) -> Unit) {
+fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Unit = {}, openProject: (String) -> Unit,
+               onTools: (Boolean) -> Unit = {},
+               onSwitch: (String) -> Unit = {}) {
     val api = store.api() ?: return
+    val pairings = store.pairings
+    val here = store.pairing
+    var pick by remember { mutableStateOf(false) }
     val (st, reload) = load("status") { api.status() }
     val s = st.value
-    if (s != null){ onAdmin(s.obj("can").optBoolean("admin", false)); onWaiting(s.int("phone_asks")) }
+    if (s != null){
+        onAdmin(s.obj("can").optBoolean("admin", false)); onWaiting(s.int("phone_asks"))
+        // The grants the page reads (R137): installing on a node is toolchains-write's.
+        onTools(s.obj("can").optBoolean("toolchains-write", s.obj("can").optBoolean("admin", false)))
+    }
     var find by rememberSaveable { mutableStateOf("") }
     // The account's own Claude sessions, by project: the name the server
     // gives one is the prefix, then claude- and the project as tmux spells it.
@@ -193,7 +210,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
     val every = s?.arr("projects") ?: emptyList()
     val kept = every.filter { it.bool("pinned", true) }
     var all by rememberSaveable { mutableStateOf(false) }
-    val shown = if (find.isNotBlank()) every.filter { it.str("name").contains(find.trim(), ignoreCase = true) }
+    val shown = if (find.isNotBlank()) every.filter { it.str("label").ifBlank { it.str("name") }.contains(find.trim(), ignoreCase = true) }
                 else if (all || kept.isEmpty()) every else kept
     Pull(st.value == null && st.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
@@ -202,11 +219,22 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                 Mark(26.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("BuilderBot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
+                    // Several BuilderBots (R132): the one in front by name,
+                    // and a tap on it lists the others.
+                    if (pairings.size > 1 && here != null) {
+                        Row(Modifier.clickable { pick = true }, verticalAlignment = Alignment.CenterVertically) {
+                            Text(here.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
+                            Text(" \u25be", color = Dim, style = MaterialTheme.typography.titleMedium)
+                        }
+                        androidx.compose.material3.DropdownMenu(expanded = pick, onDismissRequest = { pick = false }) {
+                            for (p in pairings) androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(if (p.id == here.id) "\u2713 ${p.label}" else p.label) },
+                                onClick = { pick = false; if (p.id != here.id) onSwitch(p.id) })
+                        }
+                    } else Text("BuilderBot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
                     if (s != null) Text("${s.str("me")} · ${s.obj("image").str("version").ifBlank { "unstamped" }} on ${s.str("host")}",
                         color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = reload) { Text("Refresh") }
             }
         }
         if (st.error != null) item { Problem(st.error) }
@@ -253,7 +281,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                 Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp).clickable { openProject(p.str("name")) },
                       bar = projectTone(p.obj("prefs").str("color"))) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.str("name"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        Text(p.str("label").ifBlank { p.str("name") }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                              color = Ink, modifier = Modifier.weight(1f))
                         // What the account's own session is doing, which is
                         // the question a phone is picked up to ask: working,
@@ -311,13 +339,12 @@ fun ApprovalsScreen(store: Store) {
                 Mark(26.dp)
                 Spacer(Modifier.width(10.dp))
                 Text("Approvals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { reloadPh(); reloadSt() }) { Text("Refresh") }
             }
             if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Note)
         }
         val asks = ph.value?.arr("asks") ?: emptyList()
         if (ph.error != null) item { Problem(ph.error) }
-        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild or for a container appears here") } }
+        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild, for a container or to sign a build appears here") } }
         items(asks) { a ->
             val kind = a.str("kind")
             Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (kind == "root") Bad else Warn) {
@@ -336,34 +363,69 @@ fun ApprovalsScreen(store: Store) {
                         if (a.strs("env_keys").isNotEmpty()) Dim("and an env file setting " + a.strs("env_keys").joinToString(", "))
                         if (a.str("for").isNotBlank()) Dim("shown under ${a.str("for")}")
                     }
+                    // An edit of a release (R139): the notes it would put on
+                    // the page are the request, read before Allow.
+                    if (kind == "release-edit" && a.str("detail").isNotBlank()) {
+                        var open by remember(a.int("id")) { mutableStateOf(false) }
+                        TextButton(onClick = { open = !open }) { Text(if (open) "Hide the new notes" else "Read the new notes") }
+                        if (open) Mono(a.str("detail"))
+                    }
                     Dim("${a.str("asker").ifBlank { "a session" }} in ${a.str("project")} · ${a.int("left") / 60} min left to answer")
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                         Spacer(Modifier.weight(1f))
                         OutlinedButton(onClick = { scope.launch { said = answer(api, a.int("id"), false); reloadPh() } }) { Text("Deny") }
+                        // A phone's commands come one after another: the rest
+                        // from this session run without asking until taken
+                        // back (the operator, 4 Oct).
+                        if (kind == "phone" || kind == "phone-use") {
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(onClick = { scope.launch { said = answer(api, a.int("id"), true, session = true); reloadPh() } }) { Text("This session") }
+                        }
                         Spacer(Modifier.width(8.dp))
                         Button(onClick = { scope.launch { said = answer(api, a.int("id"), true); reloadPh() } }) { Text("Allow") }
                     }
                 }
             }
         }
+        val invites = st.value?.arr("invites") ?: emptyList()
+        if (invites.isNotEmpty()) item { Section("Invitations") {} }
+        items(invites) { i ->
+            Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = Note) {
+                Column {
+                    Text(Watch.inviteLine(i), color = Ink, fontWeight = FontWeight.SemiBold)
+                    Dim(if (i.str("kind") == "owner") "accepting makes you its owner" else "accepting puts you on it")
+                    Row(Modifier.padding(top = 8.dp)) {
+                        Spacer(Modifier.weight(1f))
+                        OutlinedButton(onClick = { scope.launch {
+                            said = try { api.invite(i.int("id"), false); "declined ${i.str("project")}" } catch (e: Exception) { e.message ?: "it did not go" }
+                            reloadSt() } }) { Text("Decline") }
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = { scope.launch {
+                            said = try { api.invite(i.int("id"), true); "you are on ${i.str("project")} now" } catch (e: Exception) { e.message ?: "it did not go" }
+                            reloadSt() } }) { Text("Accept") }
+                    }
+                }
+            }
+        }
         val waiting = st.value?.arr("projects")?.filter { it.int("pending") > 0 } ?: emptyList()
         item { Section("Changes a session has waiting") { if (waiting.isEmpty()) Dim("none: roadmap items, bugs, rules and build settings a session added under an ask gate are listed here") } }
-        items(waiting) { p -> PendingBlock(api, p.str("name"), onChanged = reloadSt) }
+        items(waiting) { p -> PendingBlock(api, p.str("name"), onChanged = reloadSt, label = p.str("label")) }
     }
     }
 }
 
-suspend fun answer(api: Api, id: Int, allow: Boolean): String = try {
-    api.decide(id, allow); if (allow) "allowed: the node is running it" else "denied"
+suspend fun answer(api: Api, id: Int, allow: Boolean, session: Boolean = false): String = try {
+    api.decide(id, allow, session)
+    if (session) "allowed for this session: the rest run without asking" else if (allow) "allowed: the node is running it" else "denied"
 } catch (e: Exception) { e.message ?: e.toString() }
 
 @Composable
-fun PendingBlock(api: Api, project: String, onChanged: () -> Unit) {
+fun PendingBlock(api: Api, project: String, onChanged: () -> Unit, label: String = "") {
     val scope = rememberCoroutineScope()
     val (pd, reload) = load("pending-$project") { api.pending(project) }
     val rows = pd.value?.arr("pending")?.filter { !it.bool("settled") } ?: emptyList()
     Column(Modifier.padding(16.dp, 4.dp)) {
-        Text(project, fontWeight = FontWeight.SemiBold)
+        Text(label.ifBlank { project }, fontWeight = FontWeight.SemiBold)
         for (r in rows) Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("${r.str("kind")}: ${r.str("summary")}")
@@ -389,7 +451,6 @@ fun NodesScreen(store: Store) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Nodes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Note)
             if (nd.error != null) Problem(nd.error)
@@ -412,6 +473,17 @@ fun NodesScreen(store: Store) {
                                rep.obj("distro").str("pretty")).filter { it.isNotBlank() }.joinToString(" · "))
                     val dist = rep.obj("distro")
                     if (dist.str("pkg").isNotBlank()) Dim("packages: ${dist.str("pkg")} · network: ${dist.str("network").ifBlank { "none" }} · init: ${dist.str("init")}")
+                    // The heartbeat's numbers, the card's included where there
+                    // is one: the Nodes tab's meters, as a line.
+                    val smp = rep.obj("sample")
+                    if (live && smp.length() > 0) {
+                        val gb = { mb: Int -> "%.1f".format(mb / 1024f) }
+                        Dim(listOfNotNull(
+                            "cpu ${smp.optDouble("cpu_pct", 0.0).toInt()}%",
+                            if (smp.int("mem_mb") > 0) "memory ${gb(smp.int("mem_used_mb"))}/${gb(smp.int("mem_mb"))} GB" else null,
+                            if (smp.int("gpu_mem_mb") > 0) "gpu ${smp.optDouble("gpu_pct", 0.0).toInt()}% · vram ${gb(smp.int("gpu_mem_used_mb"))}/${gb(smp.int("gpu_mem_mb"))} GB" else null,
+                        ).joinToString(" · "))
+                    }
                     Row(Modifier.padding(top = 8.dp)) {
                         OutlinedButton(onClick = { scope.launch { said = act(api, n.str("id"), if (locked) "unlock" else "lock"); reload() } }) {
                             Text(if (locked) "Unlock" else "Lock system changes")
@@ -469,7 +541,6 @@ fun UsersScreen(store: Store) {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Users", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 TextButton(onClick = { adding = !adding }) { Text(if (adding) "Cancel" else "Add") }
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 0.dp), color = Note)
             if (us.error != null) Problem(us.error)
@@ -701,12 +772,15 @@ fun ProfileScreen(store: Store) {
 // ---- more: the watch, about, and whether this app is behind -----------------------
 
 @Composable
-fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut: () -> Unit) {
+fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut: () -> Unit, onSwitch: (String) -> Unit = {}) {
     val api = store.api() ?: return
     val context = androidx.compose.ui.platform.LocalContext.current
     val (meta, _) = load("meta") { api.meta() }
     var watch by remember { mutableStateOf(store.watch) }
     var turns by remember { mutableStateOf(store.turns) }
+    var live by remember { mutableStateOf(store.live) }
+    var lock by remember { mutableStateOf(store.lock) }
+    var lockSaid by remember { mutableStateOf("") }
     var watchSaid by remember { mutableStateOf("") }
     var poll by remember { mutableStateOf(store.pollSeconds.toString()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -741,7 +815,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         // Tools is not gated on isAdmin: the listing is what a build can
         // use, which is everybody's question, and the server refuses the
         // two buttons.
-        val pages = listOf("Profile" to "profile", "Tools" to "tools", "Jobs" to "jobs") +
+        val pages = listOf("This phone" to "phone", "Profile" to "profile", "Tools" to "tools", "Jobs" to "jobs") +
             (if (isAdmin) listOf("Users" to "users") else emptyList()) + listOf("What's new" to "whatsnew")
         Panel(Modifier.fillMaxWidth()) {
             pages.forEachIndexed { i, (label, route) ->
@@ -770,19 +844,56 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             }
             Switch(checked = turns, enabled = watch, onCheckedChange = { turns = it; watchSaid = "" })
         }
+        // R125: an ask in seconds rather than on Android's alarm, which an
+        // idle phone stretches to nine minutes or more.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Hear asks at once")
+                Dim("keeps a connection open to your BuilderBot so a question reaches you in seconds, " +
+                    "with a quiet note in the shade while it runs; uses a little more battery")
+            }
+            Switch(checked = live, enabled = watch, onCheckedChange = { live = it; watchSaid = "" })
+        }
+        if (live && watch) {
+            val pm = context.getSystemService(android.os.PowerManager::class.java)
+            if (!pm.isIgnoringBatteryOptimizations(context.packageName)) Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Dim("Android cuts the connection while the phone sleeps unless BuilderBot may run unrestricted")
+                }
+                TextButton(onClick = {
+                    context.startActivity(android.content.Intent(
+                        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:" + context.packageName)))
+                }) { Text("Allow") }
+            }
+        }
         OutlinedTextField(poll, { poll = it; watchSaid = "" },
             label = { Text("Poll every (seconds, 10 to 300)") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
         val every = poll.trim().toIntOrNull()
         val pollOk = every != null && every in 10..300
-        val changed = watch != store.watch || turns != store.turns || every != store.pollSeconds
+        // The lock (R133): the phone's own, so a phone with no screen lock
+        // set has nothing to ask for, and the switch says so.
+        SectionHead("Lock", inset = false)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Lock the app when it opens")
+                Dim("Your fingerprint, face or phone PIN, every time it comes to the front")
+            }
+            Switch(checked = lock, onCheckedChange = {
+                if (it && !MainActivity.canLock(context)) { lock = false; lockSaid = "This phone has no screen lock set; set one under the phone's own settings first" }
+                else { lock = it; lockSaid = "" } })
+        }
+        if (lockSaid.isNotBlank()) Text(lockSaid, color = Warn)
+        val changed = watch != store.watch || turns != store.turns || live != store.live || every != store.pollSeconds || lock != store.lock
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (!pollOk) "the poll is a number of seconds from 10 to 300" else watchSaid,
                  color = if (!pollOk) Bad else Note, style = MaterialTheme.typography.bodySmall,
                  modifier = Modifier.weight(1f))
             Button(enabled = changed && pollOk, onClick = {
-                store.watch = watch; store.turns = turns; store.pollSeconds = every ?: store.pollSeconds
+                store.watch = watch; store.turns = turns; store.live = live; store.pollSeconds = every ?: store.pollSeconds; store.lock = lock
                 if (watch) Watch.startIfWanted(context) else Watch.stop(context)
+                if (watch && live) Live.startIfWanted(context) else Live.stop(context)
                 watchSaid = "saved"
             }) { Text("Save") }
         }
@@ -812,9 +923,25 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         Text("app ${BuildConfig.VERSION_NAME} api ${BuildConfig.TARGET_API}" +
             (if (m != null) "\ndashboard ${m.str("version").ifBlank { "unstamped" }} api ${m.int("api")}" else ""),
             color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-        Dim("Signed in to ${store.server} as ${store.user}")
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onSignOut) { Text("Sign out") }
+        // The BuilderBots this app is paired with (R132): the one in front
+        // marked, a tap on another switches, and Forget takes one off.
+        SectionHead("BuilderBots", inset = false)
+        val here = store.pairing
+        for (p in store.pairings) {
+            Row(Modifier.fillMaxWidth().clickable { if (p.id != here?.id) onSwitch(p.id) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text((if (p.id == here?.id) "\u2713 " else "") + p.label, color = Ink,
+                         fontWeight = if (p.id == here?.id) FontWeight.SemiBold else FontWeight.Normal)
+                    Dim("${p.server} as ${p.user}")
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { nav.navigate("add") }) { Text("Add another") }
+            OutlinedButton(onClick = onSignOut) { Text(if (store.pairings.size > 1) "Forget ${here?.label ?: "this one"}" else "Sign out") }
+        }
     }
 }
 
@@ -830,7 +957,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
 // worse than choosing it on the tab that has room for it.
 
 @Composable
-fun ToolsScreen(store: Store, isAdmin: Boolean) {
+fun ToolsScreen(store: Store, mayTools: Boolean) {
     val api = store.api() ?: return
     val scope = rememberCoroutineScope()
     var node by remember { mutableStateOf("") }
@@ -888,7 +1015,6 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Tools", style = MaterialTheme.typography.titleLarge,
                      fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (nodes.isNotEmpty()) Row(
                 Modifier.fillMaxWidth().padding(16.dp, 0.dp)
@@ -943,7 +1069,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                                                style = MaterialTheme.typography.bodySmall)
                     p.bool("unknown") -> Text("this node has not reported its store yet",
                                               color = Warn, style = MaterialTheme.typography.bodySmall)
-                    !isAdmin -> {}
+                    !mayTools -> {}
                     else -> Row(Modifier.padding(top = 6.dp)) {
                         OutlinedButton(enabled = !busy,
                                        onClick = { ask = (if (installed) "remove" else "install") to p }) {
@@ -954,7 +1080,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             }
             Hairline()
         }
-        item { if (!isAdmin) Dim("Installing and removing is an administrator's: these are gigabytes on somebody else's disk.") }
+        item { if (!mayTools) Dim("Installing and removing is not one of your roles' grants: these are gigabytes on somebody else's disk.") }
     }
     }
 }
@@ -1016,7 +1142,6 @@ fun JobsScreen(store: Store) {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Jobs", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                      color = Ink, modifier = Modifier.weight(1f))
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (jb.error != null) Problem(jb.error)
             if (jb.value == null && jb.error == null) Loading()

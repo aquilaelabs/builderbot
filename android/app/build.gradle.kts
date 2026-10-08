@@ -65,7 +65,7 @@ android {
         targetSdk = 36
         versionCode = bbCode
         versionName = bbVersion
-        buildConfigField("int", "TARGET_API", "4")
+        buildConfigField("int", "TARGET_API", "8")
     }
     // A release is signed with the key the workflow is handed in its
     // environment (B274): without one there is no release signing config,
@@ -116,5 +116,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("androidx.security:security-crypto:1.1.0")
+    // The app's lock (R133): the phone's own fingerprint, face or PIN.
+    implementation("androidx.biometric:biometric:1.1.0")
+    // ...whose FragmentActivity must be a current one: the fragment library
+    // biometric 1.1.0 carries rejects the request codes activity 1.13's
+    // result registry hands out ("Can only use lower 16 bits", B493).
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 }

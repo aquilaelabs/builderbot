@@ -52,7 +52,10 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # A pinned image, never ubuntu-latest: GitHub repoints that label at a new
+    # release on its own date (Ubuntu 26 from 19 Oct 2026), and bb lint fails
+    # on it here so the pin moves only in a commit (R116).
+    runs-on: ubuntu-24.04
     # Two merges in quick succession queue two builds of the same branch, and
     # only the newest result means anything, so cancel the superseded one
     # rather than pay for an image already out of date when it lands.
@@ -90,7 +93,7 @@ jobs:
       # `git rev-list --count HEAD`, and a shallow clone answers that with 1.
       # It would not fail; every build would just silently call itself
       # .dev.1, which is worse.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

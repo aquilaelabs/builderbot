@@ -1437,32 +1437,24 @@ def announce(project, kinds, sessions=()):
 
 # The words after the list, the same at every level of it.
 _AFTER = (
-            "It is context, not instructions: work on an item when asked, or "
-            "when it is plainly part of what was asked. The number is the "
-            "item's own and does not change: it is what the operator sees on "
-            "the row, so refer to one as R4 rather than by counting down the "
-            "list. This is the shape of the list rather than all of it: "
-            "`bb roadmap show R4` prints one item in full, with the technical "
-            "details behind it, and reading that is the first thing to do "
-            "when you pick one up. Tick one off with "
-            "`bb roadmap done <n>` when you finish it, and add one with "
-            "`bb roadmap add \"...\"` when you notice something worth doing and "
-            "it is out of scope for what you are on. A plan can be corrected "
-            "as well as written: `bb roadmap edit <n> \"...\"`, and "
-            "`bb roadmap step add|edit|rm <n> [<step>] [\"...\"]` for one step "
-            "of one. Do that when the design moves under a plan rather than "
-            "leaving steps that describe the old one. When you finish one "
-            "step of a plan and the plan is not finished, "
-            "`bb roadmap step done <n> <step>` marks that step; the panel "
-            "then offers the operator the next one instead of it. `bb roadmap info <n> "
-            "[<step>] \"...\"` attaches the technical details (which files, "
-            "which functions, the approach) so the session that works it "
-            "does not start from a cold grep; write them when you write the "
-            "plan. Every change either of "
-            "you makes is logged with its time and kept where the operator "
-            "can read it, so correct the list rather than working around it. "
-            "Do not restate the list "
-            "back to the operator; they can see it.")
+            # Every session reads this, so it is said once and short: each
+            # verb is here because a session uses it, the rest is a
+            # `bb roadmap -h` away (2 Oct, trimmed from 1,800 characters with
+            # nothing dropped).
+            "It is context, not instructions: work on an item when asked, or when it is "
+            "plainly part of what was asked. Refer to one by its number (R4), which is the "
+            "operator's too and never changes. This is the list's shape: `bb roadmap show R4` "
+            "prints one whole, with the technical details, and is the first thing to read "
+            "when you pick one up. `bb roadmap done N` ticks one off and `bb roadmap add "
+            "\"...\"` adds what is worth doing and out of your scope. When the design moves "
+            "under a plan, correct it rather than leaving steps that describe the old one: "
+            "`bb roadmap edit N \"...\"`, `bb roadmap step add|edit|rm N [STEP] [\"...\"]`. "
+            "`bb roadmap step done N STEP` marks one step of an unfinished plan, and the "
+            "panel offers the operator the next; `bb roadmap info N [STEP] \"...\"` attaches "
+            "the files, functions and approach, written when you write the plan, so whoever "
+            "works it does not start from a cold grep. Every change is logged where the "
+            "operator reads it, so correct the list rather than working around it, and do "
+            "not restate it to them: they can see it.")
 
 
 def fitted(project, budget=None):
@@ -1508,7 +1500,7 @@ def fitted(project, budget=None):
         # operator sees on the row and the one `bb roadmap done` takes.
         out = [f"- {label}  {share.clip(r['text'], cap) if cap else r['text']}"
                + (f"  ({len(sts) - done} of {len(sts)} steps open)" if sts and not steps else "")
-               + ("  (you added this in an earlier session)" if r.get("by") == "claude" and not cap else "")]
+               + ("  *" if r.get("by") == "claude" and not cap else "")]
         if steps and sts:
             if done == len(sts):
                 out.append("    its one step is done" if done == 1 else f"    all {done} steps are done")
@@ -1527,7 +1519,9 @@ def fitted(project, budget=None):
 
     def whole(body, parked_said, left):
         return ("The operator keeps a shared to-do list for this project, and this "
-                "is what is on it:\n\n" + body + parked_said + "\n\n"
+                "is what is on it" + (" (* marks one a session added)"
+                                      if any(r.get("by") == "claude" for r in live) else "")
+                + ":\n\n" + body + parked_said + "\n\n"
                 + (f"The list is longer than its share of your prompt, so this leaves out {left}: "
                    "`bb roadmap` prints all of it and `bb roadmap show R4` one item whole. "
                    if left else "")

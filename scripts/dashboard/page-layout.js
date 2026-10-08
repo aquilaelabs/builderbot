@@ -1,7 +1,8 @@
-// The layout, shared between browsers: the tabs, the panes and the split,
-// saved on the server so a phone and a desk show one arrangement, and
-// adopted when another browser moves it; and render(), the one draw of the
-// page every change ends in.
+// The layout: the tabs, shared between browsers, saved on the server so a
+// phone and a desk have the same strip open and adopted when another
+// browser changes it; the panes and the tab in front, each browser's own
+// (R131: switching tabs on the phone switched the desk too, the operator,
+// 5 Oct); and render(), the one draw of the page every change ends in.
 //
 // One classic script beside index.html (docs/design-language.md, Files),
 // moved out of the page's own script with bb map sections in hand (R77):
@@ -33,7 +34,25 @@ function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
 // The tab strip lives on the server so a phone picks up what the desktop has
 // open. `myRev` is the revision this client last wrote or adopted; a status
 // poll carrying a different one means another browser changed something.
+// Which tab is in front, and which tab each pane holds, are this browser's
+// own, kept in localStorage the way a phone's folded cards are
+// (bb.phoneOpen): the server's copy is taken only by a browser that has
+// none yet, and a switch writes nothing to the server (R131).
 let myRev = -1, savePending = false, saveTimer = null, adopting = false;
+const PANES_KEY = "bb.panes";
+let lastLocal = null;
+function readLocalPanes(){
+  try{
+    const v = JSON.parse(localStorage.getItem(PANES_KEY) || "null");
+    return v && Array.isArray(v.panes) ? v : null;
+  }catch(e){ return null; }                   // private mode, or junk
+}
+function keepLocalPanes(){
+  const loc = JSON.stringify({panes, active});
+  if (loc === lastLocal) return;
+  lastLocal = loc;
+  try{ localStorage.setItem(PANES_KEY, loc); }catch(e){ /* private mode */ }
+}
 
 function layoutNow(){
   return {tabs: tabs.map(t => ({id:t.id, kind:t.kind, arg:t.arg,
@@ -49,14 +68,19 @@ function saveLayout(){
   // would overwrite the real one, and then, holding that revision, ignore
   // the server's copy of what it just destroyed.
   if (!state) return;
-  const body = JSON.stringify(layoutNow());
-  if (body === lastSaved) return;       // render() runs on every poll
-  lastSaved = body;
+  keepLocalPanes();
+  // Pushed only when the TABS changed: the panes and the tab in front ride
+  // along as the server's first-time default, and a switch alone is not a
+  // write, so the other browser's strip is left where it was.
+  const key = JSON.stringify(layoutNow().tabs);
+  if (key === lastKey) return;          // render() runs on every poll
+  lastKey = key;
+  lastSaved = JSON.stringify(layoutNow());
   savePending = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(pushLayout, 400);
 }
-let lastSaved = null, pushing = false;
+let lastSaved = null, lastKey = null, pushing = false;
 
 // One save on the wire at a time. Two in flight could land in either order,
 // and the older strip arriving second would be stored under the newer
@@ -116,8 +140,11 @@ function adoptLayout(v){
   // `popped` (R8) survives only where this window holds the popped window's
   // handle: another browser's pop-out is not one this page can see or close,
   // and a placeholder nobody can reattach would be a dead pane.
-  tabs = v.tabs.map(t => ({id:t.id, kind:t.kind, arg:t.arg, label:t.label,
-                           popped: !!t.popped && popWins.has(t.id)}));
+  // A tab of a kind this page no longer has (the Phone tab became a section
+  // of the Nodes tab, 2 Oct) is left out rather than drawn as nothing.
+  tabs = v.tabs.filter(t => t.kind === "term" || TABKINDS[t.kind])
+    .map(t => ({id:t.id, kind:t.kind, arg:t.arg, label:t.label,
+                popped: !!t.popped && popWins.has(t.id)}));
   // Ids come back from another browser's counter; keep ours ahead of them so a
   // tab opened here cannot collide with one opened there.
   for (const t of tabs){
@@ -125,11 +152,19 @@ function adoptLayout(v){
     if (Number.isFinite(n) && n > seq) seq = n;
   }
   const ids = new Set(tabs.map(t => t.id));
-  panes = [ids.has(v.panes[0]) ? v.panes[0] : (tabs[0]?.id ?? null),
-           ids.has(v.panes[1]) ? v.panes[1] : null];
+  // The panes and the tab in front: this browser's own where it has them,
+  // reconciled against the strip just adopted. A pane whose tab is not in
+  // the strip (closed elsewhere, or reopened under an id the server has not
+  // been told yet) takes the server's pane for that slot, then the first tab.
+  const mine = readLocalPanes() || v;
+  const slot = i => ids.has(mine.panes[i]) ? mine.panes[i]
+                  : ids.has(v.panes[i]) ? v.panes[i]
+                  : (i === 0 ? (tabs[0]?.id ?? null) : null);
+  panes = [slot(0), slot(1)];
   if (panes[1] === panes[0]) panes[1] = null;
-  active = panes[1] && v.active === 1 ? 1 : 0;
+  active = panes[1] && (ids.has(mine.panes[1]) ? mine.active : v.active) === 1 ? 1 : 0;
   lastSaved = JSON.stringify(layoutNow());
+  lastKey = JSON.stringify(layoutNow().tabs);
   try{ render(); } finally{ adopting = false; }   // a draw error must not
                                                   // leave saves suppressed
 }

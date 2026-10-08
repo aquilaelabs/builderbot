@@ -1,0 +1,106 @@
+// BuilderBot: a Gradle project's build folders on the node's own disk (B439).
+//
+// A project's tree is on the projects share, an NFS mount, and NFS keeps a
+// file that is deleted while a process holds it open as a hidden .nfsXXXX
+// file, so the folder around it will not go: Gradle failed on "Unable to
+// delete directory .../app/build/test-results/.../binary - .../.nfs0903..."
+// whenever its daemon still held a file there, until the daemon was stopped
+// (Shebang-DevBoard, 6 and 7 Oct). Installed into the project's Gradle home
+// by bb-tty while the project's settings say so (Build on the node's disk,
+// on by default), and read only when BB_LOCAL_BUILD names the place.
+//
+// Before a module's own build script runs, its build folder is pointed under
+// BB_LOCAL_BUILD; a project whose own script sets one keeps its own (the
+// script runs after this). Once the module is evaluated, where the folder is
+// still this one, the old place (app/build) becomes a link to it, so what
+// reads app/build/outputs keeps reading it. A folder already there is
+// deleted, or moved into .gradle (which a Gradle project ignores) when a
+// stale .nfs file keeps it from going.
+import java.nio.file.Files
+import java.nio.file.Path
+
+// The link kept out of git (B555): a project's .gitignore says `build/`,
+// which matches a directory and not a link, so git status listed app/build
+// as untracked and `git add -A` would have committed it. Its exact path goes
+// into the repository's own info/exclude, never the project's .gitignore,
+// which is the project's to write; the way bb map keeps .bb-map/ out.
+//
+// Found by reading files, never by running git: Gradle's configuration
+// cache refuses an external process at configuration time, and a `git
+// rev-parse` here failed every build of a project that turns it on
+// (Shebang-DevBoard, report #84, B570). A .git directory is the repository;
+// a .git file is a worktree's, naming its gitdir, whose commondir is where
+// info/exclude lives.
+def excludeLink = { File root, Path link ->
+    try {
+        File top = root.absoluteFile
+        File dotgit = null
+        while (top != null) {
+            def g = new File(top, ".git")
+            if (g.exists()) {
+                dotgit = g
+                break
+            }
+            top = top.parentFile
+        }
+        if (dotgit == null) {
+            return
+        }
+        File common = dotgit
+        if (dotgit.isFile()) {
+            def m = dotgit.text =~ /(?m)^gitdir:\s*(.+)$/
+            if (!m.find()) {
+                return
+            }
+            File gd = new File(m.group(1).trim())
+            gd = gd.isAbsolute() ? gd : new File(top, m.group(1).trim())
+            def cd = new File(gd, "commondir")
+            common = cd.exists() ? (new File(cd.text.trim()).isAbsolute()
+                ? new File(cd.text.trim()) : new File(gd, cd.text.trim())) : gd
+        }
+        def file = new File(common, "info/exclude")
+        def line = "/" + top.toPath().relativize(link.toAbsolutePath()).toString()
+        def have = file.exists() ? file.readLines() : []
+        if (!have.contains(line)) {
+            file.parentFile.mkdirs()
+            file << (have && !file.text.endsWith("\n") ? "\n" : "") + line + "\n"
+        }
+    } catch (Exception e) {
+        // Keeping it out of git is a courtesy; the build goes on without it.
+    }
+}
+
+def base = System.getenv("BB_LOCAL_BUILD")
+if (base) {
+    gradle.beforeProject { p ->
+        def rel = p.rootDir.toPath().relativize(p.projectDir.toPath()).toString()
+        def target = new File(new File(base, p.rootDir.name), rel ? "${rel}/build" : "build")
+        p.layout.buildDirectory.set(target)
+        p.afterEvaluate {
+            if (p.layout.buildDirectory.get().asFile.canonicalPath != target.canonicalPath) {
+                return
+            }
+            target.mkdirs()
+            Path link = new File(p.projectDir, "build").toPath()
+            try {
+                if (Files.isSymbolicLink(link)) {
+                    if (Files.readSymbolicLink(link) == target.toPath()) {
+                        excludeLink(p.rootDir, link)
+                        return
+                    }
+                    Files.delete(link)
+                } else if (Files.exists(link)) {
+                    if (!link.toFile().deleteDir()) {
+                        def aside = new File(p.rootDir, ".gradle/builderbot-old-build-${System.currentTimeMillis()}")
+                        aside.parentFile.mkdirs()
+                        Files.move(link, aside.toPath())
+                    }
+                }
+                Files.createSymbolicLink(link, target.toPath())
+                excludeLink(p.rootDir, link)
+            } catch (Exception e) {
+                p.logger.warn("BuilderBot: could not put a link at ${link} to ${target}: ${e.message}")
+            }
+        }
+    }
+}

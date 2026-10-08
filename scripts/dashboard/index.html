@@ -89,6 +89,10 @@
      Android devices actually carry. */
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",
          "Noto Sans Mono","Droid Sans Mono",monospace;
+  /* Prose read at length, the wiki's articles and nothing else (the
+     operator, 2 Oct: read like an encyclopedia). The same Android care as
+     the mono: Noto Serif is what those devices carry. */
+  --serif:"Linux Libertine","Georgia","Times New Roman","Noto Serif","Droid Serif",serif;
   color-scheme:dark;
   --tap:38px;
   /* One height for every control a person types into or presses beside
@@ -141,6 +145,10 @@
      iOS needs on a typed field is its own rule, further down. */
   --f-field:11px/1.5 var(--mono);
   --f-tag:600 10px/1 system-ui,sans-serif;     /* pills and badges */
+  /* A SECTION'S HEADING: the one voice above a row's, since it names what
+     the rows under it are about. It was --f-ui at 600, a step below the
+     rows it headed, and read as small (the operator, 7 Oct). */
+  --f-sect:600 14px/1.4 system-ui,sans-serif;
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
      "reference" and "na" stop looking like the same family. */
@@ -407,12 +415,18 @@ header{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;
   position:relative}   /* the bell's panel hangs from it */
 header h1{font-size:15px;margin:0;font-weight:600}
+/* Every header button one box, at every width: the bell carried the tap
+   size on its own and the bug, gear and sign-out got it only on a narrow
+   screen, so on a desk the bell stood taller and wider than its row (the
+   operator, 5 Oct). The version button is the same height, as wide as its
+   text. */
+header>button{min-height:var(--tap);min-width:var(--tap)}
 .logo{width:22px;height:22px;flex:0 0 auto;color:var(--accent);display:block;
   transition:color .2s ease}
 .logo.off{color:var(--bad)}
 @media(prefers-reduced-motion:reduce){
   .logo{transition:none}
-  .modal:not([hidden]),.modal:not([hidden])>.box,.pinmenu{animation:none}
+  .modal:not([hidden]):not(.inline),.modal:not([hidden]):not(.inline)>.box,.pinmenu{animation:none}
 }
 .spacer{flex:1}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
@@ -475,13 +489,14 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    you like" and "a session is blocked until you answer" are not the same
    message and should not look alike. It stops when the request is answered or
    times out, both of which empty the list on their own. */
-#bBell{background:none;border:0;padding:0 2px;position:relative;color:var(--dim);
-  min-width:auto;min-height:var(--tap)}
+/* Boxed like the header's other buttons (R119 step 5): bare, it read as a
+   glyph beside four buttons rather than one of them. */
+#bBell{position:relative;color:var(--dim);padding:0 6px}
 #bBell.has{color:var(--ink)}
 @media(hover:hover){ #bBell:hover{color:var(--ink)} }
 #bBell svg{width:17px;height:17px;display:block;margin:auto;fill:none;
   stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
-#bBell .dot{position:absolute;top:7px;right:0;width:7px;height:7px;border-radius:50%;
+#bBell .dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;
   background:var(--note);border:2px solid var(--panel)}
 #bBell .dot.warn{background:var(--warn)}
 #bBell .dot.bad{background:var(--bad)}
@@ -558,6 +573,31 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    .col stacks the row; the field takes the row's width, which the cap on
    .setrow already limits. */
 .setrow.col{flex-direction:column;align-items:stretch;gap:var(--label-gap)}
+/* A role's grant on the Roles tab (R137): the capability at the field
+   label's size and its sentence at the note size, the same voices a
+   built-in role's summary above it speaks in. A .sub is sized only inside
+   a .row, and these are field rows, so the sentence fell back to body
+   text and the tab spoke in two sizes (5 Oct). */
+/* The Roles tab (R152): a project per row with its roles under it; a role
+   picker with Add role beside it; an area per row, its sentence and its
+   Read and Write. */
+.rolestab label.pick{font:var(--f-ui);color:var(--ink)}
+.rprojects{display:flex;flex-direction:column;gap:8px}
+.rproj .upick{margin:4px 0 0 0}
+.rpickrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rpickrow select{flex:1 1 12em;width:auto}
+.rolestab .rpickrow input{flex:1 1 12em;width:auto;min-width:0}
+.rareas{display:flex;flex-direction:column;gap:6px}
+.rarea{display:flex;align-items:center;gap:10px}
+.rarea .grow{flex:1 1 auto;min-width:0}
+.rarea .sub{font:var(--f-note)}
+.rarea.off{opacity:.55}
+/* A node that was un-enrolled, kept on the one project still set to it
+   (page-projsettings.js): italic in the list and in the closed picker. */
+/* One class over the field skin's .nb select and .modal select, whose font
+   shorthand sets the style back to normal. */
+.nb select.removed,.modal select.removed,.doctab select.removed,option.removed{font-style:italic}
+.nb select.removed,.modal select.removed,.doctab select.removed{color:var(--dim)}
 /* Outranks the row rule's flex-basis, which is a WIDTH in a row and would
    be a height here: a stacked field is as wide as its row and as tall as a
    field. */
@@ -591,7 +631,6 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .setrow input:not([type=checkbox]):not([type=number]){flex:1 1 12em;min-width:0;width:auto}
 .logset .setrow select{width:auto;flex:0 1 auto}
 .setrow .pill{flex:0 0 auto}
-.logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
 .logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
@@ -657,7 +696,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   color:var(--dim);font:var(--f-note)}
 .bnote .bfoot .acts{margin-left:auto;display:flex;gap:12px}
 .bnote .bfoot a{color:var(--dim)}
-.bnote.ask .bfoot a[data-ballow]{color:var(--accent)}
+/* Approve is a filled control, its text the page's dark on the amber: an
+   older rule painted it the accent, which won by coming later and put
+   green on amber, hard to read in every theme (the operator, 5 Oct). */
 /* Pinned like a question, red like a fault: an agent from another window
    is not waiting on an answer, it is stopping work until it is updated. */
 .bnote.ask.bad{border-left-color:var(--bad);border-bottom-color:var(--bad);
@@ -934,6 +975,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
+/* A ghosted tool's reason, under the card's buttons and on their inset. */
+.toolwhy{padding:0 10px 9px;margin:0;font:12px/1.4 var(--mono);color:var(--bad);overflow-wrap:anywhere}
 .doctab .macros{padding:var(--row-y) var(--row-x)}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
@@ -959,6 +1002,13 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
 .tc:last-child{border-bottom:0}
 .tc input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
+/* The NVIDIA driver's row (R102): a row of the machine's own above the
+   store's, with the hairline the rows share under it. Not a label, since it
+   holds a pulldown, so the pointer is its name's alone. */
+.tc.tcdrv{cursor:default}
+.tc.tcdrv label.nm{cursor:pointer;display:block}
+.tc .tcdrvpick{display:flex;align-items:center;gap:8px;margin:6px 0 2px;color:var(--dim);font:var(--f-note)}
+.tcs.tcmachine{border-bottom:1px solid var(--line)}
 .tc .nm{font:600 13px/1.35 system-ui,sans-serif}
 .tc .sub{display:block;color:var(--dim);font:var(--f-note)}
 .tc .where{font-family:var(--mono);overflow-wrap:anywhere}
@@ -1006,16 +1056,13 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    first week it ran: two selects on one page in a different voice than every
    other control, for no reason anybody could name. */
 .imgadd select{flex:1 1 190px;min-width:0;padding:6px 8px;min-height:var(--tap)}
-#imgFlavor{flex-basis:210px}
+#imgFlavor{flex:0 1 260px}
 .imgadd button{flex:0 0 auto;min-height:var(--tap)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
   font:var(--f-ui);max-width:70ch}
 /* The one job at a time, said beside the button that started it rather than
-   written into the button: a toolchain id is longer than any button should be,
-   and as a label it turned Install into a green banner across the tab. */
-.tcworking{flex:0 0 100%;color:var(--accent);font:var(--f-ui);
-  overflow-wrap:anywhere}
-.macros .tcworking{flex:1 1 100%}
+   written into the button, in the bar's state slot like any other state. */
+.tcworking{overflow-wrap:anywhere}
 /* Bigger tap targets where a finger is doing the ticking. */
 @media(max-width:900px){ .tc input{width:20px;height:20px} }
 /* A project row's controls move as one block: four buttons that wrapped one
@@ -1046,6 +1093,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    tab at desktop width, where the row turns back into a line and this has to
    wrap onto its own beneath it. */
 .row.stack2 .sessline{width:100%;flex-basis:100%;min-width:0;overflow-wrap:anywhere;color:var(--accent)}
+/* ...but a refusal is a refusal: the accent beat .sub.bad on specificity and
+   'no node to run a Claude session on' read as a healthy state (B451). */
+.row.stack2 .sessline.bad{color:var(--bad)}
+.row.stack2 .sessline.warn{color:var(--warn)}
 /* Who has a session here: a line per name with a dot in front, bright while
    that session is working and dim while it waits. */
 .row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--accent)}
@@ -1091,7 +1142,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* The page behind a dialog holds still. Scrolling it while a detour is open
    loses your place for no reason you asked for, and on a touch screen it is
    what a flick past the end of the dialog does. */
-html:has(.modal:not([hidden])){overflow:hidden}
+html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 /* Every modal arrives rather than appearing: the room dims, and the box rises
    into it. As an animation and not a transition, because these are toggled by
    `hidden`; there is no frame in which a transition could start. One rule
@@ -1099,16 +1150,45 @@ html:has(.modal:not([hidden])){overflow:hidden}
 @keyframes modalIn{from{opacity:0} to{opacity:1}}
 @keyframes modalBoxIn{from{opacity:0;transform:translateY(10px) scale(.985)}
   to{opacity:1;transform:none}}
-.modal:not([hidden]){animation:modalIn .16s ease}
-.modal:not([hidden])>.box{animation:modalBoxIn .19s cubic-bezier(.2,.7,.3,1)}
+/* Not the in-place form (.inline, a notebook's Settings): it is a view, not
+   a dialog arriving, so it neither plays a dialog's entrance nor locks the
+   page behind it. */
+.modal:not([hidden]):not(.inline){animation:modalIn .16s ease}
+.modal:not([hidden]):not(.inline)>.box{animation:modalBoxIn .19s cubic-bezier(.2,.7,.3,1)}
 /* ...and leaves the same way (the observer beside noMotion plays it): while
    it is leaving, the arrival must not replay, and nothing under it may take
    a tap meant for the page behind. */
 .modal.leaving,.modal.leaving>.box{animation:none;pointer-events:none}
 .modal[hidden]{display:none}
+/* A dialog's box shown in place, in a notebook view (the project's Settings):
+   no overlay, no shadow, the document's width, and its own scroll is the
+   view's. Its title is the notebook's, so its h3 is not drawn. */
+.modal.inline{position:static;inset:auto;z-index:auto;background:none;display:block;
+  padding:0;height:auto;overflow:visible}
+.modal.inline .box{width:auto;max-width:var(--doc-w);max-height:none;overflow:visible;
+  border:0;border-radius:0;box-shadow:none;background:none}
+.modal.inline .box > h3{display:none}
+/* A dialog's box takes the focus as it opens (modalKeys), for a screen
+   reader and for Tab to start from; it is not a control, so no ring. */
+.modal>.box:focus{outline:none}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
+/* A box that scrolls says so (scrollHints in page-motion.js): a shadow on
+   each edge with more past it, a darkening as a shadow falls (the operator,
+   30 Sep), and a thin scrollbar where the platform draws one. */
+.modal .box,.modal .sheetslot,.pane .doc,.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap{
+  --hint:rgba(0,0,0,.75);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -34px 26px -24px var(--hint)}
+.modal .box.scrollup{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 34px 26px -24px var(--hint)}
+.modal .box.scrollup.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 34px 26px -24px var(--hint),inset 0 -34px 26px -24px var(--hint)}
+.modal .sheetslot.scrolldown,.pane .doc.scrolldown{box-shadow:inset 0 -34px 26px -24px var(--hint)}
+.modal .sheetslot.scrollup,.pane .doc.scrollup{box-shadow:inset 0 34px 26px -24px var(--hint)}
+.modal .sheetslot.scrollup.scrolldown,.pane .doc.scrollup.scrolldown{box-shadow:inset 0 34px 26px -24px var(--hint),inset 0 -34px 26px -24px var(--hint)}
+/* A list is shorter than a dialog, so its shadow is too: a third of a row. */
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrolldown{box-shadow:inset 0 -22px 16px -14px var(--hint)}
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup{box-shadow:inset 0 22px 16px -14px var(--hint)}
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup.scrolldown{box-shadow:inset 0 22px 16px -14px var(--hint),inset 0 -22px 16px -14px var(--hint)}
 /* The memory book holds prose, not form fields: 520px wraps a description
    every other line. */
 .modal .box.wide{width:min(760px,100%)}
@@ -1259,12 +1339,26 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid color-mix(in srgb, var(--note) 45%, var(--panel));outline-offset:-1px}
+/* A select whose longest option is wider than it reports that width as its
+   own, and every box around it grew by it: the project settings scrolled
+   sideways on a phone once every section stood open (8 Oct). Paint
+   containment keeps it in its box; its focus ring is drawn wholly inside,
+   where containment cannot clip it. */
+select{contain:paint}
+select:focus{outline-offset:-2px}
 .modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:0}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
   flex-wrap:wrap}
 .modal .foot .sp,.nb .foot .sp{flex:1}
+/* A note in a dialog is the quiet explainer, as it is on a row: with no rule
+   here it drew at body size in full ink, larger than the label it explains
+   (project settings' People, the bug report's conversation line, B452). */
+.modal .sub{font:var(--f-note);color:var(--dim)}
+.modal .sub.bad{color:var(--bad)}
+.modal .sub.warn{color:var(--warn)}
+.modal .sub.ok{color:var(--ok)}
 .nb .foot[hidden]{display:none}
 /* A verb that cannot be undone, once and everywhere. It was scoped to the
    modals and the notebook, so the same decision: Remove a container, Revoke
@@ -1287,11 +1381,60 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   font:12px/1.4 system-ui,sans-serif;min-height:var(--tap);text-align:left;
   text-decoration:underline;cursor:pointer}
 .modal .link[hidden]{display:none}
+/* A project's signing keys (R106): a row per route, its form when opened,
+   and its actions in one line. */
+/* The project settings' sections: folds, as a tab's sections are, one
+   open at a time (the operator, 7 Oct), and a section with no field showing
+   gone with its heading. Its fields are bands with their own inset, so the
+   fold's body adds none of its own. */
+.rngroup:not(:has(> .body > .field:not([hidden]))){display:none}
+.rngroup > .body{padding:0 0 var(--row-y);gap:0}
+/* The jump bar over a long surface (sectJump): its sections' names in a
+   line that wraps, each a link to its own. */
+.sectjump{display:flex;flex-wrap:wrap;gap:4px 14px;padding:var(--row-y) var(--row-x);
+  border-bottom:1px solid var(--line);font:var(--f-note)}
+.sectjump a{color:var(--accent);text-decoration:none;white-space:nowrap}
+.sectjump a:hover{text-decoration:underline}
+.rnsign{padding:6px 0;border-top:1px solid var(--line)}
+/* A signed build's certificate fingerprint on its Artifacts row (R106):
+   the whole of it, wrapping on a phone rather than cut off. */
+.artfp{font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
+.artfp .link{background:none;border:0;color:var(--warn);text-decoration:underline;cursor:pointer;padding:0 0 0 8px;font:inherit}
+.rnsign:first-child{border-top:0}
+/* One block per named key, and the Apps list under them (R106 step 6). */
+.rnsignkey{margin-bottom:10px}
+.rnsignname{font-weight:600;margin:8px 0 2px}
+.rnsignform{display:grid;gap:6px;margin:6px 0}
+.rnsignbar{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
+/* A project's people (membership.py): a pending invitation per line, and
+   the picker with its Invite. */
+.rninvite{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.rninvitebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.modal a.link{display:inline-flex;align-items:center}
 @media(hover:hover){ .modal .link:hover{color:var(--accent)} }
 .modal .pseg{display:flex;gap:8px}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+/* The project settings' Test (the operator, 7 Oct): what is missing in red,
+   a list when it is more than one thing, and its notes in the quiet voice. */
+.modal .hint.ok{color:var(--accent)}
+#rnTestField .setrow{align-items:center;flex-wrap:nowrap}
+#rnTestField .setrow .hint{flex:1 1 auto;min-width:0}
+/* File access (R151): one row per account, its name and its access. */
+#rnFtp .logdays{flex-wrap:nowrap}
+#rnFtp .logdays input[type=number]{width:7em;flex:0 0 auto;text-align:center}
+.rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+/* Also reaches: an address per row, its nodes ticked beside it, and its bin. */
+#rnReachRows{display:flex;flex-direction:column;gap:6px}
+.rnreach{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.modal .rnreach input[data-reach]{flex:1 1 12em;width:auto;min-width:0}
+.rnreach .rnreachnodes{display:flex;gap:10px;flex-wrap:wrap}
+.rnftprow{display:flex;align-items:center;gap:8px}
+.rnftprow .grow{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.modal .rnftprow select{width:auto;flex:0 0 12em}
+#rnTestOut ul{margin:4px 0 0;padding-left:18px}
+#rnTestOut .sub{color:var(--dim);margin-top:4px}
 /* A field whose value cannot work. Only the border moves: tinting the text
    too makes what you typed hard to read at the moment you are being asked to
    look at it. */
@@ -1372,6 +1515,21 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   .side .row [data-tip]::after,.projtab .row [data-tip]::after{left:10px;right:10px;
     transform:none;width:auto;max-width:none;
     bottom:auto;top:var(--tipy,calc(100% + 6px))}
+  /* ...and the bar above them: New project sits at the tab's right edge, and
+     its tip, centered and up to 280px, hung past it at phone width once the
+     Projects tab was the one a page opens on (R119, 4 Oct). Anchored to the
+     bar's right, under it, and no wider than the bar. */
+  .projtab > .actbar{position:relative}
+  .projtab > .actbar [data-tip]{position:static}
+  .projtab > .actbar [data-tip]::after{left:auto;right:10px;transform:none;
+    max-width:calc(100% - 20px);bottom:auto;top:calc(100% + 6px)}
+  /* ...and every document tab's bar the same way: Refresh is at its right
+     edge on each node-scoped tab, and on the Docker tab, which joined the
+     bar in R121, its tip hung 28px past a phone's pane. */
+  .docbarrow{position:relative}
+  .docbarrow [data-tip]{position:static}
+  .docbarrow [data-tip]::after{left:auto;right:10px;transform:none;
+    max-width:calc(100% - 20px);bottom:auto;top:calc(100% + 6px)}
   /* A DEAD button's tip is the one on this page somebody actually has to
      read (it is the sentence saying why the button is dead) and it was the
      one that could not be. The fade on a disabled control is `opacity:.5`,
@@ -1584,7 +1742,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
-.macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
+.macros button svg,.tab .lbl svg,.tabpick svg,.tabpicklist .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;margin-right:5px}
 /* A group of picks (Claude may, Yours on this project, the new-project
@@ -1917,10 +2075,99 @@ pre.diff .d-ctx{color:var(--dim)}
    The notebook). */
 @media(max-width:600px){
   .nbtabs{flex-wrap:wrap;overflow:visible;padding:4px 8px 0;gap:2px}
-  .nbtabs button{flex:1 1 30%;text-align:center;padding:9px 6px}
+  /* Four to a row: eleven views in three rows rather than four, and no
+     lone tab stretched across the last (R119, 4 Oct). */
+  .nbtabs button{flex:1 1 22%;text-align:center;padding:9px 4px}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* The lent phone's screen as a session last saw it (tab-phone.js, R113): a
+   picture at a phone's proportions, never wider than a row wants. */
+.phshot{display:block;max-width:min(260px,60vw);height:auto;margin:8px 0 4px;
+  border:1px solid var(--line);border-radius:var(--r-small)}
+/* ...and the newest recording's reel, a tiled sheet of frames, as wide as
+   the row lets it be, in a box of its own height: a glide's reel is eighty
+   frames, six screens tall at a desktop's width (5 Oct). */
+.phreelbox{max-height:60vh;overflow:auto;margin:8px 0 4px;
+  border:1px solid var(--line);border-radius:var(--r-small)}
+.phreel{display:block;max-width:100%;height:auto}
+
+/* Pull to refresh (page-pull.js), drawn as a browser draws its own: a round
+   button with a circular arrow that comes down from under the header as the
+   finger pulls, turning with it, goes the accent once letting go would
+   count, spins while the refresh runs and rises back out of sight. */
+#pullHint{position:fixed;top:58px;left:50%;width:38px;height:38px;margin-top:-38px;z-index:60;opacity:0;
+  transform:translate(-50%,0);pointer-events:none;border-radius:50%;background:var(--panel);
+  border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.35);display:grid;place-items:center;color:var(--dim)}
+#pullHint svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#pullHint.ready{color:var(--accent)}
+#pullHint.back{transition:transform .25s ease,opacity .25s ease}
+#pullHint.spin{color:var(--accent);transition:transform .15s ease}
+#pullHint.spin svg{animation:pullspin .7s linear infinite}
+@keyframes pullspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){ #pullHint.spin svg{animation:none} #pullHint.back{transition:none} }
+
+/* ---- the Wiki view (nb-wiki.js) ------------------------------------------
+   Read like an encyclopedia (the operator, 2 Oct): the pages listed in a
+   narrow column beside one article at a time, the article's title large over
+   a hairline, its sections headed the same way, a Contents box for a page
+   with three or more, and prose at a reading width in a serif, the one place
+   the dashboard sets text to be read at length. On a phone the column gives
+   way to a picker above the article. */
+.wkreader{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);gap:22px;align-items:start}
+/* No pages yet: no nav, so the empty state is the whole width, not the
+   nav's 200px column (B457's walk). */
+.wkreader:not(:has(.wknav)){grid-template-columns:minmax(0,1fr)}
+.wknav{position:sticky;top:0;font-size:var(--f-row);border-right:1px solid var(--line);padding-right:14px}
+.wknav ul{list-style:none;margin:0;padding:0}
+.wknav li{margin:0 0 6px}
+.wknav p,.wknav h2,.wknav h3{margin:0 0 6px;font-size:inherit}
+.wknav strong{display:block;color:var(--dim);font-weight:600;margin-bottom:8px}
+.wkpick{display:none}
+.wkarticle{min-width:0;max-width:820px}
+.wktabs{display:flex;gap:4px;align-items:flex-end;border-bottom:1px solid var(--line);margin-bottom:12px}
+.wktabs .sp{flex:1}
+.wktabs .wktab{background:none;border:1px solid transparent;border-bottom:0;border-radius:var(--r-small) var(--r-small) 0 0;
+  padding:6px 12px;color:var(--dim);margin-bottom:-1px}
+.wktabs .wktab.on{color:var(--ink);border-color:var(--line);background:var(--bg)}
+.wktabs .wktab.danger{color:var(--bad)}
+.wktitle{font:400 1.75em/1.25 var(--serif);color:var(--ink);margin:4px 0 2px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.wkmeta{color:var(--dim);font-size:var(--f-note);margin:4px 0 14px}
+.wktoc{display:inline-block;min-width:180px;max-width:100%;border:1px solid var(--line);border-radius:var(--r-small);
+  background:var(--panel);padding:8px 14px 8px 12px;margin:0 0 16px;font-size:var(--f-row)}
+.wktochead{font-weight:600;text-align:center;margin-bottom:4px;color:var(--ink)}
+.wktoc ol{margin:0;padding-left:1.4em}
+.wktoc li.l2{margin-left:1em}
+.wktoc li.l3{margin-left:2em}
+.wkpage{font:1.02rem/1.65 var(--serif);color:var(--ink);overflow-wrap:anywhere;max-width:72ch}
+.wkpage h2,.wkpage h3,.wkpage h4,.wkpage h5,.wkpage h6{font-family:var(--serif);font-weight:400;color:var(--ink);margin:22px 0 8px}
+.wkpage h2{font-size:1.45em;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.wkpage h3{font-size:1.2em;font-weight:600}
+.wkpage h4{font-size:1.05em;font-weight:600}
+.wkpage p,.wkpage ul,.wkpage ol,.wkpage blockquote,.wkpage pre,.wkpage table{margin:0 0 12px}
+.wkpage ul,.wkpage ol{padding-left:1.6em}
+.wkpage blockquote{border-left:2px solid var(--line);padding-left:12px;color:var(--dim)}
+.wkpage code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:1px 4px;border-radius:var(--r-small)}
+.wkpage pre{font-family:var(--mono);font-size:.86em;line-height:1.5;background:var(--sunk);padding:9px 12px;
+  border-radius:var(--r-small);overflow-x:auto;white-space:pre}
+.wkpage pre code{background:none;padding:0}
+.wkpage table{border-collapse:collapse;display:block;overflow-x:auto;font-family:system-ui,sans-serif;font-size:.92em}
+.wkpage th,.wkpage td{border:1px solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
+.wkpage th{background:var(--panel)}
+.wkpage hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+.wkpage a,.wknav a,.wktoc a,.wkfooter a{color:var(--accent);text-decoration:none}
+.wkpage a:hover,.wknav a:hover,.wktoc a:hover{text-decoration:underline}
+.wkfooter{border-top:1px solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font-size:var(--f-note)}
+.wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
+.wklogrow{padding:3px 0;font-size:var(--f-note)}
+#wkWhy{color:var(--bad);font:var(--f-note)}
+@media(max-width:620px){
+  .wkreader{display:block}
+  .wknav{display:none}
+  .wkpick{display:flex;margin-bottom:10px}
+  .wktitle{font-size:1.5em}
+}
+
 /* ---- the Design view (nb-design.js) --------------------------------------
    A language's choices in labeled controls, its colors as chips beside
    their hex, and a page's layout as blocks on a frame the finger moves
@@ -1999,7 +2246,7 @@ pre.diff .d-ctx{color:var(--dim)}
    History, the Analysis tab. */
 .nb.ro .rolock{margin:0;padding:11px 14px;color:var(--warn);font:var(--f-ui);
   border-bottom:1px solid var(--line)}
-.nb.ro #roadmapSaveQuiet,.nb.ro #roadmapAdd,.nb.ro #roadmapText,
+.nb.ro .sectbar,.nb.ro #roadmapAdd,.nb.ro #roadmapText,
 .nb.ro #bugAdd,.nb.ro #memAdd,.nb.ro .addstep,.nb.ro .memadd,
 .nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .roadmap .go,.nb.ro .roadmap .mv,
 .nb.ro .vbar .sp ~ button:not(#nbHistory){
@@ -2231,6 +2478,10 @@ pre.diff .d-ctx{color:var(--dim)}
    once. Both of those are the same rule reaching one child too far. */
 .nb > .nbsheet{max-width:none}
 .nb h3{display:none}
+/* ...except a wiki article's: a page's ## is an h3 there, and this rule hid
+   every one of them, so the sections were missing and the contents box
+   linked to headings that were not drawn (the operator, 4 Oct). */
+.nb .wkpage h3,.nb .wkfooter h3{display:block}
 .nb #roadmapList,.nb #memList{max-height:none;overflow:visible;
   overscroll-behavior:auto}
 /* No inset and no ceiling: a document is the pane's whole content, not a box
@@ -2283,17 +2534,6 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A container's log: monospace, its own scroller, and tall enough to be
    worth opening. The dialog's box is the one that scrolls nothing. */
 .dllog{max-height:60vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
-/* A container row's detail is a fold on a phone, where a row carrying its
-   ports, its services, its route and three settings was most of a screen
-   each (R68 step 5). On a desktop it is open and its summary is not drawn,
-   so that surface is exactly what it was. */
-.dmdet>.dmsum{display:flex;gap:8px;align-items:baseline;cursor:pointer;
-  padding:4px 0;color:var(--dim);font:var(--f-note);list-style:none}
-.dmdet>.dmsum::-webkit-details-marker{display:none}
-.dmdet>.dmsum::before{content:"›";display:inline-block;transition:transform .12s ease}
-.dmdet[open]>.dmsum::before{transform:rotate(90deg)}
-.dmdet>.dmsum .t{color:var(--ink)}
-@media(min-width:901px){ .dmdet>.dmsum{display:none} }
 /* Every document pane, rather than a list of tab classes: .empty and .loading
    default to the sidebar's tighter inset, and a tab added to the page after
    this rule was written would otherwise draw them 3px in from everything
@@ -2399,9 +2639,14 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The memory's side is a whole document, not a line: taller, and the only
    copy of what is on disk the operator can read without losing their own. */
 .clashtext.big{max-height:18em;font:var(--f-ui);font-family:var(--mono)}
-/* The public key: one unbroken base64 line nobody should read, only copy. */
-#pPub{margin-top:8px;min-height:0;white-space:pre;overflow-x:auto;resize:none;
-  font-size:11px;color:var(--dim)}
+/* The public key: one unbroken base64 line nobody should read, only copy.
+   A block of text, not a textarea: Bitwarden reads a form field labeled
+   "public key" as an add-an-SSH-key form and then offers itself on every
+   field on the page whose label says name, title, label or description
+   (B533), whatever data-bwignore says. */
+#pPub{margin-top:8px;background:var(--sunk);border:1px solid var(--line);
+  border-radius:var(--r-control);padding:6px 8px;font:11px/1.5 var(--mono);
+  color:var(--dim);white-space:pre;overflow-x:auto;user-select:all}
 #pCopy{margin-top:6px}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
@@ -2504,6 +2749,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    tab's own rule, so the same line on the Toolchains tab sat flush against
    the edge with every band beside it indented. */
 .doctab .hint{padding:var(--row-y) var(--row-x)}
+/* The node-scoped tools' foot line (R121) is a quiet note, not body text. */
+.toolfoot .hint{font:var(--f-note);color:var(--dim);padding:0}
 .fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
   padding:var(--row-y) var(--row-x) 3px;
   border-top:1px solid var(--line);font-weight:600}
@@ -2630,11 +2877,14 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary::-webkit-details-marker{display:none}
 .sect>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
 .sect[open]>summary::before{content:"\25BE"}
-.sect>summary .t{font-weight:600;flex:0 1 auto;min-width:0}
+.sect>summary .t{font:var(--f-sect);flex:0 1 auto;min-width:0}
+/* A section inside a section (a page's rules inside Pages) heads less than
+   the one holding it: a row's size, still at the heading's weight. */
+.sect .sect>summary .t{font:var(--f-sect);font-size:13px}
 /* One line, clipped with an ellipsis when it is long: a status that wrapped
    letter by letter down the right edge was what min-width:0 alone did. */
 /* .sst, not .st; that one is the session dot beside a Claude tab's name. */
-.sect>summary .sst{margin-left:auto;font:var(--f-note);color:var(--dim);text-align:right;
+.sect>summary .sst{margin-left:auto;font:var(--f-ui);color:var(--dim);text-align:right;
   flex:0 1 auto;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sect>summary .sst.ok,.actbar .state.ok{color:var(--accent)}
 .sect>summary .sst.warn,.actbar .state.warn{color:var(--warn)}
@@ -2642,6 +2892,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
 .sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
 .sect>.body>.sub:first-child{margin-top:0}
+/* A section's own explainer line, straight in its body, is the quiet note
+   it is everywhere else: the Git view's Branches line read at body size
+   (the design pass, 4 Oct). */
+.sect>.body>.sub{font:var(--f-note)}
 /* A band inside a section's body does not inset again: the body already did.
    The design language says it of a field inside a field, and it was never
    applied here because nothing measured a notebook view other than the
@@ -2732,13 +2986,21 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    rule below it cannot win at equal specificity, which is how the button
    showed on a desktop, and then on neither. */
 button.eye.rowmore{display:none}
+/* The sidebar card folds its rows at EVERY width since R119 (4 Oct): eight
+   icons on a 340px card were a row nobody could read, on a desktop too, so
+   it takes the phone's shape (Claude, the notebook, and … for the rest). The
+   Projects tab has the room on a desktop and keeps every icon there. */
+.card .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore){display:none}
+.card button.eye.rowmore{display:inline-flex}
+.card .row.moreon .rowmore{color:var(--accent)}
+.card .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;flex-wrap:wrap}
+.card .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
 @media(max-width:900px){
   :root{--row-y:8px}
   /* The hide is scoped to a row that is NOT folded out, so the two states
      cannot fight: a `.moreon` rule that merely re-showed them lost on
      specificity to this one (three :not()s outrank one class), and pressing
      … re-stacked the row without producing a single extra icon. */
-  .card .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore),
   .projtab .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore){
     display:none}
   button.eye.rowmore{display:inline-flex}
@@ -2747,10 +3009,8 @@ button.eye.rowmore{display:none}
      is where the height actually was: a stacked row spends a whole 38px line
      on its buttons. Folded out, they wrap under it again, which is what
      asking for them means. */
-  .card .row[data-row]:not(.moreon),
   .projtab .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;
     flex-wrap:wrap}
-  .card .row[data-row]:not(.moreon) .acts,
   .projtab .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
 }
 button[aria-busy="true"]{opacity:.75}
@@ -2769,6 +3029,8 @@ button[aria-busy="true"]{opacity:.75}
   gap:6px;align-items:center}
 .ndnet{grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
 .ndmount .ndmstate{grid-column:1 / -1}
+/* Static routes take the network's whole width, in either mode. */
+.ndnet .ndroutes{grid-column:1 / -1}
 .ndmstate.warn{color:var(--warn)} .ndmstate.bad{color:var(--bad)}
 .ndstore{display:grid;grid-template-columns:minmax(0,7em) minmax(0,1fr);gap:6px;align-items:center}
 .ndstore label{font:var(--f-ui);color:var(--ink)}
@@ -2822,12 +3084,6 @@ button[aria-busy="true"]{opacity:.75}
   color:var(--ink)}
 .jbfilter input{width:15px;height:15px;flex:0 0 auto}
 .jberr.warn{color:var(--warn)}
-/* The manager's node picker select keeps the house control font wherever it
-   renders: .dmtab predates the scaffold's groups. Not inflated on a phone: a
-   select never zooms iOS, so it keeps the size of the text beside it and
-   takes the finger height instead (uniform.mjs measures both ways). */
-.dmpick select{font:var(--f-field);padding:8px 9px}
-@media(max-width:900px){ .dmpick select{min-height:var(--tap)} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
    starts at the same x as a roadmap item one view over. */
@@ -2858,7 +3114,7 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 /* The header's icon buttons, the gear (settings) and the sign-out door,
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
-#bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
+#bOut svg.out,#bCards svg.out,#bReport svg.out{width:15px;height:15px;display:block;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
   stroke-linecap:round;stroke-linejoin:round}
 /* The same drawing for About's ?, but WITHOUT display: whether it is shown is
@@ -2892,26 +3148,7 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
 /* Styled by class, not id: an id's display:flex would outrank the class-based
-   .card.closed rule that hides every body row when the card is folded. Which
-   is also why the auth line is a .docbar rather than something of its own,
-   one row shape for the card, so the verdict and the action it comes with line
-   up on both edges instead of each having its own idea of the margin. */
-/* The same secondary type as every other explanatory line on the page: `.sub`
-   is scoped to `.row`, and without this the one line in the card that is not
-   in a row came out in body text, a size larger than everything around it. */
-#docAuth .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
-#docAuth .sub.bad{color:var(--bad)}
-#docAuth .grow{flex:1;min-width:0}
-#docAuth a.grow{color:var(--accent);text-decoration:underline}
-/* The code field. A phone can paste into this, which is the whole reason it
-   is here rather than in the terminal, and it takes the row's full width,
-   because a hundred characters beside a button is four visible ones. */
-#docAuth{flex-wrap:wrap}
-.codebox{display:flex;gap:8px;flex:1 1 100%}
-.codebox input{flex:1;min-width:0;padding:7px 9px;
-  font:var(--f-field);min-height:var(--tap)}
-.codebox button{flex:0 0 auto;min-height:var(--tap)}
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .codebox input{font-size:16px} } }
+   .card.closed rule that hides every body row when the card is folded. */
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
 .doctor .docbar+.docbar{border-top:1px solid var(--line)}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
@@ -3027,6 +3264,23 @@ body.dragging .tab .lbl{cursor:grabbing}
 .tabstrip{display:flex;align-items:stretch}
 .tabstrip .tabbar{flex:1;min-width:0}
 .tscroll{display:none}
+/* The phone's tab picker (R119 step 5): instead of a strip to swipe and two
+   arrows to page it, one button naming the tab on show and how many are
+   open, and a list under it of every tab, each with its close. A desktop
+   keeps the strip, which wraps. */
+.tabpick{display:none}
+.tabpicklist{position:absolute;z-index:40;left:0;right:0;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:0 0 var(--r-surface) var(--r-surface);
+  box-shadow:0 10px 24px rgba(0,0,0,.5);max-height:70vh;overflow-y:auto;
+  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+.tabpicklist[hidden]{display:none}
+.tabpicklist .tprow{display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--line)}
+.tabpicklist .tprow:last-child{border-bottom:0}
+.tabpicklist .tprow .lbl{flex:1;min-width:0;text-align:left;background:transparent;border:0;
+  min-height:var(--tap);padding:0 6px;color:var(--ink);font:var(--f-ui);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tabpicklist .tprow.on .lbl{color:var(--accent);font-weight:600}
+.tabpicklist .tprow .ic{flex:0 0 auto;min-height:var(--tap);min-width:var(--tap)}
 /* On a phone the strip is one row: swipe it, or page it with the arrows:
    wrapping to more rows would eat the terminal's space. */
 @media(max-width:900px){
@@ -3074,6 +3328,16 @@ body.dragging .tab .lbl{cursor:grabbing}
      a `.35` from here only handed them back to the .5 and left them looking
      exactly as ghosted, which is what happened the first time. */
   .tscroll:disabled{background:transparent;opacity:1}
+  /* The picker replaces the strip and its arrows here. */
+  .tabstrip .tabbar,.tabstrip .tscroll{display:none}
+  .tabpick{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:var(--tap);
+    padding:0 12px;background:transparent;border:0;border-radius:0;color:var(--ink);font:var(--f-ui);text-align:left}
+  .tabpick .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tabpick .pill,.tabpick .chev{flex:0 0 auto}
+  .tabpick .chev{color:var(--dim)}
+  /* The pane's own caption repeats the picker's name on a phone; one that
+     carries controls (a popped terminal's Reattach) stays. */
+  .pane .bar:not(:has(button)){display:none}
 }
 
 /* Built fresh each time it is opened, so the animation runs on the element
@@ -3089,6 +3353,9 @@ body.dragging .tab .lbl{cursor:grabbing}
    the card rather than hanging off its edge. */
 .resumemenu{max-width:calc(100% - 8px);flex-wrap:wrap}
 .resumemenu button{white-space:normal;text-align:left}
+/* A line in it (a node's name, a reason) has the row to itself, so what
+   follows it reads as that node's. */
+.resumemenu .sub{flex:1 1 100%}
 
 /* Panes -------------------------------------------------------------- */
 .panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
@@ -3178,6 +3445,8 @@ body.booting .pane>.loading{margin:auto}
 .chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   background:none;border:0;border-bottom:1px solid var(--line);padding:8px 10px}
 .chatrow:hover{background:var(--panel)}
+/* When somebody was last here, beside their name: the quiet note voice. */
+.chatrow .chatseen{font:var(--f-note);color:var(--dim)}
 /* Taken on, or merely visible. A channel that is yours reads as ordinary text;
    one an admin can see and has not taken on is dimmer and italic, which says
    "somebody else's" without competing with the ones that are theirs. They
@@ -3296,7 +3565,10 @@ body.booting .pane>.loading{margin:auto}
   /* ...and they share the bar rather than each taking its text's width: on a
      344px fold cover four of them did not fit and Chat was cut off at the
      edge, inside a bar that clips. */
-  .mobar button{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  /* Shared by what each says, not in equal parts (B460): Keys and Chat are
+     short words, Commands and Sessions were cut at 390px in equal quarters. */
+  .mobar button{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .mobar button[hidden]{display:none}
   .panes{min-height:90px}
 }
 
@@ -3322,11 +3594,16 @@ body.booting .pane>.loading{margin:auto}
 .fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
   border-radius:99px;border:1px solid var(--red2-edge);color:var(--bad);
   text-decoration:none;margin:0 4px 4px 0}
+/* A reason line in red wherever it is drawn (B426). Last, so it outranks
+   each surface's plain .sub color, which it ties on specificity: it was red
+   in a project row and a toolchain row only, and the dialog's "never backed
+   up", the Claude chooser's reasons and a sign-in's refusals were not. */
+.sub.bad{color:var(--bad)}
 </style>
 </head>
 <body data-view="dash" class="booting">
 <div id="toast" role="status" aria-live="polite"></div>
-<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="mTitle">
+<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="box">
     <h3 id="mTitle">New custom command</h3>
     <div class="field">
@@ -3378,6 +3655,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="briefing">Briefing</button>
       <button type="button" data-v="design">Design</button>
+      <button type="button" data-v="wiki">Wiki</button>
       <button type="button" data-v="roadmap">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="git">Git</button>
@@ -3385,6 +3663,7 @@ body.booting .pane>.loading{margin:auto}
       <button type="button" data-v="docker">Docker</button>
       <button type="button" data-v="tests">Tests</button>
       <button type="button" data-v="analysis">Analysis</button>
+      <button type="button" data-v="settings">Settings</button>
     </div>
     <!-- Who else is in here. Under the strip rather than above it, because
          it is about the whole notebook and not about the batch banner's
@@ -3400,7 +3679,7 @@ body.booting .pane>.loading{margin:auto}
          one-line summary on the left, its History on the right. It sits above
          the add row rather than under it so all four tabs start the same way:
          the eye should not have to look in a different place per tab. -->
-    <div class="field nbhead vbar"><span class="hint" id="roadmapHint">loading…</span>
+    <div class="field nbhead vbar"><span id="roadmapHint">loading…</span>
       <span class="sp"></span>
       <button id="roadmapDone" type="button"
         title="the items ticked off, with their plans"
@@ -3409,18 +3688,34 @@ body.booting .pane>.loading{margin:auto}
         title="every change to this list, by either of you, with when"
         >History</button>
     </div>
+    <!-- The list's own Save and Revert, under its head (the operator, 5 Oct):
+         each section saves its own changes, and the list's are the reorders,
+         edits and steps staged on its rows. -->
+    <div class="field"><div class="actbar sectbar" data-bar="roadmap">
+      <span class="state" id="roadmapMoved"></span><span class="sp"></span>
+      <button id="roadmapSaveQuiet" type="button" data-ssave="roadmap" disabled>Save</button>
+      <button id="roadmapRevert" class="caution" type="button" data-srevert="roadmap" disabled>Revert</button>
+    </div></div>
     <div class="field">
-      <!-- One row: type it, add it, or rearrange what is already there. They
-           are the three things you do TO the list, as against the History
-           above, which only reads it. -->
-      <div class="roadmapadd" data-add="roadmap">
-        <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
-               placeholder="something for the roadmap"></textarea>
-        <button id="roadmapAdd" class="primary" type="button">Add</button>
+      <!-- The add band every view adds with (R119 step 4): a button named for
+           what it adds, beside Reorder, the other thing done TO the list; it
+           unrolls the box in its place, which stays open for the next line
+           until Cancel or Escape. -->
+      <div class="addbar" data-add="roadmap" id="roadmapAddBar">
+        <button id="roadmapShow" type="button">Add to roadmap</button>
         <button id="roadmapOrder" type="button" hidden
           title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
+      <div class="roadmapadd" id="roadmapForm" hidden>
+        <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
+               placeholder="something for the roadmap"></textarea>
+        <button id="roadmapCancel" type="button" class="stop">Cancel</button>
+        <button id="roadmapAdd" class="primary" type="button">Add</button>
+      </div>
+    </div>
+    <div class="field" id="roadmapEmpty" hidden>
+      <div class="hint nbempty">What goes here is read at the start of every Claude session in this project.</div>
     </div>
     <!-- Somebody else wrote this item while it was being edited here. Above
          the list rather than in a toast: the typing it is about is still on
@@ -3500,6 +3795,12 @@ body.booting .pane>.loading{margin:auto}
         <div class="field" id="memListField">
           <div id="memList"></div>
         </div>
+        <!-- The memories' own Save and Revert (the operator, 5 Oct). -->
+        <div class="field"><div class="actbar sectbar" data-bar="briefing:memories">
+          <span class="state"></span><span class="sp"></span>
+          <button type="button" data-ssave="briefing:memories" disabled>Save</button>
+          <button type="button" class="caution" data-srevert="briefing:memories" disabled>Revert</button>
+        </div></div>
       </div>
     </details>
     </div>
@@ -3583,14 +3884,14 @@ body.booting .pane>.loading{margin:auto}
            already runs past a phone at five labels, and a version and the
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
-      <div class="field" id="artList"></div>
+      <div id="artList"></div>
       <!-- What a session looked with (R96): reels and emulator shots, in one
            fold apart from what ships, each saying whose it is, and swept
            after the project's "captures kept" days. -->
       <div id="artCaptures" hidden></div>
       <!-- Builds made on a branch, in each account's own worktree (B237):
            listed apart from dist/, which is what the project ships. -->
-      <div class="field" id="artBranches" hidden></div>
+      <div id="artBranches" hidden></div>
     </div>
     <!-- This project's containers: every one that belongs to it, with the
          manager's rows and controls, so nobody has to find them among every
@@ -3635,6 +3936,29 @@ body.booting .pane>.loading{margin:auto}
            nb-design.js draws it at the top of that section. -->
       <div id="dsBody"></div>
     </div>
+    <div class="nbview" data-view="wiki" hidden>
+      <!-- The project's wiki (wiki.py, nb-wiki.js): pages as rows that open
+           to be read, written through like Bugs, kept by the controller as a
+           forge-shaped repository so Export is a zip of Markdown and Push is
+           the repository's own wiki. -->
+      <div class="field nbhead vbar"><span id="wkHint">loading…</span><span class="sp"></span>
+        <button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button>
+      </div>
+      <!-- Where the wiki goes, an action bar of its own as the Git view's is,
+           so the head row keeps its one control and fits a phone: Export for
+           every project, Pull and Push where there is a forge, and why Push
+           is dead when it is, said under the bar rather than in a tooltip. -->
+      <!-- Adding first, under the head, as every view adds (B457). -->
+      <div id="wkAddBox"></div>
+      <div class="field actbar" id="wkNet">
+        <span class="state" id="wkNetState"></span>
+        <button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button>
+        <button type="button" id="wkPull" hidden title="take in what changed on the forge's wiki">Pull</button>
+        <button type="button" id="wkPush" class="primary" hidden title="send the wiki to the repository's own wiki">Push</button>
+      </div>
+      <div class="field" id="wkWhy" hidden></div>
+      <div id="wkBody"></div>
+    </div>
     <div class="nbview" data-view="analysis" hidden>
       <div class="field nbhead vbar"><span id="anaHint">loading…</span>
         <span class="sp"></span>
@@ -3655,24 +3979,14 @@ body.booting .pane>.loading{margin:auto}
       <div class="field" id="anaHist" hidden></div>
       <div id="anaList"></div>
     </div>
-    <div class="foot" id="nbFoot">
-      <!-- One. There were two, and the second one typed the change into a
-           running session's input box, which was the ONLY way anything
-           reached a session before #27 gave the prompt hook a free channel
-           back. With the session told by itself, the second button was the
-           difference between telling somebody now and telling them when they
-           next look up, and that is not a difference worth a permanent
-           control: the session's own tab is one tap away for the rare case
-           where a minute matters. -->
-      <span class="state" id="roadmapMoved" hidden></span>
-      <button id="roadmapSaveQuiet" type="button" disabled>Save</button>
-      <span class="sp"></span>
-      <!-- Where Close used to be. The tab does not go away when something is
-           saved, so the question this button answers is no longer "am I done
-           looking at this"; it is "throw the unsaved changes away", which is
-           the other half of a Save button and dead whenever there is nothing
-           to throw. -->
-      <button id="roadmapRevert" class="caution" type="button" disabled>Revert</button>
+    <!-- The project's settings (R119 step 3, the operator 4 Oct): the same
+         form the settings dialog shows, moved into this view while it is the
+         one on screen (page-projsettings.js settingsInto), so there is one
+         form and one set of handlers. .modal.inline lets every dialog rule
+         style it where it is. -->
+    <div class="nbview" data-view="settings" hidden>
+      <div class="field nbhead vbar"><span>how this project runs, and what Claude may do here</span><span class="sp"></span></div>
+      <div class="modal inline nbsettings"></div>
     </div>
     <!-- The reading room. A history and the changelog are things you READ,
          and they were opening in place of whatever you were looking at: the
@@ -3687,7 +4001,7 @@ body.booting .pane>.loading{margin:auto}
          code that owns it. One per notebook is also simply right, two of them
          in a split being two different projects. -->
     <div class="modal nbsheet" hidden role="dialog" aria-modal="true"
-         aria-labeledby="sheetTitle">
+         aria-labelledby="sheetTitle">
       <div class="box sheet">
         <h3 id="sheetTitle"></h3>
         <div class="sheetslot" id="sheetSlot"></div>
@@ -3711,7 +4025,7 @@ body.booting .pane>.loading{margin:auto}
      to be a modal, which on a desktop meant reading a list, a plan, a log and
      a memory editor through a 760px slot. -->
 <div id="devEnvModal" class="modal" hidden role="dialog" aria-modal="true"
-     aria-labeledby="devEnvTitle">
+     aria-labelledby="devEnvTitle">
   <div class="box wide">
     <h3 id="devEnvTitle">Dev instance env</h3>
     <div class="field">
@@ -3726,7 +4040,7 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
-     aria-labeledby="aboutTitle">
+     aria-labelledby="aboutTitle">
   <div class="box wide prose">
     <h3 id="aboutTitle">About</h3>
     <div class="field about">
@@ -3762,11 +4076,17 @@ body.booting .pane>.loading{margin:auto}
      repository that already has a token: offering to set one on a local repo
      would be offering a credential to something with nothing to authenticate
      against. -->
-<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="rnTitle">
-  <div class="box">
+<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
+  <div class="box" data-sects>
     <h3 id="rnTitle">Project settings</h3>
+    <!-- In sections, each titled and each hiding itself when none of its
+         fields is shown (the chain's door shows the remote alone): what
+         the project is and who it belongs to, where it runs, what a
+         session sees, how it builds, its signing keys, what Claude may
+         do, what is yours, and who is in it now (the operator, 1 Oct). -->
+    <details class="sect rngroup" data-sect="rn:project"><summary><span class="t">The project</span></summary><div class="body">
     <div class="field" id="rnNameField">
-      <label for="rnName">New name</label>
+      <label for="rnName">Name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
       <div class="hint" id="rnHint"></div>
       <div class="hint" id="rnPreview" hidden></div>
@@ -3775,8 +4095,17 @@ body.booting .pane>.loading{margin:auto}
          several open notebooks tell apart without reading each label. -->
     <div class="field" id="rnColorField">
       <label id="rnColorLabel">Color<span class="help" data-tip="worn by this project's notebook tab and its row; none is the default" tabindex="0">?</span></label>
-      <div class="pcpick" id="rnColor" role="radiogroup" aria-labeledby="rnColorLabel"></div>
+      <div class="pcpick" id="rnColor" role="radiogroup" aria-labelledby="rnColorLabel"></div>
     </div>
+    <!-- Who the project belongs to and who joins it (membership.py): the
+         owner and Invite only are staged until Save; Invite and Withdraw are
+         actions and act on the press. -->
+    <div class="field" id="rnPeopleField" hidden>
+      <label id="rnPeopleLabel">People<span class="help" data-tip="its owner, who is on it, and who is invited; an invite-only project's people are its owner's to change" tabindex="0">?</span></label>
+      <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:repo"><summary><span class="t">Its repository</span></summary><div class="body">
     <!-- What this project pushes with. Reached by the chain on its row, which
          is where the remote lives for a project that has one and for a
          project that has not: the gear is the project's own settings, and a
@@ -3802,13 +4131,33 @@ body.booting .pane>.loading{margin:auto}
          migration. -->
     <div class="field" id="rnAuthField" hidden>
       <label id="rnAuthLabel">Authentication</label>
-      <div class="pseg" role="group" aria-labeledby="rnAuthLabel">
+      <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
         <button id="rnAuthNone" type="button">Disabled</button>
         <button id="rnAuthKey" type="button">Deploy key</button>
         <button id="rnAuthToken" type="button">Access token</button>
       </div>
       <div class="hint" id="rnAuthHint"></div>
     </div>
+    <!-- Test (the operator, 7 Oct): whether what it authenticates with can
+         read and push, and what it is missing when it cannot, said under the
+         button in red, never only in a tooltip (projects.auth_test). A token
+         typed and not saved is what is tested, so it can be checked first. -->
+    <div class="field" id="rnTestField" hidden>
+      <div class="logdays setrow"><span class="hint grow" id="rnTestHint">Test tries a read and a dry-run push with this, which sends nothing.</span>
+        <button type="button" id="rnTest">Test</button></div>
+      <div class="hint" id="rnTestOut" hidden></div>
+    </div>
+    <!-- Where the remote points, for the same repository at a new address:
+         an owner or an organization renamed on the host. Before this the
+         way to move was Unlink, which takes the token and the push rights
+         with it (projects.set_address). -->
+    <div class="field" id="rnAddrField" hidden>
+      <label for="rnAddr">Repository address<span class="help" data-tip="the same repository's new address after its owner was renamed on the host; its token, key and push rights move with it" tabindex="0">?</span></label>
+      <input id="rnAddr" type="text" autocomplete="off" spellcheck="false" inputmode="url">
+      <div class="hint" id="rnAddrHint">Change it after renaming your account or organization on the host. Saving checks it is this repository: another one is refused.</div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:runs"><summary><span class="t">Where it runs</span></summary><div class="body">
     <!-- The project's node: where everything it does on a node goes:
          containers, builds, tests, CI, emulation. One setting, by decision
          (docs/nodes.md §13): per-role pickers were more control than anybody
@@ -3819,41 +4168,17 @@ body.booting .pane>.loading{margin:auto}
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
       <label id="rnNodesLabel" hidden>Also works on</label>
-      <div class="lbox" id="rnNodesMore" role="group" aria-labeledby="rnNodesLabel" hidden></div>
+      <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
       <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
-    </div>
-    <!-- The projects a session here may read (prefs.reads): their trees
-         bound read-only into its view on a node, their notebooks answering
-         to bb from inside them, every write refused. The operator's to
-         name, never a session's. -->
-    <div class="field" id="rnReadsField" hidden>
-      <label id="rnReadsLabel">Reads<span class="help" data-tip="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
-      <div class="lbox" id="rnReads" role="group" aria-labeledby="rnReadsLabel"></div>
-      <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
-    </div>
-    <!-- The places on its node a session here is shown (prefs.sees). A
-         session's view is built from what it is given, so a share mounted
-         on the node is out of it unless it is named here. Whoever may set
-         the project's node may name one. -->
-    <div class="field" id="rnSeesField" hidden>
-      <label for="rnSees">Also sees<span class="help" data-tip="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
-      <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
-    </div>
-    <div class="field" id="rnBuildField">
-      <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
-      <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
-             placeholder="build, e.g. ./gradlew assembleDebug">
-      <input id="rnTestCmd" autocomplete="off" spellcheck="false"
-             placeholder="test, e.g. ./gradlew test">
-      <input id="rnOutputs" autocomplete="off" spellcheck="false"
-             placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
-      <div class="hint">Run from the tree's root on the node; files matching the outputs land in dist/.</div>
-      <!-- What a session looks with lands in dist/ too (a reel's sheet, an
-           emulator shot), under the Artifacts tab's Captures fold, and goes
-           by age rather than by need: nothing can tell whether another
-           session is still reading one (R96). -->
-      <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-tip="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
-        <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
+      <!-- What the project may use there (R102): the card, and where its
+           tests run when it has a dev instance. -->
+      <div class="prefrow">
+        <label class="pick wide">The node's GPU <select id="rnGpu"
+          aria-label="whether this project's sessions, builds and tests may compute on its node's NVIDIA card">
+          <option value="on">may be computed on, where the node has one and allows it</option>
+          <option value="off">is not for this project: it runs as if the machine had none</option>
+        </select></label>
+      </div>
       <!-- Where the tests run, which is this project's business and used to
            be set on the Docker tab, a machine surface it has no other reason
            to visit (R68 step 6). Only for a project that HAS a container to
@@ -3867,6 +4192,88 @@ body.booting .pane>.loading{margin:auto}
         </select>
       </div>
     </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:files"><summary><span class="t">File access</span></summary><div class="body">
+    <!-- The project's tree over FTPS from outside BuilderBot (R151, ftp.py):
+         on, the port, and each account's access. Set by an account with the
+         ftp grant (the owner, until a role names it); anybody else sees
+         whether it is on and where. Staged until Save, like the rest. -->
+    <div class="field" id="rnFtpField" hidden>
+      <label id="rnFtpLabel">Over FTP<span class="help" data-tip="an FTPS server on the project's node, rooted at its tree; each account signs in with its own BuilderBot name and password" tabindex="0">?</span></label>
+      <div id="rnFtp" role="group" aria-labelledby="rnFtpLabel"></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:sees"><summary><span class="t">What a session sees</span></summary><div class="body">
+    <!-- The projects a session here may read (prefs.reads): their trees
+         bound read-only into its view on a node, their notebooks answering
+         to bb from inside them, every write refused. The operator's to
+         name, never a session's. -->
+    <div class="field" id="rnReadsField" hidden>
+      <label id="rnReadsLabel">Reads<span class="help" data-tip="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
+      <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
+      <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
+      <div class="hint bad" id="rnReadsWhy" hidden>Only BuilderBot's owner chooses which other projects a project's sessions may read.</div>
+    </div>
+    <!-- The places on its node a session here is shown (prefs.sees). A
+         session's view is built from what it is given, so a share mounted
+         on the node is out of it unless it is named here. Whoever may set
+         the project's node may name one. -->
+    <div class="field" id="rnSeesField" hidden>
+      <label for="rnSees">Also sees<span class="help" data-tip="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
+      <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
+    </div>
+    <!-- Addresses a session here may still reach where its node keeps each
+         session to its own project's network (prefs.reaches, the operator,
+         7 Oct): a machine, or one port on it, without making the project
+         read another. An administrator's; applied without a restart. -->
+    <div class="field" id="rnReachField" hidden>
+      <label id="rnReachLabel">Also reaches<span class="help" data-tip="on a node that keeps each session to its own project's network, other machines a session here may still reach: an address for the whole machine, or address:port for one service, on the project's nodes you tick. Sessions already running get it at once" tabindex="0">?</span></label>
+      <div id="rnReachRows" role="group" aria-labelledby="rnReachLabel"></div>
+      <div class="rnreachadd"><button type="button" id="rnReachAdd">Add an address</button></div>
+      <div class="hint" id="rnReachHint"></div>
+    </div>
+    <!-- What a session here may read for debugging (prefs.log_from,
+         prefs.diag): nodes' machine logs and the controller's diagnostics.
+         Per project since 6 Oct, set by an account with the debug grant,
+         and not drawn for one without it. -->
+    <div class="field" id="rnDebugField" hidden>
+      <label id="rnDebugLabel">Debug<span class="help" data-tip="what a session here may read while debug mode is on: the controller's diagnostics and these nodes' machine logs" tabindex="0">?</span></label>
+      <div class="lbox" id="rnDebug" role="group" aria-labelledby="rnDebugLabel"></div>
+      <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:build"><summary><span class="t">Build and test</span></summary><div class="body">
+    <div class="field" id="rnBuildField">
+      <label for="rnBuildCmd">Commands<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
+      <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
+             placeholder="build, e.g. ./gradlew assembleDebug">
+      <input id="rnTestCmd" autocomplete="off" spellcheck="false"
+             placeholder="test, e.g. ./gradlew test">
+      <input id="rnOutputs" autocomplete="off" spellcheck="false"
+             placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
+      <div class="hint">Run from the tree's root on the node; files matching the outputs land in dist/.</div>
+      <!-- What a session looks with lands in dist/ too (a reel's sheet, an
+           emulator shot), under the Artifacts tab's Captures fold, and goes
+           by age rather than by need: nothing can tell whether another
+           session is still reading one (R96). -->
+      <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-tip="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
+        <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
+      <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-tip="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
+        <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:signing"><summary><span class="t">Android signing</span></summary><div class="body">
+    <!-- A project's Android signing keys (R106), an administrator's: kept
+         by the controller, never in the tree and never in a session's view.
+         Staged like the rest of this dialog: a picked keystore or a removal
+         is sent when Save is pressed. Download backup is an action. -->
+    <div class="field" id="rnSignField" hidden>
+      <label id="rnSignLabel">Keys<span class="help" data-tip="kept by the controller and used by bb sign on the project's node; a session never receives the key or its password" tabindex="0">?</span></label>
+      <div id="rnSignRows" role="group" aria-labelledby="rnSignLabel"></div>
+      <div class="hint" id="rnSignHint"></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:claude"><summary><span class="t">Claude may</span></summary><div class="body">
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
@@ -3874,26 +4281,28 @@ body.booting .pane>.loading{margin:auto}
          (the operator, 25 Sep): what a session enters, what it runs, and
          what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
-      <label id="rnGateLabel">Claude settings</label>
-      <div class="prefrow" role="group" aria-labeledby="rnGateLabel">
-        <label class="pick wide">During a test run, a change asked for <select id="rnTestChange"
+      <label id="rnGateLabel">While a test runs</label>
+      <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
+        <label class="pick wide">A change asked for <select id="rnTestChange"
           aria-label="what a change asked for during a test run does">
           <option value="wait">waits: the ask in hand is finished and tested first</option>
           <option value="restart">interrupts any test run for the new ask</option>
         </select></label>
       </div>
-      <label id="rnGateMayLabel" class="sub dim">Claude may</label>
-      <div class="prefrow" role="group" aria-labeledby="rnGateMayLabel">
+      <label id="rnGateMayLabel">Permissions</label>
+      <div class="prefrow" role="group" aria-labelledby="rnGateMayLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
           aria-label="new bug reports from a session"></select></label>
         <label class="pick">Add rules <select id="rnGateRules"
           aria-label="new house rules from a session"></select></label>
-        <label class="pick">Fill in build and test <select id="rnGateSettings"
-          aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Add to the design <select id="rnGateDesign"
           aria-label="the design language and pages saved from a session"></select></label>
+        <label class="pick">Write the wiki <select id="rnGateWiki"
+          aria-label="wiki pages written or removed by a session"></select></label>
+        <label class="pick">Fill in build and test <select id="rnGateSettings"
+          aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
              when there is none, remove it (devbuild; the Docker row says
              what it is set to). Deny by default. -->
@@ -3902,11 +4311,36 @@ body.booting .pane>.loading{margin:auto}
         <!-- bb report, which sends BuilderBot's own problems to its
              maintainers rather than this project's tracker. Off for the
              project that IS BuilderBot, whose tracker they belong in. -->
+        <!-- bb sign (R106): a build signed with one of the project's keys,
+             which the session never receives. Ask by default; Ask waits for
+             the project's owner. -->
+        <label class="pick">Sign a build <select id="rnGateSign"
+          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
+        <!-- bb version release (R138): the tag on this commit and the
+             forge's release, made on the controller with the project's
+             credentials. Ask by default; Ask waits for the project's owner.
+             Named apart from signing, which is a build, not a release. -->
+        <label class="pick">Tag and publish a release <select id="rnGateRelease"
+          aria-label="tagging this commit and publishing the release, from a session"></select></label>
+        <!-- A new generated key, or an app's package mapped to a key, from a
+             session (R106 step 6). Ask by default: a new sideload key is an
+             app's identity for good. -->
+        <label class="pick">Manage signing keys <select id="rnGateKeys"
+          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
+        <!-- Who may move the version: version.py's policy, the same setting
+             the Artifacts tab's version row writes. Here too, because an
+             owner who set every dial on this panel to auto still found the
+             version locked (report #48, 3 Oct). Its own words, not
+             Auto/Ask/Deny: a policy says how far, not whether to ask. -->
+        <label class="pick">Move the version <select id="rnGateVersion"
+          aria-label="moving the project's version, from a session"></select></label>
         <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:yours"><summary><span class="t">Yours on this project</span></summary><div class="body">
     <!-- YOURS, not the project's, and last so that is legible from the
          shape of the dialog rather than only from the words. Everything
          above changes what the project does for everybody; nothing here
@@ -3914,9 +4348,9 @@ body.booting .pane>.loading{margin:auto}
          uid in claude-prefs.json, applied as launch flags by bb-tty for the
          model and as git's environment for the author. -->
     <div class="field" id="rnMineField">
-      <label id="rnMineLabel">Yours on this project<span class="help" data-tip="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
+      <label id="rnMineLabel">Your sessions and commits<span class="help" data-tip="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
       <div class="hint">Yours alone; everything above is the project's.</div>
-      <div class="prefrow" role="group" aria-labeledby="rnMineLabel">
+      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Model <select id="rnModel"
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="rnEffort"
@@ -3935,23 +4369,26 @@ body.booting .pane>.loading{margin:auto}
         </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
-      <div class="prefrow" role="group" aria-labeledby="rnMineLabel">
+      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Commit name <input id="rnGitName" type="text"
           autocomplete="off" spellcheck="false" maxlength="120"
           aria-label="name your commits here carry"></label>
         <label class="pick">Commit email <input id="rnGitEmail" type="text"
-          autocomplete="off" spellcheck="false" maxlength="200"
+          autocomplete="off" spellcheck="false" maxlength="120"
           aria-label="email your commits here carry"></label>
       </div>
       <div class="hint" id="rnGitHint"></div>
     </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:sessions"><summary><span class="t">Sessions on this project</span></summary><div class="body">
     <!-- Every account's sessions on the project, for an administrator, each
          with End (page-projsessions.js). At the foot because the operator
          asked for it there, and apart from the settings: End acts at once. -->
     <div class="field" id="rnSessField" hidden>
-      <label>Sessions on this project</label>
+      <label>Running now</label>
       <div id="rnSessList"></div>
     </div>
+    </div></details>
     <!-- Save pressed with a change a running session takes only when it
          starts (its model and effort, its author, the projects it reads
          and the places it sees, its node, what its briefing says): named
@@ -3991,7 +4428,7 @@ body.booting .pane>.loading{margin:auto}
      compose file and an environment, and that is what this asks for. Labels
      are not a fourth box: in compose they live in the YAML, and a separate
      field for them would be inventing a concept the format does not have. -->
-<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="cTitle">
+<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cTitle">
   <div class="box wide">
     <h3 id="cTitle">New container</h3>
     <div class="field">
@@ -4014,7 +4451,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="field">
       <label id="cSegLabel">Definition</label>
-      <div class="pseg" role="group" aria-labeledby="cSegLabel">
+      <div class="pseg" role="group" aria-labelledby="cSegLabel">
         <button id="cTabForm" class="on" type="button">From an image</button>
         <button id="cTabYml" type="button">Compose</button>
         <button id="cTabEnv" type="button">Environment</button>
@@ -4063,7 +4500,7 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </div>
 
-<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="dnTitle">
+<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
   <div class="box wide">
     <h3 id="dnTitle">Send to Docker manager</h3>
     <div class="field">
@@ -4114,7 +4551,7 @@ body.booting .pane>.loading{margin:auto}
      project: every held change with a checkbox, a master checkbox, and the
      two verbs at the foot. Approve replays the ticked ones in the order they
      were made; Deny drops them and whatever rode behind them. -->
-<div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="pendTitle">
+<div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pendTitle">
   <div class="box wide">
     <h3 id="pendTitle">Waiting for your approval</h3>
     <!-- Each line in a .field, which is where the band inset lives. At box
@@ -4134,7 +4571,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </div>
-<div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="tTitle">
+<div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
   <div class="box">
     <h3 id="tTitle">Deleted projects</h3>
     <!-- In a .field like every other line in every other modal here: that is
@@ -4156,7 +4593,7 @@ body.booting .pane>.loading{margin:auto}
      then the commands that came back. The token is the answer to the form
      and is shown once, so it belongs where the question was asked rather
      than appended to the page behind it. -->
-<div id="ndmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="ndTitle">
+<div id="ndmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="ndTitle">
   <div class="box wide">
     <h3 id="ndTitle">Enroll a node</h3>
     <div id="ndBody"></div>
@@ -4170,28 +4607,73 @@ body.booting .pane>.loading{margin:auto}
 <!-- One container's log, read on demand: the thing a person opens a docker
      list to do (R68 step 2). A dialog because it is a detour you read and
      dismiss, and because a tail belongs nowhere near a row that repaints. -->
-<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="dlTitle">
+<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlTitle">
   <div class="box wide">
     <h3 id="dlTitle">Log</h3>
     <div id="dlBody"></div>
   </div>
 </div>
-<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="setdbgTitle">
+<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
   <div class="box">
     <h3 id="setdbgTitle">Debug settings</h3>
     <div id="setdbgBody"></div>
   </div>
 </div>
-<div id="grmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="grTitle">
-  <div class="box wide">
-    <h3 id="grTitle">Global rules</h3>
-    <div id="grBody"></div>
+<!-- Report a bug in BuilderBot, from a project's row (page-report.js): a
+     category, what happened and how to make it happen, sent to the
+     diagnostics with the project and the build attached. -->
+<!-- Lending your phone to a project, from its row's Phone button (R120):
+     how long, and Lend. Only the phone's owner is offered it. -->
+<div id="phoneLendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="phoneLendTitle">
+  <div class="box">
+    <h3 id="phoneLendTitle">Lend your phone</h3>
+    <div class="field"><div class="hint" id="phoneLendHint"></div></div>
+    <div class="field"><label for="phoneLendFor">For</label>
+      <select id="phoneLendFor">
+        <option value="1">1 hour</option>
+        <option value="4">4 hours</option>
+        <option value="0">until I take it back</option>
+      </select></div>
+    <div class="foot"><span class="sp"></span>
+      <button id="phoneLendGo" class="primary">Lend</button>
+      <button id="phoneLendCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+<div id="reportModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+  <div class="box">
+    <h3 id="reportTitle">Report a bug</h3>
+    <div class="field">
+      <label for="reportCat">Category</label>
+      <select id="reportCat"></select>
+    </div>
+    <div class="field">
+      <label for="reportText">What happened</label>
+      <textarea id="reportText" maxlength="2000" placeholder="what you did, what you expected, and what happened instead"></textarea>
+    </div>
+    <div class="field">
+      <label for="reportRepro">How to make it happen <span class="dim">(optional)</span></label>
+      <textarea id="reportRepro" maxlength="2000" placeholder="the steps, if you know them"></textarea>
+      <div class="hint" id="reportHint">It goes to the diagnostics with this project, its node and the build it was seen on, where whoever maintains BuilderBot reads it.</div>
+    </div>
+    <!-- A project's report can carry the reporter's latest conversation on
+         it (the operator, 2 Oct): what Claude was doing is usually the
+         bug. Off unless ticked; the line under says which one it is. -->
+    <div class="field" id="reportConvField" hidden>
+      <label class="ndcap"><input type="checkbox" id="reportConv"> Include my latest conversation on this project</label>
+      <div class="sub" id="reportConvWhich"></div>
+    </div>
+    <div class="field" id="reportErrWrap" hidden><div class="hint bad" id="reportErr"></div></div>
+    <div class="foot"><span class="sp"></span>
+      <button id="reportSend" class="primary">Send</button>
+      <button id="reportCancel">Cancel</button>
+    </div>
   </div>
 </div>
 <!-- A new project's first Claude session: its brief, editable, and the
      model and effort that session starts on, since nothing has started yet.
      Its declarations are page-claude.js. -->
-<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="briefTitle">
+<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="briefTitle">
   <div class="box">
     <h3 id="briefTitle">First session</h3>
     <div class="field">
@@ -4201,7 +4683,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="field">
       <label id="briefMineLabel">Yours on this project</label>
-      <div class="prefrow" role="group" aria-labeledby="briefMineLabel">
+      <div class="prefrow" role="group" aria-labelledby="briefMineLabel">
         <label class="pick">Model <select id="briefModel"
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="briefEffort"
@@ -4216,12 +4698,12 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </div>
-<div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="pTitle">
+<div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
     <div class="field" id="pSrcField">
       <label id="pSrcLabel">Source</label>
-      <div class="pseg" role="group" aria-labeledby="pSrcLabel">
+      <div class="pseg" role="group" aria-labelledby="pSrcLabel">
         <button id="pLocal" class="on" type="button">New local repo</button>
         <button id="pClone" type="button">Clone a repository</button>
       </div>
@@ -4262,19 +4744,31 @@ body.booting .pane>.loading{margin:auto}
          the settings dialog changes it afterwards. -->
     <div class="field" id="pGateField" hidden>
       <label id="pGateLabel">Claude may</label>
-      <div class="prefrow" role="group" aria-labeledby="pGateLabel">
+      <div class="prefrow" role="group" aria-labelledby="pGateLabel">
         <label class="pick">Add to roadmap <select id="pGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="pGateBugs"
           aria-label="new bug reports from a session"></select></label>
         <label class="pick">Add rules <select id="pGateRules"
           aria-label="new house rules from a session"></select></label>
-        <label class="pick">Fill in build and test <select id="pGateSettings"
-          aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Add to the design <select id="pGateDesign"
           aria-label="the design language and pages saved from a session"></select></label>
+        <label class="pick">Write the wiki <select id="pGateWiki"
+          aria-label="wiki pages written or removed by a session"></select></label>
+        <label class="pick">Fill in build and test <select id="pGateSettings"
+          aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Run its container <select id="pGateDocker"
           aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
+        <!-- The rest of the project settings' Claude may, so a project is
+             born with every one of them chosen rather than found later. -->
+        <label class="pick">Sign a build <select id="pGateSign"
+          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
+        <label class="pick">Tag and publish a release <select id="pGateRelease"
+          aria-label="tagging a commit and publishing the release, from a session"></select></label>
+        <label class="pick">Manage signing keys <select id="pGateKeys"
+          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
+        <label class="pick">Report BuilderBot bugs <select id="pGateReport"
+          aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
@@ -4344,7 +4838,7 @@ body.booting .pane>.loading{margin:auto}
          settings dialog switches between. -->
     <div class="field" id="pLinkAuthField" hidden>
       <label id="pLinkAuthLabel">Authentication</label>
-      <div class="pseg" role="group" aria-labeledby="pLinkAuthLabel">
+      <div class="pseg" role="group" aria-labelledby="pLinkAuthLabel">
         <button id="pLinkKey" type="button" class="on">Deploy key</button>
         <button id="pLinkToken" type="button">Access token</button>
       </div>
@@ -4360,7 +4854,7 @@ body.booting .pane>.loading{margin:auto}
       <select id="pKey"></select>
       <div class="hint" id="pKeyHint"></div>
       <div id="pPubWrap" hidden>
-        <textarea id="pPub" readonly rows="3" aria-label="public key"></textarea>
+        <div id="pPub" tabindex="0" aria-label="the deploy key's public half"></div>
         <button id="pCopy" type="button">Copy public key</button>
       </div>
     </div>
@@ -4424,6 +4918,16 @@ body.booting .pane>.loading{margin:auto}
   </button>
   <div id="bellPanel" class="bellpanel" hidden role="dialog"
        aria-label="notifications"></div>
+  <!-- Report a bug in BuilderBot about no project in particular (the
+       operator, 2 Oct); a project's own is on its row. The same dialog,
+       page-report.js, with no project. -->
+  <button id="bReport" onclick="openReport('')" aria-label="report a bug"
+          title="report a bug in BuilderBot: it goes to the diagnostics">
+    <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
+      <ellipse cx="8" cy="9.4" rx="3.3" ry="4"/><path d="M6.3 5.7a1.7 1.7 0 0 1 3.4 0"/>
+      <path d="M8 6.1v7.2M4.7 8.2 2.4 7.3M4.7 10.6H2.2M5.1 12.6l-1.8 1.4M11.3 8.2l2.3-.9M11.3 10.6h2.5M10.9 12.6l1.8 1.4M6.6 4.3 5.4 2.8M9.4 4.3l1.2-1.5"/>
+    </svg>
+  </button>
   <button id="bAbout" aria-haspopup="dialog" aria-label="about this BuilderBot"
           title="about this BuilderBot">
     <span class="meta" id="build"></span>
@@ -4433,7 +4937,6 @@ body.booting .pane>.loading{margin:auto}
       <path d="M7.8 12.05h.02"/>
     </svg>
   </button>
-  <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-haspopup="menu" aria-expanded="false"
           aria-label="settings"
           title="settings: the color scheme, the cards, and the logs">
@@ -4473,6 +4976,14 @@ body.booting .pane>.loading{margin:auto}
        keep up there lives in its body now: a button inside a drag handle is
        a fight over what a press means. -->
   <div class="col side">
+    <!-- Projects first: they are what a person comes here for, and below
+         Doctor, Tools, Administration and Runner they were under the fold
+         on a laptop (R119, 4 Oct). An arrangement somebody dragged is kept;
+         this is the order a new one, or Reset cards, starts from. -->
+    <div class="card" data-card="projects">
+      <h2>Projects</h2>
+      <div id="projects"><div class="loading">loading…</div></div>
+    </div>
     <div class="card doctor" data-card="doctor">
       <h2>Doctor</h2>
       <div id="docBar" class="docbar">
@@ -4481,11 +4992,6 @@ body.booting .pane>.loading{margin:auto}
         <span id="docWhen"></span>
         <button id="bDoctor" title="run bb doctor now">↻</button>
       </div>
-      <!-- The one piece of container health with an action attached. Signing
-           in wants a browser and a code pasted back, so it opens a terminal;
-           signing out is one command with no conversation in it, so it is a
-           button. -->
-      <div class="docbar" id="docAuth" hidden></div>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
     <!-- What this container can install. Its own card rather than a corner
@@ -4496,14 +5002,20 @@ body.booting .pane>.loading{margin:auto}
       <h2>Tools</h2>
       <div class="macros">
         <!-- Alphabetical, so a new one has one place to go. -->
+        <!-- Analysis, as the tab it opens and the notebook's view are called
+             (R119 step 6: one name per thing). -->
+        <button id="bFindings" onclick="openFindingsTab()">Analysis</button>
+        <button id="bRunner" onclick="openRunnerTab()">CI runner</button>
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bEmulator" onclick="openEmulator()">Emulator</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bPhone" onclick="openPhoneTab()">Phone</button>
-        <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
       </div>
+      <!-- Why a ghosted tool is ghosted, on the card: a tip is nothing on a
+           phone (R119 step 6). -->
+      <div class="sub bad toolwhy" id="toolsWhy" hidden></div>
     </div>
     <!-- What only an administrator touches: the controller's own settings
          and the accounts. An account that is not one does not see the card
@@ -4512,6 +5024,7 @@ body.booting .pane>.loading{margin:auto}
       <h2>Administration</h2>
       <div class="macros">
         <button id="bSettings" onclick="openSettingsTab()">Controller settings</button>
+        <button id="bRoles" onclick="openRolesTab()">Roles</button>
         <button id="bUsers" onclick="openUsersTab()">Users</button>
       </div>
     </div>
@@ -4519,18 +5032,18 @@ body.booting .pane>.loading{margin:auto}
       <h2>Runner</h2>
       <div id="runner"><div class="loading">loading…</div></div>
     </div>
-    <div class="card" data-card="projects">
-      <h2>Projects</h2>
-      <div id="projects"><div class="loading">loading…</div></div>
-    </div>
   </div>
 
   <div class="col term">
     <div class="tabstrip">
+      <!-- On a phone the strip is this: the tab on show, and the rest in a
+           list under it (R119 step 5). Drawn by drawTabPick. -->
+      <button class="tabpick" id="tabPick" type="button" aria-haspopup="true" aria-expanded="false"></button>
       <button class="tscroll" id="tabL" title="scroll the tab bar">‹</button>
-      <div class="tabbar" id="tabbar"></div>
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="Open tabs"></div>
       <button class="tscroll" id="tabR" title="scroll the tab bar">›</button>
     </div>
+    <div class="tabpicklist" id="tabPickList" role="menu" hidden></div>
     <div class="panes" id="panes">
       <!-- No `active`: that outline says WHICH of two panes has the keyboard
            and belongs to a split, and drawPanes takes it off on the first
@@ -4586,6 +5099,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="tab-jobs.js"></script>
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
+<script src="tab-roles.js"></script>
 <script src="tab-profile.js"></script>
 <script src="tab-toolchains.js"></script>
 <script src="tab-emulator.js"></script>
@@ -4593,6 +5107,8 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
 <script src="page-chat.js"></script>
 <script src="page-motion.js"></script>
+<script src="page-pull.js"></script>
+<script src="page-report.js"></script>
 <script src="page-lists.js"></script>
 <script src="page-cards.js"></script>
 <script src="page-gear.js"></script>
@@ -4605,6 +5121,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="nb-artifacts.js"></script>
 <script src="nb-analysis.js"></script>
 <script src="nb-design.js"></script>
+<script src="nb-wiki.js"></script>
 <script src="nb-rules.js"></script>
 <script src="nb-tests.js"></script>
 <script src="nb-bugs.js"></script>
@@ -4649,8 +5166,12 @@ body.booting .pane>.loading{margin:auto}
 // for the observer's microtask.
 new MutationObserver(ms => {
   for (const m of ms)
-    for (const n of m.addedNodes) if (n.nodeType === 1) proselines(n);
+    for (const n of m.addedNodes) if (n.nodeType === 1){ proselines(n); quietFields(n); }
 }).observe(document.documentElement, {childList: true, subtree: true});
+// ...and the fields a password manager leaves alone (B495), the ones in
+// the markup already as well as the ones drawn later. Declarations in
+// page-state.js.
+quietFields(document.documentElement);
 
 // ---- what a session is called, and whose it is --------------------------
 // Its declarations are page-state.js; nothing of it runs at load.
@@ -4762,7 +5283,16 @@ setInterval(() => {
 // its old spot to its new one. The transform tween is what the eye follows.
 // Its functions are page-motion.js now, with every height tween on the page; what runs at load stays here.
 
-document.querySelectorAll(".modal").forEach(armModal);
+document.querySelectorAll(".modal:not(.inline)").forEach(armModal);
+// Focus in, Tab kept inside, Escape and focus back, for every dialog at
+// once (page-motion.js). Before the page's other keydown listeners, so a
+// dialog's Escape is not also a menu's or an armed arrow's.
+document.addEventListener("keydown", modalKeys);
+// Scroll hints (scrollHints): on any scroll, which does not bubble but is
+// seen on its way down, and on a slow clock for content that grows under a
+// box nobody is scrolling. Only the few hinted boxes are measured.
+addEventListener("scroll", e => { if (e.target?.matches?.(SCROLL_HINTED)) scrollHint(e.target); }, true);
+setInterval(() => { if (!document.hidden) scrollHints(); }, 700);
 // The Tools card carries the tab icons on its buttons; the markup is static,
 // so they are put on once here rather than kept in two places.
 for (const [id, kind] of Object.entries(TOOL_BUTTONS))
@@ -4792,6 +5322,13 @@ $("tabL").onclick = () => $("tabbar").scrollBy({left: -$("tabbar").clientWidth *
 $("tabR").onclick = () => $("tabbar").scrollBy({left:  $("tabbar").clientWidth * .7, behavior: noMotion() ? "instant" : "smooth"});
 $("tabbar").addEventListener("scroll", updateArrows, {passive: true});
 window.addEventListener("resize", updateArrows);
+// The phone's tab picker (R119 step 5): the press opens the list, a press
+// anywhere else or Escape closes it.
+$("tabPick").onclick = e => { e.stopPropagation(); tabPickShow(!tabPickOpen); };
+document.addEventListener("click", e => {
+  if (tabPickOpen && !e.target.closest("#tabPickList, #tabPick")) tabPickShow(false);
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && tabPickOpen) tabPickShow(false); });
 
 // ---- panes -----------------------------------------------------------
 // Its declarations are page-panes.js; what runs at load is below.
@@ -4825,9 +5362,7 @@ $("bAbout").onclick = () => openAbout();
 $("aboutClose").onclick = closeAbout;
 // Escape and the backdrop mean what Close means (B229): the popup opens
 // itself after an update, over whatever the person came to do, and every
-// other dialog on the page lets them out either way.
-$("aboutModal").addEventListener("click", e => { if (e.target === $("aboutModal")) closeAbout(); });
-addEventListener("keydown", e => { if (e.key === "Escape" && !$("aboutModal").hidden) closeAbout(); });
+// other dialog on the page lets them out either way. Escape is modalKeys'.
 document.querySelectorAll(".abswitch button").forEach(b => b.onclick = () => abShow(b.dataset.ab));
 $("aboutModal").onclick = e => {
   if (e.target.id === "aboutModal") closeAbout();
@@ -5047,7 +5582,6 @@ $("briefGo").onclick = () => briefGo(false);
 $("briefSkip").onclick = () => briefGo(true);
 $("briefCancel").onclick = closeBrief;
 $("briefModal").onclick = e => { if (e.target.id === "briefModal") closeBrief(); };
-addEventListener("keydown", e => { if (e.key === "Escape" && !$("briefModal").hidden) closeBrief(); });
 
 // ---- the new-project dialog ---------------------------------------------
 // Its declarations are tab-projects.js; what runs at load is below.
@@ -5065,9 +5599,9 @@ $("pForgeHost").addEventListener("input", pDrawForge);
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
   // falls back to the selection route, which works everywhere a click does.
-  const pub = $("pPub").value;
+  const pub = $("pPub").textContent;
   try { await navigator.clipboard.writeText(pub); }
-  catch { $("pPub").select(); document.execCommand("copy"); }
+  catch { getSelection().selectAllChildren($("pPub")); document.execCommand("copy"); }
   notify("public key copied: paste it under the repo's Settings → Deploy keys");
 };
 $("pCancel").onclick = closeNewProject;
@@ -5100,7 +5634,18 @@ $("cYml").oninput = () => { cYmlTouched = true; };
 $("cTabEnv").onclick = () => cSwitch("env");
 $("cUnder").onchange = cUnderPicked;
 $("dnUnder").onchange = dnNodeSay;
-$("rnNode").onchange = rnFillNodesMore;
+$("rnNode").onchange = () => {
+  // Italic only while the removed node is the one shown (page-projsettings.js).
+  $("rnNode").classList.toggle("removed", !!$("rnNode").selectedOptions[0]?.classList.contains("removed"));
+  rnFillNodesMore();
+};
+// Each Also reaches row ticks among the nodes picked above, so it follows them.
+$("rnNodesMore").addEventListener("change", rnDrawReach);
+$("rnReachAdd").onclick = () => {
+  rnReachSync(); rnReachDraft.push({addr: "", nodes: []});
+  $("rnReachRows").innerHTML = "";
+  rnDrawReach(true);
+};
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };
 $("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };
@@ -5134,10 +5679,13 @@ $("rnAuthToken").onclick = () => rnAuthSet("https");
 // Typing a token can turn the disabled side on: setting one and switching to
 // it is a single intention, and the submit does them in that order.
 $("rnToken").addEventListener("input", rnDrawAuth);
+$("rnTest").onclick = rnTestAuth;
 
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
 $("rnCancel").onclick = closeRename;
+// The settings' sections take turns, one open at a time, as a tab's do.
+wireSections($("rnmodal"));
 $("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
 // ---- creating a project -------------------------------------------------
@@ -5241,6 +5789,10 @@ const ICON_BASE = ICON ? ICON.getAttribute("href") : "";
 // Both are facts this card displays and neither is a fact it owns, which is
 // exactly the shape that used to go stale.
 onRev("prefs", () => refresh());
+// Pull to refresh on a touch screen (page-pull.js): the header's ↻ it replaced.
+wirePull();
+// A lent phone, live (R113): a session's screenshot reaches the Phone tab.
+onRev("phone.lease", () => { if (tabs.some(t => t.kind === "phone")) phFetch(); });
 // Who has a session where, and whether it is working: the light fetch, so
 // the dot beside a name follows a session within seconds.
 onRev("live", () => liveRefresh());
@@ -5353,8 +5905,8 @@ $("modal").onclick = e => { if (e.target.id === "modal") closeEditor(); };
 $("mName").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("mSave").click(); } };
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  if (!$("modal").hidden) closeEditor();
-  if (!$("pmodal").hidden) closeNewProject();
+  // A dialog's Escape is modalKeys' (page-motion.js), which stops the event
+  // before it reaches here.
   // Escape puts an armed arrow down, in whichever notebook holds one. It
   // closes nothing: the notebook is a tab, and tabs are not dismissed by a
   // keystroke.

@@ -101,9 +101,10 @@ def show():
     # its own dials (the review of 26 Sep: the briefing said the refusal
     # names the setting, and nothing here showed it).
     print("  Claude settings:")
-    print(f"    During a test run, a change asked for   {rec.get('test_change') or 'wait'}")
+    print(f"    While a test runs: a change asked for   {rec.get('test_change') or 'wait'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
+    print(f"    Dev builds kept of each (0 keeps all)   {rec.get('dev_keep', 3)}")
     # Every dial, each as it stands. The five the notebook gates are kept
     # together under `gate`, and read from the record's top they were never
     # found: the list showed two dials of seven, and a session told that
@@ -111,11 +112,27 @@ def show():
     # reports from other projects, 29 Sep).
     gate = rec.get("gate") if isinstance(rec.get("gate"), dict) else {}
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
-                       ("Fill in build and test", "settings"), ("Add to the design", "design")):
+                       ("Fill in build and test", "settings"), ("Add to the design", "design"),
+                       ("Write the wiki", "wiki")):
         print(f"    Claude may: {label:<28} {gate.get(key) or 'auto'}")
     for label, key, dflt in (("Run its container", "devbuild", "deny"),
-                             ("Report BuilderBot bugs", "report", "auto")):
+                             ("Report BuilderBot bugs", "report", "auto"),
+                             # R106: signing a build, and its keys and mapping.
+                             ("Sign a build", "sign", "ask"),
+                             ("Manage signing keys", "keys", "ask"),
+                             # R138: the tag and the forge's release.
+                             ("Tag and publish a release", "release", "ask")):
         print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
+    # Who may move the version is version.py's policy rather than a prefs
+    # dial, and an owner who set every dial above to auto still found it
+    # locked (report #48): printed with them, in the dial's own words.
+    try:
+        version = dash.load("version", here)
+        version.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state,
+                          write_json=lambda *a: None)
+        print(f"    Claude may: {'Move the version':<28} {version.policy(proj)}")
+    except Exception as e:  # noqa: BLE001 (an unreadable policy is said, not a crash)
+        print(f"    Claude may: {'Move the version':<28} unknown ({str(e)[:60]})")
 
 
 {"set": set_field, "show": show}[verb]()

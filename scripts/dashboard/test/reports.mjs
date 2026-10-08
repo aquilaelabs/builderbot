@@ -1,12 +1,13 @@
 // Problems with BuilderBot itself, reported by a session on any project
 // (reports.py, bb report; the operator, 24 Sep). A session files one instead
 // of putting it in its own project's tracker, as a shipped rule tells it to;
-// the report waits on the controller, is read in the diagnostics behind their
-// gate, and is filed into a tracker or closed from there; the session that
-// made it reads what became of it. No browser: it is an API and a verb.
-import { launch, newPage, ready, ok, done, saveDialog, URL, DIR } from './lib.mjs';
+// the report waits on the controller and is read in the diagnostics behind
+// their gate, a log a person clears. Nothing goes back to the session that
+// made it: that loop worked only where BuilderBot's own tracker sat beside
+// the sessions reporting to it (the operator, 8 Oct).
+import { launch, newPage, ready, ok, done, saveDialog, URL, DIR, unfold } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const base = URL.replace(/\/$/, '');
@@ -28,37 +29,25 @@ const made = await call('/api/reports', { action: 'add', text: 'bb test ran the 
   area: 'bb test', repro: 'the log said token=bbs_abcdefgh12345678 and found no tests' }, ALPHA);
 ok(made.status === 200 && made.ok && made.id > 0, `a session reports a problem with BuilderBot (${JSON.stringify(made)})`);
 const stored = JSON.parse(readFileSync(`${DIR}/state/reports.json`, 'utf8')).reports.find(r => r.id === made.id) || {};
-ok(stored.project === 'alpha' && stored.state === 'open' && /redacted/.test(stored.repro)
+ok(stored.project === 'alpha' && !('state' in stored) && /redacted/.test(stored.repro)
    && !/bbs_abcdefgh/.test(JSON.stringify(stored)),
-   `...stored as the project's, open, with anything shaped like a credential redacted (${stored.repro})`);
+   `...stored as the project's, a line in a log, with anything shaped like a credential redacted (${stored.repro})`);
 const empty = await call('/api/reports', { action: 'add', text: '   ' }, ALPHA);
 ok(empty.status === 400 && /say what happened/.test(empty.error || ''), 'a report with no words is refused');
 
 // ---- who reads it ------------------------------------------------------------------
-const mine = await call('/api/reports', { action: 'mine' }, ALPHA);
-const theirs = await call('/api/reports', { action: 'mine' }, BETA);
-ok((mine.reports || []).some(r => r.id === made.id) && !(theirs.reports || []).some(r => r.id === made.id),
-   'the session that reported it reads it, and another project\'s session does not');
 const listed = await call('/api/reports', { action: 'list' }, BETA);
 ok(listed.status === 403, `...nor may a session list everybody's, outside the diagnostics' gate (${listed.error})`);
 const diag = await call('/api/diag', { sections: ['reports'] });
 const seen = (diag.reports || []).find(r => r.id === made.id);
 ok(seen && seen.project === 'alpha' && /inside the dev instance/.test(seen.text) && seen.when,
-   `the diagnostics carry the open reports, whose and when (${JSON.stringify(seen || diag).slice(0, 120)})`);
+   `the diagnostics carry the reports, whose and when (${JSON.stringify(seen || diag).slice(0, 120)})`);
 
-// ---- answered from there -------------------------------------------------------------
-const filed = await call('/api/reports', { action: 'filed', id: made.id, bug: 'B9' });
-const after = (await call('/api/reports', { action: 'mine' }, ALPHA)).reports.find(r => r.id === made.id);
-ok(filed.ok && after.state === 'filed' && !('bug' in after) && !('done_by' in after)
-   && !((await call('/api/diag', { sections: ['reports'] })).reports || []).some(r => r.id === made.id),
-   'filing it records the bug it became; its session reads that it was filed and not the number, which is another notebook\'s (B317), and it leaves the open list');
-const second = await call('/api/reports', { action: 'add', text: 'the briefing names a verb that is gone' }, ALPHA);
-const closed = await call('/api/reports', { action: 'close', id: second.id, why: 'the verb is there: bb map -h' });
-const again = await call('/api/reports', { action: 'close', id: second.id, why: 'twice' });
-ok(closed.ok && again.status === 400 && /already closed/.test(again.error || ''),
-   `closing one takes a reason, and a closed one stays closed (${again.error})`);
-const noWhy = await call('/api/reports', { action: 'close', id: made.id + 100, why: '' });
-ok(noWhy.status === 400, 'a close with no reason is refused');
+// ---- and nothing answers one ---------------------------------------------------------
+const gone = await Promise.all(['mine', 'filed', 'close'].map(action =>
+  call('/api/reports', { action, id: made.id, bug: 'B9', why: 'x' }, action === 'mine' ? ALPHA : ADMIN)));
+ok(gone.every(r => r.status >= 400) && (await call('/api/reports', { action: 'get', id: made.id })).text,
+   `no report is read back by its session, filed or closed: it stays in the log as it was (${gone.map(r => r.status)})`);
 
 // ---- the verb ------------------------------------------------------------------------
 // As a session on a node runs it: its token, its project, the controller's address.
@@ -68,29 +57,22 @@ const bb = (args, env, cwd) => spawnSync('bash', [`${REPO}/scripts/bb`, ...args]
   { encoding: 'utf8', env, cwd: cwd || `${DIR}/ws/alpha`, timeout: 60000 });
 const said = bb(['report', 'bb map build wrote .bb-map into the tree unignored', '--area', 'bb map'], node);
 ok(said.status === 0 && /reported #\d+/.test(said.stdout), `bb report sends one from a session (${(said.stdout + said.stderr).trim()})`);
+ok(/nothing more is needed/.test(said.stdout), '...and says nothing more is needed from the session');
 const list = bb(['report'], node);
-ok(list.status === 0 && /filed in BuilderBot's tracker/.test(list.stdout) && !/B9/.test(list.stdout) && /bb map build wrote/.test(list.stdout),
-   `...and bb report alone says what became of the project's reports (${list.stdout.replace(/\s+/g, ' ').slice(0, 120)})`);
-// Filed from BuilderBot's side, through bb bug add, as an administrator.
-const id = Number((said.stdout.match(/#(\d+)/) || [])[1]);
+ok(list.status !== 0 && /say what went wrong/.test(list.stderr),
+   `bb report alone asks for the words, with no listing of what became of earlier ones (${list.stderr.trim().slice(0, 100)})`);
 const admin = { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_AUTH: 'test:test',
                 BB_CONTROLLER: base, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` };
-const fil = bb(['report', 'file', String(id), '--sev', 'low'], admin);
-const bugNo = (fil.stdout.match(/report #\d+ is (B\d+) now/) || [])[1];
-const bug = bugNo && JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')).projects.alpha
-  .find(b => `B${b.id}` === bugNo);
-ok(fil.status === 0 && bug && /bb map build wrote/.test(bug.title) && /report #\d+/.test(bug.repro || '')
-   && (await call('/api/reports', { action: 'get', id })).bug === bugNo,
-   `bb report file N files it through bb bug add and marks it with the bug it became (${(fil.stdout + fil.stderr).trim().slice(-140)})`);
 
 // ---- where a session is told --------------------------------------------------------
 const p = await call('/api/preamble?project=alpha');
 const text = p.text || '';
-ok(text.split('goes to `bb report').length === 2 && /`bb report` alone lists/.test(text) && !/report-builderbot/.test(text),
+ok(text.split('goes to `bb report').length === 2 && /nothing comes back/.test(text) && !/report-builderbot/.test(text),
    'a session is told once, by the briefing\'s own words and not a rule, where BuilderBot\'s problems go and what the verb does');
 // ...and stopped when it files one in its own tracker anyway: asked, before
 // anything is filed, since a line said afterwards was not enough (24 Sep).
-const bugsNow = () => (JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')).projects.alpha || []).length;
+const bugsNow = () => { try { return (JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')).projects.alpha || []).length; }
+                        catch { return 0; } };   // (none filed yet: no file)
 const had = bugsNow();
 const own = bb(['bug', 'add', 'bb devapp status says the env is the operator\'s'],
                { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
@@ -101,9 +83,18 @@ const colon = bb(['bug', 'add', 'bb: tests preflight runs every suite', '--sev',
                  { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(colon.status !== 0 && bugsNow() === had,
    '...however the verb is written (bb: ..., `bb`, bb-tty), and the severity is not read as words');
+// A repro that uses bb is how a project's own bug is shown, not a sign it is
+// BuilderBot's: two of MediaReducer's were stopped for one (7 Oct).
+const byRepro = bb(['bug', 'add', 'the dashboard repaints after it loads', '--repro', 'record it with bb capture reel'],
+                   { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(byRepro.status === 0 && /filed B\d+/.test(byRepro.stdout) && bugsNow() === had + 1,
+   `...and a repro that uses bb does not make it BuilderBot's (${(byRepro.stdout + byRepro.stderr).trim().slice(0, 80)})`);
+const helped = bb(['bug', 'add', '-h'], { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(helped.status === 0 && /bb bug/.test(helped.stdout) && bugsNow() === had + 1,
+   '...and bb bug add -h prints the help rather than filing a bug called -h');
 const mine2 = bb(['bug', 'add', 'bb build fails because this project pins an old compiler', '--here'],
                  { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
-ok(mine2.status === 0 && /filed B\d+/.test(mine2.stdout) && bugsNow() === had + 1,
+ok(mine2.status === 0 && /filed B\d+/.test(mine2.stdout) && bugsNow() === had + 2,
    `...while --here files one that is the project's own (${mine2.stdout.trim().slice(0, 80)})`);
 // ---- off for a project, in its settings -------------------------------------------
 // Claude may: Report BuilderBot bugs. BuilderBot's own project has it off:
@@ -144,16 +135,15 @@ ok(true, '...and saving the dialog turns it off');
 await setReport('auto');
 
 // ---- cleared from Controller settings --------------------------------------------------
-// The operator, 24 Sep: a button there to clear them. Every one goes, open
-// ones included, after a confirm that says how many are still open; the
-// numbers carry on, and a session may not do it.
+// The operator, 24 Sep: a button there to clear them. Every one goes after a
+// confirm that says how many; the numbers carry on, and a session may not.
 const bySession = await call('/api/reports', { action: 'clear' }, ALPHA);
 ok(bySession.status === 403 && /a person's, from Controller settings/.test(bySession.error || '')
    && (await call('/api/reports', { action: 'count' })).all > 0,
    `a session may not clear them (${bySession.error})`);
 await call('/api/reports', { action: 'add', text: 'one nobody has looked at yet' }, ALPHA);
 const before = await call('/api/reports', { action: 'count' });
-const lastId = Math.max(...(await call('/api/reports', { action: 'list', state: 'all' })).reports.map(r => r.id));
+const lastId = Math.max(...(await call('/api/reports', { action: 'list' })).reports.map(r => r.id));
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('#setReportsClear', { timeout: 15000 });
 page.dialogs.length = 0;
@@ -162,24 +152,130 @@ await page.waitForFunction(async () => (await (await fetch('/api/reports', { met
   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'count' }) })).json()).all === 0,
   null, { timeout: 15000, polling: 300 });
 ok(page.dialogs.length === 1 && new RegExp(`Delete all ${before.all} reports`).test(page.dialogs[0])
-   && before.open === 1 && /1 still open: nobody has filed or closed it/.test(page.dialogs[0]),
-   `Clear reports in Controller settings asks first, naming how many and how many are open (${page.dialogs[0]})`);
+   && !/open/.test(page.dialogs[0]),
+   `Clear reports in Controller settings asks first, naming how many (${page.dialogs[0]})`);
 const next = await call('/api/reports', { action: 'add', text: 'the first one after a clear' }, ALPHA);
 ok(next.id > lastId, `...clears every one, and the next report does not take a number already used (#${next.id} after #${lastId})`);
-// ...and the session whose reports went is told so, with how many and
-// when, rather than that it never made any (B343).
-const afterClear = await call('/api/reports', { action: 'mine' }, ALPHA);
-ok(afterClear.cleared && afterClear.cleared.n >= 1 && afterClear.cleared.at > 0,
-   `mine says how many of the project's reports the operator cleared and when (${JSON.stringify(afterClear.cleared)})`);
-const clearedSaid = execFileSync('bash', [`${REPO}/scripts/bb`, 'report'], { encoding: 'utf8',
-  env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token('alpha'), BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-reports` } });
-ok(/earlier reports? from alpha (was|were) cleared by the operator on .* \(Controller settings\)/.test(clearedSaid) && !/no reports from alpha/.test(clearedSaid),
-   `bb report says it too (${clearedSaid.split('\n')[0].slice(0, 100)})`);
 page.dialogs.length = 0;
 await call('/api/reports', { action: 'clear' });
 await page.click('#setReportsClear');
 await page.waitForFunction(() => /no reports to clear/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
 ok(page.dialogs.length === 0, '...and with none kept, it says so rather than asking');
+// ---- a person's report, from a project's row (the operator, 2 Oct) -------------
+// The bug on the row opens a dialog: a category, what happened, how to make
+// it happen; Send puts it in the diagnostics under that project, marked as
+// from the dashboard, whatever the project's Claude dial says.
+{
+  await page.evaluate(() => openProjectsTab?.());
+  await page.waitForSelector('[data-bug="alpha"]', { timeout: 15000, state: 'attached' });
+  await unfold(page, 'alpha');
+  await page.click('#projects [data-bug="alpha"]');
+  await page.waitForSelector('#reportModal:not([hidden]) #reportCat', { timeout: 10000 });
+  ok(/alpha/.test(await page.$eval('#reportTitle', e => e.textContent))
+     && (await page.$$eval('#reportCat option', os => os.length)) >= 8,
+     'the bug on a project\'s row opens Report a bug, for that project, with a category to pick');
+  await page.click('#reportSend');
+  ok(await page.$eval('#reportErrWrap', e => !e.hidden), '...and Send with nothing said is refused in the dialog');
+  await page.selectOption('#reportCat', 'The notebook');
+  await page.fill('#reportText', 'the wiki tab lost my edit');
+  await page.fill('#reportRepro', 'edit, switch tabs, come back');
+  await page.click('#reportSend');
+  await page.waitForFunction(() => document.getElementById('reportModal').hidden, null, { timeout: 10000 });
+  // What the diagnostics hold, read as they read it (bb diag reports).
+  const diag = await page.evaluate(async () => (await (await fetch('/api/reports', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list' }) })).json()));
+  const rows = diag.reports || [];
+  const mine = (Array.isArray(rows) ? rows : []).find(r => r.text === 'the wiki tab lost my edit');
+  ok(mine && mine.project === 'alpha' && mine.area === 'The notebook' && /from the dashboard/.test(mine.by)
+     && mine.repro === 'edit, switch tabs, come back',
+     `...and Send puts it in the diagnostics under alpha, with its category, marked as from the dashboard (${JSON.stringify(mine || diag).slice(0, 200)})`);
+}
+
+// A project's report can carry the reporter's latest conversation on it
+// (the operator, 2 Oct), ticked in the dialog, redacted, and carried by the
+// diagnostics and their download.
+{
+  const dir = `${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}`;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(`${dir}/feedface-0000.jsonl`, [
+    { type: 'user', message: { role: 'user', content: 'make the wiki keep my edit' }, timestamp: '2026-10-02T10:00:00Z' },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Saving it now. token=ghp_abcdefghijklmnopqrstuvwxyz0123456789' }] }, timestamp: '2026-10-02T10:00:05Z' },
+  ].map(x => JSON.stringify(x)).join('\n') + '\n');
+  await unfold(page, 'alpha');
+  await page.click('#projects [data-bug="alpha"]');
+  await page.waitForSelector('#reportConvField:not([hidden])', { timeout: 10000 });
+  ok(/make the wiki keep my edit/.test(await page.$eval('#reportConvWhich', e => e.textContent))
+     && !(await page.$eval('#reportConv', e => e.checked)),
+     'a project\'s report offers the latest conversation, named, and off until ticked');
+  await page.check('#reportConv');
+  await page.fill('#reportText', 'the session lost the edit');
+  await page.click('#reportSend');
+  await page.waitForFunction(() => document.getElementById('reportModal').hidden, null, { timeout: 15000 });
+  // The download is a zip: diagnostics.json names the file, and the file
+  // is beside it, so a long conversation never swells the report.
+  const zip = await page.evaluate(async () => {
+    const b = new Uint8Array(await (await fetch('/logs/download?what=diag')).arrayBuffer());
+    let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
+    return btoa(s);
+  });
+  const got = JSON.parse(execFileSync('python3', ['-c', `
+import base64, io, json, sys, zipfile
+z = zipfile.ZipFile(io.BytesIO(base64.b64decode(sys.stdin.read())))
+d = json.loads(z.read("diagnostics.json"))
+r = next((x for x in d.get("reports") or [] if x.get("text") == "the session lost the edit"), None)
+f = (r or {}).get("conversation", {}).get("file")
+print(json.dumps({"r": r, "text": z.read(f).decode() if f and f in z.namelist() else ""}))`], { input: zip, encoding: 'utf8' }));
+  const r = got.r;
+  ok(r && r.conversation?.id === 'feedface-0000' && !('conversation_text' in r)
+     && /make the wiki keep my edit/.test(got.text) && /Saving it now/.test(got.text) && !/ghp_abcdefghijklmnop/.test(got.text),
+     `...ticked, it goes with the report: the diagnostics name its file and the download carries it beside them, the token taken out (${JSON.stringify(r?.conversation || null)})`);
+}
+
+// The header's bug is the same dialog about no project in particular (the
+// operator, 2 Oct): any account sends one, and the diagnostics say general.
+{
+  await page.click('#bReport');
+  await page.waitForSelector('#reportModal:not([hidden]) #reportCat', { timeout: 10000 });
+  ok(await page.$eval('#reportTitle', e => e.textContent) === 'Report a bug',
+     'the header\'s bug opens Report a bug for no project');
+  await page.selectOption('#reportCat', 'The dashboard');
+  await page.fill('#reportText', 'the header is crowded on a phone');
+  await page.click('#reportSend');
+  await page.waitForFunction(() => document.getElementById('reportModal').hidden, null, { timeout: 10000 });
+  const all = await page.evaluate(async () => (await (await fetch('/api/reports', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list' }) })).json()));
+  const gen = (all.reports || []).find(r => r.text === 'the header is crowded on a phone');
+  ok(gen && gen.project === '' && gen.area === 'The dashboard' && /from the dashboard/.test(gen.by),
+     `...and Send puts it in the diagnostics with no project, marked as from the dashboard (${JSON.stringify(gen || {}).slice(0, 160)})`);
+}
+
+// ...and only from a project the person works on (the operator, 2 Oct): an
+// administrator shown every project but not on this one cannot start a
+// session there, so has nothing of its to report.
+{
+  execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'repadmin', '--role', 'admin'],
+    { input: 'repadminpass1\nrepadminpass1\n', encoding: 'utf8',
+      env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } });
+  const as = { Authorization: 'Basic ' + Buffer.from('repadmin:repadminpass1').toString('base64'), 'Content-Type': 'application/json' };
+  const send = async p => { const r = await fetch(URL.replace(/\/$/, '') + '/api/reports', { method: 'POST', headers: as,
+    body: JSON.stringify({ action: 'add', project: p, text: 'seen from outside', area: 'Something else' }) }); return { status: r.status, body: await r.json() }; };
+  await page.evaluate(() => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'projects', name: 'repadmin', projects: ['beta'] }) }));
+  const refused = await send('alpha');
+  ok(refused.status === 403 && /not on alpha/.test(refused.body.error || ''),
+     `an administrator not on a project is refused a report from it (${refused.status} ${refused.body.error})`);
+  const fine = await send('beta');
+  ok(fine.status === 200 && fine.body.ok, '...and sends one from a project it is on');
+  // The row draws its bug button from the project's `mine`, which says the
+  // same thing to the page.
+  const st = await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: as })).json();
+  const row = n => (st.projects || []).find(p => p.name === n);
+  ok(row('alpha')?.mine === false && row('beta')?.mine === true,
+     `...and the page is told which rows are its own, so a row it is not on draws no bug button (alpha ${row('alpha')?.mine}, beta ${row('beta')?.mine})`);
+  await page.evaluate(() => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'remove', name: 'repadmin' }) }));
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 
 await done(browser);

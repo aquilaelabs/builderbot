@@ -5,6 +5,11 @@
 
 "use strict";
 
+// A staged bump that moves the compatibility window: minor and major do,
+// patch does not, and only where this project owns the window at all.
+const windowMove = (part, cost) =>
+  (part === "minor" || part === "major") && (cost?.projects || []).length > 0;
+
 function nbArtifactsView({$, nb, project, root, sheet}){
   // ---- artifacts -----------------------------------------------------------
   // What this project has built. Fetched on open like Analysis, and polled
@@ -26,13 +31,13 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     if (src) src.onclick = () => { location.href = "/api/source?project=" + encodeURIComponent(project); };
     // Why Push and Install are ghosted, when they are: the phone is on the
     // project's node and belongs to whoever connected it there.
-    const phoneWhy = !dev ? "no phone is connected on this project's node: connect one on the Phone tab"
+    const phoneWhy = !dev ? "no phone is connected on this project's node: connect one in the Phone tab, on its node"
       : !art.mine ? `connected by ${art.owner?.name || "somebody else"}: only they can push to it or install on it`
       : "";
     const inst = art.install || {};
     hint.textContent = rows.length
       ? `${rows.length} in dist/: what this project ships, newest first`
-      : groups.length ? "nothing in dist/ yet; built on a branch, below" : "nothing here yet";
+      : groups.length ? "0 in dist/; built on a branch, below" : "0 in dist/";
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is
@@ -205,21 +210,50 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         <span class="grow">${esc(inst.what)}${
           inst.error ? `: ${esc(inst.error)}` : ""}</span>
       </div>` : "";
-    list.innerHTML = devHtml + (!rows.length
+    // Dev builds go on their own past the newest few of each (R105): said
+    // once, over the list, where there are any.
+    const keep = art.dev_keep ?? 3;
+    const devNote = rows.some(a => /\d+\.\d+\.\d+-dev\.\d+-[0-9a-f]{7}/.test(a.name))
+      ? `<div class="hint dim">${keep
+          ? `Each product keeps its newest ${keep} builds (the project's settings say how many), a signed build by its signed copy alone; older ones are removed as new ones arrive. A release is kept, and so is anything pinned.`
+          : "Every dev build is kept: this project's settings say so (Dev builds kept)."}</div>` : "";
+    // Sections like the rest of the view (the operator, 6 Oct): the files
+    // were a band of their own under Version, the one part of the tab that
+    // did not fold, and a long list pushed Captures off the screen. The dev
+    // instance is its own; the files are the one a person opens this view
+    // for, so the one left open when nobody has chosen.
+    const filesBody = !rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
-      : jobHtml + instHtml + rows.map((a, i) => `
+      : devNote + jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
             <span class="top"><span class="pill">${esc(a.kind)}</span>
-              <b>${esc(a.name)}</b></span>
+              <b>${esc(a.name)}</b>${a.pinned ? ` <span class="pill on">pinned</span>` : ""}${
+              a.prov?.signed ? ` <span class="pill ok">signed</span>` : ""}</span>
             <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
-              a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span>${
+              a.path !== a.name ? ` · ${esc(a.path)}` : ""}${
+              a.pinned && a.pinned_by ? ` · pinned by ${esc(a.pinned_by)}` : ""}</span>${
+            // A build named with no version (the operator, 6 Oct): the
+            // sweep cannot tell when it is out of date, so it says so, in
+            // the warning color, and offers Remove.
+            a.unversioned ? `<span class="vermark">named with no version, so nothing can tell when it is out of date: name builds with bb version --file</span>` : ""}${
             // What built it, when a job did (docs/nodes.md §6): the job,
             // the node, the snapshot. A file somebody copied in says nothing.
             a.prov ? `<span class="dim">built by ${esc(a.prov.job)} on ${
               esc((nodesList || []).find(n => n.id === a.prov.node)?.name || a.prov.node || "?")}${
               a.prov.source?.digest ? ` from snapshot ${esc(a.prov.source.digest.slice(7, 19))}` : ""}${
-              a.prov.sha256 ? ` · sha256 ${esc(a.prov.sha256.slice(0, 12))}` : ""}</span>` : ""}</span>
+              a.prov.sha256 ? ` · sha256 ${esc(a.prov.sha256.slice(0, 12))}` : ""}</span>` : ""}${
+            // What signed it (R106 step 4): the key, what verified, and the
+            // certificate's whole fingerprint, which a store's metadata asks
+            // for (F-Droid's AllowedAPKSigningKeys) and a person compares.
+            a.prov?.signed ? `<span class="dim">signed with the ${
+              a.prov.signed.key && a.prov.signed.key !== "default" ? `${esc(a.prov.signed.key)} key's ` : ""}${
+              a.prov.signed.route === "play" ? "Play upload key" : "sideload signing key"}${
+              a.prov.signed.from ? ` from ${esc(a.prov.signed.from)}` : ""}${
+              a.prov.signed.schemes?.length ? `, verified ${esc(a.prov.signed.schemes.join(", "))}` : ""}${
+              a.prov.signed.rotated_from ? `, rotated from ${esc(a.prov.signed.rotated_from)}: Android 8.1 and older still see ${esc(a.prov.signed.rotated_from)}` : ""}</span>
+              <span class="artfp">SHA-256 ${esc(a.prov.signed.cert.match(/../g).join(":"))}
+                <button type="button" class="link" data-artfp="${i}" title="the fingerprint as F-Droid's AllowedAPKSigningKeys takes it: lowercase, no colons">Copy for F-Droid</button></span>` : ""}</span>
           <span class="acts">
             ${a.kind === "apk" ? `<button type="button" data-artinstall="${i}"${
                 inst.running || phoneWhy ? " disabled" : ""} title="${
@@ -233,13 +267,27 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                 : !art.webext ? `web-ext is not on ${esc(art.node_name || "the node")}: install it there first`
                 : job.running ? "one push at a time"
                 : "install it on the phone, temporarily"}">Push</button>` : ""}
+            ${(a.kind === "apk" || a.kind === "aab") && !/-signed\.(apk|aab)$/.test(a.name)
+              ? (art.sign_routes || []).map(r => `<button type="button" data-artsign="${i}" data-route="${r}"
+                title="sign it on the project's node with its ${r === "play" ? "Play upload key" : "sideload signing key"}; it arrives beside it as -signed">Sign${
+                  (art.sign_routes || []).length > 1 ? (r === "play" ? " for Play" : " to sideload") : ""}</button>`).join("") : ""}
             ${a.view ? `<button type="button" data-artview="${i}"
                 title="read it here, without downloading it">View</button>` : ""}
+            ${a.unversioned ? `<button type="button" class="danger" data-artunnamed="${i}"
+                title="remove it from dist/ now, for everybody">Remove</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
               }&path=${encodeURIComponent(a.path)}" download>Download</a>
+            <button type="button" class="eye pin${a.pinned ? " on" : ""}" data-artpin="${i}"
+              aria-label="${a.pinned ? "unpin" : "pin"}" title="${a.pinned
+                ? "unpin: it goes like any other build when newer ones arrive"
+                : "pin: keep it, whatever builds come after it"}">${TACK}</button>
           </span>
-        </div>`).join(""));
-    paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
+        </div>`).join("");
+    list.innerHTML = (devHtml ? docSection("artifacts", "dev", "Dev instance",
+                                            da.available === false ? "unreachable" : String(shown.length), devHtml) : "")
+      + docSection("artifacts", "files", "Files", rows.length ? `${rows.length} in dist/` : "none yet", filesBody, {prime: true});
+    wireSections(list);
+    paginate(list.querySelector('[data-sect="artifacts:files"] > .body'), ":scope > .artrow", {key: "artList", noun: "files"});
     // What a session looked with (R96): a reel's sheet, an emulator shot.
     // One fold apart from the files, since they are not what ships, each
     // row saying whose it is and when. They go by age (the project's
@@ -269,7 +317,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
               }&path=${encodeURIComponent(c.path)}" download>Download</a>
             <button type="button" data-artcap="${i}" title="remove it from dist/ now, for everybody">Remove</button>
           </span>
-        </div>`).join(""), {open: false});
+        </div>`).join(""));
       wireSections(capBox);
       capBox.querySelectorAll("[data-artcap]").forEach(b => b.onclick = async () => {
         const c = caps[+b.dataset.artcap];
@@ -290,7 +338,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     if (brList){
       brList.hidden = !brRows.length;
       let at = 0;
-      brList.innerHTML = !brRows.length ? "" : `<div class="hint">Built on a branch. Merge it to main to put its build in dist/.</div>`
+      brList.innerHTML = !brRows.length ? "" : docSection("artifacts", "branches", "Branch builds", String(brRows.length),
+        `<div class="hint">Built on a branch. Merge it to main to put its build in dist/.</div>`
         + groups.map(g => `<div class="sub dim ggroup">${esc(g.who === state?.me ? "your" : `${g.who}'s`)} branch builds${
             g.branch ? `, on ${esc(g.branch)}` : ""}</div>` + g.artifacts.map(a => { const i = at++; return `
           <div class="artrow">
@@ -303,8 +352,11 @@ function nbArtifactsView({$, nb, project, root, sheet}){
               <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
                 }&path=${encodeURIComponent(a.path)}&tree=${encodeURIComponent(g.uid)}" download>Download</a>
             </span>
-          </div>`; }).join("")).join("");
-      paginate(brList, ":scope > .artrow", {key: "artBranches", noun: "files"});
+          </div>`; }).join("")).join(""));
+      if (brRows.length){
+        wireSections(brList);
+        paginate(brList.querySelector('[data-sect="artifacts:branches"] > .body'), ":scope > .artrow", {key: "artBranches", noun: "files"});
+      }
       brList.querySelectorAll("[data-artbview]").forEach(b => b.onclick = async () => {
         const a = brRows[Number(b.dataset.artbview)];
         const pane = document.createElement("div");
@@ -353,6 +405,46 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // A shipped script is a thing people read before they run it, and on a
     // phone a download is the end of that. Over the panel like a History, the
     // text as it is; nothing here runs it, and the tab has no way to.
+    // Sign (R106): a job on the project's node with the project's key,
+    // which never comes near the page either; the signed build arrives in
+    // dist/ beside this one, and the list picks it up when it lands.
+    list.querySelectorAll("[data-artsign]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artsign];
+      if (!a) return;
+      b.disabled = true;
+      const j = await (await postJSON("/api/signing", {action: "sign", project, file: a.path,
+                                                       route: b.dataset.route})).json().catch(() => ({}));
+      if (j.error){ b.disabled = false; return notify(j.error, true); }
+      notify(`signing ${a.name} on the node: it arrives here as ${a.name.replace(/(-unsigned)?\.(apk|aab)$/, "-signed.$2")}`);
+    });
+    list.querySelectorAll("[data-artfp]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artfp];
+      const fp = String(a?.prov?.signed?.cert || "").toLowerCase();
+      try{ await navigator.clipboard.writeText(fp); notify(`copied ${a.name}'s signing fingerprint`); }
+      catch(e){ notify(`copy it by hand: ${fp}`, "warn"); }
+    });
+    list.querySelectorAll("[data-artunnamed]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artunnamed];
+      if (!a || !confirm(`Remove ${a.name} from dist/?\n\nIt is gone for everybody.`)) return;
+      b.disabled = true;
+      try{
+        const j = await (await postJSON("/api/artifacts", {project, action: "forget-unnamed", path: a.path})).json();
+        if (j.error){ b.disabled = false; return notify(j.error, true); }
+        notify(`removed ${a.name}`);
+      }catch(e){ b.disabled = false; return notify(String(e), true); }
+      loadArtifacts();
+    });
+    list.querySelectorAll("[data-artpin]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artpin];
+      if (!a) return;
+      b.disabled = true;
+      try{
+        const j = await (await postJSON("/api/artifacts", {project, action: a.pinned ? "unpin" : "pin", path: a.path})).json();
+        if (j.error){ b.disabled = false; return notify(j.error, true); }
+        notify(j.pinned ? `pinned ${a.name}: it stays` : `unpinned ${a.name}`);
+      }catch(e){ b.disabled = false; return notify(String(e), true); }
+      loadArtifacts();
+    });
     list.querySelectorAll("[data-artview]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artview)];
       const pane = document.createElement("div");
@@ -426,11 +518,21 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // number is its status, so a shut section still answers the question the
     // tab is opened with. They used to be bands separated by a rule, with a
     // wall of bump buttons under each and nothing naming either.
+    // Each VERSION file's section saves and reverts its own staged bump, the
+    // project's also its Claude access (the operator, 5 Oct).
+    all.forEach(v => {
+      const comp = v.component || "";
+      nb.stage(`artifacts:version${comp ? ":" + comp : ""}`, {
+        count: () => (comp in verPending ? 1 : 0) + (!comp && verPolicyPending != null ? 1 : 0),
+        what: () => comp ? `the staged bump of ${comp}` : "the staged version change",
+        save: () => nb.verCommitStaged(comp),
+        revert: () => nb.verClearStaged(comp)});
+    });
     box.innerHTML = all.map(v => docSection("artifacts",
       `version${v.component ? ":" + v.component : ""}`,
-      all.length > 1 ? (v.component || `${v.project} (the project)`) : "Version",
+      all.length > 1 ? (v.component || `${projLabel(v.project)} (the project)`) : "Version",
       v.target || "no VERSION file",
-      verSection(v),
+      verSection(v) + nb.sectBar(`artifacts:version${v.component ? ":" + v.component : ""}`),
       {cls: v.target ? "" : "warn"})).join("");
     wireSections(box);
     // Releasing: outward-facing, and the one thing on this tab other people
@@ -445,9 +547,16 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       busy(b, "Releasing");
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       const j = await postVersion({action: "release", component: comp});
+      // The forge's release beside the tag (R123; Gitea and GitLab since
+      // R124), or why there is none: the tag is pushed either way, so a
+      // forge's no is a note, not a failure.
+      const fg = j?.released?.forge, on = fg?.forge || "the forge";
       if (j?.released?.tag)
         notify(j.released.note
-               || `${j.released.tag} tagged and pushed`);
+               || (fg?.url ? `${j.released.tag} tagged and pushed, and ${fg.made ? "released" : "already released"} on ${on}${
+                     fg.assets?.length ? ` with ${fg.assets.length} build${fg.assets.length === 1 ? "" : "s"}` : ""}`
+                   : `${j.released.tag} tagged and pushed` + (fg?.error ? `; no release on ${on}: ${fg.error}` : "")),
+               !!fg?.error);
     });
     box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verunbump || "";
@@ -462,10 +571,16 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // closure. Rebound on every draw so they always close over this
     // notebook's own state rather than whichever one drew last.
     nb.verStagedCount = () => Object.keys(verPending).length + (verPolicyPending != null ? 1 : 0);
-    nb.verClearStaged = () => { verPending = {}; verPolicyPending = null; drawVersion(); };
-    nb.verCommitStaged = async () => {
-      const parts = Object.entries(verPending);
-      const policy = verPolicyPending;
+    // With a component, that section's alone (its bump, and for the
+    // project's own section its Claude access too); without, all of them.
+    nb.verClearStaged = only => {
+      if (only === undefined){ verPending = {}; verPolicyPending = null; }
+      else { delete verPending[only]; if (!only) verPolicyPending = null; }
+      drawVersion();
+    };
+    nb.verCommitStaged = async only => {
+      const parts = Object.entries(verPending).filter(([comp]) => only === undefined || comp === only);
+      const policy = only === undefined || only === "" ? verPolicyPending : null;
       if (!parts.length && policy == null) return "";
       // A window move is the one thing on this tab that reaches other
       // projects: it ends their sessions. Asked here as well as said on the
@@ -476,8 +591,9 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       if (moves && !confirm(
             `Bump the ${moves[1]}? This moves the compatibility window.\n\n`
             + `Sessions on ${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
-            + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes tab.`)) return "";
-      verPending = {}; verPolicyPending = null;
+            + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes tab.`)) return null;
+      for (const [comp] of parts) delete verPending[comp];
+      if (policy != null) verPolicyPending = null;
       const done = [];
       if (policy != null){
         const j = await postVersion({action: "policy", policy}, true);
@@ -742,6 +858,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
         : (b.dataset.verask || "");
+      if (!sendSure(project, comp ? `the version question for ${comp}` : "the version question")) return;
       busy(b, "Sending");
       try{
         const r = await postJSON("/api/version", {project, action: "ask", component: comp});
@@ -794,6 +911,16 @@ this directory">Send to Claude</button>
 
   // The block for one VERSION file. Its NAME is not in here: the section
   // heading around it carries that, along with the number as its status.
+  function relOf(tag){
+    return (ver?.forge_releases || {})[tag] || {};
+  }
+  function relUrl(tag){
+    // A web address and nothing else (never javascript:); plain http too,
+    // which a Gitea on a LAN serves its releases on (B505).
+    const u = relOf(tag).url || "";
+    return /^https?:\/\//.test(u) ? u : "";
+  }
+
   function verSection(v){
     const f = v.forms || {};
     const staged = verPending[v.component || ""];
@@ -845,6 +972,11 @@ this directory">Send to Claude</button>
               ? line(v.released ? "released as" : "building towards", v.target)
               : line("version", "none yet: no VERSION file; Set one below"))
       + (v.released ? line("tag", v.tag) : "")
+      // The forge's release Release made for this tag (R123, R124).
+      + (v.released && relUrl(v.tag) ? `<div class="verln"><span>on ${esc(relOf(v.tag).forge || "GitHub")}</span><a href="${
+           esc(relUrl(v.tag))}" target="_blank" rel="noopener noreferrer">the ${esc(v.tag)} release</a></div>`
+         // ...or why there is none, the tag left pushed.
+         : v.released && relOf(v.tag).error ? mark(`no release on ${relOf(v.tag).forge || "the forge"}: ${relOf(v.tag).error}`, true) : "")
       + mark(lands.now, lands.bad)
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save: ${esc(staged)}${
@@ -914,8 +1046,8 @@ this directory">Send to Claude</button>
             <input class="vstart" value="0.1.0" size="8" maxlength="20"
               inputmode="decimal" aria-label="starting version"
               pattern="[0-9]+\.[0-9]+\.[0-9]+">
-            <button type="button" data-verinit="${esc(v.component || "")}"
-              title="write a VERSION file at this number and commit it">Set</button>
+            <button type="button" data-verinit="${esc(v.component || "")}"${state?.can?.version === false ? " disabled" : ""}
+              title="${state?.can?.version === false ? "moving a project's version is not one of your roles' grants" : "write a VERSION file at this number and commit it"}">Set</button>
           </span></div>
         <div class="actbar verbtns">
           <button type="button" data-verask="${esc(v.component || "")}"

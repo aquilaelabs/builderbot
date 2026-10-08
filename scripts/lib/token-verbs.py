@@ -9,4 +9,11 @@ import sys
 
 import bbapi
 
-{"keep": lambda: bbapi.keep_token(os.environ["BB_TOKEN"])}[sys.argv[1]]()
+if sys.argv[1:] != ["keep"]:
+    sys.exit("usage: token-verbs.py keep")
+# Said and failed when it was not kept: the agent logs what this prints, and
+# a keep that wrote nothing used to exit 0, so an idle session's token ran
+# out with nothing anywhere saying why (B419).
+why = bbapi.keep_token(os.environ["BB_TOKEN"])
+if why:
+    sys.exit(f"[builderbot] ERROR: the session token was not kept under {os.environ.get('HOME', '?')}: {why}")

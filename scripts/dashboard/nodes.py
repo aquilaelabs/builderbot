@@ -84,9 +84,9 @@ def node_list(all=False):
     # followed the press: pressing() grays it for the round trip, and then
     # the render put a fresh, enabled one in its place. Update agent did
     # exactly that, which is what the operator kept seeing.
-    for j in _rows("SELECT id, node, type, spec FROM jobs WHERE "
+    for j in _rows("SELECT id, node, type, spec, state FROM jobs WHERE "
                    "state IN ('queued', 'assigned', 'running')"):
-        entry = {"id": j["id"], "type": j["type"]}
+        entry = {"id": j["id"], "type": j["type"], "state": j["state"]}
         inflight.setdefault(j["node"], []).append(entry)
         if j["type"] != "system":
             continue
@@ -936,6 +936,35 @@ def _census(c):
     for k in ("gpu_card", "gpu_display"):
         if c.get(k):
             out[k] = str(c[k])[:200]
+    # Where the NVIDIA driver stands (R102): installed for this kernel,
+    # loaded now, and which driver has the card, for the Toolchains tab's
+    # driver row. Absent from an agent too old to say, which the row names.
+    gd = c.get("gpu_driver")
+    if c.get("gpu_card") and isinstance(gd, dict):
+        clean = lambda v, n=60: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:n]  # noqa: E731
+        out["gpu_driver"] = {k: clean(gd.get(k)) for k in
+                             ("installed", "loaded", "bound", "package", "pkg_version", "candidate", "recommended")}
+        # The branches apt offers there, for the row's pulldown: a package
+        # name, its version, and whether it is the open-kernel variant.
+        out["gpu_driver"]["options"] = [
+            {"pkg": clean(o.get("pkg")), "version": clean(o.get("version"), 30), "open": bool(o.get("open"))}
+            for o in (gd.get("options") or [])[:16]
+            if isinstance(o, dict) and DRIVER_PKG.fullmatch(str(o.get("pkg") or ""))]
+    # ...and the container toolkit (R102): the version installed, what apt
+    # would move it to, and whether Docker lists the nvidia runtime.
+    gc = c.get("gpu_container")
+    if c.get("gpu_card") and isinstance(gc, dict):
+        ver = lambda v: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:60]  # noqa: E731
+        out["gpu_container"] = {"installed": ver(gc.get("installed")), "candidate": ver(gc.get("candidate")),
+                                "runtime": bool(gc.get("runtime"))}
+    # The sound it has (R107): ALSA's cards, real and virtual apart, and the
+    # sound server installed. Absent from an agent too old to say.
+    snd = c.get("sound")
+    if isinstance(snd, dict):
+        word = lambda v: re.sub(r"[^A-Za-z0-9 ._()/:+-]", "", str(v or ""))[:80]  # noqa: E731
+        out["sound"] = {"cards": [word(x) for x in (snd.get("cards") or [])[:8]],
+                        "virtual": [word(x) for x in (snd.get("virtual") or [])[:8]],
+                        "server": snd.get("server") if snd.get("server") in ("pipewire", "pulseaudio") else ""}
     # Whether the agent may install system packages there: the stamp and
     # root.
     out["administers"] = bool(c.get("administers"))
@@ -1042,7 +1071,11 @@ def _census(c):
         "interface": str(net.get("interface") or "")[:32],
         "addresses": [str(a)[:64] for a in (net.get("addresses") or [])[:8]],
         "gateway": str(net.get("gateway") or "")[:64],
-        "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]]}
+        "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]],
+        # Its static routes beside the default one (absent from an agent
+        # before 0.7.143, which reads as none reported).
+        "routes": [{"to": str(r.get("to") or "")[:64], "via": str(r.get("via") or "")[:64]}
+                   for r in (net.get("routes") or [])[:32] if isinstance(r, dict)]}
     # The machine's own tools, as the agent detected them: its package
     # manager and the service that owns its network. A system job's spec is
     # the same for every node; this says what the agent there would turn it
@@ -1170,6 +1203,27 @@ def _clean_config(cfg):
             if not _IP.match(d):
                 return None, f"a resolver is an address, not {d!r}"
         n.update(address=addr, gateway=gw, dns=dns[:4])
+    # Static routes (the operator, 7 Oct), in either mode: a network beyond
+    # this one and the router that reaches it, as {to, via} or "TO via VIA".
+    routes = []
+    for r in net.get("routes") or []:
+        if isinstance(r, dict):
+            to, via = str(r.get("to") or "").strip(), str(r.get("via") or "").strip()
+        else:
+            parts = str(r).replace(" via ", " ").split()
+            to, via = (parts + ["", ""])[:2]
+        if not to and not via:
+            continue
+        if not _CIDR.match(to) or to.split("/")[1] in ("0",) or int(to.split("/")[1]) > 32:
+            return None, (f"a route's network is written with its prefix, like 10.20.0.0/24, not {to!r}"
+                          + (" (the default route is the gateway above)" if to.endswith("/0") else ""))
+        if not _IP.match(via):
+            return None, f"a route goes via a router's address, not {via!r}"
+        if {"to": to, "via": via} not in routes:
+            routes.append({"to": to, "via": via})
+    if len(routes) > 32:
+        return None, f"a node takes 32 static routes at most, not {len(routes)}"
+    n["routes"] = routes
     out["network"] = n
     return out, ""
 
@@ -1235,44 +1289,6 @@ LOG_STREAMS = {
                  "argv": ["tail", "-n", "{lines}", "{data}/ttyd.log"]},
 }
 LOG_LINES_MAX = 2000
-
-
-def log_grants(node_id):
-    """The node ids whose machine logs a session on `node_id` may read."""
-    n = node(node_id)
-    return list(((n or {}).get("config") or {}).get("log_from") or [])
-
-
-def diag_granted(node_id):
-    """Whether a session on `node_id` may read the controller's diagnostics
-    (diag.py), which is a tick of its own beside the log grant."""
-    n = node(node_id)
-    return bool(((n or {}).get("config") or {}).get("diag"))
-
-
-def node_log_grant(principal, node_id, from_ids, diag=None):
-    """Set that list. The operator's, and an administrator's: a session token
-    is refused this endpoint the way it is refused the rest of the config
-    plane, or the boundary would be one a session could open for itself."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node has sessions to grant anything to"}
-    have = {x["id"] for x in node_list()}
-    want = [str(x) for x in (from_ids or [])][:32]
-    bad = [x for x in want if x not in have]
-    if bad:
-        return {"error": f"no such node: {bad[0]}"}
-    conf = dict(n.get("config") or {})
-    conf["log_from"] = want
-    # The controller's diagnostics, when the form says (None leaves it).
-    if diag is not None:
-        conf["diag"] = bool(diag)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-log-grant",
-           {"from": want, "self": node_id in want, "diag": bool(conf.get("diag"))})
-    return {"ok": True, "log_from": want, "diag": bool(conf.get("diag"))}
 
 
 def node_turn_limit(principal, node_id, limit):
@@ -1398,11 +1414,12 @@ def turn_limit(node_id):
 
 
 def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
-                  debug_on=False):
+                  debug_on=False, grants=(), project=""):
     """A machine log off `target_id`, for a session running on `asking_id`.
 
     The gate, in order, each refusal saying what would change it: the
-    controller's debug switch, then this node's grant for that node. Past
+    controller's debug switch, then the project's grant for that node
+    (`grants`, its settings' Debug, per project since 6 Oct). Past
     both it is root_wait: the same job, the same log in the Jobs tab, the
     same refusal on a machine that did not enroll as a sandbox. What stands
     in for the approval is the grant, and the job's log says so.
@@ -1410,20 +1427,17 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     if not debug_on:
         return {"error": "debug mode is off, so a machine's logs are not offered "
                          "to any session. Controller settings turns it on, and "
-                         "each node is then granted the nodes it may read"}
+                         "each project is then granted the nodes it may read"}
     if not asking_id:
         return {"error": "this session is not on a node, and the grant is a "
                          "node's; a controller session reads its own log with "
                          "`bb logs`"}
-    a, tgt = node(asking_id), node(target_id)
+    tgt = node(target_id)
     if not tgt:
         return {"error": "no such node"}
-    if target_id not in log_grants(asking_id):
-        me = (a or {}).get("name") or asking_id
-        return {"error": f"{me} has not been granted {tgt['name']}'s machine logs"
-                         + (", not even its own, which is a tick of its own on "
-                            "Debug settings" if asking_id == target_id else
-                            ". Debug settings on its row grants it")}
+    if target_id not in (grants or ()):
+        return {"error": f"{project or 'this project'} has not been granted {tgt['name']}'s "
+                         "machine logs: Debug in its settings grants them"}
     spec = LOG_STREAMS.get(stream)
     if not spec:
         return {"error": "no such log: " + ", ".join(sorted(LOG_STREAMS))}
@@ -1446,8 +1460,8 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
                              f"which is where that log is kept"}
         fills["data"] = str(path).rstrip("/")
     argv = [x.format(**fills) for x in spec["argv"]]
-    why = (f"{(a or {}).get('name') or asking_id} reads {tgt['name']}'s "
-           f"{stream} log, granted on Debug settings, not asked for here")
+    why = (f"{project or asking_id} reads {tgt['name']}'s "
+           f"{stream} log, granted in its settings' Debug, not asked for here")
     return root_wait(principal, target_id, argv, why=why, timeout=120)
 
 
@@ -1527,11 +1541,11 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
         return {"error": "a system job is already in flight on this node; one at a time"}
     ar = dict(runners_of(n).get(slot) or {})
     if not ar:
-        return {"error": "no such runner on this node: add one in the runner section first"}
+        return {"error": "no such runner on this node: add one on the CI runner tab first"}
     url = ar.get("url") or ""
     forge = ar.get("forge") or "github"
     if want and not token:
-        return {"error": "no token stored for this runner: add it in the runner section "
+        return {"error": "no token stored for this runner: add it on the CI runner tab "
                          "first, with the address it registers with"}
     if want and forge not in ("github", "gitea"):
         return {"error": "runners register with GitHub, Gitea or Forgejo: pick one of those "
@@ -1818,9 +1832,9 @@ def node_uninstall(principal, node_id):
 
 def node_gpu_display(principal, node_id):
     """Set the GPU display up on a node from its row (R20): a system job
-    the agent answers with bb-sandbox gpu, which installs the NVIDIA driver
-    and a headless X server on the card and says whether a reboot has to
-    follow. The machine's own answer decides: a node with no card gets that
+    the agent answers with bb-sandbox gpu, which starts a headless X server
+    on the card, on the driver the Toolchains tab installed, and says
+    whether a reboot has to follow. The machine's own answer decides: a node with no card gets that
     said, not refused here."""
     n = node(node_id)
     if not n:
@@ -1830,6 +1844,12 @@ def node_gpu_display(principal, node_id):
     if not (n.get("reported") or {}).get("sandbox"):
         return {"error": "only a node provisioned as a BuilderBot sandbox is set up from here: "
                          "on the machine, sudo bb-sandbox gpu"}
+    # The display runs on the driver and does not install it (R102): the
+    # Toolchains tab's driver row is the one place it is installed.
+    gd = (n.get("reported") or {}).get("gpu_driver")
+    if isinstance(gd, dict) and not gd.get("installed"):
+        return {"error": f"the NVIDIA driver is not installed on {n['name']}: install it on "
+                         "that node's Toolchains tab first; the display runs on it"}
     why = node_locked(n)
     if why:
         return {"error": why}
@@ -1842,6 +1862,56 @@ def node_gpu_display(principal, node_id):
     if r.get("ok"):
         audit(principal, "node-gpu-display", node_id, {"job": r["job"]})
     return r
+
+
+def node_gpu_display_off(principal, node_id):
+    """Stop rendering the emulator on the card (R102): a system job the
+    agent answers with bb-sandbox gpu-off, which stops the headless X
+    server and leaves the driver alone; an emulator there renders in
+    software from its next start."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent" or not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "only a node provisioned as a BuilderBot sandbox is changed from here: "
+                         "on the machine, sudo bb-sandbox gpu-off"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "gpu-off", "config": {}, "timeout": 300})
+    if r.get("ok"):
+        audit(principal, "node-gpu-display-off", node_id, {"job": r["job"]})
+    return r
+
+
+def node_gpu_compute(principal, node_id, on):
+    """Whether sessions and jobs on this node may compute on its NVIDIA
+    card (R102): on unless switched off. Off, a session started there from
+    now on has CUDA told there is no device and the device CUDA needs
+    covered in its view; the emulator's rendering is its own switch."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf.pop("no_gpu_compute", None)
+    else:
+        conf["no_gpu_compute"] = True
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-gpu-compute", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
+# The jobs a Reboot or a Shut down waits for, and how the refusal names each.
+POWER_WAITS = {"toolchain": "a toolchain install or removal", "image": "a system image install",
+               "claude-update": "a Claude Code update"}
 
 
 def node_power(principal, node_id, what):
@@ -1868,6 +1938,14 @@ def node_power(principal, node_id, what):
                          f"machine: {verb} it from its console or its hypervisor"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
+    # ...nor under an install: a restart in the middle of apt, or of a
+    # toolchain being unpacked, leaves it half on the machine (the operator,
+    # 30 Sep). The Toolchains tab's Abort stops one first.
+    busy = [j["type"] for j in jobs_for(node_id=node_id, active=True, n=20)
+            if j.get("type") in POWER_WAITS]
+    if busy:
+        return {"error": f"{POWER_WAITS[busy[0]]} is running on {n['name']}: {verb} it when that has "
+                         "finished, or stop it first"}
     r = job_add(principal, {"node": node_id}, "system",
                 {"apply": what, "config": {}, "timeout": 60})
     if r.get("ok"):
@@ -1952,6 +2030,8 @@ idle_minutes = lambda: 0            # noqa: E731  (idle.minutes, injected by ser
 # their own project's network, and what each project owns there
 # (devapp.session_net_own, joined by server.py).
 session_net_for = lambda nid: None  # noqa: E731
+# A project's file access (ftp.for_node, R151): the servers this node runs.
+ftp_for = lambda nid: []  # noqa: E731
 # server.session_tokens_for: fresh credentials for the Claude sessions alive
 # on one node, so a session idle past its token's life is not locked out of
 # its own controller (R27). Injected, because minting is users.py's and the
@@ -1979,9 +2059,34 @@ def reported_set(nid, key, sub, value):
 # doctor's cached lines about nodes are wrong the moment this happens, and
 # waited out a half-hour cache after a reboot (the operator, 25 Sep).
 came_back = None
+# Nodes whose toolchains are checked on the next turn of the weekly loop
+# rather than at the week (toolchains.node_checks_due): one that came back
+# from offline, or whose agent is a new file, which means it started again
+# (the operator, 6 Oct: check for updates at a node's start up).
+checks_wanted = set()
 
 
-def hello(nid, census, addr, version="", digest="", running=None):
+def keep_clean(keep):
+    """The agent's report on the session tokens it keeps (B419), checked:
+    {said: [{at, key, msg}] (the last eight), ok: when one was last kept}."""
+    if not isinstance(keep, dict):
+        return None
+    said = []
+    for x in (keep.get("said") if isinstance(keep.get("said"), list) else [])[-8:]:
+        if isinstance(x, dict):
+            try:
+                said.append({"at": int(x.get("at") or 0), "key": str(x.get("key") or "")[:80],
+                             "msg": str(x.get("msg") or "")[:300]})
+            except (TypeError, ValueError):
+                continue
+    try:
+        ok = int(keep.get("ok") or 0)
+    except (TypeError, ValueError):
+        ok = 0
+    return {"said": said, "ok": ok}
+
+
+def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
     transports, the poll window, the node's own capabilities (so it can
@@ -1996,12 +2101,20 @@ def hello(nid, census, addr, version="", digest="", running=None):
     if not n:
         return {"error": "no such node"}
     was_live = bool(n.get("live"))
+    if not was_live or str((n.get("agent") or {}).get("digest") or "") != str(digest or "")[:80]:
+        checks_wanted.add(nid)
+    ag = n.get("agent") or {}
     if isinstance(running, list):
         jobs_reconcile(nid, [str(j) for j in running])
-    ag = n.get("agent") or {}
+        ag["held"] = jobs_held(nid, [str(j) for j in running])
     ag.update({"version": str(version)[:40], "digest": str(digest)[:80],
                "addr": addr, "last_seen": int(time.time()),
                })
+    # Why an idle session's token was not refreshed here, said by the agent
+    # that tried (B419); an agent from before says nothing and keeps none.
+    kc = keep_clean(keep)
+    if kc is not None:
+        ag["keep"] = kc
     rep = n.get("reported") or {}
     # The tmux sessions ride the HEARTBEAT, not the census, so the live set is
     # what the last one recorded rather than anything hello was handed. Read
@@ -2058,7 +2171,35 @@ def hello(nid, census, addr, version="", digest="", running=None):
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79). The node keeps it, so it
             # holds while this controller is down.
-            "session_net": session_net_for(nid)}
+            "session_net": session_net_for(nid),
+            # The FTPS servers this node runs for its projects' file access
+            # (R151): one per project, rooted at its tree.
+            "ftp": ftp_for(nid)}
+
+
+def store_merge(census, free, totals):
+    """The heartbeat's store readings onto the census's rows, the free space
+    and, when the agent sent it, the size with it. Free alone against the
+    census's size read a grown disk as empty for up to ten minutes: more
+    free than the old total, so nothing used (B434)."""
+    for role, mb in free.items():
+        row = census.get(role)
+        if row is None:
+            continue
+        row["free_mb"] = mb
+        if totals.get(role):
+            row["total_mb"] = totals[role]
+    return census
+
+
+def beat(nid):
+    """The node is there, and nothing else: last_seen stamped in place, so a
+    node whose loop is busy taking a census on the spot (a hello asked for
+    after a job changed the machine, a minute and more on bb-sandbox) is
+    not read as not answering (the operator, 7 Oct). One statement, so it
+    cannot lose a hello's census written beside it."""
+    _exec("UPDATE nodes SET agent = json_set(agent, '$.last_seen', ?) WHERE id = ? AND kind = 'agent'",
+          (int(time.time()), nid))
 
 
 def heartbeat(nid, sample, addr, running=0):
@@ -2074,10 +2215,34 @@ def heartbeat(nid, sample, addr, running=0):
     for k in ("cpu_pct", "load1", "mem_used_mb", "mem_mb"):
         with contextlib.suppress(TypeError, ValueError):
             clean[k] = round(float(s.get(k) or 0), 1)
+    # The card's gauges only when the node has one answering: absent is
+    # "no GPU", which a zero would not say (0.7.125 on).
+    for k in ("gpu_pct", "gpu_mem_used_mb", "gpu_mem_mb"):
+        if k in s:
+            with contextlib.suppress(TypeError, ValueError):
+                clean[k] = round(float(s.get(k) or 0), 1)
+    # What runs there by kind, its cores and who computes on its card, for
+    # a session judging whether the machine is quiet enough to time
+    # anything on (R108). Only the kinds the agent counts, as numbers.
+    with contextlib.suppress(TypeError, ValueError):
+        if "cores" in s:
+            clean["cores"] = max(0, min(4096, int(s.get("cores") or 0)))
+        if "gpu_procs" in s:
+            clean["gpu_procs"] = max(0, min(9999, int(s.get("gpu_procs") or 0)))
+    if isinstance(s.get("kinds"), dict):
+        clean["kinds"] = {k: max(0, min(9999, int(v))) for k, v in list(s["kinds"].items())[:16]
+                          if k in PROC_KINDS and isinstance(v, (int, float))}
+    # ...and the card's memory by what holds it, in MB, the same kinds and
+    # "other" (B532): what filled the card is a kind, never a name.
+    if isinstance(s.get("gpu_mem_kinds"), dict):
+        clean["gpu_mem_kinds"] = {k: max(0, min(10**7, int(v))) for k, v in list(s["gpu_mem_kinds"].items())[:16]
+                                  if (k in PROC_KINDS or k == "other") and isinstance(v, (int, float))}
     clean["running"] = int(running or 0)
     stores = s.get("stores") if isinstance(s.get("stores"), dict) else {}
     clean["stores"] = {str(r)[:20]: _mb((v or {}).get("free_mb"))
                        for r, v in list(stores.items())[:8]}
+    totals = {str(r)[:20]: _mb((v or {}).get("total_mb"))
+              for r, v in list(stores.items())[:8]}
     ag = n.get("agent") or {}
     ag["last_seen"] = clean["at"]
     if addr:
@@ -2104,9 +2269,7 @@ def heartbeat(nid, sample, addr, running=0):
     # like everything a node says; absent when the agent did not send it.
     if isinstance(s.get("sessions"), list):
         rep["sessions"] = _session_rows(s["sessions"])
-    for role, free in clean["stores"].items():
-        if role in rep.get("stores", {}):
-            rep["stores"][role]["free_mb"] = free
+    store_merge(rep.get("stores") or {}, clean["stores"], totals)
     _exec("UPDATE nodes SET agent = ?, reported = ? WHERE id = ?",
           (json.dumps(ag), json.dumps(rep), nid))
     ring = _samples.setdefault(nid, [])
@@ -2188,6 +2351,9 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
              "claude-login",
+             # ...and its other half: `claude auth logout` there, in one
+             # account's home, since the login is that machine's to let go.
+             "claude-logout",
              # Claude Code itself, for the session account: the installer run
              # there, then the binary pinned where the account cannot write it
              # (claudecode.py). Queued by an administrator's press and nothing
@@ -2196,7 +2362,11 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # A line typed into a Claude session on the node, Enter pressed
              # only once the pane echoes it (notify.py's rule, run where the
              # pane is): the roadmap's and the tracker's Send to Claude.
-             "tell")
+             "tell",
+             # A build in dist/ signed with one of the project's keys
+             # (signing.py, R106): the key fetched over the channel for this
+             # job alone, used as the enrolled account, never a session's.
+             "sign")
 JOB_END = ("succeeded", "failed", "canceled")
 
 # Probe jobs (run_wait's `forget`): a read the page makes to draw itself,
@@ -2210,6 +2380,11 @@ _probe_ids = set()
 def _quiet(job_id):
     return job_id in _probe_ids
 JOB_ACTIVE = ("queued", "assigned", "running")
+# The kinds an agent counts in its heartbeat (builderbot-agent.py PROC_KINDS).
+PROC_KINDS = ("emulator", "gradle", "java", "compile", "browser", "media", "docker build", "claude",
+              "python", "display")
+# A driver package apt may be asked for (the agent holds the same rule).
+DRIVER_PKG = re.compile(r"nvidia-driver(-\d{3})?(-open)?")
 # What a selector may name (door 9: os and arch are placement dimensions).
 SELECT_KEYS = ("capability", "labels", "pool", "os", "arch")
 _jrev = [0]
@@ -2385,7 +2560,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
 
 
 def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
-             sizes=None, project="", forget=False):
+             sizes=None, project="", forget=False, outputs=None, title="", cwd=""):
     """One command on a node, waited for: queued as an exec job, picked up
     by the agent's next poll (which is held open, so at once), and its log
     and exit code handed back: the Nodes tab's Test, generalised. For the
@@ -2396,8 +2571,19 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     `docker ps` on an agent node runs this way each time a listing is
     drawn, and a row per draw on the Jobs tab would bury the jobs somebody
     queued on purpose. The record is dropped once its answer is in hand;
-    the audit line from job_add stays."""
+    the audit line from job_add stays.
+
+    `outputs` are globs, in the job's directory, of files the agent uploads
+    into the project's dist/ when the command succeeds: a file that would
+    otherwise ride the log as text (a phone's screenshot, report #53)."""
     spec = {"argv": [str(a) for a in argv], "timeout": int(timeout)}
+    if title:
+        spec["title"] = str(title)[:120]      # what the Jobs tab calls it
+    if cwd:
+        spec["cwd"] = str(cwd)                 # where it runs on the node, else the data store
+    if outputs:
+        spec["outputs"] = [str(o) for o in outputs][:4]
+        spec["project"] = project
     if forget:
         spec["probe"] = True
     if env:
@@ -2689,6 +2875,36 @@ def _requeue_unclaimed(node_id):
             _jstate_bump()
 
 
+# ...and how long past its own timeout a job may stay `running` with no
+# result before it is failed: a job whose end never came back held the
+# node's one slot for good. A lent phone's base64 screenshot did (B475's
+# job), unseen because probes are not listed, and every sign and rebuild on
+# bb-sandbox queued behind it for hours while short execs went on the light
+# lane (report #55). A job with no timeout gets the longest the agent gives
+# any kind, a build's.
+RUN_LOST_S = 300
+RUN_DEFAULT_S = 6 * 3600
+
+
+def _fail_overdue(node_id):
+    now = int(time.time())
+    for r in _rows("SELECT id, spec, started FROM jobs WHERE node = ? AND state = 'running'", (node_id,)):
+        try:
+            spec = json.loads(r["spec"] or "{}")
+        except (ValueError, TypeError):
+            spec = {}
+        try:
+            limit = int(spec.get("timeout") or RUN_DEFAULT_S) + RUN_LOST_S
+        except (ValueError, TypeError):
+            limit = RUN_DEFAULT_S + RUN_LOST_S
+        if r["started"] and r["started"] < now - limit:
+            _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error = ? "
+                  "WHERE id = ? AND state = 'running'",
+                  (now, "lost: ran past its time limit and the node never sent its end", r["id"]))
+            if not _quiet(r["id"]):
+                _jstate_bump()
+
+
 def job_next(node_id, wait, runner="node", alive=None):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one, or for a cancel request, which comes back
@@ -2715,10 +2931,34 @@ def job_next(node_id, wait, runner="node", alive=None):
             n = node(node_id)
             if n and n["state"] == "online":
                 _requeue_unclaimed(node_id)
+                _fail_overdue(node_id)
                 # A slot free, or not: with none, a LIGHT job may still go
                 # (see _light). Everything else waits for the slot as before.
                 free = job_running(node_id) < n["concurrency"]
                 lane = not free and _light_running(node_id) < LIGHT_SLOTS
+                # An agent update waits for the node to go quiet (B516): the
+                # agent refuses it while another job runs, and a node always
+                # doing something (a session building and testing all day)
+                # refused every press. So while one is queued the node is
+                # handed nothing new, and it is handed the update once what
+                # was running has finished; a node not quiet within
+                # UPDATE_QUIET_S fails it, saying so, and works again.
+                upd = _update_gate(node_id) if runner == "node" else None
+                if upd is not None:
+                    free = lane = False
+                    if upd:
+                        _exec("UPDATE jobs SET state = 'assigned', node = ?, started = ? WHERE id = ?",
+                              (node_id, int(time.time()), upd["id"]))
+                        _jstate_bump()
+                        # ...naming what the agent last said it holds that
+                        # this side has finished or dropped. An agent from
+                        # 0.7.136 passes over only those of them whose work
+                        # has ended and that are only posting their end, so a
+                        # stuck job no longer blocks its own way out and a
+                        # job still working is never left behind (B520).
+                        held = (n.get("agent") or {}).get("held") or []
+                        spec = (upd.get("spec") or {}) | {"settled": held}
+                        return upd | {"state": "assigned", "node": node_id, "spec": spec}
                 for j in (_rows("SELECT * FROM jobs WHERE state = 'queued' AND "
                                 "(node = ? OR node = '') ORDER BY queued, id",
                                 (node_id,)) if (free or lane) else ()):
@@ -2771,6 +3011,34 @@ def job_next(node_id, wait, runner="node", alive=None):
             if left <= 0:
                 return None
             _wake.wait(min(left, 5))
+
+
+UPDATE_QUIET_S = 600
+
+
+def _update_gate(node_id):
+    """None when no agent update is queued for this node; else the update
+    job to hand over now (the node is quiet), or {} while it waits for the
+    node's running jobs to finish. One that has waited UPDATE_QUIET_S is
+    failed with what kept the node busy, and the node works on."""
+    rows = _rows("SELECT * FROM jobs WHERE state = 'queued' AND type = 'self-update' AND node = ? "
+                 "ORDER BY queued, id LIMIT 1", (node_id,))
+    if not rows:
+        return None
+    j = _job_out(rows[0])
+    busy = _rows("SELECT type, COUNT(*) AS n FROM jobs WHERE node = ? AND state IN ('assigned', 'running') "
+                 "GROUP BY type", (node_id,))
+    if not busy:
+        return j
+    if time.time() - int(j.get("queued") or 0) > UPDATE_QUIET_S:
+        what = ", ".join(f"{b['n']} {b['type']}" for b in busy)
+        _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error = ? WHERE id = ?",
+              (int(time.time()), f"the node never went quiet for the update in {UPDATE_QUIET_S // 60} "
+                                 f"minutes: still running {what}; press Update agent again when they finish",
+               j["id"]))
+        _jstate_bump()
+        return None
+    return {}
 
 
 def _job_out(j):
@@ -2888,7 +3156,17 @@ def job_log(node_id, job_id, chunks, step=None):
     runner posts output every half second, so this is how one that is busy
     hears it should stop."""
     got = _rows("SELECT node, state, cancel FROM jobs WHERE id = ?", (job_id,))
-    if not got or got[0]["node"] != node_id:
+    # A job with no row is one this side dropped while the agent still ran it
+    # (a probe forgotten once its row said finished). Refusing the post kept
+    # it forever: the agent posts its log before its result and retries a
+    # refused log for good, so the job never left the agent's count and every
+    # self-update on bb-sandbox failed "busy" (B519). Taken and stored
+    # nowhere; the job is NOT told to stop (the operator: nothing is ended
+    # unless it is stuck), so it runs to its own end, whose result is then
+    # refused and dropped.
+    if not got:
+        return {"ok": True, "stored": 0, "gone": True}
+    if got[0]["node"] != node_id:
         return {"error": "not this node's job"}
     now = int(time.time())
     n = 0
@@ -2974,6 +3252,14 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # no-op the docstring promises rather than a second audit row and a
     # second run of the hooks (the review of 26 Sep).
     err = str(error or "")[:500]
+    # An update refused as busy on a node this side saw go quiet: what the
+    # agent holds is jobs this side has finished or dropped, named from its
+    # last hello, so the row says which rather than "exit 75" (B519).
+    if got[0]["type"] == "self-update" and code == 75:
+        held = ((node(node_id) or {}).get("agent") or {}).get("held") or []
+        err = ("the agent says other jobs are running" + (
+            f" ({', '.join(held)}), which this controller has as finished; "
+            "they leave when the agent next posts their end" if held else "") + "; press Update agent again")[:500]
     if late:
         err = ("reported late, after this side called the node lost" + (": " + err if err else ""))[:500]
     cur = _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
@@ -3186,6 +3472,16 @@ def jobs_reconcile(node_id, running):
         _jstate_bump()
 
 
+def jobs_held(node_id, running):
+    """The jobs the agent says it is running that this side has as finished
+    or has no row for at all: the other half of jobs_reconcile. Each keeps
+    the agent's count up, and an agent update is refused while any is held,
+    so the refusal names them from here (B519)."""
+    live = {r["id"] for r in _rows("SELECT id FROM jobs WHERE node = ? AND state IN "
+                                   "('queued', 'assigned', 'running')", (node_id,))}
+    return [j for j in running if j not in live][:20]
+
+
 def jobs_restart_sweep():
     """At start: a job the controller itself was running when the process
     died is failed as lost: the subprocess died with it, and a row still
@@ -3254,14 +3550,13 @@ def agent_file():
 vmtemplate = None        # what a new sandbox VM is made from
 forges = None            # the git hosts' catalog, for a runner's forge
 devapp = None            # a node's daemon, for the path check and the test
-claudecode = None        # the Claude Code check and update
 runner_store = None      # runners.py: each runner's token, root-only
 workspace = None         # a project's tree snapshotted, a file in its dist/
 project_prefs = None     # a project -> its settings (its node and node set)
 may_push = None          # a project -> whether it was cloned with push rights
 no_node_advice = None    # a project with no node -> what it can still do
 turns_of = None          # a node row -> its sessions' turns: working, waiting, the limit
-_VERB_PARTS = ("vmtemplate", "forges", "devapp", "claudecode", "runner_store",
+_VERB_PARTS = ("vmtemplate", "forges", "devapp", "runner_store",
                "workspace", "project_prefs", "may_push", "no_node_advice", "turns_of")
 
 
@@ -3355,21 +3650,19 @@ def verb(principal, req):
         return node_power(principal, nid, act)
 
     def gpu_display():
+        # The emulator on the card, on or off (R102): each a system job.
+        if req.get("on") is False:
+            return node_gpu_display_off(principal, nid)
         return node_gpu_display(principal, nid)
+
+    def gpu_compute():
+        return node_gpu_compute(principal, nid, req.get("on") is True)
 
     def config():
         # The configuration plane (docs/nodes.md §12): what the operator
         # wants the node to mount and be addressed as. Stored here,
         # applied by the next action as a system job the agent runs.
         return node_config_set(principal, nid, req.get("config"))
-
-    def log_grant():
-        # Which nodes' machine logs a session on this node may read. An
-        # administrator's, like the rest of this handler: a session that
-        # could grant itself the journal is not a boundary.
-        return node_log_grant(principal, nid,
-                              req.get("from") if isinstance(req.get("from"), list) else [],
-                              diag=req["diag"] if isinstance(req.get("diag"), bool) else None)
 
     def turns():
         # How many Claude sessions on the node may work at once; 0 for
@@ -3463,19 +3756,6 @@ def verb(principal, req):
     def update_agent():
         return node_update_agent(principal, nid)
 
-    def claude_check():
-        # What the latest Claude Code is, asked now: the same question
-        # the controller asks on its own after a start and every six
-        # hours, with the automatic update behind it where the setting
-        # asks for one. Nothing else is changed by it.
-        return claudecode.check() | {"ok": True}
-
-    def claude_update():
-        # An administrator's, like every action here, and so never a
-        # session's: it ends the Claude sessions on the node and queues
-        # the installer as a job the agent runs (claudecode.py).
-        return claudecode.update(principal, nid)
-
     def cache_clear():
         # Drop a node's build caches, one project's or all (docs/nodes.md
         # §6): a job the agent runs, so it is logged and audited like
@@ -3529,13 +3809,13 @@ def verb(principal, req):
              "drain": state, "online": state, "retire": state,
              "lock": lock, "unlock": lock, "enroll": enroll,
              "reboot": power, "poweroff": power, "gpu-display": gpu_display,
-             "config": config, "log-grant": log_grant, "turns": turns,
+             "gpu-compute": gpu_compute,
+             "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net,
              "root-asks": root_asks, "apply": apply, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
              "paths": paths, "check-paths": check_paths, "funnel": funnel,
-             "update-agent": update_agent, "claude-check": claude_check,
-             "claude-update": claude_update, "cache-clear": cache_clear,
+             "update-agent": update_agent, "cache-clear": cache_clear,
              "exec": exec_, "test": test}
     if act not in verbs:
         return {"error": "unknown action"}, 400
@@ -3590,7 +3870,7 @@ def run_job(name, req, principal):
         when = (f", as of what it reported {age // 60}m ago; it has been "
                 "asked for a fresh answer, so a retry shortly may differ"
                 if age and age > 90 else "")
-        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Tools tab "
+        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Toolchains tab "
                          f"with {n['name']} picked, "
                          + ("or push and let CI build it."
                             if may_push(name)
@@ -3652,22 +3932,42 @@ def _job_mine(j, mine):
     return bool(job_owner) and job_owner(j) in mine
 
 
-def jobs_view(jid, q, mine):
+def jobs_view(jid, q, mine, system=None):
     """The Jobs tab's whole read surface, and a test's: one job with its log
     so far, or the recent ones narrowed by the query's node, project, type,
     active and n. `mine` is None for an administrator, or the projects this
     account may see: a job and its log are the project's, or its project's
     container's (B321), and a job with no project (a node's own: an update,
     a store move) is an administrator's, with the same answer as a typo so
-    the listing says nothing about what else is queued on the box. n counts
+    the listing says nothing about what else is queued on the box. With
+    `system` (a redactor), the node's own jobs are seen as well, through it:
+    the caller may read the controller's diagnostics, which list them. n counts
     what this account sees, not the node's last n before the filter, which
     showed one job of twelve and read as history pruned (B321).
     (payload, status)."""
+    def seen(j):
+        return _job_mine(j, mine) or (system is not None and not j.get("project"))
+
+    def scrub(v):
+        # Every string inside, the shape kept: bb jobs and the Jobs tab read
+        # a spec's fields by name.
+        if isinstance(v, str):
+            return system(v)
+        if isinstance(v, list):
+            return [scrub(x) for x in v]
+        if isinstance(v, dict):
+            return {k: scrub(x) for k, x in v.items()}
+        return v
+
+    def shown(j):
+        if mine is None or system is None or j.get("project") or _job_mine(j, mine):
+            return j
+        return {k: scrub(v) if k in ("log", "error", "label", "spec") else v for k, v in j.items()}
     if jid:
         j = job(jid)
-        if j and mine is not None and not _job_mine(j, mine):
+        if j and mine is not None and not seen(j):
             j = None
-        return (j, 200) if j else ({"error": "no such job"}, 404)
+        return (shown(j), 200) if j else ({"error": "no such job"}, 404)
     try:
         n = min(500, max(1, int(q.get("n", ["100"])[0])))
     except ValueError:
@@ -3678,7 +3978,7 @@ def jobs_view(jid, q, mine):
         type=q.get("type", [""])[0] or None,
         active=q.get("active", [""])[0] == "1")
     if mine is not None:
-        rows = [j for j in rows if _job_mine(j, mine)][:n]
+        rows = [shown(j) for j in rows if seen(j)][:n]
     # The names of the nodes these rows run on, and for an account that
     # is not an administrator no other: the whole registry rode here
     # past the scoping the nodes listing keeps (the probe of 26 Sep).
@@ -3704,9 +4004,11 @@ def tab_view(rows, admin):
             "default": node_for() if admin else ""}
 
 
-def log_read_named(principal, asking_id, want, stream, lines, debug_on):
+def log_read_named(principal, asking_id, want, stream, lines, debug_on, grants=(), project=""):
     """node_log_read with the target named by id or by name, for a session
-    the server has placed on `asking_id`. {..} or {error}."""
+    the server has placed on `asking_id`, whose project may read `grants`.
+    {..} or {error}."""
     tgt = node(want) or next((n for n in node_list() if n["name"] == want), None)
     return node_log_read(principal, asking_id, (tgt or {}).get("id") or want,
-                         stream or "agent", lines or 200, debug_on=debug_on)
+                         stream or "agent", lines or 200, debug_on=debug_on,
+                         grants=grants, project=project)

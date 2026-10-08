@@ -139,10 +139,17 @@ function nbTestsView({$, nb, project}){
                           || accept !== !!t.accepted || why !== (t.accepted || "")))
         drafts.set(t.key, {protects: p.value, notes: n.value, accept, why});
     });
+    // A run going right now is said first, before the last run's numbers
+    // (R99): bb test tells the server at its start and end, and the app
+    // already reads the same fact to time its note.
+    const going = j.running
+      ? `<b>tests running</b>, started ${esc(ago(j.running.since))}${j.running.by ? " by " + esc(j.running.by) : ""}${
+          j.running.cmd ? `: <code>${esc(j.running.cmd)}</code>` : ""} · `
+      : "";
     if (!all.length){
-      $("tstHint").textContent = "";
+      $("tstHint").innerHTML = going + "no runs yet";
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint">No test run recorded yet. A session records one with
+      $("tstStats").innerHTML = `<div class="hint nbempty">A session records a run with
         <pre class="ndcmd">bb tests run</pre></div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
       $("tstFolds").innerHTML = "";
@@ -152,7 +159,7 @@ function nbTestsView({$, nb, project}){
     // measured duration: what the suite spends *in* its tests; the last run's
     // own wall time is shown beside it, and the difference is the harness.
     const proj = j.total_ms || 0, wall = j.last_wall_ms || 0;
-    $("tstHint").innerHTML = `${j.n} tests · <b>${esc(dur(proj))}</b> in tests`
+    $("tstHint").innerHTML = going + `${j.n} tests · <b>${esc(dur(proj))}</b> in tests`
       + (wall ? ` (last run ${esc(dur(wall))})` : "")
       + (j.suspect ? ` · <span class="bad">${j.suspect} flagged, ${esc(dur(j.recover_ms))}
            waiting</span>` : "")
@@ -191,14 +198,14 @@ function nbTestsView({$, nb, project}){
       // they can read the thing they came for. The status carries the number
       // either way, which is most of what the rollup says.
       docSection("tests", "suites", "Suites",
-                 `${(j.suites || []).length} · ${dur(proj)}`, rollup, {open: false})
+                 `${(j.suites || []).length} · ${dur(proj)}`, rollup)
       + (d.at ? docSection("tests", "drift", "Since the run before",
            nDrift ? `${nDrift}` : "in step",
            nDrift ? driftRows.join("")
                     + (nDrift > driftRows.length
                        ? `<div class="sub dim">…and ${nDrift - driftRows.length} more</div>` : "")
                   : `<div class="sub">the list and the last run agree.</div>`,
-           {cls: nDrift ? "warn" : "", open: false}) : "");
+           {cls: nDrift ? "warn" : ""}) : "");
     wireSections($("tstFolds"));
     // ---- the filter --------------------------------------------------------
     const suites = [...new Set(all.map(t => t.suite))].sort();

@@ -62,8 +62,31 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun status() = get("/api/status")
     suspend fun meta() = get("/api/meta")
     suspend fun phone() = get("/api/phone")
-    suspend fun decide(id: Int, allow: Boolean) =
-        post("/api/phone", json("action" to (if (allow) "allow" else "deny"), "id" to id))
+    // Held by the dashboard until this account's asks, lease or grants move,
+    // or about 45 s (R125); `since` is the last token it answered.
+    suspend fun phoneWait(since: String) = get("/api/phone/wait?since=${enc(since)}")
+    // This phone, connected and lent from the phone itself (R114): the
+    // Phone tab's own actions, for the node the person picks.
+    suspend fun phonePair(node: String, ip: String, port: Int, code: String) =
+        post("/api/phone", json("action" to "pair", "node" to node, "ip" to ip, "port" to port, "code" to code))
+    suspend fun phoneConnect(node: String, ip: String, port: Int?) =
+        post("/api/phone", json("action" to "connect", "node" to node, "ip" to ip, "port" to port))
+    suspend fun phoneLend(node: String, project: String, hours: Int) =
+        post("/api/phone", json("action" to "lend", "node" to node, "project" to project, "hours" to hours))
+    suspend fun phoneTakeBack(node: String) =
+        post("/api/phone", json("action" to "take-back", "node" to node))
+    // An invitation to a project, answered (membership.py).
+    suspend fun invite(id: Int, accept: Boolean) =
+        post("/api/members", json("action" to (if (accept) "accept" else "decline"), "id" to id))
+    // `session`: Allow for this session, the rest of that session's phone
+    // commands run without asking until it is taken back (the operator, 4 Oct).
+    suspend fun decide(id: Int, allow: Boolean, session: Boolean = false) =
+        post("/api/phone", json("action" to (if (allow) "allow" else "deny"), "id" to id,
+                                "session" to (allow && session)))
+    suspend fun phoneUntrust(node: String, project: String, askerUid: String) =
+        post("/api/phone", json("action" to "untrust", "node" to node, "project" to project, "asker_uid" to askerUid))
+    suspend fun phoneDisconnect(node: String) =
+        post("/api/phone", json("action" to "disconnect", "node" to node))
     suspend fun pending(project: String) = get("/api/pending?project=${enc(project)}")
     suspend fun pendingAct(project: String, allow: Boolean, ids: List<String>) =
         post("/api/pending", json("project" to project, "action" to (if (allow) "approve" else "deny"),
@@ -96,6 +119,9 @@ class Api(private val base: String, private val user: String, private val passwo
         post("/api/bugs", json("project" to project, "action" to "send", "id" to id, "note" to note))
     suspend fun rules(project: String) = get("/api/rules?project=${enc(project)}")
     suspend fun memory(project: String) = get("/api/memory?project=${enc(project)}")
+    // The notebook's wiki (R112): its pages, and one page's Markdown.
+    suspend fun wiki(project: String) = get("/api/wiki?project=${enc(project)}")
+    suspend fun wikiPage(project: String, page: String) = get("/api/wiki?project=${enc(project)}&page=${enc(page)}")
     suspend fun artifacts(project: String) = get("/api/artifacts?project=${enc(project)}")
     suspend fun git(project: String) = get("/api/git?project=${enc(project)}&what=status")
     suspend fun nodes() = get("/api/v1/nodes")

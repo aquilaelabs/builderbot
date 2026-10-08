@@ -1,0 +1,114 @@
+"""Start on boot (R122): a container's restart policy is read with the list,
+set by boot-on and boot-off through the same verb as start and stop, kept
+for an instance of BuilderBot's own, and put back by the next listing when a
+rebuild has reset it. Drives devapp and containers against a stand-in
+docker that records what it was asked."""
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import containers  # noqa: E402
+import devapp  # noqa: E402
+
+
+class Boot(unittest.TestCase):
+    def setUp(self):
+        self.asked = []
+        devapp._policies.clear()
+        devapp._asked_at.clear()
+        self.addCleanup(devapp._policies.clear)
+        self.addCleanup(devapp._asked_at.clear)
+        self.policy = {"aaaaaaaaaaaa": "no", "bbbbbbbbbbbb": "unless-stopped"}
+        self.store = {"app": {"main": {}}}
+        saved = {k: getattr(devapp, k) for k in ("_run", "_load", "_rec", "write_json", "_targets") if hasattr(devapp, k)}
+        self.addCleanup(lambda: [setattr(devapp, k, v) for k, v in saved.items()])
+        csaved = containers._targets
+        self.addCleanup(setattr, containers, "_targets", csaved)
+
+        def run(argv, timeout=None):
+            self.asked.append(argv[1:])
+            if argv[1] == "inspect":
+                return {"code": 0, "out": "\n".join(f"{i}0000 {self.policy[i]}" for i in argv[4:] if i in self.policy)}
+            if argv[1] == "update":
+                pol = argv[3]
+                for n in argv[4:]:
+                    self.policy[{"app-main-web-1": "aaaaaaaaaaaa", "other": "bbbbbbbbbbbb"}[n]] = pol
+                return {"code": 0, "out": ""}
+            return {"code": 0, "out": ""}
+        devapp._run = run
+        devapp._load = lambda: self.store
+        devapp._rec = lambda d, p, i: d[p][i]
+        devapp.write_json = lambda path, d: None
+        self.rows = [{"id": "aaaaaaaaaaaa", "name": "app-main-web-1", "project": devapp._pname("app", "main"), "ours": True},
+                     {"id": "bbbbbbbbbbbb", "name": "other", "project": "", "ours": False}]
+
+    def listing(self, rows):
+        """A listing, the read it started off its path, and the next listing,
+        which is the one that has the answer (B476)."""
+        devapp._boot_read(rows)
+        if devapp._boot_thread is not None:
+            devapp._boot_thread.join(5)
+        devapp._boot_read(rows)
+        return rows
+
+    def test_the_list_says_which_start_on_boot(self):
+        self.listing(self.rows)
+        self.assertEqual([r["boot"] for r in self.rows], [False, True])
+
+    def test_the_guard_lets_through_the_two_shapes_this_builds_and_no_other(self):
+        # B476: the guard refused both, so the switch never read or set a thing.
+        g = devapp._guard
+        self.assertEqual(g([devapp.DOCKER, "inspect", "--format", devapp.BOOT_FORMAT, "aaaaaaaaaaaa"]), "")
+        self.assertEqual(g([devapp.DOCKER, "update", "--restart", "unless-stopped", "web-1"]), "")
+        self.assertEqual(g([devapp.DOCKER, "update", "--restart", "no", "web-1", "db-1"]), "")
+        self.assertTrue(g([devapp.DOCKER, "inspect", "web-1"]))
+        self.assertTrue(g([devapp.DOCKER, "update", "--memory", "1g", "web-1"]))
+        self.assertTrue(g([devapp.DOCKER, "update", "--restart", "always;rm", "web-1"]))
+
+    def test_boot_on_sets_the_policy_and_keeps_it_for_an_instance(self):
+        containers._targets = lambda name: [self.rows[0]]
+        r = containers.container_ctl("app-main-web-1", "boot-on")
+        self.assertTrue(r["ok"], r)
+        self.assertIn(["update", "--restart", "unless-stopped", "app-main-web-1"], self.asked)
+        self.assertIs(self.store["app"]["main"]["boot"], True)
+
+    def test_a_rebuild_that_reset_it_is_put_back_by_the_listing(self):
+        self.store["app"]["main"]["boot"] = True             # chosen before a rebuild reset it to "no"
+        self.listing(self.rows)
+        self.assertIn(["update", "--restart", "unless-stopped", "app-main-web-1"], self.asked)
+        self.assertTrue(self.rows[0]["boot"])
+        self.assertTrue(self.rows[1]["boot"])               # not ours: read, never written
+
+    def test_anything_else_is_refused(self):
+        self.assertIn("error", containers.container_ctl("x", "boot-maybe"))
+
+
+class Seen(Boot):
+    """B470: on a node the listing is an agent job, and an inspect on every
+    listing was a second one; a container seen once is not asked again."""
+
+    def test_a_second_listing_asks_docker_nothing_new(self):
+        self.listing([dict(r) for r in self.rows])
+        n = sum(1 for a in self.asked if a[0] == "inspect")
+        rows = [dict(r) for r in self.rows]
+        devapp._boot_read(rows)
+        self.assertEqual(sum(1 for a in self.asked if a[0] == "inspect"), n)
+        self.assertEqual([r["boot"] for r in rows], [False, True])
+        # A new container (a rebuild's) is the only one inspected.
+        self.policy["cccccccccccc"] = "no"
+        self.listing([dict(r) for r in self.rows] + [{"id": "cccccccccccc", "name": "new", "project": ""}])
+        self.assertEqual([a[3:] for a in self.asked if a[0] == "inspect"][-1], ["cccccccccccc"])
+
+    def test_an_id_docker_does_not_describe_is_not_asked_on_every_listing(self):
+        # The harness's docker answers inspect with nothing: asked once, then
+        # remembered as unknown, not asked again on the next listing.
+        rows = [{"id": "dddddddddddd", "name": "quiet", "project": ""}]
+        self.listing([dict(r) for r in rows])
+        n = sum(1 for a in self.asked if a[0] == "inspect")
+        devapp._boot_read([dict(r) for r in rows])
+        self.assertEqual(sum(1 for a in self.asked if a[0] == "inspect"), n)
+
+
+if __name__ == "__main__":
+    unittest.main()

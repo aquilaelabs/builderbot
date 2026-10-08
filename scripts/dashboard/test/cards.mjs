@@ -2,7 +2,7 @@
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
-         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR } from './lib.mjs';
+         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold, registerProject } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -221,7 +221,8 @@ const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
 ok(hs.length === 5 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
-ok((await order())[0] === 'doctor', 'doctor is first by default');
+// Projects first (R119, 4 Oct): what a person comes here for.
+ok((await order())[0] === 'projects', 'projects is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
 
 // collapse animates, persists across reload
@@ -455,7 +456,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   rmSync(`${DIR}/reports`, { recursive: true, force: true });
   await refreshUntil(page, () => state?.reports_ok === false, { timeout: 20000 });
   ok(await page.$eval('#bFindings', b => b.disabled),
-     'with no readable report the Static analysis button is ghosted');
+     'with no readable report the Analysis button is ghosted');
   ok(/\/reports is not mapped in/.test(await page.$eval('#bFindings', b => b.title)),
      '...carrying which of the three reasons it is');
   // The tab is open from the tests above; the gate closes it on the next load.
@@ -528,6 +529,7 @@ print(json.dumps(out))
   mkdirSync(`${DIR}/ws/my-app`, { recursive: true });
   writeFileSync(`${DIR}/ws/My.App/README.md`, '#\n');
   writeFileSync(`${DIR}/ws/my-app/README.md`, '#\n');
+  registerProject('My.App', 'my-app');   // dropped in, recorded as an import would (R154)
   await refreshUntil(page, () => (state?.projects || []).some(p => p.name === 'my-app'),
                      { timeout: 20000 });
   const said = await page.evaluate(() => (state.projects || [])
@@ -578,14 +580,23 @@ print(json.dumps(out))
   await page.evaluate(() => document.querySelectorAll('style').forEach(st => { if (st.textContent.startsWith('#projects{max-height')) st.remove(); }));
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
+  // The sidebar card folds on a desktop too (R119, 4 Oct): eight icons on a
+  // 340px card were unreadable. The Projects tab, with room, shows them all.
   const desk = await shown();
-  ok(desk > 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent === null),
-     `on a desktop every icon is there and the fold is not (${desk} icons)`);
+  ok(desk === 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent !== null),
+     `on a desktop the card's row folds as a phone's does (${desk} icons)`);
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.doc.on .projtab .row', { timeout: 10000 });
+  const tabRow = '.doc.on .projtab .row:has(.name:text-is("alpha"))';
+  const tabShown = await page.$$eval(`${tabRow} .acts .eye`, bs => bs.filter(b => b.offsetParent !== null).length);
+  ok(tabShown > 3 && await page.$eval(`${tabRow} [data-more]`, b => b.offsetParent === null),
+     `...while the Projects tab on a desktop shows every icon and no fold (${tabShown})`);
   // The pin is on the card's rows too (the operator, 30 Sep), so a project
   // is unpinned from the sidebar without a trip to the Projects tab; the
   // Projects tab is where it is pinned back.
   ok(await page.$eval(`${row} [data-p]`, b => b.getAttribute('aria-label') === 'unpin' && b.classList.contains('on')),
      "the card's row carries the pin, lit, reading unpin");
+  await unfold(page, 'alpha');
   await page.click(`${row} [data-p]`);
   await page.waitForFunction(() => ![...document.querySelectorAll('#projects .row .name')].some(n => n.textContent.trim() === 'alpha'), null, { timeout: 15000 });
   ok(true, '...and pressing it takes the project off the card');
@@ -775,7 +786,14 @@ ok(all.includes('vendored-junk'),
 // above this one may leave the sidebar scrolled, and a drag aimed at y=-282
 // grabs nothing and the test reads as the FEATURE failing.
 await page.$eval('.side', e => e.scrollTo(0, 0));
-await new Promise(r => setTimeout(r, 150));
+// Projects is first and long (R119): folded for the drag, so the runner card
+// is on screen to be grabbed, and opened again after.
+const projOpen = await page.$eval('.card[data-card="projects"]', el => !el.classList.contains('closed'));
+if (projOpen){
+  await page.click('.card[data-card="projects"] h2');
+  await page.waitForFunction(() => document.querySelector('.card[data-card="projects"]').classList.contains('closed'));
+}
+await new Promise(r => setTimeout(r, 300));
 const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();
 // Recorded, not sampled. The FLIP tween is 140ms, and asking for it in a
@@ -798,13 +816,17 @@ await page.mouse.move(hb.x + 40, top.y + 2, { steps: 10 });
 await page.mouse.up();
 const sliding = await page.evaluate(() => {
   Element.prototype.animate = window.__realAnimate;
-  return window.__flipped.includes("doctor");
+  return window.__flipped.includes("projects");
 });
 ok(sliding, 'displaced cards slide during a drag');
 ok((await order())[0] === 'runner', `runner dragged to the top (${(await order()).join(',')})`);
 ok(!(await page.$eval('.card[data-card="runner"]', el => el.classList.contains('closed'))), 'the drop did not toggle the card');
 await page.reload(); await ready(page);
 ok((await order())[0] === 'runner', 'order survives a reload');
+if (projOpen){
+  await page.click('.card[data-card="projects"] h2');
+  await page.waitForFunction(() => !document.querySelector('.card[data-card="projects"]').classList.contains('closed'));
+}
 
 // ▤ reset, now an item in the menu the gear opens rather than theom's
 // own action. The menu is the other half: twelve color schemes, each swatch
@@ -829,6 +851,17 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === 'nostro
 ok(await page.evaluate(() => { try { return localStorage.getItem('bb.theme'); }
                                catch (e) { return null; } }) === 'nostromo',
    '...and remembers it here rather than on the server: it is about the room, not the work');
+// ...for the account that picked it (B491): a browser whose choice was
+// another account's takes this account's own scheme on the next poll,
+// rather than carrying the first account's colors over.
+const switched = await page.evaluate(async () => {
+  localStorage.setItem('bb.theme', 'abyss'); localStorage.setItem('bb.theme.who', 'somebody-else');
+  document.documentElement.dataset.theme = 'abyss';
+  await refresh();
+  return { theme: document.documentElement.dataset.theme || 'default', who: localStorage.getItem('bb.theme.who') };
+});
+ok(switched.theme === 'nostromo' && switched.who === 'test',
+   `another account's choice in this browser gives way to this account's own scheme (${JSON.stringify(switched)})`);
 // Nostromo's flare is drawn, not fetched: no image files in a repo whose
 // image is rebuilt weekly. The header's decal is the visible half.
 ok(await page.evaluate(() => {
@@ -873,7 +906,7 @@ ok(true, 'Escape closes the menu');
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
 await page.click('#uiReset');
-await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'doctor'
+await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'projects'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
 
@@ -932,6 +965,50 @@ await page.waitForSelector('#aboutModal:not([hidden])');
 await page.click('#aboutModal', { position: { x: 4, y: 4 } });
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
 ok(true, '...and so does a click on the page under it');
+// One place for a dialog and the keyboard (R88): focus goes in as it opens,
+// Tab and Shift+Tab go round inside it, Escape closes the one on top, and
+// the focus comes back to what opened it.
+{
+  await page.focus('#bAbout');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#aboutModal:not([hidden])');
+  await page.waitForFunction(() => document.getElementById('aboutModal').contains(document.activeElement), null, { timeout: 3000 })
+    .catch(() => {});
+  ok(await page.evaluate(() => document.getElementById('aboutModal').contains(document.activeElement)),
+     'a dialog takes the focus as it opens, so a screen reader and Tab start in it');
+  let out = 0;
+  for (let i = 0; i < 25; i++){
+    await page.keyboard.press(i % 5 === 4 ? 'Shift+Tab' : 'Tab');
+    if (!(await page.evaluate(() => document.getElementById('aboutModal').contains(document.activeElement)))) out++;
+  }
+  ok(out === 0, `Tab and Shift+Tab go round inside it, never out to the page behind (${out} of 25 presses left it)`);
+  // A second dialog over the first: Escape is the top one's alone.
+  await page.evaluate(() => openReport(''));
+  await page.waitForSelector('#reportModal:not([hidden])');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#reportModal', { state: 'hidden' });
+  ok(await page.evaluate(() => !document.getElementById('aboutModal').hidden),
+     'Escape closes the dialog on top, and the one under it stays open');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#aboutModal', { state: 'hidden' });
+  ok(await page.evaluate(() => document.activeElement?.id === 'bAbout'),
+     `...then that one, and the focus is back on the button that opened it (${await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName)})`);
+  // Every dialog is named by its title: the attribute was spelled
+  // aria-labeledby on all of them, which no screen reader reads.
+  const names = await page.evaluate(() => ({
+    wrong: document.querySelectorAll('[aria-labeledby]').length,
+    dangling: [...document.querySelectorAll('[aria-labelledby]')]
+      .filter(e => !e.getAttribute('aria-labelledby').split(/\s+/).every(id => document.getElementById(id)))
+      .map(e => e.id || e.className) }));
+  ok(names.wrong === 0 && names.dangling.length === 0,
+     `every dialog names its title by aria-labelledby, and each title is there (${JSON.stringify(names)})`);
+  const tabs = await page.evaluate(() => ({
+    list: document.getElementById('tabbar').getAttribute('role'),
+    on: [...document.querySelectorAll('#tabbar [role=tab][aria-selected=true]')].map(b => b.dataset.show),
+    cur: document.querySelector('#tabbar .tab.on')?.dataset.id }));
+  ok(tabs.list === 'tablist' && tabs.on.length === 1 && tabs.on[0] === tabs.cur,
+     `the tab strip is a tablist, with the tab showing marked selected (${JSON.stringify(tabs)})`);
+}
 // ---- the welcome panel: a guide and the changelog behind one switch -------------
 // The same popup opens itself twice in an account's life: on the guide the
 // first time the account signs in, and on the changelog once after every
@@ -1093,215 +1170,10 @@ ok(await page.evaluate(() => { drawBuild({ rev: '', built: '' });
    'an unstamped image says so, rather than showing nothing');
 await page.evaluate(() => refresh());
 
-// ---- signing in and out ------------------------------------------------
-// The first thing to get right on a new box, and the last place anybody would
-// think to look for it on a command line. Driven against a stub claude: the
-// real one would sign this container out for good.
-await page.waitForSelector('#docAuth:not([hidden])', { timeout: 25000 });
-ok((await page.$eval('#docAuth', e => e.textContent)).includes('tester@example.com'),
-   'the doctor card says who this container is signed in as');
-ok(await page.$('#bSignOut') !== null && await page.$('#bSignIn') === null,
-   '...and offers the way out, not the way in');
-
-// Not while a conversation is running: signing out pulls the ground from
-// under every session on the box. The fixture has one.
-ok(await page.$eval('#bSignOut', b => b.disabled)
-   && (await page.$eval('#bSignOut', b => b.title)).includes('claude-alpha'),
-   'signing out is dead while a Claude session is running, and says which');
-const blocked = await page.evaluate(async () => {
-  const r = await fetch('/api/signout', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: '{}' });
-  return r.status;
-});
-ok(blocked === 409,
-   '...and the server refuses it too, because a page can be fifteen seconds stale');
-page.errors = [];
-
+// The fixture's Claude session ends here: what follows starts from no
+// conversation running on alpha, and opens its own where it needs one.
 tmuxKill('claude-alpha');
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => !document.getElementById('bSignOut')?.disabled,
-                           { timeout: 25000 });
-ok(true, 'with the last one ended, it comes alive');
-
-// Signed out. The card reads the RECORD now, not `claude auth status`: the
-// controller holds no credential and has no Claude to ask (R47), so what
-// "signed in" means here is that some node reports being signed in.
-const claudeRecord = (d) => writeFileSync(`${DIR}/home/.claude/.bb-grant.json`,
-  JSON.stringify(d));
-claudeRecord({ gen: 2, email: '', plan: '', nodes: {} });
-// Kept asking rather than asked once: the verdict is cached for 20s and the
-// page polls every 15, which together outlast any patience worth calling a
-// timeout. See refreshUntil.
-await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
-ok(await page.$('#bSignOut') === null
-   && (await page.$eval('#docAuth', e => e.textContent)).includes('not signed in'),
-   'signed out, it says so where the verdict is and offers the way in');
-// ...and nothing offers to start a conversation that cannot start: every
-// project with no node. One on a node keeps its button, since that node
-// signs in for itself (R47) and this record is not its word; the fixture's
-// ep.silon is on the sandbox (R82).
-ok(await page.$$eval('#projects .row', rs => rs.length > 0 && rs.every(r => {
-     const b = r.querySelector('[data-c]'), name = r.querySelector('.name')?.textContent.trim();
-     return !b || (name === 'ep.silon' ? !b.disabled : b.disabled);
-   })),
-   '...and every Claude button of a project with no node goes with it, while one on a node keeps its own');
-
-// And back. There is no credential here to take away: a machine signs in for
-// itself and keeps the grant it alone refreshes (R47). Signed in, to this
-// card, means SOME NODE reports being signed in, and signing out moves a
-// generation, which is the only thing that can reach a node that is not
-// listening, because being signed out has no date to compare.
-mkdirSync(`${DIR}/home/.claude`, { recursive: true });
-claudeRecord({ gen: 4, email: 'you@example.com', plan: 'max',
-               nodes: { n_fixture: { email: 'you@example.com', at: 1 } } });
-await refreshUntil(page, () => document.getElementById('bSignOut') !== null);
-ok((await page.$eval('#docAuth', e => e.textContent)).includes('you@example.com'),
-   'the card names the Anthropic account a node reports being signed in as');
-page.dialogs = [];
-await page.click('#bSignOut');
-await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
-                           { timeout: 25000 });
-ok(page.dialogs.some(d => /signs out every node that holds/.test(d)),
-   'signing out says it reaches every node holding the login, not just this box');
-const mark = JSON.parse(readFileSync(`${DIR}/home/.claude/.bb-grant.json`, 'utf8'));
-ok(mark.gen === 5 && !Object.keys(mark.nodes || {}).length && !mark.email,
-   '...moving the generation, clearing the nodes, and releasing the Anthropic account');
-ok(!existsSync(`${DIR}/home/.claude/.credentials.json`),
-   '...with no credential on the controller at any point, because none is kept here');
-claudeRecord({ gen: 6, email: 'tester@example.com', plan: 'max',
-               nodes: { n_fixture: { email: 'tester@example.com', at: 1 } } });
-
-// ---- the sign-in runs where Claude IS, which is a node ------------------
-// Claude Code is installed for the account that runs sessions, and that is a
-// node, so the flow goes there as a job of its own, under a pty on that
-// machine, and the grant it makes stays there (R47). The card does not know
-// which of the two it is driving: same link, same code field.
-{
-  const nodeSignin = await page.evaluate(async () => {
-    const r = await fetch('/api/signin', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    return { status: r.status, ...(await r.json()) };
-  });
-  ok(nodeSignin.ok && nodeSignin.job && nodeSignin.on,
-     `with a node running sessions, the sign-in is queued there and says which (${
-       nodeSignin.on || nodeSignin.error || '?'})`);
-  const queued = await page.evaluate(async (id) =>
-    (await (await fetch('/api/v1/jobs?id=' + id)).json()), nodeSignin.job);
-  ok((queued.job || queued).type === 'claude-login',
-     '...as a claude-login job, which is the one job that opens a pty');
-  ok(/^bbs_/.test(((queued.job || queued).spec || {}).token || ''),
-     '...carrying a token minted for the account and scoped to the node, so the flow can report what it signed in as');
-  await page.evaluate(async () => { await fetch('/api/signin', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'cancel' }) }); });
-}
-
-// ---- ...and nowhere, when no node is running sessions -------------------
-// There is no fallback: this container carries no Claude Code, so a sign-in
-// has no machine to run on and says so. The local pty flow that used to live
-// here went with the binary (R47); what the card does with a flow (the
-// link, the code field, the focus across polls) is driven in agent.mjs now,
-// where a node's job log can actually be posted to.
-await page.evaluate(async () => {
-  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
-  for (const n of ns.filter(x => x.kind === 'agent'))
-    await fetch('/api/v1/nodes', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'drain', id: n.id }) });
-});
-{
-  const nowhere = await page.evaluate(async () => {
-    const r = await fetch('/api/signin', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    return { status: r.status, ...(await r.json()) };
-  });
-  ok(nowhere.status === 400 && /no node is running sessions/.test(nowhere.error || ''),
-     `with no node running sessions there is nowhere to sign in, and it says so (${
-       (nowhere.error || '').slice(0, 56)})`);
-  // ...and the BUTTON says it, which is the half that was missing: the press
-  // used to fire and forget, so a refusal left it reading "Starting…" for
-  // ever with nothing on screen. The card repaints only when its html
-  // changes and a refusal changes none of it, so the button is put back by
-  // the press itself.
-  // ...and only once the flow the block above started reads as over
-  // (B370): while state.signin still says running, the card's own watcher
-  // repaints the button as "Start over" every second, and the wait below
-  // for "Sign in" ran out under load, and once at a load of one, because
-  // the cancel had not landed before the press.
-  await refreshUntil(page, () => !state?.signin?.running && document.getElementById('bSignIn') !== null
-                                 && document.getElementById('bSignIn').textContent === 'Sign in');
-  // Pressed IN THE PAGE rather than through Playwright's click. The card
-  // repaints whenever its html changes, and while a sign-in flow is live its
-  // own watcher changes that html, so the button Playwright had resolved kept
-  // being detached between "visible and stable" and the press: "element was
-  // detached from the DOM, retrying", then a timeout. It passed alone and
-  // failed in a full run, which is the worst shape a test has (B124's family).
-  // Nothing here is about hit-testing the button, only about what pressing it
-  // does, so the actionability wait is the whole of what went wrong.
-  await page.$eval('#bSignIn', b => b.click());
-  await page.waitForFunction(() => /no node is running sessions/.test(
-    document.getElementById('toast')?.textContent || ''), null, { timeout: 15000 });
-  ok(true, '...and pressing Sign in says the refusal rather than swallowing it');
-  // Re-resolved rather than read off the handle above: a repaint between the
-  // press and this line replaces the button with an equal one, and that is not
-  // what this assertion is about.
-  // Asked in ONE evaluation rather than as a wait and then a read: the card
-  // re-renders from the poll, so a repaint between the two lines left the
-  // selector resolving to nothing and took the whole file down.
-  await page.waitForFunction(() => {
-    const b = document.getElementById('bSignIn');
-    return !!b && !b.disabled && b.textContent === 'Sign in';
-  }, null, { timeout: 15000 });
-  ok(true, '...with the button live again, not left saying Starting…');
-  // That refusal is a 400 by design and the browser logs every one as a
-  // failed resource. Cleared, so the check below is about the page.
-  page.errors = [];
-}
-
-// ---- ...and on which node, when more than one runs sessions --------------
-// The server will not pick, so the card asks: one row, a select of the
-// names it sent back and the two buttons, never a button per node stacked
-// down the card. Driven through the same state the refusal sets, with the
-// press stubbed, since the fixture has one node. After the two blocks above,
-// which carry a sign-in state between them that a draw in between upset.
-{
-  const picked = await page.evaluate(async () => {
-    const real = signIn;
-    let got = null;
-    window.signIn = n => { got = n; };
-    signinPick = ['first-node', 'second-node'];
-    drawAuth();
-    const sel = document.getElementById('signinNode');
-    const opts = sel ? [...sel.options].map(o => o.value) : [];
-    const rows = document.querySelectorAll('#docAuth [data-sn]').length;
-    sel.value = 'second-node';
-    document.getElementById('bSignInOn').click();
-    const after = got;
-    signinPick = ['first-node', 'second-node']; drawAuth();
-    document.getElementById('bSignInNo').click();
-    const canceled = signinPick === null && !document.getElementById('signinNode');
-    window.signIn = real;
-    return { opts, rows, after, canceled };
-  });
-  ok(picked.opts.join(',') === 'first-node,second-node' && picked.rows === 0,
-     `with several nodes the card offers a select of them, not a button each (${picked.opts.join(', ')})`);
-  ok(picked.after === 'second-node', '...and Sign in runs the flow on the one chosen');
-  ok(picked.canceled, '...and Cancel puts the row back');
-}
-
-
-// The nodes come back, HERE rather than further down: a drained node is this
-// file's doing and every suite after it needs one that takes work, so the
-// window in which a crash could leave the whole run poisoned is kept to the
-// block that actually needs the drain. It was nine failures across three
-// files once, all reading "node is draining", none of them about themselves.
-await page.evaluate(async () => {
-  const ns = (await (await fetch('/api/v1/nodes')).json()).nodes || [];
-  for (const n of ns.filter(x => x.kind === 'agent' && x.state === 'draining'))
-    await fetch('/api/v1/nodes', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'online', id: n.id }) });
-});
 
 // ---- the runner card -------------------------------------------------------
 // A view of the NODES' runners and nothing else: this container ran a runner
@@ -1318,7 +1190,7 @@ const runnerCard = rows => page.evaluate(x => {
 }, rows);
 
 let rc = await runnerCard([]);
-ok(/no runner on any node/.test(rc.body) && /Nodes tab installs one/.test(rc.body),
+ok(/no runner on any node/.test(rc.body) && /CI runner tab adds one/.test(rc.body),
    'with no runner anywhere the card says so, and where one is installed');
 rc = await runnerCard([{ node: 'bb-sandbox', live: true, installed: true,
   listening: true, busy: false, labels: ['bb-sandbox'] }]);
@@ -1350,7 +1222,7 @@ await page.evaluate(() => refresh());
 // point is being the OTHER button: excluding hides a row, this one leaves it
 // intact and takes away only the session, so that is what gets asserted.
 await page.evaluate(() => refresh());
-await page.waitForSelector('#projects [data-k="alpha"]', { timeout: 10000 });
+await page.waitForSelector('#projects [data-k="alpha"]', { timeout: 10000, state: 'attached' });
 ok(await page.$$eval('#projects [data-k]', bs => bs.length > 0),
    'every project row carries a padlock');
 await page.evaluate(() => setLocked('alpha', true));
@@ -1469,6 +1341,30 @@ ok(true, 'pinning it puts it back on the sidebar');
      `...and the asking is remembered, not dropped: one more goes when it lands (${
         held - before} in ${Date.now() - t0}ms)`);
   await page.unroute('**/api/status*');
+}
+// ...and the revisions poll the same (R88): the timer, a tab coming back and
+// a menu let go each start one, and stacked an older reply landing second
+// set the page's revisions back and fired every watch again.
+{
+  let release, held = 0;
+  await page.route('**/api/revs*', async route => {
+    held++;
+    if (held === 1) await new Promise(r => { release = r; });
+    await route.continue().catch(() => {});
+  });
+  // Started, not awaited: the request it sends is the one held open.
+  await page.evaluate(() => { pollRevs(); });
+  await page.waitForFunction(() => revsBusy, null, { timeout: 10000 });
+  const before = held;
+  await page.evaluate(() => { pollRevs(); pollRevs(); pollRevs(); pollRevs(); });
+  await new Promise(r => setTimeout(r, 2000));      // past the 1.5 s timer too
+  ok(held === before,
+     `revision polls asked while one is out do not stack (${held - before + 1} in flight)`);
+  release();
+  const t0 = Date.now();
+  while (held < before + 1 && Date.now() - t0 < 15000) await new Promise(r => setTimeout(r, 50));
+  ok(held >= before + 1, `...and one more goes when it lands (${held - before} after ${Date.now() - t0}ms)`);
+  await page.unroute('**/api/revs*');
 }
 
 // ---- a row's tooltips -----------------------------------------------------
@@ -1607,7 +1503,7 @@ ok(await page.$$eval('.dmtab .row', rs =>
 // Each button on the Tools card carries an icon, and the tab it opens wears
 // the same one: a button and its tab are one thing in two places.
 ok(await page.$$eval('[data-card="tools"] .macros button', bs =>
-     bs.length === 7 && bs.every(b => b.querySelector('svg'))),
+     bs.length === 8 && bs.every(b => b.querySelector('svg'))),
    'every Tools button carries an icon');
 ok(await page.evaluate(() => {
      const btn = document.getElementById('bDocker').querySelector('svg').outerHTML;
@@ -1627,16 +1523,136 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
 // Renaming is a dialog now, not a prompt. One dialog, two doors: the gear is
 // the project's own settings and the chain is GitHub's half of them, so where
 // a credential is changed does not depend on whether a remote exists yet.
-await page.click('.doc .projtab [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
+ok(/Folder: \/workspace\/alpha · project #\d+/.test(await page.$eval('#rnHint', e => e.textContent)),
+   'the settings say the folder the project lives in, and its id, under the name');
+{
+  // Sections, every one open by default at every width, with a jump bar
+  // over them (the operator, 8 Oct: too much was hidden in folds). One shut
+  // stays shut for the page's life; the chain's door shows the repository's
+  // alone, open. Read with $eval, which the harness's own fold-opening leaves be.
+  const folds = (p = page) => p.$$eval('details.rngroup', ds => ds.map(d => ({
+    k: d.dataset.sect, open: d.open, shown: getComputedStyle(d).display !== 'none' })));
+  const shut = fs => fs.filter(f => f.shown && !f.open).map(f => f.k).join();
+  const gear = await folds();
+  ok(!shut(gear) && gear.filter(f => f.shown).length > 3,
+     `the settings are sections, every one open (${shut(gear) || 'none shut'})`);
+  const jumps = await page.$$eval('#rnmodal .sectjump a', as => as.map(a => a.textContent));
+  ok(jumps.includes('The project') && jumps.includes('Claude may'),
+     `...with a jump bar naming them (${jumps.join(', ')})`);
+  await page.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
+  await page.waitForFunction(() => !document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  ok(shut(await folds()) === 'rn:claude', `...a heading pressed shuts its own section alone (${shut(await folds())})`);
+  await page.evaluate(() => { closeRename(); renameProject('alpha', 'git'); });
+  const chain = await folds();
+  ok(chain.filter(f => f.shown).map(f => f.k).join() === 'rn:repo' && chain.find(f => f.k === 'rn:repo')?.open,
+     `...and the chain's door shows the repository's section alone, open (${JSON.stringify(chain.filter(f => f.shown))})`);
+  await page.evaluate(() => { closeRename(); renameProject('alpha'); });
+  ok(shut(await folds()) === 'rn:claude', `...and the gear opens again with the one this person shut, shut (${shut(await folds())})`);
+  await page.$eval('#rnmodal .sectjump a:last-child', a => a.click()).catch(() => {});
+  await page.$$eval('#rnmodal .sectjump a', as => as.find(a => a.textContent === 'Claude may')?.click());
+  await page.waitForFunction(() => document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
+  ok(!shut(await folds()), '...and its name in the jump bar opens it again');
+  // A phone: every section open there too.
+  const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL);
+  await ready(phone);
+  await phone.evaluate(() => renameProject('alpha'));
+  await phone.waitForSelector('#rnmodal:not([hidden])');
+  ok(!shut(await folds(phone)), `on a phone every section is open too (${shut(await folds(phone)) || 'none shut'})`);
+  await phone.close();
+}
 ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
    '...with the keyboard down, like every other dialog here');
 ok(await page.$eval('#rnTokenField', el => el.hidden)
    && await page.$eval('#rnAuthField', el => el.hidden),
    '...and holds no credential: the gear is the project, the chain is its remote');
+// Its people (membership.py): the owner, who may hand it on and make it
+// invite only, staged until Save, and an Invite that acts on the press.
+await page.waitForSelector('#rnPeopleField:not([hidden]) #rnOwner', { timeout: 10000 });
+ok(await page.$eval('#rnOwner', s => s.value) === 'test'
+   && await page.$('#rnInviteOnly:not([disabled])') !== null
+   && /Any administrator can add people/.test(await page.$eval('#rnPeople', e => e.textContent)),
+   'the gear shows the project\'s owner, to hand on, and Invite only, off, saying what that allows');
+await page.click('#rnInviteOnly');
+ok(/Administrators cannot add themselves/.test(await page.$eval('#rnPeople', e => e.textContent))
+   && (await api('/api/members', { action: 'view', project: 'alpha' })).body.invite_only === false,
+   '...ticking Invite only says what it means and changes nothing until Save');
+await page.click('#rnInviteOnly');
+// Its Android signing keys (R106), an administrator's: a row per route,
+// a picked keystore staged until Save, its password asked for before
+// anything is sent, and a key the server will not keep refused in the
+// dialog, which stays open.
+await page.waitForSelector('#rnSignField:not([hidden]) .rnsign[data-route="sideload"]', { timeout: 10000 });
+const signRows = await page.$$eval('#rnSignRows .rnsign[data-key]', rs => rs.map(r => r.firstElementChild.textContent.trim()));
+// ...under the backup password's line, the project's owner's to set (the
+// fixture's owner owns alpha).
+ok(/Backup password: none/.test(await page.$eval('#rnSignRows .rnsignlock', e => e.textContent))
+   && /No key can be added or made until it has one: set it first/.test(await page.$eval('#rnSignRows .rnsignlock .sub.bad', e => e.textContent))
+   && await page.$('#rnLockOpen') !== null && await page.$('#rnSignRows [data-signopen]') === null,
+   'the signing keys open on whether their backups have a password, and with none no key can be added, the owner told to set it first');
+// Set, as the owner does it, and the keys can be added.
+await page.click('#rnLockOpen');
+await page.fill('#rnLockNew', 'a-backup-password');
+await page.fill('#rnLockAgain', 'a-backup-password');
+await page.click('#rnLockGo');
+await page.waitForFunction(() => /Backup password: set/.test(document.querySelector('#rnSignRows .rnsignlock')?.textContent || ''), null, { timeout: 10000 });
+await page.waitForSelector('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]', { timeout: 10000 });
+ok(true, '...and once the owner sets one, Upload one is offered');
+ok(signRows.length === 2 && /^Play upload key: none$/.test(signRows[0]) && /^Sideload signing key: none$/.test(signRows[1]),
+   `the gear shows the project's two signing keys, none yet (${signRows.join(' / ')})`);
+await page.click('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]');
+writeFileSync(`${DIR}/not-a-keystore.p12`, 'not a keystore');
+await page.setInputFiles('#rnSignRows .rnsign[data-route="sideload"] [data-signfile]', `${DIR}/not-a-keystore.p12`);
+await page.click('#rnGo');
+await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 5000 });
+ok(/type the keystore's password/.test(await page.$eval('#rnErr', e => e.textContent)),
+   '...a picked keystore with no password is stopped before anything is sent');
+await page.fill('#rnSignRows .rnsign[data-route="sideload"] [data-signpass]', 'p');
+await page.click('#rnGo');
+await page.waitForFunction(() => /Sideload signing key: /.test(document.getElementById('rnErr').textContent),
+                           null, { timeout: 15000 });
+const signErr = await page.$eval('#rnErr', e => e.textContent);
+ok(!await page.$eval('#rnmodal', e => e.hidden)
+   && !(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload,
+   `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
+await api('/api/signing', { action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' });
+// A rotated key (R106 step 7): the retired one says why it is kept and
+// offers no Remove; the one it went to says who still sees the old.
+{
+  const sd = `${DIR}/state/signing/alpha`;
+  for (const [k, rec] of [['default', { retired_for: 'watch' }], ['watch', { rotated_from: 'default' }]]){
+    mkdirSync(`${sd}/${k}`, { recursive: true });
+    writeFileSync(`${sd}/${k}/sideload.ks`, 'k');
+    writeFileSync(`${sd}/${k}/sideload.json`, JSON.stringify({ route: 'sideload', key: k, alias: k, backed_up: 1,
+      sha256: 'AB:'.repeat(31) + 'AB', store_pass: 'x', ...rec }));
+  }
+  await page.evaluate(() => rnLoadSigning('alpha'));
+  await page.waitForSelector('.rnsign[data-key="watch"][data-route="sideload"]', { timeout: 10000 });
+  const rows = await page.$$eval('.rnsign[data-route="sideload"]', rs => rs.map(r => ({ key: r.dataset.key,
+    text: r.textContent.replace(/\s+/g, ' '), remove: !!r.querySelector('[data-signremove]'), rotate: !!r.querySelector('[data-rotate]') })));
+  const old = rows.find(r => r.key === 'default'), now = rows.find(r => r.key === 'watch');
+  ok(old && /Retired: rotated to watch\. Kept, since the proof and every device before Android 9 still need it/.test(old.text) && !old.remove && !old.rotate
+     && now && /Rotated from default: Android 9 and newer see this key, older devices still see default/.test(now.text) && !now.rotate,
+     'a retired sideload key says why it is kept and offers no Remove, and the key it went to says who still sees the old one');
+  rmSync(sd, { recursive: true, force: true });
+  await page.evaluate(() => rnLoadSigning('alpha'));
+}
 await page.click('#rnCancel');
+
+// An invitation waiting on this account sits in the bell with its answer,
+// above the page's own notes, like every other thing waiting on you.
+await page.evaluate(() => { state.invites = [{ id: 7, project: 'beta', by: 'ada', at: Math.floor(Date.now() / 1000) }];
+  toggleBell(true); drawBell(); });
+ok(await page.$eval('#bellPanel', e => /invited to beta/.test(e.textContent) && /ada invited you to work on beta/.test(e.textContent))
+   && await page.$('#bellPanel [data-binvite="7"][data-yes="1"]') !== null
+   && await page.$('#bellPanel [data-binvite="7"][data-yes="0"]') !== null,
+   'an invitation to a project is in the bell with Accept and Decline');
+await page.evaluate(() => { state.invites = []; drawBell(); toggleBell(false); });
 
 // The chain, on a project that already has one. alpha can push (the
 // retroactive seeding granted it, on the deploy key its remote uses), so it
@@ -1682,6 +1698,56 @@ ok(await page.$eval('#rnDelete', e => e.hidden), 'the chain\'s door has no Delet
 await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
 ok(await page.$eval('#rnTokenClear', b => b.hidden),
    'a project with no token stored is offered nothing to clear');
+// The address, for the same repository after its owner is renamed on the
+// host: filled from the remote as written, sent only when changed, and a
+// refusal said in the dialog with the remote left where it was.
+const addrWas = await page.$eval('#rnAddr', e => e.value);
+ok(!await page.$eval('#rnAddrField', e => e.hidden) && /alpha/.test(addrWas),
+   `the chain's door shows where the remote points, to change after a rename on the host (${addrWas})`);
+await page.fill('#rnAddr', 'https://elsewhere.example/someone/alpha.git');
+await page.click('#rnGo');
+await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
+const addrErr = await page.$eval('#rnErr', e => e.textContent);
+ok(/another host/.test(addrErr) && !await page.$eval('#rnmodal', e => e.hidden),
+   `...an address on another host is refused in the dialog, which stays open (${addrErr.slice(0, 80)})`);
+const addrAfter = await api('/api/project-auth', { name: 'alpha' });
+ok(addrAfter.body.url === addrWas, '...and the remote still points where it did');
+await page.fill('#rnAddr', addrWas);
+await page.evaluate(() => { document.getElementById('rnErrWrap').hidden = true; rnAskReset();
+  const g = document.getElementById('rnGo'); g.disabled = false; g.textContent = 'Save'; });
+
+// Test (the operator, 7 Oct): a press asks the server for a read and a
+// dry-run push and draws what is missing in red under the button, a list
+// when it is more than one thing; the server's half is unit/test_auth_test.py,
+// so its answer is set here and the draw is what is read.
+{
+  ok(!await page.$eval('#rnTestField', e => e.hidden), 'the chain\'s door offers Test for a project with a remote');
+  let asked = null;
+  const answer = { using: 'its deploy key', mode: 'ssh', read: true, push: false,
+                   missing: ['write access for the deploy key: ERROR: The key you are authenticating with has been marked as read only.',
+                             'the workflow scope'],
+                   notes: ['This project was set up without push rights.'] };
+  await page.route('**/api/project-auth', async route => {
+    const b = JSON.parse(route.request().postData() || '{}');
+    if (b.action !== 'test') return route.continue();
+    asked = b;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer) });
+  });
+  await page.$eval('#rnTest', b => b.click());
+  await page.waitForSelector('#rnTestOut:not([hidden])', { timeout: 10000 });
+  const out = await page.$eval('#rnTestOut', e => ({ text: e.textContent, bad: e.classList.contains('bad'),
+    items: e.querySelectorAll('li').length, label: document.getElementById('rnTest').textContent }));
+  ok(asked?.name === 'alpha' && asked.token === '' && out.bad && out.items === 2
+     && /With its deploy key it is missing/.test(out.text) && /marked as read only/.test(out.text)
+     && /without push rights/.test(out.text) && out.label === 'Test',
+     `...and what it is missing is said under it in red, one line each (${out.text.slice(0, 90)})`);
+  answer.missing = []; answer.push = true; answer.notes = [];
+  await page.$eval('#rnTest', b => b.click());
+  await page.waitForFunction(() => /can read and push/.test(document.getElementById('rnTestOut').textContent), null, { timeout: 10000 });
+  ok(await page.$eval('#rnTestOut', e => !e.classList.contains('bad')),
+     '...and a credential with everything says it can read and push');
+  await page.unroute('**/api/project-auth');
+}
 
 // The remaining states need a project holding both credentials, which no
 // fixture here does, so the answer the dialog was given is set directly and
@@ -1743,11 +1809,46 @@ v = await seen();
 ok(v.onNone && !v.bad,
    '...and picking it settles the dialog, because nothing is missing any more');
 
+// File access over FTP (R151): the owner's section, staged until Save. alpha
+// has no node here, so turning it on is refused in the dialog by name; an
+// account's access saves on its own, and reads back on the next open.
+await page.click('#rnCancel');
+{
+  await page.evaluate(n => renameProject(n), 'alpha');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.waitForSelector('#rnFtpField:not([hidden])', { timeout: 10000 });
+  await page.evaluate(() => { const d = document.querySelector('details[data-sect="rn:files"]'); d.open = true; });
+  const shut = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
+    people: e.querySelector('.rnftppeople').hidden }));
+  await page.click('#rnFtpOn');
+  const open = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
+    people: e.querySelectorAll('.rnftprow').length, noNode: /no node to run on/.test(e.textContent),
+    value: e.querySelector('#rnFtpPort').value }));
+  ok(shut.port && shut.people && !open.port && open.people >= 1 && open.noNode && open.value === '2121',
+     `the owner's File access section offers the port and each account once it is ticked, and says alpha has no node (${JSON.stringify(open)})`);
+  await page.click('#rnGo');
+  await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
+  const err = await page.$eval('#rnErr', e => e.textContent);
+  ok(/no node to run its file access on/.test(err) && !await page.$eval('#rnmodal', e => e.hidden),
+     `...and Save refuses turning it on with no node, in the dialog (${err.slice(0, 70)})`);
+  const uid = await page.$eval('#rnFtp [data-ftpuid]', s => s.dataset.ftpuid);
+  await page.selectOption(`#rnFtp [data-ftpuid="${uid}"]`, 'rw');
+  const draft = await page.evaluate(() => rnFtpChange());
+  ok(draft?.on === true && draft.port === 2121 && draft.access?.[uid] === 'rw',
+     `...and what Save sends is the switch, the port and the access picked (${JSON.stringify(draft)})`);
+  await page.click('#rnCancel');
+  const set = await api('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uid]: 'r' } });
+  const back = await api('/api/project-ftp', { project: 'alpha' });
+  ok(set.status === 200 && back.body.on === false && back.body.people.find(p => p.uid === uid)?.access === 'r',
+     `...and an account's access is kept while it is off (${JSON.stringify(back.body.people)})`);
+  await api('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uid]: '' } });
+}
+
 // What Claude runs on here, back through the gear. Per project, and applied
 // when a session starts rather than typed into a running one, so the dialog's
 // job is to say which of those two you are doing.
-await page.click('#rnCancel');
-await page.click('.doc .projtab [data-rn="alpha"]');
+await page.evaluate(() => { if (!document.getElementById('rnmodal').hidden) closeRename(); });
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',
    'the dialog is the project\'s settings, not a rename form wearing its name');
@@ -1768,7 +1869,7 @@ ok(!await page.$eval('#rnDelete', e => e.hidden) && /Delete project/.test(await 
   page.on('dialog', auto);
   ok(/moves to \/workspace\/\.trash\/alpha/.test(asked) && existsSync(`${DIR}/ws/alpha/.git`),
      '...which asks, names the bin, and moves nothing when declined');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
 }
 await page.selectOption('#rnModel', 'sonnet');
@@ -1806,7 +1907,7 @@ ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
 await page.click('#projects #bAllProj');
 await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
-await page.click('.doc .projtab [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 await page.click('#rnCancel');
 
@@ -1830,7 +1931,7 @@ await page.click('#rnCancel');
   writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
     '{"type":"user","message":{"role":"user","content":"hi"}}\n'
     + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.waitForFunction(() => document.getElementById('rnModel').value === 'fable', null, { timeout: 8000 });
   ok(/Fable is Claude's own default here/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
@@ -1843,7 +1944,7 @@ await page.click('#rnCancel');
        && !(state?.projects || []).find(p => p.name === 'alpha')?.yours?.model),
      '...restarts nothing, and stores nothing: the default is still the default');
   rmSync(tdir, { recursive: true, force: true });
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnModel', 'sonnet');
   await page.selectOption('#rnAsks', 'fewer');
@@ -1870,7 +1971,7 @@ await page.click('#rnCancel');
      '...while the session it declined to restart is still running');
   // The other answer: saved, and the session ended for the next press of
   // Claude to start on the new setting.
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   ok(await page.$eval('#rnRestartAsk', e => e.hidden) && await page.$eval('#rnGo', e => e.textContent) === 'Save',
      'opened again, the dialog has put the question away');
@@ -1888,7 +1989,7 @@ await page.click('#rnCancel');
   await refreshUntil(page, () => liveSessions().has(myClaude('alpha')), { timeout: 20000 });
   // A change a running session reads when it is used (the build command)
   // asks nothing.
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   const wasBuild = await page.$eval('#rnBuildCmd', e => e.value);
   await page.fill('#rnBuildCmd', wasBuild + ' && make all');
@@ -1897,7 +1998,7 @@ await page.click('#rnCancel');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))) && page.dialogs.length === before
      && await page.$eval('#rnRestartAsk', e => e.hidden),
      'a change the session reads when it is used (the build command) asks nothing and ends nothing');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.fill('#rnBuildCmd', wasBuild);
   await page.click('#rnGo');
@@ -1909,7 +2010,7 @@ await page.click('#rnCancel');
   tmuxKill('claude-alpha');
   await refreshUntil(page, () => !liveSessions().has(myClaude('alpha')),
                      { timeout: 20000 });
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnModel', '');
   await page.click('#rnGo');
@@ -2267,17 +2368,25 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   ok(arc.status === 200 && arc.ct === 'application/gzip' && arc.len > 0,
      'and the whole archive comes back as a tarball');
   // ...and the diagnostics, with what sessions reported about BuilderBot in
-  // them (the operator, 24 Sep): one JSON file, from a link beside the logs.
+  // them (the operator, 24 Sep): a zip from a link beside the logs, the
+  // report as diagnostics.json and each conversation a report carries as a
+  // file of its own beside it (the operator, 2 Oct).
   const dg = await page.evaluate(async () => {
     const r = await fetch('/logs/download?what=diag');
+    const b = new Uint8Array(await r.arrayBuffer());
+    let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
     return { status: r.status, ct: r.headers.get('content-type'),
-             cd: r.headers.get('content-disposition'), body: await r.json().catch(() => null),
+             cd: r.headers.get('content-disposition'), zip: btoa(s),
              // The section's own markup: the Settings tab is put away above.
              link: /<a class="btnish" href="\/logs\/download\?what=diag" download/.test(logSection()) };
   });
-  ok(dg.status === 200 && dg.ct === 'application/json' && /builderbot-diagnostics-\d{8}-\d{4}\.json/.test(dg.cd || '')
-     && dg.body && 'controller' in dg.body && Array.isArray(dg.body.reports) && dg.link,
-     `the diagnostics download beside them as one JSON file, with the reports in it (${dg.cd})`);
+  const inZip = JSON.parse(execFileSync('python3', ['-c', `
+import base64, io, json, sys, zipfile
+z = zipfile.ZipFile(io.BytesIO(base64.b64decode(sys.stdin.read())))
+print(json.dumps({"names": z.namelist(), "diag": json.loads(z.read("diagnostics.json"))}))`], { input: dg.zip, encoding: 'utf8' }));
+  ok(dg.status === 200 && dg.ct === 'application/zip' && /builderbot-diagnostics-\d{8}-\d{4}\.zip/.test(dg.cd || '')
+     && 'controller' in inZip.diag && Array.isArray(inZip.diag.reports) && dg.link,
+     `the diagnostics download beside them as a zip, diagnostics.json with the reports in it (${dg.cd}; ${inZip.names.join(', ')})`);
 }
 
 // The command pin and the project pin are different features that spent an
@@ -2297,40 +2406,51 @@ ok((await api('/api/pin', { name: 'alpha', pinned: true })).status === 400,
 ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 400,
    '...and a command name is not a project');
 
-// ---- a project on several nodes asks which first (R82) --------------------
-// The press opens a chooser with a button per node, what each has and how
-// busy it is, a node that cannot start a session dead with its reason; the
-// pick opens the terminal on that node, named on the tab and stamped with
-// that node's boot. Planted on the row, since the fixture has one node.
+// ---- a project on several nodes: one chooser, a part per node (R82) --------
+// The press opens a chooser with each node under its name, what it has and
+// how busy it is: Resume and New conversation where this account is signed
+// in, that node's sign-in where it is not, and only the reason where a
+// session cannot start. A pick opens the terminal on that node, named on
+// the tab and stamped with that node's boot. Planted on the row, since the
+// fixture has one node.
 {
   // The poll held: the rows are planted, and a poll landing between the
   // plant and the read put the server's rows back, which have one node.
   await holdPoll(page);
   const plant = (patch) => page.evaluate(p2 => {
+    state.claude_auth = { nodes: { n_ubu: { email: 'tester@example.com', plan: 'max' } } };
     Object.assign(state.projects.find(x => x.name === 'alpha'), p2); drawProjects(state.projects); }, patch);
-  await plant({ locked: false, session_at: 'ubu', session_why: '', last_claude: null, held: '',
+  await plant({ locked: false, session_at: 'ubu', session_node: 'n_ubu', session_why: '', held: '',
+    last_claude: { id: 'abc123', when: Math.floor(Date.now() / 1000) - 7200 },
     session_nodes: [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu',
                       sample: { cpu_pct: 7, mem_mb: 8192, mem_used_mb: 2048 }, gpu: 'NVIDIA RTX A2000', tools: ['python'] },
+                    { id: 'n_new', name: 'fresh', where: 'node', why: '', boot: 'b-new', sample: {}, gpu: '', tools: [] },
                     { id: 'n_rh', name: 'rh', where: 'refused', boot: '',
                       why: 'rh is offline. Sessions run on a node and nowhere else' }] });
   // Through the function the button calls: by this point in the file the
-  // button's own state (the sign-in record, the pins) is whatever the
-  // blocks above left, and that is not what this block is about.
+  // button's own state (the pins) is whatever the blocks above left, and
+  // that is not what this block is about.
   // ...with no chooser already open on the row from a block above: a press
   // on a row whose chooser is open closes it, which is right, and not what
   // is under test.
-  await page.evaluate(() => { resumeFor = null; claudeNodePick = {}; openClaude('alpha'); });
+  await page.evaluate(() => { resumeFor = null; openClaude('alpha'); });
   // Read in the one evaluation that waits for it: the card repaints, and a
   // read after a separate wait found the menu mid-rebuild.
   const menu = JSON.parse(await (await page.waitForFunction(() => {
-    const bs = [...document.querySelectorAll('#resumemenu [data-node]')];
-    return bs.length === 2 ? JSON.stringify(bs.map(b => ({
-      id: b.dataset.node, dead: b.disabled, text: b.textContent.replace(/\s+/g, ' ') }))) : null;
+    const m = document.getElementById('resumemenu');
+    if (!m || m.querySelectorAll('.sub').length < 4) return null;
+    return JSON.stringify({ lines: [...m.querySelectorAll('.sub')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+      buttons: [...m.querySelectorAll('button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
+        kind: b.dataset.r ? 'resume' : b.dataset.n ? 'new' : b.dataset.signinNode ? 'signin' : '?', dead: b.disabled })) });
   }, null, { timeout: 10000 })).jsonValue());
-  ok(menu.length === 2 && !menu[0].dead && /cpu 7%/.test(menu[0].text) && /RTX A2000/.test(menu[0].text) && menu[1].dead,
-     `pressing Claude on a project with two nodes asks which, with what each has, and a node that cannot start one is dead (${
-        JSON.stringify(menu).slice(0, 120)})`);
-  await page.waitForFunction(() => { const b = document.querySelector('#resumemenu [data-node="n_ubu"]');
+  ok(/^ubu cpu 7%/.test(menu.lines[0]) && /RTX A2000/.test(menu.lines[0]) && /^fresh · you are not signed in there$/.test(menu.lines[1])
+     && /^rh$/.test(menu.lines[2]) && /rh is offline/.test(menu.lines[3]),
+     `pressing Claude on a project with several nodes lists each under its name, with what it has (${menu.lines.join(' | ').slice(0, 120)})`);
+  ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'resume:n_ubu,new:n_ubu,signin:n_new' && menu.buttons.every(b => !b.dead)
+     && /^Resume: 2 h ago$/.test(menu.buttons[0].text) && menu.buttons[2].text === 'Sign in on fresh',
+     `...Resume and New conversation for the node this account is signed in on, a sign-in for the one it is not, and no press for one that cannot start a session (${
+        menu.buttons.map(b => b.text).join(' | ')})`);
+  await page.waitForFunction(() => { const b = document.querySelector('#resumemenu [data-n][data-node="n_ubu"]');
     if (!b) return false; b.click(); return true; }, null, { timeout: 10000 });
   await page.waitForFunction(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'), null, { timeout: 10000 });
   // The row planted again in the same evaluation as the read: a poll that
@@ -2341,9 +2461,101 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
     p.session_nodes = [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' }, { id: 'n_rh', name: 'rh', where: 'refused', boot: '' }];
     return { label: t.label, url: ttydUrl(t.arg) }; });
   ok(tab.label === 'Claude: alpha (ubu)' && /%3Ab%3Ab-ubu/.test(tab.url),
-     `...and the pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
-  await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:'))); drawPanes(); });
+     `...and a pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
+  // With this account's session running on one node, the press opens the
+  // same chooser rather than jumping to the tab: Open tab and End session
+  // for that node, and the other nodes still offered beside it.
+  const live = JSON.parse(await (await page.waitForFunction(() => {
+    state.projects.find(x => x.name === 'alpha').session_nodes = [
+      { id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' },
+      { id: 'n_new', name: 'fresh', where: 'node', why: '', boot: 'b-new' }];
+    state.sessions = [...(state.sessions || []).filter(s => s.name !== myClaude('alpha')),
+                      { name: myClaude('alpha'), node_id: 'n_ubu', attached: false }];
+    resumeFor = null; openClaude('alpha');
+    const m = document.getElementById('resumemenu');
+    if (!m || !m.querySelector('[data-end]')) return null;
+    return JSON.stringify({ lines: [...m.querySelectorAll('.sub')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+      buttons: [...m.querySelectorAll('button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.end || b.dataset.signinNode || ''}`) });
+  }, null, { timeout: 10000 })).jsonValue());
+  ok(/your session is running here/.test(live.lines[0]) && live.buttons.join() === 'Open tab:n_ubu,End session:n_ubu,Sign in on fresh:n_new',
+     `with a session running on one node the press opens the chooser: Open tab and End session there, the other nodes still offered (${live.buttons.join(' | ')})`);
+  const ended = await page.evaluate(async () => {
+    const real = endSession; let asked = null;
+    window.endSession = async (name, node) => { asked = { name, node }; return { ok: true }; };
+    const before = tabs.length;
+    document.querySelector('#resumemenu [data-end]').click();
+    await new Promise(r => setTimeout(r, 300));
+    window.endSession = real;
+    return { asked, dropped: before - tabs.length, open: !!document.getElementById('resumemenu'),
+             tab: tabs.some(t => String(t.arg) === 'claude:alpha:n:n_ubu') };
+  });
+  ok(/End your Claude session on alpha on ubu\?/.test(page.dialogs.at(-1) || '') && ended.asked?.node === 'n_ubu'
+     && ended.asked?.name === await page.evaluate(() => myClaude('alpha')) && ended.dropped === 1 && !ended.tab && !ended.open,
+     `End session asks first, ends that node's session and drops its tab (${JSON.stringify(ended)})`);
+  // A project on one node: its chooser names that node with what it has,
+  // as each of several gets.
+  const one = await page.evaluate(() => {
+    const p = state.projects.find(x => x.name === 'alpha');
+    Object.assign(p, { session_nodes: [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu',
+      sample: { cpu_pct: 7, mem_mb: 8192, mem_used_mb: 2048 }, gpu: 'NVIDIA RTX A2000', tools: [] }] });
+    resumeFor = 'alpha'; drawProjects(state.projects);
+    return [...(document.getElementById('resumemenu')?.querySelectorAll('.sub') || [])].map(e => e.textContent.trim());
+  });
+  ok(/^ubu cpu 7%/.test(one[0] || '') && /RTX A2000/.test(one[0] || ''),
+     `a project on one node gets that node's name and what it has in its chooser too (${one.join(' | ')})`);
+  // Who is in a session on a project: one line per account per node, the
+  // node in brackets, each with its own working or waiting dot.
+  const who = await page.evaluate(() => {
+    resumeFor = null;
+    state.claude_with = { alpha: ['test', 'w.peer'] };
+    state.claude_where = { alpha: [{ who: 'test', node: 'ubu', working: true }, { who: 'test', node: 'fresh', working: false },
+                                   { who: 'w.peer', node: 'ubu', working: false }] };
+    return [...new DOMParser().parseFromString(`<div>${sessionRows('alpha')}</div>`, 'text/html').querySelectorAll('.sessone')]
+      .map(e => `${e.querySelector('.st').classList.contains('working') ? '*' : '-'}${e.textContent.trim()}`);
+  });
+  ok(who.join(' | ') === '-w.peer (ubu) | -test (you) (fresh) | *test (you) (ubu)',
+     `a person with a session on two nodes is two lines, each naming its node and whether it is working there (${who.join(' | ')})`);
+  await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:')));
+    state.claude_where = {};
+    state.sessions = (state.sessions || []).filter(s => s.name !== myClaude('alpha')); drawPanes(); });
   await freePoll(page);
   page.errors = [];
+}
+// ---- a dialog that scrolls says so, and opens at its top -------------------
+// On a short screen the project's settings dialog is taller than the room:
+// a shadow on its bottom edge says there is more, a shadow on the top one
+// once it has scrolled, none at the end; and closed and opened again it is
+// back at its top, however far down it was (the operator, 30 Sep).
+{
+  await page.setViewportSize({ width: 420, height: 560 });
+  const box = '#rnmodal > .box';
+  const cls = () => page.$eval(box, b => ({ up: b.classList.contains('scrollup'), down: b.classList.contains('scrolldown'),
+    top: b.scrollTop, room: b.scrollHeight - b.clientHeight, shadow: getComputedStyle(b).boxShadow }));
+  await page.evaluate(() => renameProject('alpha'));
+  await page.waitForFunction(s => document.querySelector(s)?.classList.contains('scrolldown'), box, { timeout: 10000 });
+  const a = await cls();
+  ok(a.room > 50 && a.down && !a.up && a.top === 0 && /inset/.test(a.shadow),
+     `a dialog taller than the screen opens at its top with a shadow on the edge that has more (${JSON.stringify({ ...a, shadow: a.shadow.slice(0, 40) })})`);
+  // ...and a list inside it that scrolls, the project's Reads, says so the
+  // same way, on its own edges.
+  await page.waitForFunction(() => document.getElementById('rnReads')?.classList.contains('scrolldown'), null, { timeout: 10000 });
+  const reads = await page.$eval('#rnReads', l => ({ down: l.classList.contains('scrolldown'), up: l.classList.contains('scrollup'),
+    room: l.scrollHeight - l.clientHeight, shadow: getComputedStyle(l).boxShadow }));
+  await page.$eval('#rnReads', l => { l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll')); });
+  const readsEnd = await page.$eval('#rnReads', l => [l.classList.contains('scrollup'), l.classList.contains('scrolldown')]);
+  ok(reads.room > 0 && reads.down && !reads.up && /inset/.test(reads.shadow) && readsEnd[0] && !readsEnd[1],
+     `a list that scrolls, the project's Reads, darkens the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
+  await page.$eval(box, b => { b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll')); });
+  const b = await cls();
+  ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down })})`);
+  await page.evaluate(() => closeRename());
+  await page.waitForFunction(() => document.getElementById('rnmodal').hasAttribute('hidden'), null, { timeout: 5000 });
+  await page.evaluate(() => renameProject('alpha'));
+  await page.waitForFunction(s => document.querySelector(s)?.classList.contains('scrolldown'), box, { timeout: 10000 });
+  await page.waitForTimeout(200);
+  const c = await cls();
+  ok(c.top === 0 && !c.up, `...and opened again it is back at its top, not where it was left (${c.top})`);
+  await page.evaluate(() => closeRename());
+  await page.setViewportSize({ width: 1280, height: 900 });
 }
 await done(browser);

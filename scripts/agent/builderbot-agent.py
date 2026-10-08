@@ -56,6 +56,7 @@ Runs anywhere Python 3.8+ is, with nothing installed:
     builderbot-agent run            # the loop; what the unit runs
     builderbot-agent status         # what this node is, and does it answer
 """
+import base64
 import contextlib
 import errno
 import glob
@@ -80,6 +81,7 @@ import time
 import traceback
 import urllib.parse
 import urllib.request
+import zipfile
 
 # WINDOW.BUILD, and the two halves answer different questions.
 #
@@ -96,7 +98,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.115"
+AGENT_VERSION = "0.7.145"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -133,6 +135,9 @@ SESSION_BIND = os.environ.get("BUILDERBOT_SESSION_BIND", "")
 # the census is a function of the machine, and the session's state is the
 # one part of the machine this process itself is holding.
 SESSION = {}
+# How often a node whose loop is held by a census says it is still there
+# (census_beating): well inside the controller's three missed polls.
+BEAT_S = 20
 
 # Where a store may NOT be put. The stores are directories this agent
 # creates, fills, and (for the cache) empties on request, so a store
@@ -278,9 +283,22 @@ def dir_bytes(path):
 # `system` job is refused without it. The netplan seams exist so the tests
 # can stand in for both without a root shell.
 SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
+# Where the agent's own unit is kept through a restart it did not ask for
+# (B538): a systemd drop-in, and needrestart's configuration directory.
+UNIT_DROPIN = "/etc/systemd/system/builderbot-agent.service.d/builderbot.conf"
+NEEDRESTART_DIR = "/etc/needrestart"
 # What the GPU display's unit last said (bb-sandbox gpu-display, R20): one
 # line, read into the census so the row says it.
 GPU_DISPLAY_STATE = os.environ.get("BUILDERBOT_GPU_DISPLAY_STATE", "/run/builderbot-gpu-display")
+# The machine's sysfs, where the card and its driver are read from. The
+# suite's is a tree of its own with a card in it, so what it checks does
+# not depend on the box it runs on; lspci is not asked then.
+SYS_ROOT = os.environ.get("BUILDERBOT_SYS_ROOT", "/sys")
+# The NVIDIA driver's name in a toolchain job: alone, or with the package
+# apt is to install after a colon (nvidia-driver:nvidia-driver-610-open).
+DRIVER = "nvidia-driver"
+# ...and the container toolkit, the second of the machine's own rows there.
+TOOLKIT = "nvidia-container-toolkit"
 # The session's view (R35): the root helper that builds it, the file that
 # tells it this machine's layout, and the sudo rule that is the session
 # account's only way to it. Installed and kept by this agent from the bundle,
@@ -763,6 +781,74 @@ def tc_root(state):
     directory, or "" when the node has no toolchain store."""
     store = (state.get("stores") or {}).get("toolchains") or ""
     return os.path.join(store, tc_scope()) if store else ""
+
+
+def tc_dir(store, name, entry, action):
+    """The directory a toolchain job would replace or remove, or "" when it
+    replaces nothing in place: a toolchain not installed yet, or a versioned
+    Android package, whose new version installs beside the old."""
+    src = (entry or {}).get("source") or {}
+    if name.startswith("android:"):
+        if src.get("versioned") and action == "install":
+            return ""
+        pkg = str(src.get("package") or name.split(":", 1)[1])
+        d = os.path.join(store, "android", *pkg.split(";"))
+    else:
+        d = os.path.join(store, name)
+    return d if os.path.isdir(d) else ""
+
+
+def tc_users(path, limit=8):
+    """The processes using anything under `path`: as their program, a
+    library or a jar they have open, or the directory they run in. Each as
+    {pid, what, project}, the project from the BB_PROJECT a session's
+    processes carry. Read from /proc, which an agent that is root sees
+    whole; one that is not sees its own account's, and says no more than it
+    can (the operator, 6 Oct: an update under a running build is refused,
+    naming whose it is)."""
+    root = os.path.realpath(path).rstrip("/") + "/"
+    inside = lambda p: (p or "").startswith(root) or (p or "") + "/" == root  # noqa: E731
+    out = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit() or int(pid) == os.getpid():
+            continue
+        base = f"/proc/{pid}"
+        try:
+            hit = inside(os.readlink(f"{base}/exe")) or inside(os.readlink(f"{base}/cwd"))
+            if not hit:
+                with open(f"{base}/maps", encoding="utf-8", errors="replace") as f:
+                    hit = any(inside(ln.split(None, 5)[-1].strip()) for ln in f if "/" in ln)
+            if not hit:
+                for fd in os.listdir(f"{base}/fd"):
+                    with contextlib.suppress(OSError):
+                        if inside(os.readlink(f"{base}/fd/{fd}")):
+                            hit = True
+                            break
+            if not hit:
+                continue
+            with open(f"{base}/comm", encoding="utf-8", errors="replace") as f:
+                what = f.read().strip()
+            project = ""
+            with contextlib.suppress(OSError), open(f"{base}/environ", "rb") as f:
+                for kv in f.read().split(b"\0"):
+                    if kv.startswith(b"BB_PROJECT="):
+                        project = kv[len(b"BB_PROJECT="):].decode("utf-8", "replace")[:80]
+                        break
+        except (OSError, ValueError):
+            continue
+        out.append({"pid": int(pid), "what": what, "project": project})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def tc_users_said(name, users):
+    """One sentence naming who is using a toolchain, for the job's log."""
+    who = ", ".join(f"{u['what']} (pid {u['pid']}{', ' + u['project'] + chr(39) + 's session' if u['project'] else ''})"
+                    for u in users)
+    return (f"refused: {name} is in use by {who}. Updating or removing it under them "
+            "replaces files they are running from; try again when they have finished, "
+            "or stop them first\n")
 
 
 def share_images(store, say=None):
@@ -1650,6 +1736,12 @@ def sdk_env(state, who=None):
                 if os.path.isdir(d) and d not in front:
                     front.append(d)
             for k, v in (entry.get("env") or {}).items():
+                # `=VALUE` is the value itself, not a path: what a toolchain
+                # needs set beside where it is (B548: Playwright told not to
+                # sweep browsers another install of it did not ask for).
+                if v.startswith("="):
+                    env.setdefault(k, v[1:])
+                    continue
                 d = _lay_path(store, entry, v)
                 if os.path.exists(d):
                     env.setdefault(k, d)
@@ -1739,15 +1831,15 @@ def _gpu_card():
     Nodes tab offers Set up GPU display on (R20). A VM's virtual adapter is
     not one, and neither is a card of another make, which the verb would
     refuse."""
-    for line in _run(["lspci", "-nn"], timeout=10).splitlines():
+    for line in (_run(["lspci", "-nn"], timeout=10) if SYS_ROOT == "/sys" else "").splitlines():
         low = line.lower()
         if "nvidia" in low and ("vga compatible" in low or "3d controller" in low):
             return line.split(": ", 1)[-1].strip()[:120]
     # No pciutils (a minimal Rocky): sysfs says the same without the name,
     # a display-class device (0x03) of NVIDIA's vendor id (0x10de).
     try:
-        for dev in sorted(os.listdir("/sys/bus/pci/devices")):
-            base = f"/sys/bus/pci/devices/{dev}"
+        for dev in sorted(os.listdir(f"{SYS_ROOT}/bus/pci/devices")):
+            base = f"{SYS_ROOT}/bus/pci/devices/{dev}"
             with open(f"{base}/vendor") as f, open(f"{base}/class") as g, open(f"{base}/device") as h:
                 vendor, cls, did = f.read().strip(), g.read().strip(), h.read().strip()
             if vendor == "0x10de" and cls.startswith("0x03"):
@@ -1755,6 +1847,315 @@ def _gpu_card():
     except OSError:
         pass
     return ""
+
+
+def _gpu_name():
+    """The card's name as its driver gives it, or "". Only an answer that
+    exited 0 is a name: nvidia-smi says why it failed on stdout, and with
+    the driver installed but not yet loaded (nouveau holding the card until
+    a reboot) that sentence was reported as the GPU and drawn on the node's
+    row as its name (B391)."""
+    if not shutil.which("nvidia-smi"):
+        return ""
+    try:
+        p = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                           capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def _gpu_sample():
+    """What the card is doing now, for the node's meters: {gpu_pct,
+    gpu_mem_used_mb, gpu_mem_mb}, or {} when there is no driver answering.
+    Two cards are one gauge: their memory added and their load averaged.
+    Read on every heartbeat, so it gives up after a few seconds rather than
+    hold the poll on a driver that has stopped answering."""
+    if not shutil.which("nvidia-smi"):
+        return {}
+    try:
+        p = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total",
+                            "--format=csv,noheader,nounits"],
+                           capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if p.returncode != 0:
+        return {}
+    rows = []
+    for line in p.stdout.splitlines():
+        try:
+            rows.append([float(c) for c in line.split(",")])
+        except ValueError:
+            continue
+    rows = [r for r in rows if len(r) == 3]
+    if not rows:
+        return {}
+    return {"gpu_pct": round(sum(r[0] for r in rows) / len(rows), 1),
+            "gpu_mem_used_mb": round(sum(r[1] for r in rows)),
+            "gpu_mem_mb": round(sum(r[2] for r in rows))}
+
+
+# What is running on this machine by KIND, for a session judging whether it
+# is too busy to time anything on (R108). A session sees only its own
+# processes, so this is the one place the rest is visible; counted, never
+# named, so no other project's work is told to a session that is not on it.
+PROC_KINDS = (
+    ("emulator", lambda c, a: c.startswith("qemu-system")),
+    ("gradle", lambda c, a: c == "java" and ("GradleDaemon" in a or "gradle" in a.lower())),
+    ("java", lambda c, a: c == "java"),
+    ("compile", lambda c, a: c in ("cc1", "cc1plus", "rustc", "clang", "ld", "kotlinc", "javac", "go")),
+    ("browser", lambda c, a: c in ("chrome", "chromium", "headless_shell", "firefox")),
+    ("media", lambda c, a: c in ("ffmpeg", "ffprobe")),
+    ("docker build", lambda c, a: c in ("buildkitd", "buildctl") or (c == "docker" and " build" in a)),
+    ("claude", lambda c, a: c == "claude"),
+    ("python", lambda c, a: c.startswith("python")),
+    ("display", lambda c, a: c in ("Xorg", "X", "Xvfb", "gnome-shell")),
+)
+
+
+def _proc_kinds(proc_root="/proc"):
+    """{kind: count} of what runs here, read from /proc: one pass, the
+    command name and the first part of its arguments, the first kind that
+    matches. A Gradle daemon is a java process, counted once as gradle."""
+    out = {}
+    try:
+        pids = [p for p in os.listdir(proc_root) if p.isdigit()]
+    except OSError:
+        return out
+    for pid in pids:
+        try:
+            with open(os.path.join(proc_root, pid, "comm"), encoding="utf-8", errors="replace") as f:
+                comm = f.read().strip()
+            with open(os.path.join(proc_root, pid, "cmdline"), "rb") as f:
+                args = f.read(4096).replace(b"\0", b" ").decode("utf-8", "replace")
+        except OSError:
+            continue
+        for kind, test in PROC_KINDS:
+            if test(comm, args):
+                out[kind] = out.get(kind, 0) + 1
+                break
+    return out
+
+
+def _gpu_procs():
+    """How many processes are computing on the card, or 0."""
+    if not shutil.which("nvidia-smi"):
+        return 0
+    try:
+        p = subprocess.run(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
+                           capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    return len([ln for ln in (p.stdout or "").splitlines() if ln.strip()]) if p.returncode == 0 else 0
+
+
+def _gpu_mem_kinds(proc_root="/proc", smi=None):
+    """{kind: MB} of the card's memory in use, by what holds it, read from
+    nvidia-smi's process table, which lists a graphics user (an emulator
+    drawing on the card) as well as a computing one. By kind, like
+    _proc_kinds, never by name or project. An Android 37 phone filled the
+    card while it booted and a session could not tell what had (B532)."""
+    if smi is None:
+        if not shutil.which("nvidia-smi"):
+            return {}
+        try:
+            smi = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=3, check=False).stdout or ""
+        except (OSError, subprocess.SubprocessError):
+            return {}
+    out = {}
+    for m in re.finditer(r"\s(\d+)\s+(?:C|G|C\+G)\s+\S.*?\s(\d+)MiB\s*\|", smi):
+        pid, mb = m.group(1), int(m.group(2))
+        kind = "other"
+        try:
+            with open(os.path.join(proc_root, pid, "comm"), encoding="utf-8", errors="replace") as f:
+                comm = f.read().strip()
+            with open(os.path.join(proc_root, pid, "cmdline"), "rb") as f:
+                args = f.read(4096).replace(b"\0", b" ").decode("utf-8", "replace")
+            kind = next((k for k, test in PROC_KINDS if test(comm, args)), "other")
+        except OSError:
+            pass
+        out[kind] = out.get(kind, 0) + mb
+    return out
+
+
+def _kernel_key(name):
+    """A kernel directory's name as numbers, for which is newest:
+    7.0.0-38-generic after 7.0.0-34-generic, and 6.10 after 6.9."""
+    return [int(x) for x in re.findall(r"\d+", name)]
+
+
+def _gpu_driver(sys_root=None, modinfo=None, modules_root="/lib/modules", running=None):
+    """Where the NVIDIA driver stands on this machine, for the Toolchains
+    tab's driver row (R102): the version installed for this kernel (the
+    module modinfo finds), the version loaded now, and which driver has the
+    card. {} with no NVIDIA card. Read from the files, never from
+    nvidia-smi, which only answers once the driver has the card, and the
+    row has to tell "not installed" from "installed, waiting for a reboot"
+    and from "removed, still loaded until one"."""
+    sys_root = sys_root or SYS_ROOT
+    bound = ""
+    card = False
+    try:
+        base = os.path.join(sys_root, "bus", "pci", "devices")
+        for dev in sorted(os.listdir(base)):
+            d = os.path.join(base, dev)
+            try:
+                with open(os.path.join(d, "vendor")) as f, open(os.path.join(d, "class")) as g:
+                    if f.read().strip() != "0x10de" or not g.read().strip().startswith("0x03"):
+                        continue
+            except OSError:
+                continue
+            card = True
+            link = os.path.join(d, "driver")
+            if os.path.islink(link):
+                bound = os.path.basename(os.readlink(link))
+            break
+    except OSError:
+        pass
+    if not card:
+        return {}
+    loaded = ""
+    try:
+        with open(os.path.join(sys_root, "module", "nvidia", "version")) as f:
+            loaded = f.read().strip()[:40]
+    except OSError:
+        pass
+    installed = ""
+    tool = modinfo or next((m for m in ("modinfo", "/sbin/modinfo", "/usr/sbin/modinfo")
+                            if shutil.which(m) or os.path.isfile(m)), "")
+    if tool:
+        try:
+            p = subprocess.run([tool, "-F", "version", "nvidia"], capture_output=True,
+                               text=True, timeout=10, check=False)
+            if p.returncode == 0:
+                installed = (p.stdout.strip().splitlines() or [""])[0][:40]
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if tool and not installed:
+        # None for the running kernel can be a driver update waiting for the
+        # newest one: Ubuntu builds a new driver's module for the newest
+        # kernel alone, and apt takes the old version's off the running one,
+        # so the row read "removed" and the install failed while 595.99.02
+        # sat ready for the restart (bb-sandbox, 8 Oct). The newest kernel
+        # is the one a restart boots.
+        running = running if running is not None else os.uname().release
+        try:
+            kernels = sorted((k for k in os.listdir(modules_root)
+                              if k != running and _kernel_key(k)), key=_kernel_key)
+        except OSError:
+            kernels = []
+        if kernels and _kernel_key(kernels[-1]) > _kernel_key(running):
+            try:
+                p = subprocess.run([tool, "-k", kernels[-1], "-F", "version", "nvidia"], capture_output=True,
+                                   text=True, timeout=10, check=False)
+                if p.returncode == 0:
+                    installed = (p.stdout.strip().splitlines() or [""])[0][:40]
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return {"installed": installed, "loaded": loaded, "bound": bound[:20], **_gpu_driver_apt()}
+
+
+# A driver package apt may be asked for: the distribution's metapackage, by
+# branch, with its open-kernel variant. Nothing else reaches a command line.
+DRIVER_PKG = re.compile(r"nvidia-driver(-\d{3})?(-open)?")
+
+
+def _gpu_driver_apt():
+    """What apt says about the driver, for the row's pulldown and its
+    update line: the metapackage installed and its version, the version apt
+    would move it to, the branches on offer (newest first, transitional
+    packages and the server branches left out), and the one the
+    distribution recommends for this card. {} where apt is not the
+    machine's package manager. Asked of apt's own lists, so as current as
+    the last apt-get update, which Check for updates runs."""
+    if not shutil.which("apt-cache") or not shutil.which("dpkg-query"):
+        return {}
+
+    def out(argv, timeout=20):
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+            return p.stdout if p.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    names = []
+    for line in out(["apt-cache", "search", "--names-only", "^nvidia-driver(-[0-9]+)?(-open)?$"]).splitlines():
+        name, _, about = line.partition(" - ")
+        name = name.strip()
+        if DRIVER_PKG.fullmatch(name) and "transitional" not in about.lower():
+            names.append(name)
+    cand, cur = {}, ""
+    if names:
+        for line in out(["apt-cache", "policy", *names[:40]]).splitlines():
+            if line and not line.startswith(" "):
+                cur = line.rstrip(":").strip()
+            elif "Candidate:" in line and cur:
+                v = line.split("Candidate:", 1)[1].strip()
+                if v and v != "(none)":
+                    cand[cur] = v
+    package = pkg_version = ""
+    for line in out(["dpkg-query", "-W", "-f", "${Package} ${Version} ${db:Status-Abbrev}\n", "nvidia-driver*"]).splitlines():
+        f = line.split()
+        if len(f) >= 3 and f[2].startswith("ii") and f[0] in cand and f[0] > package:
+            package, pkg_version = f[0], f[1]
+    rec = ""
+    if shutil.which("ubuntu-drivers"):
+        for line in out(["ubuntu-drivers", "devices"], timeout=30).splitlines():
+            m = re.search(r"driver\s*:\s*(nvidia-driver\S*)\s.*recommended", line)
+            if m and DRIVER_PKG.fullmatch(m.group(1)):
+                rec = m.group(1)
+
+    def key(n):
+        m = re.search(r"-(\d{3})", n)
+        return (-int(m.group(1)) if m else 0, n.endswith("-open"))
+    options = [{"pkg": n, "version": cand[n].split("-", 1)[0][:30], "open": n.endswith("-open")}
+               for n in sorted(cand, key=key)][:16]
+    return {"package": package, "pkg_version": pkg_version[:60],
+            "candidate": cand.get(package, "")[:60] if package else "",
+            "recommended": rec, "options": options}
+
+
+def _gpu_container(card=None):
+    """Where the NVIDIA container toolkit stands on this machine, for its
+    row on the Toolchains tab (R102): the version installed, the version apt
+    would move it to (known only while NVIDIA's package source is on the
+    machine, which the row's install adds), and whether Docker lists the
+    nvidia runtime, which is what a container reserving the card needs. {}
+    with no NVIDIA card or no Docker: there is nothing to hand to a
+    container, and the row is not drawn."""
+    if not (card if card is not None else _gpu_card()) or not shutil.which("docker"):
+        return {}
+
+    def out(argv, timeout=15):
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+            return p.stdout if p.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    installed = candidate = ""
+    if shutil.which("dpkg-query"):
+        f = out(["dpkg-query", "-W", "-f", "${Version} ${db:Status-Abbrev}\n", TOOLKIT]).split()
+        if len(f) >= 2 and f[1].startswith("ii"):
+            installed = f[0]
+    if not installed and shutil.which("nvidia-ctk"):
+        # Installed some other way (a family apt does not manage, or by
+        # hand): its own tool says the version.
+        m = re.search(r"version\s+(\S+)", out(["nvidia-ctk", "--version"]))
+        installed = m.group(1) if m else ""
+    if shutil.which("apt-cache"):
+        for line in out(["apt-cache", "policy", TOOLKIT]).splitlines():
+            if "Candidate:" in line:
+                v = line.split("Candidate:", 1)[1].strip()
+                candidate = "" if v == "(none)" else v
+    # Read as the JSON it is: each runtime's entry carries runc's whole
+    # feature list, thousands of characters a word search would be reading.
+    try:
+        runtimes = json.loads(out(["docker", "info", "--format", "{{json .Runtimes}}"]) or "{}")
+    except ValueError:
+        runtimes = {}
+    if isinstance(runtimes, dict) and isinstance(runtimes.get("Runtimes"), dict):
+        runtimes = runtimes["Runtimes"]
+    return {"installed": installed[:60], "candidate": candidate[:60],
+            "runtime": isinstance(runtimes, dict) and "nvidia" in runtimes}
 
 
 def _gpu_display():
@@ -1765,13 +2166,39 @@ def _gpu_display():
         return ""
 
 
+ASOUND_CARDS = "/proc/asound/cards"
+# ALSA's own stand-ins: a card that plays to nothing (snd-dummy) or back to
+# itself (snd-aloop) is a virtual device, not a sound card in the machine.
+_VIRTUAL_CARDS = ("Dummy", "Loopback")
+
+
+def _sound():
+    """What sound this machine has (R107): the cards ALSA lists, real and
+    virtual apart, and which sound server is installed, which is what an
+    emulator's audio and a virtual sink would go through. No /proc/asound at
+    all is a kernel with no sound loaded, which is a VM's usual state."""
+    cards, virtual = [], []
+    try:
+        with open(ASOUND_CARDS, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = re.match(r"\s*\d+\s+\[(\S+)\s*\]:\s*(.*)", line)
+                if not m:
+                    continue
+                kind = m.group(2).split(" - ")[0].strip()
+                name = (m.group(2).split(" - ", 1)[-1].strip() or m.group(1))[:80]
+                (virtual if kind in _VIRTUAL_CARDS or m.group(1) in _VIRTUAL_CARDS else cards).append(name)
+    except OSError:
+        pass
+    server = next((s for s in ("pipewire", "pulseaudio") if shutil.which(s)), "")
+    return {"cards": cards[:8], "virtual": virtual[:8], "server": server}
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
     tot, _ = _mem()
     tc = _toolchains(state)
-    gpu = _run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]) \
-        if shutil.which("nvidia-smi") else ""
+    gpu = _gpu_name()
     return {
         "cpu": os.cpu_count() or 0, "mem_mb": tot,
         "os": f"{platform.system().lower()} {platform.machine()} "
@@ -1799,7 +2226,10 @@ def census(state):
         if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
+        "gpu_driver": _gpu_driver(),
+        "gpu_container": _gpu_container(),
         "gpu_display": _gpu_display(),
+        "sound": _sound(),
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
@@ -2062,7 +2492,16 @@ def network_now():
     """The address the machine is on, as facts rather than as intent: the
     interface the default route leaves by, its addresses, the gateway, and
     the resolvers. From `ip -j`, which every distro this can run on has."""
-    net = {"interface": "", "addresses": [], "gateway": "", "dns": []}
+    net = {"interface": "", "addresses": [], "gateway": "", "dns": [], "routes": []}
+    try:
+        # ...and the static routes beside the default one: what goes where
+        # through which router, which the row compares with what is saved.
+        for r in json.loads(_run(["ip", "-j", "route", "show"]) or "[]"):
+            if isinstance(r, dict) and r.get("dst") not in (None, "default") and r.get("gateway"):
+                net["routes"].append({"to": str(r["dst"])[:64], "via": str(r["gateway"])[:64]})
+        net["routes"] = net["routes"][:32]
+    except (ValueError, OSError):
+        pass
     try:
         routes = json.loads(_run(["ip", "-j", "route", "show", "default"]) or "[]")
         for r in routes:
@@ -2168,16 +2607,22 @@ class NetplanNet:
         return ""
 
     @staticmethod
-    def render(iface, mode, addr, gw, dns):
+    def render(iface, mode, addr, gw, dns, routes=()):
         lines = ["network:", "  version: 2", "  ethernets:", f"    {iface}:"]
+        rs = []
         if mode == "dhcp":
             lines.append("      dhcp4: true")
         else:
             lines += ["      dhcp4: false", f"      addresses: [{addr}]"]
             if gw:
-                lines += ["      routes:", "        - to: default", f"          via: {gw}"]
-            if dns:
-                lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
+                rs.append(("default", gw))
+        rs += [(r["to"], r["via"]) for r in routes]
+        if rs:
+            lines.append("      routes:")
+            for to, via in rs:
+                lines += [f"        - to: {to}", f"          via: {via}"]
+        if mode != "dhcp" and dns:
+            lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
         return "\n".join(lines) + "\n"
 
     @staticmethod
@@ -2223,7 +2668,7 @@ class NetworkManagerNet:
     the same modify with the old values."""
     name = "networkmanager"
     FIELDS = ("ipv4.method", "ipv4.addresses", "ipv4.gateway", "ipv4.dns",
-              "ipv4.ignore-auto-dns")
+              "ipv4.ignore-auto-dns", "ipv4.routes")
 
     @staticmethod
     def available():
@@ -2248,12 +2693,14 @@ class NetworkManagerNet:
         return ""
 
     @staticmethod
-    def render(iface, mode, addr, gw, dns):
+    def render(iface, mode, addr, gw, dns, routes=()):
+        rs = ", ".join(f"{r['to']} {r['via']}" for r in routes)
         if mode == "dhcp":
             return {"ipv4.method": "auto", "ipv4.addresses": "", "ipv4.gateway": "",
-                    "ipv4.dns": "", "ipv4.ignore-auto-dns": "no"}
+                    "ipv4.dns": "", "ipv4.ignore-auto-dns": "no", "ipv4.routes": rs}
         return {"ipv4.method": "manual", "ipv4.addresses": addr, "ipv4.gateway": gw,
-                "ipv4.dns": ",".join(dns), "ipv4.ignore-auto-dns": "yes" if dns else "no"}
+                "ipv4.dns": ",".join(dns), "ipv4.ignore-auto-dns": "yes" if dns else "no",
+                "ipv4.routes": rs}
 
     def snapshot(self, iface):
         con = self.conn(iface)
@@ -2353,7 +2800,7 @@ class NetworkdNet(FilesNet):
         # and the job would then report success with the old address.
         return [os.path.join(NETWORKD_DIR, f"00-builderbot-{iface}.network")]
 
-    def render(self, iface, mode, addr, gw, dns):
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         lines = ["[Match]", f"Name={iface}", "", "[Network]"]
         if mode == "dhcp":
             lines.append("DHCP=yes")
@@ -2362,6 +2809,8 @@ class NetworkdNet(FilesNet):
             if gw:
                 lines.append(f"Gateway={gw}")
             lines += [f"DNS={d}" for d in dns]
+        for r in routes:
+            lines += ["", "[Route]", f"Destination={r['to']}", f"Gateway={r['via']}"]
         return {self.paths(iface)[0]: "\n".join(lines) + "\n"}
 
     def reload(self, agent, job, iface):
@@ -2409,7 +2858,7 @@ class IfupdownNet(FilesNet):
                 out.append(line)
         return "\n".join(out).rstrip("\n") + ("\n" if out else "")
 
-    def render(self, iface, mode, addr, gw, dns):
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         try:
             with open(INTERFACES_FILE) as f:
                 base = self._without(f.read(), iface)
@@ -2425,6 +2874,9 @@ class IfupdownNet(FilesNet):
                 lines.append(f"    gateway {gw}")
             if dns:
                 lines.append(f"    dns-nameservers {' '.join(dns)}")
+        for r in routes:
+            lines += [f"    up ip route add {r['to']} via {r['via']} dev {iface}",
+                      f"    down ip route del {r['to']} via {r['via']} dev {iface}"]
         return {INTERFACES_FILE: base + ("\n" if base and not base.endswith("\n\n") else "")
                 + "\n".join(lines) + "\n"}
 
@@ -2450,15 +2902,17 @@ class WickedNet(FilesNet):
                 os.path.join(SYSCONFIG_NET_DIR, f"ifroute-{iface}"),
                 os.path.join(SYSCONFIG_NET_DIR, "config")]
 
-    def render(self, iface, mode, addr, gw, dns):
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         ifcfg, ifroute, config = self.paths(iface)
         out = {}
+        lines = [f"{r['to']} {r['via']} - {iface}" for r in routes]
         if mode == "dhcp":
             out[ifcfg] = "STARTMODE='auto'\nBOOTPROTO='dhcp'\n"
-            out[ifroute] = None
         else:
             out[ifcfg] = f"STARTMODE='auto'\nBOOTPROTO='static'\nIPADDR='{addr}'\n"
-            out[ifroute] = f"default {gw} - {iface}\n" if gw else None
+            if gw:
+                lines.insert(0, f"default {gw} - {iface}")
+        out[ifroute] = "\n".join(lines) + "\n" if lines else None
         # netconfig's config is a shared file: only its static-DNS line moves.
         try:
             with open(config) as f:
@@ -2490,7 +2944,11 @@ class DhcpcdNet(FilesNet):
     def paths(iface):
         return [DHCPCD_CONF]
 
-    def render(self, iface, mode, addr, gw, dns):
+    # dhcpcd.conf has no static route of its own (only a hook script could
+    # add one), so routes are refused here by name rather than dropped.
+    no_routes = "dhcpcd has no setting for a static route; add it with a dhcpcd hook by hand"
+
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         try:
             with open(DHCPCD_CONF) as f:
                 text = f.read()
@@ -2647,7 +3105,10 @@ class Sampler:
             load1 = 0.0
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
-                "stores": _stores(state.get("stores")), "running": running}
+                "stores": _stores(state.get("stores")), "running": running,
+                "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
+                **_gpu_sample(), **({"gpu_procs": _gpu_procs(), "gpu_mem_kinds": _gpu_mem_kinds()}
+                                     if shutil.which("nvidia-smi") else {})}
 
 
 # ---------------------------------------------------------------------------
@@ -2742,6 +3203,10 @@ class Job(threading.Thread):
         # "failed" so the row does not read as the command's own fault.
         self.canceled = False
         self.proc = None
+        # True once the work has ended and only its end is left to post: the
+        # one state in which an update may leave the job behind (B520).
+        self.reporting = False
+        self.refused = 0         # the status of the last log post not taken
         self.outputs = []        # what the job left behind, for the result
         self.pending_step = ""   # the word for the row, sent with the next log
         # The write end of this job's pty, for a job that needs one. Only a
@@ -2787,6 +3252,9 @@ class Job(threading.Thread):
                                         "the controller was unreachable and this job kept talking]\n"})
 
     BATCH = 40 * 1024      # under the controller's 64KB body cap, with headroom
+    # How long a job's end may be refused by a controller that is answering
+    # before the job is dropped: half an hour of retries at a minute apart.
+    REPORT_GIVE_UP_S = 30 * 60
 
     def flush(self, keepalive=False):
         """Post what is pending, in bodies the controller will accept. A job
@@ -2800,9 +3268,15 @@ class Job(threading.Thread):
         while True:
             with self.lock:
                 batch, size = [], 0
-                while self.pending and size < self.BATCH:
+                # Measured as the body will be sent, and stopped BEFORE a
+                # chunk that would carry it past the batch: a post over the
+                # controller's cap was refused forever (B520).
+                while self.pending:
+                    more = len(json.dumps(self.pending[0]["chunk"]))
+                    if batch and size + more > self.BATCH:
+                        break
                     batch.append(self.pending.pop(0))
-                    size += len(batch[-1]["chunk"])
+                    size += more
             if not batch:
                 with self.lock:
                     step, self.pending_step = self.pending_step, ""
@@ -2820,9 +3294,20 @@ class Job(threading.Thread):
             if step:
                 body["step"] = step
             st, r = self.agent.ctl.call("log", body, timeout=20)
+            # Refused for good (a job the controller no longer has, or not
+            # this node's): the result loop posts only after a flush that
+            # worked, so keeping these retried the job in this agent's count
+            # forever, and every self-update failed "busy" (B519). Dropped,
+            # and the result goes on to be refused in its turn.
+            if st in (400, 401, 403, 404, 413):
+                log(f"{self.job['id']}: log refused ({st}); dropping {len(batch)} chunk(s)")
+                with self.lock:
+                    self.pending = []
+                return True
             if st != 200:
                 with self.lock:
                     self.pending = batch + self.pending
+                self.refused = st
                 return False
             self._answered(r)
 
@@ -2867,10 +3352,18 @@ class Job(threading.Thread):
                     self.agent.session_renew()
             elif self.job.get("type") == "image":
                 state, code = self.agent.image(self, spec)
+            elif self.job.get("type") == "sign":
+                state, code = self.agent.sign(self, spec)
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "claude-login":
                 state, code = self.claude_login(spec)
+                # Said on the next heartbeat rather than in five minutes:
+                # the row that asked is waiting to read who signed in.
+                self.agent._logins_at = 0
+            elif self.job.get("type") == "claude-logout":
+                state, code = self.claude_logout(spec)
+                self.agent._logins_at = 0
             elif self.job.get("type") == "claude-update":
                 state, code = self.agent.claude_update(self, spec)
             elif self.job.get("type") == "tell":
@@ -2897,11 +3390,31 @@ class Job(threading.Thread):
         if self.job.get("type") == "compose" \
                 or os.path.basename(str((spec.get("argv") or [""])[0] or "")) == "docker":
             self.agent.sessnet.containers_at = 0.0
+        self.report(state, code, error)
+        self.agent.finished(self)
+        if state == "succeeded" and self.job.get("type") == "self-update":
+            self.agent.reexec()
+
+    def report(self, state, code, error):
+        """Post the job's end: its log first, then the result."""
         # Door 5: keep trying. The controller may be gone for a while; the
         # answer waits here, with backoff, until it is taken.
+        #
+        # ...but not for ever while the controller is there and will not take
+        # it (the operator, 6 Oct: a stuck job should time out, the more so
+        # when the controller says it is complete). A log the controller
+        # answers and refuses no longer holds the end back: the end is posted
+        # anyway, and a controller that has the job as complete takes it as
+        # already done. Past REPORT_GIVE_UP_S of answers that are refusals
+        # the job is dropped with a line in the journal. A controller that
+        # cannot be reached is waited for as before: that is door 5.
+        self.reporting = True
         delay = 1
+        refused_since = None
         while True:
-            if self.flush():
+            flushed = self.flush()
+            st = 0
+            if flushed or self.refused:
                 st, _ = self.agent.ctl.call(
                     "result", {"job": self.job["id"], "state": state, "exit": code,
                                "error": error, "outputs": self.outputs},
@@ -2911,11 +3424,17 @@ class Job(threading.Thread):
                 if st in (400, 401, 403, 404):
                     log(f"{self.job['id']}: result refused ({st}); dropping it")
                     break
+            if st or (not flushed and self.refused):
+                refused_since = refused_since or time.time()
+                if time.time() - refused_since > self.REPORT_GIVE_UP_S:
+                    log(f"{self.job['id']}: the controller refused this job's end for "
+                        f"{self.REPORT_GIVE_UP_S // 60} minutes (last {st or self.refused}); dropping it")
+                    break
+            else:
+                refused_since = None
+            self.refused = 0
             time.sleep(delay)
             delay = min(delay * 2, 60)
-        self.agent.finished(self)
-        if state == "succeeded" and self.job.get("type") == "self-update":
-            self.agent.reexec()
 
     def claude_login(self, spec):
         """`claude auth login` on this machine, under a pty, as the SESSION
@@ -3016,6 +3535,46 @@ class Job(threading.Thread):
                 os.close(master)
         code = self.proc.wait()
         return ("succeeded" if code == 0 else "failed"), code
+
+    def claude_logout(self, spec):
+        """`claude auth logout` on this machine for one BuilderBot account,
+        as the SESSION account and in that account's home here: the other
+        half of claude_login. The login is this machine's, so this machine
+        is the one that lets go of it; the heartbeat that follows says so."""
+        who_name = self.agent.session_account()
+        env = dict(sdk_env(self.agent.state))
+        try:
+            who = self.agent.as_user(env, who_name)
+        except RuntimeError as e:
+            self.say(f"refused: {e}\n")
+            return "failed", 78
+        if not who_name:
+            self.say("refused: this node reports no session account, so no Claude login lives here\n")
+            return "failed", 78
+        uid = str(spec.get("uid") or "")
+        if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
+            self.say("refused: a sign-out names the account it is for\n")
+            return "failed", 64
+        into = self.agent.bundle(self, who)
+        if not into:
+            return "failed", 69
+        # The session account's home, which is this process's own where the
+        # agent is not root and as_user changed nothing.
+        env.setdefault("HOME", os.path.expanduser("~"))
+        env["BUILDER_HOME"] = env["HOME"]
+        env["BB_ACCOUNT_UID"] = uid
+        env.setdefault("BUILDERBOT_ROLE", "node")
+        env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
+        self.say("signing out of Claude on this machine\n")
+        try:
+            p = subprocess.run(["bash", os.path.join(into, "scripts", "bb"), "login", "--out"],
+                               env=env, cwd="/tmp", capture_output=True, text=True,
+                               timeout=int(spec.get("timeout") or 120), check=False, **who)
+        except (OSError, subprocess.SubprocessError) as e:
+            self.say(f"the sign-out did not run: {e}\n")
+            return "failed", 70
+        self.say((p.stdout or "") + (p.stderr or ""))
+        return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
 
     def exec(self, spec):
         need = spec.get("requires") or []
@@ -3401,6 +3960,137 @@ class SessionWatch:
         self.last = key
 
 
+class FtpServers:
+    """A project's file access over FTP (R151): one bb-ftpd per project the
+    controller's hello names, from the ftp toolchain, as the session
+    account, rooted at the project's tree. bb-ftpd knows nobody's password:
+    each login comes up its stdout as a JSON line, is asked of the
+    controller's ftp-auth, and the answer goes back down its stdin. Nothing
+    is kept here, so an access taken away holds from the next login.
+
+    What is up and why not is said to the controller with the ftp verb
+    after every change, for the project settings to show."""
+
+    def __init__(self, agent):
+        self.agent = agent
+        self.lock = threading.Lock()
+        self.procs = {}       # project -> {"proc", "port", "root", "why"}
+        self.wanted = []
+
+    def want(self, rows):
+        rows = [r for r in rows if isinstance(r, dict) and r.get("project") and r.get("port")]
+        with self.lock:
+            self.wanted = rows
+        threading.Thread(target=self.apply, name="ftp", daemon=True).start()
+
+    def apply(self):
+        with self.lock:
+            want = {r["project"]: r for r in self.wanted}
+            for name in list(self.procs):
+                p = self.procs[name]
+                w = want.get(name)
+                if not w or w["port"] != p["port"] or w["root"] != p["root"] or p["proc"] is None \
+                        or p["proc"].poll() is not None:
+                    self._stop(name)
+            for name, w in want.items():
+                if name not in self.procs:
+                    self.procs[name] = self._start(name, int(w["port"]), str(w["root"]))
+            rows = [{"project": n, "up": bool(p["proc"] and p["proc"].poll() is None), "why": p["why"],
+                     "port": p["port"], "addr": p.get("addr", "")} for n, p in self.procs.items()]
+        self.agent.ctl.call("ftp", {"servers": rows}, timeout=15)
+
+    def _start(self, name, port, root):
+        rec = {"proc": None, "port": port, "root": root, "why": ""}
+        env = dict(sdk_env(self.agent.state))
+        try:
+            who = self.agent.as_user(env, self.agent.session_account())
+        except RuntimeError as e:
+            rec["why"] = str(e)
+            return rec
+        exe = shutil.which("bb-ftpd", path=env.get("PATH"))
+        if not exe:
+            rec["why"] = "the ftp toolchain is not installed on this node: install it on the Toolchains tab"
+            return rec
+        if not os.path.isdir(root):
+            rec["why"] = f"{root} is not on this node"
+            return rec
+        home = env.get("HOME") or os.path.expanduser("~")
+        cert = os.path.join(home, ".builderbot", "ftp", "cert.pem")
+        bind = self.agent.session_bind()
+        rec["addr"] = bind
+        try:
+            proc = subprocess.Popen([exe, "--root", root, "--port", str(port), "--cert", cert,
+                                     "--bind", bind, "--project", name],
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    env=env, cwd="/", text=True, bufsize=1, **who)
+        except OSError as e:
+            rec["why"] = f"bb-ftpd could not start: {e}"[:200]
+            return rec
+        # Started is not up: a port already taken ends it at once, and its
+        # last line says so. The first line is the listening one.
+        first = proc.stderr.readline()
+        if "listening" not in first:
+            tail = (first + proc.stderr.read() if proc.poll() is not None else first).strip().splitlines()
+            rec["why"] = (tail[-1] if tail else "bb-ftpd ended at once")[:200]
+            with contextlib.suppress(OSError):
+                proc.kill()
+            return rec
+        rec["proc"] = proc
+        threading.Thread(target=self._relay, args=(name, proc), name=f"ftp-{name}", daemon=True).start()
+        threading.Thread(target=self._drain, args=(name, proc), name=f"ftp-log-{name}", daemon=True).start()
+        log(f"ftp: {name} on {bind}:{port}")
+        return rec
+
+    def _relay(self, name, proc):
+        """Each login asked of the controller, its answer handed back."""
+        for line in proc.stdout:
+            try:
+                q = json.loads(line)
+            except ValueError:
+                continue
+            st, r = self.agent.ctl.call("ftp-auth", {"project": name, "user": str(q.get("user") or ""),
+                                                     "password": str(q.get("password") or ""),
+                                                     "addr": str(q.get("addr") or "")}, timeout=20)
+            ans = {"id": q.get("id"), "access": r.get("access", "") if st == 200 else "",
+                   "why": r.get("why", "") if st == 200 else "BuilderBot could not be asked; try again shortly."}
+            try:
+                proc.stdin.write(json.dumps(ans) + "\n")
+                proc.stdin.flush()
+            except (OSError, ValueError):
+                return
+        # Its pipe closed: it ended. Said, and started again on the next apply.
+        with self.lock:
+            p = self.procs.get(name)
+            if p and p["proc"] is proc:
+                p["why"] = "bb-ftpd ended; it is started again on the next hello"
+        self.agent.hello_at = 0
+
+    @staticmethod
+    def _drain(name, proc):
+        for line in proc.stderr:
+            line = line.strip()
+            if line and ("error" in line.lower() or "traceback" in line.lower()):
+                log(f"ftp {name}: {line[:200]}")
+
+    def _stop(self, name):
+        p = self.procs.pop(name, None)
+        if p and p["proc"] and p["proc"].poll() is None:
+            p["proc"].terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                p["proc"].wait(5)
+            if p["proc"].poll() is None:
+                p["proc"].kill()
+        if p and p["proc"]:
+            for f in (p["proc"].stdin, p["proc"].stdout, p["proc"].stderr):
+                with contextlib.suppress(OSError, ValueError):
+                    f.close()
+
+    def stop_all(self):
+        with self.lock:
+            for name in list(self.procs):
+                self._stop(name)
+
+
 class Agent:
     def __init__(self, state):
         self.state = state
@@ -3429,6 +4119,7 @@ class Agent:
         self.tool_lock = threading.Lock()  # the session tool's files, written from two threads
         self.sessnet = SessionNet(self)    # each session kept to its own project's network (R79)
         self.sesswatch = SessionWatch(self)  # its sessions reported as they change
+        self.ftp = FtpServers(self)        # a project's file access over FTP (R151)
         # The runner as a child of this process where there is no systemd:
         # run.sh in the foreground, supervised here.
         self.runner_procs = {}            # runner directory -> its process
@@ -3488,11 +4179,14 @@ class Agent:
         store = tc_root(self.state)
         bb = os.path.join(store, ".bb", "current", "scripts", "bb") if store else ""
         if not bb or not os.access(bb, os.X_OK):
+            self.keep_said("bundle", f"no bundle bb at {bb or '(no toolchain store)'}, so no idle "
+                                     "session's token is refreshed")
             return
         env0 = dict(os.environ)
         try:
             who = self.as_user(env0, who_name)
-        except RuntimeError:
+        except RuntimeError as e:
+            self.keep_said("account", str(e))
             return
         for row in rows[:64]:
             project = str((row or {}).get("project") or "")
@@ -3505,12 +4199,43 @@ class Agent:
                         "BB_PROJECT": project, "BB_TOKEN": token,
                         "BUILDERBOT_ROLE": "node"})
             try:
-                subprocess.run([bb, "token", "keep"],
-                               env=env, capture_output=True, timeout=20, check=False,
-                               **({"user": who["user"], "group": who["group"],
-                                   "extra_groups": who["extra_groups"]} if who else {}))
-            except (OSError, subprocess.SubprocessError):
+                p = subprocess.run([bb, "token", "keep"],
+                                   env=env, capture_output=True, text=True, timeout=20, check=False,
+                                   **({"user": who["user"], "group": who["group"],
+                                       "extra_groups": who["extra_groups"]} if who else {}))
+            except (OSError, subprocess.SubprocessError) as e:
+                self.keep_said(f"{uid}/{project}", f"bb token keep did not run: {e}")
                 return
+            if p.returncode:
+                said = ((p.stderr or "") + (p.stdout or "")).strip().splitlines()
+                self.keep_said(f"{uid}/{project}", f"bb token keep failed (exit {p.returncode}): "
+                                                    + (said[-1][-300:] if said else "it said nothing"))
+            else:
+                self.__dict__["_keep_ok"] = int(time.time())
+
+    def keep_said(self, key, msg):
+        """Log why an idle session's token was not refreshed, once an hour per
+        session: this was silent, and a session's token then ran out twelve
+        hours after its last call with nothing on the node saying why (B419)."""
+        now = time.monotonic()
+        seen = self.__dict__.setdefault("_keep_said", {})
+        if now - seen.get(key, -1e9) < 3600:
+            return
+        seen[key] = now
+        log(f"session tokens: {msg}")
+        # ...and kept for the controller, which the hello carries: the log
+        # above is the node's own journal, which nothing on the dashboard or
+        # in a session reads, so in practice it was still silent (B419).
+        recent = self.__dict__.setdefault("_keep_recent", [])
+        recent.append({"at": int(time.time()), "key": str(key)[:80], "msg": str(msg)[:300]})
+        del recent[:-8]
+
+    def keep_report(self):
+        """What the hello tells the controller about the session tokens kept
+        here: the last few complaints of two days, and when one was last kept."""
+        now = int(time.time())
+        said = [x for x in self.__dict__.get("_keep_recent", []) if now - x["at"] < 48 * 3600]
+        return {"said": said, "ok": int(self.__dict__.get("_keep_ok") or 0)}
 
     # -- the channel -------------------------------------------------------
     def census_take(self):
@@ -3561,6 +4286,24 @@ class Agent:
         c, self.census_next = self.census_next, None
         return self.hello(taken=c) if c is not None else self.hello()
 
+    def census_beating(self):
+        """census_take on the loop, with the controller told every twenty
+        seconds that this node is still here: the census asks the slow
+        questions, over a minute on a busy node, and with the work poll
+        stopped for it the node read as not answering on every project row
+        (the operator, 7 Oct). A controller without the beat verb answers
+        404 and nothing else changes."""
+        done = threading.Event()
+
+        def beat():
+            while not done.wait(BEAT_S):
+                self.ctl.call("beat", {}, timeout=10)
+        threading.Thread(target=beat, name="beat", daemon=True).start()
+        try:
+            return self.census_take()
+        finally:
+            done.set()
+
     def hello(self, taken=None):
         # `running` is the list of job ids this process still holds. The
         # controller reconciles against it: a job its row says is running
@@ -3568,13 +4311,14 @@ class Agent:
         # failed there rather than left running forever (docs/nodes.md §9).
         # `taken` is a census hello_step took beside the loop; anybody else
         # takes one here, now.
-        c = taken if taken is not None else self.census_take()
+        c = taken if taken is not None else self.census_beating()
         se = c.get("session") or {}
         self.session_mount = (bool(se.get("workspace")), bool(se.get("writable"))) if se else None
         st, r = self.ctl.call("hello", {"census": c,
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
-                                        "running": self.running_ids()}, timeout=30)
+                                        "running": self.running_ids(),
+                                        "keep": self.keep_report()}, timeout=30)
         if st == 200:
             self.hello_at = time.monotonic()
             self.poll = int(r.get("poll") or 25)
@@ -3614,6 +4358,11 @@ class Agent:
             # and what each project owns here (R79), kept in node.json so it
             # holds while the controller is down. Only replaced when the
             # controller sends it: an older one says nothing.
+            # The FTPS servers for its projects' file access (R151); a
+            # controller from before them says nothing, and nothing runs.
+            ft = r.get("ftp")
+            if isinstance(ft, list):
+                self.ftp.want(ft)
             sn = r.get("session_net")
             if isinstance(sn, dict) and sn != self.state.get("session_net"):
                 self.state["session_net"] = {"on": bool(sn.get("on")),
@@ -3760,6 +4509,7 @@ class Agent:
                     log(f"{j.job['id']}: could not say it was stopped: {e}")
             self.session_stop()
             self.runner_stop()
+            self.ftp.stop_all()
             raise SystemExit(0)
         signal.signal(signal.SIGTERM, bye)
         # The session half first, so the first hello's census already says
@@ -3769,6 +4519,7 @@ class Agent:
         # starts the sessions then.
         self.refresh_session_tool()
         self.quiet_distro_ttyd()
+        self.keep_sessions_through_restart()
         self.session_try()
         self.sessnet.start()
         self.sesswatch.start()
@@ -3877,8 +4628,19 @@ class Agent:
     # -- self-update (door 4) ------------------------------------------------
     def self_update(self, job, spec):
         want = spec.get("digest") or self.controller_digest
-        if self.running() > 1:
-            job.say("busy: other jobs are running; try again when they finish\n")
+        # A job is passed over only when it is stuck: its work has ended and
+        # it is only posting its end, AND the controller has it as finished
+        # or dropped (spec "settled", B520). One like that blocked the update
+        # that was the only way to unstick it. A job still working is never
+        # left behind, whatever the controller says. The rest are named, so
+        # one is seen rather than guessed at (B519).
+        settled = set(spec.get("settled") or [])
+        with self.lock:
+            held = dict(self.jobs)
+        others = sorted(i for i, j in held.items() if i != job.job["id"]
+                        and not (i in settled and getattr(j, "reporting", False)))
+        if others:
+            job.say(f"busy: other jobs are running ({', '.join(others)}); try again when they finish\n")
             return "failed", 75
         st, body = self.ctl.call("download", None, timeout=60, method="GET", raw=True)
         if st != 200:
@@ -4500,10 +5262,25 @@ class Agent:
         # placeholder counts as the echo; whitespace is collapsed because
         # the box wraps a long line at word boundaries with an indent.
         mark = " ".join(text[:40].split())
-        def seen():
-            flat = " ".join((self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or "").split())
+        def screen():
+            return " ".join((self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or "").split())
+
+        def seen(flat=None):
+            flat = screen() if flat is None else flat
             return flat.count(mark) + flat.count("[Pasted text")
-        was = seen()
+        # Counted once the pane is still, as notify.tell does: a pane still
+        # drawing the last send's output (a shell's "command not found"
+        # repeats the line) put a copy on screen after the count, which read
+        # as this line's echo, and Enter went to a box that never took it
+        # (B389). At most a second.
+        flat = screen()
+        for _ in range(4):
+            time.sleep(0.25)
+            again = screen()
+            if again == flat:
+                break
+            flat = again
+        was = seen(flat)
         if self._tmux(["send-keys", "-t", sess, "-l", "--", text]) is None:
             job.say("tmux would not take the line\n")
             return "failed", 1
@@ -4612,6 +5389,20 @@ class Agent:
         if not who:
             env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
         home = env.get("HOME") or os.path.expanduser("~")
+        # Taken off, from the node's Toolchains tab (R145): the pinned copy
+        # a session runs and the account's own install under its home.
+        if spec.get("action") == "remove":
+            gone = []
+            for path in (os.path.join(CLAUDE_DIR, "claude"), os.path.join(home, ".local", "bin", "claude"),
+                         os.path.join(home, ".local", "share", "claude")):
+                if os.path.lexists(path):
+                    with contextlib.suppress(OSError):
+                        shutil.rmtree(path) if os.path.isdir(path) and not os.path.islink(path) else os.unlink(path)
+                        gone.append(path)
+            job.say(("removed " + ", ".join(gone)) if gone else "Claude Code was not installed here")
+            job.say("\n")
+            self.hello_at = 0
+            return "succeeded", 0
         env["PATH"] = ":".join([os.path.join(home, ".local", "bin"), env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"])
         env.setdefault("LANG", "C.UTF-8")
         # A test's stand-in for the installer; the real one is the script the
@@ -5025,7 +5816,20 @@ class Agent:
             return "failed", 69
         if action == "sysdeps":
             return self.sysdeps(job, names, into)
+        # The NVIDIA driver (R102), a member of the batch like any row, but
+        # the machine's and not the store's: installed or removed as root by
+        # bb-sandbox, after the store's names, since it ends at a restart.
+        drv = [n for n in names if n == DRIVER or n.startswith(DRIVER + ":")]
+        # ...and the container toolkit beside it, the machine's as well.
+        ctk = [n for n in names if n == TOOLKIT]
+        names = [n for n in names if n not in drv and n not in ctk]
         if action == "check":
+            # apt's lists brought current first, as root, so the census after
+            # the check says what the driver would update to.
+            if _gpu_card() and os.access(SANDBOX_BIN, os.X_OK):
+                self.refresh_sandbox_tool(job)
+                self._sh(job, [SANDBOX_BIN, "gpu-driver", "refresh"], timeout=300)
+                self.hello_at = 0
             # What is newer upstream, asked from HERE rather than from the
             # controller, because the answer is about this store: the version
             # a recipe would fetch is the same everywhere, but what is
@@ -5040,11 +5844,30 @@ class Agent:
                               "cwd": store, "timeout": spec.get("timeout") or 900,
                               "env": sdk_env(self.state)})
         bad = 0
+        # The catalog the bundle carries, for where each toolchain lives:
+        # what an update or a removal would pull out from under whatever is
+        # running it (the operator, 6 Oct).
+        try:
+            with open(os.path.join(into, "config", "toolchains.json"), encoding="utf-8") as f:
+                cat = json.load(f)
+            cat = cat.get("toolchains", cat) if isinstance(cat, dict) else cat
+            cat = {e.get("name"): e for e in (cat if isinstance(cat, list) else cat.values())
+                   if isinstance(e, dict)}
+        except (OSError, ValueError, AttributeError):
+            cat = {}
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose
             # jobs set this before, so a toolchain job on a node drew the verb
             # with nothing after it.
             job.step(name)
+            # Refused while anything is running from it: a session's build,
+            # its emulator, a Gradle daemon. Named, so the operator knows whose.
+            d = tc_dir(store, name, cat.get(name), action)
+            users = tc_users(d) if d else []
+            if users:
+                job.say(tc_users_said(name, users))
+                bad += 1
+                continue
             if action == "install" and not self._system_deps(job, name, into):
                 bad += 1
                 continue
@@ -5057,37 +5880,239 @@ class Agent:
                 bad += 1
                 if st_ == "canceled":
                     return st_, code
+        # The machine's own two, in the order each needs: the toolkit hands
+        # the driver's libraries to a container, so it goes on after the
+        # driver and comes off before it.
+        own = [*drv[:1], *ctk[:1]] if action == "install" else [*ctk[:1], *drv[:1]]
+        for name in own:
+            mine = TOOLKIT if name == TOOLKIT else DRIVER
+            job.step(mine)
+            pkg = name.partition(":")[2] if mine == DRIVER else ""
+            if pkg and not DRIVER_PKG.fullmatch(pkg):
+                job.say(f"refused: {pkg} is not a driver package apt offers by that name\n")
+                bad += 1
+            elif not os.access(SANDBOX_BIN, os.X_OK):
+                # The stamp, as every job that changes the machine itself
+                # asks; bb-sandbox refuses by itself where it is not root.
+                job.say(f"refused: {mine} is this machine's own, and this node was not "
+                        f"provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
+                bad += 1
+            else:
+                self.refresh_sandbox_tool(job)
+                verb = "gpu-container" if mine == TOOLKIT else "gpu-driver"
+                job.say(f"== bb-sandbox {verb} {action} {pkg}\n")
+                if self._sh(job, [SANDBOX_BIN, verb, action, *([pkg] if pkg else [])], timeout=2400):
+                    bad += 1
         self.hello()
         if bad:
-            job.say(f"{bad} of {len(names)} did not {action}\n")
+            job.say(f"{bad} of {len(names) + len(own)} did not {action}\n")
             return "failed", 1
         return "succeeded", 0
+
+    def sign(self, job, spec):
+        """Sign one build from the project's dist/ with one of its keys
+        (R106): the build fetched as a job input, the key fetched over this
+        agent's channel for this job alone, both into a 0700 directory of the
+        enrolled account that is removed whatever happens. zipalign then
+        apksigner for an .apk, jarsigner for an .aab, verified, and the result
+        delivered to dist/ as NAME-signed. The passwords reach the tools in
+        their environment, which another account cannot read.
+
+        Refused where a session could read the key while it is used: an agent
+        that is not root runs its jobs as the account its sessions run as,
+        and so does one whose enrolled account is the session one."""
+        enrolled = str(self.state.get("user") or "")
+        if os.geteuid() != 0 or not enrolled or enrolled == "root" or enrolled == self.session_account():
+            job.say("refused: jobs and Claude sessions run as one account on this node, so a session "
+                    "could read the key while it is used; sign on a node provisioned as a sandbox\n")
+            return "failed", 77
+        route, rel = str(spec.get("route") or ""), str(spec.get("file") or "")
+        kind = os.path.splitext(rel)[1].lower()
+        if kind not in (".apk", ".aab") or not route:
+            job.say("refused: a sign job names a route and an .apk or .aab\n")
+            return "failed", 64
+        store = tc_root(self.state)
+        tools = {}
+        if kind == ".apk":
+            bt = sorted(glob.glob(os.path.join(store, "android", "build-tools", "*")),
+                        key=lambda d: [int(x) if x.isdigit() else 0
+                                       for x in re.split(r"[.-]", os.path.basename(d))])
+            for name in ("zipalign", "apksigner", "aapt2"):
+                hit = next((os.path.join(d, name) for d in reversed(bt)
+                            if os.access(os.path.join(d, name), os.X_OK)), "")
+                if not hit:
+                    job.say(f"no {name} on this node: install android-tools from the Toolchains tab\n")
+                    return "failed", 69
+                tools[name] = hit
+        else:
+            tools["jarsigner"] = os.path.join(store, "jdk", "bin", "jarsigner")
+            if not os.access(tools["jarsigner"], os.X_OK):
+                job.say("no jarsigner on this node: install the jdk from the Toolchains tab\n")
+                return "failed", 69
+        env = dict(sdk_env(self.state))
+        who = self.drop_privileges(env)
+        stores = self.state.get("stores") or {}
+        work = os.path.join(stores.get("data") or "/tmp", "sign", re.sub(r"[^A-Za-z0-9_-]", "_", job.job["id"]))
+        try:
+            os.makedirs(work, mode=0o700, exist_ok=True)
+            os.chmod(work, 0o700)
+            if who:
+                os.chown(work, who["user"], who["group"])
+            src = os.path.join(work, "in" + kind)
+            st, _ = self.ctl.fetch(f"file?job={job.job['id']}&path={urllib.parse.quote(rel)}", src)
+            if st != 200:
+                job.say(f"could not fetch {rel} from the controller ({st})\n")
+                return "failed", 69
+            # Which app it is, so the controller can hand the key its package
+            # is mapped to (R106 step 6): aapt2 for an .apk; a bundle's
+            # manifest is a protobuf no tool here reads, and the package name
+            # is the one string in it shaped like one after "package".
+            package = ""
+            if kind == ".apk":
+                with contextlib.suppress(OSError, subprocess.SubprocessError):
+                    p = subprocess.run([tools["aapt2"], "dump", "packagename", src], capture_output=True,
+                                       text=True, timeout=60, check=False)
+                    package = (p.stdout or "").strip().splitlines()[0] if p.returncode == 0 and p.stdout.strip() else ""
+            else:
+                with contextlib.suppress(OSError, KeyError, zipfile.BadZipFile):
+                    with zipfile.ZipFile(src) as z:
+                        man = z.read("base/manifest/AndroidManifest.xml")
+                    at = man.find(b"package")
+                    got = re.search(rb"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", man[at:at + 400]) if at >= 0 else None
+                    package = got.group(0).decode() if got else ""
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+", package or ""):
+                package = ""
+            if package:
+                job.say(f"the build is {package}\n")
+            st, k = self.ctl.call("signing-key", {"job": job.job["id"], "package": package}, timeout=30)
+            if st != 200 or not isinstance(k, dict) or not k.get("keystore"):
+                job.say(f"the controller did not hand over the key: {(k or {}).get('error') or st}\n")
+                return "failed", 69
+            ks = os.path.join(work, "key")
+            fd = os.open(ks, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(base64.b64decode(k["keystore"]))
+            for p in (src, ks):
+                if who:
+                    os.chown(p, who["user"], who["group"])
+            env.update({"BB_KS_PASS": str(k.get("store_pass") or ""),
+                        "BB_KEY_PASS": str(k.get("key_pass") or k.get("store_pass") or "")})
+            # A rotated key (R106 step 7): the key it replaced signs first and
+            # the proof says the new one takes over, from Android 9 on.
+            prev = k.get("previous") if kind == ".apk" and k.get("lineage") else None
+            if prev:
+                pks, lin = os.path.join(work, "previous"), os.path.join(work, "lineage")
+                for path, data in ((pks, prev.get("keystore")), (lin, k.get("lineage"))):
+                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "wb") as f:
+                        f.write(base64.b64decode(data or ""))
+                    if who:
+                        os.chown(path, who["user"], who["group"])
+                env.update({"BB_PREV_KS": str(prev.get("store_pass") or ""),
+                            "BB_PREV_KEY": str(prev.get("key_pass") or prev.get("store_pass") or "")})
+            elif k.get("previous"):
+                job.say("a bundle carries no proof of rotation: it is signed with the new key alone, "
+                        "and Play upgrades its own key\n")
+            alias = str(k.get("alias") or "")
+            out = os.path.join(work, "out" + kind)
+
+            def step(argv, what):
+                try:
+                    p = subprocess.run(argv, env=env, cwd=work, capture_output=True, text=True,
+                                       timeout=600, check=False, **who)
+                except (OSError, subprocess.SubprocessError) as e:
+                    job.say(f"{what} did not run: {e}\n")
+                    return None
+                said = ((p.stdout or "") + (p.stderr or "")).strip()
+                if p.returncode != 0:
+                    job.say(f"{what} failed (exit {p.returncode}): {said[-800:]}\n")
+                    return None
+                return said
+            if kind == ".apk":
+                aligned = os.path.join(work, "aligned.apk")
+                if step([tools["zipalign"], "-p", "-f", "4", src, aligned], "zipalign") is None:
+                    return "failed", 1
+                first = (["--ks", pks, "--ks-key-alias", str(prev.get("alias") or ""),
+                          "--ks-pass", "env:BB_PREV_KS", "--key-pass", "env:BB_PREV_KEY", "--next-signer"]
+                         if prev else [])
+                tail = (["--lineage", lin, "--rotation-min-sdk-version", "28"] if prev else [])
+                if step([tools["apksigner"], "sign", *first, "--ks", ks, "--ks-key-alias", alias,
+                         "--ks-pass", "env:BB_KS_PASS", "--key-pass", "env:BB_KEY_PASS",
+                         *tail, "--out", out, aligned], "apksigner sign") is None:
+                    return "failed", 1
+                said = step([tools["apksigner"], "verify", "--verbose", "--print-certs", out], "apksigner verify")
+            else:
+                shutil.copyfile(src, out)
+                if who:
+                    os.chown(out, who["user"], who["group"])
+                if step([tools["jarsigner"], "-keystore", ks, "-storepass:env", "BB_KS_PASS",
+                         "-keypass:env", "BB_KEY_PASS", out, alias], "jarsigner") is None:
+                    return "failed", 1
+                said = step([tools["jarsigner"], "-verify", out], "jarsigner -verify")
+            if said is None:
+                return "failed", 1
+            got = re.search(r"SHA-256 digest:\s*([0-9a-fA-F]{64})", said)
+            cert = got.group(1).upper() if got else ""
+            # Which signature schemes verified, as apksigner says it; a
+            # bundle is a jar signature (R106 step 4: the row says so).
+            schemes = ",".join(re.findall(r"Verified using (v\d(?:\.\d)?) scheme[^:]*:\s*true", said)) \
+                if kind == ".apk" else "jar"
+            want = str(k.get("sha256") or "").replace(":", "").upper()
+            if cert and want and cert != want:
+                job.say("the signed build carries another certificate than the key that was kept\n")
+                return "failed", 1
+            base = os.path.basename(rel)[:-len(kind)]
+            base = base.replace("-unsigned", "") if "-unsigned" in base else base
+            name = f"{base}-signed{kind}"
+            st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}&signed={route}"
+                                    f"&cert={cert or want}&schemes={schemes}&key={k.get('key') or 'default'}"
+                                    + (f"&rotated={prev.get('key')}" if prev else ""), out)
+            if st != 200 or r.get("error"):
+                job.say(f"could not deliver {name}: {r.get('error') or st}\n")
+                return "failed", 1
+            job.say(f"signed {rel} for {route} with the {k.get('key') or 'default'} key, {alias} "
+                    f"({str(k.get('sha256') or '')[:23]}…): {r['path']}\n")
+            job.outputs.append({"kind": "artifact", "path": r["path"], "size": r.get("size"),
+                                "sha256": r.get("sha256"), "signed": route,
+                                "cert": k.get("sha256") or ""})
+            return "succeeded", 0
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
     def image(self, job, spec):
         """`bb emu image add|remove ID`: an Android system image onto this
         node's toolchain store, or off it. Not a toolchain (it exists at
         every API level at once), but it lives on the same store and goes
         through the same bundle, account and one-at-a-time rule, so this is
-        toolchain() for one id. Nothing on PATH moves, so no session renew."""
+        toolchain() for one id, or for several in turn: the Emulator tab's
+        Install selected sends the ticked ones as `images` (R121), and the
+        first that fails ends the job, as a toolchain install does. Nothing
+        on PATH moves, so no session renew."""
         store = tc_root(self.state)
         if not store:
             job.say("refused: this node has no toolchain store, which is where images live\n")
             return "failed", 78
         action = spec.get("action")
-        iid = re.sub(r"[^A-Za-z0-9;._-]", "", str(spec.get("image") or ""))
-        if action not in ("add", "remove") or not iid:
-            job.say("refused: an image job adds or removes one named system image\n")
+        ids = [re.sub(r"[^A-Za-z0-9;._-]", "", str(i or ""))
+               for i in (spec.get("images") or [spec.get("image")])][:20]
+        ids = [i for i in ids if i]
+        if action not in ("add", "remove") or not ids:
+            job.say("refused: an image job adds or removes named system images\n")
             return "failed", 64
         who = self.drop_privileges({})
         into = self.bundle(job, who)
         if not into:
             return "failed", 69
-        job.step(iid)
-        job.say(f"== bb emu image {action} {iid}\n")
-        st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
-                                        "emu", "image", action, iid],
-                               "cwd": store, "timeout": spec.get("timeout") or 3600,
-                               "env": sdk_env(self.state)})
+        st_, code = "succeeded", 0
+        for iid in ids:
+            job.step(iid)
+            job.say(f"== bb emu image {action} {iid}\n")
+            st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                            "emu", "image", action, iid],
+                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                   "env": sdk_env(self.state)})
+            if st_ != "succeeded":
+                break
         self.hello()
         return st_, code
 
@@ -5208,7 +6233,7 @@ class Agent:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root", "gpu") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu", "gpu-off") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -5229,6 +6254,12 @@ class Agent:
             return self._apply_power(job, what)
         if what == "gpu":
             return self._apply_gpu(job)
+        if what == "gpu-off":
+            # The emulator off the card (R102): the display's unit stopped,
+            # the driver left alone; then a hello, as the set-up sends.
+            rc = self._sh(job, [SANDBOX_BIN, "gpu-off"], timeout=120)
+            self.hello_at = 0
+            return ("succeeded", 0) if rc == 0 else ("failed", rc)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
@@ -5321,6 +6352,55 @@ class Agent:
         log("sessions: switched off the distribution's own ttyd.service (root, on lo:7681), "
             "which every session on this machine could reach")
         return True
+
+    def keep_sessions_through_restart(self, run=_run):
+        """The sessions outlive a stop of this unit, on a managed node (B538).
+
+        The provisioner writes the unit with KillMode=process (B107), but only
+        when it installs it, and it installs it only when it is not already
+        running, so a node enrolled before then kept systemd's default, which
+        takes every process in the cgroup on a stop: the tmux servers and
+        every Claude session in them. On 7 Oct an unattended upgrade of
+        librsvg had needrestart restart this unit, and every session on
+        bb-sandbox ended. So the agent puts the setting in a drop-in itself,
+        and tells needrestart to leave it alone: an upgraded library is
+        picked up at the next agent update or reboot, not mid-conversation.
+        Not on a guest, whose services are its owner's (R23)."""
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not shutil.which("systemctl"):
+            return []
+        did = []
+        want = "[Service]\nKillMode=process\n"
+        if run(["systemctl", "show", "-p", "KillMode", "--value", "builderbot-agent"]) != "process":
+            try:
+                os.makedirs(os.path.dirname(UNIT_DROPIN), exist_ok=True)
+                with open(UNIT_DROPIN, "w", encoding="utf-8") as f:
+                    f.write(want)
+                run(["systemctl", "daemon-reload"], timeout=30)
+                did.append("unit")
+                log("sessions: this unit now stops its own process only (KillMode=process), "
+                    "so a restart of the agent no longer ends the sessions")
+            except OSError as e:
+                log(f"sessions: could not write {UNIT_DROPIN}: {e}")
+        if os.path.isdir(NEEDRESTART_DIR):
+            conf = os.path.join(NEEDRESTART_DIR, "conf.d", "builderbot.conf")
+            body = ("# Written by the BuilderBot agent (B538): a restart of the agent after a\n"
+                    "# library upgrade ended every Claude session on the node.\n"
+                    "$nrconf{override_rc}{qr(^builderbot-agent\\.service$)} = 0;\n")
+            try:
+                with open(conf, encoding="utf-8") as f:
+                    same = f.read() == body
+            except OSError:
+                same = False
+            if not same:
+                try:
+                    os.makedirs(os.path.dirname(conf), exist_ok=True)
+                    with open(conf, "w", encoding="utf-8") as f:
+                        f.write(body)
+                    did.append("needrestart")
+                    log("sessions: needrestart leaves the agent alone after an upgrade")
+                except OSError as e:
+                    log(f"sessions: could not write {conf}: {e}")
+        return did
 
     def refresh_session_tool(self):
         """The session's view kept installed (R35): bb-session from the bundle,
@@ -5450,19 +6530,58 @@ class Agent:
         everything relative to where it is invoked and refuses with "Must run
         from runner root or install is corrupt" anywhere else, which is
         exactly what a registered-but-serviceless runner came from.
+
+        Streamed, the way Job.exec and _apply_root are: its output pumped
+        as it comes and the log posted on a clock. It used to run the command
+        to the end and post nothing meanwhile, so the NVIDIA rows on the
+        Toolchains tab never said installing (the step rides a log post) and
+        the job sat at assigned for as long as apt took (30 Sep).
         """
+        # A job that cannot post or be canceled (a check's own stand-in, a
+        # test's) still runs the command and hears its output.
+        flush = getattr(job, "flush", None) or (lambda: True)
+        stopped = lambda: bool(getattr(job, "canceled", False))  # noqa: E731
         job.say("$ " + " ".join(argv) + "\n")
+        flush()                          # the step and the command, now
         try:
-            p = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               timeout=timeout, check=False)
-        except (OSError, subprocess.SubprocessError) as e:
+            p = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+        except OSError as e:
             job.say(f"{argv[0]}: {e}\n")
             return 1
-        for line in p.stdout.decode("utf-8", "replace").splitlines():
-            if line.strip():
-                job.say(line + "\n")
-        return p.returncode
+        with contextlib.suppress(AttributeError):
+            job.proc = p
+        if stopped():
+            Job._kill(p)
+
+        def pump():
+            try:
+                for line in p.stdout:
+                    text = line.decode("utf-8", "replace")
+                    if text.strip():
+                        job.say(text if text.endswith("\n") else text + "\n")
+            except (OSError, ValueError):
+                pass
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        deadline, killed = time.monotonic() + timeout, False
+        while reader.is_alive():
+            reader.join(0.5)
+            if getattr(job, "pending", None):
+                flush()
+            if time.monotonic() > deadline and not killed:
+                job.say(f"timed out after {int(timeout)}s, killing it\n")
+                Job._kill(p)
+                killed = True
+        p.wait()
+        with contextlib.suppress(OSError):
+            p.stdout.close()
+        with contextlib.suppress(AttributeError):
+            job.proc = None
+        if stopped():
+            job.say("stopped\n")
+            return 130
+        return 124 if killed else p.returncode
 
     def _apply_root(self, job, cfg):
         """One command as root, that a person allowed (roadmap R38). The
@@ -5795,6 +6914,15 @@ class Agent:
         mode = "static" if net.get("mode") == "static" else "dhcp"
         addr, gw = str(net.get("address") or ""), str(net.get("gateway") or "")
         dns = [str(d) for d in (net.get("dns") or []) if str(d)]
+        # Static routes (the operator, 7 Oct), in either mode: a network
+        # beyond this one and the router that reaches it.
+        routes = [{"to": str(r.get("to") or ""), "via": str(r.get("via") or "")}
+                  for r in (net.get("routes") or []) if isinstance(r, dict)]
+        routes = [r for r in routes if re.fullmatch(r"[0-9.]+/\d{1,2}", r["to"])
+                  and re.fullmatch(r"[0-9.]+", r["via"])][:32]
+        if routes and getattr(backend, "no_routes", ""):
+            job.say(f"refused: {backend.no_routes}\n")
+            return "failed", 77
         if mode == "static" and not addr:
             job.say("refused: a static address needs an address\n")
             return "failed", 65
@@ -5814,7 +6942,7 @@ class Agent:
                     "on the host first (Unraid: Shares -> the share -> NFS Security Settings), "
                     "then apply again:\n  " + "\n  ".join(gaps) + "\n")
             return "failed", 77
-        desired = backend.render(iface, mode, addr, gw, dns)
+        desired = backend.render(iface, mode, addr, gw, dns, routes)
         before = backend.snapshot(iface)
         if backend.same(desired, before):
             job.say(f"already applied: {backend.name} already has this config\n")

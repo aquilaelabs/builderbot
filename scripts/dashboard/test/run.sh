@@ -100,7 +100,7 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -f "$KEEPF" ]
                 -u BB_TREE_OWNER -u BB_CI_LOG_DIR -u BB_NODE_TOOLCHAINS -u BB_EMU_LOCAL \
                 TMUX_TMPDIR="$KEEP_S/tmux" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$KEEP_S/gitconfig" \
                 DASHBOARD_TEST_URL="$KEEP_URL" DASHBOARD_TEST_CHROME="$KEEP_CHROME" \
-                DASHBOARD_TEST_DIR="$KEEP_S" node "$f" || rc=1
+                DASHBOARD_TEST_DIR="$KEEP_S" timeout --kill-after=10 "${SUITE_TIMEOUT:-1500}" node "$f" || rc=1
             case "$f" in */_probe-*) rm -f "$f" ;; esac
         done
         exit "$rc"
@@ -149,9 +149,17 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
     echo $$ > "$_dst/.bb-run-pid"
     # tar exits 1 for a file that changed under it (a CHANGELOG.md write, a
     # session's edit) and the copy is still whole: that is not a failed copy.
+    # What git ignores stays behind too, but for the map the plan reads
+    # (.bb-map): an ignored folder is a build's output or somebody's scratch,
+    # and /tmp is memory on a node. An 11 GB trial install ignored at the
+    # root was being copied into it when the run was cut (B433).
+    _skip="$_dst/.bb-copy-skip"
+    git -C "$_src" -c safe.directory="$_src" ls-files -oi --exclude-standard --directory 2>/dev/null \
+        | sed -n 's#/$##; /^\.bb-map$/d; s#^#./#p' > "$_skip" || : > "$_skip"
     { tar -C "$_src" -cf - --warning=no-file-changed --exclude=./.git --exclude=./dist \
-        --exclude=./android/app/build --exclude=./android/build . || [ $? -eq 1 ]; } \
+        --exclude=./android/app/build --exclude=./android/build -X "$_skip" . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
+    rm -f "$_skip"
     printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
     BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
 fi
@@ -264,9 +272,19 @@ LOCK="$LOCKDIR/lock"
 if [ -z "${BB_TEST_WORKER:-}" ]; then
 # A run still on the previous layout holds the old path; for one release
 # both are read for a LIVE pid, and only the new one is written.
+# BB_TEST_WAIT_LOCK=SECONDS waits that long for a run that holds it to end
+# rather than refusing at once: a preflight started in the background met
+# the hand-back hook's own check run, which ends in minutes, and stopped
+# having run nothing (B572).
+waited=0
 for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
     [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$l" ] || continue
     other="$(cat "$l" 2>/dev/null || true)"
+    while [ -n "$other" ] && [ -d "/proc/$other" ] && [ "$waited" -lt "${BB_TEST_WAIT_LOCK:-0}" ]; do
+        [ "$waited" -eq 0 ] && echo "[dashboard-test] waiting for the run that holds the lock (pid $other) to end" >&2
+        sleep 5; waited=$((waited + 5))
+        other="$(cat "$l" 2>/dev/null || true)"
+    done
     if [ -n "$other" ] && [ -d "/proc/$other" ]; then
         owner="$(stat -c %U "$l" 2>/dev/null || echo somebody)"
         die "another dashboard test run is going (pid $other, ${owner}'s, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box, and the CI runner counts; wait for it, or set BB_TEST_CONCURRENT=1"
@@ -279,6 +297,13 @@ rm -f "$LOCK" 2>/dev/null || true
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
+# Where each suite's seconds are kept for the worker plan (run_file,
+# bucket_plan): beside the code map in the tree the run was made from, which
+# is this node's own and gitignored; workers inherit the path.
+if [ -z "${SUITE_TIMES:-}" ]; then
+    _o="${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}"
+    mkdir -p "$_o/.bb-map" 2>/dev/null && export SUITE_TIMES="$_o/.bb-map/suite-times.tsv"
+fi
 echo $$ > "$S/.bb-run-pid"
 if [ -n "${BB_COVERAGE:-}" ]; then
     # A worker counts into its parent's directory, which is where the one
@@ -338,28 +363,55 @@ default_suites() {
 # because a bare "N passed, M failed" is a suite's total to those readers.
 bucket_plan() {
     # $1 workers; $2 a file of "name<TAB>lines" per suite (a file, since the
-    # heredoc is python's stdin); stdout: "bucket<TAB>name", buckets
-    # numbered from 0, each bucket's names in the order a single run has.
-    python3 - "$1" "$2" <<'PY'
-import sys
-n = int(sys.argv[1])
-SLOW = ["agent", "devapp", "nodes", "cards", "git", "roles", "uniform"]
+    # heredoc is python's stdin); $3 the times file run_file appends to;
+    # stdout: "bucket<TAB>name", buckets numbered from 0, each bucket's
+    # names in the order a single run has.
+    #
+    # By measured seconds, longest first, each to the emptiest bucket. It
+    # was by line count behind a hand-kept list of the slow files, and line
+    # count is a poor clock: uniform.mjs is 1471 lines and 227 s, devapp.mjs
+    # 4109 lines and 199 s, so one worker carried uniform, roles and cards
+    # (about 450 s) while the others idled (30 Sep). A suite never timed on
+    # this node is costed from its lines at the tree's own median rate. The
+    # median of the last five passes per suite, so one slow run on a busy
+    # box does not move the plan, and the file is trimmed to those five.
+    python3 - "$1" "$2" "${3:-}" <<'PY'
+import os, statistics, sys
+n, sizes, times = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+base = lambda k: k.rsplit("/", 1)[-1][:-4] if k.endswith(".mjs") else k.rsplit("/", 1)[-1]
 size = {}
-for line in open(sys.argv[2]):
+for line in open(sizes):
     if line.strip():
         name, lines = line.rstrip("\n").split("\t")
         size[name] = int(lines or 0)
-base = lambda k: k.rsplit("/", 1)[-1][:-4] if k.endswith(".mjs") else k.rsplit("/", 1)[-1]
-rank = lambda k: SLOW.index(base(k)) if base(k) in SLOW else len(SLOW)
-order = sorted(size, key=lambda k: (rank(k), -size[k], k))
-buckets, load = [[] for _ in range(n)], [0] * n
-for i, name in enumerate(order):
-    b = i if (rank(name) < len(SLOW) and i < n) else load.index(min(load))
+seen = {}
+if times and os.path.isfile(times):
+    for line in open(times, errors="replace"):
+        k, _, v = line.rstrip("\n").partition("\t")
+        if k and v.isdigit():
+            seen.setdefault(k, []).append(int(v))
+    seen = {k: v[-5:] for k, v in seen.items()}
+    try:
+        with open(times + ".tmp", "w") as f:
+            for k in sorted(seen):
+                f.writelines(f"{k}\t{v}\n" for v in seen[k])
+        os.replace(times + ".tmp", times)
+    except OSError:
+        pass
+secs = {k: statistics.median(v) for k, v in seen.items()}
+rates = [size[k] / secs[base(k)] for k in size if secs.get(base(k)) and size[k]]
+rate = statistics.median(rates) if rates else 12.0
+cost = {k: secs.get(base(k), size[k] / rate) for k in size}
+buckets, load = [[] for _ in range(n)], [0.0] * n
+for name in sorted(cost, key=lambda k: (-cost[k], k)):
+    b = load.index(min(load))
     buckets[b].append(name)
-    load[b] += size[name]
+    load[b] += cost[name]
 for b, names in enumerate(buckets):
     for name in sorted(names):
         print(f"{b}\t{name}")
+print(f"planned: {' '.join(f'{x:.0f}s' for x in load)} by {'measured seconds' if secs else 'line count'}"
+      f" ({sum(1 for k in size if base(k) in secs)} of {len(size)} suites timed)", file=sys.stderr)
 PY
 }
 free_ports() {
@@ -404,6 +456,14 @@ workers_cleanup() {
         log "the tree it ran from is kept at $BB_TEST_COPY"
     fi
 }
+# The machine's load as a run ends (R108), the one-minute and five-minute
+# averages and its cores: what a timing in this log was taken under, which
+# bb tests ingest keeps with the run so the Tests tab can tell a quiet run's
+# seconds from a busy one's.
+load_line() {
+    printf '[dashboard-test] load: %s on %s cores\n' "$(cut -d' ' -f1,2 /proc/loadavg 2>/dev/null)" \
+        "$(nproc 2>/dev/null || echo 1)"
+}
 run_workers() {
     local n="$1"; shift
     local names=("$@") t f plan i rc=0 wrc tp tf
@@ -416,7 +476,8 @@ run_workers() {
         case "$t" in /*) f="$t" ;; *) f="$HERE/${t%.mjs}.mjs" ;; esac
         printf '%s\t%s\n' "$t" "$(wc -l < "$f" 2>/dev/null || echo 0)"
     done > "$S/sizes"
-    plan="$(bucket_plan "$n" "$S/sizes")"
+    plan="$(bucket_plan "$n" "$S/sizes" "${SUITE_TIMES:-}" 2> "$S/plan.said")"
+    log "workers $(cat "$S/plan.said" 2>/dev/null)"
     mapfile -t ports < <(free_ports "$n")
     [ "${#ports[@]}" = "$n" ] || die "could not find $n free ports for the workers' servers"
     for ((i = 0; i < n; i++)); do
@@ -454,16 +515,26 @@ run_workers() {
     # Once more, alone, for each suite that failed, the way a single run
     # does it below: a worker of its own, one at a time, on a port of its
     # own choosing, with the whole box to itself.
+    local again_failed=()
     for t in "${failed[@]}"; do
         if BB_TEST_WORKER=again BB_TEST_AGAIN=1 bash "$0" "$t"; then
             flaky+=("$(basename "${t%.mjs}").mjs")
         else
+            again_failed+=("$(basename "${t%.mjs}").mjs")
             rc=1
         fi
     done
     if [ "${#flaky[@]}" -gt 0 ]; then
         warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
     fi
+    # ...and named, the ones that failed again: a suite that ends before its
+    # first check (an uncaught timeout in its set-up) prints no FAIL line and
+    # adds nothing to the count, so "0 failed" sat above two suites that had
+    # run nothing, and they read as flakes (B464).
+    if [ "${#again_failed[@]}" -gt 0 ]; then
+        warn "failed again alone: ${again_failed[*]} (a suite that ends before its checks finish counts no FAIL: read its output above)"
+    fi
+    load_line
     [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
     exit "$rc"
 }
@@ -905,6 +976,25 @@ if [ "$3" = install ]; then
         *) printf 'Performing Streamed Install\nSuccess\n'; exit 0 ;;
     esac
 fi
+# adb -s SERIAL shell "a line": a lent phone's (R113). A screenshot is a
+# one-pixel PNG in base64, and a guarded touch or a start answers quietly.
+if [ "$3" = shell ]; then
+    case "$4" in
+        *"screencap -p"*) printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; exit 0 ;;
+        *mCurrentFocus*|*"monkey -p"*|*"am force-stop"*) exit 0 ;;
+    esac
+fi
+# adb -s SERIAL exec-out screencap -p: the same one-pixel PNG, as bytes, which
+# is how a lent phone's shot comes back now (report #53).
+if [ "$3 $4 $5" = "exec-out screencap -p" ]; then
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d; exit 0
+fi
+# adb -s SERIAL shell screenrecord ... FILE, then pull FILE DEST: a lent
+# phone's recording comes back as a pulled file (report #57). The stand-in
+# MP4 carries an ftyp and a moov box, which is what a whole one has.
+# A recording left running (record start) and interrupted (record stop) too.
+if [ "$3" = shell ] && case "$4" in screenrecord*|"nohup screenrecord"*|"pkill -INT screenrecord"*) true ;; *) false ;; esac; then exit 0; fi
+if [ "$3" = pull ]; then printf '\0\0\0\x18ftypmp42\0\0\0\0mp42isom\0\0\0\x08moov' > "$5"; exit 0; fi
 # adb -s SERIAL shell pm list packages
 if [ "$4 $5 $6" = "pm list packages" ]; then
     printf 'package:org.mozilla.firefox_beta
@@ -960,7 +1050,11 @@ case "$1" in
     [ -f "$ST/unlabeled" ] && lbl='["com.example.other=1"]'
     uid="STUBDAEMON1"
     [ -f "$ST/uid" ] && uid="$(cat "$ST/uid")"
-    printf '{"ID":"%s","Labels":%s,"ServerVersion":"99.stub"}\n' "$uid" "$lbl"
+    # The runtimes the daemon lists: nvidia's once the container toolkit's
+    # stand-in has "configured" it (R102).
+    rt='{"runc":{}}'
+    [ -f "$ST/nvidia-runtime" ] && rt='{"nvidia":{"path":"nvidia-container-runtime"},"runc":{}}'
+    printf '{"ID":"%s","Labels":%s,"ServerVersion":"99.stub","Runtimes":%s}\n' "$uid" "$lbl" "$rt"
     exit 0 ;;
   ps)
     # The bare `docker ps` the Docker manager reads. Stateful, because the
@@ -1258,7 +1352,7 @@ PIDF="$(mktemp "${TMPDIR:-/tmp}/dashboard-test-pid.XXXXXX")"
 start_server() {
 ( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
-    TC_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
+    TC_AUTOCHECK=0 BB_NODE_POLL=3 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
@@ -1295,13 +1389,18 @@ start_server
 # about. So it claims the store directly, which is the same call the form
 # makes. The form's own path is covered in auth.mjs, against a store of its
 # own.
-python3 - "$DASH/users.py" "$S/state" <<'PY'
-import importlib.util, json, sys
+python3 - "$DASH/users.py" "$S/state" "$S/ws" <<'PY'
+import importlib.util, json, os, sys
 spec = importlib.util.spec_from_file_location("users", sys.argv[1])
 u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 u.configure(state=sys.argv[2], write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
 d = u.load()
-d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
+# The fixture projects by name (R135): "*" lists every project and takes
+# none on, and this seed lands after the server started, past the start-time
+# migration that turns an existing owner's "*" into names.
+fixtures = sorted(n for n in os.listdir(sys.argv[3])
+                  if os.path.isdir(os.path.join(sys.argv[3], n)) and not n.startswith("."))
+d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": fixtures,
                       # An author, or no Claude session starts for it (users.git_ready).
                       # ...and the welcome panel read, or it would open over
                       # every page load in the suite (cards.mjs opens it on purpose).
@@ -1312,18 +1411,6 @@ d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
                       "seen": 0}
 u._save(d)
 PY
-
-# ...and its Claude identity. The controller holds no credential now (R47),
-# and each machine signs in for itself, so "signed in" here is a RECORD: which
-# Anthropic account this BuilderBot account is bound to, and which nodes
-# report being signed in as it. Without one every suite reads the box as
-# signed out, which ghosts every Claude button and reddens every project row.
-mkdir -p "$S/home/.claude"
-cat > "$S/home/.claude/.bb-grant.json" <<'GRANT'
-{"gen": 1, "email": "tester@example.com", "plan": "max",
- "nodes": {"n_fixture": {"email": "tester@example.com", "at": 1}}}
-GRANT
-chmod 600 "$S/home/.claude/.bb-grant.json"
 
 # ---- the docker-host node --------------------------------------------------
 # The suite needs one node whose daemon the controller can address, and it
@@ -1364,6 +1451,15 @@ stub_token="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(j
 # again by fresh() before every file, which wipes the settings first.
 sandbox_id="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("node_id") or d.get("id") or "")')"
 bind_fixture_node
+# ...and the tester's Claude sign-in on that node. The controller holds no
+# credential (R47): a login is one account's on one node, and what is kept
+# here is the RECORD of what each node reported. Without one the fixture
+# node reads as not signed in, and every Claude press in the suite would go
+# to its sign-in instead of to a session.
+mkdir -p "$S/home/.claude"
+printf '{"nodes": {"%s": {"email": "tester@example.com", "plan": "max", "at": 1}}}\n' "$sandbox_id" \
+    > "$S/home/.claude/.bb-grant.json"
+chmod 600 "$S/home/.claude/.bb-grant.json"
 start_stub() {
     ( STUB_AGENT_URL="http://127.0.0.1:$PORT" \
     STUB_AGENT_DIR="$S/sandboxdata" \
@@ -1426,14 +1522,24 @@ sys.exit(0 if n and float((n[0].get("agent") or {}).get("last_seen") or 0) >= si
     done
     warn "the stub agent did not dial in again within ten seconds"
 }
+# BB_TEST_PHASES=1 says what each part of a suite's set-up cost, which is
+# the time no check measures: a suite's own seconds are its checks', and
+# roles and bugs measured 91 s of checks in 182 s of run (30 Sep).
+phase() {
+    [ -n "${BB_TEST_PHASES:-}" ] || { "$@"; return; }
+    local t0 rc=0; t0="$(date +%s%N)"
+    "$@" || rc=$?
+    log "phase $1: $(( ($(date +%s%N) - t0) / 1000000 )) ms"
+    return "$rc"
+}
 fresh_world() {
     local since
-    stop_world
-    restore_world
+    phase stop_world
+    phase restore_world
     since="$(date +%s)"
-    start_server
-    start_stub
-    wait_stub "$since"
+    phase start_server
+    phase start_stub
+    phase wait_stub "$since"
 }
 stop_world
 snapshot_world
@@ -1461,7 +1567,12 @@ if [ $# -gt 0 ]; then
             # A probe (`bb tests probe FILE`): a script from anywhere, copied
             # beside lib.mjs so its `./lib.mjs` resolves, and removed after.
             /*) f="$HERE/_probe-$(basename "${t%.mjs}").mjs"; cp "$t" "$f"; probes+=("$f"); tests+=("$f") ;;
-            *)  tests+=("$HERE/${t%.mjs}.mjs") ;;
+            *)  # A name that is no suite is said so before anything runs,
+                # not reported later as a suite that "failed again alone".
+                [ -f "$HERE/${t%.mjs}.mjs" ] || {
+                    echo "[dashboard-test] ERROR: no suite called ${t%.mjs}: the suites are $(cd "$HERE" && ls ./*.mjs | sed 's|^\./||; s|\.mjs$||' | grep -vxE 'lib|surface-list' | tr '\n' ' ')" >&2
+                    exit 2; }
+                tests+=("$HERE/${t%.mjs}.mjs") ;;
         esac
         names+=("$t")
     done
@@ -1475,11 +1586,26 @@ run_file() {
     # file's and the map can say which suite reached a handler.
     BB_COVERAGE_SUITE="$(basename "${1%.mjs}")"
     export BB_COVERAGE_SUITE
+    local t0 rc=0
+    t0="$(date +%s)"
     fresh_world
-    fresh
+    phase fresh
     log "== $(basename "$1")${2:+ $2} =="
+    # A time limit per file (B514): a check that awaited a request it held
+    # open itself hung cards.mjs for four hours, holding the run's lock, with
+    # nothing saying so. SUITE_TIMEOUT seconds (1500: the longest file takes
+    # about 230 on this node, doubled waits included many times over).
     DASHBOARD_TEST_URL="http://127.0.0.1:$PORT/" DASHBOARD_TEST_CHROME="$CHROME" \
-    DASHBOARD_TEST_DIR="$S" node "$1"
+    DASHBOARD_TEST_DIR="$S" timeout --kill-after=10 "${SUITE_TIMEOUT:-1500}" node "$1" || rc=$?
+    [ "$rc" != 124 ] && [ "$rc" != 137 ] \
+        || log "FAIL  $(basename "$1") ran out of its ${SUITE_TIMEOUT:-1500} s: something in it waited on nothing"
+    # What the suite cost, world and all, for the next run's worker plan
+    # (bucket_plan): a pass in a whole run only, since a failure can stop
+    # early or wait out a timeout, and a rerun runs on an idle box. One
+    # short line appended, so four workers at once do not tear it.
+    [ "$rc" = 0 ] && [ -z "${2:-}" ] && [ -n "${SUITE_TIMES:-}" ] \
+        && printf '%s\t%s\n' "$BB_COVERAGE_SUITE" "$(( $(date +%s) - t0 ))" >> "$SUITE_TIMES" 2>/dev/null
+    return "$rc"
 }
 rc=0
 failed=()
@@ -1516,5 +1642,6 @@ stop_world
 if [ "${#flaky[@]}" -gt 0 ]; then
     warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
 fi
+load_line
 [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
 exit "$rc"

@@ -66,7 +66,7 @@ def accounts():
         if not users.all_users():
             with users._lock:
                 d = users.load()
-                d["users"][name] = {"role": "owner", "projects": ["*"],
+                d["users"][name] = {"role": "owner", "projects": [],
                                     "password": users.hash_password(pw),
                                     "created": int(__import__("time").time()), "seen": 0}
                 users._save(d)
