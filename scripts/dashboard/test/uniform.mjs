@@ -1191,8 +1191,18 @@ const sideways = () => page.evaluate(() => {
     .filter(e => !['checkbox', 'radio'].includes(e.type));
   const edge = (box?.getBoundingClientRect().right || document.documentElement.clientWidth) + 1;
   let widest = null;
+  // Inside a box that scrolls sideways by design (a diff's pre), what is
+  // wide is that box's to scroll, never the page's: all sections stand open
+  // on a phone since 8 Oct, so a diff is measured there now.
+  const scrolls = e => {
+    for (let a = e.parentElement; a && a !== box; a = a.parentElement)
+      if (/(auto|scroll)/.test(getComputedStyle(a).overflowX)
+          && a.getBoundingClientRect().right <= edge) return true;
+    return false;
+  };
   for (const e of box?.querySelectorAll('*') || []){
     if (e.closest('.nbtabs')) continue;
+    if (scrolls(e)) continue;
     const r = e.getBoundingClientRect();
     if (r.width && r.right > edge && (!widest || r.right > widest.right)){
       // Named with its text and its parents, so the failure says where to

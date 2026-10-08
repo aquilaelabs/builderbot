@@ -512,14 +512,13 @@ the suite covers.
 Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold, action, bar, actbar, hidden
 
 A long surface is sections: `docSection(kind, id, title, status, body)`, one
-fold per concern with its status on the heading in `--f-sect`, the first of
-a group open by default and the rest shut; on a desktop several may stand
-open, on a phone one at a time (the operator, 7 Oct). A status is a word or a number, never a sentence. A fold
-keeps its state for the page's life and a reload starts it from the default:
-the sidebar's cards are the one arrangement that is stored, at a desk in the
-arrangement the server holds, and on a phone on the device itself, so a
-card opened there stays open across a reload without reaching the desk.
-Reset opens every card on both.
+fold per concern with its status on the heading in `--f-sect`. Every section is open by
+default and several stand open, at every width (the operator, 8 Oct: too much was hidden
+in folds); a person may shut one, and it stays shut for the page's life. A surface of four
+or more sections carries a jump bar (sectJump): their names in a line at the top, each
+scrolling to its own. A status is a word or a number, never a sentence. The sidebar's cards
+are the one arrangement that is stored, at a desk in the arrangement the server holds, and on
+a phone on the device itself. Reset opens every card on both.
 
 `hidden` means hidden. `[hidden]{display:none !important}` is global,
 because any class that sets `display` otherwise beats the attribute: a fold

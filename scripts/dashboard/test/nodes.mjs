@@ -822,27 +822,25 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
-  // The first section open by default, and on a desktop a second opened
-  // beside it rather than in its place (the operator, 7 Oct; a phone keeps
-  // one at a time, which page-docs.js's oneOpen holds).
+  // Every section open by default, and shutting one leaves the others open
+  // (the operator, 8 Oct: too much was hidden in folds).
   {
     const sects = `${ROW} .ndconfbody > details.sect`;
     const before = await page.$$eval(sects, ds => ds.map(d => d.open));
-    const shut = before.indexOf(false);
-    ok(before[0] === true && shut > 0, `the Nodes tab has its first section open (${before})`);
-    await page.$$eval(sects, (ds, i) => ds[i].querySelector(':scope > summary').click(), shut);
-    const n = before.filter(Boolean).length + 1;
-    await page.waitForFunction(([s, n]) => [...document.querySelectorAll(s)].filter(d => d.open).length === n,
-                               [sects, n], { timeout: 5000 }).catch(() => {});
+    ok(before.length > 1 && before.every(Boolean), `the Nodes tab has every section open (${before})`);
+    await page.$$eval(sects, ds => ds[1].querySelector(':scope > summary').click());
+    await page.waitForFunction(s => !document.querySelectorAll(s)[1].open, sects, { timeout: 5000 }).catch(() => {});
     const open = await page.$$eval(sects, ds => ds.filter(d => d.open).length);
-    ok(open === n, `...and on a desktop opening another leaves the open ones open (${open} open, ${n} wanted)`);
+    ok(open === before.length - 1, `...and shutting one leaves the rest open (${open} open of ${before.length})`);
+    await page.$$eval(sects, ds => ds[1].querySelector(':scope > summary').click());
+    await page.waitForFunction(s => document.querySelectorAll(s)[1].open, sects, { timeout: 5000 }).catch(() => {});
   }
   // Every fold on this page is driven rather than left to the browser's
   // instant snap: the memories, the bug reports, the version tab's fold, the
   // Docker manager's wiring. Sections shipped without it and were the one
   // kind that jumped.
   {
-    // An open one: one section is open at a time now (6 Oct).
+    // An open one: every section is open by default (8 Oct).
     const key = await page.$eval(`${ROW} .ndconfbody > details.sect[open]`, d => d.dataset.sect);
     const sel = `${ROW} .ndconfbody > details.sect[data-sect="${key}"]`;
     const moved = await animatedDuring(page, () => closeFold(page, sel));

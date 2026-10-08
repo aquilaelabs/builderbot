@@ -1339,6 +1339,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid color-mix(in srgb, var(--note) 45%, var(--panel));outline-offset:-1px}
+/* A select whose longest option is wider than it reports that width as its
+   own, and every box around it grew by it: the project settings scrolled
+   sideways on a phone once every section stood open (8 Oct). Paint
+   containment keeps it in its box; its focus ring is drawn wholly inside,
+   where containment cannot clip it. */
+select{contain:paint}
+select:focus{outline-offset:-2px}
 .modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:0}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
@@ -1382,6 +1389,12 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    fold's body adds none of its own. */
 .rngroup:not(:has(> .body > .field:not([hidden]))){display:none}
 .rngroup > .body{padding:0 0 var(--row-y);gap:0}
+/* The jump bar over a long surface (sectJump): its sections' names in a
+   line that wraps, each a link to its own. */
+.sectjump{display:flex;flex-wrap:wrap;gap:4px 14px;padding:var(--row-y) var(--row-x);
+  border-bottom:1px solid var(--line);font:var(--f-note)}
+.sectjump a{color:var(--accent);text-decoration:none;white-space:nowrap}
+.sectjump a:hover{text-decoration:underline}
 .rnsign{padding:6px 0;border-top:1px solid var(--line)}
 /* A signed build's certificate fingerprint on its Artifacts row (R106):
    the whole of it, wrapping on a phone rather than cut off. */

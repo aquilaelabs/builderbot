@@ -142,7 +142,9 @@ function docSection(kind, id, title, status, body, {cls = "", open, loud = false
   const key = `${kind}:${id}`;
   const turned = loud && !sectLoud[key];
   sectLoud[key] = loud;
-  const isOpen = turned || (key in sectOpen ? sectOpen[key] : (open !== undefined ? open : !isPhone()));
+  // Open unless somebody shut it, at every width (the operator, 8 Oct: too
+  // much was hidden in folds).
+  const isOpen = turned || (key in sectOpen ? sectOpen[key] : (open !== undefined ? open : true));
   // `prime`: the section a view is opened for (Artifacts' Files), open by
   // default beside the first on a desktop. `data-set`: its caller said open
   // or shut, which a default never overrules.
@@ -172,15 +174,36 @@ function wireSections(root){
   if (view){
     oneOpen(view);
     root.querySelectorAll("details.sect").forEach(oneOpen);
+    sectJump(view);
   }
 }
-// The first section of a group is open by default, and on a phone one
-// section is open at a time; on a desktop several may stand open (the
-// operator, 7 Oct). One at a time had come in on 5 and 6 Oct for every
-// width, because several open on a phone made a surface a long scroll and
-// the section being worked in was hard to keep hold of; a desktop has the
-// room, and shutting one section to read another there was a step for
-// nothing. Among siblings only: a section's own folds (a page's rules
+// A jump bar over a long surface (the operator, 8 Oct): with every section
+// open, the names of the sections in a line at the top, each scrolling to
+// its own and opening it if somebody shut it. Four or more sections make
+// a surface long enough to want one; a surface with fewer has none.
+function sectJump(g){
+  const mine = sectsOf(g);
+  const have = g.querySelector(":scope .sectjump");
+  if (mine.length < 4){ have?.remove(); return; }
+  const bar = have || document.createElement("nav");
+  // In a dialog every line is a .field band (the design's dialog layout).
+  bar.className = g.matches("[data-sects]") ? "field sectjump" : "sectjump";
+  bar.setAttribute("aria-label", "sections");
+  bar.innerHTML = mine.map(o => `<a href="#" data-jump="${esc(o.dataset.sect || "")}">${
+    esc(o.querySelector(":scope > summary .t")?.textContent || "")}</a>`).join("");
+  if (!have) mine[0].before(bar);
+  bar.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    const d = mine.find(o => (o.dataset.sect || "") === a.dataset.jump);
+    if (!d) return;
+    if (!d.open){ d.open = true; if (d.dataset.sect) sectOpen[d.dataset.sect] = true; }
+    d.scrollIntoView({block: "start", behavior: "smooth"});
+  });
+}
+// Every section is open by default and several stand open, at every width
+// (the operator, 8 Oct: too much was hidden in folds); a long surface has a
+// jump bar instead (sectJump). Before, the first of a group was open, and on
+// a phone one at a time (7 Oct). Among siblings only: a section's own folds (a page's rules
 // inside Pages) take turns among themselves and never close the section
 // holding them.
 const sectLast = new WeakMap();     // a group -> the key of the section last opened in it
@@ -200,13 +223,8 @@ function soleOpen(d){
   sectLast.set(g, d.dataset.sect || "");
   // Recorded now, not when the slide ends: a repaint landing mid-slide read
   // the one sliding shut as still open and kept it over the one just opened.
+  // Several stand open at every width since 8 Oct, so nothing else shuts.
   if (d.dataset.sect) sectOpen[d.dataset.sect] = true;
-  if (!isPhone()) return;
-  g.querySelectorAll("details.sect[open]").forEach(o => {
-    if (o === d || sectGroup(o) !== g) return;
-    if (o.dataset.sect) sectOpen[o.dataset.sect] = false;
-    slideDetails(o, false);
-  });
 }
 // A section opened by a draw rather than by a hand (Memories, remembered
 // open): it is the one that stays, and on a phone the others shut at once,
@@ -217,36 +235,16 @@ function keepOpen(d){
   sectLast.set(g, d.dataset.sect || "");
   oneOpen(g);
 }
-// After a draw. Nothing anybody chose is moved: the first section stands
-// open unless somebody shut it, and on a desktop the view's own (`prime`,
-// Artifacts' Files) with it, every other default shut. On a phone, if more
-// than one is open, the one last opened stays, else one the person opened
-// before, else the first; the rest shut at once, without the slide, since
-// nothing moved them.
+// After a draw. Nothing anybody chose is moved: every section stands open
+// unless somebody shut it.
 function oneOpen(g){
   if (!sectRuled(g)) return;
   const mine = sectsOf(g);
-  if (!mine.length) return;
-  const first = mine[0];
-  if (!isPhone()){
-    for (const o of mine){
-      if (o.hasAttribute("data-lead")){ o.removeAttribute("data-lead"); sectLast.set(g, o.dataset.sect || ""); continue; }
-      if (sectDefault(o)) o.open = o === first || o.hasAttribute("data-prime");
-    }
-    return;
+  for (const o of mine){
+    if (o.hasAttribute("data-lead")){ o.removeAttribute("data-lead"); sectLast.set(g, o.dataset.sect || ""); continue; }
+    // Open unless somebody shut it, at every width (the operator, 8 Oct).
+    if (sectDefault(o)) o.open = true;
   }
-  const open = mine.filter(o => o.open);
-  if (!open.length){
-    if (sectDefault(first) || sectOpen[first.dataset.sect] === true) first.open = true;
-    return;
-  }
-  if (open.length < 2) return;
-  const keep = open.find(o => o.hasAttribute("data-lead"))
-    || open.find(o => o.dataset.sect && o.dataset.sect === sectLast.get(g))
-    || open.find(o => o.dataset.sect && sectOpen[o.dataset.sect] === true)
-    || (open.includes(first) && first) || open[0];
-  if (keep.hasAttribute("data-lead")){ keep.removeAttribute("data-lead"); sectLast.set(g, keep.dataset.sect || ""); }
-  open.forEach(o => { if (o !== keep){ o.open = false; if (o.dataset.sect) sectOpen[o.dataset.sect] = false; } });
 }
 // A button that is doing something says so until the repaint replaces it:
 // grayed, and wearing the verb with an animated ellipsis. Pair with

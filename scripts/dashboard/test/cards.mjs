@@ -1530,41 +1530,40 @@ ok(await page.$eval('#rnName', el => el.value) === 'alpha',
 ok(/Folder: \/workspace\/alpha · project #\d+/.test(await page.$eval('#rnHint', e => e.textContent)),
    'the settings say the folder the project lives in, and its id, under the name');
 {
-  // Sections, the first open by default, several at once on a desktop and
-  // one at a time on a phone (the operator, 7 Oct): the gear's door opens on
-  // The project, a heading pressed opens its section beside it, and the
-  // chain's door shows the repository's alone, open. Read with $eval, which
-  // the harness's own fold-opening leaves be.
+  // Sections, every one open by default at every width, with a jump bar
+  // over them (the operator, 8 Oct: too much was hidden in folds). One shut
+  // stays shut for the page's life; the chain's door shows the repository's
+  // alone, open. Read with $eval, which the harness's own fold-opening leaves be.
   const folds = (p = page) => p.$$eval('details.rngroup', ds => ds.map(d => ({
     k: d.dataset.sect, open: d.open, shown: getComputedStyle(d).display !== 'none' })));
-  const opened = fs => fs.filter(f => f.open).map(f => f.k).join();
+  const shut = fs => fs.filter(f => f.shown && !f.open).map(f => f.k).join();
   const gear = await folds();
-  ok(opened(gear) === 'rn:project' && gear.filter(f => f.shown).length > 3,
-     `the settings are sections, and the gear opens on The project alone (${opened(gear)})`);
+  ok(!shut(gear) && gear.filter(f => f.shown).length > 3,
+     `the settings are sections, every one open (${shut(gear) || 'none shut'})`);
+  const jumps = await page.$$eval('#rnmodal .sectjump a', as => as.map(a => a.textContent));
+  ok(jumps.includes('The project') && jumps.includes('Claude may'),
+     `...with a jump bar naming them (${jumps.join(', ')})`);
   await page.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
-  await page.waitForFunction(() => document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => !document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
   await page.waitForTimeout(300);
-  const pressed = await folds();
-  ok(opened(pressed) === 'rn:project,rn:claude',
-     `...a heading pressed on a desktop opens its section beside the open one (${opened(pressed)})`);
+  ok(shut(await folds()) === 'rn:claude', `...a heading pressed shuts its own section alone (${shut(await folds())})`);
   await page.evaluate(() => { closeRename(); renameProject('alpha', 'git'); });
   const chain = await folds();
   ok(chain.filter(f => f.shown).map(f => f.k).join() === 'rn:repo' && chain.find(f => f.k === 'rn:repo')?.open,
      `...and the chain's door shows the repository's section alone, open (${JSON.stringify(chain.filter(f => f.shown))})`);
   await page.evaluate(() => { closeRename(); renameProject('alpha'); });
-  ok(opened(await folds()) === 'rn:project,rn:claude',
-     `...and the gear opens again on the sections this person left open (${opened(await folds())})`);
-  // A phone: the first alone, and a heading pressed shuts the one open.
+  ok(shut(await folds()) === 'rn:claude', `...and the gear opens again with the one this person shut, shut (${shut(await folds())})`);
+  await page.$eval('#rnmodal .sectjump a:last-child', a => a.click()).catch(() => {});
+  await page.$$eval('#rnmodal .sectjump a', as => as.find(a => a.textContent === 'Claude may')?.click());
+  await page.waitForFunction(() => document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
+  ok(!shut(await folds()), '...and its name in the jump bar opens it again');
+  // A phone: every section open there too.
   const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await phone.goto(URL);
   await ready(phone);
   await phone.evaluate(() => renameProject('alpha'));
   await phone.waitForSelector('#rnmodal:not([hidden])');
-  ok(opened(await folds(phone)) === 'rn:project', `on a phone the gear opens on The project alone (${opened(await folds(phone))})`);
-  await phone.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
-  await phone.waitForFunction(() => !document.querySelector('details[data-sect="rn:project"]').open, null, { timeout: 5000 }).catch(() => {});
-  ok(opened(await folds(phone)) === 'rn:claude',
-     `...and a heading pressed there opens its section and shuts the open one (${opened(await folds(phone))})`);
+  ok(!shut(await folds(phone)), `on a phone every section is open too (${shut(await folds(phone)) || 'none shut'})`);
   await phone.close();
 }
 ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',

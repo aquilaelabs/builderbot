@@ -209,6 +209,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Only BuilderBot makes a project now: a folder made by hand in the projects folder is not listed; create, clone or import one instead (142ecfb)
 - Roles are simpler: a role on a project is given on the project, and holding one there is being on it; Everywhere roles are the account's; the Roles tab says what a person can do as you tick, invitations name the role they offer, and existing assignments were moved over unchanged (32d5b47)
 - A Docker container's row shows its project, where it is built from, its ports and its settings at every width; on a phone they were behind a Details fold (a70950b)
+- Every section starts open, on a phone too, and a long surface (project settings among them) has a line of section names at the top to jump to each; nothing shuts one section when another opens (3b1cbf8)
 
 ### Removed
 
