@@ -1110,8 +1110,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        && typeof JSON.parse(settings.out).locked === 'boolean',
        'bb settings --json relays the project\'s settings, lock included: what bb-tty and bb build read on a node');
     const other = await relay({ argv: ['roadmap'], project: 'ep.silon' });
-    ok(other.status === 403 && /another project/.test(other.error),
-       'a token for alpha cannot ask about another project');
+    ok(other.status === 403 && /alpha does not read ep\.silon/.test(other.error),
+       `a token for alpha cannot ask about another project, and says it does not read it (${other.error})`);
     const sdk = await relay({ argv: ['sdk'] });
     ok(sdk.status === 400 && /not relayed/.test(sdk.error),
        'bb toolchains is refused: it answers for the machine the session is on');
