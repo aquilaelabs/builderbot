@@ -4226,4 +4226,28 @@ print(json.dumps(out))`], { encoding: 'utf8' });
      `...and on ask it follows the build Allow starts instead of asking for another (${acts('ask')})`);
 }
 
+// The Docker tab's rows each carry a Ports and mounts fold, and the jump
+// bar a long surface gets listed every one of them under one name, a bar of
+// identical links in the first row (the operator, 8 Oct). A fold repeated
+// per row is the row's, never a section to jump to; four of its own still
+// make a bar.
+{
+  const shape = await page.evaluate(() => {
+    const make = titles => {
+      const g = document.createElement('div');
+      g.className = 'doctab';
+      g.innerHTML = titles.map((t, i) => docSection('docker', `probe:${i}`, t, '', '<div>x</div>', { open: false })).join('');
+      document.body.append(g);
+      sectJump(g);
+      const links = [...g.querySelectorAll('.sectjump a')].map(a => a.textContent);
+      g.remove();
+      return links;
+    };
+    return { rows: make(['Ports and mounts', 'Ports and mounts', 'Ports and mounts', 'Ports and mounts', 'Ports and mounts']),
+             own: make(['One', 'Two', 'Three', 'Four', 'Ports and mounts', 'Ports and mounts']) };
+  });
+  ok(shape.rows.length === 0 && JSON.stringify(shape.own) === '["One","Two","Three","Four"]',
+     `a fold repeated once per row makes no jump bar, and a surface's own sections still do (${JSON.stringify(shape)})`);
+}
+
 await done(browser);

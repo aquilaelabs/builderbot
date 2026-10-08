@@ -182,7 +182,14 @@ function wireSections(root){
 // its own and opening it if somebody shut it. Four or more sections make
 // a surface long enough to want one; a surface with fewer has none.
 function sectJump(g){
-  const mine = sectsOf(g);
+  // A surface's own sections, which each have a title of their own: a fold
+  // repeated once per row of a list (the Docker tab's Ports and mounts, one
+  // per container) is the row's, and seventeen of them made a bar of
+  // seventeen links all called the same (the operator, 8 Oct).
+  const titleOf = o => o.querySelector(":scope > summary .t")?.textContent || "";
+  const all = sectsOf(g), seen = {};
+  all.forEach(o => { seen[titleOf(o)] = (seen[titleOf(o)] || 0) + 1; });
+  const mine = all.filter(o => seen[titleOf(o)] === 1);
   const have = g.querySelector(":scope .sectjump");
   if (mine.length < 4){ have?.remove(); return; }
   const bar = have || document.createElement("nav");
@@ -190,7 +197,7 @@ function sectJump(g){
   bar.className = g.matches("[data-sects]") ? "field sectjump" : "sectjump";
   bar.setAttribute("aria-label", "sections");
   bar.innerHTML = mine.map(o => `<a href="#" data-jump="${esc(o.dataset.sect || "")}">${
-    esc(o.querySelector(":scope > summary .t")?.textContent || "")}</a>`).join("");
+    esc(titleOf(o))}</a>`).join("");
   if (!have) mine[0].before(bar);
   bar.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
     e.preventDefault();
