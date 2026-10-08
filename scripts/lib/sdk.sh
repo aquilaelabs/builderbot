@@ -671,7 +671,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
                 # version it would move to, which is the only interesting half.
                 local line=""
                 line="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" timeout 60 \
-                        "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1)"
+                        "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1 || true)"
                 # Lower case, and a colon rather than an arrow:
                 #   stable-x86_64-unknown-linux-gnu - up to date: 1.97.1 (...)
                 #   stable-x86_64-unknown-linux-gnu - update available: 1.97.1 -> 1.98.0
@@ -814,7 +814,12 @@ sdk_check() {
     local names="$*"
     [ -n "$names" ] || names="$(sdk_checkable)"
     local n
-    for n in $names; do sdk_check_one "$n"; done
+    # Each recipe's answer is its own: one whose probe fails under set -e
+    # (rust's grep finding no "stable" line in rustup's answer) ended the
+    # run there, so every row after it went unasked and the node's check
+    # job failed, exit 1 or git's 128, and was queued again (B549). In an
+    # || its probe runs to its row whatever one command in it says.
+    for n in $names; do sdk_check_one "$n" || true; done
 }
 
 # bb toolchains update NAME: bring an installed toolchain up to date, each the way
