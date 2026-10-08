@@ -1538,11 +1538,12 @@ dist_ignored() {
     local p root ex
     p="$(project_here)" || return 0
     root="$WORKSPACE/$p"
-    [ -d "$root/.git" ] || return 0
-    ex="$root/.git/info/exclude"
-    grep -qxF '/dist/' "$ex" 2>/dev/null && return 0
+    [ -e "$root/.git" ] || return 0
     git -C "$root" check-ignore -q dist/x 2>/dev/null && return 0
-    { mkdir -p "$root/.git/info" && printf '%s\n' '/dist/' >> "$ex"; } 2>/dev/null || true
+    # Through git, so a worktree (whose .git is a file) has it too.
+    ex="$(git -C "$root" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)" || return 0
+    grep -qxF '/dist/' "$ex" 2>/dev/null && return 0
+    { mkdir -p "${ex%/*}" && printf '%s\n' '/dist/' >> "$ex"; } 2>/dev/null || true
 }
 
 # trim_line TEXT: one line, capped so that a screen stays a screen. Counted in
