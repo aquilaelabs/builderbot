@@ -317,7 +317,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
               }&path=${encodeURIComponent(c.path)}" download>Download</a>
             <button type="button" data-artcap="${i}" title="remove it from dist/ now, for everybody">Remove</button>
           </span>
-        </div>`).join(""), {open: false});
+        </div>`).join(""));
       wireSections(capBox);
       capBox.querySelectorAll("[data-artcap]").forEach(b => b.onclick = async () => {
         const c = caps[+b.dataset.artcap];

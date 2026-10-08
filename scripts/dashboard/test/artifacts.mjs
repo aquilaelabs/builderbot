@@ -97,11 +97,11 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
 {
   const s = await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
     .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
-  ok(s.includes('artifacts:files:open') && s[0].endsWith(':open') && s.filter(x => x.endsWith(':open')).length === (s[0] === 'artifacts:files:open' ? 1 : 2),
-     `the files are their own section, open with the first when the view shows (${s.join(' ')})`);
+  ok(s.includes('artifacts:files:open') && s.every(x => x.endsWith(':open')),
+     `the files are their own section, and every section is open when the view shows (${s.join(' ')})`);
 }
-// ...and on a phone, where one is open at a time, the first opens rather
-// than none (B523; the first, the operator 7 Oct).
+// ...and on a phone every one is open too (the operator, 8 Oct: too much
+// was hidden in folds).
 {
   const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await phone.goto(URL);
@@ -112,8 +112,8 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
   await phone.waitForTimeout(500);
   const p = await phone.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
     .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
-  ok(p[0]?.endsWith(':open') && p.filter(x => x.endsWith(':open')).length === 1,
-     `...on a phone the first alone, one open at a time (${p.join(' ')})`);
+  ok(p.length && p.every(x => x.endsWith(':open')),
+     `...on a phone too, every one open (the operator, 8 Oct) (${p.join(' ')})`);
   await phone.close();
 }
 
@@ -229,10 +229,8 @@ ok(acts.every(a => a.dl), '...and everything can be downloaded');
   await page.waitForSelector('#artCaptures details.sect', { timeout: 15000 });
   const head = await page.$eval('#artCaptures summary', e => e.textContent);
   ok(/Captures/.test(head) && /3, kept 7 days/.test(head)
-     && await page.$eval('#artCaptures details.sect', d => !d.open),
-     `the tab draws them as one fold, shut, saying how many and for how long (${head.trim()})`);
-  await page.click('#artCaptures summary');
-  await page.waitForFunction(() => document.querySelector('#artCaptures details.sect')?.open, null, { timeout: 10000 });
+     && await page.$eval('#artCaptures details.sect', d => d.open),
+     `the tab draws them as one section, open like every other (8 Oct), saying how many and for how long (${head.trim()})`);
   // By text, not by position: the one with no record goes by its file's
   // time, which is whenever this suite wrote it.
   const rows = await page.$$eval('#artCaptures .artrow', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ').trim()));
