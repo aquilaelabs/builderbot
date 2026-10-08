@@ -1250,7 +1250,7 @@ cmd_emu() {
             # boot of a new level on a busy node ran past the old 180 and was
             # called failed while it booted on (Shebang-DevBoard, 6 Oct); and
             # at once for one that has exited, whose reason is in the log.
-            local serial="" epid="" waited=0 tries=0 why=""
+            local serial="" epid="" waited=0 tries=0 why="" booted=""
             while :; do
                 tries=$((tries + 1))
                 if [ -s "$HOME/.android/emulator.log" ]; then
@@ -1272,7 +1272,20 @@ cmd_emu() {
                     [ -n "$serial" ] && emu_booted "$serial" && break
                     sleep 2; waited=$((waited + 2))
                 done
-                [ -n "$serial" ] && emu_booted "$serial" && break
+                booted=""
+                if [ -n "$serial" ] && emu_booted "$serial"; then
+                    [ "$gpu" = host ] && [ "$tries" -eq 1 ] || break
+                    # Under the card a phone has died within a minute of
+                    # booting, gfxstream saying "null ctx" (report #72,
+                    # B530): watched a little longer, so that death falls
+                    # back to software like one before the boot.
+                    booted=1
+                    local settle=0
+                    while [ "$settle" -lt "${EMU_SETTLE:-30}" ] && kill -0 "$epid" 2>/dev/null; do
+                        sleep 2; settle=$((settle + 2))
+                    done
+                    kill -0 "$epid" 2>/dev/null && break
+                fi
                 # Hardware rendering that broke: an out-of-memory from
                 # glTexImage2D (0x505), a context preempted, a GLXBadContextTag.
                 # On bb-sandbox an Android 37 phone filled the card to 7.5 GB of
@@ -1280,14 +1293,15 @@ cmd_emu() {
                 # and died; the session that met it retried by hand in software
                 # (6 Oct, B530). So once, in software, by itself.
                 if [ "$gpu" = host ] && [ "$tries" -eq 1 ] && ! kill -0 "$epid" 2>/dev/null \
-                    && why="$(grep -m1 -oE 'err pre.{0,12}0x505|context was preempted|GLXBadContextTag|Failed to get EGL display' "$HOME/.android/emulator.log")"; then
-                    warn "hardware rendering failed as the phone booted (${why}); starting again in software, which leaves the card alone"
+                    && why="$(grep -m1 -oE 'err pre.{0,12}0x505|GL_OUT_OF_MEMORY|context was preempted|GLXBadContextTag|Failed to get EGL display|error null ctx' "$HOME/.android/emulator.log")"; then
+                    warn "hardware rendering failed ${booted:+just after }as the phone booted (${why}); starting again in software, which leaves the card alone"
                     gpu=swiftshader_indirect
                     [ -z "$hwui" ] || propargs=(-prop "debug.hwui.renderer=${hwui}")
                     continue
                 fi
                 kill -0 "$epid" 2>/dev/null \
                     && die "the emulator${serial:+ appeared as ${serial} but} had not booted within ${ANDROID_BOOT_TIMEOUT:-600}s and is still running; bb emu log has what it says, and bb emu stop ends it"
+                [ -n "$booted" ] && die "the emulator exited just after it booted; bb emu log -p has what it said"
                 die "the emulator exited before it had booted; bb emu log -p has what it said"
             done
             # Root, every boot, where the build allows it: bb emu touch's
