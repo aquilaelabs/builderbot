@@ -89,6 +89,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's network settings take static routes, one a line as 10.20.0.0/24 via 192.168.1.1, in dhcp or static mode, applied through the node's own network backend with the same dial-back as an address change (ae6052b)
 - bb tidy also ends a server a session put in the background and left listening (a dev server, a preview), never a test run's own (db69e46)
 - Making projects is a role's New projects area, and a Global role may hold Nodes, Toolchains, Jobs and New projects on named nodes only, so an account can be let make projects on one node (d518855)
+- A session is told on its next prompt when Reads, Also sees, Model or Effort changed since it started, and that a new session takes them (867e794)
 
 ### Changed
 

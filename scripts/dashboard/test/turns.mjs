@@ -160,6 +160,15 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
      `a setting the operator changed is named too (${(st.line || 'no line').slice(0, 90)})`);
   await call('/api/prefs', { project: 'alpha', build: '' });
   await sess({ node: 'nodeA' });
+  // A setting a session takes when it starts says so, once (report #81).
+  await call('/api/prefs', { project: 'alpha', reads: ['beta'] });
+  const rd = await sess({ node: 'nodeA' });
+  ok(/This project's Reads changed since this session started, and a session takes those when it starts: end it and start a new one/.test(rd.line || ''),
+     `a change to Reads says a new session is needed for it (${(rd.line || 'no line').slice(0, 120)})`);
+  const rd2 = await sess({ node: 'nodeA' });
+  ok(!/since this session started/.test(rd2.line || ''), `...once, not on every prompt after (${(rd2.line || 'no line').slice(0, 80)})`);
+  await call('/api/prefs', { project: 'alpha', reads: [] });
+  await sess({ node: 'nodeA' });
   // Memories: an edit through the notebook by somebody else is news; the
   // session's own, through the API or its own memory tool on the files,
   // is not, since the half counts notebook edits rather than mtimes (B269).

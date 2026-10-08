@@ -2046,6 +2046,18 @@ def _diag_watch(project, uid):
 DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
 
 
+# The project's settings a session takes once, when it starts: the trees
+# in its view (reads, sees) and the model and effort Claude was started
+# with. Changed mid-session they are on the record and not in the session,
+# which spent a dozen commands finding that out (report #81, 7 Oct).
+START_ONLY = (("reads", "Reads"), ("sees", "Also sees"), ("model", "Model"), ("effort", "Effort"))
+
+
+def _start_only(project):
+    p = prefs.get(project) or {}
+    return {k: p.get(k) for k, _ in START_ONLY}
+
+
 def session_seen_note(project, uid, node, who=None, begin=False):
     """`begin`: record the build and the notebook this session starts from.
     Otherwise what has moved since, in one line, and the record moved on:
@@ -2062,8 +2074,14 @@ def session_seen_note(project, uid, node, who=None, begin=False):
             rec = d.get(key) if isinstance(d.get(key), dict) else {}
             was_build, was_revs = str(rec.get("build") or ""), rec.get("revs") or {}
             was_diag = int(rec.get("diag") or 0)
+            start_now = _start_only(project)
+            started = start_now if begin or not isinstance(rec.get("start"), dict) else rec["start"]
+            stale = [label for k, label in START_ONLY if started.get(k) != start_now.get(k)]
+            # Said once for each change, not on every prompt after it.
+            new_stale = stale and rec.get("stale_said") != start_now
             d[key] = {"build": build or was_build, "revs": revs_now or was_revs,
-                      "diag": max(top, was_diag)}
+                      "diag": max(top, was_diag), "start": started,
+                      "stale_said": start_now if new_stale else rec.get("stale_said")}
             write_json(STATE / SESSION_SEEN, d)
         if begin:
             return ""
@@ -2071,7 +2089,8 @@ def session_seen_note(project, uid, node, who=None, begin=False):
         if build and was_build and was_build != build:
             said.append(f"The controller moved to {build} since this session began (it was on {was_build}): "
                         "`bb catchup` says what changed, and `bb preamble` prints the briefing as "
-                        "it is now; this session still holds the one it started with.")
+                        "it is now; this session still holds the one it started with, so where the "
+                        "change touches what you are doing, a new session is briefed with it.")
         if was_revs and revs_now:
             # A half with no revision yet (a project with no bug filed) is
             # "" and its first write is a change like any other.
@@ -2081,6 +2100,11 @@ def session_seen_note(project, uid, node, who=None, begin=False):
                 said.append("Since your last prompt somebody else changed this project's "
                             + ", ".join(n for n, _ in moved) + ": read "
                             + ", ".join(v for _, v in moved) + " before going on.")
+        if new_stale:
+            said.append(f"This project's {', '.join(stale)} changed since this session started, and "
+                        "a session takes those when it starts: end it and start a new one to have "
+                        "them (a project added to Reads answers bb -p already; its tree is mounted "
+                        "by the new session).")
         fresh = [r for r in watched or [] if int(r.get("id") or 0) > was_diag]
         if fresh:
             said.append("New in diagnostics since your last prompt: "
