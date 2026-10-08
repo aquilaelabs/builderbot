@@ -1041,15 +1041,7 @@ function dmRowsHtml(ins, job, blind){
           : `from ${esc(projLabel(d.project))}'s compose file${
               d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}</div>
         </div>
-        <details class="dmdet"${
-          // Remembered on a phone, where it is a fold. On a desktop its summary
-          // is not drawn, so a shut one could never be opened again: always open.
-          isPhone() ? sectAttr(`docker:det:${d.project}|${d.instance}`)
-                    : ` data-sect="${esc(`docker:det:${d.project}|${d.instance}`)}" open`}>
-          <summary class="dmsum"><span class="t">Details</span><span class="sst">${
-            [d.ports.length ? `${d.ports.length} port${d.ports.length === 1 ? "" : "s"}` : "",
-             (d.services || []).length > 1 ? `${d.services.length} services` : ""]
-              .filter(Boolean).join(" · ") || "settings"}</span></summary>
+        <div class="dmdet">
         ${d.ports.length ? `<div class="sub dmports">${
           // Whose each port is, when the instance is more than one
           // container (B252): the list below then says only how each is.
@@ -1067,7 +1059,7 @@ function dmRowsHtml(ins, job, blind){
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
           ? dmBootLine(d.name, !!d.boot) : ""}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
-        </details>
+        </div>
       </div>
       <div class="actbar dmacts">
         <span class="state${!blind && d.running ? " ok" : ""}">${dmState(d, job, mine, busy, blind)}</span>

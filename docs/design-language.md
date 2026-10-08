@@ -555,6 +555,12 @@ small mono beside it, a hairline between rows, and the download or the
 action at the row's right, wrapping under it on a phone. The Profile's
 conversation logs are those rows, not a list of their own.
 
+### nothing-acted-on-in-a-fold
+
+Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js, scripts/dashboard/page-*.js, scripts/dashboard/index.html; fold, details, collapse, hidden, row, summary
+
+What a person acts on or decides by is on the row, at every width, and never only behind a fold: a row's settings (its project, where it is built from, its ports), its state and its buttons. A fold holds what is long and read now and then: a log, a list of mounts, raw output, a full compose file. A surface too long with everything shown is too long, and the fix is less on it, not a fold over part of it (the operator, 8 Oct: the Docker tab's Project picker sat in a closed Details fold on a phone and could not be found).
+
 ### long-lists
 
 Applies to: scripts/dashboard/nb-*.js, scripts/dashboard/tab-*.js; list, page, paginate, pagination

@@ -2575,47 +2575,26 @@ ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
 // ---- a row on a phone (R68 step 5) ---------------------------------------
-// A project's row carries its ports, its services, its route and three
-// settings, which at 390px was most of a screen each: the list stopped being
-// a list. The detail is a fold there and open on a desktop, where its
-// summary is not drawn at all, so that surface is what it always was.
+// What a row carries is on the row at every width, never behind a fold (the
+// operator, 8 Oct: too much was hidden; the Project picker was not found).
 {
   await openManager();
-  const wide = await page.evaluate(() => {
-    const d = document.querySelector('.dmtab .dmdet');
-    return d ? { open: d.open, sum: getComputedStyle(d.querySelector('.dmsum')).display } : null;
-  });
-  ok(wide && wide.open && wide.sum === 'none',
-     `on a desktop the detail is open with no summary drawn (${JSON.stringify(wide)})`);
   await page.setViewportSize({ width: 390, height: 844 });
   // A phone shows one thing at a time, and the manager is in the pane behind
   // the sidebar: without this the row measures zero and says nothing.
   await page.evaluate(() => { setView('terminal'); dockerList = null; dockerRev++; loadDocker(); });
-  await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === false,
-                             null, { timeout: 15000 });
+  await page.waitForSelector('.dmtab .dmowner select', { state: 'visible', timeout: 15000 });
   const narrow = await page.evaluate(() => {
     const t = document.querySelector('.dmtab');
-    const d = document.querySelector('.dmtab .dmdet');
     const acts = document.querySelector('.dmtab .dmacts');
-    return { open: d.open, sum: getComputedStyle(d.querySelector('.dmsum')).display,
+    return { fold: !!document.querySelector('.dmtab details.dmdet, .dmtab .dmsum'),
              sideways: t.scrollWidth > t.clientWidth + 2,
              actsVisible: !!acts && acts.getBoundingClientRect().height > 0 };
   });
-  ok(!narrow.open && narrow.sum !== 'none',
-     `on a phone it is shut, behind a summary that can be pressed (${JSON.stringify(narrow)})`);
-  ok(!narrow.sideways && narrow.actsVisible,
-     '...nothing scrolls sideways, and the row keeps its buttons whether it is open or shut');
-  await page.click('.dmtab .dmsum');
-  ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and it opens on a press');
-  // ...and stays open. The manager repaints on every step of a job, and a
-  // fold that went back to its default each time could not be read during one.
-  await sleep(300);              // the slide, and the toggle it ends in
-  await page.evaluate(() => { dockerRev++; drawPanes(); });
-  ok(await page.$eval('.dmtab .dmdet', d => d.open), '...and a redraw leaves it open, rather than putting it back');
+  ok(!narrow.fold, `on a phone the row's detail and its Project picker are on the row, no fold (${JSON.stringify(narrow)})`);
+  ok(!narrow.sideways && narrow.actsVisible, '...nothing scrolls sideways, and the row keeps its buttons');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { setView('dashboard'); dockerList = null; dockerRev++; loadDocker(); });
-  await page.waitForFunction(() => document.querySelector('.dmtab .dmdet')?.open === true,
-                             null, { timeout: 15000 });
 }
 
 // ---- a manager, not a list (R68 steps 1 and 2) ---------------------------

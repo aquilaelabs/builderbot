@@ -129,7 +129,7 @@ function rolesCanDo(name, dr){
   }).filter(Boolean);
   const g = say(glob, globKeys);
   return `<div class="setrow col">${lbl("", `What ${name} can do`, "worked out from the boxes above, saved or not")}
-    ${rows.join("") || `<div class="sub dim">nothing on any project</div>`}
+    ${rows.join("") || `<div class="empty">nothing on any project</div>`}
     <div class="sub">${g ? `<b>Beyond projects</b>: ${esc(g)}` : `<span class="dim">nothing beyond projects</span>`}</div></div>`;
 }
 
