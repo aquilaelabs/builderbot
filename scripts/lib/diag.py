@@ -68,10 +68,10 @@ for name, v in d.items():
         for a in v:
             print(f"  {a['when']:>8}  {a['who']:<24} {a['action']}  {a['target']}")
     elif name == "reports":
-        # What sessions on other projects said about BuilderBot, unread:
-        # bb report file N or close N "why" answers one.
+        # What sessions said about BuilderBot, kept until a person clears
+        # them in Controller settings.
         if not v:
-            print("  none open")
+            print("  none")
         for r in v:
             print(f"  #{r['id']}  {r.get('when') or ''}  {r.get('project') or 'general (no project)'}"
                   + (f", {r['by']}'s session" if r.get("by") else "")

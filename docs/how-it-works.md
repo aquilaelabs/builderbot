@@ -1790,8 +1790,9 @@ own address, so closing the dashboard leaves it working.
 ### Reporting a problem with BuilderBot
 
 A problem with BuilderBot itself goes to the **diagnostics**, where whoever
-maintains BuilderBot reads it (`bb diag reports`), files it as a bug or
-answers it. A session sends one with `bb report "what happened"`, under the
+looks after this BuilderBot reads it (`bb diag reports`). It is a log, not a
+conversation: nothing goes back to whoever sent it, and **Clear reports**
+empties it. A session sends one with `bb report "what happened"`, under the
 project's **Claude may: Report BuilderBot bugs**. A person sends one from a
 project's row: the bug button opens **Report a bug**, with a category to
 pick, what happened and how to make it happen, and **Send** puts it in the
@@ -4059,8 +4060,7 @@ or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
 the reports sessions made about BuilderBot among it, redacted and on the audit
 trail), and clears the kept generations without touching the ones being
 written. Below it, **Clear reports** deletes every report sessions made about
-BuilderBot, open ones included, after a confirmation that says how many nobody
-has answered; the numbers carry on, so a bug that names report #3 never meets a
+BuilderBot, after a confirmation that says how many; the numbers carry on, so a bug that names report #3 never meets a
 second one, and a session cannot clear them.
 
 Two deliberate omissions from *this session*. `ttyd.log` is the terminal

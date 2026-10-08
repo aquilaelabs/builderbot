@@ -102,9 +102,7 @@ async function clearReports(btn){
   if (c.error) return notify(c.error, true);
   if (!c.all) return notify("there are no reports to clear");
   const s = c.all === 1 ? "" : "s";
-  if (!confirm(`Delete all ${c.all} report${s} sessions made about BuilderBot?`
-               + (c.open ? `\n\n${c.open} still open: nobody has filed or closed ${c.open === 1 ? "it" : "them"}.` : "")))
-    return;
+  if (!confirm(`Delete all ${c.all} report${s} sessions made about BuilderBot?`)) return;
   busy(btn, "Clearing");
   try{
     const j = await (await postJSON("/api/reports", {action: "clear"})).json();

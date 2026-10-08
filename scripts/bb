@@ -451,25 +451,19 @@ bb diag [--json] [SECTION...]
                    A session reads it only while **debug mode** is on, its
                    project is granted **the controller's diagnostics** under
                    Debug in its settings, and its account has the grant.
-                   Its `reports` section is what sessions on other projects
-                   reported about BuilderBot and nobody has answered yet
+                   Its `reports` section is what sessions on any project
+                   reported about BuilderBot, kept until a person clears them
 bb report "..." [--area A] [--repro "..."]
                    a problem with BuilderBot itself, from a session on any
-                   project: it waits on the controller for BuilderBot's own
-                   sessions rather than going into the project's tracker (the
-                   briefing's notebook section says so), redacted like the
-                   diagnostics. `bb report` alone lists the project's reports
-                   and what became of each. A `bb bug add` whose words name
+                   project: it goes into the controller's diagnostics rather
+                   than the project's tracker (the briefing's notebook section
+                   says so), redacted like the diagnostics, and nothing comes
+                   back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
                    unless `--here` says it is the project's own. *Claude may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
-bb report file N [--sev S] [--as BUG] | close N "why"
-                   answer a report, behind the diagnostics' gate: file it as a
-                   bug in this project's tracker through `bb bug add` (or mark
-                   it as one already there), or close it with the reason its
-                   session will read
 bb report conversation N   the conversation a person sent with a report (the
                    end of it, redacted), behind the same gate
 bb doctor          check everything that usually goes wrong
@@ -1925,11 +1919,10 @@ cmd_diag() {
 
 # bb report: a problem with BuilderBot itself, from a session on any project
 # (reports.py). Filed in the project's own tracker it was lost to BuilderBot:
-# the operator read it second hand and the session maintaining BuilderBot
-# never saw it. It goes to the controller instead, where BuilderBot's own
-# sessions read it in the diagnostics (bb diag reports) and turn it into a
-# bug in their tracker, or close it, and the session that reported it reads
-# what became of it here.
+# the operator read it second hand. It goes to the controller's diagnostics
+# instead (bb diag reports), a log a person reads and clears; nothing comes
+# back to the session that made it, since only this one install has
+# BuilderBot's own tracker beside the sessions reporting to it.
 cmd_report() {
     local auth proj sub="${1:-}"
     auth="$(bb_auth_or_die)"
@@ -1937,16 +1930,14 @@ cmd_report() {
     case "$sub" in
         -h|--help)
             printf '%s\n' 'usage: bb report "what happened" [--area A] [--repro "..."]' \
-                '       bb report                   what became of this project'"'"'s reports' \
-                '       bb report file N [--sev S] [--as BUG] | close N "why"   (the diagnostics'"'"' gate)' \
-                '       bb report conversation N    the reporter'"'"'s conversation a report carries'
+                '       bb report conversation N    the reporter'"'"'s conversation a report carries (the diagnostics'"'"' gate)'
             return 0 ;;
-        file|close|conversation) ;;
-        ""|status|mine) sub=mine ;;
+        conversation) ;;
+        "") die 'bb report "what happened": say what went wrong; bb diag reports lists what was reported' ;;
         *) sub=add ;;
     esac
     [ "$sub" = add ] || shift || true
-    BB_R_AUTH="$auth" BB_R_PROJECT="$proj" BB_R_SUB="$sub" BB_R_SELF="$0" python3 "$BB_LIB/report.py" "$@"
+    BB_R_AUTH="$auth" BB_R_PROJECT="$proj" BB_R_SUB="$sub" python3 "$BB_LIB/report.py" "$@"
 }
 
 cmd_logs() {

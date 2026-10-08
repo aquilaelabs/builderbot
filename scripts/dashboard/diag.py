@@ -206,8 +206,8 @@ def audit(n=30):
 
 
 def reports_now(n=40):
-    """What sessions on other projects have reported about BuilderBot and
-    nobody has filed or closed yet, newest first, when each was made. Their
+    """What sessions and people have reported about BuilderBot, newest
+    first, when each was made. Their
     words were redacted when they were stored. One that carries its
     reporter's conversation names the file it is in, which the downloaded
     diagnostics carry beside this report rather than inside it (the
@@ -215,7 +215,7 @@ def reports_now(n=40):
     return [r | {"when": _ago(r.get("at"))}
             | ({"conversation": r["conversation"] | {"file": f"conversations/report-{r['id']}.txt"}}
                if r.get("conversation") else {})
-            for r in reports.listing("open", n=n)]
+            for r in reports.listing(n=n)]
 
 
 _BUILD = {"controller": controller, "images": images, "settings": settings_now,

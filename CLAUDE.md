@@ -115,11 +115,11 @@ by hand cost four commands and still could not see the failed builds.
   never its own tracker (the briefing says so), and the
   reports wait on the controller. This project turns it off in its settings
   (Claude may: Report BuilderBot bugs), so its own problems go into its own
-  tracker as ever. `bb diag reports` lists the open ones;
-  `bb report file N` files one into this tracker as a bug (`--as B123` for
-  one this tracker already has) and `bb report close N "why"` answers one
-  that needs nothing. The session that reported it reads the outcome with
-  `bb report`, so the close's words are addressed to it.
+  tracker as ever. `bb diag reports` lists them, and one worth fixing is
+  added here with `bb bug add` like anything else met. Nothing goes back to
+  the session that reported it: the reports are a log the operator clears,
+  and a distributed BuilderBot has no tracker of its own beside the
+  sessions reporting to it, so a loop that answered them worked here alone.
 - **What the page is asking for:** `bb dashboard trace [SECONDS]` prints
   what the server was asked over that window, by endpoint and by who
   asked (browser, session, agent, the companion app), from a ring the

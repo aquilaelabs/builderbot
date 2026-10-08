@@ -507,25 +507,19 @@ bb diag [--json] [SECTION...]
                    A session reads it only while **debug mode** is on, its
                    project is granted **the controller's diagnostics** under
                    Debug in its settings, and its account has the grant.
-                   Its `reports` section is what sessions on other projects
-                   reported about BuilderBot and nobody has answered yet
+                   Its `reports` section is what sessions on any project
+                   reported about BuilderBot, kept until a person clears them
 bb report "..." [--area A] [--repro "..."]
                    a problem with BuilderBot itself, from a session on any
-                   project: it waits on the controller for BuilderBot's own
-                   sessions rather than going into the project's tracker (the
-                   briefing's notebook section says so), redacted like the
-                   diagnostics. `bb report` alone lists the project's reports
-                   and what became of each. A `bb bug add` whose words name
+                   project: it goes into the controller's diagnostics rather
+                   than the project's tracker (the briefing's notebook section
+                   says so), redacted like the diagnostics, and nothing comes
+                   back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
                    unless `--here` says it is the project's own. *Claude may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
-bb report file N [--sev S] [--as BUG] | close N "why"
-                   answer a report, behind the diagnostics' gate: file it as a
-                   bug in this project's tracker through `bb bug add` (or mark
-                   it as one already there), or close it with the reason its
-                   session will read
 bb report conversation N   the conversation a person sent with a report (the
                    end of it, redacted), behind the same gate
 bb doctor          check everything that usually goes wrong

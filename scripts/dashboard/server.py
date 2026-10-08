@@ -2049,7 +2049,7 @@ def _diag_watch(project, uid):
         me = users.account_of({"session": project, "uid": uid})
         if not me.get("name") or users.may(me, "debug"):
             return None
-        return reports.listing("open")
+        return reports.listing()
     except Exception:                                                     # noqa: BLE001
         return None
 
@@ -6686,42 +6686,40 @@ class Handler(BaseHTTPRequestHandler):
     def _reports(self, req):
         """Problems with BuilderBot itself, reported by any project's session
         (reports.py, bb report). Anybody signed in adds one for a project they
-        may see, and a session only for its own; what became of a project's
-        reports is that project's to read. Reading every project's, filing
-        or closing one, and clearing them all (Controller settings), is the
-        diagnostics' own gate, since that is where BuilderBot's own work
-        reads them (bb diag reports)."""
+        may see, and a session only for its own. Reading them, and clearing
+        them all (Controller settings), is the diagnostics' own gate, since
+        that is where they are read (bb diag reports)."""
         me = self._who() or {}
         sess = me.get("session") or ""
         act = field(req, "action")
         name = str((users.account_of(me) or {}).get("name") or "")
-        if act in ("add", "mine"):
+        if act == "add":
             # Only the server attaches a conversation, never the caller.
             req.pop("_conversation", None)
             proj = sess or field(req, "project")
             # A person's report about no project in particular (the header's
             # Report a bug, the operator, 2 Oct): heard from any account, with
             # no project to check.
-            if act == "add" and not sess and not proj:
+            if not sess and not proj:
                 return self._json(*reports.own_verb(act, "", req, by=f"{name} (from the dashboard)"))
             if not sess and self._not_project(proj):
                 return None
             # A person reports from a project they work on (the operator,
             # 2 Oct): an administrator shown every project but not on this
             # one cannot start a session here, so has nothing of its to report.
-            if act == "add" and not sess and not users.may_work(me, proj):
+            if not sess and not users.may_work(me, proj):
                 return self._json({"error": f"you are not on {proj}, so a bug from there is not yours to "
                                             "report: ask to be added, or report from a project you work on"}, 403)
             # The dial is Claude's (Claude may: Report BuilderBot bugs): a
             # person reporting from a project's row is always heard.
-            if act == "add" and sess and prefs.get(proj)["report"] == "deny":
+            if sess and prefs.get(proj)["report"] == "deny":
                 return self._json({"error": f"reporting BuilderBot bugs is off for {proj}: its "
                                             "settings, Claude may: Report BuilderBot bugs. A "
                                             "problem goes into this project's tracker"}, 403)
             # The person's latest conversation on the project, when they
             # ticked Include it (the operator, 2 Oct): theirs only, found and
             # rendered here, never named by the page.
-            if act == "add" and not sess and req.get("include_conversation"):
+            if not sess and req.get("include_conversation"):
                 uid = users.uid_of(me)
                 rows = transcripts.mine(uid, [proj])
                 if rows:
@@ -6732,12 +6730,10 @@ class Handler(BaseHTTPRequestHandler):
             # diagnostics tell it from a session's `bb report`.
             return self._json(*reports.own_verb(act, proj, req, by=name if sess else f"{name} (from the dashboard)"))
         # Clearing is a person's, from Controller settings, whatever a
-        # session may otherwise read here: a session answers reports one at
-        # a time, and clearing throws away what other projects' sessions are
-        # waiting to hear back about.
+        # session may otherwise read here.
         if act == "clear" and sess:
-            return self._json({"error": "clearing every report is a person's, from "
-                                        "Controller settings: file or close one instead"}, 403)
+            return self._json({"error": "clearing the reports is a person's, from "
+                                        "Controller settings"}, 403)
         if self._diag_refused():
             return None
         return self._json(*reports.diag_verb(act, req, by=name, principal=self._principal()))

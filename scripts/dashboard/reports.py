@@ -8,10 +8,14 @@ session maintaining BuilderBot never saw them (the operator, 24 Sep, after
 another project's session filed "bb test runs inside the container" as its
 own B4). So they come here instead: `bb report "what happened"` from any
 session, one store on the controller, read where BuilderBot's own work reads
-the controller's state, the diagnostics (`bb diag reports`), and turned
-into a bug in BuilderBot's tracker or closed from there (`bb report file N`,
-`bb report close N "why"`). The session that reported one reads what became
-of its project's reports with `bb report`.
+the controller's state, the diagnostics (`bb diag reports`), and cleared
+from Controller settings.
+
+A log and nothing more: no report is filed, closed or answered from here,
+and no session follows one up. That loop worked only where BuilderBot's own
+project sits on the same controller as the sessions reporting to it, which
+is this one install and no other, and a clear left sessions reading
+answers to reports that were gone (the operator, 8 Oct).
 
 Everything a report says goes through the diagnostics' redaction before it
 is stored: a session pasting an error line pastes whatever was in it.
@@ -27,7 +31,6 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
-from fields import field  # noqa: E402
 
 write_json = None
 FILE = None
@@ -36,15 +39,13 @@ build = None              # () -> the controller's build, as a report records it
 node_name = None          # project -> the name of the node it builds on, or ""
 audit = None              # (principal, action, target, detail) -> the audit row
 
-STATES = ("open", "filed", "closed")
 MAX_TEXT = 2000
 MAX_AREA = 200
-# Kept, newest last. What is still open is never dropped for room: the
-# oldest filed or closed ones go first.
+# Kept, newest last, the oldest dropped for room.
 MAX_KEPT = 300
-# Open reports from one project. A session filing sixty is a session talking
+# Reports kept from one project. A session filing sixty is a session talking
 # to itself, and the limit says so.
-MAX_OPEN_PER_PROJECT = 40
+MAX_PER_PROJECT = 40
 
 
 def configure(*, write_json, state, redact=None, build=None):
@@ -92,8 +93,7 @@ def conversation(rid):
 
 def _view(r):
     return {k: r.get(k) for k in ("id", "at", "project", "by", "node", "build", "text",
-                                  "area", "repro", "state", "bug", "why", "done_at", "done_by",
-                                  "conversation")}
+                                  "area", "repro", "conversation")}
 
 
 def add(project, text, *, by="", node="", area="", repro="", conversation=None):
@@ -105,10 +105,10 @@ def add(project, text, *, by="", node="", area="", repro="", conversation=None):
         return {"error": "say what happened: a report with no words is nothing to act on"}
     with _lock:
         d = _load()
-        mine = [r for r in d["reports"] if r.get("project") == project and r.get("state") == "open"]
-        if len(mine) >= MAX_OPEN_PER_PROJECT:
-            return {"error": f"{project} already has {len(mine)} reports nobody has read: "
-                             "wait for those to be looked at"}
+        mine = [r for r in d["reports"] if r.get("project") == project]
+        if len(mine) >= MAX_PER_PROJECT:
+            return {"error": f"{project} already has {len(mine)} reports in the log: "
+                             "put what is new into one of those words, or wait for them to be cleared"}
         d["seq"] = int(d.get("seq") or 0) + 1
         rid = d["seq"]
         try:
@@ -120,8 +120,7 @@ def add(project, text, *, by="", node="", area="", repro="", conversation=None):
         d["reports"].append({"id": rid, "at": int(time.time()), "project": str(project)[:100],
                              "by": str(by or "")[:100], "node": str(node or "")[:100],
                              "build": str(made or "")[:80], "text": text,
-                             "area": _clean(area, MAX_AREA), "repro": _clean(repro, MAX_TEXT),
-                             "state": "open"})
+                             "area": _clean(area, MAX_AREA), "repro": _clean(repro, MAX_TEXT)})
         # The reporter's latest conversation on the project, when they chose
         # to send it: its end, redacted like everything else here, kept
         # beside the store and named on the report.
@@ -138,12 +137,10 @@ def add(project, text, *, by="", node="", area="", repro="", conversation=None):
                                                     "bytes": len(body.encode("utf-8")), "cut": cut}
             except OSError as e:
                 print(f"dashboard: reports: #{rid}'s conversation was not kept: {e}", file=sys.stderr, flush=True)
-        # Room is made from what is finished, oldest first.
+        # Room is made from the oldest, its conversation with it.
         while len(d["reports"]) > MAX_KEPT:
-            done = next((i for i, r in enumerate(d["reports"]) if r.get("state") != "open"), None)
-            if done is None:
-                break
-            d["reports"].pop(done)
+            old = d["reports"].pop(0)
+            (_files() / f"{old.get('id')}.txt").unlink(missing_ok=True)
         write_json(FILE, d)
     return {"ok": True, "id": rid}
 
@@ -159,77 +156,28 @@ def get(rid):
     return None
 
 
-def listing(state="open", project=None, n=100):
-    """Reports, newest first: in one state (or all with None), from one
-    project (or all with None)."""
-    out = [_view(r) for r in _load()["reports"]
-           if (state is None or r.get("state") == state)
-           and (project is None or r.get("project") == project)]
+def listing(project=None, n=100):
+    """Reports, newest first, from one project (or all with None)."""
+    out = [_view(r) for r in _load()["reports"] if project is None or r.get("project") == project]
     return out[::-1][:n]
 
 
-def _finish(rid, state, *, by="", bug="", why=""):
-    try:
-        rid = int(rid)
-    except (TypeError, ValueError):
-        return {"error": "not a report"}
-    with _lock:
-        d = _load()
-        r = next((x for x in d["reports"] if x.get("id") == rid), None)
-        if r is None:
-            return {"error": f"no report #{rid}"}
-        if r.get("state") != "open":
-            return {"error": f"report #{rid} is already {r.get('state')}"
-                             + (f" as {r['bug']}" if r.get("bug") else "")}
-        r.update(state=state, done_at=int(time.time()), done_by=str(by or "")[:100])
-        if bug:
-            r["bug"] = str(bug)[:40]
-        if why:
-            r["why"] = _clean(why, MAX_AREA)
-        write_json(FILE, d)
-    return {"ok": True, "id": rid, "state": state}
-
-
-def filed(rid, bug, by=""):
-    """Report `rid` became `bug` in BuilderBot's tracker."""
-    if not str(bug or "").strip():
-        return {"error": "which bug it became is the point of filing it"}
-    return _finish(rid, "filed", by=by, bug=str(bug).strip())
-
-
-def close(rid, why, by=""):
-    """Report `rid` needs nothing: a duplicate, the project's own fault, fixed already."""
-    if not str(why or "").strip():
-        return {"error": "say why it is closed: the session that reported it reads this"}
-    return _finish(rid, "closed", by=by, why=why)
-
-
 def counts():
-    """How many are kept, and how many of those nobody has filed or closed."""
-    rs = _load()["reports"]
-    return {"all": len(rs), "open": sum(1 for r in rs if r.get("state") == "open")}
+    """How many are kept."""
+    return {"all": len(_load()["reports"])}
 
 
 def clear():
-    """Every report deleted, open ones included: the operator's Clear in
-    Controller settings (24 Sep). The sequence is kept, so a report made
-    afterwards never takes a number a bug's repro already names."""
+    """Every report deleted, with the conversations they carry: the
+    operator's Clear in Controller settings (24 Sep). The sequence is kept,
+    so a report made afterwards never takes a number a bug's repro already
+    names."""
     with _lock:
         d = _load()
         n = len(d["reports"])
-        # What each project loses, kept as a count and a time, so its
-        # session is told its reports were cleared rather than that it
-        # never made any (B343): "no reports" after three acknowledged
-        # ones read as a fault in the listing.
-        gone = d.get("cleared") if isinstance(d.get("cleared"), dict) else {}
-        now = int(time.time())
         for r in d["reports"]:
-            k = str(r.get("project") or "")
-            was = gone.get(k) or {"n": 0, "at": 0}
-            gone[k] = {"n": int(was.get("n") or 0) + 1, "at": now}
-        d["reports"] = []
-        d["cleared"] = gone
-        write_json(FILE, d)
+            (_files() / f"{r.get('id')}.txt").unlink(missing_ok=True)
+        write_json(FILE, {"seq": int(d.get("seq") or 0), "reports": []})
     return {"ok": True, "cleared": n}
 
 
@@ -240,22 +188,9 @@ def _answer(r):
 
 
 def own_verb(act, proj, req, *, by):
-    """A project's own: add a report for it, or read what became of its
-    reports, once the server has let the caller at the project (a session
-    only at its own) and, for an add, its Report BuilderBot bugs dial.
-    (payload, status)."""
-    if act == "mine":
-        # What became of each: open, filed, or closed with the words the
-        # close addressed to it. Not the bug it became, which is a number in
-        # BuilderBot's own tracker, nor who filed it: a session sees nothing
-        # of another project's notebook, and two reports filed as one bug
-        # would show that tracker's triage (B317).
-        gone = (_load().get("cleared") or {}).get(str(proj)) if proj else None
-        return {"reports": [{k: v for k, v in r.items() if k not in ("bug", "done_by")}
-                            for r in listing(None, proj, n=30)],
-                # ...and the ones the operator cleared, as a count and when,
-                # so an emptied list is not read as one that never filled.
-                "cleared": gone if isinstance(gone, dict) and gone.get("n") else None}, 200
+    """A project's own: add a report for it, once the server has let the
+    caller at the project (a session only at its own) and its Report
+    BuilderBot bugs dial. (payload, status)."""
     return _answer(add(proj, req.get("text"), by=by, node=node_name(proj) if proj else "",
                        area=req.get("area"), repro=req.get("repro"),
                        conversation=req.get("_conversation")))
@@ -263,12 +198,10 @@ def own_verb(act, proj, req, *, by):
 
 def diag_verb(act, req, *, by, principal):
     """Every project's reports, behind the diagnostics' own gate, since that
-    is where BuilderBot's own work reads them (bb diag reports): list, read
-    one, file one as a bug, close one, count, or clear them all. (payload,
-    status)."""
+    is where they are read (bb diag reports): list, read one or the
+    conversation it carries, count, or clear them all. (payload, status)."""
     if act == "list":
-        st = field(req, "state") or "open"
-        return {"reports": listing(None if st == "all" else st)}, 200
+        return {"reports": listing()}, 200
     if act == "get":
         r = get(req.get("id"))
         return (r, 200) if r else ({"error": "no such report"}, 400)
@@ -277,10 +210,6 @@ def diag_verb(act, req, *, by, principal):
         # bb report conversation N, behind the diagnostics' gate like get.
         text = conversation(req.get("id"))
         return ({"text": text}, 200) if text else ({"error": "that report carries no conversation"}, 400)
-    if act == "filed":
-        return _answer(filed(req.get("id"), field(req, "bug"), by=by))
-    if act == "close":
-        return _answer(close(req.get("id"), field(req, "why"), by=by))
     if act == "count":
         return counts(), 200
     if act == "clear":

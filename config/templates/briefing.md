@@ -303,7 +303,7 @@ as yours; the operator's rules you cannot change, so say in the reply when
 one seems wrong. A problem with BuilderBot itself (a `bb` verb, the
 dashboard, a node, this briefing) goes to `bb report "what happened"
 [--area A] [--repro "..."]`, read by its maintainers, not this project's
-tracker; `bb report` alone lists what became of this project's reports.
+tracker; nothing comes back, so once it is sent there is nothing to follow up.
 Report anything of BuilderBot's that does not work as this briefing says
 it does, every time, even when you found a way round it: the way round is
 what the report should say.
