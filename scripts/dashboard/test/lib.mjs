@@ -615,7 +615,17 @@ export async function member(...names) {
   const base = URL.replace(/\/$/, '');
   await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
     body: JSON.stringify({ action: 'set', name: 'member', scope: 'projects', perms: MEMBER, note: 'a suite\'s plain account' }) });
-  for (const name of names)
+  // A role on a project is given on the project (R155). A suite's plain
+  // account holds it on every project, and the projects it is on (set
+  // before this or after) decide which it reaches, as its list did before.
+  const d = await (await fetch(`${base}/api/roles`, { headers: h })).json();
+  for (const name of names) {
+    const users = (await (await fetch(`${base}/api/users`, { headers: h })).json()).users || [];
+    const was = users.find(u => u.name === name)?.projects || [];
+    const project_roles = Object.fromEntries((d.projects || []).map(p => [p, ['member']]));
     await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
-      body: JSON.stringify({ action: 'assign', name, roles: ['member'] }) });
+      body: JSON.stringify({ action: 'assign', name, project_roles }) });
+    await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+      body: JSON.stringify({ action: 'projects', name, projects: was }) });
+  }
 }

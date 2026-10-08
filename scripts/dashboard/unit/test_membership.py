@@ -32,6 +32,8 @@ class Membership(unittest.TestCase):
         membership.configure(state=self.tmp, write_json=write_json)
         import roles
         roles.configure(state=self.tmp, write_json=write_json)
+        # An invitation names the role it offers, a role on a project (R155).
+        roles.set_role("dev", "projects", {"projects": "write"})
         membership.on_create("app", "ada")
 
     def me(self, name):
@@ -95,24 +97,29 @@ class Membership(unittest.TestCase):
 
     def test_an_invitation_is_accepted_from_the_bell(self):
         membership.set_owner(self.me("ada"), "app", restrict=True)
-        self.assertEqual(membership.invite(self.me("bob"), "app", "cy")[1], 403)
-        r, st = membership.invite(self.me("ada"), "app", "cy")
+        self.assertEqual(membership.invite(self.me("bob"), "app", "cy", "dev")[1], 403)
+        r, st = membership.invite(self.me("ada"), "app", "cy", "dev")
         self.assertEqual(st, 200, r)
-        self.assertEqual(membership.invite(self.me("ada"), "app", "cy")[1], 400)
+        self.assertEqual(membership.invite(self.me("ada"), "app", "cy", "dev")[1], 400)
         mine = membership.mine(self.me("cy"))
         self.assertEqual([(i["project"], i["by"]) for i in mine], [("app", "ada")])
         self.assertEqual(membership.answer(self.me("bob"), mine[0]["id"], True)[1], 404)
         r, st = membership.answer(self.me("cy"), mine[0]["id"], True)
         self.assertEqual((st, r["joined"]), (200, True))
         self.assertIn("app", users.get("cy")["projects"])
+        self.assertEqual(users.get("cy")["project_roles"]["app"], ["dev"], "accepting gives the role it offered")
         self.assertEqual(membership.mine(self.me("cy")), [])
 
+    def test_an_invitation_names_a_role_on_a_project(self):
+        self.assertIn("pick the role", membership.invite(self.me("ada"), "app", "cy", "")[0]["error"])
+        self.assertIn("pick the role", membership.invite(self.me("ada"), "app", "cy", "nope")[0]["error"])
+
     def test_declined_and_withdrawn(self):
-        membership.invite(self.me("ada"), "app", "bob")
+        membership.invite(self.me("ada"), "app", "bob", "dev")
         iid = membership.mine(self.me("bob"))[0]["id"]
         self.assertEqual(membership.answer(self.me("bob"), iid, False)[0]["joined"], False)
         self.assertNotIn("app", users.get("bob")["projects"])
-        membership.invite(self.me("ada"), "app", "cy")
+        membership.invite(self.me("ada"), "app", "cy", "dev")
         iid = membership.mine(self.me("cy"))[0]["id"]
         self.assertEqual(membership.withdraw(self.me("bob"), iid)[1], 403)
         self.assertEqual(membership.withdraw(self.me("ada"), iid)[1], 200)
@@ -124,7 +131,7 @@ class Membership(unittest.TestCase):
         self.assertEqual(membership.answer(sess, 1, True)[1], 403)
 
     def test_a_removed_account_takes_its_invitations_and_ownership_with_it(self):
-        membership.invite(self.me("ada"), "app", "cy")
+        membership.invite(self.me("ada"), "app", "cy", "dev")
         membership.forget_account("u_00000002")
         self.assertEqual(membership.owner_of("app"), "u_00000001")
         self.assertEqual(membership.mine(self.me("cy")), [])

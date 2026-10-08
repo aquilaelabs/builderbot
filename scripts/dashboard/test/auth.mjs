@@ -1587,7 +1587,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
         ok(back.status === 200 && (back.body.projects || []).includes('gamma'),
            `...while the owner adds themselves to it without an invitation (${back.status})`);
       }
-      const inv = await post(ownerAuth, '/api/members', { action: 'invite', project: 'gamma', name: 'adminone' });
+      const inv = await post(ownerAuth, '/api/members', { action: 'invite', project: 'gamma', name: 'adminone', role: 'member' });
       const st = await (await bare('/api/status', { headers: adminAuth })).json();
       const mine = (st.invites || []).find(i => i.project === 'gamma');
       const acc = mine ? await post(adminAuth, '/api/members', { action: 'accept', id: mine.id }) : { status: 0, body: {} };

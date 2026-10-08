@@ -35,11 +35,13 @@ class Ftp(unittest.TestCase):
             d["users"] = {
                 "boss": {"uid": "u_1", "role": "owner", "projects": ["alpha", "beta", "gamma"], "password": pw},
                 "adm": {"uid": "u_2", "role": "admin", "projects": ["alpha"], "password": pw},
-                "ann": {"uid": "u_3", "role": "user", "projects": ["alpha"], "password": pw, "roles": ["member"]},
+                "ann": {"uid": "u_3", "role": "user", "projects": ["alpha"], "password": pw, "roles": [],
+                        "project_roles": {"alpha": ["member"]}},
                 "bob": {"uid": "u_4", "role": "user", "projects": ["beta"], "password": pw},
             }
             users._save(d)
-        # Since R152 an account holds what its roles give: ann's lets her in.
+        # Since R152 an account holds what its roles give, and since R155 a
+        # role on a project is given on it: ann's on alpha lets her in.
         roles.set_role("member", "projects", {"projects": "write", "files": "write"})
         self.nodes = {"alpha": "n1", "beta": "n1", "gamma": "n2"}
         self.audited = []
@@ -180,13 +182,13 @@ class Ftp(unittest.TestCase):
         roles.set_role("nofiles", "projects", {"projects": "write"})
         with users._lock:
             d = users.load()
-            d["users"]["ann"]["roles"] = ["viewer"]
+            d["users"]["ann"]["project_roles"] = {"alpha": ["viewer"]}
             users._save(d)
         self.assertEqual(ftp.login("n1", "alpha", "ann", "password1", "a"), {"access": "r"},
                          "rw on the list, read on the role: read")
         with users._lock:
             d = users.load()
-            d["users"]["ann"]["roles"] = ["nofiles"]
+            d["users"]["ann"]["project_roles"] = {"alpha": ["nofiles"]}
             users._save(d)
         self.assertIn("roles give no file access", ftp.login("n1", "alpha", "ann", "password1", "a")["why"])
 

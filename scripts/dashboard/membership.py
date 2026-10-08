@@ -203,9 +203,12 @@ def view(me, project):
             "bb_owner": _is_bb_owner(me),
             "invites": [
                 {"id": r["id"], "name": _name_of(r["uid"]), "by": _name_of(r.get("by") or ""),
-                 "at": r.get("at", 0)} for r in rows],
+                 "at": r.get("at", 0), "role": r.get("role") or ""} for r in rows],
             # Who could be invited or made owner: every account, named.
-            "accounts": sorted(u.get("name") or "" for u in users.all_users())}
+            "accounts": sorted(u.get("name") or "" for u in users.all_users()),
+            # The roles an invitation may offer: those on a project (R155).
+            "roles": sorted(n for n, r in users.roles.all_roles().items()
+                            if r.get("scope") == "projects" and not n.endswith("_owner"))}
 
 
 def set_owner(me, project, owner="", restrict=None):
@@ -249,13 +252,18 @@ def set_owner(me, project, owner="", restrict=None):
     return view(me, project) | ({"offered": offered} if offered else {}), 200
 
 
-def invite(me, project, name):
-    """Invite an existing account to the project. (payload, status)."""
+def invite(me, project, name, role=""):
+    """Invite an existing account to the project, as a role on it: being on
+    a project is holding a role there (R155), so an invitation says which
+    one, and accepting gives it. (payload, status)."""
     if not (may_manage(me, project) or (users.is_admin(me) and not invite_only(project))):
         return {"error": member_refusal(me, project) or "you may not invite people to it"}, 403
     u = users.get(name)
     if not u or not u.get("uid"):
         return {"error": f"no account called {name}"}, 400
+    r = users.roles.get(role) if role else None
+    if not r or r.get("scope") != "projects":
+        return {"error": "pick the role they are invited as: a role on a project"}, 400
     if name in members(project):
         return {"error": f"{name} is on {project} already"}, 400
     with _lock:
@@ -264,7 +272,7 @@ def invite(me, project, name):
         if any(r.get("uid") == u["uid"] for r in rows):
             return {"error": f"{name} is invited to {project} already"}, 400
         rows.append({"id": int(d["next"]), "uid": u["uid"], "by": users.uid_of(me),
-                     "at": int(time.time())})
+                     "at": int(time.time()), "role": role})
         d["next"] = int(d["next"]) + 1
         _write("invites.json", d)
     return view(me, project), 200
@@ -317,6 +325,9 @@ def answer(me, iid, accept):
         got = users.take_on(me.get("name") or "", p)
         if got.get("error"):
             return got, 400
+        # The role it was offered as: what makes them on it (R155).
+        if r.get("role"):
+            users.give_project_role(p, users.uid_of(me), r["role"])
     return {"ok": True, "project": p, "joined": bool(accept),
             "owner": bool(accept) and r.get("kind") == "owner"}, 200
 
@@ -331,7 +342,8 @@ def mine(me):
         for r in rows:
             if r.get("uid") == uid:
                 out.append({"id": r["id"], "project": p, "by": _name_of(r.get("by") or ""),
-                            "at": r.get("at", 0), "kind": r.get("kind") or "join"})
+                            "at": r.get("at", 0), "kind": r.get("kind") or "join",
+                            "role": r.get("role") or ""})
     return out
 
 
@@ -357,5 +369,5 @@ def verb(me, req):
         r = req.get("invite_only")
         return set_owner(me, project, str(req.get("owner") or ""), None if r is None else bool(r))
     if act == "invite":
-        return invite(me, project, str(req.get("name") or ""))
+        return invite(me, project, str(req.get("name") or ""), str(req.get("role") or ""))
     return {"error": f"unknown action {act!r}"}, 400

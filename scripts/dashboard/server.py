@@ -2364,6 +2364,12 @@ try:
     users.migrate_r152({p: (r or {}).get("owner") or "" for p, r in membership._owners()["projects"].items()})
 except Exception as e:                                                # noqa: BLE001
     print(f"[dashboard] roles migration (R152) skipped: {type(e).__name__}: {e}", flush=True)
+# ...and a role on a project given on the project alone (R155), once.
+try:
+    registry.sync()
+    users.migrate_r155()
+except Exception as e:                                                # noqa: BLE001
+    print(f"[dashboard] roles migration (R155) skipped: {type(e).__name__}: {e}", flush=True)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -6518,8 +6524,8 @@ class Handler(BaseHTTPRequestHandler):
                                            me, p, joining=field(req, "name") == me.get("name"))))
 
     def _roles(self, req):
-        """POST /api/roles: assign (an account's Global roles, its roles on
-        each project and its projects, as far as the asker may, R152), set
+        """POST /api/roles: assign (an account's Everywhere roles and its
+        roles on each project, as far as the asker may, R152 and R155), set
         (make or change a role: its scope, its areas and note) or remove
         one; owner and admin are built in and refuse both. Roles themselves
         are an administrator's."""
@@ -6527,11 +6533,25 @@ class Handler(BaseHTTPRequestHandler):
         if act == "assign":
             return self._json(*users.assign(self._who(), field(req, "name"),
                                              req.get("roles") if isinstance(req.get("roles"), list) else None,
-                                             req.get("project_roles") if isinstance(req.get("project_roles"), dict) else None,
-                                             req.get("projects") if isinstance(req.get("projects"), list) else None))
+                                             req.get("project_roles") if isinstance(req.get("project_roles"), dict) else None))
         if self._refused("admin"):
             return None
         if act == "set":
+            # A role held by somebody keeps its kind: an Everywhere role is
+            # given to the account and a project role on a project, so a
+            # change of kind would leave every holder holding it in the
+            # wrong place and silently without it (R155).
+            was = roles.get(field(req, "name"))
+            want = field(req, "scope") or "projects"
+            if was and not was.get("builtin") and "perms" in req and was.get("scope") != want:
+                held = sorted(u["name"] for u in users.all_users()
+                              if field(req, "name") in (users.get(u["name"]) or {}).get("roles", [])
+                              or any(field(req, "name") in rs for rs in
+                                     ((users.get(u["name"]) or {}).get("project_roles") or {}).values()))
+                if held:
+                    return self._json({"error": f"{', '.join(held)} {'holds' if len(held) == 1 else 'hold'} "
+                                                f"{field(req, 'name')}: take it off first, or make a new role "
+                                                "of the other kind"}, 400)
             if "perms" in req:
                 return self._result(roles.set_role(field(req, "name"), field(req, "scope") or "projects",
                                                    req.get("perms") if isinstance(req.get("perms"), dict) else {},

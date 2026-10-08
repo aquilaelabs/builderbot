@@ -980,6 +980,61 @@ def migrate_r152(owned):
     return True
 
 
+def give_project_role(project, uid, role):
+    """Add one role on one project to an account, which puts it on the
+    project (R155): an invitation accepted."""
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            if u.get("uid") != uid:
+                continue
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            pr[project] = sorted(set((pr.get(project) or []) + [str(role)]))
+            u["project_roles"] = pr
+            u.setdefault("projects", [])
+            if project not in u["projects"] and "*" not in u["projects"]:
+                u["projects"].append(project)
+        _save(d)
+
+
+def migrate_r155():
+    """Once (R155, the operator, 8 Oct): a role on a project is given on the
+    project, never through the account's own list, and being on a project is
+    holding a role there. A project role an account held through its list
+    is given on each project it was on, so nobody gains or loses anything
+    (an account on every project, "*", gets it on each one there is now);
+    a project it was on with no role, which allowed nothing, is let go.
+    BuilderBot's owner and administrators hold everything and are left as
+    they are. Marked done in the store."""
+    import registry
+    known = roles.all_roles()
+    every = sorted(registry.labels()) if registry.FILE is not None else []
+    with _lock:
+        d = load()
+        if d.get("r155"):
+            return False
+        for u in d["users"].values():
+            if u.get("role") in ("owner", "admin"):
+                continue
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            on = list(u.get("projects") or [])
+            on = every if "*" in on else on
+            keep = []
+            for rn in u.get("roles") or []:
+                r = known.get(rn)
+                if r and r.get("scope") == "projects":
+                    for p in on:
+                        pr[p] = sorted(set((pr.get(p) or []) + [rn]))
+                else:
+                    keep.append(rn)
+            u["roles"] = keep
+            u["project_roles"] = {p: rs for p, rs in pr.items() if rs}
+            u["projects"] = sorted(u["project_roles"])
+        d["r155"] = True
+        _save(d)
+    return True
+
+
 def take_on(name, project):
     """Put one project on this account's own list, the way the Users tab
     does; nothing to do for an account that has it or has every project.
@@ -1167,10 +1222,11 @@ def assignable(me):
     return {"admin": False, "projects": owned}
 
 
-def assign(me, name, global_roles=None, project_roles=None, projects=None):
-    """Set an account's Global roles, the roles it holds on each project and
-    the projects it is on, as far as `me` may (assignable): what is outside
-    that is kept as it was, never refused silently. (payload, status)."""
+def assign(me, name, global_roles=None, project_roles=None):
+    """Set an account's Everywhere roles and the roles it holds on each
+    project, as far as `me` may (assignable): what is outside that is kept
+    as it was, never refused silently. The projects it is on follow the
+    roles (R155). (payload, status)."""
     can = assignable(me)
     if not can["admin"] and not can["projects"]:
         return {"error": "the Roles tab's people are an administrator's, or a project owner's for "
@@ -1188,17 +1244,17 @@ def assign(me, name, global_roles=None, project_roles=None, projects=None):
             if not can["admin"]:
                 return {"error": "Global roles are an administrator's to give"}, 403
             want = [str(r) for r in global_roles if str(r) in known and str(r) != "owner"]
+            # Everywhere roles only: a role on a project is given on it (R155).
+            onp = [r for r in want if r not in roles.BUILTIN and known[r].get("scope") != "global"]
+            if onp:
+                return {"error": f"{', '.join(onp)} {'is a role' if len(onp) == 1 else 'are roles'} "
+                                 "on a project: give it on the project, under Projects"}, 400
             if "admin" in want:
                 u["role"] = "admin"
             elif u.get("role") == "admin":
                 u["role"] = "user"
             u["roles"] = sorted({r for r in want if r not in roles.BUILTIN})
         scope = None if can["admin"] else set(can["projects"])
-        if projects is not None:
-            have = list(u.get("projects") or [])
-            want = [str(p) for p in projects]
-            keep = [p for p in have if scope is not None and p not in scope]
-            u["projects"] = sorted(set(keep + [p for p in want if scope is None or p in scope]))
         if project_roles is not None:
             pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
             for p, rs in (project_roles or {}).items():
@@ -1210,15 +1266,20 @@ def assign(me, name, global_roles=None, project_roles=None, projects=None):
                     role = known.get(str(r))
                     if not role:
                         continue
-                    # A project's owner gives project areas only (R152 (c)).
-                    if scope is not None and role.get("scope") != "projects":
-                        return {"error": f"{r} is a Global role, which an administrator gives"}, 403
+                    # A role on a project is given on it; an Everywhere
+                    # one is the account's, above (R155).
+                    if role.get("scope") != "projects":
+                        return {"error": f"{r} holds everywhere: give it under Everywhere roles"}, 400
                     got.append(str(r))
                 if got:
                     pr[p] = sorted(set(got))
                 else:
                     pr.pop(p, None)
             u["project_roles"] = pr
+            # On a project is holding a role there (R155): the list follows
+            # the roles, kept as it was where the account has every project.
+            if "*" not in (u.get("projects") or []):
+                u["projects"] = sorted(p for p, rs in pr.items() if rs)
         _save(d)
         out = {k: u.get(k) for k in ("role", "roles", "projects", "project_roles")}
     return {"ok": True, "name": name, **out}, 200

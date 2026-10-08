@@ -269,10 +269,12 @@ def project_roles_of(u, project):
 
 def level_of(u, area, project=None, on_project=None, node=None):
     """The level this account holds on `area` ("", read or write), on
-    `project` where one is named. A Global role holds everywhere; one on the
-    user's projects on each project the account is on (`on_project`); one
-    given on a project on that project. A global area is only ever a Global
-    role's. With no project named, the best it holds anywhere."""
+    `project` where one is named. An Everywhere (global) role holds
+    everywhere; a role on a project holds on the project it is given on, and
+    nowhere through the account's own list since R155 (the operator, 8 Oct:
+    one way to give a project role). A global area is only ever an
+    Everywhere role's. With no project named, the best it holds anywhere.
+    `on_project` is kept in the signature for the callers that pass it."""
     known = all_roles()
     best = ""
 
@@ -290,8 +292,6 @@ def level_of(u, area, project=None, on_project=None, node=None):
             # node asked about it answers for "anywhere".
             if area in NODE_AREAS and r.get("nodes") and node is not None and node not in r["nodes"]:
                 continue
-            take(r)
-        elif area in PROJECT_AREAS and (project is None or (on_project and on_project(u, project))):
             take(r)
     if area in PROJECT_AREAS:
         if project is not None:

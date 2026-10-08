@@ -46,7 +46,9 @@ await page.fill('#rolesNewName', 'deployer');
 await page.click('#rolesAdd');
 await page.waitForSelector('[data-rread="releases"]');
 ok(await page.$eval('[data-rwrite="releases"]', c => c.disabled) && await page.$eval('[data-rread="nodes"]', c => c.disabled),
-   'a new role on the user\'s projects: Write waits for Read, and the global areas are off');
+   'a new role on a project: Write waits for Read, and the global areas are off');
+ok(/only an Everywhere role holds them/.test(await page.$eval('#rolesWhyOff', e => e.textContent)),
+   '...saying why, once, above them');
 await page.check('[data-rread="projects"]');
 await page.check('[data-rread="releases"]');
 await page.check('[data-rwrite="releases"]');
@@ -85,15 +87,31 @@ await page.evaluate(() => loadRoles());
 await page.waitForFunction(() => (rolesData?.people || []).some(p => p.name === 'dep'), null, { timeout: 10000 });
 await openSect('roles:people');
 await page.selectOption('#rolesWho', 'dep');
-await page.check('[data-ron="alpha"]');
-await page.check('[data-ron="beta"]');
+// Holding a role on a project is being on it (R155): no separate box, and
+// a project role is not offered among the Everywhere ones.
+ok(!(await page.$$('[data-ron]')).length && !(await page.$$('[data-rglobal="deployer"]')).length,
+   'a project role is given on a project alone, and there is no separate "on it" box');
 await page.check('[data-rproject="alpha"] [data-rprole="deployer"]');
+await page.waitForFunction(() => /alpha: writes Releases and versions; reads Projects/.test(document.querySelector('.rolestab')?.innerText || ''));
+ok(true, 'What dep can do says it, as the box is ticked and before Save');
 await page.click('#rolesPeopleSave');
 await page.waitForFunction(() => rolesData?.people?.find(p => p.name === 'dep')?.project_roles?.alpha, null, { timeout: 10000 });
 const onAlpha = await api('/api/version', { project: 'alpha', action: 'nothing-much' }, depAuth);
 const onBeta = await api('/api/version', { project: 'beta', action: 'nothing-much' }, depAuth);
-ok(onAlpha.status !== 403 && onBeta.status === 403,
+// beta is no project of dep's at all now (R155: on a project is holding a
+// role there), so it reads as absent rather than refused.
+ok(onAlpha.status !== 403 && (onBeta.status === 403 || (onBeta.status === 400 && /not a project/.test(onBeta.body.error || ''))),
    `People gives the role on alpha and the gate holds it there alone (alpha ${onAlpha.status}, beta ${onBeta.status})`);
+{
+  const p = (await api('/api/roles')).body.people.find(x => x.name === 'dep');
+  ok(JSON.stringify(p.projects) === JSON.stringify(['alpha']), `...and being on alpha follows the role (${JSON.stringify(p.projects)})`);
+  const glob = await api('/api/roles', { action: 'assign', name: 'dep', roles: ['deployer'] });
+  ok(glob.status === 400 && /on a project: give it on the project/.test(glob.body.error || ''),
+     `a project role given among the Everywhere ones is refused by name (${glob.body.error})`);
+  const kind = await api('/api/roles', { action: 'set', name: 'deployer', scope: 'global', perms: { projects: 'read' } });
+  ok(kind.status === 400 && /dep holds deployer/.test(kind.body.error || ''),
+     `...and a held role keeps its kind (${kind.body.error})`);
+}
 ok((await api('/api/rename', { name: 'alpha', to: 'alpha2' }, depAuth)).status === 403,
    '...and nothing the role did not say');
 

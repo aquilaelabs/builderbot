@@ -92,7 +92,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/link` | prefix | `_link` | Link an existing local repo to an empty repo on a host. | refused: create |
 | POST | `/api/project-job` | prefix | `_project_job` | Stop the running project job, or clear the last one's outcome. | refused: create |
 | POST | `/api/roadmap` | prefix | `_roadmap` | Add, send, edit or drop one item on a project's list: roadmap.verb says what each action means. | refused: admin |
-| POST | `/api/roles` | prefix | `_roles` | POST /api/roles: assign (an account's Global roles, its roles on each project and its projects, as far as the asker may, R152), set (make or change a role: its scope, its areas and note) or remove one; owner and admin ar | refused: admin |
+| POST | `/api/roles` | prefix | `_roles` | POST /api/roles: assign (an account's Everywhere roles and its roles on each project, as far as the asker may, R152 and R155), set (make or change a role: its scope, its areas and note) or remove one; owner and admin are | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users tab's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: admin |

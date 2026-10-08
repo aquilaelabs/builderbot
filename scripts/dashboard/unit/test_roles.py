@@ -68,10 +68,15 @@ class Model(unittest.TestCase):
                                                   "terminal": "x"})
         self.assertEqual(r["perms"], {"projects": "write", "containers": "write"}, "unknown areas and levels dropped")
         self.assertIn("project areas only", roles.set_role("bad", "projects", {"nodes": "read"})["error"])
-        t = {"name": "t", "role": "user", "roles": ["tester"], "projects": ["alpha"]}
+        # Given on a project, held there (R155); through the account's own
+        # list a role on a project holds nowhere.
+        t = {"name": "t", "role": "user", "roles": [], "projects": ["alpha"],
+             "project_roles": {"alpha": ["tester"]}}
         self.assertTrue(self.g(t, "docker-write", "alpha"))
         self.assertFalse(self.g(t, "trash", "alpha"), "nothing it did not say")
-        self.assertFalse(self.g(t, "docker-write", "beta"), "the user's projects only")
+        self.assertFalse(self.g(t, "docker-write", "beta"), "the project it is given on only")
+        listed = {"name": "l", "role": "user", "roles": ["tester"], "projects": ["alpha"]}
+        self.assertFalse(self.g(listed, "docker-write", "alpha"), "a project role on the account's list holds nowhere")
         roles.set_role("ops", "global", {"nodes": "write", "jobs": "read"})
         o = {"name": "o", "role": "user", "roles": ["ops"], "projects": []}
         self.assertTrue(self.g(o, "node"))
@@ -158,6 +163,53 @@ class Migration(unittest.TestCase):
         self.assertNotIn("alpha", u.get("ann").get("project_roles") or {})
         self.assertEqual(u.get("bob")["project_roles"]["alpha"], ["alpha_owner"])
         self.assertIn("alpha", u.get("bob")["projects"], "the owner works on what it owns")
+
+
+def write_json(p, d, mode=0o644):
+    with open(p, "w") as f:
+        json.dump(d, f)
+
+
+class R155(unittest.TestCase):
+    """A role on a project given on the project alone, and being on one is
+    holding a role there (the operator, 8 Oct)."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        roles.configure(state=self.tmp, write_json=write_json)
+        import users
+        users.configure(state=self.tmp, write_json=write_json)
+        self.users = users
+        roles.set_role("dev", "projects", {"projects": "write"})
+        roles.set_role("ops", "global", {"nodes": "read"})
+        with users._lock:
+            d = users.load()
+            d["users"] = {
+                "boss": {"uid": "u_1", "role": "owner", "projects": ["*"]},
+                "ann": {"uid": "u_2", "role": "user", "projects": ["alpha", "beta", "gamma"],
+                        "roles": ["dev", "ops"], "project_roles": {"gamma": ["dev"]}},
+            }
+            users._save(d)
+
+    def test_the_migration_gives_a_listed_project_role_on_each_project(self):
+        self.assertTrue(self.users.migrate_r155())
+        a = self.users.get("ann")
+        self.assertEqual(a["roles"], ["ops"], "an Everywhere role stays the account's")
+        self.assertEqual(a["project_roles"], {"alpha": ["dev"], "beta": ["dev"], "gamma": ["dev"]})
+        self.assertEqual(a["projects"], ["alpha", "beta", "gamma"])
+        self.assertFalse(self.users.migrate_r155(), "once")
+
+    def test_assign_follows_the_roles_and_keeps_kinds_apart(self):
+        boss = self.users.get("boss")
+        r, st = self.users.assign(boss, "ann", ["ops", "dev"], None)
+        self.assertEqual(st, 400)
+        self.assertIn("on a project", r["error"])
+        r, st = self.users.assign(boss, "ann", None, {"alpha": ["ops"]})
+        self.assertEqual(st, 400)
+        self.assertIn("holds everywhere", r["error"])
+        r, st = self.users.assign(boss, "ann", ["ops"], {"alpha": ["dev"], "beta": [], "gamma": []})
+        self.assertEqual(st, 200, r)
+        self.assertEqual(self.users.get("ann")["projects"], ["alpha"], "on a project is holding a role there")
 
 
 class SessionAndAccount(unittest.TestCase):

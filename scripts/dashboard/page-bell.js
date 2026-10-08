@@ -147,7 +147,8 @@ function drawBell(){
         <div class="btag">${i.kind === "owner" ? `${esc(projLabel(i.project))} offered to you` : `invited to ${esc(projLabel(i.project))}`}</div>
         <div class="bwhy">${i.kind === "owner"
           ? `${esc(i.by || "Somebody")} offers you ownership of ${esc(projLabel(i.project))}`
-          : `${esc(i.by || "Somebody")} invited you to work on ${esc(projLabel(i.project))}`}</div>
+          : `${esc(i.by || "Somebody")} invited you to work on ${esc(projLabel(i.project))}${
+              i.role ? ` as ${esc(i.role)}` : ""}`}</div>
         <div class="bfoot"><span>${esc(ago(i.at))}</span>
           <span class="acts"><a href="#" data-binvite="${i.id}" data-yes="0">Decline</a>
             <a href="#" data-binvite="${i.id}" data-yes="1">Accept</a></span></div></div>`),

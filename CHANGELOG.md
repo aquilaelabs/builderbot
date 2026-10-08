@@ -207,6 +207,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - An area a person's roles give no Read is not shown: its tab is hidden, and the server refuses or narrows its reads, a Claude console included without Terminal Read (4b21e8d)
 - Projects have an id and a shown name apart from their directory: a name in use gives a new project 'Name (2)' and a directory of its own, a project put back from the trash always fits, and a rename changes only the name shown, with nothing to close first (7092b36)
 - Only BuilderBot makes a project now: a folder made by hand in the projects folder is not listed; create, clone or import one instead (142ecfb)
+- Roles are simpler: a role on a project is given on the project, and holding one there is being on it; Everywhere roles are the account's; the Roles tab says what a person can do as you tick, invitations name the role they offer, and existing assignments were moved over unchanged (32d5b47)
 
 ### Removed
 
