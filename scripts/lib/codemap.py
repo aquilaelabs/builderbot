@@ -73,7 +73,7 @@ SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchp
 # definition), which is what the scanner already spots for a JS method.
 # A scanner's version: a file indexed by an older one is scanned again
 # though it has not changed, so a fix to a scanner reaches every file.
-SCANNER = {"py": 3, "c": 4, "js": 3, "html": 4, "sh": 2}
+SCANNER = {"py": 3, "c": 4, "js": 4, "html": 5, "sh": 2}
 EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
         ".jsx": "js", ".html": "html", ".sh": "sh", ".bash": "sh",
         ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
@@ -116,6 +116,9 @@ TYPE_WORDS = {"class", "interface", "object", "struct", "enum", "trait", "impl",
 JS_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".html", ".astro", ".vue", ".svelte"}
 JS_TYPE_WORDS = {"class", "interface", "enum"}
 MAX_BYTES = 3_000_000
+# A minified bundle is one line of someone else's code: every name in it is
+# a letter, and bootstrap.bundle.min.js answered find w
+MINIFIED = re.compile(r"\.min\.(?:js|mjs|cjs)$")
 
 JS_KEYWORDS = {"if", "for", "while", "switch", "catch", "function", "return", "typeof",
                "else", "do", "try", "finally", "throw", "case", "default", "delete",
@@ -271,10 +274,28 @@ HTML_TAGS = ("a abbr article aside audio b blockquote body button canvas caption
              "tbody td template textarea tfoot th thead tr u ul video").split()
 ATTR_ID = re.compile(r"""\bid=["']([A-Za-z][\w:-]*)["']""")
 ATTR_CLASS = re.compile(r"""\bclass=["']([^"']+)["']""")
-SEL_TAG = re.compile(r"(?<![\w$#.-])(?:" + "|".join(sorted(HTML_TAGS, key=len, reverse=True)) + r")(?=[#.][A-Za-z_])")
+# (but `progress.json` is a file: a tag before a file's extension is no selector)
+SEL_TAG = re.compile(r"(?<![\w$#.-])(?:" + "|".join(sorted(HTML_TAGS, key=len, reverse=True))
+                     + r")(?=[#.](?!(?:json|[cm]?js|ts|py|html?|css|md|txt|png|svg|jpe?g|gif|webp|xml"
+                       r"|ya?ml|sh|log|csv|pdf|zip|apk|db|sqlite|toml|ini|lock)\b)[A-Za-z_])")
 SEL_PART = re.compile(r"([#.])([A-Za-z_][\w-]*)")
-SEL_COMPOUND = re.compile(r"(?<![\w$.#-])(?:[#.][A-Za-z_][\w-]*)+")
-HANDLER = re.compile(r"""\bon[a-z]+=["']\s*([A-Za-z_$][\w$]*)\s*\(""")
+SEL_COMPOUND = re.compile(r"(?<![\w$.#*/-])(?:[#.][A-Za-z_][\w-]*)+")
+# An event attribute's value is JavaScript: every call in
+# onclick="jumpToLogSection('errors'); return false" is one (B584)
+REL_PATH = re.compile(r"\.{1,2}/[\w./@-]+")
+HANDLER_ATTR = re.compile(r"""\bon[a-z]+\s*=\s*(["'])(.*?)\1""")
+HANDLER_CALL = re.compile(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(")
+# Where a string is a class list: classList.add('a', 'b'), .toggle('x', on),
+# .className = 'a ' + (b ? 'c' : 'd'), setAttribute('class', ...) (B586)
+CLASS_CTX = re.compile(r"""(?:\bclassList\.(?:add|remove|toggle|contains|replace)\(\s*"""
+                       r"""(?:(['"`])[\w\s-]*\1\s*,\s*)*|\.className\s*\+?=\s*[^;\n]*"""
+                       r"""|\bsetAttribute\(\s*['"]class['"]\s*,\s*[^;\n]*)$""")
+
+
+def handler_calls(text):
+    """The functions the event attributes in this text call."""
+    return [c.group(1) for m in HANDLER_ATTR.finditer(text) for c in HANDLER_CALL.finditer(m.group(2))
+            if c.group(1) not in JS_OWN_KEYWORDS]
 # What a suite and a server share besides names: an API path, and a file
 # of the tree named outright (a suite that runs scripts/bb). Both are how
 # `suites FILE` reaches a python change, which no suite calls by name.
@@ -326,8 +347,19 @@ LINE_COMMENT = re.compile(r"(?m)(?:^|(?<=\s))//[^\n]*$|/\*(?:(?!\*/).)*\*/\s*$",
 
 
 # `{ name: (a) =>` or `, name: x =>`: a key, not the `b : x =>` of a ternary
+# An arrow's parameters, and in TypeScript its return type after them:
+# `(a: Vec, b: Vec): Vec =>` (generics and unions; no parens in the type)
+# (one level of parens inside: `(f: (x: S) => S)` or `(a = f())`)
+ARROW_PARAMS = r"(?:\((?:[^()]|\([^()]*\))*\)|[A-Za-z_$][\w$]*)"
+TS_ARROW_PARAMS = r"(?:\((?:[^()]|\([^()]*\))*\)(?:\s*:\s*[\w$<>\[\],.|&?'\" ]+?)?|[A-Za-z_$][\w$]*)"
+TS_SUFFIXES = {".ts", ".tsx", ".astro", ".vue", ".svelte"}
+JSX_SUFFIXES = {".tsx", ".jsx", ".astro"}
 OBJ_KEY_ARROW = re.compile(r"(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?"
-                           r"(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*\Z", re.M)
+                           + ARROW_PARAMS + r"\s*\Z", re.M)
+TS_OBJ_KEY_ARROW = re.compile(r"(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?"
+                              + TS_ARROW_PARAMS + r"\s*\Z", re.M)
+METHOD_PREFIX = re.compile(r"(?:(?<![\w$])(?:static|async|get|set|public|private|protected|"
+                           r"readonly|override)\s*|[#*]\s*)+$")
 STATEMENT_WORDS = {"const", "let", "var", "function", "return", "if", "for", "while", "class",
                    "export", "import", "throw", "try", "switch"}
 
@@ -340,9 +372,18 @@ class JSScanner:
     REGEX_BEFORE = set("(,=:[!&|?{};+-*%<>~^")
 
     def __init__(self, text, sink, line0=1, top="(top level)", shape_methods=True, base=0,
-                 fn_words=None, words=None):
+                 fn_words=None, words=None, ts=False, jsx=False):
         self.s = text
         self.words = words or (JS_KEYWORDS, TYPE_WORDS, MODIFIERS)
+        self.ts = ts
+        self.jsx = jsx
+        self.fn_generic = 0      # inside `fun <T, R : Comparable<R>>`
+        self.class_ctx = False   # a template's ${} inside a className
+        self.before_fn = ""      # what stood before `function`: `(` makes it an expression
+        self.pre_async = ""
+        self.params = TS_ARROW_PARAMS if ts else ARROW_PARAMS
+        self.obj_key = TS_OBJ_KEY_ARROW if ts else OBJ_KEY_ARROW
+        self.mm_close = None     # where a method header's own `)` closed, for `): T {`
         self.kw, self.types, self.modifiers = self.words
         self.shape_methods = shape_methods
         self.base = base            # where this text starts in its file
@@ -438,6 +479,11 @@ class JSScanner:
             self.blank.append((a, b))
 
     def regex_allowed(self):
+        # `</td>` is a closing tag wherever it stands, and in JSX `/>` ends
+        # one: read as a regex either ran to the next slash and took the
+        # braces between with it
+        if self.last_sig == "<" or (self.jsx and self.s[self.i + 1:self.i + 2] == ">"):
+            return False
         if not self.last_sig:
             return True
         if self.last_sig in ("return", "typeof", "case", "=>"):
@@ -459,6 +505,12 @@ class JSScanner:
             elif s[j] == "/" and not in_class:
                 break
             j += 1
+        if j >= n or s[j] == "\n":
+            # no closing slash on the line: a division, or JSX's `</span>`,
+            # not a regex, and the newline is still to be counted
+            self.i += 1
+            self.last_sig = "/"
+            return
         self.i = j + 1
         while self.i < n and s[self.i].isalpha():
             self.i += 1
@@ -471,9 +523,16 @@ class JSScanner:
             if s[j] == "\\":
                 j += 1
             j += 1
+        if j >= n or s[j] == "\n":
+            # a quote left open at the line's end is no string: JSX text's
+            # "isn't</p>}" or Rust's 'a. Taken as the one character it is,
+            # so the brace after it and the newline are both still counted.
+            self.i += 1
+            self.last_sig = q
+            return
         body = s[self.i + 1:j]
-        self.saw_string(body, self.line)
-        self.i = min(j + 1, n)
+        self.saw_string(body, self.line, self.class_ctx_at(self.i))
+        self.i = j + 1
         self.last_sig = "'s'"
 
     def template(self):
@@ -481,6 +540,7 @@ class JSScanner:
         j = self.i + 1
         chunk = []
         start_line = self.line
+        cls = self.class_ctx_at(self.i)
         while j < n:
             c = s[j]
             if c == "\\":
@@ -490,7 +550,7 @@ class JSScanner:
             if c == "`":
                 break
             if s[j:j + 2] == "${":
-                self.saw_string("".join(chunk), start_line)
+                self.saw_string("".join(chunk), start_line, cls)
                 chunk = []
                 # the expression inside, scanned as code by a nested pass
                 k, depth = j + 2, 1
@@ -506,11 +566,12 @@ class JSScanner:
                     k += 1
                 inner = s[j + 2:k - 1]
                 sub = JSScanner(inner, self.sink, self.line, self.enclosing(), self.shape_methods,
-                                self.base + j + 2, self.fn_words, self.words)
+                                self.base + j + 2, self.fn_words, self.words, self.ts, self.jsx)
                 sub.stack = [(n, dp, None) for n, dp, _ in self.stack]
                 if self.exprs and self.exprs[-1][3] == len(self.stack):
                     # inside `x => `...${f()}...``: the call is the arrow's
                     sub.stack.append((self.exprs[-1][0]["name"], -1, None))
+                sub.class_ctx = cls      # `chip ${on ? 'on' : ''}` in a className
                 sub.run()
                 self.line += inner.count("\n")
                 j = k
@@ -520,16 +581,48 @@ class JSScanner:
                 self.line += 1
             chunk.append(c)
             j += 1
-        self.saw_string("".join(chunk), start_line)
+        self.saw_string("".join(chunk), start_line, cls)
         self.i = min(j + 1, n)
         self.last_sig = "'s'"
 
-    def saw_string(self, body, line):
+    def saw_string(self, body, line, cls=False):
         fn = self.enclosing()
+        if REL_PATH.fullmatch(body):
+            # require('../public/engine.js') or import './game': the file it
+            # names, relative to this one, so a suite that loads it reaches it
+            rel = os.path.normpath(os.path.join(os.path.dirname(self.sink.path), body))
+            if not rel.startswith(".."):
+                self.sink.add_draw(rel, "file", line, fn)
         for what, kind in strings_draw(body):
             self.sink.add_draw(what, kind, line, fn)
-        for m in HANDLER.finditer(body):
-            self.sink.add_call(m.group(1), "", line, fn)
+        if cls and re.fullmatch(r"[\w\s-]*", body):
+            for tok in body.split():
+                if re.fullmatch(r"[A-Za-z_][\w-]*", tok):
+                    self.sink.add_draw(tok, "class", line, fn)
+        for name in handler_calls(body):
+            self.sink.add_call(name, "", line, fn)
+
+    def class_ctx_at(self, at):
+        return self.class_ctx or bool(CLASS_CTX.search(self.s[max(0, at - 200):at]))
+
+    def generic_name(self):
+        s, k, depth = self.s, self.i - 1, 0
+        while k >= 0 and s[k] in " \t":
+            k -= 1
+        lo = max(0, k - 300)
+        while k >= lo:
+            ch = s[k]
+            if ch == ">":
+                depth += 1
+            elif ch == "<":
+                depth -= 1
+                if depth == 0:
+                    m = re.search(r"([A-Za-z_$][\w$]*)\s*$", s[max(0, k - 80):k])
+                    return m.group(1) if m and m.group(1) not in self.kw else ""
+            elif ch in ";{}()":
+                return ""
+            k -= 1
+        return ""
 
     def code_before(self, pos):
         # the code that stands before pos: the comment lines above
@@ -538,6 +631,14 @@ class JSScanner:
         while True:
             start = s.rfind("\n", 0, pos)
             code = LINE_COMMENT.sub("", s[start + 1:pos]).rstrip()
+            if code.endswith("*/"):
+                # a JSDoc block over lines: what stands before its /*
+                pos = s.rfind("/*", 0, start + 1 + len(code) - 2)
+                if pos < 0:
+                    return ""
+                continue
+            # `static`, `async`, `get`, `#`, `*`: a method's own prefix
+            code = METHOD_PREFIX.sub("", code).rstrip()
             if code or start < 0:
                 return code
             pos = start
@@ -554,12 +655,19 @@ class JSScanner:
             d["end"] = max(d["line"], self.line if end is None else end)
 
     def ident(self, word, nxt="", after_dot=False):
+        if self.pending is not None and self.pending["kind"] == "class" \
+                and self.types is JS_TYPE_WORDS and self.last_sig == self.pending["name"] \
+                and word not in ("extends", "implements"):
+            # `class items take any...` in JSX text: in JavaScript a class's
+            # name is followed by extends, implements, < or its {, never a word
+            self.sink.defs.remove(self.pending)
+            self.pending = None
         if self.exprs and word in STATEMENT_WORDS and self.line > self.tok_line:
             # a statement on a new line after one with no `;`
             self.close_exprs(lambda dp, pr: dp == self.depth and pr == self.nest(), self.tok_line)
         # `of` is for-of's word after a binding (`x of`, `] of`, `} of`) and
         # a name anywhere else: `const of = s =>` and its calls are real
-        self.of_kw = word == "of" and not after_dot and (
+        self.of_kw = word == "of" and not after_dot and self.last_kw != "function" and (
             self.last_sig in ("]", "}") or bool(self.IDENT.fullmatch(self.last_sig or "")))
         if self.of_kw:
             self.last_sig = "of"
@@ -573,8 +681,33 @@ class JSScanner:
         if nxt != "(" and not after_dot and word not in self.kw \
                 and self.last_kw not in ("function", "class") and not word[0].isdigit():
             self.sink.add_ref(word, self.line, self.enclosing())
+        if self.last_kw == "function" and self.fn_generic:
+            self.last_sig = word     # a type parameter: fun <T> name
+            return
+        if after_dot and self.pending is not None and self.pending.get("recv"):
+            # Kotlin's and Swift's extension, `fun <T> List<T>.move(`: the
+            # name is the last one before the parameters
+            self.pending["name"] = word
+            self.last_sig = word
+            return
+        if word == "async":
+            self.pre_async = self.last_sig
+        if self.last_kw == "function" and (self.last_sig in self.fn_words or self.last_sig == ">") \
+                and word not in self.fn_words and word != "interface":
+            # what follows the keyword is the name, whatever other languages
+            # make of the word: Kotlin's fun record(, fun delete(, fun open(
+            self.begin_def(word, "function")
+            # `(function initGuide() {...})()` names nothing outside itself:
+            # nothing calls it by that name, and it is not dead (B585)
+            self.pending["named_expr"] = self.before_fn in ("(", "=", ",", ":", "!", "?", "&", "|",
+                                                            "return", "=>")
+            self.pending["recv"] = bool(self.fn_words & {"fun", "func"})
+            self.last_kw = ""
+            self.last_sig = word
+            return
         if word in self.fn_words:
             self.last_kw = "function"
+            self.before_fn = self.pre_async if self.last_sig == "async" else self.last_sig
         elif word in self.types and not after_dot and nxt not in ":=,;)?&|.[":
             # a type's keyword, not a property or a key that has its name
             self.last_kw = "class"
@@ -606,11 +739,45 @@ class JSScanner:
         self.pending = d
         self.pending_depth = self.depth
         self.pending_anon = self.pending_async = False
+        self.pending_close = None
 
     def punct(self, c):
+        if self.last_kw == "function" and c == "<" and (self.fn_generic or self.last_sig in self.fn_words):
+            self.fn_generic += 1
+            self.last_sig = "<"
+            return
+        if self.fn_generic and c == ">":
+            self.fn_generic -= 1
+            self.last_sig = ">"
+            return
+        mm = getattr(self, "maybe_method", None)
+        self._punct(c)
+        if c == "(" and mm and self.parens - 1 > mm[2]:
+            # a paren inside a method's own parameters, `(number | null)[]`
+            # or a default `x = f()`, does not undo the method's header
+            self.maybe_method = mm
+
+    def _punct(self, c):
         s = self.s
         if c == "(":
             prev = self.last_sig
+            if prev == ">" and self.ts:
+                # TypeScript's generic call, `new Map<number, Set<number>>()`:
+                # the name before the matching `<`
+                g = self.generic_name()
+                if g:
+                    prev = g
+                    if self.pending is not None and self.pending["name"] == g:
+                        self.maybe_method = None
+                        self.paren_at_pending = self.parens
+                        self.parens += 1
+                        self.last_sig = "("
+                        return
+                    self.sink.add_call(g, "", self.line, self.enclosing())
+                    self.maybe_method = None
+                    self.parens += 1
+                    self.last_sig = "("
+                    return
             if prev == "." and s[self.i - 2:self.i] == "?." and self.last_ident:
                 # an optional call, `TABKINDS[k]?.open?.(t)`: a call of open
                 prev = self.last_ident
@@ -623,6 +790,7 @@ class JSScanner:
                     and self.pending["line"] == self.line:
                 # the ( of a definition's own parameter list, not a call
                 self.maybe_method = None
+                self.pending["recv"] = False
                 self.paren_at_pending = self.parens
                 self.parens += 1
                 self.last_sig = "("
@@ -645,7 +813,10 @@ class JSScanner:
                 if head.endswith("."):
                     qm = re.search(r"([A-Za-z_$][\w$]*)\s*\.$", head)
                     qual = qm.group(1) if qm else ""
-                self.sink.add_call(prev, qual, self.line, self.enclosing())
+                # a call in a default parameter, `f(seed = Date.now())`, is f's
+                in_params = self.pending is not None and self.parens > self.paren_at_pending
+                self.sink.add_call(prev, qual, self.line,
+                                   self.pending["name"] if in_params else self.enclosing())
             elif prev == "func" and self.last_kw == "function":
                 # Go: `func (` is a receiver, and the name comes after it
                 self.receiver = True
@@ -679,8 +850,20 @@ class JSScanner:
             return
         if c == ")":
             self.parens = max(0, self.parens - 1)
+            if self.maybe_method and self.maybe_method[2] == self.parens:
+                self.mm_close = self.i + 1
+            if self.pending is not None and self.parens == self.paren_at_pending:
+                self.pending_close = self.i + 1
             self.close_exprs(lambda dp, pr: pr > self.nest())
             self.last_sig = ")"
+            return
+        if c == "{" and self.ts and self.pending is not None \
+                and getattr(self, "pending_close", None) is not None and self.pending_close <= self.i \
+                and re.fullmatch(r"\s*:\s*", s[self.pending_close:self.i]):
+            # TypeScript's `function f(): { a: T } {`: the first brace after
+            # the colon is the return type's, the next one is the body
+            self.depth += 1
+            self.last_sig = "{"
             return
         if c == "{":
             if self.pending is not None and getattr(self, "pending_async", False) \
@@ -709,8 +892,10 @@ class JSScanner:
                     self.stack.append((name, self.depth, d))
                 else:
                     self.stack.append((self.enclosing(), self.depth, None))
-            elif self.last_sig == ")" and getattr(self, "maybe_method", None) \
-                    and self.maybe_method[2] == self.parens:
+            elif getattr(self, "maybe_method", None) and self.maybe_method[2] == self.parens \
+                    and (self.last_sig == ")" or (self.ts and self.mm_close is not None and re.fullmatch(
+                        r"\s*:\s*[\w$<>\[\],.|&?'\" ]+", s[self.mm_close:self.i]))):
+                # (TypeScript: `private bound(a: Vec): [number, number] {`)
                 # its own `)` just closed: in `if (a(b, c(d))){` the `)` before
                 # the brace is the if's, and c is a call
                 name, line, _ = self.maybe_method
@@ -722,12 +907,18 @@ class JSScanner:
                     if cl["name"] == name and cl["line"] == line:
                         self.sink.calls.remove(cl)
                         break
-            self.maybe_method = None
+            if not (self.maybe_method and self.parens > self.maybe_method[2]):
+                # (a `{` inside its own parameters, `say(a, x = {})` or a
+                # destructured `constructor({ now } = {})`, leaves it be)
+                self.maybe_method = None
             self.depth += 1
             self.last_sig = "{"
             return
         if c == "}":
             self.depth -= 1
+            if self.pending is not None and self.pending_depth > self.depth:
+                # an interface's `fun f(x: Int)` with no body ends with its scope
+                self.pending = None
             self.close_exprs(lambda dp, pr: dp > self.depth)
             while self.stack and self.stack[-1][1] >= self.depth:
                 _, _, d = self.stack.pop()
@@ -753,11 +944,11 @@ class JSScanner:
                     # and over where its expression is.
                     anon, self.pending = self.pending, None
                     self.pending_async = self.pending_anon = False
-                m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*$",
+                m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?" + self.params + r"\s*$",
                               s[max(0, self.i - 200):self.i])
                 # (the window's first line is cut short unless it is the file's)
                 w = s[max(0, self.i - 200):self.i]
-                key = None if m else OBJ_KEY_ARROW.search(w if self.i <= 200 else w[w.find("\n") + 1:])
+                key = None if m else self.obj_key.search(w if self.i <= 200 else w[w.find("\n") + 1:])
                 if anon is not None and ((m and m.group(1) not in self.kw) or key):
                     self.sink.defs.remove(anon)
                 elif anon is not None:
@@ -791,7 +982,12 @@ class JSScanner:
             # commas INSIDE the list used to drop it, which is every function
             # with two parameters, and their bodies then read as top level.
             if self.pending is not None and self.pending_depth == self.depth \
-                    and (c == ";" or self.parens <= getattr(self, "paren_at_pending", 0)):
+                    and (c == ";" or self.parens <= getattr(self, "paren_at_pending", 0)) \
+                    and not (self.ts and self.brackets) \
+                    and not (c == "," and getattr(self, "pending_close", None) is not None):
+                # (not the comma of a TypeScript tuple, `): [number, number] {`,
+                # nor one in a return type after the parameters closed,
+                # Kotlin's `): Pair<Uri, String>? {`)
                 self.pending = None
             self.last_sig = c
             return
@@ -799,14 +995,15 @@ class JSScanner:
 
     def enclosing_or_blank(self, up=0):
         st = self.stack[:-up] if up else self.stack
-        return st[-1][0] if st else ""
+        # (an anonymous body at the top pushes the top's name: no parent)
+        return st[-1][0] if st and st[-1][0] != self.top else ""
 
     def arrow_name(self):
         # `const NAME = (...) =>` or `NAME = async x =>` : the identifier
         # before the `=` that precedes the arrow's parameters, on this line
         # or the one before.
         head = self.s[max(0, self.i - 200):self.i]
-        m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>\s*$", head)
+        m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?" + self.params + r"\s*=>\s*$", head)
         # A property (`nb.clashResume = () =>`) is the object's to call:
         # kept as a definition for the attribution of what it draws, marked
         # so `unused` does not name it as never called (B271).
@@ -814,7 +1011,7 @@ class JSScanner:
         if m and m.group(1) not in self.kw:
             return m.group(1)
         # `name: (...) =>` in an object
-        m = re.search(r"([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>\s*$", head)
+        m = re.search(r"([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?" + self.params + r"\s*=>\s*$", head)
         if m:
             return m.group(1)
         return ""
@@ -826,7 +1023,8 @@ def code_only(text, suffix=".js"):
     only code: `data-state="..."` inside a template is not an assignment
     to state."""
     sc = JSScanner(text, Sink("(code_only)"), shape_methods=suffix in SHAPE_METHODS,
-                   fn_words=FN_BY_SUFFIX.get(suffix, set()), words=keywords_for(suffix))
+                   fn_words=FN_BY_SUFFIX.get(suffix, set()), words=keywords_for(suffix),
+                   ts=suffix in TS_SUFFIXES, jsx=suffix in JSX_SUFFIXES)
     sc.blank = []
     try:
         sc.run()
@@ -1219,7 +1417,8 @@ def scan_js(text, sink, line0=1, base=0):
         scan_sections(text, sink)
     suffix = Path(sink.path).suffix
     JSScanner(text, sink, line0, shape_methods=suffix in SHAPE_METHODS, base=base,
-              fn_words=FN_BY_SUFFIX.get(suffix, set()), words=keywords_for(suffix)).run()
+              fn_words=FN_BY_SUFFIX.get(suffix, set()), words=keywords_for(suffix),
+              ts=suffix in TS_SUFFIXES, jsx=suffix in JSX_SUFFIXES).run()
 
 
 SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script>", re.S | re.I)
@@ -1246,6 +1445,8 @@ def markup_draws(markup, sink, line0):
     for ln, line in enumerate(markup.split("\n"), line0):
         for what, kind in strings_draw(line):
             sink.add_draw(what, kind, ln, "(markup)")
+        for name in handler_calls(line):
+            sink.add_call(name, "", ln, "(markup)")
 
 
 # `name() {`, `function name {` and `function name() {` alike (B279).
@@ -1357,6 +1558,8 @@ def sources(root):
         dns[:] = [d for d in dns if d not in SKIP_DIRS and not d.startswith(".")]
         for fn in fns:
             p = Path(dp) / fn
+            if MINIFIED.search(fn):
+                continue
             lang = EXTS.get(p.suffix)
             if lang is None and not p.suffix:
                 try:
@@ -1376,6 +1579,12 @@ def sources(root):
             except OSError:
                 continue
             yield p, lang
+
+
+def minified(text):
+    """Generated rather than written: long, and a thousand characters a
+    line or more on average."""
+    return len(text) > 20_000 and len(text) / (text.count("\n") + 1) > 1000
 
 
 def build(root, prior=None):
@@ -1403,6 +1612,10 @@ def build(root, prior=None):
         except OSError:
             continue
         sink = Sink(rel)
+        if lang in ("js", "html") and minified(text):
+            # a bundle nobody wrote by hand, xterm.js at 290 kB on one line:
+            # kept as a file the map knows and skips, not as 146 dead names
+            text = ""
         try:
             {"py": scan_python, "js": scan_js, "html": scan_html, "sh": scan_sh, "c": scan_c}[lang](text, sink)
         except Exception as e:      # a scanner must never take the map down
@@ -1614,12 +1827,21 @@ TEST_NAME = re.compile(r"(^|/)(test_[^/]+\.py|[^/]+_test\.(go|py|rs)|[^/]+Test\.
                        r"|[^/]+\.(test|spec)\.[cm]?[jt]sx?|[^/]+_spec\.rb)$")
 
 
+TEST_DIR = re.compile(r"/(?:tests|__tests__|e2e)/")
+TEST_HELPER = re.compile(r"(?:lib|helpers?|utils?|mocks?|fixtures?|setup|harness|support)\b|mock-", re.I)
+
+
 def is_test(path):
     """A test: an .mjs under a test directory (this repository's suites,
     minus the library beside them), or a file named the way its language
     names tests: test_x.py, x_test.go, XTest.kt, x.test.ts, x.spec.js."""
     if ("/test/" in "/" + path or path.startswith("test/")) and path.endswith(".mjs"):
         return not path.endswith("/lib.mjs")
+    # ...and any script under tests/, __tests__/ or e2e/ but the helpers
+    # beside them: MediaReducer's tests/e2e/e2e_*.mjs read as page scripts
+    if TEST_DIR.search("/" + path) and Path(path).suffix in (".js", ".mjs", ".cjs", ".ts", ".tsx") \
+            and not TEST_HELPER.match(Path(path).name):
+        return True
     return bool(TEST_NAME.search(path)) or "/androidTest/" in path or "/src/test/" in path
 
 
@@ -1945,7 +2167,8 @@ def suites_for(idx, paths):
         elif d["kind"] == "path" and any(d["what"].startswith(p_ + "/") or d["what"].startswith(p_ + "?")
                                          for p_ in paths):
             hits.setdefault(d["file"], set()).add(d["what"])
-        elif d["kind"] == "file" and any(f == d["what"] or f.endswith("/" + d["what"]) for f in files):
+        elif d["kind"] == "file" and any(f == d["what"] or f.endswith("/" + d["what"])
+                                         or os.path.splitext(f)[0] == d["what"] for f in files):
             hits.setdefault(d["file"], set()).add(d["what"])
     for c in idx["calls"]:
         if is_test(c["file"]) and not c["qual"] and c["name"] in names:
@@ -2013,7 +2236,9 @@ def q_unused(idx, path=None):
         # browser, which the map cannot see; its name says what it is. And
         # a property of an object (nb.clashResume = ...) is called as the
         # object's, which the map does not follow either (B271).
-        if (n.startswith("on") and n[2:3].islower()) or d.get("prop"):
+        # ...and a constructor, which `new` calls by its class's name.
+        if (n.startswith("on") and n[2:3].islower()) or d.get("prop") or d.get("named_expr") \
+                or n == "constructor":
             continue
         if called.get(n, 0) == 0 and refs.get(n, 0) - own.get(n, 0) <= 0:
             rows.append(d)
@@ -2743,6 +2968,7 @@ def languages():
     out = [f"  {LANG_WORDS.get(lang, lang)}: {' '.join(exts)}" for lang, exts in by.items()]
     out.insert(0, "indexed, by scanner:")
     out.append("  and a file with no extension whose #! names bash, sh or python")
+    out.append("  but never a minified bundle (NAME.min.js, or a script of very long lines)")
     out.append("anything else is not indexed (.css, .json, .yml, .md, .rb and the rest): grep reads those")
     return out
 

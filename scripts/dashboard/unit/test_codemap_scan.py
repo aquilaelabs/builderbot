@@ -80,6 +80,67 @@ class JavaScript(unittest.TestCase):
                                "5  function (anonymous) passed to add_filter"])
 
 
+class OtherProjects(unittest.TestCase):
+    """What running the map over every project this one reads found."""
+
+    def test_typescript_return_types_generics_and_jsx_text(self):
+        s = scan("export const add = (a: Vec, b: Vec): Vec => a.map(f);\n"
+                 "class S {\n  private bound(b: Vec, arts: (number | null)[]): [number, number] {\n"
+                 "    const m = new Map<number, Set<number>>();\n  }\n}\n"
+                 "function prep(i: In): { a: A[]; b: B } {\n  go();\n}\n"
+                 "function C() {\n  return <p>it isn't set, 3 class-item mods</p>;\n}\n"
+                 "function D() {\n  return <td>{p ? <S x={1} /> : '-'}</td>;\n}\n", "a.tsx")
+        got = defs(s)
+        for want in [("add", 1, 1), ("bound", 3, 5), ("prep", 7, 9), ("C", 10, 12), ("D", 13, 15)]:
+            self.assertIn(want, got)
+        self.assertNotIn("item", {d["name"] for d in s.defs})
+        self.assertIn(("Map", 4, "bound"), calls(s))
+
+    def test_a_private_method_and_a_destructured_constructor(self):
+        s = scan("class G {\n  /**\n   * doc\n   */\n  constructor({ now = Date.now } = {}) {\n"
+                 "    this.#drift();\n  }\n  #drift() { x(); }\n  say(a, extra = {}) { y(); }\n}\n")
+        self.assertTrue({("constructor", 5, 7), ("drift", 8, 8), ("say", 9, 9)} <= defs(s), defs(s))
+
+    def test_kotlin_names_its_function_whatever_another_language_calls_the_word(self):
+        s = scan("class A {\n  fun record(x: Int) {\n  }\n  override fun open(): Boolean {\n    return true\n  }\n"
+                 "  fun of(id: Int): String {\n    return \"\"\n  }\n"
+                 "  private fun <T> List<T>.move(a: Int): List<T> {\n    return this\n  }\n"
+                 "  fun pair(): Pair<Uri, String>? {\n    return null\n  }\n}\n"
+                 "interface V {\n  fun onText(t: String)\n}\n", "A.kt")
+        got = {(n, a, b) for n, a, b in defs(s)}
+        for want in [("record", 2, 3), ("open", 4, 6), ("of", 7, 9), ("move", 10, 12), ("pair", 13, 15),
+                     ("onText", 18, 18)]:
+            self.assertIn(want, got)
+
+    def test_event_attributes_class_lists_and_named_iifes(self):
+        text = ('<button onclick="jump(\'errors\'); other()">x</button>\n<script>\n'
+                "function jump(w){ el.classList.toggle('ghost', on); el.className = 'btn ' + (d ? 'red' : 'blue'); }\n"
+                "function other(){}\n(function initGuide() { boot(); })();\n</script>\n")
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "p.html").write_text(text)
+            Path(d, "vendor.js").write_text("var a=1;" * 4000)
+            idx = codemap.build(d)
+            self.assertIn(("jump", "(markup)"), {(c["name"], c["caller"]) for c in idx["calls"]})
+            self.assertIn(("other", "(markup)"), {(c["name"], c["caller"]) for c in idx["calls"]})
+            drawn = {d_["what"] for d_ in idx["draws"] if d_["kind"] == "class"}
+            self.assertTrue({"ghost", "btn", "red", "blue"} <= drawn, drawn)
+            self.assertEqual(codemap.q_unused(idx), ["nothing on the page is unused by this measure"])
+            self.assertEqual(idx["files"]["vendor.js"]["defs"], [])
+
+    def test_tests_by_their_directory_and_suites_through_an_import(self):
+        self.assertTrue(codemap.is_test("tests/e2e/e2e_runlock.mjs"))
+        self.assertFalse(codemap.is_test("tests/e2e/helpers.mjs"))
+        self.assertEqual(codemap.strings_draw("progress.json"), [])
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "public").mkdir()
+            Path(d, "tests").mkdir()
+            Path(d, "public/engine.js").write_text("function step(){}\nmodule.exports = {step};\n")
+            Path(d, "tests/engine.test.js").write_text("const E = require('../public/engine.js');\nE.step();\n")
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_suites(idx, ["public/engine.js"]),
+                             ["tests/engine.test.js  (1: public/engine.js)"])
+
+
 class Shell(unittest.TestCase):
     def test_a_nested_function_ends_at_its_own_brace(self):
         s = scan("outer() {\n    inner() {\n        die x\n    }\n    inner\n}\n", "a.sh")

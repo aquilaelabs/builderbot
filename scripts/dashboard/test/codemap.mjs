@@ -256,7 +256,7 @@ ok(/page-poll\.js:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLi
 const sec = map('sections', 'scripts/dashboard/index.html');
 ok(/^scripts\/dashboard\/index\.html: \d+ sections, \d+ top-level definitions$/m.test(sec)
    && /^\s+\d+  the welcome panel: the guide, and the changelog: \d+ functions, \d+ callers? from outside/m.test(sec)
-   && /^\s+\d+  tabs: \d+ functions, \d+ callers from outside/m.test(sec),
+   && /^\s+\d+  tabs: \d+ functions?, \d+ callers? from outside/m.test(sec),
    'sections lists a file by its headers with each section\'s functions and outside callers');
 
 // Nested definitions are shown under their parent.
