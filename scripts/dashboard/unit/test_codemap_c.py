@@ -150,6 +150,20 @@ class AnonymousFunctions(unittest.TestCase):
                          {("add_action", "(top level)"), ("add_theme_support", "(anonymous)"),
                           ("path", "(anonymous)"), ("esc_html", "(anonymous)"), ("helper", "aq_setup")})
 
+    def test_a_function_stored_in_a_file_scope_table_is_passed(self):
+        # ggml's type_traits, and C dispatch tables generally (report #83).
+        s = scan("typedef void (*fn_t)(void);\n"
+                 "static void target_b(void) {}\n"
+                 "static void target_c(void) {}\n"
+                 "static const struct t tbl[] = {\n"
+                 "    { .f = target_b, },\n"
+                 "    { .f = (fn_t) target_c, },\n"
+                 "};\n"
+                 "int other(int a);\n")
+        names = {p["name"] for p in s.passed}
+        self.assertTrue({"target_b", "target_c"} <= names, names)
+        self.assertNotIn("other", names, "a declaration is no pass")
+
     def test_javascript(self):
         s = self.scan("on('x', function () { doThing(); });\nconst o = { m(a) { z(); } };\n", "a.js")
         self.assertEqual([(d["kind"], d["name"]) for d in s.defs], [("function", "(anonymous)"), ("method", "m")])

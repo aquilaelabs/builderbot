@@ -73,7 +73,7 @@ SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchp
 # definition), which is what the scanner already spots for a JS method.
 # A scanner's version: a file indexed by an older one is scanned again
 # though it has not changed, so a fix to a scanner reaches every file.
-SCANNER = {"py": 2, "c": 2, "js": 2, "html": 2}
+SCANNER = {"py": 2, "c": 3, "js": 2, "html": 2}
 EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
         ".jsx": "js", ".html": "html", ".sh": "sh", ".bash": "sh",
         ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
@@ -981,6 +981,13 @@ def scan_c(text, sink):
                     sink.add_call(word, qm.group(1) if qm else "", line_at[i], fn_name())
                 elif code[j:j + 1] != "(":
                     sink.add_ref(word, line_at[i], fn_name())
+            elif code[j:j + 1] != "(" and code[max(0, i - 80):i].rstrip()[-1:] in ("=", ",", "{", ")", "&"):
+                # At file scope, a name after `=`, `,`, `{`, a cast's `)` or
+                # `&` is a value being stored: `.to_float = (fn_t) f,` in a
+                # dispatch table is how ggml wires every routine, and C's
+                # tables generally (report #83, B569). Only names the tree
+                # defines as functions are kept from these.
+                sink.add_ref(word, line_at[i], fn_name())
             i = m.end()
             continue
         i += 1
