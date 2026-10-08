@@ -2164,7 +2164,7 @@ cmd_gpu_driver() {
             if [ -n "$ver" ] && command -v nvidia-smi >/dev/null 2>&1; then
                 # Installed already: brought up to what apt has for its branch,
                 # through its metapackages (the driver's, and the kernel
-                # flavour's module one Ubuntu ships), which pull the rest.
+                # flavor's module one Ubuntu ships), which pull the rest.
                 # Not every NVIDIA package by name with --only-upgrade: that
                 # held the running kernel's prebuilt module, pinned to the old
                 # version with no newer build for that kernel, and refused a
