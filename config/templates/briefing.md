@@ -67,15 +67,14 @@ beyond the ones it reads, and when something seems to be missing, ask.
     bb map draws ID|.class     which functions draw an element, which suites name it
     bb map suites FILE...      the suites that reach what a file defines or draws
 
-Ask the map before grepping. It is an index over this tree (python, the
-dashboard's scripts, bb's shell, the suites), rebuilt by itself when a
-source is newer, and it answers "where would I look" in one call: the
-question that otherwise costs thirty greps and a wrong guess. It is rough
-by design: braces, not scope; an anonymous callback is attributed to the
-nearest named function around it. grep is for what the map does not
-index: a string on screen, a setting's key across config files, a word in
-the docs. When the map gives no answer for a name that exists, that is a
-bug in the map to file with `bb bug add`, not a reason to grep instead.
+The map is an index over this tree (python, the dashboard's scripts, bb's
+shell, the suites), rebuilt by itself when a source is newer, and it often
+answers "where would I look" in one call where grep would take many. It is
+a tool, not a rule: use grep whenever that is quicker or the map comes up
+short. It is rough by design: braces, not scope; an anonymous callback is
+attributed to the nearest named function around it. When it answers wrong
+or not at all for a name that exists, that is a bug in BuilderBot: report
+it as one (below) and carry on with grep.
 
 ## Building and testing
 
