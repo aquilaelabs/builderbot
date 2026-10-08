@@ -161,7 +161,7 @@ by hand cost four commands and still could not see the failed builds.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).
-  Use it where it is quicker than grep, and fix it whenever it answers wrong; `test/codemap.mjs` holds it to the tree. `find`
+  Use it where it is quicker than grep, and fix it whenever it answers wrong; `test/codemap.mjs` holds it to the tree, and `test/codemap-parsers.mjs` to babel, python's ast and hand-checked fixtures in the languages neither reads (R158). `find`
   and `who-calls` also hand over what a function says about itself, the
   comment directly above it or its docstring's first sentence: the notes
   live in the code, never in the map, and the map reads them out.
