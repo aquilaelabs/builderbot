@@ -192,10 +192,13 @@ cmd_tests_preflight() {
         # A whole run is run with the counters in and merged after, so the
         # covered run the next preflight measures by is never older than
         # the last whole gate.
-        if BB_COVERAGE=1 bash "$here" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        if BB_COVERAGE=1 BB_TEST_WAIT_LOCK="${BB_TEST_WAIT_LOCK:-1200}" bash "$here" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
         cmd_map coverage 2>&1 | head -1 | tee -a "$rl"
     elif [ "${#suites[@]}" -gt 0 ]; then
-        if bash "$here" "${suites[@]}" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        # A run that holds the lock (the hand-back hook's own check) is
+        # waited for, twenty minutes at most, rather than ending this gate
+        # having run nothing (B572).
+        if BB_TEST_WAIT_LOCK="${BB_TEST_WAIT_LOCK:-1200}" bash "$here" "${suites[@]}" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
     fi
     [ "${#unplaced[@]}" -eq 0 ] || rc=1
     local c

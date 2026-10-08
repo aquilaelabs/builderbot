@@ -272,9 +272,19 @@ LOCK="$LOCKDIR/lock"
 if [ -z "${BB_TEST_WORKER:-}" ]; then
 # A run still on the previous layout holds the old path; for one release
 # both are read for a LIVE pid, and only the new one is written.
+# BB_TEST_WAIT_LOCK=SECONDS waits that long for a run that holds it to end
+# rather than refusing at once: a preflight started in the background met
+# the hand-back hook's own check run, which ends in minutes, and stopped
+# having run nothing (B572).
+waited=0
 for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
     [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$l" ] || continue
     other="$(cat "$l" 2>/dev/null || true)"
+    while [ -n "$other" ] && [ -d "/proc/$other" ] && [ "$waited" -lt "${BB_TEST_WAIT_LOCK:-0}" ]; do
+        [ "$waited" -eq 0 ] && echo "[dashboard-test] waiting for the run that holds the lock (pid $other) to end" >&2
+        sleep 5; waited=$((waited + 5))
+        other="$(cat "$l" 2>/dev/null || true)"
+    done
     if [ -n "$other" ] && [ -d "/proc/$other" ]; then
         owner="$(stat -c %U "$l" 2>/dev/null || echo somebody)"
         die "another dashboard test run is going (pid $other, ${owner}'s, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box, and the CI runner counts; wait for it, or set BB_TEST_CONCURRENT=1"
