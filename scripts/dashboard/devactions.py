@@ -1014,6 +1014,13 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # every other thing that changes what a container IS.
         r = devapp.set_ref(project, instance, f(req, "ref"))
         return r, (400 if r.get("error") else 200)
+    if action == "move":
+        # Into another project, as its own instance (devapp.move_instance).
+        # Not while a job builds it: the job names the old project.
+        if _active_job(project, instance) is not None:
+            return {"error": "a job is running on it: wait for it, or Stop it, then move it"}, 400
+        r = devapp.move_instance(project, instance, f(req, "to"))
+        return r, (400 if r.get("error") else 200)
     if action == "owner":
         # Which project it belongs to. An administrator's too, and the name
         # was checked against the projects in the handler.

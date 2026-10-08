@@ -90,6 +90,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb tidy also ends a server a session put in the background and left listening (a dev server, a preview), never a test run's own (db69e46)
 - Making projects is a role's New projects area, and a Global role may hold Nodes, Toolchains, Jobs and New projects on named nodes only, so an account can be let make projects on one node (d518855)
 - A session is told on its next prompt when Reads, Also sees, Model or Effort changed since it started, and that a new session takes them (867e794)
+- A project's own container can be moved to another project (Built from, Move, on the Docker tab), keeping its name, env and data; a deleted project's containers show as 'X (deleted)' until it is restored or they are moved (1b99a9a)
 
 ### Changed
 

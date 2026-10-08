@@ -3639,6 +3639,49 @@ print(json.dumps(out))
      `the manager's answer says whose each row is: a written one its pick, a project's its own unless sent with no project, another's nobody's (${
        JSON.stringify((listed.instances || []).map(d => [d.name, d.owner]))})`);
 
+  // ---- a project's own container moved to another project (8 Oct) ------------
+  // Rekeyed under the other project with the name it had, so its env and
+  // data stay; a person's on the Docker tab, never a session's. The two it
+  // moves between share ep.silon's node, as a container's project must.
+  const epNode = (await api('/api/status')).projects.find(p => p.name === 'ep.silon')?.prefs?.node || '';
+  for (const p of ['alpha', 'gamma']) await api('/api/prefs', { project: p, node: epNode, nodes: epNode ? [epNode] : [] });
+  writeFileSync(`${DIR}/ws/alpha/docker-compose.yml`, 'services:\n  app:\n    image: alpha-dev\n');
+  const nowhere = await api('/api/devapp', { project: 'ep.silon', action: 'move', instance: 'loose', to: 'no-such' });
+  ok(nowhere.status === 400 && /no project called no-such/.test(nowhere.error || ''), `a move names a project there is (${nowhere.error})`);
+  const moveTok = execFileSync('bash', [fileURLToPath(new globalThis.URL('../../bb', import.meta.url)), 'users', 'token', 'ep.silon', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const bySess = await fetch(URL.replace(/\/$/, '') + '/api/devapp', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + moveTok },
+    body: JSON.stringify({ project: 'ep.silon', action: 'move', instance: 'main', to: 'alpha' }) })
+    .then(async r => ({ status: r.status, ...(await r.json()) }));
+  ok(bySess.status === 403 && !(await api('/api/docker')).instances.some(d => d.project === 'alpha'),
+     `...and is never a session's (${bySess.error})`);
+  const moved = await api('/api/devapp', { project: 'ep.silon', action: 'move', instance: 'loose', to: 'alpha' });
+  const after = await api('/api/docker');
+  const movedRow = (after.instances || []).find(d => d.project === 'alpha' && d.instance === 'loose');
+  ok(moved.ok && movedRow && movedRow.name === 'loose'
+     && !(after.instances || []).some(d => d.project === 'ep.silon' && d.instance === 'loose'),
+     `Move puts it under alpha with the name it had (${JSON.stringify(moved).slice(0, 160)})`);
+  const back = await api('/api/devapp', { project: 'alpha', action: 'move', instance: 'loose', to: 'ep.silon' });
+  ok(back.ok, `...and back again (${back.error || 'ok'})`);
+  rmSync(`${DIR}/ws/alpha/docker-compose.yml`, { force: true });
+  // A deleted project's containers keep its name, drawn "X (deleted)", and
+  // come back with it from the trash (8 Oct).
+  const zc = await api('/api/container', { action: 'create', name: 'helper-for-gamma', owner: 'gamma',
+                                          compose: 'services:\n  app:\n    image: alpine\n', env: '' });
+  const zrow = l => (l.instances || []).find(d => d.project === 'helper-for-gamma') || {};
+  const gone1 = await api('/api/trash', { name: 'gamma' });
+  const whileGone = await api('/api/docker');
+  ok(zc.ok && gone1.ok && zrow(whileGone).owner === 'gamma' && zrow(whileGone).owner_gone === true,
+     `a deleted project's container is still its, marked gone (${JSON.stringify(zrow(whileGone)).slice(0, 120)} ${zc.error || gone1.error || ''})`);
+  await openManager();
+  await page.waitForFunction(() => [...document.querySelectorAll('.dmgroup b')].some(b => b.textContent === 'gamma (deleted)'));
+  ok(true, '...drawn under "gamma (deleted)" on the Docker tab');
+  const back2 = await api('/api/trash-restore', { name: (gone1.to || '').split('/').pop() });
+  ok(back2.ok && zrow(await api('/api/docker')).owner_gone === false, `...and a restore gives it back (${back2.error || 'ok'})`);
+  await api('/api/devapp', { project: 'helper-for-gamma', action: 'remove' });
+  for (const p of ['alpha', 'gamma']) await api('/api/prefs', { project: p, node: '', nodes: [] });
+
   // ---- the manager, grouped by project ---------------------------------------
   await openManager();
   const groups = () => page.evaluate(() => {

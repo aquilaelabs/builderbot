@@ -2461,6 +2461,9 @@ def _overview_here(picked):
                 # The project it belongs to, or "" for none: whose sessions
                 # may see it and work on it, and the group it is drawn in.
                 "owner": owner_of(project, inst, rec),
+                # Its project was deleted (moved to the trash): drawn as
+                # "X (deleted)" until X is restored or it is moved (8 Oct).
+                "owner_gone": owner_gone(owner_of(project, inst, rec)),
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
@@ -2561,7 +2564,8 @@ def _overview_here(picked):
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double. Each with
             # the project it was put under, read once for the node.
-            "containers": [c | {"owner": held.get(c["name"], "")}
+            "containers": [c | {"owner": held.get(c["name"], ""),
+                                "owner_gone": owner_gone(held.get(c["name"], ""))}
                            for held in [_owners().get(picked or _node_here()) or {}]
                            for c in cs["containers"] if not c["ours"]]}
 
@@ -2783,6 +2787,64 @@ def owner_of(project, instance=MAIN, rec=None):
     if "for" in rec:
         return str(rec.get("for") or "")
     return "" if rec.get("source") == "file" else project
+
+
+def owner_gone(owner):
+    """True when a container's project is no project any more: deleted to
+    the trash, its records kept under its name, so a restore gives every one
+    of them back (the operator, 8 Oct)."""
+    return bool(owner) and not (WORKSPACE / owner).is_dir()
+
+
+def move_instance(project, instance, to):
+    """Move a project's own instance to project `to` (the operator, 8 Oct:
+    MediaReducer-Dev's dev container to MediaReducer before the old project
+    goes). Recorded under `to` as the instance whose compose name is the one
+    it already has, so its containers, env file and data directory stay
+    exactly where they are; from then on it builds from `to`'s tree and is
+    `to`'s. A written container is no project's build and moves with its
+    project picker (set_owner) instead."""
+    to = str(to or "").strip()
+    if not to or to == project:
+        return {"error": "name another project to move it to"}
+    rec = _read_rec(project, instance)
+    if not rec:
+        return {"error": f"no instance {instance} of {project}"}
+    if rec.get("source") == "file":
+        return {"error": "a container written here is built from its own compose file, not a "
+                         "project's: give it to another project with its project picker"}
+    if not project_has_compose(to):
+        return {"error": f"{to} has no compose file at its root to build this from"}
+    node = _instance_node(project, instance)
+    why, _ = on_project_node(to, node)
+    if why:
+        return {"error": why}
+    name = _pname(project, instance)
+    inst = instance_key(to, name)
+    with _lock:
+        d = _load()
+        if inst in (d.get(to) or {}):
+            return {"error": f"{to} already has a container called {name}"}
+        r = (d.get(project) or {}).pop(instance, None)
+        if r is None:
+            return {"error": f"no instance {instance} of {project}"}
+        if not d.get(project):
+            d.pop(project, None)
+        # Pinned where it is: its data directory is on that node, and a
+        # record with no node would follow `to`'s primary instead.
+        if node:
+            r["node"] = str(node)
+        # Its owner was the default (the project it was built from): now it
+        # is `to`'s default. One given elsewhere on purpose stays given.
+        if "for" not in r or r.get("for") == to:
+            r.pop("for", None)
+        # A branch of the old repository means nothing in the new one.
+        ref = r.pop("ref", None)
+        d.setdefault(to, {})[inst] = r
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "project": to, "instance": inst, "name": name, "was": project,
+            "dropped_ref": ref or ""}
 
 
 def set_owner(project, instance, owner):

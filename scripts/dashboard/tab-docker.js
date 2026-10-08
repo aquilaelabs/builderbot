@@ -495,6 +495,7 @@ function dmOwnerLine(r, key){
   const names = (state?.projects || []).map(p => p.name);
   // A project since deleted is still what the row says until it is changed.
   if (saved && !names.includes(saved)) names.push(saved);
+  const shown = n => n === saved && r.owner_gone ? `${n} (deleted)` : n;
   names.sort((a, b) => a.localeCompare(b, undefined, {sensitivity: "base"}));
   const id = "dmo-" + key;
   return `<div class="sub dmowner"><label for="${esc(id)}">Project${
@@ -504,9 +505,34 @@ function dmOwnerLine(r, key){
     <select id="${esc(id)}" data-dmown="${esc(key)}" aria-label="which project it belongs to">
       <option value=""${pick ? "" : " selected"}>no project</option>${
       names.map(n => `<option value="${esc(n)}"${n === pick ? " selected" : ""}>${
-        esc(n)}</option>`).join("")}</select>
+        esc(shown(n))}</option>`).join("")}</select>
     <button type="button" data-dmownapply="${esc(key)}"${
       pick === saved ? " disabled" : ""} title="put it under that project">Apply</button></div>`;
+}
+
+// Which project a project's own instance is built from, and Move to put it
+// under another (the operator, 8 Oct: MediaReducer-Dev's to MediaReducer).
+// Its containers, env and data stay as they are; a written container has no
+// project behind it and moves with the Project line above.
+const dmMoveDraft = {};
+function dmMoveLine(d){
+  if (!mayDocker() || d.source === "file") return "";
+  const key = `${d.project}|${d.instance}`, pick = dmMoveDraft[key] ?? d.project;
+  const names = (state?.projects || []).map(p => p.name)
+    .sort((a, b) => a.localeCompare(b, undefined, {sensitivity: "base"}));
+  // Built from a project since deleted: it is still that one's until moved.
+  const gone = !names.includes(d.project);
+  if (gone) names.unshift(d.project);
+  const id = "dmm-" + key;
+  return `<div class="sub dmowner"><label for="${esc(id)}">Built from${
+      helpIcon("The project whose compose file and tree it is built from. Move puts it "
+        + "under another project, keeping its name, env and data; it then builds "
+        + "from that project's tree.")}</label>
+    <select id="${esc(id)}" data-dmmove="${esc(key)}" aria-label="the project it is built from">${
+      names.map(n => `<option value="${esc(n)}"${n === pick ? " selected" : ""}>${
+        esc(gone && n === d.project ? `${n} (deleted)` : n)}</option>`).join("")}</select>
+    <button type="button" data-dmmoveapply="${esc(key)}"${
+      pick === d.project ? " disabled" : ""} title="move it under that project">Move</button></div>`;
 }
 
 function dmTestLine(d){
@@ -1037,7 +1063,7 @@ function dmRowsHtml(ins, job, blind){
         ${dmRouteLine(d)}
         ${d.astray ? `<div class="sub bad">on this node, but ${esc(d.owner || d.project)} works on ${
           esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
-        <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${
+        <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${dmMoveLine(d)}${
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
           ? dmBootLine(d.name, !!d.boot) : ""}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
@@ -1214,6 +1240,35 @@ function dmWireRows(el, list = dockerList){
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
 
+  // Built from: staged on the pick, moved by Move, asked first since what it
+  // builds from changes.
+  el.querySelectorAll("[data-dmmove]").forEach(sel => sel.onchange = () => {
+    const key = sel.dataset.dmmove, from = key.split("|")[0];
+    if (sel.value === from) delete dmMoveDraft[key]; else dmMoveDraft[key] = sel.value;
+    const b = sel.parentElement.querySelector("[data-dmmoveapply]");
+    if (b) b.disabled = sel.value === from;
+  });
+  el.querySelectorAll("[data-dmmoveapply]").forEach(btn => btn.onclick = async () => {
+    const key = btn.dataset.dmmoveapply, to = dmMoveDraft[key];
+    if (!to) return;
+    const [project, instance] = key.split("|");
+    const what = (list?.instances || []).find(
+      x => x.project === project && x.instance === instance)?.name || project;
+    if (!confirm(`Move ${what} to ${to}? It keeps its name, env and data, and builds from ${
+        to}'s tree from its next rebuild.`)) return;
+    busy(btn, "Moving");
+    try{
+      const r = await postJSON("/api/devapp", {action: "move", project, instance, to});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmMoveDraft[key];
+      notify(`${what} is ${to}'s now` + (j.dropped_ref
+        ? `; it built from ${j.dropped_ref}, which was ${project}'s branch, and now builds from ${to}'s checkout` : ""));
+      dockerList = null; dockerRev++; loadDocker();
+    }catch(e){ notify("move: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Move"); }
+  });
+
   // The words on the row are a way in to where the setting lives now.
   el.querySelectorAll("[data-dmtestgo]").forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -1273,7 +1328,12 @@ function dmGroupsHtml(ins, cs, job, blind){
     + dmOtherRowsHtml(cs.filter(c => (c.owner || "") === o)
         .sort((a, b) => byName(a.name || a.id, b.name || b.id)));
   const loose = [...ins, ...cs].some(r => !r.owner);
-  return owners.map(o => head(o, "", colorTone(projectColor(o))) + group(o)).join("")
+  // A deleted project's containers keep its name until it is restored from
+  // the trash, or they are moved or given to another project (8 Oct).
+  const gone = o => [...ins, ...cs].some(r => r.owner === o && r.owner_gone);
+  return owners.map(o => gone(o)
+      ? head(`${o} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
+      : head(o, "", colorTone(projectColor(o))) + group(o)).join("")
     + (loose ? head("No project", "no Claude session sees these", null) + group("") : "");
 }
 

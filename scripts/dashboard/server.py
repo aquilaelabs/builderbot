@@ -5799,6 +5799,14 @@ class Handler(BaseHTTPRequestHandler):
             under = field(req, "owner")
             if under and self._not_project(under):
                 return
+        # Moving one between projects crosses two of them: a person's, and
+        # only into a project they can see.
+        if act == "move":
+            if me.get("session"):
+                return self._json({"error": "moving a container to another project is a person's, "
+                                            "on the Docker tab"}, 403)
+            if field(req, "to") not in {p["name"] for p in project_list(me)}:
+                return self._json({"error": f"no project called {field(req, 'to')}"}, 400)
         if act == "owner" and field(req, "owner") \
                 and field(req, "owner") not in {p["name"] for p in project_list(me)}:
             return self._json({"error": f"no project called {field(req, 'owner')}"}, 400)
