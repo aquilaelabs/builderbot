@@ -81,9 +81,12 @@ function nbMemoryView({$, nb}){
     // what it will do: the text is typed, not sent. See memory.py's notify().
     $("memCount").textContent = n ? "Memories: newest first" : "Memories";
     $("memN").textContent = n ? String(n) : "none";
-    // Folded unless this page opened it (the operator, 29 Sep); the fold's
-    // state is the page's one toggle listener's, keyed like every section.
-    $("memSect").open = "briefing:memories" in sectOpen ? sectOpen["briefing:memories"] : false;
+    // Open unless this page shut it, like every section (the operator, 8 Oct;
+    // it was folded unless opened, from 29 Sep, which every redraw put back:
+    // pressing Edit on a memory folded the whole section around the field,
+    // B594). The fold's state is the page's one toggle listener's, keyed like
+    // every section.
+    $("memSect").open = "briefing:memories" in sectOpen ? sectOpen["briefing:memories"] : true;
     // ...one section open at a time in a notebook (page-docs.js): open here
     // only because the person opened it, so it is the one that stays.
     if ($("memSect").open) keepOpen($("memSect"));
