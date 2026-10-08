@@ -48,6 +48,7 @@ exclude file, never the project's .gitignore, which is the project's to write.
 """
 import ast
 import bisect
+import hashlib
 import json
 import os
 import re
@@ -71,9 +72,15 @@ SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchp
 # is the word that opens a function (`fun`, `func`, `fn`, `function`) or
 # none at all (Java, C#, Dart, C, where `name(...) {` after a type is the
 # definition), which is what the scanner already spots for a JS method.
-# A scanner's version: a file indexed by an older one is scanned again
-# though it has not changed, so a fix to a scanner reaches every file.
-SCANNER = {"py": 3, "c": 4, "js": 4, "html": 5, "sh": 2}
+# The scanners' version: a file indexed by other ones is scanned again
+# though it has not changed, so a fix to a scanner reaches every file. It
+# is this file's own fingerprint, never a number bumped by hand: a scanner
+# changed without a bump left indexes answering from the old reading (the
+# operator, 8 Oct), and any edit here costs one rebuild of a few seconds.
+try:
+    SCANNER = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:12]
+except OSError:                  # (run from somewhere it cannot read itself)
+    SCANNER = "unknown"
 EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
         ".jsx": "js", ".html": "html", ".sh": "sh", ".bash": "sh",
         ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
@@ -379,6 +386,7 @@ class JSScanner:
         self.jsx = jsx
         self.fn_generic = 0      # inside `fun <T, R : Comparable<R>>`
         self.class_ctx = False   # a template's ${} inside a className
+        self.shadow = {}         # id(def) -> names its parameters and locals take
         self.before_fn = ""      # what stood before `function`: `(` makes it an expression
         self.pre_async = ""
         self.params = TS_ARROW_PARAMS if ts else ARROW_PARAMS
@@ -409,6 +417,13 @@ class JSScanner:
         self.tok_line = line0    # the line of the last token read
         self.blank = None        # a list to collect (start, end) of every string,
                                  # template, regex and comment, for code_only()
+
+    def add_def(self, name, line, kind, parent):
+        # a definition is what its name means from here on, not a local
+        # that shadows it: `const rowFor = () =>` is the function rowFor
+        for k in self.shadow.values():
+            k.discard(name)
+        return self.sink.add_def(name, line, kind, parent)
 
     def enclosing(self):
         # an open `x => expr` holds what is called in its expression, unless
@@ -678,8 +693,29 @@ class JSScanner:
         # A use by name that is not a call and not a property: passed,
         # assigned, listed. What tells dead code from a handler somebody
         # hands to onclick without calling it.
-        if nxt != "(" and not after_dot and word not in self.kw \
-                and self.last_kw not in ("function", "class") and not word[0].isdigit():
+        # A parameter or a local that takes a function's name is not that
+        # function handed on: `fun f(reach: Float)` and its uses named reach
+        # five times (B590). Its declaration shadows the name for the rest
+        # of the function it is declared in.
+        in_params = self.pending is not None and self.parens > getattr(self, "paren_at_pending", 0)
+        if not after_dot and nxt != "(" and word not in self.kw and (
+                (in_params and nxt in ":,)=" and self.last_sig in ("(", ",", "val", "var"))
+                or self.last_sig in ("val", "var", "let", "const")):
+            owner = self.pending if in_params else (self.stack[-1][2] if self.stack else None)
+            if owner is not None:
+                self.shadow.setdefault(id(owner), set()).add(word)
+            if not in_params:
+                # counted as before, so unused still reads `const f = () =>`
+                # as the one use it subtracts, but marked: who-calls does not
+                # list a declaration as the function handed on
+                self.sink.add_ref(word, self.line, self.enclosing())
+                self.sink.passed[-1]["decl"] = True
+        elif not after_dot and nxt == "=" and self.parens and self.last_sig in ("(", ",") \
+                and self.s[self.i + len(word):].lstrip(" \t")[1:2] != "=":
+            pass                     # Kotlin's named argument, add(reach = 0.6f): a name, not a use
+        elif nxt != "(" and not after_dot and word not in self.kw \
+                and self.last_kw not in ("function", "class") and not word[0].isdigit() \
+                and not any(word in self.shadow.get(id(d), ()) for _, _, d in self.stack if d is not None):
             self.sink.add_ref(word, self.line, self.enclosing())
         if self.last_kw == "function" and self.fn_generic:
             self.last_sig = word     # a type parameter: fun <T> name
@@ -735,7 +771,7 @@ class JSScanner:
             parent = self.stack[-1][0]
         else:
             parent = self.enclosing() if self.stack else ""
-        d = self.sink.add_def(name, self.line, kind, "" if parent == self.top else parent)
+        d = self.add_def(name, self.line, kind, "" if parent == self.top else parent)
         self.pending = d
         self.pending_depth = self.depth
         self.pending_anon = self.pending_async = False
@@ -832,11 +868,11 @@ class JSScanner:
                 named = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?$", head) \
                     if prev in self.fn_words else None
                 if named and named.group(1) not in self.kw:
-                    self.pending = self.sink.add_def(named.group(1), self.line, "function",
+                    self.pending = self.add_def(named.group(1), self.line, "function",
                                                      self.enclosing_or_blank())
                     self.pending["prop"] = named.start(1) > 0 and head[named.start(1) - 1] == "."
                 else:
-                    self.pending = self.sink.add_def("(anonymous)", self.line, "function", "")
+                    self.pending = self.add_def("(anonymous)", self.line, "function", "")
                 self.pending_depth = self.depth
                 self.pending_anon = True
                 self.pending_async = prev == "async"
@@ -886,7 +922,7 @@ class JSScanner:
                 # that was `NAME = ... =>`; else it stays with the enclosing
                 name = self.arrow_name()
                 if name:
-                    d = self.sink.add_def(name, self.line, "arrow", self.enclosing_or_blank())
+                    d = self.add_def(name, self.line, "arrow", self.enclosing_or_blank())
                     d["at"] = self.base + self.i + 1
                     d["prop"] = getattr(self, "_prop", False)
                     self.stack.append((name, self.depth, d))
@@ -899,7 +935,7 @@ class JSScanner:
                 # its own `)` just closed: in `if (a(b, c(d))){` the `)` before
                 # the brace is the if's, and c is a call
                 name, line, _ = self.maybe_method
-                d = self.sink.add_def(name, line, "method", self.enclosing_or_blank())
+                d = self.add_def(name, line, "method", self.enclosing_or_blank())
                 d["at"] = self.base + self.i + 1
                 self.stack.append((name, self.depth, d))
                 # the call recorded for `name(` was the header, not a call
@@ -955,7 +991,7 @@ class JSScanner:
                     anon["expr"] = True
                     self.exprs.append((anon, self.depth, self.nest(), len(self.stack)))
                 if m and m.group(1) not in self.kw and self.last_kw != "function":
-                    d = self.sink.add_def(m.group(1), self.line, "arrow", self.enclosing_or_blank())
+                    d = self.add_def(m.group(1), self.line, "arrow", self.enclosing_or_blank())
                     d["expr"] = True
                     self.exprs.append((d, self.depth, self.nest(), len(self.stack)))
                     # A property (`nb.clashResume = () =>`): the object's to
@@ -964,7 +1000,7 @@ class JSScanner:
                 elif key and self.last_kw != "function":
                     # `render: (el, t) => renderProfileInto(el)` in a table:
                     # its calls are its own, not the top level's
-                    d = self.sink.add_def(key.group(1), self.line, "arrow", self.enclosing_or_blank())
+                    d = self.add_def(key.group(1), self.line, "arrow", self.enclosing_or_blank())
                     d.update(expr=True, prop=True)
                     self.exprs.append((d, self.depth, self.nest(), len(self.stack)))
             self.i += 1
@@ -1604,7 +1640,7 @@ def build(root, prior=None):
             continue
         old = kept.get(rel)
         if old and old.get("mtime") == mtime and old.get("lang") == lang and "defs" in old \
-                and old.get("scan", 1) == SCANNER.get(lang, 1):
+                and old.get("scan") == SCANNER:
             files[rel] = old
             continue
         try:
@@ -1620,7 +1656,7 @@ def build(root, prior=None):
             {"py": scan_python, "js": scan_js, "html": scan_html, "sh": scan_sh, "c": scan_c}[lang](text, sink)
         except Exception as e:      # a scanner must never take the map down
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
-        files[rel] = {"mtime": mtime, "lang": lang, "scan": SCANNER.get(lang, 1),
+        files[rel] = {"mtime": mtime, "lang": lang, "scan": SCANNER,
                       "defs": sink.defs, "calls": sink.calls,
                       "draws": sink.draws, "routes": sink.routes, "refs": sink.refs,
                       "sections": sink.sections, "passed": []}
@@ -1816,7 +1852,7 @@ def load(root, force=False):
     # not changed, and build() rescans just those.
     if set(now) != set(have) or any(now[k] != have[k].get("mtime") or "defs" not in have[k]
                                     or have[k].get("lang") != langs[k]
-                                    or have[k].get("scan", 1) != SCANNER.get(langs[k], 1) for k in now):
+                                    or have[k].get("scan") != SCANNER for k in now):
         return build(root, prior)
     return flat(prior)
 
@@ -2023,7 +2059,7 @@ def q_who_calls(idx, name, root):
     # ...and the places it is handed over without a call: to a draw, an
     # onclick, a list. Not a call, and the reason a function nothing calls
     # is not dead; who-calls used to say "nothing calls" and leave it there.
-    passed = [] if qual else [p for p in idx.get("passed", []) if p["name"] == name]
+    passed = [] if qual else [p for p in idx.get("passed", []) if p["name"] == name and not p.get("decl")]
     if not rows and not passed:
         return [f"nothing calls {name}" + (f" on {qual}" if qual else "") + ", and nothing passes it by name",
                 GREP_FIRST.format(f"grep -rn {name}")]

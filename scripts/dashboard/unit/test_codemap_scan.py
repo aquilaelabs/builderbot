@@ -163,6 +163,41 @@ class Caution(unittest.TestCase):
         self.assertEqual(codemap.account_line({"measured": 0, "callers": 0, "file": 0, "by_name": []}), "")
 
 
+class Shadowing(unittest.TestCase):
+    """A parameter, a local or a named argument that takes a function's name
+    is not that function passed by name (B590, report #95)."""
+
+    def test_parameters_locals_and_named_arguments_do_not_pass_the_function(self):
+        src = ("object G {\n    fun reach(s: FloatArray?): Float = 1f\n"
+               "    fun add(outcome: Int, reach: Float = -1f) {\n        if (reach >= 0f) { x(reach) }\n    }\n"
+               "    fun t() {\n        val reach = s[1]\n        y(reach)\n        add(1, reach = 0.6f)\n"
+               "    }\n    fun u() = list.map(::reach)\n}\n")
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "G.kt").write_text(src)
+            idx = codemap.build(d)
+            got = [line for line in codemap.q_who_calls(idx, "reach", d) if line.startswith("G.kt:")]
+            self.assertEqual(len(got), 1, got)          # only u's ::reach, the reference itself
+            self.assertIn(":11 ", got[0])
+
+    def test_a_const_arrow_is_still_the_function_its_name_says(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "a.js").write_text("function load(){\n  const rowFor = (x) => {\n    return x;\n  };\n"
+                                        "  return list.map(rowFor);\n}\nload();\n")
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_unused(idx), ["nothing on the page is unused by this measure"])
+
+
+class Fingerprint(unittest.TestCase):
+    def test_the_scanners_version_is_this_files_own_fingerprint(self):
+        import hashlib
+        self.assertEqual(codemap.SCANNER,
+                         hashlib.sha1(Path(codemap.__file__).read_bytes()).hexdigest()[:12])
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "a.py").write_text("def f():\n    pass\n")
+            idx = codemap.build(d)
+            self.assertEqual({e["scan"] for e in idx["files"].values()}, {codemap.SCANNER})
+
+
 class Shell(unittest.TestCase):
     def test_a_nested_function_ends_at_its_own_brace(self):
         s = scan("outer() {\n    inner() {\n        die x\n    }\n    inner\n}\n", "a.sh")
