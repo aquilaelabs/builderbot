@@ -342,6 +342,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb map reads only the first branch of an #if in C and C++, so one whose branches each open a brace no longer loses the rest of the file; prototypes, typedef names, #define macros and namespaces are findable; and an index made by an older scanner is read again without waiting for a file to change (942bcac)
 - The build-folder links BuilderBot puts in a Gradle project are kept out of git through the repository's own exclude file (942bcac)
 - bb -p names a project the session does not read and says where Reads are set; bb bug add -h prints help; a bug whose repro uses bb files in the project's own tracker; a python toolchain (uv and Python 3.12 with pip and venv) (8e7cd14)
+- A capture or build keeps dist/ out of git in a project whose .gitignore does not name it, through the clone's own .git/info/exclude (5049d8a)
 
 ### Security
 

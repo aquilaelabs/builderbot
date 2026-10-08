@@ -1523,6 +1523,21 @@ project_here() {
     esac
 }
 
+# dist_ignored: the briefing says a project's dist/ is gitignored, and a
+# capture or a build writing there into a tree that does not ignore it put
+# every reel in front of `git add -A` (MediaReducer B33, 7 Oct). Kept out
+# in .git/info/exclude, the clone's own, so nothing is committed for it.
+dist_ignored() {
+    local p root ex
+    p="$(project_here)" || return 0
+    root="$WORKSPACE/$p"
+    [ -d "$root/.git" ] || return 0
+    ex="$root/.git/info/exclude"
+    grep -qxF '/dist/' "$ex" 2>/dev/null && return 0
+    git -C "$root" check-ignore -q dist/x 2>/dev/null && return 0
+    { mkdir -p "$root/.git/info" && printf '%s\n' '/dist/' >> "$ex"; } 2>/dev/null || true
+}
+
 # trim_line TEXT: one line, capped so that a screen stays a screen. Counted in
 # characters and not bytes: bash slices by character in this image's UTF-8
 # locale, and the text being cut here is full of em dashes.
@@ -5398,7 +5413,7 @@ case "${1:-help}" in
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
     login)    shift; cmd_login "$@" ;;
-    emu)      shift; cmd_emu "$@" ;;
+    emu)      shift; dist_ignored; cmd_emu "$@" ;;
     gpu)      shift; BB_PROJECT="$(bb_project 2>/dev/null || true)" exec python3 "$BB_LIB/gpu.py" "$@" ;;
     tidy)     shift; exec python3 "$BB_LIB/tidy.py" "$@" ;;
     node)     shift
@@ -5417,9 +5432,9 @@ case "${1:-help}" in
     run)   shift; cmd_run "$@" ;;
     git)   shift; cmd_git "$@" ;;
     devapp) shift; cmd_devapp "$@" ;;
-    sign)   shift; cmd_sign "$@" ;;
+    sign)   shift; dist_ignored; cmd_sign "$@" ;;
     ci-labels) shift; cmd_ci_labels "$@" ;;
-    build) shift; cmd_build_or_test build "$@" ;;
+    build) shift; dist_ignored; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;
     roadmap)  shift; cmd_roadmap "$@" ;;
     bug) shift; cmd_bug "$@" ;;
@@ -5436,15 +5451,15 @@ case "${1:-help}" in
     report)   shift; cmd_report "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
-    phone)    shift; cmd_phone "$@" ;;
+    phone)    shift; dist_ignored; cmd_phone "$@" ;;
     root)     shift; cmd_root "$@" ;;
     container) shift; cmd_container "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
     map)      shift; cmd_map "$@" ;;
-    capture)  shift; cmd_capture "$@" ;;
-    tool)     shift; cmd_tool "$@" ;;
+    capture)  shift; dist_ignored; cmd_capture "$@" ;;
+    tool)     shift; dist_ignored; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
