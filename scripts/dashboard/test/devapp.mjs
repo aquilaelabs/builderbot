@@ -3764,6 +3764,12 @@ print(json.dumps(out))
   ok(own.status === 200 && /hello from helper-for-eps-app-1/.test(own.text || ''),
      `...and the log of its own container by the name ls prints, which is its services' (${own.status}: ${
         String(own.error || own.text).trim().slice(0, 60)})`);
+  // ...and by the name its compose file gives the service, which is the
+  // name a session reaches for: `bb devapp log app` (report #97, B591).
+  const bySvc = await as('/api/dockerctl', { action: 'logs', container: 'app' });
+  ok(bySvc.status === 200 && /hello from helper-for-eps-app-1/.test(bySvc.text || ''),
+     `...and by its service's own name, as the compose file calls it (${bySvc.status}: ${
+        String(bySvc.error || bySvc.text).trim().slice(0, 60)})`);
   await dial('auto');
   const ctlWas = readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').length;
   const ownRestart = await as('/api/dockerctl', { action: 'restart', container: 'helper-for-eps' });
