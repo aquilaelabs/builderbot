@@ -2058,10 +2058,22 @@ EOF
 # machine's own makes the device nodes as root at every boot (gpu-nodes).
 GPU_NODES_UNIT=builderbot-gpu-nodes
 gpu_driver_version() {
-    local m
+    local m v k newest
     for m in modinfo /sbin/modinfo /usr/sbin/modinfo; do
         command -v "$m" >/dev/null 2>&1 || continue
-        "$m" -F version nvidia 2>/dev/null | head -1 || true
+        v="$("$m" -F version nvidia 2>/dev/null | head -1 || true)"
+        if [ -z "$v" ]; then
+            # An update Ubuntu built for the newest kernel alone, with the
+            # old version's module gone from the running one: the restart
+            # boots the newest, so that is where the driver is (8 Oct).
+            newest="$(for k in "${GPU_MODULES:-/lib/modules}"/*; do basename "$k"; done 2>/dev/null \
+                | grep -E '^[0-9]' | sort -V | tail -1 || true)"
+            if [ -n "$newest" ] && [ "$newest" != "$(uname -r)" ] \
+               && [ "$(printf '%s\n%s\n' "$(uname -r)" "$newest" | sort -V | tail -1)" = "$newest" ]; then
+                v="$("$m" -k "$newest" -F version nvidia 2>/dev/null | head -1 || true)"
+            fi
+        fi
+        printf '%s\n' "$v" | sed '/^$/d'
         return 0
     done
 }

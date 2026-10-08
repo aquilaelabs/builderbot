@@ -66,9 +66,9 @@ case "$2" in nvidia:610) echo "610.57.04 nvidia-driver-610" > "{self.state}" ;; 
             h.write("#!/bin/sh\n" + body + "\n")
         os.chmod(f, os.stat(f).st_mode | stat.S_IEXEC)
 
-    def run_helper(self, *args):
+    def run_helper(self, *args, env=None):
         p = subprocess.run([shutil.which("bash"), self.helper, *args], capture_output=True, text=True,
-                           timeout=60, check=False, env={"PATH": self.bin, "HOME": self.dir})
+                           timeout=60, check=False, env={"PATH": self.bin, "HOME": self.dir, **(env or {})})
         ran = ""
         if os.path.exists(self.log):
             with open(self.log) as f:
@@ -313,6 +313,22 @@ esac''')
         inst = [ln for ln in ran.splitlines() if " install " in ln][0]
         self.assertNotIn("--only-upgrade", inst)
         self.assertEqual(sorted(inst.split()[-2:]), ["linux-modules-nvidia-595-open-generic", "nvidia-driver-595-open"])
+        self.assertNotIn("ubuntu-drivers", ran)
+
+    def test_a_driver_built_for_the_newest_kernel_alone_is_the_installed_one(self):
+        # 8 Oct: the update's module was on 7.0.0-38 only, the machine on -34.
+        mods = os.path.join(self.dir, "modules")
+        for k in ("7.0.0-34-generic", "7.0.0-38-generic", "kernel"):
+            os.makedirs(os.path.join(mods, k))
+        self.tool("uname", 'echo 7.0.0-34-generic')
+        self.tool("modinfo", '[ "$1" = -k ] && [ "$2" = 7.0.0-38-generic ] && { echo 595.99.02; exit 0; }; exit 1')
+        self.tool("dpkg-query", '''case "$*" in
+  *nvidia-driver\\**) echo "nvidia-driver-595-open ii " ;;
+  *) echo "nvidia-driver-595-open ii "; echo "linux-modules-nvidia-595-open-generic ii " ;;
+esac''')
+        rc, said, ran = self.run_helper("gpu-driver", "install", env={"GPU_MODULES": mods})
+        self.assertEqual(rc, 0, said)
+        self.assertIn("595.99.02 is installed; bringing it up to date", said)
         self.assertNotIn("ubuntu-drivers", ran)
 
     def test_remove_purges_the_drivers_packages_and_only_those(self):

@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.144"
+AGENT_VERSION = "0.7.145"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1978,7 +1978,13 @@ def _gpu_mem_kinds(proc_root="/proc", smi=None):
     return out
 
 
-def _gpu_driver(sys_root=None, modinfo=None):
+def _kernel_key(name):
+    """A kernel directory's name as numbers, for which is newest:
+    7.0.0-38-generic after 7.0.0-34-generic, and 6.10 after 6.9."""
+    return [int(x) for x in re.findall(r"\d+", name)]
+
+
+def _gpu_driver(sys_root=None, modinfo=None, modules_root="/lib/modules", running=None):
     """Where the NVIDIA driver stands on this machine, for the Toolchains
     tab's driver row (R102): the version installed for this kernel (the
     module modinfo finds), the version loaded now, and which driver has the
@@ -2025,6 +2031,27 @@ def _gpu_driver(sys_root=None, modinfo=None):
                 installed = (p.stdout.strip().splitlines() or [""])[0][:40]
         except (OSError, subprocess.SubprocessError):
             pass
+    if tool and not installed:
+        # None for the running kernel can be a driver update waiting for the
+        # newest one: Ubuntu builds a new driver's module for the newest
+        # kernel alone, and apt takes the old version's off the running one,
+        # so the row read "removed" and the install failed while 595.99.02
+        # sat ready for the restart (bb-sandbox, 8 Oct). The newest kernel
+        # is the one a restart boots.
+        running = running if running is not None else os.uname().release
+        try:
+            kernels = sorted((k for k in os.listdir(modules_root)
+                              if k != running and _kernel_key(k)), key=_kernel_key)
+        except OSError:
+            kernels = []
+        if kernels and _kernel_key(kernels[-1]) > _kernel_key(running):
+            try:
+                p = subprocess.run([tool, "-k", kernels[-1], "-F", "version", "nvidia"], capture_output=True,
+                                   text=True, timeout=10, check=False)
+                if p.returncode == 0:
+                    installed = (p.stdout.strip().splitlines() or [""])[0][:40]
+            except (OSError, subprocess.SubprocessError):
+                pass
     return {"installed": installed, "loaded": loaded, "bound": bound[:20], **_gpu_driver_apt()}
 
 

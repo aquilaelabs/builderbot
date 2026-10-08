@@ -137,6 +137,24 @@ class GpuDriver(unittest.TestCase):
         self.loaded("580.95.05")
         self.assertEqual(self.read(), {"installed": "", "loaded": "580.95.05", "bound": "nvidia"})
 
+    def test_an_update_built_for_the_newest_kernel_alone_is_installed_not_removed(self):
+        # bb-sandbox, 8 Oct: apt took 595.91.07's module off the running
+        # kernel and put 595.99.02's on the newest one only.
+        self.card("nvidia")
+        self.loaded("595.91.07")
+        mods = os.path.join(self.root, "lib-modules")
+        for k in ("7.0.0-30-generic", "7.0.0-34-generic", "7.0.0-38-generic", "kernel"):
+            os.makedirs(os.path.join(mods, k))
+        f = os.path.join(self.bin, "modinfo")
+        with open(f, "w") as h:
+            h.write('#!/bin/sh\n[ "$1" = -k ] && [ "$2" = 7.0.0-38-generic ] && { echo 595.99.02; exit 0; }\nexit 1\n')
+        os.chmod(f, os.stat(f).st_mode | stat.S_IEXEC)
+        got = agent._gpu_driver(sys_root=self.root, modinfo=f, modules_root=mods, running="7.0.0-34-generic")
+        self.assertEqual((got["installed"], got["loaded"]), ("595.99.02", "595.91.07"))
+        # ...and an older kernel's module is not the one a restart boots.
+        got = agent._gpu_driver(sys_root=self.root, modinfo=f, modules_root=mods, running="7.0.0-40-generic")
+        self.assertEqual(got["installed"], "")
+
     def test_a_card_with_no_driver_bound(self):
         self.card(bound="")
         self.assertEqual(self.read()["bound"], "")
