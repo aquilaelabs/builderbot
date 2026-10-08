@@ -73,7 +73,7 @@ SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchp
 # definition), which is what the scanner already spots for a JS method.
 # A scanner's version: a file indexed by an older one is scanned again
 # though it has not changed, so a fix to a scanner reaches every file.
-SCANNER = {"py": 2, "c": 3, "js": 2, "html": 2}
+SCANNER = {"py": 2, "c": 4, "js": 2, "html": 2}
 EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
         ".jsx": "js", ".html": "html", ".sh": "sh", ".bash": "sh",
         ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
@@ -675,6 +675,12 @@ C_TYPE_HEAD = re.compile(r"(?:^|[\s;}])(?:typedef\s+)?(?:struct|union|enum(?:\s+
 C_FN_TAIL = re.compile(r"(?:\s|const\b|noexcept(?:\s*\([^()]*\))?|override\b|final\b|volatile\b|&&?|"
                        r"->\s*[\w:<>*&,\s]+|throw\s*\([^()]*\)|__attribute__\s*\(\([^)]*\)\)|"
                        r"[A-Z_][A-Z0-9_]*(?:\s*\([^()]*\))?)*$")
+# The name inside a function-pointer return type: (*name(params)).
+C_FP_RETURNER = re.compile(r"\(\s*[*&]\s*((?:[A-Za-z_]\w*\s*::\s*)*[A-Za-z_]\w*)\s*\([^()]*\)\s*\)\s*$")
+# A K&R definition up to its brace: a type, the name, a list of bare
+# identifiers, then each parameter's declaration ending in `;`.
+C_KR_DEF = re.compile(r"[\w*]\s*\**\s*\b([A-Za-z_]\w*)\s*\(\s*[A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*\s*\)"
+                      r"\s*(?:[^;{}()=]+;\s*)+$")
 C_NAME_BEFORE_PAREN = re.compile(r"((?:[A-Za-z_]\w*\s*::\s*)*~?[A-Za-z_]\w*|operator\s*[^\s(]+)\s*$")
 
 
@@ -885,7 +891,24 @@ def scan_c(text, sink):
                                     break
                             k -= 1
                         before = body[:k]
+                        # An explicit specialization names its arguments
+                        # after the name (template <> int tmax<int>(...)),
+                        # which is the name's: report #85, B575.
+                        tb = before.rstrip()
+                        if tb.endswith(">") and not tb.endswith("operator>") and not tb.endswith("->"):
+                            depth_, q = 0, len(tb) - 1
+                            while q >= 0:
+                                depth_ += {">": 1, "<": -1}.get(tb[q], 0)
+                                if depth_ == 0:
+                                    break
+                                q -= 1
+                            if q > 0:
+                                before = tb[:q]
                         m = C_NAME_BEFORE_PAREN.search(before)
+                        if not m:
+                            # A function returning a function pointer:
+                            # int (*returns_fp(void))(int, void *) {...}.
+                            m = C_FP_RETURNER.search(before)
                         if m and k > 0 and "=" not in before.split("operator")[0].replace("==", ""):
                             full = " ".join(m.group(1).split())
                             parts = [p.strip() for p in full.split("::")]
@@ -899,6 +922,16 @@ def scan_c(text, sink):
                                     alias = sink.add_def(jni[1], line_at[max(0, at)], "jni", jni[0])
                                     alias["jni"] = nm
                                     d["implements"] = f"{jni[0]}.{jni[1]}"
+                elif top[0] == "file":
+                    # A K&R definition: the parameters' types between the
+                    # list and the brace, each its own `;`, so the header
+                    # since the last `;` is only `int b` (report #85).
+                    wide = code[max(code.rfind("}", 0, i), code.rfind("{", 0, i)) + 1:i]
+                    km = C_KR_DEF.search(wide)
+                    if km and km.group(1) not in C_CONTROL:
+                        kind, name = "fn", km.group(1)
+                        at = i - len(wide) + km.start(1)
+                        d = sink.add_def(name, line_at[at], "def", "")
             elif top[0] in ("fn", "block"):
                 kind = "block"
             if d is not None and "file" in d:

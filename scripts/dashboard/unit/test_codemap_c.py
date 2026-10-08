@@ -72,6 +72,21 @@ class CScanner(unittest.TestCase):
         log = next(d for d in s.defs if d["name"] == "log_to_logcat")
         self.assertEqual((log["line"], log["end"]), (13, 15))
 
+    def test_the_rare_forms_report_85_named(self):
+        # K&R, a function returning a function pointer, and an explicit
+        # specialization beside its primary template (B575).
+        s = scan("int\nkr_style(a, b)\n int a; int b;\n{ return helper(a + b); }\n"
+                 "int (*returns_fp(void))(int, void *) { return 0; }\n"
+                 "static int caller(void) { return kr_style(1, 2); }\n")
+        defs = {d["name"]: d["line"] for d in s.defs if d["kind"] == "def"}
+        self.assertEqual(defs, {"kr_style": 2, "returns_fp": 5, "caller": 6})
+        self.assertIn(("helper", "kr_style"), {(c["name"], c["caller"]) for c in s.calls})
+        s = scan("template <typename T> T tmax(T a, T b) { return a; }\n"
+                 "template <> int tmax<int>(int a, int b) { return a; }\n"
+                 "bool operator>(const A& a, const A& b) { return true; }\n", "x.cpp")
+        got = sorted((d["name"], d["line"]) for d in s.defs if d["kind"] == "def")
+        self.assertEqual(got, [("operator>", 3), ("tmax", 1), ("tmax", 2)])
+
     def test_calls_are_made_inside_functions_and_a_prototype_is_none(self):
         s = scan(C)
         calls = {(c["name"], c["caller"]) for c in s.calls}
