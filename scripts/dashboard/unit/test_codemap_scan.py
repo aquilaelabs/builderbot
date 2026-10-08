@@ -205,6 +205,33 @@ class Fingerprint(unittest.TestCase):
             self.assertEqual({e["scan"] for e in idx["files"].values()}, {codemap.SCANNER})
 
 
+class SecondPass(unittest.TestCase):
+    """The second pass over every read project (8 Oct)."""
+
+    def test_an_extension_on_a_generic_type_with_two_parameters(self):
+        s = scan("object R {\n    private fun Map<String, Any?>.long(k: String): Long? = when (val v = this[k]) {\n"
+                 "        else -> null\n    }\n}\n", "R.kt")
+        self.assertIn(("long", 2, 4), defs(s))
+        s = scan("function pair<A, B>(a: A, b: B): [A, B] {\n  return [a, b];\n}\n", "a.ts")
+        self.assertIn(("pair", 1, 3), defs(s))
+
+    def test_a_method_is_never_called_unused(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "fs.js").write_text("class FS {\n  createDirectory(u) {\n    return u;\n  }\n}\nregister(new FS());\n")
+            self.assertEqual(codemap.q_unused(codemap.build(d)), ["nothing on the page is unused by this measure"])
+
+    def test_two_files_importing_one_module_are_not_each_others_suites(self):
+        with tempfile.TemporaryDirectory() as d:
+            for f, t in {"src/solver.ts": "export function solve() {}\n",
+                         "src/App.tsx": "import { solve } from './solver';\nexport function App() { solve(); }\n",
+                         "src/solver.test.ts": "import { solve } from './solver';\nsolve();\n"}.items():
+                Path(d, f).parent.mkdir(parents=True, exist_ok=True)
+                Path(d, f).write_text(t)
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_suites(idx, ["src/App.tsx"]), ["no suite names anything these files define or draw"])
+            self.assertTrue(codemap.q_suites(idx, ["src/solver.ts"])[0].startswith("src/solver.test.ts"))
+
+
 class Shell(unittest.TestCase):
     def test_a_nested_function_ends_at_its_own_brace(self):
         s = scan("outer() {\n    inner() {\n        die x\n    }\n    inner\n}\n", "a.sh")

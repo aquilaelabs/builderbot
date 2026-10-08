@@ -222,6 +222,9 @@ export function Row({ p }: { p: P }) {
     fun t() {
         add(1, reach = 0.6f)
     }
+    private fun Map<String, Any?>.long(key: String): Long? = when (val v = this[key]) {
+        else -> null
+    }
 }
 interface Voice {
     fun onText(t: String)
@@ -274,8 +277,8 @@ ok(callsOf('src/solver.ts').includes('Map@4<bound') && callsOf('src/solver.ts').
    `...and a generic call new Map<K, V>() is a call from its method (${callsOf('src/solver.ts').join(' ')})`);
 want('src/ui.tsx', ['Card:1-3', 'Row:4-6'], 'JSX text with an apostrophe and a self-closing tag ends each component where it ends');
 ok(!defsOf('src/ui.tsx').some(d => d.startsWith('item:')), '...and "class-item" in JSX text is no class');
-want('app/G.kt', ['reach:2-2', 'add:3-5', 'record:6-7', 'move:8-10', 'pair:11-13', 't:14-16', 'onText:19-19'],
-     'Kotlin: a fun named like another language\'s keyword, a generic extension fun, a nullable generic return type, an interface fun with no body');
+want('app/G.kt', ['reach:2-2', 'add:3-5', 'record:6-7', 'move:8-10', 'pair:11-13', 't:14-16', 'long:17-19', 'onText:22-22'],
+     'Kotlin: a fun named like another language\'s keyword, a generic extension fun, one on Map<String, Any?>, a nullable generic return type, an interface fun with no body');
 {
   const who = execFileSync('python3', [CODEMAP, '--root', FIX, 'who-calls', 'reach'], { encoding: 'utf8' });
   ok(!/passed by name/.test(who), `...and a parameter or a named argument called reach is not the function reach passed on (${who.trim().split('\n')[0]})`);

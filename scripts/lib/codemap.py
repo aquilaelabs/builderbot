@@ -610,7 +610,9 @@ class JSScanner:
             # names, relative to this one, so a suite that loads it reaches it
             rel = os.path.normpath(os.path.join(os.path.dirname(self.sink.path), body))
             if not rel.startswith(".."):
-                self.sink.add_draw(rel, "file", line, fn)
+                # an "import", matched only against a changed file itself: two
+                # files importing the solver are not each other's suites'
+                self.sink.add_draw(rel, "import", line, fn)
         for what, kind in strings_draw(body):
             self.sink.add_draw(what, kind, line, fn)
         if cls and re.fullmatch(r"[\w\s-]*", body):
@@ -779,8 +781,12 @@ class JSScanner:
         self.pending_depth = self.depth
         self.pending_anon = self.pending_async = False
         self.pending_close = None
+        self.pending_open = False    # its own ( reached
+        self.pending_angles = 0      # inside <...> before it: Map<String, Any?>.long(
 
     def punct(self, c):
+        if self.pending is not None and not getattr(self, "pending_open", True) and c in "<>":
+            self.pending_angles = max(0, getattr(self, "pending_angles", 0) + (1 if c == "<" else -1))
         if self.last_kw == "function" and c == "<" and (self.fn_generic or self.last_sig in self.fn_words):
             self.fn_generic += 1
             self.last_sig = "<"
@@ -830,6 +836,7 @@ class JSScanner:
                 # the ( of a definition's own parameter list, not a call
                 self.maybe_method = None
                 self.pending["recv"] = False
+                self.pending_open = True
                 self.paren_at_pending = self.parens
                 self.parens += 1
                 self.last_sig = "("
@@ -1038,7 +1045,8 @@ class JSScanner:
             if self.pending is not None and self.pending_depth == self.depth \
                     and (c == ";" or self.parens <= getattr(self, "paren_at_pending", 0)) \
                     and not (self.ts and self.brackets) \
-                    and not (c == "," and getattr(self, "pending_close", None) is not None):
+                    and not (c == "," and getattr(self, "pending_close", None) is not None) \
+                    and not (c == "," and getattr(self, "pending_angles", 0)):
                 # (not the comma of a TypeScript tuple, `): [number, number] {`,
                 # nor one in a return type after the parameters closed,
                 # Kotlin's `): Pair<Uri, String>? {`)
@@ -2191,7 +2199,7 @@ def suites_for(idx, paths):
     js = {f for f in files if idx["files"].get(f, {}).get("lang") in ("js", "html")}
     names = {d["name"] for d in idx["defs"] if d["file"] in js and not d["name"].startswith("(")
              and len(d["name"]) > 3}
-    things = {(d["what"], d["kind"]) for d in idx["draws"] if d["file"] in files}
+    things = {(d["what"], d["kind"]) for d in idx["draws"] if d["file"] in files and d["kind"] != "import"}
     # A python change: the paths its functions answer, through the handlers
     # that call them (up to three hops of callers, within the python).
     py = {f for f in files if idx["files"].get(f, {}).get("lang") == "py"}
@@ -2219,7 +2227,7 @@ def suites_for(idx, paths):
     for f in files:
         if is_test(f):
             hits.setdefault(f, set()).add("changed itself")
-    mark = {"class": ".", "id": "#", "path": "", "file": ""}
+    mark = {"class": ".", "id": "#", "path": "", "file": "", "import": ""}
     paths = {w for w, k in things if k == "path"}
     for d in idx["draws"]:
         if not is_test(d["file"]):
@@ -2229,8 +2237,8 @@ def suites_for(idx, paths):
         elif d["kind"] == "path" and any(d["what"].startswith(p_ + "/") or d["what"].startswith(p_ + "?")
                                          for p_ in paths):
             hits.setdefault(d["file"], set()).add(d["what"])
-        elif d["kind"] == "file" and any(f == d["what"] or f.endswith("/" + d["what"])
-                                         or os.path.splitext(f)[0] == d["what"] for f in files):
+        elif d["kind"] in ("file", "import") and any(f == d["what"] or f.endswith("/" + d["what"])
+                                                     or os.path.splitext(f)[0] == d["what"] for f in files):
             hits.setdefault(d["file"], set()).add(d["what"])
     for c in idx["calls"]:
         if is_test(c["file"]) and not c["qual"] and c["name"] in names:
@@ -2298,9 +2306,12 @@ def q_unused(idx, path=None):
         # browser, which the map cannot see; its name says what it is. And
         # a property of an object (nb.clashResume = ...) is called as the
         # object's, which the map does not follow either (B271).
-        # ...and a constructor, which `new` calls by its class's name.
+        # ...and a constructor, which `new` calls by its class's name...
+        # ...nor a method, which is called through its object as well, often by
+        # a framework the tree only hands it to: VS Code calls a file system's
+        # createDirectory, and nothing here does (8 Oct).
         if (n.startswith("on") and n[2:3].islower()) or d.get("prop") or d.get("named_expr") \
-                or n == "constructor":
+                or n == "constructor" or d["kind"] == "method":
             continue
         if called.get(n, 0) == 0 and refs.get(n, 0) - own.get(n, 0) <= 0:
             rows.append(d)
