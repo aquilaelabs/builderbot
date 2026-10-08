@@ -542,14 +542,12 @@ function renameProject(name, mode = "all"){
   // The node picker and the two credential blocks have hidden rules of their
   // own further down, and each of those consults the mode too.
   $("rnName").value = projLabel(name);
-  $("rnHint").textContent = rnFolderLine(name);
   $("rnToken").value = "";
   $("rnErrWrap").hidden = true;
   $("rnPreview").hidden = true;
   $("rnName").classList.remove("bad");
-  // The warning about what a rename moves is shown once the name is
-  // edited (rnShow), not to everyone opening the dialog for a setting.
-  $("rnHint").textContent = "";
+  // Where the project is on disk and its id (R154), said from the start.
+  $("rnHint").textContent = rnFolderLine(name);
   // Offered where a token would mean something: a project that already has
   // one, and a project that may push but pushes with a deploy key; that
   // second case is the way off deploy keys, and without it there was no way

@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn, openFold } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn, openFold, registerProject } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1487,6 +1487,7 @@ ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFa
   chmodSync(`${S}/tools/version-stamp`, 0o755);
   execFileSync('git', ['-C', S, 'add', '-A'], { env });
   execFileSync('git', ['-C', S, 'commit', '-qm', 'first'], { env });
+  registerProject('stampproj');      // made here, not by create (R154)
   setPolicyFor('stampproj', 'minor');
   const sb = (...a) => { try {
       return { out: execFileSync('bash', [BB, 'version', ...a], { cwd: S, env }).toString(), code: 0 };

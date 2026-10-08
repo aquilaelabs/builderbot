@@ -2,7 +2,7 @@
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
-         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold } from './lib.mjs';
+         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold, registerProject } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -529,6 +529,7 @@ print(json.dumps(out))
   mkdirSync(`${DIR}/ws/my-app`, { recursive: true });
   writeFileSync(`${DIR}/ws/My.App/README.md`, '#\n');
   writeFileSync(`${DIR}/ws/my-app/README.md`, '#\n');
+  registerProject('My.App', 'my-app');   // dropped in, recorded as an import would (R154)
   await refreshUntil(page, () => (state?.projects || []).some(p => p.name === 'my-app'),
                      { timeout: 20000 });
   const said = await page.evaluate(() => (state.projects || [])
