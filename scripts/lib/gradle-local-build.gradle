@@ -24,20 +24,42 @@ import java.nio.file.Path
 // as untracked and `git add -A` would have committed it. Its exact path goes
 // into the repository's own info/exclude, never the project's .gitignore,
 // which is the project's to write; the way bb map keeps .bb-map/ out.
+//
+// Found by reading files, never by running git: Gradle's configuration
+// cache refuses an external process at configuration time, and a `git
+// rev-parse` here failed every build of a project that turns it on
+// (Shebang-DevBoard, report #84, B570). A .git directory is the repository;
+// a .git file is a worktree's, naming its gitdir, whose commondir is where
+// info/exclude lives.
 def excludeLink = { File root, Path link ->
     try {
-        def ask = { List args ->
-            def pr = (["git", "-C", root.path] + args).execute()
-            pr.waitFor()
-            pr.exitValue() == 0 ? pr.text.trim() : ""
+        File top = root.absoluteFile
+        File dotgit = null
+        while (top != null) {
+            def g = new File(top, ".git")
+            if (g.exists()) {
+                dotgit = g
+                break
+            }
+            top = top.parentFile
         }
-        def top = ask(["rev-parse", "--show-toplevel"])
-        def ex = ask(["rev-parse", "--git-path", "info/exclude"])
-        if (!top || !ex) {
+        if (dotgit == null) {
             return
         }
-        def file = new File(ex).isAbsolute() ? new File(ex) : new File(root, ex)
-        def line = "/" + new File(top).toPath().relativize(link.toAbsolutePath()).toString()
+        File common = dotgit
+        if (dotgit.isFile()) {
+            def m = dotgit.text =~ /(?m)^gitdir:\s*(.+)$/
+            if (!m.find()) {
+                return
+            }
+            File gd = new File(m.group(1).trim())
+            gd = gd.isAbsolute() ? gd : new File(top, m.group(1).trim())
+            def cd = new File(gd, "commondir")
+            common = cd.exists() ? (new File(cd.text.trim()).isAbsolute()
+                ? new File(cd.text.trim()) : new File(gd, cd.text.trim())) : gd
+        }
+        def file = new File(common, "info/exclude")
+        def line = "/" + top.toPath().relativize(link.toAbsolutePath()).toString()
         def have = file.exists() ? file.readLines() : []
         if (!have.contains(line)) {
             file.parentFile.mkdirs()
