@@ -146,8 +146,11 @@ def _plan(project, instance, action, extra=None):
     # checkout.
     stamped = ["sh", "-c", 'r="$(git -C "$1" rev-parse HEAD 2>/dev/null)" && export BB_BUILD_REV="$r"; '
                'export BB_BUILD_AT="$(date -u +%Y-%m-%dT%H:%MZ)"; shift; exec "$@"', "sh", pdir]
-    up = {"name": "starting", "argv": stamped + base + ["up", "-d"], "timeout": 1800, "env": env}
-    down = {"name": "stopping", "argv": base + ["down"], "timeout": 180, "env": ienv}
+    # --remove-orphans on both (B592): a service the compose file no longer
+    # names, renamed or dropped since it was started, was left running by
+    # down and by remove, holding its ports, and the next up failed on them.
+    up = {"name": "starting", "argv": stamped + base + ["up", "-d", "--remove-orphans"], "timeout": 1800, "env": env}
+    down = {"name": "stopping", "argv": base + ["down", "--remove-orphans"], "timeout": 180, "env": ienv}
     build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
@@ -479,7 +482,7 @@ def remove_instance(project, instance):
 
 def _job_remove(project, instance, run):
     run.step("stopping")
-    r = devapp._run(devapp._compose(project, instance, "down"), timeout=180,
+    r = devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
                     sink=run.line, hold=run.hold)
     if run.canceled:
         return {"state": "canceled", "error": "stopped; it is still in the manager"}
@@ -699,7 +702,7 @@ def _job_up(project, instance, run):
     # is missing, so Up on a never-built project does what the CLI does
     # rather than refusing on a rule of this dashboard's invention. Streamed,
     # because that implicit build can pull for half an hour.
-    r = devapp._run(devapp._compose(project, instance, "up", "-d"), timeout=1800,
+    r = devapp._run(devapp._compose(project, instance, "up", "-d", "--remove-orphans"), timeout=1800,
                     env_extra=devapp._dev_data_env(project, instance) | devapp._build_env(project, instance),
                     sink=run.line, hold=run.hold)
     if run.canceled:
@@ -815,7 +818,7 @@ def project_dir_inside(sv, project):
 
 def _job_down(project, instance, run):
     run.step("stopping")
-    r = devapp._run(devapp._compose(project, instance, "down"), timeout=180,
+    r = devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
                     sink=run.line, hold=run.hold)
     if run.canceled:
         return {"state": "canceled", "error": "stopped"}
@@ -896,7 +899,7 @@ def _job_rebuild(project, instance, run):
             _stamp(devapp._rec(d, project, instance), project, instance)
             devapp.write_json(devapp.FILE, d)
         run.step("stopping")
-        devapp._run(devapp._compose(project, instance, "down"), timeout=180,
+        devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
                     sink=run.line, hold=run.hold)
         # Checked here as well as after each of the other two. Abort during
         # this step reached nothing once: there was no held process to
@@ -921,7 +924,7 @@ def _job_rebuild(project, instance, run):
         # Streamed too: `up` pulls anything the build did not, which is the
         # long wait on a compose file made of published images rather than a
         # Dockerfile, exactly the case that looked like a hang.
-        r = devapp._run(devapp._compose(project, instance, "up", "-d"), timeout=600,
+        r = devapp._run(devapp._compose(project, instance, "up", "-d", "--remove-orphans"), timeout=600,
                         env_extra=devapp._dev_data_env(project, instance),
                         sink=run.line, hold=run.hold)
         if run.canceled:

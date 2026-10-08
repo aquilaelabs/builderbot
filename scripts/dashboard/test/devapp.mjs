@@ -709,8 +709,9 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 // Down, from the row.
 await dmClick('down');
 await pillIs('down');
-ok(/compose --project-name ep-silon .*down/.test(dockerLog()),
-   'Down runs compose down, nothing else');
+ok(/compose --project-name ep-silon .*down --remove-orphans/.test(dockerLog())
+   && /compose --project-name ep-silon .*up -d --remove-orphans/.test(dockerLog()),
+   'Down runs compose down, nothing else, and up and down both take the services the file no longer names with them (B592)');
 ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
 
 // A container that EXITED still exists: it holds its name and the project's
