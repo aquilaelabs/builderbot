@@ -68,13 +68,13 @@ beyond the ones it reads, and when something seems to be missing, ask.
     bb map suites FILE...      the suites that reach what a file defines or draws
 
 The map is an index over this tree (python, the dashboard's scripts, bb's
-shell, the suites), rebuilt by itself when a source is newer, and it often
-answers "where would I look" in one call where grep would take many. It is
-a tool, not a rule: use grep whenever that is quicker or the map comes up
-short. It is rough by design: braces, not scope; an anonymous callback is
-attributed to the nearest named function around it. When it answers wrong
-or not at all for a name that exists, that is a bug in BuilderBot: report
-it as one (below) and carry on with grep.
+shell, the suites), rebuilt by itself when a source is newer, and it
+answers "where would I look" in one call where grep would take many. Use
+it where it can answer, and grep otherwise. It is rough by design: braces,
+not scope; an anonymous callback is attributed to the nearest named
+function around it. When you grep because the map answered wrong or not at
+all for something it indexes, report that to BuilderBot (below), and carry
+on with grep.
 
 ## Building and testing
 
@@ -304,6 +304,9 @@ one seems wrong. A problem with BuilderBot itself (a `bb` verb, the
 dashboard, a node, this briefing) goes to `bb report "what happened"
 [--area A] [--repro "..."]`, read by its maintainers, not this project's
 tracker; `bb report` alone lists what became of this project's reports.
+Report anything of BuilderBot's that does not work as this briefing says
+it does, every time, even when you found a way round it: the way round is
+what the report should say.
 Where the project's setting Report BuilderBot bugs is deny (BuilderBot's
 own tree, whose tracker it is), the verb refuses and names it, and
 `bb bug add --here` files it here.
