@@ -1557,7 +1557,12 @@ if [ $# -gt 0 ]; then
             # A probe (`bb tests probe FILE`): a script from anywhere, copied
             # beside lib.mjs so its `./lib.mjs` resolves, and removed after.
             /*) f="$HERE/_probe-$(basename "${t%.mjs}").mjs"; cp "$t" "$f"; probes+=("$f"); tests+=("$f") ;;
-            *)  tests+=("$HERE/${t%.mjs}.mjs") ;;
+            *)  # A name that is no suite is said so before anything runs,
+                # not reported later as a suite that "failed again alone".
+                [ -f "$HERE/${t%.mjs}.mjs" ] || {
+                    echo "[dashboard-test] ERROR: no suite called ${t%.mjs}: the suites are $(cd "$HERE" && ls ./*.mjs | sed 's|^\./||; s|\.mjs$||' | grep -vxE 'lib|surface-list' | tr '\n' ' ')" >&2
+                    exit 2; }
+                tests+=("$HERE/${t%.mjs}.mjs") ;;
         esac
         names+=("$t")
     done
