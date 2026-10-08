@@ -62,7 +62,7 @@ function drawChat(){
     // first, so "mine" and "everything else on the box" are one glance apart
     // rather than one read of a list of forty.
     const ps = [...(state?.projects || [])]
-      .sort((a, b) => (notMine(a) - notMine(b)) || a.name.localeCompare(b.name));
+      .sort((a, b) => (notMine(a) - notMine(b)) || byProjectName(a, b));
     const projs = ps.map(p => {
       // Unread is only ever marked on a channel that is YOURS. An admin is
       // shown every project's channel and most are somebody else's business:
@@ -71,7 +71,7 @@ function drawChat(){
       return `<button class="row chatrow${notMine(p) ? " notmine" : ""}${
         n ? " unread" : ""}" data-proj="${esc(p.name)}"
          ${notMine(p) ? `title="you have not taken this project on; you can read it"` : ""}>
-         <span class="grow">#${esc(p.name)}</span>
+         <span class="grow">#${esc(projLabel(p.name))}</span>
          ${n ? `<span class="pill">${n}</span>` : ""}
        </button>`;
     });
@@ -88,7 +88,7 @@ function drawChat(){
   // A person's name carries when they were last here, as it does in the list.
   const lastIn = n => new Set(c.online || []).has(n) ? "here now"
     : c.seen?.[n] ? ago(c.seen[n]) : "never signed in";
-  const title = chatWith.project ? "#" + chatWith.project : `${chatWith.who} (${lastIn(chatWith.who)})`;
+  const title = chatWith.project ? "#" + projLabel(chatWith.project) : `${chatWith.who} (${lastIn(chatWith.who)})`;
   const key = chatKey(chatWith);
   // Painted only when the conversation changed: the poll every four seconds
   // repainted the panel whole and pinned the log to its end, and a reader

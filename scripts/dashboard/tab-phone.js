@@ -160,7 +160,7 @@ function phonePanel(n){
       : L.left > 3600 ? `${Math.floor(L.left / 3600)} h ${Math.round((L.left % 3600) / 60)} min left`
       : `${Math.max(1, Math.round(L.left / 60))} min left`;
     rows.push(`<div class="row phlease">
-       <div class="grow"><div class="name">Lent to ${esc(L.project)} <span class="pill go">${esc(left)}</span></div>
+       <div class="grow"><div class="name">Lent to ${esc(projLabel(L.project))} <span class="pill go">${esc(left)}</span></div>
          <div class="sub">${(L.pkgs || []).length
            ? `its sessions drive ${esc(L.pkgs.join(", "))}, and nothing else, without asking`
            : "its sessions may install one of its builds; then that app, and nothing else, without asking"}</div>${
@@ -186,7 +186,7 @@ function phonePanel(n){
          <div class="name">Lend to a project</div>
          <div class="prefrow">
            <label class="pick">Project <select id="phLendTo" aria-label="the project to lend the phone to"${ps.length ? "" : " disabled"}>${
-             ps.map(p => `<option value="${esc(p)}"${p === phLendTo ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+             ps.map(p => `<option value="${esc(p)}"${p === phLendTo ? " selected" : ""}>${esc(projLabel(p))}</option>`).join("")}</select></label>
            <label class="pick">For <select id="phLendFor" aria-label="how long">
              <option value="1"${phLendFor === "1" ? " selected" : ""}>1 hour</option>
              <option value="4"${phLendFor === "4" ? " selected" : ""}>4 hours</option>
@@ -224,7 +224,7 @@ function phonePanel(n){
   // the lease ends or the phone is disconnected.
   for (const g of (n.trust || []))
     rows.push(`<div class="row phtrust">
-      <div class="grow"><div class="name">Allowed for ${esc(g.asker || "a")}'s sessions in ${esc(g.project)}</div>
+      <div class="grow"><div class="name">Allowed for ${esc(g.asker || "a")}'s sessions in ${esc(projLabel(g.project))}</div>
         <div class="sub">their commands to this phone run without asking ${g.until
           ? `until ${esc(fmtTime(g.until * 1000, {hour: "2-digit", minute: "2-digit"}))}`
           : "while it is lent to " + esc(g.project)}</div></div>
@@ -237,7 +237,7 @@ function phonePanel(n){
     rows.push(`<div class="row phask">
       <div class="grow"><div class="name">${esc(a.why)}</div>
         <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project") : a.project || "a session")} on ${esc(a.node_name)} · ${a.left > 60
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project ? projLabel(a.project) : "a project") : a.project ? projLabel(a.project) : "a session")} on ${esc(a.node_name)} · ${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</div></div>
       <span class="acts">
@@ -249,7 +249,7 @@ function phonePanel(n){
   const L2 = n.lease;
   // Refresh is the tab's bar's (R121); this says how a session gets in.
   rows.push(`<div class="field toolfoot phbar"><div class="hint">${L2
-      ? `Lent to ${esc(L2.project)}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.`
+      ? `Lent to ${esc(projLabel(L2.project))}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.`
       : "A session reaches this phone only by asking; the request lands with its owner, with its reason."}</div></div>`);
   if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);
   return `<div class="phonetab">${rows.join("")}</div>`;

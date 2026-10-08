@@ -66,7 +66,7 @@ const claudeLiveOn = (name, n) => (state?.sessions || []).some(s => s.name === m
 // drop its tab: the chooser's End session.
 async function claudeEnd(name, n, several){
   const where = n.name ? ` on ${n.name}` : "";
-  if (!confirm(`End your Claude session on ${name}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
+  if (!confirm(`End your Claude session on ${projLabel(name)}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
   resumeFor = null;
   if (state) drawProjects(state.projects);
   try{
@@ -75,7 +75,7 @@ async function claudeEnd(name, n, several){
     const arg = `claude:${name}` + (several && n.id ? `:n:${n.id}` : "");
     const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
     if (t) dropTab(t.id);
-    notify(`ended your Claude session on ${name}${where}`);
+    notify(`ended your Claude session on ${projLabel(name)}${where}`);
   }catch(e){ notify("could not end it: " + e, true); }
   refresh();
 }
@@ -125,7 +125,7 @@ function openClaude(name, ev){
 // on it at once, so a stray tap is work begun. The bug and roadmap sends ask
 // in their own send box; every other Send to Claude asks here.
 function sendSure(project, what){
-  return confirm(`Send ${what} to ${project}'s Claude session?\n\n`
+  return confirm(`Send ${what} to ${projLabel(project)}'s Claude session?\n\n`
                  + "It arrives as a prompt, and Claude starts on it at once.");
 }
 
@@ -149,7 +149,7 @@ function launchClaude(name, sessionId, node){
   const nn = node ? (p?.session_nodes || []).find(x => x.id === node)?.name || node : "";
   openTab({kind:"term",
            arg: `claude:${name}` + (sessionId ? `:r:${sessionId}` : "") + (node ? `:n:${node}` : ""),
-           label: `Claude: ${name}` + (nn ? ` (${nn})` : "")});
+           label: `Claude: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
 }
 
 // ---- a new project's first session ------------------------------------------
@@ -166,7 +166,7 @@ async function openBrief(name, node){
   if (state) drawProjects(state.projects);
   briefFor = {name, node};
   const p = (state?.projects || []).find(x => x.name === name);
-  $("briefTitle").textContent = `First session on ${name}`;
+  $("briefTitle").textContent = `First session on ${projLabel(name)}`;
   $("briefErrWrap").hidden = true;
   $("briefText").value = "";
   for (const [id, table, cur] of [["briefModel", MODELS, p?.yours?.model || ""],

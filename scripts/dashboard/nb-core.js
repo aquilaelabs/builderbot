@@ -45,7 +45,7 @@ function getNotebook(project){
 }
 
 function openNotebook(name, view){
-  openTab({kind: "notebook", arg: name, label: "Notebook: " + name});
+  openTab({kind: "notebook", arg: name, label: "Notebook: " + projLabel(name)});
   if (view) getNotebook(name).view(view);
 }
 
@@ -183,7 +183,7 @@ function makeNotebook(project){
   async function openMemory(name){
     nb.memProj = name;
     const gen = ++nb.memGen;
-    $("memTitle").textContent = "Notebook: " + name;
+    $("memTitle").textContent = "Notebook: " + projLabel(name);
     nb.memN = null; briefingHead();
     $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
     nb.roadmapSel = null;                 // the send box lives on the row, and the
@@ -720,7 +720,7 @@ function makeNotebook(project){
     const where = (nodesList || []).find(n => n.id === (got.node || node))?.name || "its node";
     const n = mine.length + others.length;
     $("dkHint").textContent = n
-      ? `${n} container${n === 1 ? "" : "s"} of ${project}'s on ${where}${
+      ? `${n} container${n === 1 ? "" : "s"} of ${projLabel(project)}'s on ${where}${
           blind ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`
       : `0 containers on ${where}`;
     const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length]);
@@ -728,7 +728,7 @@ function makeNotebook(project){
     dkSeen = key;
     // What the view is for, as its empty state (R119 step 4).
     $("dkList").innerHTML = (dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others))
-      || `<div class="field"><div class="hint nbempty">Send ${esc(project)} from the Artifacts tab, or pick it on a container's row on the Docker tab.</div></div>`;
+      || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from the Artifacts tab, or pick it on a container's row on the Docker tab.</div></div>`;
     tipify($("dkList"));
     dmWireRows($("dkList"), got);
   }

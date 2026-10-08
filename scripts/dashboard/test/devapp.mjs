@@ -1252,29 +1252,12 @@ verified(False)
 out['proxy'] = [m._dev_data_env('alpha'), calls[:]]
 verified(True)
 
-# A rename reaches over there too, or the instance's data is orphaned under
-# the old name with nothing said about it.
+# The sandbox VM's daemon, and a store with a default and a named instance,
+# as what follows reads them.
 calls.clear()
 sethost('ssh://bb@vm')
-# ...and refused outright when the target is already a directory over there:
-# 'mv a b' with b existing does not fail, it buries a inside b.
-calls.clear()
-out['onto'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-alpha'),
-               [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
-calls.clear()
-out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
-                  [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
-
-# Renaming a PROJECT, which is asked per project rather than per directory:
-# only the default instance's directory is named for the project, so that one
-# moves and a named instance's does not, since its name never carried the project.
-# Asked as was == now rather than known, so a change to _pname is picked up
-# here rather than orphaning what it renames.
-calls.clear()
 m._load = lambda: {'beta': {'main': {}, 'staging': {}}}
-out['project'] = [m.rename_project_data('alpha', 'beta'),
-                  [[a for a in c['argv'] if a.startswith('/d/')]
-                   for c in calls if 'mv' in c['argv']]]
+calls.clear()
 
 # Bind directories on the DAEMON's side. The shares are mounted over there
 # and not here, which is the shipped arrangement, and which shares the VM has
@@ -1343,20 +1326,6 @@ ok(!DDD.ours.includes('/devdata-not-here'),
 ok(!Object.keys(DDD.proxy[0]).length && !DDD.proxy[1].length,
    'a daemon that is not the sandbox VM is never asked to run one, and the compose '
    + 'says so rather than mounting a directory docker invented');
-ok(DDD.renamed[0][0] === true && !DDD.renamed[0][1]
-   && JSON.stringify(DDD.renamed[1]) === JSON.stringify(
-      [['/d/bbdev-alpha'], ['/d/bbdev-beta'], ['/d/bbdev-alpha', '/d/bbdev-beta']]),
-   'a rename moves the data over there too, rather than orphaning it');
-ok(DDD.onto[0][0] === false && /already has a data directory/.test(DDD.onto[0][1])
-   && DDD.onto[1].every(paths => paths.length === 1),
-   '...and refuses onto a name the sandbox already has: every call it made names '
-   + 'one directory, so the two-path mv that would bury one never ran');
-ok(JSON.stringify(DDD.project[1]) === JSON.stringify([['/d/alpha', '/d/beta']]),
-   'renaming a project moves the data of every instance named after it, which '
-   + 'is the default one, and only it');
-ok(DDD.project[0][0].length === 1 && !DDD.project[0][1].length,
-   '...and a named instance is left alone rather than reported as a failure: '
-   + 'its directory never carried the project\'s name');
 ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
      .every(([, v]) => !!v),
    'the guard allows those exact commands and nothing else wearing the same verb');
@@ -3900,10 +3869,10 @@ print(json.dumps({'gone': sorted(gone),
      `...and leaves a live instance that merely ends the same way, and a partial match (${FC.left.join(', ')})`);
 }
 
-// ---- what a container belongs to, read and renamed ---------------------------
+// ---- what a container belongs to ---------------------------------------------
 // owner_of reads `for` by presence: none means the default (the project it is
 // built from, or no project for a written one), and an empty one is none on
-// purpose. A project renamed takes what belongs to it along, in both files.
+// purpose. A rename moves nothing (R154): the directory is the key.
 {
   const out = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
@@ -3920,15 +3889,11 @@ wj(d + '/devapps.json', {'media': {'main': {}, 'loose': {'for': ''}},
                          'scratch': {'main': {'source': 'file'}}})
 wj(d + '/docker-owners.json', {'n1': {'plex': 'media', 'other': 'alpha'}})
 before = [m.owner_of('media'), m.owner_of('media', 'loose'), m.owner_of('radarr'), m.owner_of('scratch')]
-moved = m.rename_owner('media', 'media2')
-print(json.dumps({'before': before, 'moved': moved, 'after': m.owner_of('radarr'),
-                  'owners': json.load(open(d + '/docker-owners.json'))}))
+print(json.dumps({'before': before}))
 `], { encoding: 'utf8' });
   const R = JSON.parse(out.trim().split('\n').pop());
   ok(JSON.stringify(R.before) === JSON.stringify(['media', '', 'media', '']),
      `a container belongs to its project by default, to none when sent to none, and to its pick when written here (${R.before})`);
-  ok(R.moved && R.after === 'media2' && R.owners.n1.plex === 'media2' && R.owners.n1.other === 'alpha',
-     `...and a project renamed takes what belongs to it, in both stores (${JSON.stringify(R.owners)})`);
 }
 
 // ---- a container compose refuses never reaches the list (B239) ----------------

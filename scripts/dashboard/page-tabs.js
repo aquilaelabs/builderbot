@@ -30,7 +30,7 @@ function sessionLabels(){
   // Through tmuxBase: an account's own sessions carry its prefix, and a
   // prefixed Claude session is still a Claude session.
   const of = s => { const b = tmuxBase(s.name);
-    return b.startsWith("claude-") ? "Claude: " + (projFor(b.slice(7)) ?? b.slice(7))
+    return b.startsWith("claude-") ? "Claude: " + projLabel(projFor(b.slice(7)) ?? b.slice(7))
            : s.cwd ? "sh: " + baseOf(s.cwd)
            : "sh: " + s.name; };
   const total = {};
@@ -58,6 +58,8 @@ function tabLabel(t){
 // The tooltip is the full path, which is the thing a basename loses, plus,
 // for a Claude tab, what the session says it is doing.
 function tabTitle(t){
+  // A notebook's title is computed like its label, so a rename shows at once.
+  if (t.kind === "notebook") return tabLabel(t);
   if (t.kind !== "term") return t.label;
   const base = cwdOf(sessionOf(t.arg)) || t.label;
   const c = isClaude(t) ? claudeOf(sessionOf(t.arg)) : null;
@@ -245,7 +247,7 @@ const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bEmulator: "
 
 const TABKINDS = {
   term:     { multi: true },
-  notebook:     { multi: true, label: t => "Notebook: " + t.arg,
+  notebook:     { multi: true, label: t => "Notebook: " + projLabel(t.arg),
               icon: TOOL_ICONS.notebook,
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
   toolchains: { multi: false, label: () => "Toolchains",

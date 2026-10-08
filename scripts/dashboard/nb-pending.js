@@ -90,7 +90,7 @@ let pendFor = null;
 
 async function openPending(project){
   pendFor = project;
-  $("pendTitle").textContent = `Waiting for your approval: ${project}`;
+  $("pendTitle").textContent = `Waiting for your approval: ${projLabel(project)}`;
   $("pendModal").hidden = false;
   $("pendList").innerHTML = "";
   $("pendEmpty").hidden = true;
@@ -193,7 +193,7 @@ async function pendAct(action){
     if (j.denied?.length) said.push(`${j.denied.length} denied`);
     if (j.skipped?.length) said.push(`${j.skipped.length} skipped: ${j.skipped[0].why}`);
     if (j.failed?.length) said.push(`${j.failed.length} could not be applied: ${j.failed[0].why}`);
-    notify(`${project}: ${said.join(", ") || "nothing changed"}`, !!j.failed?.length);
+    notify(`${projLabel(project)}: ${said.join(", ") || "nothing changed"}`, !!j.failed?.length);
     drawPendingModal(j);
     // The lists moved under the notebook: re-read whichever views exist.
     const nb = notebooks.get(project);

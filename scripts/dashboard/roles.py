@@ -245,20 +245,6 @@ def remove(name):
         _save(d)
     return {"ok": True, "name": name}
 
-
-def rename_project(old, new):
-    """A project renamed renames its owner role (OLD_owner to NEW_owner);
-    the accounts holding it are users.rename_project's to move."""
-    a, b = owner_role_name(old), owner_role_name(new)
-    with _lock:
-        d = _load()
-        if a not in d or b in d:
-            return False
-        d[b] = dict(d.pop(a), note=f"the owner of {new}")
-        _save(d)
-    return True
-
-
 def roles_of(u):
     """The roles an account carries everywhere: its list, or the one its role
     names (every account from before R137). The ones it carries on a single

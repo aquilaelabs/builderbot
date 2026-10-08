@@ -205,7 +205,7 @@ function renderFindingsInto(i){
   const projSelect = `<select id="fxProject" aria-label="project">
       <option value="">all projects · ${all.length}</option>
       ${projects.map(pn => `<option value="${esc(pn)}"${pn === fxProject ? " selected" : ""}>${
-        esc(pn)} · ${perProject[pn]}</option>`).join("")}
+        esc(projLabel(pn))} · ${perProject[pn]}</option>`).join("")}
     </select>`;
   // Grouped by project when looking across them, flat when one is chosen:
   // a heading repeating the selector's own value is noise.
@@ -219,7 +219,7 @@ function renderFindingsInto(i){
   // same rendering, one implementation and one stylesheet for both.
   const body = rows.length
     ? groups.map(([name, fs]) => (name
-        ? `<div class="fxproj"><span class="name">${esc(name)}</span>
+        ? `<div class="fxproj"><span class="name">${esc(name === "unattributed paths" ? name : projLabel(name))}</span>
              <span class="dim">${fs.length}</span></div>` : "")
         + `<div class="fx">${findingsRulesHtml(fs)}</div>`).join("")
     : `<div class="empty">${all.length

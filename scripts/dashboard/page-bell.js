@@ -111,14 +111,14 @@ function drawBell(){
     ...asks.map(a => `<div class="bnote ask${a.kind === "root" || a.kind === "release-remove" ? " bad" : ""}">
         <div class="btag">${
           a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
-          : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
-          : a.kind === "sign" ? `sign a build of ${esc(a.project || "a project")}: needs your answer`
-          : a.kind === "sign-key" ? `a signing key change in ${esc(a.project || "a project")}: needs your answer`
-          : a.kind === "release" ? `release ${esc(a.project || "a project")} ${esc(a.tag || "")}: needs your answer`
-          : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project || "a project")}: needs your answer`
-          : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project || "a project")}: needs your answer`
-          : a.kind === "phone-use" ? `your phone, from ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "sign" ? `sign a build of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "sign-key" ? `a signing key change in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release" ? `release ${esc(a.project ? projLabel(a.project) : "a project")} ${esc(a.tag || "")}: needs your answer`
+          : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "phone-use" ? `your phone, from ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
         <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" || a.kind === "release-remove" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
@@ -144,10 +144,10 @@ function drawBell(){
               ? `<a href="#" data-ballow="${a.id}" data-bsession="1">Approve for this session</a>` : ""}
             <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
     ...invites.map(i => `<div class="bnote ask">
-        <div class="btag">${i.kind === "owner" ? `${esc(i.project)} offered to you` : `invited to ${esc(i.project)}`}</div>
+        <div class="btag">${i.kind === "owner" ? `${esc(projLabel(i.project))} offered to you` : `invited to ${esc(projLabel(i.project))}`}</div>
         <div class="bwhy">${i.kind === "owner"
-          ? `${esc(i.by || "Somebody")} offers you ownership of ${esc(i.project)}`
-          : `${esc(i.by || "Somebody")} invited you to work on ${esc(i.project)}`}</div>
+          ? `${esc(i.by || "Somebody")} offers you ownership of ${esc(projLabel(i.project))}`
+          : `${esc(i.by || "Somebody")} invited you to work on ${esc(projLabel(i.project))}`}</div>
         <div class="bfoot"><span>${esc(ago(i.at))}</span>
           <span class="acts"><a href="#" data-binvite="${i.id}" data-yes="0">Decline</a>
             <a href="#" data-binvite="${i.id}" data-yes="1">Accept</a></span></div></div>`),
@@ -156,7 +156,7 @@ function drawBell(){
     // the changes are read, so the row's only job is to take you there.
     ...waiting.map(p => `<div class="bnote ask">
         <div class="btag">waiting for your approval</div>
-        <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(p.name)}</div>
+        <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(projLabel(p.name))}</div>
         <div class="bfoot"><span>on the notebook</span>
           <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
     // ...and the nodes. Out of window is red and names the projects it
@@ -183,7 +183,7 @@ function drawBell(){
         <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
           <span class="acts"><a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`),
     ...ciRed.map(c => `<div class="bnote ask bad">
-        <div class="btag">CI failing in ${esc(c.project)}</div>
+        <div class="btag">CI failing in ${esc(projLabel(c.project))}</div>
         <div class="bwhy">${esc(c.text)}</div>
         <div class="bfoot"><span>this stays until the check passes again</span>
           <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
@@ -220,8 +220,8 @@ function drawBell(){
     const yes = a.dataset.yes === "1";
     const j = await (await postJSON("/api/members", {action: yes ? "accept" : "decline",
                                                      id: Number(a.dataset.binvite)})).json().catch(() => ({}));
-    notify(j.error || (yes ? (j.owner ? `you own ${j.project} now` : `you are on ${j.project} now`)
-                           : `declined ${j.project}`), !!j.error);
+    notify(j.error || (yes ? (j.owner ? `you own ${projLabel(j.project)} now` : `you are on ${projLabel(j.project)} now`)
+                           : `declined ${projLabel(j.project)}`), !!j.error);
     refresh();
   });
   panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {

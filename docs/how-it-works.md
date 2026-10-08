@@ -1049,11 +1049,15 @@ lives in its body. The cards:
   what a session may enter into the notebook, and how much of the tree it may
   change without asking. GitHub is not in it; that is the chain, on the same
   row, so a credential has one home whether or not the project has a remote
-  yet. Renaming moves the directory and everything
-  keyed to its old name: the roadmap and bugs, the versions, the dev instance's
-  data and env, the archived CI logs, and Claude's own transcripts and
-  memories. It refuses while a terminal is open on it or its dev instance still
-  has containers, and it reports what moved rather than only that it worked
+  yet. Renaming changes the name it is shown under and nothing else (R154):
+  a project has a permanent id and a directory that is never handed out again,
+  and everything (the notebook, the containers, the sessions, Claude's own
+  transcripts and memories) is keyed by the directory, so a rename moves
+  nothing and needs nothing closed first. Two live projects are never shown
+  under one name: a second gets Name (2), whether it was created, cloned or
+  put back from the trash. A name ever used gives a new project the next free
+  directory (Name-2), so it never inherits an old project's notebook or
+  containers, and a project put back from the trash always fits where it was
 - a **padlock** per project, which locks it: the row stays whole and every
   control you use stays live (notebook, artifacts, dev instance, shell) and
   the only thing that goes is Claude starting a session there. For a project
@@ -3275,7 +3279,7 @@ never asked and no container-wide token authenticates the fetch.
 That last part is the point. A token minted to reach one private repo usually
 reaches every repo it was scoped to; in the environment it also reaches them
 from every project and every session. Here it opens the one project you gave it
-to, and renaming that project takes it along.
+to, and stays with that project whatever it is renamed to.
 
 A project that already has push rights can be given a token from the **chain**
 on its row, including one that pushes with a **deploy key**. Setting one there
@@ -3445,7 +3449,7 @@ given, find the alias (or the only key in it) and see a private key, and its
 certificate's SHA-256 fingerprint is what the dialog shows. A session never
 receives the key or a password, and is refused even the list of which keys
 exist: it signs with `bb sign`, which runs on the project's node as a job the
-session cannot look inside. Renaming the project carries its keys with it.
+session cannot look inside. Renaming the project leaves its keys where they are, with it.
 
 **A signing is a job on the project's node.** It fetches the build from
 `dist/` as a job input and the key over the agent's own channel, which hands

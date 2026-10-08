@@ -220,14 +220,14 @@ function dnNodeSay(){
 // has already, whose ports a second one must not take.
 function openSendToDocker(project, sendAs, have){
   dnFor = project;
-  $("dnTitle").textContent = "New container from " + project;
+  $("dnTitle").textContent = "New container from " + projLabel(project);
   $("dnName").value = sendAs || project;
   $("dnErrWrap").hidden = true;
   $("dnPreview").hidden = true;
   $("dnGo").disabled = false; $("dnGo").textContent = "Create";
   $("dnHint").textContent = have
-    ? `Built from ${project}'s codebase, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
-    : `Built from ${project}'s codebase. Its own name makes its own container; another name makes a second one.`;
+    ? `Built from ${projLabel(project)}'s codebase, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
+    : `Built from ${projLabel(project)}'s codebase. Its own name makes its own container; another name makes a second one.`;
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);
@@ -249,7 +249,7 @@ function openSendToDocker(project, sendAs, have){
       if (dnFor !== project || !(j.text || "").trim()) return;
       $("dnEnv").value = j.text;
       $("dnEnvHint").textContent =
-        "Copied from " + project + "'s .env.example. Saved for this container when you press Create.";
+        "Copied from " + projLabel(project) + "'s .env.example. Saved for this container when you press Create.";
       $("dnEnvField").hidden = false;
     }).catch(() => {});
 }
@@ -477,7 +477,7 @@ function dmGrantLine(d, other = false){
        ask: "asks you before rebuilding it, changing its env or creating it", deny: "may not rebuild it"}
     : {auto: "may rebuild it and change its env", ask: "asks you before rebuilding it or changing its env",
        deny: "may not rebuild it"};
-  return `<div class="sub dmgrant dmclaudesays">${own ? "Claude" : `${esc(d.owner)}'s Claude`} ${
+  return `<div class="sub dmgrant dmclaudesays">${own ? "Claude" : `${esc(projLabel(d.owner))}'s Claude`} ${
     says[mode] || says.deny} · <a href="#" data-dmtestgo="${esc(d.owner)}"
       title="the project's settings, where Claude may: Run its container is set">change</a></div>`;
 }
@@ -495,8 +495,8 @@ function dmOwnerLine(r, key){
   const names = (state?.projects || []).map(p => p.name);
   // A project since deleted is still what the row says until it is changed.
   if (saved && !names.includes(saved)) names.push(saved);
-  const shown = n => n === saved && r.owner_gone ? `${n} (deleted)` : n;
-  names.sort((a, b) => a.localeCompare(b, undefined, {sensitivity: "base"}));
+  const shown = n => n === saved && r.owner_gone ? `${n} (deleted)` : projLabel(n);
+  names.sort((a, b) => projLabel(a).localeCompare(projLabel(b), undefined, {sensitivity: "base"}));
   const id = "dmo-" + key;
   return `<div class="sub dmowner"><label for="${esc(id)}">Project${
       helpIcon("Its project's Claude sessions can see it and, as that project's "
@@ -519,7 +519,7 @@ function dmMoveLine(d){
   if (!mayDocker() || d.source === "file") return "";
   const key = `${d.project}|${d.instance}`, pick = dmMoveDraft[key] ?? d.project;
   const names = (state?.projects || []).map(p => p.name)
-    .sort((a, b) => a.localeCompare(b, undefined, {sensitivity: "base"}));
+    .sort((a, b) => projLabel(a).localeCompare(projLabel(b), undefined, {sensitivity: "base"}));
   // Built from a project since deleted: it is still that one's until moved.
   const gone = !names.includes(d.project);
   if (gone) names.unshift(d.project);
@@ -530,7 +530,7 @@ function dmMoveLine(d){
         + "from that project's tree.")}</label>
     <select id="${esc(id)}" data-dmmove="${esc(key)}" aria-label="the project it is built from">${
       names.map(n => `<option value="${esc(n)}"${n === pick ? " selected" : ""}>${
-        esc(gone && n === d.project ? `${n} (deleted)` : n)}</option>`).join("")}</select>
+        esc(gone && n === d.project ? `${n} (deleted)` : projLabel(n))}</option>`).join("")}</select>
     <button type="button" data-dmmoveapply="${esc(key)}"${
       pick === d.project ? " disabled" : ""} title="move it under that project">Move</button></div>`;
 }
@@ -756,9 +756,9 @@ async function openEditContainer(name){
 // Which project a new container belongs to: every project this account
 // sees, no project first.
 function fillUnderSelect(sel, picked){
-  const names = (state?.projects || []).map(p => p.name).sort((a, b) => a.localeCompare(b));
+  const names = (state?.projects || []).map(p => p.name).sort((a, b) => projLabel(a).localeCompare(projLabel(b)));
   sel.innerHTML = `<option value="">no project</option>` + names.map(n =>
-    `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(n)}</option>`).join("");
+    `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(projLabel(n))}</option>`).join("");
 }
 
 // The node follows the project picked: a container of a project belongs on
@@ -1038,7 +1038,7 @@ function dmRowsHtml(ins, job, blind){
             dockerList?.stale && !blind ? ", as last seen" : ""})</span></div>
         <div class="sub">${d.source === "file"
           ? `written here: this dashboard holds its compose file`
-          : `from ${esc(d.project)}'s compose file${
+          : `from ${esc(projLabel(d.project))}'s compose file${
               d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}</div>
         </div>
         <details class="dmdet"${
@@ -1061,7 +1061,7 @@ function dmRowsHtml(ins, job, blind){
           `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
             esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
-        ${d.astray ? `<div class="sub bad">on this node, but ${esc(d.owner || d.project)} works on ${
+        ${d.astray ? `<div class="sub bad">on this node, but ${esc(projLabel(d.owner || d.project))} works on ${
           esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${dmMoveLine(d)}${
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
@@ -1234,7 +1234,7 @@ function dmWireRows(el, list = dockerList){
       const j = await r.json();
       if (j.error){ notify(j.error, true); return; }
       delete dmOwnDraft[key];
-      notify(owner ? `${what} belongs to ${owner} now` : `${what} belongs to no project now`);
+      notify(owner ? `${what} belongs to ${projLabel(owner)} now` : `${what} belongs to no project now`);
       dockerList = null; dockerRev++; loadDocker();
     }catch(e){ notify("the project: " + e, true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
@@ -1254,16 +1254,16 @@ function dmWireRows(el, list = dockerList){
     const [project, instance] = key.split("|");
     const what = (list?.instances || []).find(
       x => x.project === project && x.instance === instance)?.name || project;
-    if (!confirm(`Move ${what} to ${to}? It keeps its name, env and data, and builds from ${
-        to}'s tree from its next rebuild.`)) return;
+    if (!confirm(`Move ${what} to ${projLabel(to)}? It keeps its name, env and data, and builds from ${
+        projLabel(to)}'s tree from its next rebuild.`)) return;
     busy(btn, "Moving");
     try{
       const r = await postJSON("/api/devapp", {action: "move", project, instance, to});
       const j = await r.json();
       if (j.error){ notify(j.error, true); return; }
       delete dmMoveDraft[key];
-      notify(`${what} is ${to}'s now` + (j.dropped_ref
-        ? `; it built from ${j.dropped_ref}, which was ${project}'s branch, and now builds from ${to}'s checkout` : ""));
+      notify(`${what} is ${projLabel(to)}'s now` + (j.dropped_ref
+        ? `; it built from ${j.dropped_ref}, which was ${projLabel(project)}'s branch, and now builds from ${projLabel(to)}'s checkout` : ""));
       dockerList = null; dockerRev++; loadDocker();
     }catch(e){ notify("move: " + e, true); }
     finally{ if (btn.isConnected) unbusy(btn, "Move"); }
@@ -1322,7 +1322,7 @@ function dmGroupsHtml(ins, cs, job, blind){
     sub ? `<span class="dim">${esc(sub)}</span>` : ""}</div>`;
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
-    .filter(Boolean).sort(byName);
+    .filter(Boolean).sort((a, b) => byName(projLabel(a), projLabel(b)));
   const group = o =>
     dmRowsHtml(ins.filter(d => (d.owner || "") === o).sort((a, b) => byName(a.name, b.name)), job, blind)
     + dmOtherRowsHtml(cs.filter(c => (c.owner || "") === o)
@@ -1333,7 +1333,7 @@ function dmGroupsHtml(ins, cs, job, blind){
   const gone = o => [...ins, ...cs].some(r => r.owner === o && r.owner_gone);
   return owners.map(o => gone(o)
       ? head(`${o} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
-      : head(o, "", colorTone(projectColor(o))) + group(o)).join("")
+      : head(projLabel(o), "", colorTone(projectColor(o))) + group(o)).join("")
     + (loose ? head("No project", "no Claude session sees these", null) + group("") : "");
 }
 

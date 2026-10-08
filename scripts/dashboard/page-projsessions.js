@@ -41,14 +41,14 @@ function rnSessionsDraw(name, rows){
 async function rnSessionEnd(name, r, btn){
   const whose = r.who === state?.me ? "your" : `${r.who}'s`;
   if (!confirm(r.kind === "claude"
-      ? `End ${whose} Claude session on ${name}?\n\nThe work in flight stops; the conversation resumes from the Claude button.`
-      : `End ${whose} shell on ${name}?\n\nWhatever is running in it stops.`)) return;
+      ? `End ${whose} Claude session on ${projLabel(name)}?\n\nThe work in flight stops; the conversation resumes from the Claude button.`
+      : `End ${whose} shell on ${projLabel(name)}?\n\nWhatever is running in it stops.`)) return;
   busy(btn, "Ending");
   try{
     const j = await (await postJSON("/api/project-sessions",
       {project: name, action: "end", session: r.name, node: r.node_id || ""})).json();
     if (j.error){ notify(j.error, true); unbusy(btn, "End"); return; }
-    notify(`ended ${whose} ${r.kind === "claude" ? "Claude session" : "shell"} on ${name}`);
+    notify(`ended ${whose} ${r.kind === "claude" ? "Claude session" : "shell"} on ${projLabel(name)}`);
   }catch(e){ notify("could not end it: " + e, true); unbusy(btn, "End"); return; }
   rnSessionsLoad(name);
 }

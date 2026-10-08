@@ -60,7 +60,7 @@ async function jobAct(body){
 function jobTitle(j){
   const s = j.spec || {};
   if (j.type === "compose")
-    return `${esc(s.action || "compose")} ${esc(j.project || "")}${
+    return `${esc(s.action || "compose")} ${esc(j.project ? projLabel(j.project) : "")}${
       s.instance && s.instance !== "main" ? "/" + esc(s.instance) : ""}`;
   if (j.type === "self-update") return "agent self-update";
   if (j.type === "system") return `apply ${esc(s.apply || "config")} on the node`;
@@ -70,14 +70,14 @@ function jobTitle(j){
   // A job its caller named in words (nodes.run_wait's title): a shell line
   // is not what a person reads a job list for (the design pass, 4 Oct).
   if (s.title) return esc(s.title);
-  if (j.type === "cache-clear") return `clear ${s.project ? esc(s.project) + "'s caches" : "every cache"}`;
+  if (j.type === "cache-clear") return `clear ${s.project ? esc(projLabel(s.project)) + "'s caches" : "every cache"}`;
   // Run on another node of the project's set because its primary was not
   // up (R82 step 6): said on the row, since the row is where it is looked for.
   const stood = s.fell_over ? " (its primary was not up)" : "";
   const argv = (Array.isArray(s.argv) ? s.argv.join(" ") : "") + stood;
   // A job with a source is a build of that project's tree, and says so
   // before the command (docs/nodes.md §6).
-  const src = j.source?.digest ? `${esc(j.project || s.project || "")} · ` : "";
+  const src = j.source?.digest ? `${esc(projLabel(j.project || s.project || ""))} · ` : "";
   return `${src}exec ${esc(argv.slice(0, 80))}${argv.length > 80 ? "…" : ""}`;
 }
 

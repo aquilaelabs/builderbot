@@ -441,6 +441,6 @@ function newShell(proj){
   // nothing.
   const pr = (state?.projects || []).find(p => p.name === proj);
   const here = !!(pr?.session_why && pr?.session_at);
-  if (here) notify(`${proj}'s node cannot take a session now; this shell is on the controller`);
+  if (here) notify(`${projLabel(proj)}'s node cannot take a session now; this shell is on the controller`);
   openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}${here ? " (here)" : ""}`, here});
 }

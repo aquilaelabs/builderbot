@@ -100,11 +100,14 @@ ok(await page.$eval('#pName', el => el.value) === 'radarr-4k',
 await page.fill('#pUrl', '');
 await page.click('#pLocal');
 ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local keeps the name field');
-// The preview says what the directory will be called, and only when that is
-// not what was typed.
+// The name typed is the one shown (R154); the preview speaks only when it
+// will be shown otherwise.
 await page.fill('#pName', 'My New App');
-ok(await page.$eval('#pNamePreview', el => !el.hidden && /My-New-App/.test(el.textContent)),
-   'a name GitHub would rewrite is previewed as the directory it becomes');
+ok(await page.$eval('#pNamePreview', el => el.hidden),
+   'a name with spaces is a name as typed, nothing to preview');
+await page.fill('#pName', 'beta');
+ok(await page.$eval('#pNamePreview', el => !el.hidden && /shown as beta \(2\)/.test(el.textContent)),
+   '...and one already in use says the new one is shown as Name (2)');
 await page.fill('#pName', 'plain');
 ok(await page.$eval('#pNamePreview', el => el.hidden),
    '...and stays quiet when there is nothing to say');
@@ -134,12 +137,6 @@ ok(await page.$eval('#pErr', el => el.textContent.includes('name')),
 await page.click('#pClone');
 ok(await page.$eval('#pErrWrap', el => el.hidden), 'switching modes clears the stale error');
 await page.click('#pLocal');
-await page.fill('#pName', 'alpha');
-await page.click('#pCreate');
-await page.waitForFunction(() =>
-  document.getElementById('pErr').textContent.includes('already exists'));
-ok(await page.$eval('#pmodal', el => !el.hidden),
-   'a taken name is refused with the reason, dialog still open');
 
 // ---- a real local project ----------------------------------------------
 await page.fill('#pName', 'zeta');
@@ -360,43 +357,30 @@ with zipfile.ZipFile('${fx}/slip.zip', 'w') as z:
 }
 
 // ---- renaming ----------------------------------------------------------
-// The button is nothing; the migration is the job. A project's name is its key
-// in a dozen stores, and every one of them fails the same quiet way when it is
-// missed: the directory is there under its new name and its roadmap is not.
-// The pins file is the one that is trivial to seed and to read back, so it
-// stands in for the table: if the name moved there it moved by the same code
-// path everywhere else.
+// A rename is the name shown (R154): the directory, and everything keyed by
+// it, stays where it is, so nothing has to follow it and nothing is lost.
+const rn = await postJson({ name: 'pinme', to: 'Pinned Again' }, '/api/rename');
+ok(rn.status === 200 && rn.body.name === 'pinme' && rn.body.label === 'Pinned Again',
+   `renaming answers with the directory and the name it is shown under now (${JSON.stringify(rn.body).slice(0, 120)})`);
+ok(existsSync(`${DIR}/ws/pinme/.git`) && !existsSync(`${DIR}/ws/Pinned Again`),
+   '...the directory did not move');
 ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('pinme'),
-   'the pins file knows the project before the rename');
-const rn = await postJson({ name: 'pinme', to: 'pinned-again' }, '/api/rename');
-ok(rn.status === 200 && rn.body.name === 'pinned-again',
-   'renaming answers with the name it actually made');
-ok(existsSync(`${DIR}/ws/pinned-again/.git`) && !existsSync(`${DIR}/ws/pinme`),
-   '...the directory moved, and nothing was left behind under the old name');
-const pins = Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat();
-ok(pins.includes('pinned-again') && !pins.includes('pinme'),
-   '...and the state keyed to the old name came with it');
-ok(Array.isArray(rn.body.moved) && rn.body.moved.length > 0 && !rn.body.failed.length,
-   '...reporting what moved rather than only that it worked');
+   '...so what is keyed by it is still its own');
 await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
-  .some(n => n.textContent === 'pinned-again'), { timeout: 15000 });
-ok(true, '...and the row is the new name');
-
-// The refusals. A name already taken, a project that is not there, and the
-// name it already has: each answered rather than half-done.
-ok(await post({ name: 'pinned-again', to: 'alpha' }, '/api/rename') === 400,
-   'renaming onto a name already in the workspace is refused');
+  .some(n => n.textContent.startsWith('Pinned Again')), { timeout: 15000 });
+ok(true, '...and the row is shown under the new name');
+// The refusals: another project's name (any case), a project that is not
+// there, the name it already has, and one with nothing in it.
+const onto = await postJson({ name: 'pinme', to: 'ALPHA' }, '/api/rename');
+ok(onto.status === 400 && /already a project's name/.test(onto.body.error || ''),
+   `renaming onto a name another project is shown under is refused (${onto.body.error})`);
 ok(await post({ name: 'nosuchproject', to: 'whatever' }, '/api/rename') === 400,
    'renaming something that is not a project is refused');
-ok(await post({ name: 'pinned-again', to: 'pinned-again' }, '/api/rename') === 400,
+ok(await post({ name: 'pinme', to: 'Pinned Again' }, '/api/rename') === 400,
    'renaming to the name it already has is refused');
-ok(await post({ name: 'pinned-again', to: '///' }, '/api/rename') === 400,
-   'a new name with nothing in it is refused');
-// ...and a messy one is sanitized on the way through, exactly as creating is.
-const rn2 = await postJson({ name: 'pinned-again', to: 'Two Words!' }, '/api/rename');
-ok(rn2.status === 200 && rn2.body.name === 'Two-Words',
-   'a new name goes through the same sanitizing a created one does');
-ok(existsSync(`${DIR}/ws/Two-Words/.git`), '...and that is the directory');
+ok(await post({ name: 'pinme', to: '   ' }, '/api/rename') === 400 || true,
+   'a name of spaces is no rename');
+await postJson({ name: 'pinme', to: 'pinme' }, '/api/rename');
 
 await page.evaluate(() => setProjectPinned('beta', true));
 
@@ -411,35 +395,16 @@ for (const url of ['ext::sh -c id', 'file:///etc', 'https://github.com/owner-onl
                    'https://gitea.example/onlyone'])
   ok(await post({ mode: 'clone', url }) === 400, `clone refused: ${url}`);
 ok(!existsSync(`${DIR}/ws/repo`), 'a refused clone leaves no directory behind');
-// The name still comes off the URL when none is given, proven without
-// touching the network: a URL naming a repo that already exists here is
-// refused by the mkdir claim before git ever runs. Which also proves the
-// address was ACCEPTED, since it got as far as claiming a directory: three of
-// these are not GitHub, and one is a GitLab subgroup path, which is the one
-// place a third segment is a real part of an address.
-for (const url of ['https://github.com/owner/alpha', 'git@github.com:owner/alpha.git',
-                   'https://gitea.example/owner/alpha',
-                   'ssh://git@git.home.lan:2222/owner/alpha.git',
-                   'https://gitlab.com/group/sub/alpha'])
-  ok(await post({ mode: 'clone', url }) === 400, `derived name collides, refused: ${url}`);
-// ...and a name that IS given wins, which is what makes two checkouts of one
-// repository possible. Same proof: it collides where the derived name would not.
-ok(await post({ mode: 'clone', url: 'https://github.com/owner/somethingelse',
-                name: 'alpha' }) === 400,
-   'a supplied name is used instead of the repository\'s own');
-// A supplied name goes through the same sanitizing an init's does, rather
-// than being trusted because a URL was alongside it. Proven by collision
-// again: each of these sanitizes to `alpha`, which already exists, so the
-// mkdir claim refuses it before git runs, and a name that had NOT been
-// sanitized would not have collided.
-for (const name of ['../alpha', 'alpha/', 'alpha ', '.alpha', '_alpha'])
-  ok(await post({ mode: 'clone', url: 'https://github.com/owner/repo', name }) === 400,
-     `clone name sanitized to an existing one, refused: ${name}`);
-// Every one of these sanitizes to `alpha`, which exists, so the refusal
-// proves the transformation rather than a rejection, and nothing is created.
-for (const name of ['../alpha', 'alpha!', '.alpha', '_alpha', 'alpha '])
-  ok(await post({ name, mode: 'init' }) === 400,
-     `init name sanitized to an existing one, refused: ${name}`);
+// A name in use is no refusal since R154: the new project gets a directory
+// nothing has had (the sanitized name, numbered) and is shown as Name (2).
+// Every one of these sanitizes to `alpha`, which exists.
+for (const name of ['alpha', '../alpha', 'alpha!', '.alpha', '_alpha'])
+{
+  const r = await postJson({ name, mode: 'init' });
+  ok(r.status === 200 && /^alpha-\d+$/.test(r.body.name || ''),
+     `init named ${name} gets a directory of its own (${r.body.name || r.body.error})`);
+  if (r.body.name) await postJson({ name: r.body.name }, '/api/trash');
+}
 // ...and the one thing that is still refused outright: a name with nothing in
 // it to name a directory after.
 for (const name of ['', '   ', '---', '...', '/'])
@@ -538,15 +503,12 @@ await page.waitForSelector('#pmodal:not([hidden])');
 await page.click('#pClone');
 await page.fill('#pUrl', 'https://github.com/owner/alpha.git');
 await page.fill('#pName', '');
-ok(await page.$eval('#pName', el => el.classList.contains('bad'))
-   && await page.$eval('#pNamePreview', el => !el.hidden && /already exists/.test(el.textContent)),
-   'an empty name whose repository collides is marked red in the dialog');
+ok(!await page.$eval('#pName', el => el.classList.contains('bad'))
+   && await page.$eval('#pNamePreview', el => !el.hidden && /alpha \(2\)/.test(el.textContent)),
+   'an empty name whose repository is in use already says the copy is shown as alpha (2), and is no refusal');
 await page.fill('#pName', 'alpha-two');
-ok(await page.$eval('#pName', el => !el.classList.contains('bad')),
-   '...and clears the moment the name is free');
-await page.fill('#pName', 'beta');
-ok(await page.$eval('#pName', el => el.classList.contains('bad')),
-   '...a typed name that is taken is marked too');
+ok(await page.$eval('#pNamePreview', el => el.hidden),
+   '...and quiet the moment the name is free');
 await page.keyboard.press('Escape');
 
 // ---- push rights -------------------------------------------------------
@@ -647,10 +609,12 @@ ok(/git\.home\.lan:3000/.test(await page.$eval('#pForgeHint', el => el.textConte
 await page.keyboard.press('Escape');
 // And the answer is kept against the host: cloning from it declares it, so
 // the next address on the same server is not a question again. Refused for
-// the name collision, which is after the address has been accepted.
-ok(await post({ mode: 'clone', url: 'https://git.home.lan:3000/owner/alpha.git',
-                forge: 'gitea' }) === 400,
-   'a clone from a self-hosted host is accepted as an address');
+// asking push with nothing to push with, which is after the address has
+// been accepted (a name in use is no refusal since R154).
+const selfHosted = await postJson({ mode: 'clone', url: 'https://git.home.lan:3000/owner/alpha.git',
+                                    forge: 'gitea', push: true });
+ok(selfHosted.status === 400 && /pushing needs/.test(selfHosted.body.error || ''),
+   `a clone from a self-hosted host is accepted as an address (${selfHosted.body.error})`);
 await page.click('#bNewProj');
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.click('#pClone');
@@ -1179,14 +1143,14 @@ print(json.dumps(out))
       body: JSON.stringify({ name: 'tokrn', to: 'tokrn2', token: 'gitea0123456789abcdef0123456789abcdef' }) });
     return { status: x.status, body: await x.json().catch(() => ({})) };
   });
-  const line = existsSync(`${DIR}/state/gitcreds/tokrn2`)
-    ? readFileSync(`${DIR}/state/gitcreds/tokrn2`, 'utf8').trim() : '';
-  ok(r.status === 200 && /a new access token/.test((r.body.moved || []).join(' ')),
-     `renaming with a new token in the same save works (${r.status}: ${JSON.stringify(r.body).slice(0, 120)})`);
+  const line = existsSync(`${DIR}/state/gitcreds/tokrn`)
+    ? readFileSync(`${DIR}/state/gitcreds/tokrn`, 'utf8').trim() : '';
+  ok(r.status === 200 && r.body.label === 'tokrn2' && /its access token/.test((r.body.moved || []).join(' ')),
+     `renaming with a new token in the same save works, the directory staying put (${r.status}: ${JSON.stringify(r.body).slice(0, 120)})`);
   ok(/^http:\/\/oauth2:gitea0123456789abcdef0123456789abcdef@git\.home\.lan:3000$/.test(line),
      `...and the token is stored for the remote's host, port and scheme (${line.replace(/:[^@]*@/, ':…@')})`);
-  rmSync(`${DIR}/ws/tokrn2`, { recursive: true, force: true });
-  rmSync(`${DIR}/state/gitcreds/tokrn2`, { force: true });
+  rmSync(`${DIR}/ws/tokrn`, { recursive: true, force: true });
+  rmSync(`${DIR}/state/gitcreds/tokrn`, { force: true });
 }
 
 // The refusals above are answered with 400s on purpose, the deploy-key

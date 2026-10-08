@@ -2100,100 +2100,6 @@ def check_paths(node_id=None):
                           + (r["out"].strip()[:200] or f"exit {r['code']}"))
         return out
 
-
-def rename_dev_data(old, new):
-    """Move an instance's data when its project is renamed: (moved?, error).
-
-    The case projects.py cannot reach with a rename(2), because the directory
-    is on the daemon's disk and not on ours. It handles the mounted case
-    itself; this answers False with no error when that is the arrangement, so
-    nothing is done twice.
-
-    A project that never had a dev instance has nothing to move and is not a
-    failure, the same rule as the local move.
-    """
-    if Path(DEVDATA).is_dir() or not sandbox_daemon():
-        return False, ""
-    if not _devdata_run("test", old, quiet=True):
-        return False, ""
-    # `mv a b` with b an existing DIRECTORY does not fail: it puts a inside
-    # it, as /d/<new>/<old>. The local move checks the target first and this
-    # did not, so the one arrangement that cannot be checked by looking was
-    # also the one that silently nested somebody's data one level deeper.
-    if _devdata_run("test", new, quiet=True):
-        return False, (f"the sandbox already has a data directory called "
-                       f"{new}, and moving onto it would bury one inside the "
-                       f"other, so nothing was moved")
-    if not _devdata_run("mv", old, new):
-        return False, ("the dev instance's data is on the sandbox and could "
-                       "not be moved: it is still under the old name")
-    return True, ""
-
-
-def rename_project_data(old, new):
-    """Move EVERY instance's data directory when a project is renamed.
-
-    Returns (moved, failed) as two lists of sentences, for the rename to
-    report beside the rest of what it moved.
-
-    This is devapp's job rather than the renamer's because the layout is
-    devapp's, and asking it per PROJECT is what keeps _pname out of a module
-    that has no business spelling one. projects.py called _pname(old) and
-    _pname(new) with the instance left to default, which was right by accident:
-    it is right because of a rule that lives here and could change here.
-
-    The rule: only the default instance's directory is named for the project
-    (_pname gives the project's slug for `main` and the instance's own name for
-    anything else, because nobody typed a name for the default one). So a
-    rename moves exactly that one, and a named instance keeps its directory
-    because its name never contained the project. Skipped explicitly rather
-    than by knowing: was == now is asked, so a change to _pname is picked up
-    here instead of quietly orphaning what it renames.
-
-    Both arrangements, because which one is live is this module's business
-    too: a mounted /devdata is renamed here, and a sandbox's is moved over
-    there by rename_dev_data.
-
-    Order matters at the call site: the store's record has already moved to
-    the new name by the time this runs, so the instance list is asked of the
-    NEW key.
-
-    What BELONGS to the project moves with it here too: a container's project
-    is a value in two files, and the rename's table only moves keys.
-    """
-    moved, failed = [], []
-    if rename_owner(old, new):
-        moved.append("the containers that belong to it")
-    for inst in instances(new):
-        was, now = _pname(old, inst), _pname(new, inst)
-        if was == now:
-            continue           # not named for the project: nothing to move
-        what = ("the dev instance's data" if inst == MAIN
-                else f"the {inst} instance's data")
-        if Path(DEVDATA).is_dir():
-            src, dst = Path(DEVDATA) / was, Path(DEVDATA) / now
-            if not src.is_dir():
-                continue
-            if dst.exists():
-                failed.append(f"{what} could not move: {now} already exists")
-                continue
-            try:
-                src.rename(dst)
-                moved.append(what)
-            except OSError as e:
-                failed.append(f"{what} could not be moved: {e}")
-            continue
-        # The daemon-side move runs against the daemon this instance is
-        # bound to: with several nodes, "the sandbox" is a per-record fact.
-        with on_node(_instance_node(new, inst)):
-            did, err = rename_dev_data(was, now)
-        if did:
-            moved.append(f"{what}, on the sandbox")
-        elif err:
-            failed.append(err)
-    return moved, failed
-
-
 def _build_env(project, instance=MAIN):
     """BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION for a compose whose
     build args opt in with them: the commit the build is from (the tree's
@@ -2991,35 +2897,6 @@ def _node_here():
     container's owner is kept under, since a name is only unique on its own
     daemon."""
     return getattr(_node_ctx, "node", None) or _default_node() or ""
-
-
-def rename_owner(old, new):
-    """Every container that belonged to the project `old` belongs to `new`.
-    True when any moved. The rename's table moves what is KEYED by a
-    project's name; these hold it as a value, which that table cannot see."""
-    moved = False
-    with _lock:
-        d = _load()
-        for insts in d.values():
-            for rec in insts.values():
-                if rec.get("for") == old:
-                    rec["for"] = new
-                    moved = True
-        if moved:
-            write_json(FILE, d)
-        o = _owners()
-        hit = False
-        for held in o.values():
-            for c, p in held.items():
-                if p == old:
-                    held[c] = new
-                    hit = True
-        if hit:
-            write_json(OWNERS, o)
-    if moved or hit:
-        _bump()
-    return moved or hit
-
 
 def refs_of(project):
     """The branches this project could be built from, newest commit first,

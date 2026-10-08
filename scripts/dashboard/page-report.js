@@ -21,7 +21,7 @@ function openReport(project){
   const m = $("reportModal");
   armModal(m);
   // From a project's row, or the header's about no project in particular.
-  $("reportTitle").textContent = project ? `Report a bug, from ${project}` : "Report a bug";
+  $("reportTitle").textContent = project ? `Report a bug, from ${projLabel(project)}` : "Report a bug";
   $("reportHint").textContent = project
     ? "It goes to the diagnostics with this project, its node and the build it was seen on, where whoever maintains BuilderBot reads it."
     : "It goes to the diagnostics with the build it was seen on, where whoever maintains BuilderBot reads it. A problem in one project is better sent from that project's row.";

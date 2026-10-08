@@ -455,23 +455,6 @@ def node_changed(project, req):
     return (str(want["node"] or "")[:40] != str(cur.get("node") or "")[:40]
             or _nodes_of(want) != _nodes_of(cur))
 
-
-def rename_reads(old, new):
-    """A project renamed is renamed in every other project's reads list, so
-    a session on those keeps reading it. True when anything moved."""
-    moved = False
-    with _lock:
-        d = _load()
-        for rec in d["projects"].values():
-            reads = rec.get("reads") if isinstance(rec, dict) and isinstance(rec.get("reads"), list) else None
-            if reads and old in reads:
-                rec["reads"] = [new if r == old else r for r in reads if r != new or r == old]
-                moved = True
-        if moved:
-            write_json(FILE, d)
-    return moved
-
-
 def _nodes_of(rec):
     """The project's node set, primary first, from a record that may carry
     only `node` (from before R82) or a `nodes` list as well."""

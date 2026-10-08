@@ -475,12 +475,3 @@ def verb(project, req, who, session):
     except Refused as e:
         return {"error": str(e)}, 409 if "changed since" in str(e) or "already a page" in str(e) else 400
     return {"error": f"unknown action: {act}"}, 400
-
-
-def rename_project(old, new):
-    a, b = repo(old), repo(new)
-    if a.is_dir() and not b.exists():
-        a.rename(b)
-    with contextlib.suppress(OSError):
-        (STATE / "wiki" / f".{old}.lock").unlink()
-

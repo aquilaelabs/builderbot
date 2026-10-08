@@ -822,6 +822,9 @@ def _project_columns(who, facts):
     row: this runs on the fifteen-second poll.
     """
     locked = set(projects.load_locks())
+    # Each directory's id and the name it is shown under (R154): synced with
+    # the disk here, two listdirs and no write when nothing moved.
+    reg = registry.sync()["projects"]
     pins = projects.load_project_pins(users.uid_of(who), users.starts_unpinned(who))
     # One small file for the whole list, read here rather than per row: this
     # runs on the fifteen-second poll and a per-project read would be a dozen
@@ -898,6 +901,10 @@ def _project_columns(who, facts):
         sa["session_nodes"] = _session_nodes(d.name)
         mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
+                    # The name people see and the project's id (R154); `name`
+                    # stays the directory, which every store keys by.
+                    "label": str((reg.get(d.name) or {}).get("name") or d.name),
+                    "pid": int((reg.get(d.name) or {}).get("id") or 0),
                     "linked": linked, "github": github,
                     # Which host it is linked to, for the chain to say so in
                     # its own words. "" when there is no remote to be on, and
@@ -1549,7 +1556,7 @@ def node_tmux_sessions():
 
 
 def project_busy(name, verb):
-    """Why a project cannot be renamed or trashed right now, or "": its own
+    """Why a project cannot be trashed right now, or "": its own
     terminals open, since a live session holds the directory as its working
     directory and would carry on writing wherever it went, or its dev
     instance's containers up, bound to paths that would stop existing.
@@ -2341,16 +2348,17 @@ def _apksigner():
 signing.apksigner_path = _apksigner
 import membership                                                # noqa: E402
 import roles                                                     # noqa: E402
+import registry                                                  # noqa: E402
 import busy                                                      # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
 roles.configure(state=STATE, write_json=write_json)
+registry.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
 # Roles as areas (R152), once: an account on `user` carries no role, and each
 # project's owner holds PROJECT_owner on it. Marked done in the accounts store.
 try:
     users.migrate_r152({p: (r or {}).get("owner") or "" for p, r in membership._owners()["projects"].items()})
 except Exception as e:                                                # noqa: BLE001
     print(f"[dashboard] roles migration (R152) skipped: {type(e).__name__}: {e}", flush=True)
-projects.roles_rename = roles.rename_project
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -2512,6 +2520,7 @@ import prefs                                                     # noqa: E402
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
 preamble.prefs_mod = prefs
+preamble.label_of = registry.label
 
 
 def _project_node_gpu(project):
@@ -2847,16 +2856,13 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    project_name=PROJECT_NAME,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    write_json=write_json,
-                   rename_project_data=devapp.rename_project_data,
                    after_create=mapping.start)
-projects.prefs_mod = prefs
 # The session network reaches the containers of the projects a project reads.
 devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
 devapp.reaches_of = prefs.reaches_on
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock
 projects.take_on = users.take_on
-projects.users_rename = users.rename_project
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
 projects.live_sessions = tmux_sessions
 projects.brief_writer = brief.write
@@ -2877,7 +2883,7 @@ gitrelay.configure(state=STATE, workspace=WORKSPACE,
 # travel and what a token may do with them are bbrelay.py's.
 import bbrelay                                                   # noqa: E402
 
-bbrelay.configure(users=users, projects=projects, prefs=prefs, gitrelay=gitrelay,
+bbrelay.configure(users=users, projects=projects, prefs=prefs, gitrelay=gitrelay, registry=registry,
                   WORKSPACE=WORKSPACE, STATE=STATE)
 
 # ---- a session's hooks, from a node -------------------------------------------
@@ -6804,15 +6810,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._refused("rename", name):
             return
-        # Only a new name moves the directory a terminal or a container
-        # holds. A token, the authentication or the address (the same
-        # submit, same name) changes .git/config and the store, which a
-        # running session reads on its next push, so it is not held up by
-        # one: the address after an owner's rename on the host is changed
-        # with sessions open.
-        moving = projects.sanitize_name(str(req.get("to") or name)) != name
-        if moving and (busy := project_busy(name, "rename")):
-            return self._json({"error": busy}, 409)
+        # Nothing on disk moves (R154): the name shown is the registry's, so
+        # a session, a terminal or a container holding the project is not
+        # in the way of it.
         return self._json(*projects.rename(req))
 
     def _project_auth(self, req):

@@ -63,7 +63,7 @@ function userRow(u){
   const seen = !u.seen ? "never signed in" : "last seen " + ago(u.seen);
   // Its projects and roles are the Roles tab's to set (R152); shown here.
   const scope = u.projects.length
-    ? `<span class="sub">on</span> ` + u.projects.map(p => `<span class="pill">${esc(p)}</span>`).join(" ")
+    ? `<span class="sub">on</span> ` + u.projects.map(p => `<span class="pill">${esc(projLabel(p))}</span>`).join(" ")
     : `<span class="sub dim">on no project yet</span>`;
   const more = (u.roles || []).filter(r => r !== u.role && r !== "user");
   return `<div class="row stack2 urow" data-user="${esc(u.name)}">
@@ -195,7 +195,7 @@ function usersEditOpen(name){
       : f("ueName", "Account name", u.name, "text", "", "what they sign in with. Changing it signs their browsers out")}
     <div class="field">${lbl("", "Roles and projects", "what this account may do, set on the Roles tab (R152)")}
       <div class="setrow"><span class="hint grow">${isOwner ? "BuilderBot's owner: every area, everywhere"
-        : esc([...(u.roles || []).filter(r => r !== "user"), ...(u.projects || []).map(p => `on ${p}`)].join(", ") || "no role yet")}</span>
+        : esc([...(u.roles || []).filter(r => r !== "user"), ...(u.projects || []).map(p => `on ${projLabel(p)}`)].join(", ") || "no role yet")}</span>
         <button type="button" id="ueRolesGo">Roles</button></div></div>
     ${f("ueFull", "Their name", pf.full_name)}
     ${f("ueEmail", "Their email", pf.email, "email")}

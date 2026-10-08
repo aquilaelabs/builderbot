@@ -81,7 +81,7 @@ function rolesPeopleBody(){
     const on = dr.projects.includes(pn);
     const have = dr.project_roles[pn] || [];
     return `<div class="rproj" data-rproject="${esc(pn)}">
-      <label class="pick"><input type="checkbox" data-ron="${esc(pn)}"${on ? " checked" : ""}> <b>${esc(pn)}</b></label>
+      <label class="pick"><input type="checkbox" data-ron="${esc(pn)}"${on ? " checked" : ""}> <b>${esc(projLabel(pn))}</b></label>
       <div class="upick"${on ? "" : " hidden"}>${onProject.length ? onProject.map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
         have.includes(r.name) ? " checked" : ""}> ${esc(r.name)}</label>`).join("") : `<span class="dim">no roles on a project yet: add one below</span>`}</div>
     </div>`;

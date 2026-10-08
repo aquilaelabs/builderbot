@@ -79,6 +79,11 @@ const colorAttrs = name => {
 };
 const projectColor = name =>
   (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
+// The name a project is shown under (R154): its directory is `name` and the
+// key everywhere, and what a person reads is the registry's `label`. A name
+// not in the poll (a project since deleted) is shown as it is.
+const projLabel = name =>
+  (state?.projects || []).find(x => x.name === name)?.label || String(name ?? "");
 // The project a tab is about, for its color: a notebook's, or the project
 // whose Claude session a terminal tab holds. A plain shell has none.
 const tabProject = t => t.kind === "notebook" ? t.arg
@@ -321,7 +326,7 @@ function rnFillReads(){
   const others = (state?.projects || []).filter(p => p.name !== rnFor)
     .sort((a, b) => a.name.localeCompare(b.name));
   wrap.hidden = rnMode === "git" || !others.length;
-  box.innerHTML = others.map(p => lrow(p.name, p.name, p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
+  box.innerHTML = others.map(p => lrow(p.name, projLabel(p.name), p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
   // BuilderBot's owner's alone (the operator, 6 Oct): shown to everybody,
   // changed by the owner, and why not said on the row (not a tooltip).
   const mine = state?.can?.reads !== false;
@@ -453,7 +458,7 @@ function rnDrawPrefs(){
 async function unlinkProject(name){
   const p = (state?.projects || []).find(x => x.name === name);
   const where = p?.forge_host || p?.forge_name || "its remote";
-  if (!confirm(`Unlink ${name} from ${where}?\n\n`
+  if (!confirm(`Unlink ${projLabel(name)} from ${where}?\n\n`
       + `The remote and its stored token go; every commit and branch stays. `
       + `You can link it elsewhere afterwards.`)) return;
   const stop = m => { $("rnErr").textContent = m; $("rnErrWrap").hidden = false;
@@ -465,7 +470,7 @@ async function unlinkProject(name){
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) return stop(j.error || `unlink failed (HTTP ${r.status})`);
     closeRename();
-    notify(`${name} is unlinked: ${(j.removed || []).join(", ")}`
+    notify(`${projLabel(name)} is unlinked: ${(j.removed || []).join(", ")}`
            + (j.others?.length ? `. Its other remotes are untouched: ${j.others.join(", ")}` : ""));
   }catch(e){ return stop("unlink failed: " + e); }
   refresh();
@@ -530,13 +535,13 @@ function renameProject(name, mode = "all"){
   // Named rather than assumed: a project on somebody's own Gitea should not
   // read "GitHub settings", and the host is the one fact this door is about.
   const where = p?.forge_name || "its remote";
-  $("rnTitle").textContent = git ? `${where} settings for ${name}` : name;
+  $("rnTitle").textContent = git ? `${where} settings for ${projLabel(name)}` : projLabel(name);
   for (const id of ["rnNameField", "rnColorField", "rnMineField",
                     "rnGateField", "rnBuildField", "rnReadsField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
   // own further down, and each of those consults the mode too.
-  $("rnName").value = name;
+  $("rnName").value = projLabel(name);
   $("rnToken").value = "";
   $("rnErrWrap").hidden = true;
   $("rnPreview").hidden = true;
@@ -573,7 +578,7 @@ function renameProject(name, mode = "all"){
   $("rnGitNone").hidden = !(git && $("rnTokenField").hidden);
   if (!$("rnGitNone").hidden)
     $("rnGitNone").firstElementChild.textContent =
-      `${name} has a remote it can only read, so there is no credential to set here.`;
+      `${projLabel(name)} has a remote it can only read, so there is no credential to set here.`;
   // Unlink is the chain's, never the gear's: it is about the remote, and it
   // is the way a project moves from one host to another, since linking
   // refuses a repo that already has one.
@@ -693,7 +698,7 @@ function rnDrawPeople(){
   };
   const go = $("rnInviteGo");
   if (go) go.onclick = () => act({action: "invite", project: rnFor, name: $("rnInviteWho").value})
-    .then(() => notify(`invited to ${rnFor}: they say yes or no from their bell`));
+    .then(() => notify(`invited to ${projLabel(rnFor)}: they say yes or no from their bell`));
   $("rnPeople").querySelectorAll("[data-withdraw]").forEach(b =>
     b.onclick = () => act({action: "withdraw", id: Number(b.dataset.withdraw)}));
 }
@@ -707,7 +712,7 @@ async function rnSavePeople(name){
   if (!owner && only === undefined) return "";
   const j = await (await postJSON("/api/members", {action: "set", project: name, owner,
                                                    ...(only !== undefined ? {invite_only: only} : {})})).json();
-  if (j.offered) notify(`${name}: offered to ${j.offered}, who becomes its owner on accepting from their bell`);
+  if (j.offered) notify(`${projLabel(name)}: offered to ${j.offered}, who becomes its owner on accepting from their bell`);
   return j.error || "";
 }
 
@@ -983,7 +988,7 @@ function rnDrawSigning(){
     lg.disabled = true;
     const j = await (await postJSON("/api/signing", {action: "backup-password", project: name, current: cur, new: nw})).json();
     if (j.error){ lg.disabled = false; return notify(j.error, true); }
-    notify(j.backup_locked ? `${name}'s key backups now ask for the password` : `${name}'s key backups no longer ask for a password`);
+    notify(j.backup_locked ? `${projLabel(name)}'s key backups now ask for the password` : `${projLabel(name)}'s key backups no longer ask for a password`);
     rnSignLockOpen = false;
     rnLoadSigning(name);
   };
@@ -1180,21 +1185,19 @@ async function rnTestAuth(){
 
 const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
 
-const RN_MOVES = "Renaming moves the project and everything named after it. Close its "
-  + "terminals and bring its dev instance down first.";
-
+// A rename is the name shown and nothing else (R154): the directory, the
+// notebook, the sessions and the containers stay where they are, so nothing
+// has to be closed first.
 function rnShow(){
-  const raw = $("rnName").value, clean = projName(raw);
-  $("rnHint").textContent = clean && clean !== rnFor ? RN_MOVES : "";
-  const taken = clean && clean !== rnFor
-                && (state?.projects || []).some(p => p.name === clean);
-  $("rnName").classList.toggle("bad", !!taken);
-  $("rnPreview").classList.toggle("bad", !!taken);
-  $("rnPreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
-  $("rnPreview").textContent = taken
-    ? `${clean} already exists under /workspace`
-    : clean ? `Will be renamed to ${clean}`
-    : "That leaves nothing to name a directory after";
+  const raw = $("rnName").value.trim().replace(/\s+/g, " ");
+  $("rnHint").textContent = "";
+  const taken = raw && raw.toLowerCase() !== projLabel(rnFor).toLowerCase()
+                && (state?.projects || []).some(p => p.name !== rnFor
+                     && String(p.label || p.name).toLowerCase() === raw.toLowerCase());
+  $("rnName").classList.toggle("bad", !!taken || !raw);
+  $("rnPreview").classList.toggle("bad", !!taken || !raw);
+  $("rnPreview").hidden = !taken && !!raw;
+  $("rnPreview").textContent = taken ? `${raw} is already a project's name` : "A project needs a name";
 }
 
 function closeRename(){
@@ -1338,7 +1341,7 @@ async function rnSubmit(){
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
-  const renaming = to.trim() !== name;
+  const renaming = to.trim().replace(/\s+/g, " ") !== projLabel(name);
   const needRename = renaming || !!token || !!auth || clear_token || !!address;
   $("rnGo").disabled = true; $("rnGo").textContent = "Saving…";
   const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
@@ -1365,13 +1368,13 @@ async function rnSubmit(){
       // running is not a fault to color red.
       if (running && launchChanged && !j.ended)
         notify(restartNow
-                 ? `${name}: saved, but the session was not ended: `
+                 ? `${projLabel(name)}: saved, but the session was not ended: `
                    + (j.why || "it is still on what it started with")
-                 : `${name}: saved. Its running session keeps what it started `
+                 : `${projLabel(name)}: saved. Its running session keeps what it started `
                    + `with until you end it and press Claude again.`,
                restartNow);
       else if (restartNow && j.ended)
-        notify(`${name}: saved, and its session ended: press Claude to start `
+        notify(`${projLabel(name)}: saved, and its session ended: press Claude to start `
                + `one on it, resuming the conversation`);
     }
     const peopleChanged = !!rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
@@ -1394,7 +1397,7 @@ async function rnSubmit(){
     if (signDraft.length){
       const why = await rnSaveSigning(name);
       if (why) return stop(why);
-      notify(`${name}: signing keys saved`);
+      notify(`${projLabel(name)}: signing keys saved`);
     }
     if (!needRename){
       closeRename();
@@ -1407,15 +1410,11 @@ async function rnSubmit(){
     const j = await r.json();
     if (j.error) return stop(j.error);
     closeRename();
-    // Named rather than assumed: sanitizing may have changed what was typed,
-    // and the operator should see the name that actually exists.
-    notify(j.failed?.length
-      ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
-        + `move: ${j.failed.join("; ")}`
-      : renaming ? `${name} is now ${j.name}`
-      : address ? `${name}: ${(j.moved || []).find(m => /points at/.test(m)) || "saved"}`
-      : `${name} saved`,
-      !!j.failed?.length);
+    // Named rather than assumed: the server tidies what was typed, and the
+    // operator should see the name that actually took.
+    notify(renaming ? `${j.from || projLabel(name)} is now ${j.label || to}`
+      : address ? `${projLabel(name)}: ${(j.moved || []).find(m => /points at/.test(m)) || "saved"}`
+      : `${projLabel(name)} saved`);
   }catch(e){ return stop("save failed: " + e); }
   refresh();
 }
@@ -1428,9 +1427,10 @@ async function rnSubmit(){
 // touched at all. Putting one back is a mv. Friction proportionate to a
 // reversible act, and the dialog names the path so the reversal is obvious.
 async function deleteProject(name){
-  if (!confirm(`Delete ${name}?\n\n`
+  if (!confirm(`Delete ${projLabel(name)}?\n\n`
       + `It moves to /workspace/.trash/${name}, with every file kept. Its `
-      + `roadmap, bugs, versions and memories stay where they are.\n\n`
+      + `roadmap, bugs, versions, memories and containers stay where they are, `
+      + `and Put back in the trash returns all of it.\n\n`
       + `Close its terminals first, and bring its dev instance down.`)) return;
   try{
     const r = await postJSON("/api/trash", {name});
@@ -1439,7 +1439,7 @@ async function deleteProject(name){
     // The path is named back because it may not be the one the dialog said:
     // a second delete of the same name is numbered rather than overwriting the
     // first, and the first is exactly the copy somebody would want back.
-    notify(`${name} moved to ${j.to}`);
+    notify(`${projLabel(name)} moved to ${j.to}`);
   }catch(e){ notify("delete failed: " + e, true); }
   refresh();
 }

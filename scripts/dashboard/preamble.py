@@ -137,6 +137,28 @@ def sees_line(project):
             f"this node.")
 
 
+# registry.label, set by the server (R154): the name a project is shown
+# under, which is not its directory once a name has been used before.
+label_of = None
+
+
+def _shown(project):
+    """A project as a session should name it to a person: its shown name,
+    with its directory beside it when the two differ."""
+    lab = label_of(project) if label_of else project
+    return project if not lab or lab == project else f"{lab} (directory {project})"
+
+
+def identity_line(project):
+    """Said only when the shown name is not the directory: the person says
+    one, every path and `bb -p` take the other."""
+    lab = label_of(project) if label_of else project
+    if not lab or lab == project:
+        return ""
+    return (f"This project is shown as {lab}; its directory is /workspace/{project}, which every "
+            f"path and `bb -p` use. Call it {lab} when you speak of it.")
+
+
 def reads_line(project):
     reads = []
     if prefs_mod is not None:
@@ -146,7 +168,7 @@ def reads_line(project):
             reads = []
     if not reads:
         return ""
-    names = ", ".join(reads)
+    names = ", ".join(_shown(r) for r in reads)
     return (f"This project reads {names}: each is at /workspace/NAME, read-only, and "
             f"`bb -p NAME` in front of `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
             f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
@@ -307,7 +329,8 @@ def briefing(project):
             if not line.strip() and out and not out[-1].strip():
                 continue
             if line.strip() in (_READS, _DESIGN):
-                said = "\n\n".join(x for x in (reads_line(project), sees_line(project)) if x) \
+                said = "\n\n".join(x for x in (identity_line(project), reads_line(project),
+                                                sees_line(project)) if x) \
                     if line.strip() == _READS else design_line(project)
                 if said:
                     out.append(said)

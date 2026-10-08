@@ -143,6 +143,7 @@ scripts/
     artifacts.py                 what a project built: dist/, and what a row may offer
     signing.py                   a project's Android signing keys, kept by the controller, never a session's (R106)
     membership.py                a project's owner, whether it is invite only, and the invitations to it
+    registry.py                  projects by id (R154): each directory's permanent number and the name it is shown under, in projects.json; a directory is never handed out twice
     busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps

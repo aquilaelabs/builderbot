@@ -30,14 +30,15 @@ async function drawTrash(){
     return;
   }
   el.innerHTML = items.map(t => `<div class="row trow" data-t="${esc(t.name)}">
-      <div class="grow"><div class="name">${esc(t.name)}</div>
-        <div class="sub">deleted ${esc(ago(t.at))}${t.taken
-          ? ` · <span class="warn">${esc(t.was)} exists again</span>` : ""}</div></div>
+      <div class="grow"><div class="name">${esc(t.was || t.name)}</div>
+        <div class="sub">deleted ${esc(ago(t.at))}${t.was && t.was !== t.name
+          ? ` · directory ${esc(t.name)}` : ""}${t.taken
+          ? ` · <span class="warn">its directory is in use again</span>` : ""}</div></div>
       <span class="acts">
         <button type="button" data-trestore="${esc(t.name)}"${t.taken ? " disabled" : ""}
           title="${t.taken
-            ? "a project called " + esc(t.was) + " is back under /workspace: rename it first"
-            : "move it back to /workspace/" + esc(t.was)}">Put back</button>
+            ? "a directory of that name is back under /workspace: move it first"
+            : "move it back to /workspace, as " + esc(t.was || t.name)}">Put back</button>
         <button type="button" class="danger" data-tpurge="${esc(t.name)}"
           title="delete it and every file in it, for good">${BIN}</button>
       </span></div>`).join("");
@@ -45,7 +46,7 @@ async function drawTrash(){
     b.disabled = true;
     const r = await postTrash("/api/trash-restore", {name: b.dataset.trestore});
     if (r?.error) notify(r.error, true);
-    else notify(`${r.name} is back under /workspace`);
+    else notify(`${r.label || r.name} is back`);
     await drawTrash(); refresh();
   });
   el.querySelectorAll("[data-tpurge]").forEach(b => b.onclick = () => askPurge(b.dataset.tpurge));
@@ -61,7 +62,7 @@ function askPurge(name){
   box.className = "dropbox";
   box.innerHTML = `<div class="hint bad">This deletes every file in
       <b>${esc(name)}</b>. It is not moved anywhere and there is nothing to
-      undo it with. Type the name to confirm.</div>
+      undo it with. Type its directory's name, ${esc(name)}, to confirm.</div>
     <input autocomplete="off" placeholder="${esc(name)}">
     <div class="foot"><span class="sp"></span>
       <button type="button" class="stop">Keep it</button>
@@ -166,7 +167,7 @@ const PMODES = {
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pUrlField", "pForgeField",
                     "pPushField", "pTokenField", "pKeyField"] },
-  link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
+  link:  { title: () => `Link ${projLabel(pLink)} to a git host`, btn: "Link", focus: "pUrl",
            fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
                     "pTokenField"] },
 };
@@ -244,7 +245,7 @@ function pDraw(){
   $("pPushHint").textContent =
     "Off is read-only. It cannot be turned on later, and only one project may push to a repository.";
   $("pTokenHint").textContent = pMode === "link"
-    ? `Used for ${pLink} only.` + (fg.creates ? ` Checked with ${fg.name} first.` : "")
+    ? `Used for ${projLabel(pLink)} only.` + (fg.creates ? ` Checked with ${fg.name} first.` : "")
     : "Leave empty for a public repository. Kept for this project alone.";
   $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
@@ -488,23 +489,21 @@ const projName = (raw) => (raw || "").trim()
   .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
 
 function pNameShow(){
-  const raw = $("pName").value, clean = projName(raw);
-  // Cloning with the field left empty still takes the repository's name, so
-  // the collision has to be checked against THAT and not against an empty
-  // string: otherwise the one case that needs the warning most is the one
-  // that never gets it.
-  const eff = clean || (pMode === "clone" ? projName(repoOfUrl($("pUrl").value)) : "");
-  const taken = eff && (state?.projects || []).some(p => p.name === eff);
-  $("pName").classList.toggle("bad", !!taken);
-  $("pNamePreview").classList.toggle("bad", !!taken);
-  // Shown when it differs from what was typed, when it is taken, or when
-  // there is nothing left of it, and quiet otherwise, because repeating a
-  // name back unchanged is noise on a dialog that already carries three hints.
-  $("pNamePreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
-  $("pNamePreview").textContent = taken
-    ? `${eff} already exists under /workspace: give this one another name`
-    : clean ? `Will be created as ${clean}`
-    : "That leaves nothing to name a directory after";
+  const raw = $("pName").value.trim().replace(/\s+/g, " ");
+  // Cloning with the field left empty takes the repository's name, so a
+  // second copy is checked against THAT, not against an empty string.
+  const eff = raw || (pMode === "clone" ? repoOfUrl($("pUrl").value) : "");
+  // Since R154 a name in use is no refusal: the new project gets a
+  // directory of its own and is shown as Name (2) beside the first.
+  const shown = new Set((state?.projects || []).map(p => String(p.label || p.name).toLowerCase()));
+  let as = eff, n = 2;
+  while (as && shown.has(as.toLowerCase())) as = `${eff} (${n++})`;
+  const empty = !!raw && !projName(raw);
+  $("pName").classList.toggle("bad", empty);
+  $("pNamePreview").classList.toggle("bad", empty);
+  $("pNamePreview").hidden = !empty && as === eff;
+  $("pNamePreview").textContent = empty ? "A name needs at least one letter or digit in it"
+    : `${eff} is already a project's name, so this one is shown as ${as}`;
 }
 
 // The repository's own name out of a clone URL: the same rule the server
@@ -531,7 +530,7 @@ async function createProject() {
   const file = mode === "init" ? $("pArchive").files[0] : null;
   const fail = m => gen === pGen
     ? ($("pErr").textContent = m, $("pErrWrap").hidden = false)
-    : notify(`${mode === "link" ? linkName : name || mode}: ${m}`, true);
+    : notify(`${mode === "link" ? projLabel(linkName) : name || mode}: ${m}`, true);
   if (mode === "init"){ if (!name) return fail("a name is required"); }
   else if (!url) return fail("a repository address is required");
   $("pErrWrap").hidden = true;
@@ -614,7 +613,7 @@ async function createProject() {
                 name: j.name || linkName, step: "starting", for: 0});
       pJobPoll();
     } else {
-      notify(`${j.name || name || linkName} ${mode === "link" ? "linked" : "created"}: ${j.note || "ready"}`);
+      notify(`${mode === "link" ? projLabel(linkName) : j.label || name || j.name} ${mode === "link" ? "linked" : "created"}: ${j.note || "ready"}`);
       refresh();                        // the new state, without waiting a poll
     }
   }catch(e){

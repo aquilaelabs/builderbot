@@ -530,7 +530,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     });
     box.innerHTML = all.map(v => docSection("artifacts",
       `version${v.component ? ":" + v.component : ""}`,
-      all.length > 1 ? (v.component || `${v.project} (the project)`) : "Version",
+      all.length > 1 ? (v.component || `${projLabel(v.project)} (the project)`) : "Version",
       v.target || "no VERSION file",
       verSection(v) + nb.sectBar(`artifacts:version${v.component ? ":" + v.component : ""}`),
       {cls: v.target ? "" : "warn"})).join("");

@@ -62,9 +62,6 @@ class Model(unittest.TestCase):
         roles.ensure_owner_role("alpha")
         self.assertNotIn("files", roles.get(name)["perms"])
         self.assertEqual(roles.owner_role_name("2048 game"), "p2048 game_owner")
-        self.assertTrue(roles.rename_project("alpha", "omega"))
-        self.assertIsNotNone(roles.get("omega_owner"))
-        self.assertNotIn("files", roles.get("omega_owner")["perms"], "a rename keeps what was cut")
 
     def test_a_role_is_a_scope_and_areas(self):
         r = roles.set_role("tester", "projects", {"projects": "write", "containers": "write", "bogus": "write",
@@ -154,16 +151,13 @@ class Migration(unittest.TestCase):
         self.assertEqual(u.get("adm")["role"], "admin")
         self.assertFalse(u.migrate_r152({"alpha": "u_4"}), "once")
 
-    def test_the_owner_role_moves_with_the_project(self):
+    def test_the_owner_gets_the_owner_role(self):
         u = self.users
         u.migrate_r152({"alpha": "u_3"})
         u.give_owner_role("alpha", "u_4")
         self.assertNotIn("alpha", u.get("ann").get("project_roles") or {})
         self.assertEqual(u.get("bob")["project_roles"]["alpha"], ["alpha_owner"])
         self.assertIn("alpha", u.get("bob")["projects"], "the owner works on what it owns")
-        self.assertTrue(u.rename_project("alpha", "omega"))
-        roles.rename_project("alpha", "omega")
-        self.assertEqual(u.get("bob")["project_roles"], {"omega": ["omega_owner"]})
 
 
 class SessionAndAccount(unittest.TestCase):

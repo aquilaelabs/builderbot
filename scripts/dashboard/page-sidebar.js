@@ -154,14 +154,14 @@ function phoneWhy(p){
   if (!p.node_name) return "no node: a phone is connected on a project's node, and this one has none";
   if (!ph) return `no phone is connected on ${p.node_name}: connect yours in the Phone tab, on that node`;
   if (!ph.mine) return `the phone on ${p.node_name} is ${ph.owner}'s: only they lend it`;
-  if (ph.lease && ph.lease.project !== p.name) return `your phone is lent to ${ph.lease.project}: take it back there first`;
+  if (ph.lease && ph.lease.project !== p.name) return `your phone is lent to ${projLabel(ph.lease.project)}: take it back there first`;
   return "";
 }
 function phoneButton(p){
   const why = phoneWhy(p), here = p.phone?.lease?.project === p.name;
   return `<button class="eye${here ? " on acc" : ""}" data-ph="${esc(p.name)}"${why ? " disabled" : ""}
     aria-label="${here ? "take the phone back" : "lend your phone"}"
-    title="${esc(why || (here ? "your phone is lent here: take it back" : `lend your phone on ${p.node_name} to ${p.name}: each command its session runs asks you`))}"
+    title="${esc(why || (here ? "your phone is lent here: take it back" : `lend your phone on ${p.node_name} to ${projLabel(p.name)}: each command its session runs asks you`))}"
     >${TOOL_ICONS.phone}</button>`;
 }
 async function phoneRowPress(b, e){
@@ -174,13 +174,13 @@ async function phoneRowPress(b, e){
     try{
       const j = await (await postJSON("/api/phone", body)).json();
       if (j.error) notify(j.error, true);
-      else notify(body.action === "lend" ? `your phone is lent to ${p.name}: each command asks you` : `your phone is back from ${p.name}`);
+      else notify(body.action === "lend" ? `your phone is lent to ${projLabel(p.name)}: each command asks you` : `your phone is back from ${projLabel(p.name)}`);
     }catch(err){ notify("could not reach the controller: " + err, true); }
     unbusy(b);
     refresh();
   };
   if (p.phone.lease?.project === p.name){
-    if (confirm(`Take your phone back from ${p.name}? Its session stops reaching it.`))
+    if (confirm(`Take your phone back from ${projLabel(p.name)}? Its session stops reaching it.`))
       post({action: "take-back", node: p.phone.node || nid});
     return;
   }
@@ -191,8 +191,8 @@ function openPhoneLend(name, lend){
   const p = (state?.projects || []).find(x => x.name === name) || {name};
   const m = $("phoneLendModal");
   armModal(m);
-  $("phoneLendTitle").textContent = `Lend your phone to ${p.name}`;
-  $("phoneLendHint").textContent = `${p.phone?.model || "Your phone"} on ${p.node_name || "its node"}. Each command ${p.name}'s `
+  $("phoneLendTitle").textContent = `Lend your phone to ${projLabel(p.name)}`;
+  $("phoneLendHint").textContent = `${p.phone?.model || "Your phone"} on ${p.node_name || "its node"}. Each command ${projLabel(p.name)}'s `
     + "session runs on it asks you in your bell first, and only its own app is reachable.";
   m.hidden = false;
   m.onclick = ev => { if (ev.target === m) m.hidden = true; };
@@ -217,7 +217,7 @@ function projectRow(p, live, cls, inTab){
   return `
     <div class="row stack2${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
       <div class="grow">
-        <div class="namerow"><div class="name">${esc(p.name)}${p.locked
+        <div class="namerow"><div class="name">${esc(p.label || p.name)}${p.locked
           // After the name, because it is a fact about the project rather
           // than a control: the row reads "StreamLift, locked" at a glance
           // without hunting for which of six icons is lit.
@@ -357,7 +357,7 @@ function projectRow(p, live, cls, inTab){
 // Projects by name, as a person reads a list: case aside and numbers as
 // numbers (the operator, 7 Oct). The server's order is the directory's, in
 // which every capitalised name came before every lower-case one.
-function byProjectName(a, b){ return a.name.localeCompare(b.name, undefined, {sensitivity: "base", numeric: true}); }
+function byProjectName(a, b){ return String(a.label || a.name).localeCompare(String(b.label || b.name), undefined, {sensitivity: "base", numeric: true}); }
 function drawProjects(all){
   const el = $("projects");
   // The card is the pinned view; the Projects tab is the whole list. Filtered
@@ -533,7 +533,7 @@ async function setLocked(name, on){
   const running = !who.length ? "No Claude session is running here."
     : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} Claude session here ends now.`
     : `${who.length} Claude sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
-  if (on && !confirm(`Lock ${name}?\n\n${running}\n\n`
+  if (on && !confirm(`Lock ${projLabel(name)}?\n\n${running}\n\n`
         + `No Claude session starts here and its notebook goes read-only. Your `
         + `shells, findings, artifacts and dev instance keep working. Unlock `
         + `reverses it.`)) return;
@@ -545,7 +545,7 @@ async function setLocked(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === s);
       if (t) dropTab(t.id);
     }
-    if (on && j.ended?.length) notify(`${name} locked: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
+    if (on && j.ended?.length) notify(`${projLabel(name)} locked: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
     applyNow(p => { p.locked = (j.locked || []).includes(p.name); });
   }catch(e){ notify("lock failed: " + e, true); }
   refresh();

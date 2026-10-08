@@ -936,31 +936,6 @@ def migrate_star(names):
             _save(d)
     return moved
 
-
-def rename_project(old, new):
-    """A project renamed is renamed on every account's own list, so whoever
-    had taken it on still has (R135 made this the owner's concern too; it
-    was an administrator's already), and so are the roles given on it and
-    its owner role's name (R152). True when anything moved."""
-    moved = False
-    a, b = roles.owner_role_name(old), roles.owner_role_name(new)
-    with _lock:
-        d = load()
-        for u in d["users"].values():
-            have = u.get("projects") or []
-            if old in have:
-                u["projects"] = [new if p == old else p for p in have]
-                moved = True
-            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
-            if old in pr:
-                pr[new] = [b if r == a else r for r in pr.pop(old)]
-                u["project_roles"] = pr
-                moved = True
-        if moved:
-            _save(d)
-    return moved
-
-
 def give_owner_role(project, new_uid, old_uid=""):
     """PROJECT_owner moves with the project (R152): off the account that
     owned it, onto the one that does, on that project alone."""

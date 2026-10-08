@@ -126,7 +126,7 @@ function nbDesignView({$, nb, project, root}){
       if (j.error) notify(j.error, true);
       else{
         if (nb.dsData) nb.dsData.file = j.file;
-        notify(`${j.path} written into ${project}: the Git view shows it until a session commits it`);
+        notify(`${j.path} written into ${projLabel(project)}: the Git view shows it until a session commits it`);
       }
     }catch(e){ notify("design: " + e, true); }
     unbusy(b, "Write the file");

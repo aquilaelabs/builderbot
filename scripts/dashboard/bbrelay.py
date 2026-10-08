@@ -56,6 +56,8 @@ users = None
 projects = None
 prefs = None
 gitrelay = None
+# registry.py (R154): a shown name to the directory it is.
+registry = None
 WORKSPACE = None
 STATE = None
 
@@ -145,6 +147,11 @@ def admit(me, req):
             # for another project" sent a session guessing at spellings, and
             # read the same for a project that does not exist.
             if not project or not (WORKSPACE / project).is_dir():
+                # A shown name (R154) is not a directory: say which one it is.
+                d = registry.resolve(project) if registry else ""
+                if d and d in (me.get("reads") or []):
+                    return None, ({"error": f"{project} is shown under that name; its directory, "
+                                            f"which bb -p takes, is {d}: bb -p {d}"}, 400)
                 return None, ({"error": f"there is no project called {project}"}, 400)
             return None, ({"error": f"{me['session']} does not read {project}: its owner adds it "
                                     f"under Reads in {me['session']}'s settings, and a session "
