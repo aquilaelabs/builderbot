@@ -118,6 +118,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/nodelog` | prefix | `_nodelog` | A machine's own log, for a session that has been granted it. | refused: debug |
 | POST | `/api/diag` | exact | `_diag` | The controller's diagnostics (diag.py). |  |
 | POST | `/api/reports` | exact | `_reports` | Problems with BuilderBot itself, reported by any project's session (reports.py, bb report). |  |
+| POST | `/api/v1/files` | exact | `_files` | A project's files for a person's own editor (files.py, R159): the account this request proved, a project it sees, and the file access its settings give it through the editor's door, asked on this request (ftp.access_for) |  |
 | POST | `/api/phone` | prefix | `_phone` | Pair, connect, and push an extension, and the asking: a session's ask for adb, root or a container, and a person's answer. |  |
 | POST | `/api/findings` | prefix | `_findings_log` | The Analysis view's log. |  |
 | POST | `/api/tests` | prefix | `_tests` | The hand-written half of the registry: testreg.verb. |  |

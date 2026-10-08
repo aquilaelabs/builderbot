@@ -71,7 +71,7 @@ AREAS = (
     ("settings", "Project settings", "project", "the settings", "change them, lock, rename and delete"),
     ("releases", "Releases and versions", "project", "versions and releases", "move the version and release"),
     ("gitauth", "Git authentication", "project", "how it authenticates", "change the credential"),
-    ("files", "File access (FTP)", "project", "sign in over FTP and download", "upload, rename and delete over FTP"),
+    ("files", "File access", "project", "read the files over FTP or in an editor", "save, upload, rename and delete them"),
     ("containers", "Containers", "project", "its containers and their logs", "start, stop and rebuild them"),
     ("terminal", "Terminal", "project", "the shielded Claude console", "the full tmux shell"),
     ("nodes", "Nodes", "global", "the Nodes tab", "configure nodes, and what a project's sessions reach"),

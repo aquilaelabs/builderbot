@@ -126,7 +126,8 @@ scripts/
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
-    ftp.py                       a project's file access over FTP: on, the port, each account's access, and the login a node relays (R151)
+    ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
+    files.py                     a project's files for a person's editor (R159): stat, list, read, write, rename, delete, search and changes, inside the project and never .git
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
@@ -187,6 +188,13 @@ scripts/
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
   agent/ruff.toml                the linter's settings for it, pinned to the python a Rocky node carries
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
+  package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
+  extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
+  lib/client.js                  the controller as the extension speaks to it: sign-in through /login, the Files API, /term
+  lib/ws.js                      a websocket client in Node's own modules, for the terminal
+  lib/ttyd.js                    ttyd's protocol over the /term relay: the dashboard's own terminal, from VS Code
+  README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
@@ -206,6 +214,7 @@ tools/agent-version.sh           the lint check that the agent's version moved w
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
+tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/ratchet.txt                those ceilings, one per file
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
                                  version, with the None checks off, since a module's configure() fills what it declares as None

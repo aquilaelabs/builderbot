@@ -259,7 +259,9 @@ MAX_BODY = 64 * 1024
 # so a post could pass 64 kB, and one refused as too large was retried for
 # good, holding its job in the agent's count and refusing every update as
 # busy (B520: j_cdcb12b7, a phone screenshot, held from 4 to 6 Oct).
+# ...and a file saved from a person's editor (R159): files.MAX_READ as base64.
 MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024,
+                "/api/v1/files": 28 * 1024 * 1024,
                 "/api/v1/agent/log": 512 * 1024}
 
 # One field out of a request body, read the one way here and in every
@@ -3081,6 +3083,8 @@ nodes.ftp_for = ftp.for_node
 import diag                                                      # noqa: E402
 
 import reports                                                   # noqa: E402
+import files                                                     # noqa: E402
+files.configure(workspace=WORKSPACE, audit=db.audit)
 reports.configure(write_json=write_json, state=STATE, redact=diag.redact,
                   build=lambda: image_stamp().get("version") or image_stamp().get("rev") or "")
 # A report says which node its project builds on, and clearing them all is
@@ -3593,6 +3597,7 @@ POST_ROUTES = (
     ("prefix", "/api/nodelog", "_nodelog"),
     ("exact", "/api/diag", "_diag"),
     ("exact", "/api/reports", "_reports"),
+    ("exact", "/api/v1/files", "_files"),
     ("prefix", "/api/phone", "_phone"),
     ("prefix", "/api/findings", "_findings_log"),
     ("prefix", "/api/tests", "_tests"),
@@ -6682,6 +6687,34 @@ class Handler(BaseHTTPRequestHandler):
                 return True
             return False
         return self._refused("debug")
+
+    def _files(self, req):
+        """A project's files for a person's own editor (files.py, R159): the
+        account this request proved, a project it sees, and the file access
+        its settings give it through the editor's door, asked on this request
+        (ftp.access_for), so the extension can do nothing the account cannot.
+        A session is refused: it has the tree, and it is never a person."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session has its project's tree already: this is a "
+                                        "person's editor's"}, 403)
+        if field(req, "action") == "projects":
+            # The ones this account may open, each with its access: asked
+            # project by project through the same gate as every call after.
+            mine = []
+            for p in project_list(me):
+                a, _ = ftp.access_for(me, p["name"], "editor")
+                if a:
+                    mine.append({"name": p["name"], "access": a})
+            return self._json({"api": files.API, "projects": mine})
+        project = field(req, "project")
+        if self._not_project(project):
+            return None
+        access, why = ftp.access_for(me, project, "editor")
+        if not access:
+            return self._json({"error": why}, 403)
+        return self._json(*files.verb(field(req, "action"), project, req, access,
+                                      by=self._principal()))
 
     def _reports(self, req):
         """Problems with BuilderBot itself, reported by any project's session

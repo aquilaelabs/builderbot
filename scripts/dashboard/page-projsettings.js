@@ -705,11 +705,12 @@ async function rnSavePeople(name){
   return j.error || "";
 }
 
-// ---- file access over FTP (R151) ----
-// The project's tree over FTPS on its node, for the accounts given read or
-// read and write (ftp.py). Who may set it is the ftp grant; anybody else is
-// shown whether it is on and where. On, the port and each account's access
-// are a draft until Save.
+// ---- file access over FTP (R151) and in an editor (R159) ----
+// The project's tree over FTPS on its node, and in a person's editor through
+// the controller (BuilderBot for VS Code), each its own switch, for the
+// accounts given read or read and write (ftp.py). Who may set it is the ftp
+// grant; anybody else is shown what is on and where. The switches, the port
+// and each account's access are a draft until Save.
 const RN_FTP_ACCESS = [["", "No access"], ["r", "Read"], ["rw", "Read and write"]];
 let rnFtp = null, rnFtpDraft = {};
 
@@ -731,12 +732,13 @@ function rnFtpWhere(v){
 function rnDrawFtp(){
   if (!rnFtp || rnMode === "git") return;
   const v = rnFtp, d = rnFtpDraft;
-  const on = d.on ?? v.on, st = v.status || {}, where = rnFtpWhere(v);
+  const on = d.on ?? v.on, editor = d.editor ?? v.editor, st = v.status || {}, where = rnFtpWhere(v);
   const box = $("rnFtp");
   if (!v.may_set){
-    $("rnFtpField").hidden = !v.on;
-    box.innerHTML = `<div>On${where ? `, at ${esc(where)}` : ""}.</div>
-      <div class="hint">Sign in with your BuilderBot name and password over FTPS, if you were given access.
+    $("rnFtpField").hidden = !v.on && !v.editor;
+    box.innerHTML = `${v.on ? `<div>Served over FTPS${where ? `, at ${esc(where)}` : ""}.</div>` : ""}
+      ${v.editor ? `<div>Open in an editor with BuilderBot for VS Code.</div>` : ""}
+      <div class="hint">Sign in with your BuilderBot name and password, if you were given access.
         Who may is set by BuilderBot's owner, or a role that grants ftp.</div>`;
     return;
   }
@@ -751,18 +753,21 @@ function rnDrawFtp(){
     : `<div class="hint">Starting on its node.</div>`;
   box.innerHTML = `
     <label class="ndcap"><input type="checkbox" id="rnFtpOn"${on ? " checked" : ""}> Serve this project's files over FTPS</label>
+    <label class="ndcap"><input type="checkbox" id="rnFtpEditor"${editor ? " checked" : ""}> Open them in an editor with BuilderBot for VS Code</label>
+    ${editor ? `<div class="hint">Through this controller, as each person's own account: no share and no port of its own.</div>` : ""}
     ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Where it runs.</div>`}
     <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-tip="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
       <input id="rnFtpPort" type="number" min="1024" max="65526" step="1" inputmode="numeric" value="${esc(String(port))}" aria-label="the port its FTP server listens on">
       <span class="dim">and the ${v.span - 1} after it</span></div>
     ${status}
-    <div class="rnftppeople"${on ? "" : " hidden"}>${v.people.map(p => {
+    <div class="rnftppeople"${on || editor ? "" : " hidden"}>${v.people.map(p => {
       const a = d.access?.[p.uid] ?? p.access;
       return `<div class="rnftprow"><span class="grow">${esc(p.name)}</span>
         <select data-ftpuid="${esc(p.uid)}" aria-label="${esc(p.name)}'s file access">${RN_FTP_ACCESS.map(([k, w]) =>
           `<option value="${k}"${k === a ? " selected" : ""}>${w}</option>`).join("")}</select></div>`;
     }).join("")}</div>`;
   $("rnFtpOn").onchange = e => { d.on = e.target.checked; rnDrawFtp(); };
+  $("rnFtpEditor").onchange = e => { d.editor = e.target.checked; rnDrawFtp(); };
   const pi = $("rnFtpPort");
   if (pi) pi.oninput = () => { d.port = pi.value.trim(); };
   box.querySelectorAll("[data-ftpuid]").forEach(sel => sel.onchange = () => {
@@ -775,6 +780,7 @@ function rnFtpChange(){
   if (!rnFtp?.may_set) return null;
   const d = rnFtpDraft, v = rnFtp, out = {};
   if (d.on !== undefined && d.on !== v.on) out.on = d.on;
+  if (d.editor !== undefined && d.editor !== v.editor) out.editor = d.editor;
   if (d.port !== undefined && String(d.port) !== String(v.port)) out.port = d.port;
   // A port shown for a project turned on now is its offer, and is sent.
   if (out.on && out.port === undefined) out.port = v.port;

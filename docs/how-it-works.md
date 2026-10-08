@@ -3774,7 +3774,7 @@ roles, set on the **Roles** tab and nowhere else (R152, the operator, 7 Oct).
 A role is a **scope** (**Global**, which holds everywhere and is the only one
 that reaches the machinery, or **the user's projects**) and, per area,
 **Read** and **Write**: Projects, Project settings, Releases and versions, Git
-authentication, File access (FTP), Containers and Terminal on a project;
+authentication, File access, Containers and Terminal on a project;
 Nodes, Toolchains, Jobs, New projects, CI runner, Accounts and roles and
 Controller beside them. A Global role may name the nodes it holds on (**On
 these nodes**, none ticked being every node) for Nodes, Toolchains, Jobs and

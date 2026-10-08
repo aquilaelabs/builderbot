@@ -1836,6 +1836,15 @@ await page.click('#rnCancel');
   const draft = await page.evaluate(() => rnFtpChange());
   ok(draft?.on === true && draft.port === 2121 && draft.access?.[uid] === 'rw',
      `...and what Save sends is the switch, the port and the access picked (${JSON.stringify(draft)})`);
+  // The editor's door (R159): its own switch over the same people, with no
+  // port, and FTPS left off.
+  await page.click('#rnFtpOn');
+  await page.click('#rnFtpEditor');
+  const ed = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
+    people: e.querySelector('.rnftppeople').hidden, noNode: /no node to run on/.test(e.textContent) }));
+  const edDraft = await page.evaluate(() => rnFtpChange());
+  ok(ed.port && !ed.people && !ed.noNode && edDraft?.editor === true && !edDraft.on,
+     `...and opening it in an editor is a switch of its own: the same people, no port, no node needed (${JSON.stringify({ ...ed, ...edDraft })})`);
   await page.click('#rnCancel');
   const set = await api('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uid]: 'r' } });
   const back = await api('/api/project-ftp', { project: 'alpha' });
