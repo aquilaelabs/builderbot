@@ -697,7 +697,12 @@ def _projects_on_disk():
                                   "text": f"cannot list this directory as uid {uid}:{gid}"
                                           "; chown it to PUID:PGID on the host"}]}]
     cloning = projects.busy_name()
+    # Only what BuilderBot made (R154, the operator 8 Oct): a folder made by
+    # hand on the share is not a project, and Import is the way one comes in.
+    registry.sync()
     for d in here:
+        if not registry.is_project(d.name):
+            continue
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
         # already saying what it really is.
@@ -1006,11 +1011,7 @@ def _project_columns(who, facts):
                     # ...or its map is still building (mapping.py): the
                     # same ghosting, for the seconds it takes.
                     or mapping.held(d.name),
-                    "issues": issues + ([{"level": "warning", "text":
-                        f"this folder was made by hand under the folder name of "
-                        f"{registry.label(d.name)}, which is in the trash, and reads its "
-                        f"notebook: delete that one for good, or move one of the two"}]
-                        if registry.shadowed(d.name) else [])})
+                    "issues": issues})
     return out
 
 

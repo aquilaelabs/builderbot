@@ -1057,7 +1057,10 @@ lives in its body. The cards:
   under one name: a second gets Name (2), whether it was created, cloned or
   put back from the trash. A name ever used gives a new project the next free
   directory (Name-2), so it never inherits an old project's notebook or
-  containers, and a project put back from the trash always fits where it was
+  containers, and a project put back from the trash always fits where it was.
+  Only BuilderBot makes a project (create, clone, or start from an imported
+  archive): a folder made by hand on the share is not listed, and the folders
+  already there when this arrived were recorded once, as they were
 - a **padlock** per project, which locks it: the row stays whole and every
   control you use stays live (notebook, artifacts, dev instance, shell) and
   the only thing that goes is Claude starting a session there. For a project

@@ -565,7 +565,27 @@ export async function unfold(page, project){
 // directory into the workspace, or makes one outside the create dialog,
 // gives it to the owner's own list the way the Users tab does, since "*"
 // lists every project and takes none on.
+// A folder made by hand is no project since R154 (the operator, 8 Oct): only
+// create, clone and import record one. A suite that drops a project directory
+// into the workspace records it the way an import would, in projects.json,
+// which the server reads again when the file changes.
+export function registerProject(...names) {
+  const f = `${DIR}/state/projects.json`;
+  // Not there yet: the server's first scan records every folder present,
+  // this one with them, and a file written first would stop that.
+  let d;
+  try { d = JSON.parse(readFileSync(f, 'utf8')); } catch { return; }
+  d.projects = d.projects || {};
+  for (const n of names) {
+    const r = d.projects[n];
+    if (r) r.state = 'live';
+    else d.projects[n] = { id: d.next++, name: n, state: 'live', at: Math.floor(Date.now() / 1000) };
+  }
+  writeFileSync(f, JSON.stringify(d));
+}
+
 export async function takeOn(...names) {
+  registerProject(...names);
   const h = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
   const base = URL.replace(/\/$/, '');
   // Once the listing carries the project: the scan of the workspace is

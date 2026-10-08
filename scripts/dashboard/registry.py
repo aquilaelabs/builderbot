@@ -11,8 +11,9 @@ a restore always fits back where it was, a new project never inherits an old
 one's notebook or containers, and a rename is the shown name alone.
 
 projects.json: {"next": N, "projects": {dir: {"id", "name", "state", "at"}}},
-state being live, trashed or purged. Every directory found on disk without a
-record is given one, named for itself, which is the whole migration.
+state being live, trashed or purged. Only BuilderBot makes a project: a
+folder made by hand on the share is not one. On the first run every folder
+already there is recorded, which is the whole migration.
 """
 import json
 import re
@@ -91,41 +92,37 @@ def _on_disk():
 
 
 def sync():
-    """Give every directory on disk a record, and each record the state its
-    directory is in. Cheap enough for the scan: two listdirs and, when
-    nothing moved, no write."""
+    """Bring the records in step with the disk. Only BuilderBot makes a
+    project (create, clone, an imported archive: claim()); a folder made by
+    hand on the share is not one and is not listed (the operator, 8 Oct).
+    The one exception is the first run, when every folder already there is
+    recorded, which is the whole migration. After that a record follows its
+    folder: gone from the workspace it is trashed or purged, and moved back
+    by hand from the trash it is live again."""
     live, gone = _on_disk()
     with _lock:
+        first = not FILE.exists()
         d = _load()
-        ps, changed = d["projects"], False
-        for name in sorted(live):
-            r = ps.get(name)
-            if r is None:
-                # A folder made by hand is a project like any other, and its
-                # shown name is numbered like one (the operator, 8 Oct).
+        ps, changed = d["projects"], first
+        if first:
+            for name in sorted(live):
                 _add(d, name, unique_name(name, but=name))
+            for name in sorted(gone - live):
+                # A numbered delete from before ids (X-2) was X.
+                _add(d, name, re.sub(r"-\d+$", "", name), "trashed")["legacy"] = True
+        for name, r in ps.items():
+            st = r.get("state")
+            if st == "live" and name not in live:
+                r["state"] = "trashed" if name in gone else "purged"
                 changed = True
-            elif r.get("state") == "trashed" and name in gone:
-                # Made by hand under the folder name of a project in the
-                # trash: that project stays in the trash, and the folder's
-                # row says whose name it took (shadowed).
-                continue
-            elif r.get("state") != "live":
+            elif st == "trashed" and name in live and name not in gone:
+                # Put back by hand with a mv: the same folder, so the same
+                # project. One made by hand while the trashed one is still
+                # in the trash is not, and stays unlisted.
                 r["name"] = unique_name(str(r.get("name") or name), but=name)
                 r["state"] = "live"
                 changed = True
-        for name in sorted(gone):
-            r = ps.get(name)
-            if r is None:
-                # From before ids: a second delete was numbered (X-2), and
-                # the name it had is the one without the number.
-                _add(d, name, re.sub(r"-\d+$", "", name), "trashed")["legacy"] = True
-                changed = True
-            elif r.get("state") == "live" and name not in live:
-                r["state"] = "trashed"
-                changed = True
-        for name, r in ps.items():
-            if r.get("state") in ("live", "trashed") and name not in live and name not in gone:
+            elif st == "trashed" and name not in gone and name not in live:
                 r["state"] = "purged"
                 changed = True
         if changed:
@@ -133,11 +130,10 @@ def sync():
         return d
 
 
-def shadowed(dirname):
-    """A live folder whose name is a trashed project's directory: made by
-    hand while that one was in the trash, and reading its notebook."""
-    r = _load()["projects"].get(str(dirname or "")) or {}
-    return r.get("state") == "trashed" and (WORKSPACE / str(dirname)).is_dir()
+def is_project(dirname):
+    """Whether this folder is a project: recorded live, never just present."""
+    r = _load()["projects"].get(str(dirname or ""))
+    return bool(r) and r.get("state") == "live"
 
 
 def get(dirname):

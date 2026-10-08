@@ -27,12 +27,16 @@ class Registry(unittest.TestCase):
         (self.ws / ".trash" / "old-2").mkdir(parents=True)
         registry.configure(state=self.tmp, workspace=self.ws, write_json=write_json)
 
-    def test_every_directory_on_disk_is_given_an_id(self):
+    def test_the_first_run_records_what_is_there_and_nothing_after(self):
         ps = registry.sync()["projects"]
         self.assertEqual((ps["alpha"]["id"], ps["alpha"]["name"], ps["alpha"]["state"]), (1, "alpha", "live"))
         self.assertEqual((ps["old-2"]["name"], ps["old-2"]["state"], ps["old-2"].get("legacy")),
                          ("old", "trashed", True), "a numbered delete from before ids was the name without it")
-        self.assertEqual(registry.sync()["next"], 3, "and nothing again")
+        (self.ws / "byhand").mkdir()
+        self.assertNotIn("byhand", registry.sync()["projects"], "a folder made by hand is no project")
+        self.assertFalse(registry.is_project("byhand"))
+        self.assertTrue(registry.is_project("alpha"))
+        self.assertEqual(registry.new_dir("byhand"), "byhand-2", "...and its name is not handed out")
 
     def test_a_directory_is_never_handed_out_twice(self):
         registry.sync()
@@ -66,19 +70,16 @@ class Registry(unittest.TestCase):
         registry.mark("alpha", "live")
         self.assertEqual(registry.label("alpha"), "alpha (2)")
 
-    def test_a_folder_made_by_hand_is_numbered_and_never_wakes_a_trashed_one(self):
+    def test_a_trashed_folder_moved_back_by_hand_is_live_and_one_made_beside_it_is_not(self):
         registry.sync()
-        registry.set_name("alpha", "Media")
-        (self.ws / "Media").mkdir()
-        self.assertEqual(registry.sync()["projects"]["Media"]["name"], "Media (2)")
-        registry.mark("alpha", "trashed")
-        (self.ws / ".trash" / "alpha").mkdir()
-        (self.ws / "alpha").rename(self.ws / "alpha-tmp")
-        registry.sync()
+        (self.ws / "alpha").rename(self.ws / ".trash" / "alpha")
+        self.assertEqual(registry.sync()["projects"]["alpha"]["state"], "trashed")
         (self.ws / "alpha").mkdir()
         self.assertEqual(registry.sync()["projects"]["alpha"]["state"], "trashed",
-                         "the trashed one stays trashed")
-        self.assertTrue(registry.shadowed("alpha"))
+                         "made by hand while the trashed one is in the trash: not it")
+        (self.ws / "alpha").rmdir()
+        (self.ws / ".trash" / "alpha").rename(self.ws / "alpha")
+        self.assertEqual(registry.sync()["projects"]["alpha"]["state"], "live", "moved back: it")
 
     def test_names_are_one_printable_line(self):
         self.assertEqual(registry.clean_name("  My   App\n\x07 "), "My App")

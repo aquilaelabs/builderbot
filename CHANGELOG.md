@@ -206,6 +206,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - An account may do only what its roles give, and a Claude session no more than the account behind it, whichever of its own rules and its account's roles is less (6ca3ea7)
 - An area a person's roles give no Read is not shown: its tab is hidden, and the server refuses or narrows its reads, a Claude console included without Terminal Read (4b21e8d)
 - Projects have an id and a shown name apart from their directory: a name in use gives a new project 'Name (2)' and a directory of its own, a project put back from the trash always fits, and a rename changes only the name shown, with nothing to close first (7092b36)
+- Only BuilderBot makes a project now: a folder made by hand in the projects folder is not listed; create, clone or import one instead (142ecfb)
 
 ### Removed
 
