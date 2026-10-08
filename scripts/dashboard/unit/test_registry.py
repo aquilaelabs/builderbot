@@ -66,6 +66,20 @@ class Registry(unittest.TestCase):
         registry.mark("alpha", "live")
         self.assertEqual(registry.label("alpha"), "alpha (2)")
 
+    def test_a_folder_made_by_hand_is_numbered_and_never_wakes_a_trashed_one(self):
+        registry.sync()
+        registry.set_name("alpha", "Media")
+        (self.ws / "Media").mkdir()
+        self.assertEqual(registry.sync()["projects"]["Media"]["name"], "Media (2)")
+        registry.mark("alpha", "trashed")
+        (self.ws / ".trash" / "alpha").mkdir()
+        (self.ws / "alpha").rename(self.ws / "alpha-tmp")
+        registry.sync()
+        (self.ws / "alpha").mkdir()
+        self.assertEqual(registry.sync()["projects"]["alpha"]["state"], "trashed",
+                         "the trashed one stays trashed")
+        self.assertTrue(registry.shadowed("alpha"))
+
     def test_names_are_one_printable_line(self):
         self.assertEqual(registry.clean_name("  My   App\n\x07 "), "My App")
         self.assertEqual(len(registry.clean_name("x" * 200)), registry.NAME_MAX)

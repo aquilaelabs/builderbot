@@ -2370,6 +2370,7 @@ def _overview_here(picked):
                 # Its project was deleted (moved to the trash): drawn as
                 # "X (deleted)" until X is restored or it is moved (8 Oct).
                 "owner_gone": owner_gone(owner_of(project, inst, rec)),
+                "owner_label": owner_label(owner_of(project, inst, rec)),
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
@@ -2471,7 +2472,8 @@ def _overview_here(picked):
             # make the page look like the daemon is running double. Each with
             # the project it was put under, read once for the node.
             "containers": [c | {"owner": held.get(c["name"], ""),
-                                "owner_gone": owner_gone(held.get(c["name"], ""))}
+                                "owner_gone": owner_gone(held.get(c["name"], "")),
+                                "owner_label": owner_label(held.get(c["name"], ""))}
                            for held in [_owners().get(picked or _node_here()) or {}]
                            for c in cs["containers"] if not c["ours"]]}
 
@@ -2693,6 +2695,15 @@ def owner_of(project, instance=MAIN, rec=None):
     if "for" in rec:
         return str(rec.get("for") or "")
     return "" if rec.get("source") == "file" else project
+
+
+# registry.label, set by the server (R154): the name a deleted project was
+# shown under, which the registry keeps after its directory is gone.
+label_of = None
+
+
+def owner_label(owner):
+    return (label_of(owner) if label_of and owner else owner) or ""
 
 
 def owner_gone(owner):

@@ -101,8 +101,15 @@ def sync():
         for name in sorted(live):
             r = ps.get(name)
             if r is None:
-                _add(d, name, name)
+                # A folder made by hand is a project like any other, and its
+                # shown name is numbered like one (the operator, 8 Oct).
+                _add(d, name, unique_name(name, but=name))
                 changed = True
+            elif r.get("state") == "trashed" and name in gone:
+                # Made by hand under the folder name of a project in the
+                # trash: that project stays in the trash, and the folder's
+                # row says whose name it took (shadowed).
+                continue
             elif r.get("state") != "live":
                 r["name"] = unique_name(str(r.get("name") or name), but=name)
                 r["state"] = "live"
@@ -124,6 +131,13 @@ def sync():
         if changed:
             _save(d)
         return d
+
+
+def shadowed(dirname):
+    """A live folder whose name is a trashed project's directory: made by
+    hand while that one was in the trash, and reading its notebook."""
+    r = _load()["projects"].get(str(dirname or "")) or {}
+    return r.get("state") == "trashed" and (WORKSPACE / str(dirname)).is_dir()
 
 
 def get(dirname):

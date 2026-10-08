@@ -1526,6 +1526,8 @@ await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
+ok(/Folder: \/workspace\/alpha · project #\d+/.test(await page.$eval('#rnHint', e => e.textContent)),
+   'the settings say the folder the project lives in, and its id, under the name');
 {
   // Sections, the first open by default, several at once on a desktop and
   // one at a time on a phone (the operator, 7 Oct): the gear's door opens on

@@ -210,7 +210,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
     val every = s?.arr("projects") ?: emptyList()
     val kept = every.filter { it.bool("pinned", true) }
     var all by rememberSaveable { mutableStateOf(false) }
-    val shown = if (find.isNotBlank()) every.filter { it.str("name").contains(find.trim(), ignoreCase = true) }
+    val shown = if (find.isNotBlank()) every.filter { it.str("label").ifBlank { it.str("name") }.contains(find.trim(), ignoreCase = true) }
                 else if (all || kept.isEmpty()) every else kept
     Pull(st.value == null && st.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
@@ -281,7 +281,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                 Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp).clickable { openProject(p.str("name")) },
                       bar = projectTone(p.obj("prefs").str("color"))) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.str("name"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        Text(p.str("label").ifBlank { p.str("name") }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                              color = Ink, modifier = Modifier.weight(1f))
                         // What the account's own session is doing, which is
                         // the question a phone is picked up to ask: working,
@@ -409,7 +409,7 @@ fun ApprovalsScreen(store: Store) {
         }
         val waiting = st.value?.arr("projects")?.filter { it.int("pending") > 0 } ?: emptyList()
         item { Section("Changes a session has waiting") { if (waiting.isEmpty()) Dim("none: roadmap items, bugs, rules and build settings a session added under an ask gate are listed here") } }
-        items(waiting) { p -> PendingBlock(api, p.str("name"), onChanged = reloadSt) }
+        items(waiting) { p -> PendingBlock(api, p.str("name"), onChanged = reloadSt, label = p.str("label")) }
     }
     }
 }
@@ -420,12 +420,12 @@ suspend fun answer(api: Api, id: Int, allow: Boolean, session: Boolean = false):
 } catch (e: Exception) { e.message ?: e.toString() }
 
 @Composable
-fun PendingBlock(api: Api, project: String, onChanged: () -> Unit) {
+fun PendingBlock(api: Api, project: String, onChanged: () -> Unit, label: String = "") {
     val scope = rememberCoroutineScope()
     val (pd, reload) = load("pending-$project") { api.pending(project) }
     val rows = pd.value?.arr("pending")?.filter { !it.bool("settled") } ?: emptyList()
     Column(Modifier.padding(16.dp, 4.dp)) {
-        Text(project, fontWeight = FontWeight.SemiBold)
+        Text(label.ifBlank { project }, fontWeight = FontWeight.SemiBold)
         for (r in rows) Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("${r.str("kind")}: ${r.str("summary")}")

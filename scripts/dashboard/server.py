@@ -1006,7 +1006,11 @@ def _project_columns(who, facts):
                     # ...or its map is still building (mapping.py): the
                     # same ghosting, for the seconds it takes.
                     or mapping.held(d.name),
-                    "issues": issues})
+                    "issues": issues + ([{"level": "warning", "text":
+                        f"this folder was made by hand under the folder name of "
+                        f"{registry.label(d.name)}, which is in the trash, and reads its "
+                        f"notebook: delete that one for good, or move one of the two"}]
+                        if registry.shadowed(d.name) else [])})
     return out
 
 
@@ -1762,7 +1766,7 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together: the app, the file, this.
-APP_API = 7
+APP_API = 8
 # How long the app's live connection is held before an empty answer (R125):
 # under the app's 60 s read timeout, and long enough to cost little.
 PHONE_WAIT_S = 45
@@ -2549,6 +2553,7 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 # A project's compose app, built and run on the sandbox VM's daemon. The
 # module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
+devapp.label_of = registry.label
 import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
 import db                                                        # noqa: E402
@@ -4631,6 +4636,11 @@ class Handler(BaseHTTPRequestHandler):
         rs = roles.all_roles()
         if scope is not None:
             rs = {n: r for n, r in rs.items() if r.get("scope") == "projects"}
+        # A project's owner role is named after its directory; the tab says
+        # whose it is by the name the project is shown under (R154).
+        owners_of = {roles.owner_role_name(d): d for d in registry.labels()}
+        rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}") if n in owners_of else r)
+              for n, r in rs.items()}
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
                            "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
                            "owner": users.owner_name() or "", "node_areas": sorted(roles.NODE_AREAS),

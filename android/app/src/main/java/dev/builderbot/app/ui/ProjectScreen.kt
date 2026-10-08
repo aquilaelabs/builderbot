@@ -91,7 +91,8 @@ fun ProjectScreen(store: Store, name: String) {
         Row(Modifier.padding(16.dp, 12.dp, 16.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
             val tone = projectTone(row?.obj("prefs")?.str("color") ?: "")
             if (tone != null) { Dot(tone); Spacer(Modifier.width(2.dp)) }
-            Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink,
+            // The name it is shown under (R154); `name` is the directory, the key.
+            Text(row?.str("label")?.ifBlank { null } ?: name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink,
                  modifier = Modifier.weight(1f))
             if (session != null) {
                 val working = session.obj("claude").str("state") == "working"

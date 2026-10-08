@@ -76,14 +76,14 @@ function rolesPeopleBody(){
   if (locked) return pick + `<div class="sub">${esc(p.name)} is BuilderBot's owner: every area, everywhere, and not changed here.</div>`;
   const global = d.admin ? `<div class="setrow col">${lbl("", "Global roles", "hold on every project the account is on, or everywhere for a Global role")}
       <div class="upick" id="rolesGlobal">${all.filter(r => r.name !== "owner").map(r => `<label class="pick"><input type="checkbox" data-rglobal="${esc(r.name)}"${
-        dr.roles.includes(r.name) ? " checked" : ""}> ${esc(r.name)} <span class="dim">${r.scope === "global" ? "global" : "its projects"}</span></label>`).join("")}</div></div>` : "";
+        dr.roles.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)} <span class="dim">${r.scope === "global" ? "global" : "its projects"}</span></label>`).join("")}</div></div>` : "";
   const projects = (d.projects || []).map(pn => {
     const on = dr.projects.includes(pn);
     const have = dr.project_roles[pn] || [];
     return `<div class="rproj" data-rproject="${esc(pn)}">
       <label class="pick"><input type="checkbox" data-ron="${esc(pn)}"${on ? " checked" : ""}> <b>${esc(projLabel(pn))}</b></label>
       <div class="upick"${on ? "" : " hidden"}>${onProject.length ? onProject.map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
-        have.includes(r.name) ? " checked" : ""}> ${esc(r.name)}</label>`).join("") : `<span class="dim">no roles on a project yet: add one below</span>`}</div>
+        have.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("") : `<span class="dim">no roles on a project yet: add one below</span>`}</div>
     </div>`;
   }).join("");
   return `${pick}${global}
@@ -113,7 +113,7 @@ function rolesRoleBody(){
   const r = rolesDraft;
   const pick = `<div class="setrow col">${lbl("rolesPick", "Role")}
     <div class="rpickrow"><select id="rolesPick">${names.map(n => `<option value="${esc(n)}"${n === rolesPick && !r?.fresh ? " selected" : ""}>${
-      esc(n)}${d.roles[n].builtin ? " (built in)" : ""}</option>`).join("")}${r?.fresh ? `<option selected>${esc(r.name)} (new)</option>` : ""}</select>
+      esc(d.roles[n].label || n)}${d.roles[n].builtin ? " (built in)" : ""}</option>`).join("")}${r?.fresh ? `<option selected>${esc(r.name)} (new)</option>` : ""}</select>
       ${d.admin ? `<input id="rolesNewName" placeholder="a new role's name" autocomplete="off" aria-label="a new role's name">
       <button type="button" id="rolesAdd">Add role</button>` : ""}</div></div>`;
   if (!r) return pick;

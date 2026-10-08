@@ -542,6 +542,7 @@ function renameProject(name, mode = "all"){
   // The node picker and the two credential blocks have hidden rules of their
   // own further down, and each of those consults the mode too.
   $("rnName").value = projLabel(name);
+  $("rnHint").textContent = rnFolderLine(name);
   $("rnToken").value = "";
   $("rnErrWrap").hidden = true;
   $("rnPreview").hidden = true;
@@ -1188,9 +1189,16 @@ const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAut
 // A rename is the name shown and nothing else (R154): the directory, the
 // notebook, the sessions and the containers stay where they are, so nothing
 // has to be closed first.
+// Where the project is on disk, and its id, under the name (the operator,
+// 8 Oct): the name shown is a label, the folder is the project's for good.
+function rnFolderLine(name){
+  const pid = (state?.projects || []).find(p => p.name === name)?.pid;
+  return `Folder: /workspace/${name}${pid ? ` · project #${pid}` : ""}. Renaming changes the name shown, never the folder.`;
+}
+
 function rnShow(){
   const raw = $("rnName").value.trim().replace(/\s+/g, " ");
-  $("rnHint").textContent = "";
+  $("rnHint").textContent = rnFolderLine(rnFor);
   const taken = raw && raw.toLowerCase() !== projLabel(rnFor).toLowerCase()
                 && (state?.projects || []).some(p => p.name !== rnFor
                      && String(p.label || p.name).toLowerCase() === raw.toLowerCase());

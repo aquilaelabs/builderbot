@@ -105,7 +105,7 @@ object Watch {
             else nm.notify(base + ID_PENDING, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
                 .setContentTitle(from + "Waiting for your approval")
-                .setContentText(waiting.joinToString("; ") { "${it.int("pending")} in ${it.str("name")}" })
+                .setContentText(waiting.joinToString("; ") { "${it.int("pending")} in ${it.str("label").ifBlank { it.str("name") }}" })
                 .setContentIntent(openApp(context, "approvals"))
                 .setAutoCancel(true)
                 .build())
@@ -155,7 +155,7 @@ object Watch {
                        else task
             nm.notify(note, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
-                .setContentTitle(from + "$project: Claude is waiting on you")
+                .setContentTitle(from + "${p.str("label").ifBlank { project }}: Claude is waiting on you")
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(openApp(context, "project/$project"))

@@ -495,7 +495,7 @@ function dmOwnerLine(r, key){
   const names = (state?.projects || []).map(p => p.name);
   // A project since deleted is still what the row says until it is changed.
   if (saved && !names.includes(saved)) names.push(saved);
-  const shown = n => n === saved && r.owner_gone ? `${n} (deleted)` : projLabel(n);
+  const shown = n => n === saved && r.owner_gone ? `${r.owner_label || n} (deleted)` : projLabel(n);
   names.sort((a, b) => projLabel(a).localeCompare(projLabel(b), undefined, {sensitivity: "base"}));
   const id = "dmo-" + key;
   return `<div class="sub dmowner"><label for="${esc(id)}">Project${
@@ -1331,8 +1331,9 @@ function dmGroupsHtml(ins, cs, job, blind){
   // A deleted project's containers keep its name until it is restored from
   // the trash, or they are moved or given to another project (8 Oct).
   const gone = o => [...ins, ...cs].some(r => r.owner === o && r.owner_gone);
+  const gonesName = o => [...ins, ...cs].find(r => r.owner === o)?.owner_label || o;
   return owners.map(o => gone(o)
-      ? head(`${o} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
+      ? head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
       : head(projLabel(o), "", colorTone(projectColor(o))) + group(o)).join("")
     + (loose ? head("No project", "no Claude session sees these", null) + group("") : "");
 }
