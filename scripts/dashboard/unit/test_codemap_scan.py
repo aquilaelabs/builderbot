@@ -141,6 +141,28 @@ class OtherProjects(unittest.TestCase):
                              ["tests/engine.test.js  (1: public/engine.js)"])
 
 
+class Caution(unittest.TestCase):
+    """The answers a session deletes by say to grep first, and a plan says
+    how much of it the map guessed (the operator, 8 Oct)."""
+
+    def test_nothing_calls_and_unused_say_grep_first(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "p.js").write_text("function lonely(){}\n")
+            idx = codemap.build(d)
+            said = codemap.q_who_calls(idx, "lonely", d)
+            self.assertTrue(said[0].startswith("nothing calls lonely"))
+            self.assertIn("grep -rn lonely before deleting", said[1])
+            self.assertIn("grep each before deleting", codemap.q_unused(idx)[0])
+
+    def test_a_plan_says_what_it_measured_and_what_the_map_guessed(self):
+        self.assertEqual(codemap.account_line({"measured": 3, "callers": 1, "file": 0, "by_name": []}),
+                         "suites: 3 of 4 changed functions placed by what a covered run measured, "
+                         "1 through their callers in the map")
+        line = codemap.account_line({"measured": 0, "callers": 0, "file": 2, "by_name": ["a.py"]})
+        self.assertIn("a.py no covered run has seen, so planned by the map's reading alone", line)
+        self.assertEqual(codemap.account_line({"measured": 0, "callers": 0, "file": 0, "by_name": []}), "")
+
+
 class Shell(unittest.TestCase):
     def test_a_nested_function_ends_at_its_own_brace(self):
         s = scan("outer() {\n    inner() {\n        die x\n    }\n    inner\n}\n", "a.sh")

@@ -81,6 +81,9 @@ cmd_tests_preflight() {
                 done < <(cmd_map affected --base "$mb_ref" --names "${mapped[@]}")
                 case " ${suites[*]} " in *" ALL "*) suites=(ALL) ;; esac
             else
+                # Said, since a suite the map misses is one the gate never
+                # runs, and the gate still says clean.
+                printf '%s\n' "suites: planned by the map's reading alone$([ -n "$named" ] && echo ' (files named outright)' || echo ': no covered run on record, which a whole gate or bb tests coverage makes')" >&2
                 while IFS= read -r f; do
                     [ -n "$f" ] && case " ${suites[*]:-} " in *" $f "*) ;; *) suites+=("$f") ;; esac
                 done < <(cmd_map suites "${mapped[@]}" --names)

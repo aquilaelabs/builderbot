@@ -2008,6 +2008,13 @@ def q_find(idx, name, root=None):
     return out
 
 
+# Said under every answer that would have a session delete or rename
+# something: the map is an index, and a miss there deletes working code
+# (MediaReducer's unused was wrong 50 times in 51 before B584).
+GREP_FIRST = ("(the map is an index, not a parser: {} before deleting or renaming, since a call "
+              "from a string, a template or a file it does not read is not in it)")
+
+
 def q_who_calls(idx, name, root):
     qual = ""
     if "." in name:
@@ -2018,7 +2025,8 @@ def q_who_calls(idx, name, root):
     # is not dead; who-calls used to say "nothing calls" and leave it there.
     passed = [] if qual else [p for p in idx.get("passed", []) if p["name"] == name]
     if not rows and not passed:
-        return [f"nothing calls {name}" + (f" on {qual}" if qual else "") + ", and nothing passes it by name"]
+        return [f"nothing calls {name}" + (f" on {qual}" if qual else "") + ", and nothing passes it by name",
+                GREP_FIRST.format(f"grep -rn {name}")]
     out = []
     # What the callee says about itself, first: the reason it exists is the
     # frame every caller below is read in.
@@ -2244,7 +2252,8 @@ def q_unused(idx, path=None):
             rows.append(d)
     if not rows:
         return ["nothing on the page is unused by this measure" + (f" in {path}" if path else "")]
-    out = [f"{len(rows)} page function{'s' if len(rows) != 1 else ''} nothing calls and nothing passes by name:"]
+    out = [f"{len(rows)} page function{'s' if len(rows) != 1 else ''} nothing calls and nothing passes by name"
+           " (" + GREP_FIRST.format("grep each")[1:-1] + "):"]
     for d in sorted(rows, key=lambda d: (d["file"], d["line"])):
         out.append(f"  {d['file']}:{d['line']}  {d['name']}" + (f"  (in {d['parent']})" if d["parent"] else ""))
     return out
@@ -2377,6 +2386,13 @@ def affected(idx, cov, ranges, root=None):
     hit = covered_ids(cov) if cov else {}
     suites, notes, unknown = {}, [], []
     every = False
+    # How each changed function was placed, for preflight to say: measured
+    # by a covered run, through a caller in the map's call graph, or by its
+    # file's answer, which is the map's guess by name when no covered run
+    # has seen the file at all
+    acct = {"measured": 0, "callers": 0, "file": 0, "by_name": []}
+    LAST_ACCOUNT.clear()
+    LAST_ACCOUNT.update(acct)
     for f, spans in ranges.items():
         entry = idx["files"].get(f)
         if entry is None:
@@ -2433,15 +2449,18 @@ def affected(idx, cov, ranges, root=None):
                 for s_ in by:
                     suites.setdefault(s_, set()).add(f"{d['name']}()")
                 found.add(d["name"])
+                LAST_ACCOUNT["measured"] += 1
                 continue
             via = through_callers(d["name"])
             if via:
                 for s_, why in via.items():
                     suites.setdefault(s_, set()).add(why)
                 found.add(d["name"])
+                LAST_ACCOUNT["callers"] += 1
                 notes.append(f"{f}:{d['line']} {d['name']}: new to the covered run, measured by its caller")
             else:
                 unknown.append(f"{f}:{d['line']} {d['name']}")
+                LAST_ACCOUNT["file"] += 1
         drawn = {(d["what"], d["kind"]) for d in entry.get("draws", []) if inside(d["line"])}
         for d in idx["draws"]:
             if is_test(d["file"]) and (d["what"], d["kind"]) in drawn:
@@ -2488,6 +2507,7 @@ def affected(idx, cov, ranges, root=None):
                    and d.get("end", d["line"]) - d["line"] < 0.5 * last]
             names = {s_ for d in own for s_ in (hit.get(fid(d)) or {})}
             if not names:
+                LAST_ACCOUNT["by_name"].append(f)
                 _, byfile = suites_for(idx, [f])
                 names = {Path(t).stem for t in byfile if not Path(t).name.startswith("lab-")}
             for s_ in names:
@@ -2503,10 +2523,38 @@ def affected(idx, cov, ranges, root=None):
     return suites, notes, unknown, every
 
 
+LAST_ACCOUNT = {}
+
+
+def account_line(a, every=False):
+    """One line saying how far a plan stands on measurement and how far on
+    the map's reading, which can be wrong: a suite the map misses is a
+    suite the gate does not run, and the gate still says clean."""
+    n = a.get("measured", 0) + a.get("callers", 0) + a.get("file", 0)
+    if every:
+        return "suites: every one, since a changed server function is new to the covered run"
+    if not n and not a.get("by_name"):
+        return ""
+    parts = [f"{a.get('measured', 0)} of {n} changed function{'' if n == 1 else 's'} placed by what a "
+             f"covered run measured"]
+    if a.get("callers"):
+        parts.append(f"{a['callers']} through their callers in the map")
+    if a.get("file"):
+        parts.append(f"{a['file']} by their file's suites")
+    line = "suites: " + ", ".join(parts)
+    if a.get("by_name"):
+        line += (f"; {', '.join(a['by_name'][:3])}{' and more' if len(a['by_name']) > 3 else ''} no covered "
+                 "run has seen, so planned by the map's reading alone (a whole gate or bb tests coverage measures it)")
+    return line
+
+
 def q_affected(idx, cov, root, base, files, names_only=False, ranges=None):
     ranges = ranges if ranges is not None else changed_ranges(root, base, files)
     suites, notes, unknown, every = affected(idx, cov, ranges, root)
     if names_only:
+        said = account_line(LAST_ACCOUNT, every)
+        if said:
+            print(said, file=sys.stderr)
         return ["ALL"] if every else sorted(suites)
     at = time.strftime("%d %b %H:%M", time.localtime(cov.get("at", 0))) if cov else "none"
     out = [f"by coverage (last covered run {at}): {'every suite' if every else str(len(suites)) + ' suite' + ('' if len(suites) == 1 else 's')}"]
@@ -3101,8 +3149,7 @@ def main(argv):
     else:
         names_only = "--names" in rest
         lines = q_suites(idx, [r for r in rest if r != "--names"], names_only)
-    if verb in ("find", "who-calls", "draws", "calls") and len(lines) == 1 \
-            and lines[0].startswith("nothing "):
+    if verb in ("find", "who-calls", "draws", "calls") and lines and lines[0].startswith("nothing "):
         lines += not_read_note(root)
     print("\n".join(lines))
     return 0
