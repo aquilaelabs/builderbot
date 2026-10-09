@@ -132,10 +132,18 @@ sweep_leftovers() {
         [ -d "$d" ] || continue
         p="$(cat "$d/.bb-run-pid" 2>/dev/null || true)"
         if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then
-            # ...and the tmux server that ran inside it, by its socket.
-            [ -d "$d/tmux" ] && for sock in "$d"/tmux/*; do
+            # ...and the tmux server that ran inside it, by its socket, which
+            # tmux keeps a level down (tmux/tmux-UID/default): the glob one
+            # level up matched a directory and left every server running (B608).
+            [ -d "$d/tmux" ] && for sock in "$d"/tmux/*/*; do
                 [ -S "$sock" ] && tmux -S "$sock" kill-server 2>/dev/null || true
             done
+            # ...and its ssh-agent, by the pid it wrote, once that pid is
+            # still an ssh-agent on this run's socket (B608).
+            p="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$d/agent.env" 2>/dev/null || true)"
+            if [ -n "$p" ] && tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -qF "ssh-agent -a $d/"; then
+                kill "$p" 2>/dev/null || true
+            fi
             rm -rf "$d"
         fi
     done
@@ -657,6 +665,11 @@ cleanup() {
     case "$(tmux display-message -p '#{socket_path}' 2>/dev/null)" in
         "$S"/*) tmux kill-server 2>/dev/null || true ;;
     esac
+    # ...and by its socket under this run's own directory, which needs no
+    # client to answer display-message first (B608).
+    for sock in "$S"/tmux/*/*; do
+        [ -S "$sock" ] && tmux -S "$sock" kill-server 2>/dev/null || true
+    done
     # BB_TEST_KEEP=1 leaves the scratch dir behind: the server log, the stub
     # agent's log and the state dir are the only account of what a failure
     # inside them looked like, and they used to go with the run that made it.
