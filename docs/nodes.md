@@ -592,10 +592,16 @@ a node behind a one-way tunnel may open. The controller's copy on the share
 stays the original; a node is never told about another node, only the
 controller is.
 
+- **The first copy** is one download: the controller streams the project
+  as a tar (`sync-tar`), the agent unpacks it and hashes what arrived, and
+  anything the stream did not bring is fetched a file at a time (R163).
 - **Up.** The agent compares the tree with its record of what the two last
-  agreed (in the data store, so it survives a restart). A file that has
-  changed and then held still for a tick goes up as a put naming the hash
-  it was changed from.
+  agreed (in the data store, so it survives a restart). Which paths to look
+  at comes from inotify on Linux, so a tick reads the files that changed
+  rather than the tree; the whole tree is walked when a directory comes or
+  goes, when the kernel's queue overflows, and once a minute regardless. A
+  file that has changed and then held still for a tick goes up as a put
+  naming the hash it was changed from.
 - **Down.** A put, a write from VS Code (files.py tells wssync.py) or a
   change a scan of the share finds bumps the project's revision and leaves
   a hint the node's held work request takes at once; the agent then asks

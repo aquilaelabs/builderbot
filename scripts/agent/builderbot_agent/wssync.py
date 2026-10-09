@@ -20,10 +20,15 @@ that one and keeps ours beside it as a conflict copy; the version it kept
 is fetched here, so the two copies agree again and both versions exist.
 """
 import contextlib
+import ctypes
+import ctypes.util
+import errno
 import hashlib
 import json
 import os
 import stat as st
+import struct
+import tarfile
 import threading
 import time
 import urllib.parse
@@ -38,6 +43,7 @@ MAX_FILE = 512 * 1024 * 1024
 TICK = 1.0
 PULL_EVERY = 10.0
 ASK_EVERY = 30.0
+WALK_EVERY = 60.0        # a whole walk even with the watcher, for what it cannot see
 
 
 def skipped(rel):
@@ -98,6 +104,100 @@ def walk(root):
     return out
 
 
+# inotify, through libc: the kernel says which files changed, so a tick reads
+# those rather than walking the tree. Linux only; anything else (or a node
+# out of watches) walks every tick as before.
+_IN = dict(MODIFY=0x2, ATTRIB=0x4, CLOSE_WRITE=0x8, MOVED_FROM=0x40, MOVED_TO=0x80, CREATE=0x100,
+           DELETE=0x200, DELETE_SELF=0x400, MOVE_SELF=0x800, Q_OVERFLOW=0x4000, IGNORED=0x8000,
+           ONLYDIR=0x1000000, DONT_FOLLOW=0x2000000, ISDIR=0x40000000)
+_MASK = (_IN["ATTRIB"] | _IN["CLOSE_WRITE"] | _IN["MOVED_FROM"] | _IN["MOVED_TO"] | _IN["CREATE"]
+         | _IN["DELETE"] | _IN["DELETE_SELF"] | _IN["MOVE_SELF"])
+_libc = None
+
+
+def _inotify():
+    global _libc
+    if _libc is None:
+        name = ctypes.util.find_library("c")
+        lib = ctypes.CDLL(name, use_errno=True) if name else None
+        _libc = lib if lib is not None and hasattr(lib, "inotify_init1") else False
+    return _libc or None
+
+
+class Watcher:
+    """Which paths under a project changed since the last ask. `full` says
+    a walk is needed: a directory came, went or moved, or the kernel's queue
+    overflowed, and those are cheaper to walk than to follow."""
+
+    def __init__(self, top):
+        lib = _inotify()
+        if lib is None:
+            raise OSError("no inotify here")
+        self.lib, self.top = lib, top
+        self.fd = lib.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        if self.fd < 0:
+            raise OSError(ctypes.get_errno(), "inotify_init1")
+        self.wds, self.dirty, self.full = {}, set(), False
+        self.add_tree("")
+
+    def close(self):
+        with contextlib.suppress(OSError):
+            os.close(self.fd)
+
+    def add(self, rel):
+        wd = self.lib.inotify_add_watch(self.fd, os.path.join(self.top, rel).encode(),
+                                        _MASK | _IN["ONLYDIR"] | _IN["DONT_FOLLOW"])
+        if wd < 0:
+            e = ctypes.get_errno()
+            if e == errno.ENOSPC:
+                raise OSError(e, "out of inotify watches")
+            return
+        self.wds[wd] = rel
+
+    def add_tree(self, rel):
+        base = os.path.join(self.top, rel)
+        for d, dirs, _files in os.walk(base):
+            r = os.path.relpath(d, self.top)
+            r = "" if r == "." else r
+            self.add(r)
+            dirs[:] = [x for x in dirs if not os.path.islink(os.path.join(d, x))
+                       and not skipped((r + "/" if r else "") + x + "/_")]
+
+    def changes(self):
+        """(full, {rel}) since the last call."""
+        while True:
+            try:
+                buf = os.read(self.fd, 65536)
+            except BlockingIOError:
+                break
+            if not buf:
+                break
+            i = 0
+            while i + 16 <= len(buf):
+                wd, mask, _cookie, n = struct.unpack_from("iIII", buf, i)
+                name = buf[i + 16:i + 16 + n].split(b"\0", 1)[0].decode("utf-8", "surrogateescape")
+                i += 16 + n
+                if mask & _IN["Q_OVERFLOW"]:
+                    self.full = True
+                    continue
+                base = self.wds.get(wd)
+                if mask & _IN["IGNORED"]:
+                    self.wds.pop(wd, None)
+                    continue
+                if base is None:
+                    continue
+                rel = (base + "/" if base else "") + name if name else base
+                if mask & _IN["ISDIR"] or mask & (_IN["DELETE_SELF"] | _IN["MOVE_SELF"]):
+                    self.full = True
+                    if mask & (_IN["CREATE"] | _IN["MOVED_TO"]) and name and not skipped(rel + "/_"):
+                        self.add_tree(rel)
+                elif name and not skipped(rel):
+                    self.dirty.add(rel)
+        full, dirty = self.full, self.dirty
+        self.full, self.dirty = False, set()
+        return full, dirty
+
+
 class Project:
     """One synced project's record and its state on this node."""
 
@@ -109,6 +209,8 @@ class Project:
         self.hinted = False
         self.copying = 0
         self.error = ""
+        self.watch = None         # its Watcher, once there is a tree to watch
+        self.walked_at = 0.0
         try:
             with open(path) as f:
                 d = json.load(f)
@@ -199,6 +301,8 @@ class WorkspaceSync:
                 for name in list(self.projects):
                     if name not in want:
                         # Unbound: left as it is on disk, no longer kept in step.
+                        if self.projects[name].watch:
+                            self.projects[name].watch.close()
                         del self.projects[name]
                 for name, rev in want.items():
                     p = self.projects[name]
@@ -303,11 +407,28 @@ class WorkspaceSync:
         p.copying = len(rows)
         here = walk(top) if os.path.isdir(top) else {}
         p.files = {}
+        if not here and rows:
+            # Nothing here yet: the project in one download rather than a
+            # request a file (R163). Whatever it did not bring is fetched
+            # file by file below, as a tree that was here would be.
+            try:
+                self.unpack(p, top)
+            except (OSError, tarfile.TarError) as ex:
+                log(f"sync: {p.name}: the whole-project download failed ({ex}); fetching file by file")
+            here = walk(top) if os.path.isdir(top) else {}
+            for rel, e in here.items():
+                try:
+                    p.files[rel] = [link_sha(e[3]) if e[3] else sha_file(os.path.join(top, rel)), *e]
+                except OSError:
+                    continue
         for rel, sha, _size, mode, link, _gone in rows:
             if skipped(rel):
                 p.copying -= 1
                 continue
             e = here.get(rel)
+            if rel in p.files:
+                p.copying -= 1             # came in the download
+                continue
             try:
                 if link:
                     if e is None:
@@ -328,6 +449,53 @@ class WorkspaceSync:
         p.pulled_at = time.monotonic()
         p.save()
         log(f"sync: {p.name} copied ({len(rows)} files at revision {p.rev})")
+
+    def unpack(self, p, top):
+        """The controller's tar of the project, into an empty tree here,
+        owned by the session account. Paths that would leave the tree, and
+        anything but files, directories and links inside it, are refused."""
+        tmp = os.path.join(self.record_dir(), f".{p.name}.tar")
+        q = urllib.parse.urlencode({"project": p.name})
+        try:
+            code, _ = self.agent.ctl.fetch(f"sync-tar?{q}", tmp, timeout=3600)
+            if code != 200:
+                raise OSError(f"the controller answered {code}")
+            self.mkdirs(top, "")
+            own = self.owner()
+            with tarfile.open(tmp) as tar:
+                for m in tar:
+                    name = m.name
+                    if name.startswith("/") or ".." in name.split("/") or skipped(name):
+                        continue
+                    if not (m.isfile() or m.isdir() or m.issym()):
+                        continue
+                    if m.issym() and os.path.isabs(m.linkname):
+                        continue
+                    d = name.rpartition("/")[0]
+                    self.mkdirs(top, d)
+                    dest = os.path.join(top, name)
+                    if m.isdir():
+                        continue
+                    if m.issym():
+                        with contextlib.suppress(FileNotFoundError):
+                            os.remove(dest)
+                        os.symlink(m.linkname, dest)
+                    else:
+                        src = tar.extractfile(m)
+                        part = os.path.join(top, d, f"{TMP}{os.path.basename(name)}")
+                        with open(part, "wb") as f:
+                            while True:
+                                chunk = src.read(1 << 20)
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                        os.chmod(part, m.mode & 0o7777 or 0o644)
+                        os.replace(part, dest)
+                    if own:
+                        os.lchown(dest, *own)
+        finally:
+            with contextlib.suppress(OSError):
+                os.remove(tmp)
 
     def pull(self, p, top):
         p.hinted = False
@@ -381,16 +549,37 @@ class WorkspaceSync:
             p.save()
 
     # -- up -----------------------------------------------------------------------------
+    def looked(self, p, top):
+        """{rel: entry or None} for every path that may have moved: the
+        watcher's paths and what was still moving last tick, or the whole
+        tree when the watcher cannot say (none here, a directory moved, a
+        minute since the last whole walk)."""
+        if p.watch is None and os.path.isdir(top) and _inotify() is not None:
+            try:
+                p.watch = Watcher(top)
+                p.walked_at = 0.0
+            except OSError as e:
+                log(f"sync: {p.name}: walking the tree every tick, without inotify ({e})")
+                p.watch = False
+        full, dirty = (True, set()) if not p.watch else p.watch.changes()
+        if full or time.monotonic() - p.walked_at > WALK_EVERY:
+            p.walked_at = time.monotonic()
+            now = walk(top) if os.path.isdir(top) else {}
+            return {**{rel: None for rel in p.files if rel not in now}, **now}
+        out = {}
+        for rel in dirty | set(p.moving):
+            out[rel] = entry(os.path.join(top, rel))
+        return out
+
     def push(self, p, top):
-        now = walk(top) if os.path.isdir(top) else {}
         moved = {}
-        for rel, e in now.items():
+        for rel, e in self.looked(p, top).items():
             rec = p.files.get(rel)
-            if rec is None or tuple(rec[1:]) != e:
+            if e is None:
+                if rec is not None:
+                    moved[rel] = None
+            elif rec is None or tuple(rec[1:]) != e:
                 moved[rel] = e
-        for rel in p.files:
-            if rel not in now:
-                moved[rel] = None
         # A file still being written goes on the next tick: what was seen
         # moving last time must be seen the same now.
         ready = {k: v for k, v in moved.items() if k in p.moving and p.moving[k] == v}

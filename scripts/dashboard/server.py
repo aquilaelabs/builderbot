@@ -5509,8 +5509,8 @@ class Handler(BaseHTTPRequestHandler):
             if verb == "sync-put":
                 return self._json(*channel.sync_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
-        if verb == "sync-file":
-            got, status = channel.sync_file(auth, q)
+        if verb in ("sync-file", "sync-tar"):
+            got, status = (channel.sync_file if verb == "sync-file" else channel.sync_tar)(auth, q)
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
@@ -5544,7 +5544,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         for k, v in got["headers"].items():
             self.send_header(k, v)
-        if "path" in got:
+        if "stream" in got:
+            # Written as it is made, ended by closing the connection: this
+            # server speaks HTTP/1.0, one request a connection (a synced
+            # project's first copy, R163).
+            self.end_headers()
+            got["stream"](self.wfile)
+        elif "path" in got:
             self.send_header("Content-Length", str(got["path"].stat().st_size))
             self.end_headers()
             with open(got["path"], "rb") as f:

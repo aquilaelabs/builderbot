@@ -34,6 +34,7 @@ import hashlib
 import os
 import re
 import stat as st
+import tarfile
 import threading
 import time
 from pathlib import Path
@@ -332,6 +333,30 @@ def file_path(nid, project, rel):
     if e is None or e[3]:
         return None, ({"error": "no such file"}, 404)
     return p, None
+
+
+def tar_writer(nid, project):
+    """The whole project in one download, for a node's first copy: a
+    function that writes it as a tar stream, or a refusal. Each file as it is
+    at that moment; the node hashes what it unpacks and then asks what
+    changed since the revision state() gave it, so a file that moves while
+    this runs comes down again."""
+    if (why := may(nid, project)):
+        return None, ({"error": why}, 403)
+    try:
+        root = _root(project)
+    except ValueError as e:
+        return None, ({"error": str(e)}, 404)
+
+    def write(out):
+        with tarfile.open(fileobj=out, mode="w|", format=tarfile.PAX_FORMAT) as tar:
+            for rel in sorted(_walk(root)):
+                p = root / rel
+                if _entry(p) is None:
+                    continue
+                with contextlib.suppress(OSError):
+                    tar.add(p, arcname=rel, recursive=False)
+    return write, None
 
 
 def _conflict_name(rel, who):

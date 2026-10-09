@@ -37,6 +37,10 @@ write(`${CTL}/src/b.py`, "print('b')\n");
 write(`${CTL}/.git/HEAD`, 'ref: refs/heads/main\n');
 write(`${CTL}/node_modules/x/index.js`, 'not synced\n');
 symlinkSync('src/b.py', `${CTL}/b-link`);
+// Enough files that a request a file would be minutes over a slow link: the
+// first copy is one download (R163).
+for (let i = 0; i < 1500; i++) write(`${CTL}/many/d${i % 30}/f${i}.txt`, `file ${i}\n`);
+const copyStart = Date.now();
 
 const RUN = `${DIR}/wssync-agent/builderbot-agent`;
 mkdirSync(`${DIR}/wssync-agent`, { recursive: true });
@@ -68,6 +72,10 @@ try {
   const first = await until(() => Object.values(nodes).every(n => read(`${n.ws}/a.txt`) === 'one\n'
     && read(`${n.ws}/src/b.py`) === "print('b')\n" && read(`${n.ws}/.git/HEAD`)) ? true : null, 40000);
   ok(first, `both nodes take a first copy of ${P}: files, .git, and the symlink${first ? '' : '\n' + logs()}`);
+  const all = await until(() => Object.values(nodes).every(n => read(`${n.ws}/many/d29/f1499.txt`) === 'file 1499\n'), 60000);
+  ok(all && Object.values(nodes).every(n => /copied \(\d+ files/.test(read(n.log) || '')
+                                          && !/file by file/.test(read(n.log) || '')),
+     `...1500 more files with it, in one download each, ${((Date.now() - copyStart) / 1000).toFixed(1)}s from the agents starting${all ? '' : '\n' + logs()}`);
   ok(Object.values(nodes).every(n => !existsSync(`${n.ws}/node_modules`) && readlinkSync(`${n.ws}/b-link`) === 'src/b.py'),
      '...without node_modules, and with the link as a link');
   const ready = await until(async () => {

@@ -38,6 +38,7 @@ class Wire:
 
     def __init__(self, nid):
         self.nid, self.down = nid, False
+        self.fetched, self.cut = [], 0
 
     def call(self, verb, body, timeout=0):
         if self.down:
@@ -56,6 +57,17 @@ class Wire:
         if self.down:
             return 0, "down"
         q = urllib.parse.parse_qs(path.partition("?")[2])
+        self.fetched.append(path.partition("?")[0])
+        if path.startswith("sync-tar"):
+            write, no = ctl_sync.tar_writer(self.nid, q["project"][0])
+            if no:
+                return no[1], ""
+            buf = io.BytesIO()
+            write(buf)
+            data = buf.getvalue()[:self.cut] if self.cut else buf.getvalue()
+            with open(dest, "wb") as f:
+                f.write(data)
+            return 200, ""
         p, no = ctl_sync.file_path(self.nid, q["project"][0], q["path"][0])
         if no:
             return no[1], ""
@@ -142,6 +154,34 @@ class Sync(unittest.TestCase):
         self.assertFalse(os.path.exists(self.at("n1", "node_modules")))
         self.assertFalse(os.path.exists(self.at("n1", ".git/index.lock")))
         self.assertTrue(self.n["n1"].status()["alpha"]["ready"])
+
+    def test_a_first_copy_is_one_download(self):
+        self.turn("n1", times=1)
+        self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"])
+        self.assertEqual(read(self.at("n1", "src/b.py")), "print('b')\n")
+
+    def test_a_cut_off_download_is_made_up_file_by_file(self):
+        self.n["n1"].agent.ctl.cut = 2048
+        self.turn("n1", times=1)
+        self.assertEqual(read(self.at("n1", "a.txt")), "one\n")
+        self.assertEqual(read(self.at("n1", "src/b.py")), "print('b')\n")
+        self.assertEqual(read(self.at("n1", ".git/HEAD")), "ref: refs/heads/main\n")
+        self.assertIn("sync-file", self.n["n1"].agent.ctl.fetched)
+
+    def test_a_save_is_seen_by_the_watcher_without_walking_the_tree(self):
+        if node_sync._inotify() is None:
+            self.skipTest("no inotify here")
+        self.turn()
+        was, node_sync.WALK_EVERY = node_sync.WALK_EVERY, 1e9
+        try:
+            self.assertTrue(self.n["n1"].projects["alpha"].watch)
+            write(self.at("n1", "src/deep/new.py"), "in a new directory\n")
+            write(self.at("n1", "a.txt"), "watched\n")
+            self.turn("n1", times=3)
+            self.assertEqual(read(f"{self.ws}/alpha/a.txt"), "watched\n")
+            self.assertEqual(read(f"{self.ws}/alpha/src/deep/new.py"), "in a new directory\n")
+        finally:
+            node_sync.WALK_EVERY = was
 
     def test_a_save_on_one_node_reaches_the_controller_and_the_other_node(self):
         self.turn()

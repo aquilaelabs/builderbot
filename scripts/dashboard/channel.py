@@ -163,6 +163,16 @@ def sync_file(auth, q):
     return {"path": path, "ctype": "application/octet-stream", "headers": {}}, 200
 
 
+def sync_tar(auth, q):
+    """A synced project whole, as a tar stream, for a node's first copy."""
+    if (no := _node_only(auth)):
+        return no
+    write, no = wssync.tar_writer(auth["node"], q.get("project", [""])[0])
+    if no:
+        return no
+    return {"stream": write, "ctype": "application/x-tar", "headers": {}}, 200
+
+
 def sync_put(auth, q, stream, length):
     """One file the node changed, raw in the body."""
     if (no := _node_only(auth)):
