@@ -2633,13 +2633,43 @@ ok(page.errors.length === 0,
   // Check for updates asks its latest with the rest, in the same answer.
   const chk = await napi('/api/toolchains', { action: 'check', node: en.id });
   ok(chk.claude?.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.claude?.version || chk.claude?.error || chk.error})`);
-  // The node's own toolchain check it queued beside is not this block's: gone,
-  // so the tab is not busy with it and the agent is handed the update next.
-  if (chk.job) await napi('/api/v1/jobs', { action: 'cancel', id: chk.job });
+  // The node's own toolchain check it queued beside: the fake agent takes it
+  // and answers the way bb toolchains versions does, Go behind, so the tab
+  // is not busy with it and the agent is handed the update next.
+  const tcRowOf = st => (st.attention || []).find(a => a.kind === 'toolchain' && a.id === en.id);
+  const claudeIn = st => (tcRowOf(st)?.tools || []).find(t => t.name === 'claude-code');
+  if (chk.job) {
+    const AH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const w = await fetch(base + '/api/v1/agent/work', { method: 'POST', headers: AH,
+      body: JSON.stringify({ running: [], wait: 0 }) });
+    const got = w.status === 200 ? await w.json() : {};
+    if ((got.job?.id || got.id) === chk.job) {
+      await napi('/api/v1/agent/log', { job: chk.job, chunks: [
+        { seq: 1, chunk: 'go\t1.27.0\t1.28.0\tupdate\nnode\t22.1.0\t22.1.0\tcurrent\n' }] }, AH);
+      await napi('/api/v1/agent/result', { job: chk.job, state: 'succeeded', exit: 0 }, AH);
+    } else await napi('/api/v1/jobs', { action: 'cancel', id: chk.job });
+  }
   const st = await napi('/api/status');
-  const row = (st.attention || []).find(a => a.kind === 'claude' && a.id === en.id);
-  ok(!!row && row.from === '1.0.0' && row.to === '1.2.0',
+  const row = tcRowOf(st);
+  const cl = claudeIn(st), goRow = (row?.tools || []).find(t => t.name === 'go');
+  ok(cl?.from === '1.0.0' && cl.to === '1.2.0' && cl.label === 'Claude Code',
      `a node behind is a bell row naming both versions (${JSON.stringify(row || st.attention)})`);
+  ok(goRow?.from === '1.27.0' && goRow.to === '1.28.0' && row.tools.length === 2
+     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'toolchain').length === 1,
+     `...the same row as a store toolchain's update, one per node, Claude Code first (${JSON.stringify(row?.tools)})`);
+  // The row's link opens the node's Toolchains tab, where each is updated
+  // (the operator, 9 Oct), from whichever node that tab was on.
+  await page.waitForFunction(id => (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id), en.id, { timeout: 15000 });
+  await page.evaluate(() => { tcNode = 'local'; });
+  await page.click('#bBell');
+  await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 10000 });
+  const tcBell = await page.$eval(`#bellPanel [data-btc="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
+  ok(/toolchain updates available/.test(tcBell) && /on clbox: Claude Code 1\.0\.0 → 1\.2\.0, Go 1\.27\.0 → 1\.28\.0/.test(tcBell),
+     `the bell says it in words, every toolchain behind on the node in one row (${tcBell.slice(0, 160)})`);
+  await page.click(`#bellPanel [data-btc="${en.id}"]`);
+  await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden
+    && document.querySelector('#tcClaudeTick'), en.id, { timeout: 15000 });
+  ok(true, '...and its link opens the Toolchains tab on that node, Claude Code\'s row there');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());
@@ -2713,8 +2743,8 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
     ok(r.ok && r.held_while_ending.length === 1 && r.held_while_ending[0] === true && r.after === false,
        `the hold is up from the press, while the node's sessions are being ended, and is the job's alone once it is queued (${said})`);
   }
-  ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
-     '...and the bell row is gone while the update is queued');
+  ok(!claudeIn(await napi('/api/status')),
+     '...and Claude Code leaves the bell row while the update is queued');
   const again = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
   ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
   // The fake agent takes the job and finishes it the way the real one does,
@@ -2739,7 +2769,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
     const cc = (await napi('/api/status')).claude_code?.nodes?.[en.id] || {};
     ok(cc.installed === '1.2.0' && cc.behind === false,
        `...and the row says the version the job installed before the next hello (${cc.installed}, behind ${cc.behind})`);
-    ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
+    ok(!claudeIn(await napi('/api/status')),
        '...so the bell does not keep saying an update is out');
   }
   // Behind again, by the node's own word: a session asked for there starts

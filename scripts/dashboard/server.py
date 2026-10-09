@@ -1121,6 +1121,19 @@ def gpu_for(project, node_id=""):
     return "on"
 
 
+def _attention(who):
+    """The bell's rows about nodes: an agent behind or from another window
+    (nodes.attention) for whoever manages nodes, and a node with a
+    toolchain behind what is out, Claude Code among them
+    (toolchains.attention), for whoever may install toolchains on it."""
+    if NODES_OK:
+        return []
+    where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
+    return (([] if users.may(who, "node") else nodes.attention(where))
+            + [a for a in toolchains.attention(where)
+               if not users.may_node(who, "toolchains-write", a["id"])])
+
+
 def _claude_code_for(who, ps):
     """Claude Code per node against the latest known, for the Nodes tab's
     section: the registry's for whoever may manage nodes, and for anybody
@@ -1770,7 +1783,7 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together: the app, the file, this.
-APP_API = 8
+APP_API = 9
 # How long the app's live connection is held before an empty answer (R125):
 # under the app's 60 s read timeout, and long enough to cost little.
 PHONE_WAIT_S = 45
@@ -3316,12 +3329,7 @@ def snapshot(who):
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
-        "attention": ([] if NODES_OK or users.may(who, "node") else nodes.attention(
-            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})
-            # ...and a node whose Claude Code is behind what is out
-            # (claudecode.py): amber, with Update on the Nodes tab.
-            + claudecode.attention(
-            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})),
+        "attention": _attention(who),
         # Claude Code per node against the latest known, for the Nodes
         # tab's section.
         "claude_code": {} if NODES_OK else _claude_code_for(who, ps),

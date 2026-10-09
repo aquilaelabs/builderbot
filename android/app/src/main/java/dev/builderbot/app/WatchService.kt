@@ -165,10 +165,11 @@ object Watch {
         mem.lastWorking = busy
         mem.lastTesting = own.filter { it.third != null }.map { it.first.str("name") }.toSet()
         // Nodes that need attention: an agent behind or out of window, or
-        // Claude Code behind what is out.
+        // toolchains behind what is out, Claude Code among them.
         val att = st.arr("attention")
         // The server names the projects on the node as a list (B275).
-        val attKey = att.joinToString(",") { "${it.str("kind")}:${it.str("id")}${it.strs("projects").joinToString("+")}:${it.str("to")}" }
+        val attKey = att.joinToString(",") { "${it.str("kind")}:${it.str("id")}${it.strs("projects").joinToString("+")}:${it.str("to")}${
+            it.arr("tools").joinToString("+") { t -> t.str("name") + "@" + t.str("to") }}" }
         if (attKey != mem.lastAttention) {
             if (att.isEmpty()) nm.cancel(base + ID_ATTENTION)
             else {
@@ -313,7 +314,10 @@ object Watch {
     // when out of window, where work is stopped), and one whose Claude Code
     // is behind what is out (claudecode.py, 23 Sep). The bell says the same.
     fun attentionLine(a: JSONObject): String = when (a.str("kind")) {
-        "claude" -> "${a.str("node")} runs Claude Code ${a.str("from")}; ${a.str("to")} is out"
+        // Toolchains behind what is out on a node, Claude Code among them
+        // (API 9): one line per node, as the bell has it.
+        "toolchain" -> "${a.str("node")}: " + a.arr("tools").joinToString(", ") {
+            "${it.str("label")} ${it.str("from").ifBlank { "?" }} → ${it.str("to")}" }
         else -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
             (if (a.bool("window")) " (out of window, work there is stopped)" else "")
     }

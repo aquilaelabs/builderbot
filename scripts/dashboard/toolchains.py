@@ -820,6 +820,59 @@ def _check_rows(job_id):
     return rows
 
 
+def last_check(nid):
+    """What the last check on a node said, {name: {installed, latest,
+    status}}, and when it ended (0 for never): the tab's state column and
+    the bell's update row read the same answer (the operator, 9 Oct)."""
+    recent = nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []
+    for j in recent:
+        if (j.get("spec") or {}).get("action") != "check":
+            continue
+        if j.get("state") not in ("succeeded", "failed"):
+            continue
+        # What was installed since that check, by a job that succeeded: the
+        # check's "update" or "absent" for it is the answer from before, and
+        # the row kept offering an update it had just taken until somebody
+        # checked again (the operator, 6 Oct).
+        since = {str(x) for k in recent
+                 if (k.get("spec") or {}).get("action") == "install" and k.get("state") == "succeeded"
+                 and int(k.get("ended") or 0) > int(j.get("ended") or 0)
+                 for x in ((k.get("spec") or {}).get("names") or [])}
+        rows = {name: (dict(r, status="current") if name in since else r)
+                for name, r in _check_rows(j["id"]).items()}
+        return rows, int(j.get("ended") or 0)
+    return {}, 0
+
+
+def attention(project_nodes):
+    """Bell rows, one per live agent node with a toolchain behind what is
+    out: every toolchain its last check found an update for, and Claude
+    Code beside them (claudecode.behind), each as {name, label, from, to}.
+    One shape for all of them, with Open on that node's Toolchains tab,
+    which is where each is updated (the operator, 9 Oct). Computed on every
+    poll, so a row leaves the moment its update lands. `project_nodes` is
+    {project: node id}."""
+    labels = {p["name"]: p["label"] for p in TOOLCHAINS}
+    out = []
+    for n in nodes.node_list() if nodes else []:
+        if n.get("kind") != "agent" or not n.get("live"):
+            continue
+        running = set()
+        for j in nodes.jobs_for(node_id=n["id"], type="toolchain", active=True, n=1):
+            running |= {str(x) for x in ((j.get("spec") or {}).get("names") or [])}
+        rows, _ = last_check(n["id"])
+        tools = [{"name": name, "label": labels[name], "from": r["installed"], "to": r["latest"]}
+                 for name, r in sorted(rows.items(), key=lambda kv: labels.get(kv[0], kv[0]).lower())
+                 if r["status"] == "update" and name in labels and name not in running]
+        if claudecode and claudecode.behind(n) and not claudecode.updating(n["id"]):
+            tools.insert(0, {"name": CLAUDE, "label": "Claude Code",
+                             "from": claudecode.installed(n), "to": claudecode.latest()["version"]})
+        if tools:
+            out.append({"kind": "toolchain", "node": n["name"], "id": n["id"], "tools": tools,
+                        "projects": sorted(p for p, nid in project_nodes.items() if nid == n["id"])})
+    return out
+
+
 def payload_for_node(nid):
     n = nodes.node(nid) if nodes else None
     if not n:
@@ -883,7 +936,6 @@ def payload_for_node(nid):
                       "size_from": "measured the last time it was installed here" if kb else "",
                       "latest": "", "state": ""})
     items.sort(key=lambda x: (not x["installed"], x["label"].lower()))
-    checked = 0
     # A toolchain that puts something on PATH (or sets a variable) reaches a
     # session only when the session starts: one open since before the
     # install still has the old PATH, and the plugin or build that wanted
@@ -957,39 +1009,21 @@ def payload_for_node(nid):
     # the job's log the first time and kept: a check is a round trip per
     # recipe on the node, so the answer is worth holding on to until somebody
     # asks for a fresh one.
-    recent = nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []
-    for j in recent:
-        if (j.get("spec") or {}).get("action") != "check":
+    rows, checked = last_check(nid)
+    for i in items:
+        r = rows.get(i["name"])
+        if not r:
             continue
-        if j.get("state") not in ("succeeded", "failed"):
-            continue
-        rows = _check_rows(j["id"])
-        # What was installed since that check, by a job that succeeded: the
-        # check's "update" or "absent" for it is the answer from before, and
-        # the row kept offering an update it had just taken until somebody
-        # checked again (the operator, 6 Oct).
-        since = {str(x) for k in recent
-                 if (k.get("spec") or {}).get("action") == "install" and k.get("state") == "succeeded"
-                 and int(k.get("ended") or 0) > int(j.get("ended") or 0)
-                 for x in ((k.get("spec") or {}).get("names") or [])}
-        for i in items:
-            r = rows.get(i["name"])
-            if not r:
-                continue
-            if i["name"] in since:
-                r = dict(r, status="current")
-            i["latest"] = r["latest"]
-            # Said as the check found it. The controller's own list drops an
-            # answer that disagrees with its probe, because there both
-            # readings are of the same directory a moment apart. Here they
-            # are two different readings: the census sees a directory in the
-            # store, the check ran on the node and asked the binary. When
-            # they disagree the check is the one that looked properly, and a
-            # row that reads installed while the check says absent is a
-            # disagreement worth seeing rather than hiding.
-            i["state"] = r["status"]
-        checked = int(j.get("ended") or 0)
-        break
+        i["latest"] = r["latest"]
+        # Said as the check found it. The controller's own list drops an
+        # answer that disagrees with its probe, because there both
+        # readings are of the same directory a moment apart. Here they
+        # are two different readings: the census sees a directory in the
+        # store, the check ran on the node and asked the binary. When
+        # they disagree the check is the one that looked properly, and a
+        # row that reads installed while the check says absent is a
+        # disagreement worth seeing rather than hiding.
+        i["state"] = r["status"]
     machine = [r for r in (driver_row(n), container_row(n)) if r]
     for m in machine:
         # The census after a job that touched the driver or the toolkit is

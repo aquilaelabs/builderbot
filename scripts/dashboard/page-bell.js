@@ -165,15 +165,20 @@ function drawBell(){
     // A window move holds every project at once, so several of these is the
     // normal case after a minor bump and one row per project was six rows
     // saying one thing. Collapsed into one, with one press behind it (B93).
-    ...att.map(a => a.kind === "claude"
-      // Claude Code behind on a node (claudecode.py): amber, one press on
-      // the Nodes tab behind it, which ends the sessions there first.
+    ...att.map(a => a.kind === "toolchain"
+      // A node with toolchains behind what is out, Claude Code among them
+      // (toolchains.attention): one row per node in one shape for all of
+      // them, amber, opening that node's Toolchains tab, where each is
+      // updated (the operator, 9 Oct).
       ? `<div class="bnote ask">
-        <div class="btag">Claude Code update available</div>
-        <div class="bwhy">${esc(a.node)} runs Claude Code ${esc(a.from)} and ${esc(a.to)} is out${
-          a.projects.length ? `; ${a.projects.map(esc).join(", ")} run${a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>
-        <div class="bfoot"><span>on the Nodes tab: Update ends the Claude sessions there first</span>
-          <span class="acts"><a href="#" data-bnode="${esc(a.id)}" data-bwhat="claude">Nodes tab</a></span></div></div>`
+        <div class="btag">toolchain update${a.tools.length === 1 ? "" : "s"} available</div>
+        <div class="bwhy">on ${esc(a.node)}: ${a.tools.map(t =>
+          `${esc(t.label)} ${esc(t.from || "?")} → ${esc(t.to)}`).join(", ")}${
+          a.tools.some(t => t.name === "claude-code") && a.projects.length
+            ? `. Updating Claude Code ends the Claude sessions there first; ${a.projects.map(esc).join(", ")} run${
+                a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>
+        <div class="bfoot"><span>on the node's Toolchains tab</span>
+          <span class="acts"><a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`
       : `<div class="bnote ask${a.window ? " bad" : ""}">
         <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
         <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
@@ -238,12 +243,18 @@ function drawBell(){
     openNotebook(a.dataset.bci, "git");
   });
   // To the node the row is about, at the control it is about (Update agent
-  // in its head bar, or its Claude Code section, opened): the press itself
+  // in its head bar): the press itself
   // stays there, beside the state line that says what it does.
   panel.querySelectorAll("[data-bnode]").forEach(a => a.onclick = e => {
     e.preventDefault();
     toggleBell(false);
     openNodesTab(a.dataset.bnode, a.dataset.bwhat);
+  });
+  // ...and a toolchain update to that node's Toolchains tab.
+  panel.querySelectorAll("[data-btc]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openToolchainsOn(a.dataset.btc);
   });
 }
 
