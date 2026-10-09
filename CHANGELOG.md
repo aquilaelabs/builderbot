@@ -215,6 +215,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's name follows GitHub's rules for a repository's name: 'Turing Lens' is shown as Turing-Lens, a second of one name is Name-2, older names are brought to the rule once, and the dialogs show the name as it is typed (6754fcb)
 - A phone's connect port is typed beside its IP address (or found by the companion app on the phone itself): the node no longer scans the phone's ports, and a connect that gives no usable phone says so (a56d61f)
 - On the Docker tab a project's instance has Edit in place of Env: its compose file and its env in one dialog, the compose file checked by compose before it is saved into the project's tree (06d7f60)
+- The node agent is split into a package of its parts, shipped to nodes as one file as before: a node updates across the change with Update agent, nothing to do on the machine. (a9188eb)
 
 ### Removed
 
@@ -358,6 +359,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A Claude session already running is no longer ended when its node's report says Claude Code is not installed; that reading still keeps a new session from starting. (e030d4b)
 - BuilderBot for VS Code: Search Project Files opens the match you pick instead of showing an error. (e030d4b)
 - bb map no longer lists a parameter's default value (why = () => "") as a function of its own. (f3abb92)
+- builderbot-agent --help starts with its first words again. (a9188eb)
 
 ### Security
 
