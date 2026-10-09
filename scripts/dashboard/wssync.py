@@ -243,7 +243,7 @@ def scan(project, force=False):
 
 def _wake(project, but=""):
     rev = rev_of(project)
-    for nid in (bound(project) if bound else []):
+    for nid in _watchers(project):
         if nid != but:
             nodes.sync_hint(nid, project, rev)
 
@@ -260,11 +260,44 @@ def _row_out(r):
     return [r["path"], r["sha"], r["size"], r["mode"], r["link"], r["gone"]]
 
 
-def may(nid, project):
-    """Why this node may not sync the project, or ""."""
-    if project not in (bound_projects(nid) if nodes else []):
-        return f"{project} is not a project this node holds as a synced copy"
-    return ""
+def may(nid, project, write=False):
+    """Why this node may not sync the project, or "". A project a bound
+    project reads comes down to the node read-only (R163): it may be read,
+    never written."""
+    if project in (bound_projects(nid) if nodes else []):
+        return ""
+    if not write and project in read_projects(nid):
+        return ""
+    if project in read_projects(nid):
+        return f"{project} is read-only on this node: a project bound here reads it"
+    return f"{project} is not a project this node holds as a synced copy"
+
+
+_reads_of = lambda project: []   # noqa: E731 (set by configure_reads: (project) -> [projects it reads])
+
+
+def configure_reads(fn):
+    globals()["_reads_of"] = fn
+
+
+def read_projects(nid):
+    """The projects this node's bound projects read, less the bound ones:
+    a session there sees them read-only at /workspace/NAME, as it does on
+    the share."""
+    own = set(bound_projects(nid))
+    out = set()
+    for p in own:
+        out |= set(_reads_of(p) or [])
+    return sorted(out - own)
+
+
+def _watchers(project):
+    """The nodes that hold this project, bound to it or reading it."""
+    out = list(bound(project) if bound else [])
+    for q in _all_projects():
+        if project in (_reads_of(q) or []):
+            out += [n for n in (bound(q) if bound else []) if n not in out]
+    return out
 
 
 def bound_projects(nid):
@@ -282,7 +315,10 @@ def projects(nid):
     """The projects this node holds as a synced copy, and each one's
     revision, for the agent to compare with its own."""
     mode = ((nodes.node(nid) or {}).get("config") or {}).get("workspace") or "mount"
-    return {"mode": mode, "projects": {p: rev_of(p) for p in bound_projects(nid)} if mode == "sync" else {}}
+    if mode != "sync":
+        return {"mode": mode, "projects": {}, "reads": {}}
+    return {"mode": mode, "projects": {p: rev_of(p) for p in bound_projects(nid)},
+            "reads": {p: rev_of(p) for p in read_projects(nid)}}
 
 
 def state(nid, project):
@@ -377,7 +413,7 @@ def put(nid, project, q, stream, length):
     a file the node did not have). Applied when the base is what the
     controller has now; otherwise the node's version is kept as a conflict
     copy. ({"ok", "rev", "sha"} | {"conflict", "kept_as", ...}, status)."""
-    if (why := may(nid, project)):
+    if (why := may(nid, project, write=True)):
         return {"error": why}, 403
     rel = q.get("path", [""])[0]
     if not _rel_ok(rel) or skipped(rel):

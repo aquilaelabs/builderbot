@@ -612,6 +612,11 @@ controller is.
   `NAME.conflict-NODE-TIME.EXT` (inside `.git`, under
   `.git/bbsync-conflicts/`), which syncs everywhere; the node then takes the
   version kept. The bell lists it until the copy is deleted.
+- **What a project reads** comes down too, read-only (R163): a node holds the
+  projects bound to it and the ones those read, so a session sees the read
+  ones at `/workspace/NAME` as it did on the share. The controller refuses
+  a put to one, the agent never sends one, and the controller's version
+  overwrites whatever changed there.
 - **Not synced:** what a node rebuilds (`node_modules`, `.gradle`, virtualenvs,
   caches), git's lock files, and a symlink pointing out of the project.
   `.git` and `dist/` are synced: a session commits on the node, and a build

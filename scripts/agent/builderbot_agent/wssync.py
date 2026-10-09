@@ -201,8 +201,8 @@ class Watcher:
 class Project:
     """One synced project's record and its state on this node."""
 
-    def __init__(self, name, path):
-        self.name, self.path = name, path
+    def __init__(self, name, path, ro=False):
+        self.name, self.path, self.ro = name, path, ro
         self.rev, self.files, self.ready = 0, {}, False
         self.moving = {}         # rel -> entry seen last tick, waiting to hold still
         self.pulled_at = 0.0
@@ -293,11 +293,18 @@ class WorkspaceSync:
                 self.agent.hello_at = 0
             self.mode = mode
             want = r.get("projects") if isinstance(r.get("projects"), dict) else {}
+            # ...and the projects those read, read-only: a session sees them
+            # at /workspace/NAME and writes none of them (R163).
+            reads = r.get("reads") if isinstance(r.get("reads"), dict) else {}
+            ro = {n for n in reads if n not in want}
+            want = {**{n: reads[n] for n in ro}, **want}
             with self.lock:
                 for name in want:
                     if name not in self.projects:
-                        self.projects[name] = Project(name, os.path.join(self.record_dir(), name + ".json"))
-                        log(f"sync: {name} is held here as a synced copy")
+                        self.projects[name] = Project(name, os.path.join(self.record_dir(), name + ".json"),
+                                                      ro=name in ro)
+                        log(f"sync: {name} is held here as a synced copy" + (", read-only" if name in ro else ""))
+                    self.projects[name].ro = name in ro
                 for name in list(self.projects):
                     if name not in want:
                         # Unbound: left as it is on disk, no longer kept in step.
@@ -324,7 +331,8 @@ class WorkspaceSync:
             if not p.ready:
                 self.say(p, top, started)
                 return
-        self.push(p, top)
+        if not p.ro:
+            self.push(p, top)
         if p.hinted or time.monotonic() - p.pulled_at > PULL_EVERY:
             self.pull(p, top)
         self.say(p, top, started)
@@ -456,11 +464,19 @@ class WorkspaceSync:
                         self.agree(p, top, rel, sha)
                     elif e[3] == link:
                         p.files[rel] = [sha, *e]
+                    elif p.ro:
+                        self.place_link(top, rel, link)
+                        self.agree(p, top, rel, sha)
                 elif e is None:
                     got = self.fetch(p, top, rel, sha, mode)
                     self.agree(p, top, rel, got)
                 elif not e[3] and sha_file(os.path.join(top, rel)) == sha:
                     p.files[rel] = [sha, *e]
+                elif p.ro:
+                    # Read-only here: the controller's version, whatever
+                    # this copy had.
+                    got = self.fetch(p, top, rel, sha, mode)
+                    self.agree(p, top, rel, got)
             except OSError as ex:
                 p.error = str(ex)[:200]
                 return
@@ -536,7 +552,7 @@ class WorkspaceSync:
             e = entry(path)
             rec = p.files.get(rel)
             clean = (e is None and rec is None) or (rec is not None and e is not None and tuple(rec[1:]) == e)
-            if not clean:
+            if not clean and not p.ro:
                 # Changed here too and not sent yet: push sends it with the
                 # base it had, and the controller judges. Not past this
                 # revision until then.

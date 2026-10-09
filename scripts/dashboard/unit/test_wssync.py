@@ -120,8 +120,11 @@ class Sync(unittest.TestCase):
         ctl_sync._scanned.clear()
         ctl_sync._conflicts.clear()
         Nodes.hints.clear()
-        ctl_sync.configure(workspace=self.ws, nodes_module=Nodes, bound_nodes=lambda p: ["n1", "n2"])
-        ctl_sync.configure_projects(lambda: ["alpha"])
+        ctl_sync.configure(workspace=self.ws, nodes_module=Nodes,
+                           bound_nodes=lambda p: ["n1", "n2"] if p == "alpha" else [])
+        write(f"{self.ws}/beta/lib.py", "shared = 1\n")
+        ctl_sync.configure_projects(lambda: ["alpha", "beta"])
+        ctl_sync.configure_reads(lambda p: ["beta"] if p == "alpha" else [])
         self.n = {k: node_sync.WorkspaceSync(Agent(k, os.path.join(self.tmp, k, "data")),
                                              root=os.path.join(self.tmp, k, "workspace"))
                   for k in ("n1", "n2")}
@@ -164,9 +167,33 @@ class Sync(unittest.TestCase):
         self.turn("n1")
         self.assertFalse(os.path.exists(f"{self.ws}/alpha/.git/.bbsync-state"))
 
+    def test_a_project_a_bound_project_reads_comes_down_read_only(self):
+        self.turn()
+        beta = os.path.join(self.tmp, "n1", "workspace", "beta", "lib.py")
+        self.assertEqual(read(beta), "shared = 1\n")
+        self.assertTrue(self.n["n1"].projects["beta"].ro)
+        # A change here is never sent; the controller's version comes back.
+        write(beta, "changed on the node\n")
+        self.turn("n1", times=3)
+        self.assertEqual(read(f"{self.ws}/beta/lib.py"), "shared = 1\n")
+        # ...and the controller's changes come down, to every node reading it.
+        write(f"{self.ws}/beta/lib.py", "shared = 2\n")
+        ctl_sync.changed("beta")
+        self.assertIn(("n2", "beta"), [(n, p) for n, p, _ in Nodes.hints])
+        self.turn(times=1)
+        self.assertEqual(read(beta), "shared = 2\n")
+        self.assertEqual(read(os.path.join(self.tmp, "n2", "workspace", "beta", "lib.py")), "shared = 2\n")
+
+    def test_a_node_may_read_a_read_project_and_never_write_it(self):
+        self.assertEqual(ctl_sync.state("n1", "beta")[1], 200)
+        out, code = ctl_sync.put("n1", "beta", {"path": ["lib.py"], "base": [""]}, io.BytesIO(b"x"), 1)
+        self.assertEqual(code, 403)
+        self.assertIn("read-only", out["error"])
+        self.assertEqual(ctl_sync.projects("n1")["reads"], {"beta": ctl_sync.rev_of("beta")})
+
     def test_a_first_copy_is_one_download(self):
         self.turn("n1", times=1)
-        self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"])
+        self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"] * len(self.n["n1"].projects))  # one a project
         self.assertEqual(read(self.at("n1", "src/b.py")), "print('b')\n")
 
     def test_a_cut_off_download_is_made_up_file_by_file(self):

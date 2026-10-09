@@ -127,6 +127,23 @@ try {
        '...which bb reads from the state the agent keeps in the copy, a file that never syncs');
   }
 
+  // A project the synced one reads comes down too, read-only (R163 step 3).
+  {
+    const R = 'syncread';
+    const made2 = await api('/api/create', { name: R, mode: 'init' });
+    write(`${DIR}/ws/${R}/shared.txt`, 'read me\n');
+    const set = await api('/api/prefs', { project: P, reads: [R] });
+    const at = n => `${DIR}/${n}/workspace/${R}/shared.txt`;
+    const came = await until(() => Object.keys(nodes).every(n => read(at(n)) === 'read me\n'), 60000);
+    ok(!made2.error && !set.error && came,
+       `a project ${P} reads comes down to both nodes (${JSON.stringify(set).slice(0, 60)})${came ? '' : '\n' + logs()}`);
+    write(at('syncone'), 'changed on a node\n');
+    write(`${DIR}/ws/${R}/shared.txt`, 'changed on the controller\n');
+    const back = await until(() => Object.keys(nodes).every(n => read(at(n)) === 'changed on the controller\n'), 30000);
+    ok(back && read(`${DIR}/ws/${R}/shared.txt`) === 'changed on the controller\n',
+       '...read-only: a change there on a node never goes up, and the controller\'s comes down to both');
+  }
+
   // A deletion travels too.
   execFileSync('rm', [`${nodes.synctwo.ws}/src/new.py`]);
   const gone = await until(() => !existsSync(`${CTL}/src/new.py`) && !existsSync(`${nodes.syncone.ws}/src/new.py`));

@@ -3125,6 +3125,7 @@ def _sync_bound(project):
 wssync.configure(workspace=WORKSPACE, nodes_module=nodes, bound_nodes=_sync_bound,
                  changed=files._poke, audit_fn=db.audit)
 wssync.configure_projects(lambda: list(prefs.all_projects()))
+wssync.configure_reads(lambda p: prefs.get(p).get("reads") or [])
 files.on_change = wssync.changed
 reports.configure(write_json=write_json, state=STATE, redact=diag.redact,
                   build=lambda: image_stamp().get("version") or image_stamp().get("rev") or "")
