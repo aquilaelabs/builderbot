@@ -2021,6 +2021,8 @@ await page.evaluate(async () => {
   const before = await rows();
   await page.fill('#ndBody #ndEnCtl', 'http://builderbot.lan:7680');
   await page.setInputFiles('#ndBody #ndEnWg', { name: 'cloudbox.conf', mimeType: 'text/plain', buffer: Buffer.from(WG) });
+  await page.waitForFunction(w => document.querySelector('#ndBody #ndEnWgText')?.value === w, WG, { timeout: 5000 });
+  ok(true, 'a chosen config file lands in the box beside it, to read or change before it is sent');
   await page.click('#ndBody #ndEnGo');
   await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
     && document.querySelector('#ndBody #ndEnName')?.value === 'cloudbox', null, { timeout: 15000 });
@@ -2028,7 +2030,9 @@ await page.evaluate(async () => {
      && await page.$eval('#ndBody #ndEnCtl', i => i.value) === 'http://builderbot.lan:7680',
      'a controller named rather than addressed is refused, no pending row made, and the answers are still there');
   await page.fill('#ndBody #ndEnCtl', 'http://192.168.1.16:7680');
-  await page.setInputFiles('#ndBody #ndEnWg', { name: 'cloudbox.conf', mimeType: 'text/plain', buffer: Buffer.from(WG) });
+  // Pasted this time, into the box the refusal kept filled.
+  ok(await page.$eval('#ndBody #ndEnWgText', t => t.value) === WG, '...and a refusal keeps it there');
+  await page.fill('#ndBody #ndEnWgText', WG);
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
   const file = dl.suggestedFilename();
   const script = readFileSync(await dl.path(), 'utf8');
@@ -2040,7 +2044,7 @@ await page.evaluate(async () => {
   const conf = part('WGCONF');
   ok(/AllowedIPs = 192\.168\.1\.16\/32/.test(conf) && !/0\.0\.0\.0\/0|DNS/.test(conf) && /PersistentKeepalive = 25/.test(conf),
      `...with the router's config routing the controller alone (${conf.split('\n').filter(l => /Allowed|Keep/.test(l)).join('; ')})`);
-  const run = script.trim().split('\n').pop();
+  const run = script.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
   ok(/--controller 'http:\/\/192\.168\.1\.16:7680' --token 'bbe_[^']+'/.test(run) && /--wg-conf "\$dir\/bb\.conf"/.test(run),
      `...and runs it with the controller, the token and the tunnel (${run.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
   const home = await page.$eval('#ndBody #ndHome', e => e.textContent);

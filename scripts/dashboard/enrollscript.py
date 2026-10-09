@@ -145,6 +145,14 @@ def check(answers):
     return out
 
 
+WG_BEGIN = "base64 -d > \"$dir/bb.conf\" <<'WGCONF'"
+# What stands where the config was, once it has run: the tunnel's config as
+# this node installed it.
+WG_AFTER = ('[ -r /etc/wireguard/bb.conf ] || { echo "the WireGuard config left this file once the node '
+            'enrolled, and /etc/wireguard/bb.conf is not here either: make a new script on the Nodes tab" >&2; '
+            'exit 1; }; install -m 600 /etc/wireguard/bb.conf "$dir/bb.conf"')
+
+
 def _b64(data):
     s = base64.b64encode(data if isinstance(data, bytes) else data.encode()).decode()
     return "\n".join(s[i:i + 76] for i in range(0, len(s), 76))
@@ -165,13 +173,19 @@ def build(ans, *, name, user, token, expires, provisioner):
     lines = [
         "#!/usr/bin/env bash",
         f"# BuilderBot: enroll {name} as a node of {ans['controller']}.",
-        "# Made on the Nodes tab's Enroll node. Run it once, as root, on the",
-        "# machine: sudo bash THIS_FILE",
+        "# Made on the Nodes tab's Enroll node. Run it as root on the machine:",
+        "# sudo bash THIS_FILE",
         "#",
-        f"# It holds a one-use enrollment token, good until {when}"
-        + (", and this node's WireGuard private key" if ans["reach"] == "wireguard" else "") + ":",
-        "# keep it to yourself, and delete it once the node shows live.",
+        f"# It holds an enrollment token, good once, until {when}.",
+        *(["# Until it has run it holds this node's WireGuard private key as well:",
+           "# once the node has enrolled it takes the WireGuard config out of itself",
+           "# (the node's copy is /etc/wireguard/bb.conf) and keeps the rest, which",
+           "# can be changed and run again on this machine with a new token."]
+          if ans["reach"] == "wireguard" else []),
         "set -euo pipefail",
+        # One block, read whole before any of it runs: the end of it rewrites
+        # this file, and bash otherwise reads a script as it goes.
+        "{",
         '[ "$(id -u)" -eq 0 ] || { echo "run this as root: sudo bash $0" >&2; exit 1; }',
         'command -v base64 >/dev/null 2>&1 || { echo "this needs base64 (coreutils)" >&2; exit 1; }',
         'dir="$(mktemp -d)"',
@@ -181,10 +195,27 @@ def build(ans, *, name, user, token, expires, provisioner):
         "PROVISIONER",
     ]
     if ans["reach"] == "wireguard":
-        lines += ["base64 -d > \"$dir/bb.conf\" <<'WGCONF'", _b64(ans["wg_conf"]), "WGCONF",
+        lines += [WG_BEGIN, _b64(ans["wg_conf"]), "WGCONF",
                   'chmod 600 "$dir/bb.conf"']
         flags.append('--wg-conf "$dir/bb.conf"')
-    lines += [f'bash "$dir/provision-linux.sh" {" ".join(flags)} "$@"', ""]
+    lines.append(f'bash "$dir/provision-linux.sh" {" ".join(flags)} "$@"')
+    if ans["reach"] == "wireguard":
+        # Only after the provisioner succeeded (set -e ends a failed run
+        # above, with the config still in here for another try): the
+        # config block out of this file, the rest kept to be changed and run
+        # again, which then takes the tunnel's config as installed. The old
+        # copy shredded where shred exists, since a rename leaves its blocks.
+        lines += [
+            "if [ -f \"$0\" ] && grep -qxF " + _q(WG_BEGIN) + " \"$0\"; then",
+            '    new="$(mktemp "$0.XXXXXX")"',
+            "    awk -v b=" + _q(WG_BEGIN) + " -v r=" + _q(WG_AFTER)
+            + " '$0 == b { print r; skip = 1; next } skip && $0 == \"WGCONF\" { skip = 0; next } !skip' \"$0\" > \"$new\"",
+            '    chmod --reference="$0" "$new" 2>/dev/null || chmod 600 "$new"',
+            '    if command -v shred >/dev/null 2>&1; then shred -u "$0"; else rm -f "$0"; fi',
+            '    mv "$new" "$0"',
+            "    printf '\\n== the WireGuard config is out of %s now; this node keeps its own in /etc/wireguard/bb.conf\\n' \"$0\"",
+            "fi"]
+    lines += ["exit 0", "}", ""]
     return "\n".join(lines)
 
 

@@ -219,6 +219,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On the Docker tab a project's instance has Edit in place of Env: its compose file and its env in one dialog, the compose file checked by compose before it is saved into the project's tree (06d7f60)
 - The node agent is split into a package of its parts, shipped to nodes as one file as before: a node updates across the change with Update agent, nothing to do on the machine. (a9188eb)
 - The bell's update note for a node's toolchains is one row per node, naming every toolchain its last check found behind with both versions, Claude Code among them, and its link opens that node's Toolchains tab, where each is updated. The companion app reads the same row (API 9). (f0a845b)
+- The enroll script keeps itself once the node has enrolled, with the WireGuard config taken out of it, so it can be changed and run again; the dialog takes the WireGuard config as a file or pasted into a box. (9f6ece9)
 
 ### Removed
 

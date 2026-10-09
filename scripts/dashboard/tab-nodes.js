@@ -1272,8 +1272,11 @@ function wireNodesTab(root){
         <div class="setrow col">${lbl("ndEnCtl", "Controller's address",
           "the URL the machine dials. Behind WireGuard, the controller's address on your network, which the tunnel routes to")}
           <input id="ndEnCtl" autocomplete="off" spellcheck="false" value="${esc(location.origin)}"></div>
-        <div class="setrow col" id="ndEnWgRow" hidden>${lbl("ndEnWg", "WireGuard config")}
-          <input type="file" id="ndEnWg" accept=".conf,text/plain"></div>
+        <div class="setrow col" id="ndEnWgRow" hidden>${lbl("ndEnWgText", "WireGuard config",
+            "the .conf your router made for this machine: choose the file, or paste what is in it. Only the controller's address is routed through it on the machine")}
+          <input type="file" id="ndEnWg" accept=".conf,text/plain" aria-label="choose the WireGuard config file">
+          <textarea id="ndEnWgText" rows="7" spellcheck="false" autocomplete="off"
+            placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.6.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = home.example.net:51820"></textarea></div>
       </div>
       <div class="field"><div class="hint">The script carries a token good once, for a day, and runs as root on a Linux machine.</div></div>
       <div class="foot">
@@ -1290,6 +1293,12 @@ function wireNodesTab(root){
     // synced copy is where it starts (R162); a choice either way.
     reach.onchange = () => { showWg(); $b("#ndEnSync").checked = reach.value === "wireguard"; };
     showWg();
+    // A file chosen lands in the box, which is what is sent: one place to
+    // read it, change it, or paste it instead.
+    $b("#ndEnWg").onchange = async e => {
+      const f = e.target.files?.[0];
+      if (f) $b("#ndEnWgText").value = await f.text();
+    };
     // No focus, like every other dialog here: on a phone it would raise the
     // keyboard over the box it just opened.
     $b("#ndEnCancel").onclick = shut;
@@ -1302,20 +1311,20 @@ function wireNodesTab(root){
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
       "#ndEnSess": $b("#ndEnSess").checked, "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
-      "#ndEnSync": $b("#ndEnSync").checked});
+      "#ndEnSync": $b("#ndEnSync").checked, "#ndEnWgText": $b("#ndEnWgText").value});
     const go = $b("#ndEnGo");
     go.onclick = () => pressing(go, async () => {
       const kept = keep();
-      const file = $b("#ndEnWg").files?.[0];
-      if (reach.value === "wireguard" && !file){
-        notify("choose the WireGuard config your router made for this machine", true); return;
+      const conf = $b("#ndEnWgText").value;
+      if (reach.value === "wireguard" && !conf.trim()){
+        notify("choose the WireGuard config your router made for this machine, or paste it in", true); return;
       }
       busy(go, "Making");
       const r = await nodeAct({action: "enroll", script: true, ...answers(),
         sessions: $b("#ndEnSess").checked, reach: reach.value,
         workspace: $b("#ndEnSync").checked ? "sync" : "mount",
         controller: $b("#ndEnCtl").value.trim(),
-        wg_conf: file ? await file.text() : ""});
+        wg_conf: reach.value === "wireguard" ? conf : ""});
       if (r.error){ mintForm(kept); return; }
       mintScript(r);
       nodesRev++; drawPanes();              // the pending row joins the picker
@@ -1347,7 +1356,7 @@ function wireNodesTab(root){
           r.reach === "wireguard" ? `the tunnel up as ${esc(r.tunnel_addr)}, checks the controller answers through it, ` : ""}provisions the machine and enrolls it; the row goes live when it is done.</div>
         <pre class="ndcmd">sudo bash ${esc(r.filename)}</pre>
         <div class="hint">It holds a token good once, until ${esc(new Date(r.expires * 1000).toLocaleString())}${
-          r.reach === "wireguard" ? ", and the machine's WireGuard private key" : ""}: delete it once the node is live.</div>
+          r.reach === "wireguard" ? ", and the machine's WireGuard private key until it has run: once the node has enrolled it takes the WireGuard config out of itself and keeps the rest, to change and run again" : ""}.</div>
       </div>${r.home ? `
       <div class="field ndtoken">
         <label class="lbl">On your router</label>

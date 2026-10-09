@@ -4,6 +4,9 @@ and the controller answering a tunnel address on the agent's API alone."""
 import base64
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import sys
 import unittest
 
@@ -73,7 +76,7 @@ class Script(unittest.TestCase):
         self.assertTrue(s.startswith("#!/usr/bin/env bash\n"))
         self.assertEqual(section(s, "PROVISIONER"), b"#!/usr/bin/env bash\necho provision\n")
         self.assertEqual(section(s, "WGCONF").decode(), ans["wg_conf"])
-        run = s.strip().splitlines()[-1]
+        run = next(x for x in s.splitlines() if x.startswith('bash "$dir/provision-linux.sh"'))
         self.assertIn("--controller 'http://192.168.1.16:7680'", run)
         self.assertIn("--token 'bbe_tok'\\''en'", run)
         self.assertIn("--user 'joe'", run)
@@ -93,6 +96,50 @@ class Script(unittest.TestCase):
         rules = es.home_rules(ans, 7680)
         self.assertIn("ip saddr 10.6.0.5 ip daddr 192.168.1.16 tcp dport 7680 accept", rules)
         self.assertIn("ip saddr 10.6.0.5 drop", rules)
+
+    def run_it(self, provisioner, *args, keep=None):
+        """The script as a person runs it, with the root check left out and
+        a stand-in provisioner. (exit code, the file after, what it printed)."""
+        ans = es.check(answers())
+        s = es.build(ans, name="cloudbox", user="bb", token="bbe_x", expires=0, provisioner=provisioner)
+        s = s.replace('[ "$(id -u)" -eq 0 ]', "true")
+        d = tempfile.mkdtemp()
+        try:
+            f = os.path.join(d, "enroll-cloudbox.sh")
+            with open(f, "w") as fh:
+                fh.write(keep if keep is not None else s)
+            p = subprocess.run(["bash", f, *args], capture_output=True, text=True, timeout=30)
+            with open(f) as fh:
+                return p.returncode, fh.read(), p.stdout + p.stderr
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_once_enrolled_the_script_keeps_itself_without_the_vpn_config(self):
+        code, after, said = self.run_it(b'echo "provisioned with $*"\n')
+        self.assertEqual(code, 0, said)
+        self.assertIsNone(section(after, "WGCONF"))
+        key = base64.b64encode(es.check(answers())["wg_conf"].encode()).decode()[:60]
+        self.assertNotIn(key, after.replace("\n", ""))
+        self.assertNotIn("PrivateKey", after)
+        self.assertIn("install -m 600 /etc/wireguard/bb.conf", after)
+        self.assertIsNotNone(section(after, "PROVISIONER"))
+        self.assertIn("--wg-conf", said)
+        self.assertIn("out of", said)
+        # ...and what is left still runs: without the node's own config it
+        # says where one comes from, rather than enrolling with none.
+        code2, _, said2 = self.run_it(b"echo again\n", keep=after)
+        self.assertEqual(code2, 1, said2)
+        self.assertIn("make a new script", said2)
+
+    def test_a_failed_run_keeps_the_config_for_another_try(self):
+        code, after, said = self.run_it(b"exit 3\n")
+        self.assertEqual(code, 3)
+        self.assertIsNotNone(section(after, "WGCONF"), said)
+
+    def test_flags_reach_the_provisioner(self):
+        code, _, said = self.run_it(b'echo "provisioned with $*"\n', "--dev")
+        self.assertEqual(code, 0, said)
+        self.assertIn("--dev", said)
 
     def test_the_file_is_named_for_the_node(self):
         self.assertEqual(es.filename("cloud box/1"), "enroll-cloud-box-1.sh")
