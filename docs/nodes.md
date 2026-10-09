@@ -617,6 +617,10 @@ controller is.
   ones at `/workspace/NAME` as it did on the share. The controller refuses
   a put to one, the agent never sends one, and the controller's version
   overwrites whatever changed there.
+- **A dev instance** on a synced node finds its project where a compose
+  expects it: devapp's path mapping takes the node's own `/workspace` as the
+  projects root, as it took the share mounted there (R163), and a dev
+  instance lives on its project's own nodes, which hold the project.
 - **Not synced:** what a node rebuilds (`node_modules`, `.gradle`, virtualenvs,
   caches), git's lock files, and a symlink pointing out of the project.
   `.git` and `dist/` are synced: a session commits on the node, and a build

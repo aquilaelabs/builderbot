@@ -1744,9 +1744,25 @@ def _pairs():
     return [(k, v) for k, v in got.items()]
 
 
+def _synced_here(path):
+    """Whether the node being addressed holds its projects as a synced copy
+    (R162) and `path` is the projects root: its own /workspace then is what
+    the share mounted there was, the same paths with the same trees, so a
+    compose's binds mean on it what they mean here (R163 step 4). A dev
+    instance lives on its project's own nodes, which always hold it."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    ws = str(WORKSPACE).rstrip("/") if WORKSPACE else ""
+    return bool(n and ws and path.rstrip("/") == ws
+                and (n.get("config") or {}).get("workspace") == "sync")
+
+
 def _node_mounts_at(path):
     """Whether the node being addressed reports a mount at exactly this
-    path, from its census (nodes._census keeps `mounts`)."""
+    path, from its census (nodes._census keeps `mounts`), or holds a synced
+    copy there."""
+    if _synced_here(path):
+        return True
     nid = getattr(_node_ctx, "node", None) or _default_node()
     n = queue.node(nid) if (queue is not None and nid) else None
     for m in ((n or {}).get("reported") or {}).get("mounts") or []:
@@ -2010,6 +2026,8 @@ def _daemon_mounts(path):
     rather than inferred from an address (B193). False for a node that has
     not reported, which fails the way the check always did: it says so.
     """
+    if _synced_here(path):
+        return True
     nid = getattr(_node_ctx, "node", None) or _default_node()
     n = queue.node(nid) if (queue is not None and nid) else None
     ms = ((n or {}).get("reported") or {}).get("mounts")
