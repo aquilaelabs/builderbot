@@ -1171,6 +1171,8 @@ writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
 // icon rule missed this button (an `.ic`) and its SVG got the browser
 // default (fill:black, stroke:none), which draws nothing at all, because
 // every path in it is an open stroke.
+// (laid out first: measured mid-draw it read no stroke, no fill and 0px, B602)
+await page.waitForFunction(() => document.querySelector('#bTrash svg')?.getBoundingClientRect().width > 0, { timeout: 15000 });
 const binInk = await page.$eval('#bTrash svg', e => {
   const c = getComputedStyle(e);
   return { stroke: c.stroke, fill: c.fill, w: e.getBoundingClientRect().width };
