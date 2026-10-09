@@ -72,10 +72,14 @@ try {
   const first = await until(() => Object.values(nodes).every(n => read(`${n.ws}/a.txt`) === 'one\n'
     && read(`${n.ws}/src/b.py`) === "print('b')\n" && read(`${n.ws}/.git/HEAD`)) ? true : null, 40000);
   ok(first, `both nodes take a first copy of ${P}: files, .git, and the symlink${first ? '' : '\n' + logs()}`);
-  const all = await until(() => Object.values(nodes).every(n => read(`${n.ws}/many/d29/f1499.txt`) === 'file 1499\n'), 60000);
+  // The files are there as soon as they are unpacked; the copy is done once
+  // the agent has hashed them and said so.
+  const all = await until(() => Object.values(nodes).every(n => read(`${n.ws}/many/d29/f1499.txt`) === 'file 1499\n'
+    && /copied \(\d+ files/.test(read(n.log) || '')), 60000);
   ok(all && Object.values(nodes).every(n => /copied \(\d+ files/.test(read(n.log) || '')
                                           && !/file by file/.test(read(n.log) || '')),
-     `...1500 more files with it, in one download each, ${((Date.now() - copyStart) / 1000).toFixed(1)}s from the agents starting${all ? '' : '\n' + logs()}`);
+     `...1500 more files with it, in one download each, ${((Date.now() - copyStart) / 1000).toFixed(1)}s from the agents starting${
+       Object.values(nodes).map(n => (read(n.log) || '').split('\n').filter(l => /file by file/.test(l)).join(' ')).join(' ')}${all ? '' : '\n' + logs()}`);
   ok(Object.values(nodes).every(n => !existsSync(`${n.ws}/node_modules`) && readlinkSync(`${n.ws}/b-link`) === 'src/b.py'),
      '...without node_modules, and with the link as a link');
   const ready = await until(async () => {
@@ -99,6 +103,29 @@ try {
   write(`${CTL}/a.txt`, 'from the controller\n');
   const down = await until(() => Object.values(nodes).every(n => read(`${n.ws}/a.txt`) === 'from the controller\n'), 30000);
   ok(down, `a change on the controller's copy reaches both nodes${down ? '' : '\n' + logs()}`);
+
+  // A relayed verb, run by a session's bb on the node: what was saved here a
+  // moment ago is on the controller's copy before the verb runs there, and
+  // what the verb wrote there is on this copy when bb returns (R163 step 2).
+  {
+    const relay = args => execFileSync('python3', [`${REPO}/scripts/lib/relay.py`,
+      'Basic ' + Buffer.from('test:test').toString('base64'), ...args],
+      { cwd: nodes.syncone.ws, encoding: 'utf8', stdio: 'pipe', timeout: 120000,
+        env: { ...process.env, BB_CONTROLLER: URL.replace(/\/$/, ''), BB_RELAY_PROJECT: P,
+               WORKSPACE: `${DIR}/syncone/workspace` } });
+    write(`${nodes.syncone.ws}/notes.txt`, 'saved a moment ago\n');
+    const t = Date.now();
+    let said = '';
+    try { said = relay(['changelog', 'add', 'Synced from a node.', '--cat', 'Added']); }
+    catch (e) { said = String(e.stdout || '') + String(e.stderr || ''); }
+    const took = Date.now() - t;
+    ok(read(`${CTL}/notes.txt`) === 'saved a moment ago\n',
+       `a save made just before a relayed verb is on the controller's copy before the verb (${took}ms; ${said.trim().slice(0, 80)})`);
+    ok(/Synced from a node/.test(read(`${nodes.syncone.ws}/CHANGELOG.md`) || ''),
+       '...and what the verb wrote there is on the node\'s copy when bb returns');
+    ok(existsSync(`${nodes.syncone.ws}/.git/.bbsync-state`) && !existsSync(`${CTL}/.git/.bbsync-state`),
+       '...which bb reads from the state the agent keeps in the copy, a file that never syncs');
+  }
 
   // A deletion travels too.
   execFileSync('rm', [`${nodes.synctwo.ws}/src/new.py`]);

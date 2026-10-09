@@ -27,6 +27,7 @@ scripts/
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/preflight.sh               `bb tests preflight`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
+  lib/syncwait.py                a session's bb on a synced node waits for its copy to be in step with the controller's (R163)
   lib/codemap.py                 the code map bb map answers from: an index over the tree, rebuilt when a source is newer (R75)
   lib/trace-verbs.py             bb dashboard trace: what the server was asked over a window, by endpoint and asker
   lib/sdkmeta.py                 reads config/toolchains.json for bb: fields, argv, versions

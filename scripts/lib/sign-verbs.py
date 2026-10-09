@@ -61,6 +61,11 @@ if sys.argv[1].startswith("--"):
     keys_verb(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:])
     sys.exit(0)
 file, route, why = sys.argv[1], sys.argv[2], sys.argv[3]
+# The build is read from the controller's copy of dist/: on a synced node it
+# goes up first (R163).
+import syncwait  # noqa: E402
+if not syncwait.up(project, "the controller signs the build in its copy of dist/"):
+    sys.exit("[builderbot] ERROR: not asked: the build here has not reached the controller yet; try again in a moment")
 r = bbapi.call("/api/signing", {"action": "sign", "project": project, "file": file, "route": route,
                                 "key": os.environ.get("BB_SIGN_KEY", ""), "why": why}, auth=auth, timeout=60)
 if r.get("error"):

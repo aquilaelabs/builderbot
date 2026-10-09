@@ -155,6 +155,15 @@ class Sync(unittest.TestCase):
         self.assertFalse(os.path.exists(self.at("n1", ".git/index.lock")))
         self.assertTrue(self.n["n1"].status()["alpha"]["ready"])
 
+    def test_the_copy_says_its_state_where_a_session_reads_it_and_it_never_syncs(self):
+        self.turn("n1")
+        with open(self.at("n1", ".git/.bbsync-state")) as f:
+            st = json.load(f)
+        self.assertEqual((st["ready"], st["pending"]), (True, 0))
+        self.assertEqual(st["rev"], ctl_sync.rev_of("alpha"))
+        self.turn("n1")
+        self.assertFalse(os.path.exists(f"{self.ws}/alpha/.git/.bbsync-state"))
+
     def test_a_first_copy_is_one_download(self):
         self.turn("n1", times=1)
         self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"])

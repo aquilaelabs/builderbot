@@ -618,6 +618,15 @@ controller is.
   there lands its artifacts where the Artifacts tab reads them.
 - **A session waits** for its project's first copy: the node reports each
   project as copying or ready, and the Claude button says which.
+- **bb waits for the copy** where the controller acts on its own copy for a
+  session (R163): a relayed `bb git`, `bb version` or `bb changelog`, `bb
+  sign`, and `bb version release --edit --attach`. Before, until a tick of
+  the agent that began after the command saw nothing left to send; after a
+  relayed verb, until this copy has caught up to the revision the controller
+  reached, which is also how a fetch's bundle in `.git/bb-relay/` arrives
+  before it is unbundled. The agent keeps each project's state in
+  `.git/.bbsync-state` (or `.bbsync-state` without git) for bb to read
+  (`lib/syncwait.py`); sync leaves the file alone.
 
 The index is a table (`migrations/0005_workspace_sync.sql`), one row per
 file with its hash and the revision it last changed at, deletions kept.

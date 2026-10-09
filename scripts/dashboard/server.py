@@ -5478,6 +5478,14 @@ class Handler(BaseHTTPRequestHandler):
         # the verb is marked seen for the session that ran it.
         before = _seen_now(project, me) if me.get("session") else None
         out = bbrelay.run(me, req, project)
+        # What a relayed verb changed in the controller's copy reaches the
+        # project's synced nodes now, and the session's bb waits for its own
+        # copy to reach this revision before it goes on (R163, syncwait.py).
+        argv0 = (req.get("argv") or [""])[0] if isinstance(req.get("argv"), list) else ""
+        if argv0 in ("git", "version", "changelog") and out[1] == 200 and isinstance(out[0], dict) \
+                and _sync_bound(project):
+            wssync.changed(project)
+            out = (out[0] | {"sync_rev": wssync.rev_of(project)}, out[1])
         if before is not None:
             session_mark_own(project, me.get("uid") or "", me, since=before)
         return self._json(*out)

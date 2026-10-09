@@ -221,6 +221,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The bell's update note for a node's toolchains is one row per node, naming every toolchain its last check found behind with both versions, Claude Code among them, and its link opens that node's Toolchains tab, where each is updated. The companion app reads the same row (API 9). (f0a845b)
 - The enroll script keeps itself once the node has enrolled, with the WireGuard config taken out of it, so it can be changed and run again; the dialog takes the WireGuard config as a file or pasted into a box. (9f6ece9)
 - A node's first copy of a synced project is one download instead of a request a file, and the node notices its own saves as they happen instead of rereading its tree every second. (fb23932)
+- On a node holding synced copies, bb git, bb version, bb changelog, bb sign and attaching files to a release first wait for the node's saves to reach the controller, and for the controller's changes to come back. (6908ecd)
 
 ### Removed
 

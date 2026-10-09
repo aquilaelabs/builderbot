@@ -318,13 +318,33 @@ class WorkspaceSync:
 
     def one(self, p):
         top = os.path.join(self.root, p.name)
+        started = time.time()
         if not p.ready:
             self.first_copy(p, top)
             if not p.ready:
+                self.say(p, top, started)
                 return
         self.push(p, top)
         if p.hinted or time.monotonic() - p.pulled_at > PULL_EVERY:
             self.pull(p, top)
+        self.say(p, top, started)
+
+    def say(self, p, top, started):
+        """This project's state, in a file inside it a session's bb reads
+        (lib/syncwait.py): the revision this copy has caught up to, what is
+        still waiting to go up, and when the tick that measured it began, so
+        bb can wait for a tick that started after it was asked (R163). Sync
+        leaves the file alone: its name starts with TMP."""
+        if not os.path.isdir(top):
+            return
+        d = os.path.join(top, ".git") if os.path.isdir(os.path.join(top, ".git")) else top
+        f = os.path.join(d, ".bbsync-state")
+        with contextlib.suppress(OSError):
+            with open(f + ".new", "w") as out:
+                json.dump({"rev": p.rev, "pending": len(p.moving), "started": started,
+                           "ready": p.ready, "error": p.error}, out)
+            os.chmod(f + ".new", 0o644)
+            os.replace(f + ".new", f)
 
     # -- the session account owns what is written ----------------------------------------
     def owner(self):
@@ -604,6 +624,10 @@ class WorkspaceSync:
                 continue
             if self.put(p, top, rel, e, base, sha):
                 changed = True
+            else:
+                # Not sent (the controller away, a refusal): still waiting,
+                # tried again next tick and counted as pending meanwhile.
+                p.moving[rel] = e
         if changed:
             p.save()
 

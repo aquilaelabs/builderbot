@@ -16,12 +16,26 @@ import bbapi
 
 auth, *argv = sys.argv[1:]
 auth = auth or os.environ.get("BB_AUTH_HEADER", "")
-r = bbapi.call("/api/v1/bb", {"argv": argv, "project": os.environ.get("BB_RELAY_PROJECT", ""),
+project = os.environ.get("BB_RELAY_PROJECT", "")
+# A verb that reads or changes the project's tree, which on the controller is
+# its own copy: on a node holding a synced copy (R163), what was saved here
+# goes up first, and what the verb changed comes back down before it is used.
+TREE = {"git", "version", "changelog"}
+tree = bool(argv) and argv[0] in TREE and bool(project)
+if tree:
+    import syncwait
+    if not syncwait.up(project) and argv[0] == "git":
+        sys.exit("[builderbot] ERROR: not sent: the controller's copy of this project is behind this one, "
+                 "and git there would act on the older tree. Try again once the node is in step "
+                 "(the Nodes tab's Sessions section says each project's state)")
+r = bbapi.call("/api/v1/bb", {"argv": argv, "project": project,
                               "cwd": os.getcwd(),
                               "from": "session" if os.environ.get("CLAUDECODE") else "operator"},
                auth=auth, timeout=200)
 if r.get("error") and "code" not in r:
     sys.exit(f"[builderbot] ERROR: {r['error']} (relayed to {bbapi.url()})")
+if tree and r.get("sync_rev"):
+    syncwait.down(project, r["sync_rev"])
 sys.stdout.write(r.get("out") or "")
 sys.stderr.write(r.get("err") or "")
 sys.stdout.flush()

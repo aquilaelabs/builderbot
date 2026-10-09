@@ -73,6 +73,12 @@ if remove:
 else:
     body = {"action": "release-edit", "project": proj, "component": comp, "why": why,
             "tag": tag, "notes": notes, "attach": attach}
+# The files attached are read from the controller's copy: on a synced node
+# they go up first (R163).
+if attach:
+    import syncwait  # noqa: E402
+    if not syncwait.up(proj, "the controller attaches the files from its copy"):
+        fail("[builderbot] ERROR: not asked: the files here have not reached the controller yet; try again in a moment")
 r = bbapi.call("/api/version", body, auth=auth, timeout=600)
 if r.get("error"):
     fail(f"[builderbot] ERROR: {r['error']}")
