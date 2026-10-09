@@ -636,6 +636,16 @@ controller is.
   before it is unbundled. The agent keeps each project's state in
   `.git/.bbsync-state` (or `.bbsync-state` without git) for bb to read
   (`lib/syncwait.py`); sync leaves the file alone.
+- **Moving a node over** is one press, Move to a synced copy in its
+  Sessions section (R163): its sessions end, it is marked synced, so the
+  session gate holds new ones until each copy is there, and `/workspace`
+  leaves its storage through the ordinary storage apply, which unmounts it
+  and takes it out of fstab; the other mounts and the stores stay. The
+  agent copies nothing while `/workspace` is still a mount, and says so on
+  the row, so the order the node hears these in does not matter. A node
+  not provisioned as a sandbox has its storage unmounted at its own console
+  first. On the dev VM the four projects were copied and ready within
+  fifteen seconds of the press (9 Oct).
 
 The index is a table (`migrations/0005_workspace_sync.sql`), one row per
 file with its hash and the revision it last changed at, deletions kept.
