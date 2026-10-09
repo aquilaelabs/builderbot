@@ -119,6 +119,6 @@ def main(argv):
     elif cmd == "sample":
         print(json.dumps(Sampler().sample(load_state(), 0), indent=2))
     else:
-        print(sys.modules[__package__].__doc__.split("Runs anywhere")[-1].strip() if cmd in ("", "-h", "--help")
+        print("Runs anywhere" + sys.modules[__package__].__doc__.split("Runs anywhere")[-1].rstrip() if cmd in ("", "-h", "--help")
               else f"unknown command {cmd}", file=sys.stderr)
         sys.exit(0 if cmd in ("", "-h", "--help") else 64)
