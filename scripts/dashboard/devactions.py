@@ -20,6 +20,7 @@ base knows nothing of this file. server.py holds only the routes and hands
 the compose runner to jobs.py through configure() here.
 """
 
+import contextlib
 import os
 import re
 import sys
@@ -122,6 +123,48 @@ def sync_work_tree(project, instance):
 # make over ssh, in the same order, with the compose file and env traveling
 # beside them, so a node needs nothing but the token it enrolled with.
 # `{cdir}` is the directory the agent writes those files into.
+COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
+
+
+def set_compose(project, instance, text):
+    """Write a project's own compose file from the Docker tab's Edit: the
+    file in its tree, so the change is an uncommitted one the Git view shows
+    like any other edit, and only once compose has read it: a file compose
+    refuses is put back as it was, with compose's own words."""
+    cf = devapp.compose_file(project, instance)
+    if devapp.is_file_source(project, instance) or cf is None:
+        return {"error": f"{project} has no compose file in its tree to edit"}
+    if not isinstance(text, str) or not text.strip():
+        return {"error": "a compose file is needed"}
+    if len(text) > COMPOSE_MAX:
+        return {"error": f"that compose file is over {COMPOSE_MAX // 1000}kB"}
+    try:
+        was = cf.read_text(encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not read {cf.name}: {e}"}
+    if text == was:
+        return {"ok": True, "unchanged": True}
+
+    def put(body):
+        tmp = cf.with_name(f".{cf.name}.bbedit")
+        tmp.write_text(body, encoding="utf-8")
+        os.chmod(tmp, cf.stat().st_mode & 0o7777)
+        os.replace(tmp, cf)
+    try:
+        put(text)
+    except OSError as e:
+        return {"error": f"could not write {cf.name}: {e}"}
+    with devapp.on_node(devapp._instance_node(project, instance)):
+        r = devapp._run(devapp._compose(project, instance, "config", "-q"), timeout=30)
+    if r["code"] != 0:
+        with contextlib.suppress(OSError):
+            put(was)
+        return {"error": ("compose will not read that, so the file is as it was:\n" + r["out"]).strip()[-600:]}
+    devapp._bump()
+    return {"ok": True, "note": f"{cf.name} is changed in {project}'s tree, not committed: "
+                                "rebuild to bring the change up"}
+
+
 def _plan(project, instance, action, extra=None):
     pname = devapp._pname(project, instance)
     at = devapp.work_tree(project, instance)
@@ -1062,6 +1105,15 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
                 "missing": devapp.missing_env(project, instance)}, 200
     elif action == "env-set":
         r = devapp.write_env(project, req.get("text") or "", instance)
+    elif action == "compose-get":
+        # The Docker tab's Edit on a project's instance (the operator, 9 Oct):
+        # its compose file beside its env, in one dialog.
+        cf = devapp.compose_file(project, instance)
+        if devapp.is_file_source(project, instance) or cf is None:
+            return {"error": f"{project} has no compose file in its tree to edit"}, 400
+        return {"text": cf.read_text(encoding="utf-8", errors="replace"), "file": cf.name}, 200
+    elif action == "compose-set":
+        r = set_compose(project, instance, req.get("text"))
     elif action == "route":
         # How the instance is reached (docs/nodes.md §7): lan or funnel,
         # on which published port.

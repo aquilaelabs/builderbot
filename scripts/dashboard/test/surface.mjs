@@ -60,7 +60,7 @@ const SURFACE = [
   'sessionRows', 'liveRefresh',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
-  'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
+  'openDevEnv', 'openDocker', 'openEditContainer', 'openEditInstance', 'cSaveInstance', 'openLinkProject',
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbDesignView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'nbWikiView', 'wikiMarkdown', 'wikiSlug', 'wikiToc', 'pullScroller', 'pullRefresh', 'wirePull', 'openReport', 'sendReport', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',

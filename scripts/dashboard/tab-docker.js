@@ -571,7 +571,12 @@ function dockerJob(){
 async function dmAction(project, instance, act, btn){
   if (act === "env"){ openDevEnv(project, instance); return; }
 
-  if (act === "edit"){ openEditContainer(project); return; }
+  if (act === "edit"){
+    // Which kind, off the button the row drew: the list it came from may be
+    // reloading, and a written container opened as a project's came up empty.
+    if (btn?.dataset.src === "file") openEditContainer(project); else openEditInstance(project, instance);
+    return;
+  }
   // Abort asks nothing: the confirmation for a destructive verb is worth its
   // interruption, and stopping a build you are watching is not destructive:
   // what is already built is kept, and pressing it again is the only way to
@@ -731,6 +736,8 @@ let cEditing = null;              // the container being edited, or null for new
 
 async function openEditContainer(name){
   cEditing = name;
+  $("cTabForm").hidden = false;
+  $("cEnvHint").hidden = true;
   $("cTitle").textContent = "Edit " + name;
   $("cName").value = name;
   $("cName").disabled = true;
@@ -751,6 +758,64 @@ async function openEditContainer(name){
     $("cEnv").value = j.env || "";
   }catch(e){ $("cErr").textContent = "could not read it: " + e;
              $("cErrWrap").hidden = false; }
+}
+
+// A project's instance in the same dialog (the operator, 9 Oct: one Edit for
+// the compose file and the env): the compose file is the project's own, in
+// its tree, so saving it is an uncommitted change there; the env is the
+// instance's. No form tab: the form writes a container from an image.
+async function openEditInstance(project, instance){
+  const key = {project, instance};
+  cEditing = key;
+  $("cTitle").textContent = "Edit " + projLabel(project) + (instance === "main" ? "" : ` (${instance})`);
+  $("cName").value = projLabel(project);
+  $("cName").disabled = true;
+  $("cNameHint").textContent = `The compose file is ${projLabel(project)}'s own, in its folder: `
+    + "saving it is an uncommitted change there, which the Git view shows. The env is this container's.";
+  $("cNodeField").hidden = true;
+  $("cUnderField").hidden = true;
+  $("cTabForm").hidden = true;
+  $("cYml").value = $("cEnv").value = "";
+  $("cErrWrap").hidden = true;
+  $("cGo").disabled = false; $("cGo").textContent = "Save";
+  cSeg("yml");
+  $("cmodal").hidden = false;
+  try{
+    const [c, e] = await Promise.all([
+      postJSON("/api/devapp", {project, instance, action: "compose-get"}).then(r => r.json()),
+      postJSON("/api/devapp", {project, instance, action: "env-get"}).then(r => r.json())]);
+    if (cEditing !== key) return;           // reopened on another one meanwhile
+    if (c.error || e.error) throw new Error(c.error || e.error);
+    $("cYml").value = c.text || "";
+    $("cEnv").value = e.text || "";
+    // ...and what the Env button's dialog said: a box opened on the example
+    // is a draft, and which keys the example declares that are not set.
+    $("cEnvHint").textContent = (e.seeded ? "started from .env.example; nothing saved yet. " : "")
+      + ((e.missing || []).length ? "missing against .env.example: " + e.missing.join(", ")
+                                  : "everything .env.example declares is set");
+    $("cEnvHint").hidden = false;
+    // A seeded env is unsaved, so it is sent on Save even untouched.
+    key.was = {compose: c.text || "", env: e.seeded ? null : (e.text || "")};
+  }catch(err){ $("cErr").textContent = "could not read it: " + (err.message || err);
+               $("cErrWrap").hidden = false; }
+}
+
+async function cSaveInstance(key){
+  const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
+  const {project, instance} = key, compose = $("cYml").value, env = $("cEnv").value;
+  $("cGo").disabled = true; $("cGo").textContent = "Saving…";
+  const send = body => postJSON("/api/devapp", {project, instance, ...body}).then(r => r.json());
+  try{
+    // The compose file first: compose reads it before it is kept, and a file
+    // it refuses stops here with its words, before the env is touched.
+    const c = compose !== key.was?.compose ? await send({action: "compose-set", text: compose}) : {};
+    if (c.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("yml"); return fail(c.error); }
+    const e = env !== key.was?.env ? await send({action: "env-set", text: env}) : {};
+    if (e.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("env"); return fail(e.error); }
+    $("cmodal").hidden = true;
+    notify(c.ok || e.ok ? "saved: rebuild it to bring the change up" : "nothing changed");
+    dockerList = null; dockerRev++; loadDocker();
+  }catch(err){ $("cGo").disabled = false; $("cGo").textContent = "Save"; fail("could not save: " + err); }
 }
 
 // Which project a new container belongs to: every project this account
@@ -787,6 +852,8 @@ function cUnderPicked(){
 
 function openNewContainer(){
   cEditing = null;
+  $("cTabForm").hidden = false;
+  $("cEnvHint").hidden = true;
   $("cName").disabled = false;
   $("cName").value = "";
   fillUnderSelect($("cUnder"), "");
@@ -877,6 +944,7 @@ function cSlide(which){
 const cSwitch = w => { if (cTab === w) return; cSeg(w); cSlide(w); };
 
 async function cSubmit(){
+  if (cEditing && typeof cEditing === "object") return cSaveInstance(cEditing);
   const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
   const editing = cEditing, verb = editing ? "Save" : "Create";
   if (!$("cName").value.trim()) return fail("a name is needed");
@@ -1072,11 +1140,9 @@ function dmRowsHtml(ins, job, blind){
               : "Start it: docker compose up -d"}">Up</button>
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
           title="Stop it and remove its containers: docker compose down">Down</button>
-        ${d.source === "file"
-          ? `<button type="button" data-dm="edit"
-               title="edit this container's compose file and env">Edit</button>`
-          : `<button type="button" data-dm="env"
-               title="this container's env file">Env</button>`}
+        <button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
+          title="${d.source === "file" ? "edit this container's compose file and env"
+                  : "edit the project's compose file and this container's env"}">Edit</button>
         `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}

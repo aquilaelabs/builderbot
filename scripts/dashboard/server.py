@@ -5755,6 +5755,10 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None
+        # A compose file edited from the Docker tab is a file in the project's
+        # tree: a write to the project as well as to its container.
+        if act == "compose-set" and self._readonly(name):
+            return None
         # A SESSION is a further question, and the answer is a per-project
         # dial with the notebook's own three words. Rebuild runs the project's
         # own Dockerfile and brings the container up on the node's daemon: for

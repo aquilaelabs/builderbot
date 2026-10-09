@@ -305,22 +305,36 @@ ok(r.up, '...and Up is dead: the env is missing PORT, and starting against a '
         + 'known-missing env is a crash with extra steps');
 ok(r.down, '...and Down is dead with nothing running');
 
+// Edit opens the compose file and the env in one dialog (the operator,
+// 9 Oct): the project's own compose file on one tab, the instance's env on
+// the other, read once the dialog has them.
+async function openEdit(){
+  await dmClick('edit');
+  await page.waitForSelector('#cmodal:not([hidden])');
+  await page.waitForFunction(() => document.getElementById('cYml').value.length > 0
+    && !document.getElementById('cEnvHint').hidden, null, { timeout: 15000 });
+}
+async function saveEdit(){
+  await page.click('#cGo');
+  await page.waitForSelector('#cmodal', { state: 'hidden', timeout: 15000 });
+}
 // Fill the env through the editor.
-await dmClick('env');
-await page.waitForSelector('#devEnvModal:not([hidden])');
-ok(/missing against \.env\.example: PORT/.test(
-     await page.$eval('#devEnvModal .hint', e => e.textContent)),
-   'the env editor says which keys the example declares and this does not');
+await openEdit();
+ok(await page.$eval('#cYml', e => e.value) === readFileSync(`${D}/docker-compose.yml`, 'utf8')
+   && await page.$eval('#cTabForm', e => e.hidden),
+   'Edit opens on the project\'s own compose file, beside its env, with no form for an image');
+await page.click('#cTabEnv');
+ok(/missing against \.env\.example: PORT/.test(await page.$eval('#cEnvHint', e => e.textContent)),
+   'the env tab says which keys the example declares and this does not');
 // An empty env opens on the example rather than on a blank box under a list
 // of names the operator would have to type out.
-const seeded = await page.$eval('#devEnvModal textarea', e => e.value);
+const seeded = await page.$eval('#cEnv', e => e.value);
 ok(/PORT=8080/.test(seeded) && /Started from this project/.test(seeded),
    '...and opens on the example, seeded, when nothing is stored yet');
-ok(/nothing saved yet/.test(await page.$eval('#devEnvModal .hint', e => e.textContent)),
+ok(/nothing saved yet/.test(await page.$eval('#cEnvHint', e => e.textContent)),
    '...saying it is a draft, since a seeded box has not been written');
-await page.fill('#devEnvModal textarea', 'PORT=9090\n');
-await page.click('#devEnvModal .primary');
-await page.waitForSelector('#devEnvModal', { state: 'hidden' });
+await page.fill('#cEnv', 'PORT=9090\n');
+await saveEdit();
 // Wait for the save to land: the hint stops calling it a draft.
 await page.waitForFunction(() => {
   const r = document.querySelector('#devRow');
@@ -665,14 +679,40 @@ await page.waitForFunction(sel => document.querySelector(sel + ' .dmpill')?.text
                            DM, { timeout: 20000 }).catch(() => {});
 ok(await pill() === 'down',
    'the gated rebuild stops after down rather than starting broken');
-await dmClick('env');
-await page.waitForSelector('#devEnvModal:not([hidden])');
-const gated = await page.$eval('#devEnvModal textarea', e => e.value);
+await openEdit();
+await page.click('#cTabEnv');
+const gated = await page.$eval('#cEnv', e => e.value);
 ok(/API_KEY=/.test(gated) && /# old: PORT=9090/.test(gated),
    '...and the editor holds the new example with the old values in comments');
-await page.fill('#devEnvModal textarea', 'PORT=9090\nAPI_KEY=abc\n');
-await page.click('#devEnvModal .primary');
-await page.waitForSelector('#devEnvModal', { state: 'hidden' });
+await page.fill('#cEnv', 'PORT=9090\nAPI_KEY=abc\n');
+await saveEdit();
+// ...and the compose half: a change compose reads is written into the
+// project's own file, an uncommitted change there; one it refuses leaves the
+// file as it was and says compose's words on the compose tab.
+{
+  const was = readFileSync(`${D}/docker-compose.yml`, 'utf8');
+  await openEdit();
+  await page.fill('#cYml', was + '# edited on the Docker tab\n');
+  await saveEdit();
+  ok(readFileSync(`${D}/docker-compose.yml`, 'utf8') === was + '# edited on the Docker tab\n',
+     'a compose file saved from Edit is the project\'s own file, changed in its tree');
+  writeFileSync(`${DIR}/dockerstate/config.fail`, '');
+  await openEdit();
+  await page.fill('#cYml', 'services: [nonsense\n');
+  await page.click('#cGo');
+  await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
+  const said = await page.$eval('#cErr', e => e.textContent);
+  ok(/compose will not read that, so the file is as it was/.test(said) && /mapping values/.test(said)
+     && readFileSync(`${D}/docker-compose.yml`, 'utf8') === was + '# edited on the Docker tab\n'
+     && await page.$eval('#cYmlField', e => !e.hidden),
+     `...and one compose refuses is put back, its words on the compose tab (${said.slice(0, 80)})`);
+  rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
+  // The refusal is the server's 400, which the browser logs: asked for here,
+  // so it is no console error the dev row made.
+  page.errors.splice(0, page.errors.length, ...page.errors.filter(e => !/400 \(Bad Request\) \[\/api\/devapp\]/.test(e)));
+  await page.click('#cCancel').catch(() => page.evaluate(() => { document.getElementById('cmodal').hidden = true; }));
+  writeFileSync(`${D}/docker-compose.yml`, was);
+}
 await dmRefresh();
 await page.waitForFunction((SEL) => {
   const b = document.querySelector(SEL + ' [data-dm="up"]');
