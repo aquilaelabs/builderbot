@@ -288,7 +288,7 @@ def read_projects(nid):
     out = set()
     for p in own:
         out |= set(_reads_of(p) or [])
-    return sorted(out - own)
+    return sorted(p for p in out - own if _there(p))
 
 
 def _watchers(project):
@@ -304,11 +304,24 @@ def bound_projects(nid):
     return [p for p in _all_projects() if nid in (bound(p) if bound else [])]
 
 
-_all_projects = list      # set by configure_projects: () -> [project names]
+_names = list             # set by configure_projects: () -> [project names]
+
+
+def _there(p):
+    """A project on the controller's disk: a name the settings still carry
+    for a project since deleted is none, or a node holding it is told of one
+    that answers "no such project" forever (walkme on the dev controller,
+    9 Oct)."""
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]+", p or "")) and not p.startswith(".") \
+        and (WORKSPACE / p).is_dir()
+
+
+def _all_projects():
+    return [p for p in _names() if _there(p)]
 
 
 def configure_projects(fn):
-    globals()["_all_projects"] = fn
+    globals()["_names"] = fn
 
 
 def projects(nid):

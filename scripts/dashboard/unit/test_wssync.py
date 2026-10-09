@@ -208,6 +208,14 @@ class Sync(unittest.TestCase):
         self.assertEqual(read(self.at("n1", "a.txt")), "one\n")
         self.assertEqual(self.n["n1"].status()["alpha"]["error"], "")
 
+    def test_a_project_that_is_gone_is_not_held_though_its_settings_remain(self):
+        ctl_sync.configure_projects(lambda: ["alpha", "beta", "gone"])
+        ctl_sync.configure_reads(lambda p: ["beta", "lost"] if p == "alpha" else [])
+        ctl_sync.configure(workspace=self.ws, nodes_module=Nodes,
+                           bound_nodes=lambda p: ["n1"] if p in ("alpha", "gone") else [])
+        got = ctl_sync.projects("n1")
+        self.assertEqual((sorted(got["projects"]), sorted(got["reads"])), (["alpha"], ["beta"]))
+
     def test_a_first_copy_is_one_download(self):
         self.turn("n1", times=1)
         self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"] * len(self.n["n1"].projects))  # one a project
