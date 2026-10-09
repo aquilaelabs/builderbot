@@ -3742,6 +3742,11 @@ print(json.dumps(out))
      `naming the project reads its node, as its session does, and a project that is not one is refused (${
        byProject.node} ${seen.node} ${noProject.status})`);
   const st = await as('/api/devapp', { container: 'helper-for-eps', action: 'state' });
+  // A written container has no repository: its row asks no git about a
+  // directory that is not there, which warned on every poll (B596).
+  const gitWarned = readFileSync(`${DIR}/server.log`, 'utf8').split('\n')
+    .filter(l => /git -C \S*\/helper-for-eps/.test(l));
+  ok(gitWarned.length === 0, `a written container's row runs no git where it has no tree (${gitWarned.length}: ${gitWarned[0] || ''})`);
   const theirs = await as('/api/devapp', { project: 'ep.silon', instance: 'loose', action: 'state' });
   ok(st.status === 200 && theirs.status === 403 && /does not belong to ep\.silon/.test(theirs.error || ''),
      `...reads one written for it by name, and not its own project's container sent to no project (${st.status}, ${theirs.error})`);

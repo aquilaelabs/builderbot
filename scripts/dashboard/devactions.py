@@ -644,13 +644,18 @@ def state(project, instance=devapp.MAIN):
         # Only worth a second call when nothing is running: a running stack
         # self-evidently has containers, and this is on the artifacts poll.
         out["exists"] = out["running"] or _exists(project, instance)
-        head = devapp._head(project, instance)
+        # A container written here has no repository: its revision is its
+        # definition (built_rev hashes the compose file and the env), and git
+        # asked about a directory that is not there warned on every poll and
+        # left the row reading "changed" forever.
+        filed = devapp.is_file_source(project, instance)
+        head = devapp.built_rev(project, instance) if filed else devapp._head(project, instance)
         # An instance pinned to a ref is not waiting on the working copy: its
         # build tree is its own, and an uncommitted edit in the project's tree
         # says nothing about it. What "moved" means there is that the BRANCH
         # has, which is the comparison above.
         pinned = bool(devapp._read_rec(project, instance).get("ref"))
-        dirty = False if pinned else devapp._dirty(project)
+        dirty = False if pinned or filed else devapp._dirty(project)
         moved = bool(built.get("rev")) and built.get("rev") != head
         out["changed"] = not built.get("rev") or moved or dirty
         # WHICH of the two, because they are different facts and the row was
