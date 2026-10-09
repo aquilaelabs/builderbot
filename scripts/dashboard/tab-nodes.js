@@ -400,7 +400,12 @@ function nodeRunnerSection(n, c){
 // A node that holds its projects as a copy kept in step through the
 // controller rather than mounting the share (R162): each project's state.
 function nodeSyncRow(n){
-  if ((n.config || {}).workspace !== "sync") return "";
+  // A node still on the projects share moves in one press (R163): its
+  // sessions end, the share is unmounted and the copy is made.
+  if ((n.config || {}).workspace !== "sync") return n.kind !== "agent" ? "" : `
+    <div class="sub">Projects here come from the projects share mounted at <code>/workspace</code>.</div>
+    <div><button type="button" data-nd="to-sync" ${n.live ? "" : "disabled"}>Move to a synced copy</button></div>
+    ${n.live ? "" : `<div class="sub dim">It moves once the node is answering.</div>`}`;
   const rows = Object.entries(n.reported?.sync || {});
   const one = ([p, v]) => `<code>${esc(p)}</code> ${v.error ? `<span class="bad">${esc(v.error)}</span>`
     : !v.ready ? `copying${v.copying ? ` (${v.copying} to go)` : ""}`
@@ -1574,6 +1579,16 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                       + "This installs the NVIDIA driver and a headless X server on the card, which "
                       + "takes minutes, and the driver takes the card only after a reboot: the row "
                       + "says when to press Reboot.")) return;
+      // Moving off the share ends the sessions there, so the press names
+      // them, as a reboot's does.
+      if (act === "to-sync"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        const here = (state?.sessions || []).filter(x => x.node_id === id);
+        if (!confirm(`Move ${name} to a synced copy?\n\n`
+              + (here.length ? `This ends the ${here.length} session${here.length === 1 ? "" : "s"} open there; transcripts are kept. ` : "")
+              + "The projects share is unmounted from /workspace and each project there is copied down "
+              + "from the controller; a session starts again once its project's copy is there.")) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
@@ -1583,7 +1598,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
                retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
-               paths: "Saving", "check-paths": "Checking",
+               paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
@@ -1702,6 +1717,13 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         now.textContent = j.on ? (j.why || "answers, and says it is a sandbox")
                                : (j.why || "no answer");
         now.classList.toggle("warn", !j.on);
+        return;
+      }
+      if (act === "to-sync"){
+        const j = await nodeAct({action: "to-sync", id});
+        if (j.ok && !j.error) notify(j.job
+          ? "Moving: a storage apply unmounts the share, then each project is copied down"
+          : "Moved: each project is copied down now");
         return;
       }
       await nodeAct({action: act, id});

@@ -2106,6 +2106,68 @@ def node_apply(principal, node_id, what):
     return r
 
 
+def node_to_sync(principal, node_id):
+    """Move a node off the projects share onto a synced copy (R163 step 5),
+    in one press: its sessions ended, the node marked synced, so the session
+    gate holds new ones until its copy is there, and /workspace taken out of
+    its storage by the ordinary storage apply, which unmounts it. The agent
+    copies nothing while the share is still mounted (wssync.MOUNTED), so the
+    order the node hears these in does not matter. The other mounts and the
+    stores are left as they are."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node holds a synced copy"}
+    conf = dict(n.get("config") or {})
+    if conf.get("workspace") == "sync":
+        return {"error": f"{n['name']} already holds its projects as a synced copy"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']}; it moves while online"}
+    if node_locked(n):
+        return {"error": node_locked(n)}
+    rep = n.get("reported") or {}
+    desired = dict(conf.get("desired") or {})
+    # What the node is meant to mount: the saved configuration when there
+    # is one, else what it reports, since a node provisioned with its
+    # mounts has never had one saved and an apply removes what is not listed.
+    have = desired["mounts"] if isinstance(desired.get("mounts"), list) else [
+        {k: m.get(k) for k in ("path", "source", "type", "ro")} for m in rep.get("mounts") or []]
+    keep = [m for m in have if str(m.get("path") or "").rstrip("/") != "/workspace"]
+    share = len(keep) != len(have) or any(
+        str(m.get("path") or "").rstrip("/") == "/workspace" for m in rep.get("mounts") or [])
+    if share:
+        if not rep.get("sandbox"):
+            return {"error": "this node was not provisioned as a BuilderBot sandbox, so its "
+                             "storage is not this tab's to change: unmount /workspace there "
+                             "and take it out of fstab, then press this again"}
+        if system_job_for(node_id):
+            return {"error": "a system job is already in flight on this node; one at a time"}
+    ended = []
+    for s in (node_sessions().get(node_id) or ("", []))[1]:
+        name = str((s or {}).get("name") or "")
+        if name and not session_kill(node_id, name).get("error"):
+            ended.append(name)
+    conf["workspace"] = "sync"
+    if share:
+        conf["desired"] = dict(desired, mounts=keep, stores=desired.get("stores") or {})
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _synced["at"] = 0.0
+    # A hint naming no project has the agent ask again now which projects it
+    # holds and how, rather than at its next half-minute ask.
+    sync_hint(node_id, "", 0)
+    _touch(node_id, principal, "node-to-sync", {"ended": len(ended), "unmount": share})
+    out = {"ok": True, "ended": ended}
+    if share:
+        r = node_apply(principal, node_id, "storage")
+        if r.get("error"):
+            return {**out, "error": f"{n['name']} is marked synced, but taking the share out did "
+                                    f"not start: {r['error']}. Apply storage on its row once that "
+                                    "is fixed; until then its copy waits"}
+        out["job"] = r.get("job")
+    return out
+
+
 # Set by server.py at boot, because toolchains.py imports this one and the
 # catalog is its business, not the registry's. Absent (an older controller,
 # or a store that did not open) simply means the node keeps its built-in
@@ -3837,6 +3899,11 @@ def verb(principal, req):
     def apply():
         return node_apply(principal, nid, field(req, "what"))
 
+    def to_sync():
+        # Off the projects share onto a synced copy (R163), sessions ended
+        # and the share unmounted. An administrator's, like the rest.
+        return node_to_sync(principal, nid)
+
     def runner():
         # One of the node's runners (phase 7, one per git host): a system
         # job, minting from the token stored for that runner. The URL is
@@ -3962,7 +4029,7 @@ def verb(principal, req):
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net,
-             "root-asks": root_asks, "apply": apply, "runner": runner,
+             "root-asks": root_asks, "apply": apply, "to-sync": to_sync, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
              "paths": paths, "check-paths": check_paths, "funnel": funnel,
              "update-agent": update_agent, "cache-clear": cache_clear,

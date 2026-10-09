@@ -1048,6 +1048,42 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
      `Apply storage asks first when it would unmount something the node has (${page.dialogs[0]?.slice(0, 60)})`);
   for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
     await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
+  // Moving off the projects share (R163 step 5): one press on the
+  // Sessions section asks first, marks the node synced, and queues the
+  // storage apply that unmounts /workspace, keeping every other mount.
+  {
+    const hello = census => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) });
+    await hello({ ...CENSUS, session: { up: true, port: 7700, user: 'bb-s', workspace: true, boot: '1' },
+                  mounts: [...CENSUS.mounts, { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs',
+                                               ro: false, mounted: true, real: 'nas:/mnt/user/projects' }] });
+    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: { mounts: [
+      { path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs' },
+      { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs' }] } });
+    await page.evaluate(() => loadNodes());
+    await page.waitForSelector(`${ROW} [data-nd="to-sync"]`, { timeout: 10000 });
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="to-sync"]`);
+    await page.waitForFunction(sel => !document.querySelector(sel + ' [data-nd="to-sync"]'), ROW, { timeout: 10000 });
+    const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    const job = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.node === minted.id);
+    ok(page.dialogs.length === 1 && /synced copy[\s\S]*unmounted from \/workspace/.test(page.dialogs[0]),
+       `Move to a synced copy asks first, saying the share is unmounted (${page.dialogs[0]?.slice(0, 60)})`);
+    ok(rec.config.workspace === 'sync' && !rec.config.desired.mounts.some(m => m.path === '/workspace')
+       && rec.config.desired.mounts.some(m => m.path === '/mnt/old'),
+       `...marks the node synced and takes /workspace out of its storage, keeping /mnt/old (${JSON.stringify(rec.config.desired.mounts.map(m => m.path))})`);
+    ok(job && job.spec.apply === 'storage' && !job.spec.config.mounts.some(m => m.path === '/workspace'),
+       `...and queues the storage apply that unmounts it (${job?.id})`);
+    ok(/a copy kept in step/.test(await page.$eval(ROW, r => r.textContent)),
+       '...and the row says its projects are a synced copy now');
+    const again = await napi('/api/v1/nodes', { action: 'to-sync', id: minted.id });
+    ok(/already/.test(again.error || ''), `a second press is refused in words (${again.error})`);
+    for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
+      await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
+    await napi('/api/v1/nodes', { action: 'update', id: minted.id, fields: { workspace: 'mount' } });
+    await hello(CENSUS);
+  }
   // The fold is held to the document rules the same as any tab surface
   // (uniform.mjs cannot see it: that suite has no sandbox node to open one
   // on): every control wears the field skin, and at phone width nothing

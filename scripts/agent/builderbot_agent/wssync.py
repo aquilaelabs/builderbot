@@ -44,6 +44,7 @@ TICK = 1.0
 PULL_EVERY = 10.0
 ASK_EVERY = 30.0
 WALK_EVERY = 60.0        # a whole walk even with the watcher, for what it cannot see
+MOUNTED = "the projects share is still mounted at /workspace; Apply storage on the node's row takes it out"
 
 
 def skipped(rel):
@@ -317,10 +318,20 @@ class WorkspaceSync:
                         p.hinted = True
         if self.mode != "sync":
             return
+        if os.path.ismount(self.root):
+            # A node moving off the projects share (R163) is told it is
+            # synced before its storage apply has taken the share out:
+            # copying now would write onto the controller's own files
+            # through the mount. Held, said, and started once it is gone.
+            for p in self.projects.values():
+                p.error = MOUNTED
+            return
         if not os.path.isdir(self.root):
             # Nothing mounts here: /workspace is this node's own directory.
             os.makedirs(self.root, exist_ok=True)
         for p in list(self.projects.values()):
+            if p.error == MOUNTED:
+                p.error = ""
             self.one(p)
 
     def one(self, p):

@@ -191,6 +191,23 @@ class Sync(unittest.TestCase):
         self.assertIn("read-only", out["error"])
         self.assertEqual(ctl_sync.projects("n1")["reads"], {"beta": ctl_sync.rev_of("beta")})
 
+    def test_nothing_is_copied_while_the_share_is_still_mounted_there(self):
+        # A node moving off the share (R163) hears it is synced before its
+        # storage apply has unmounted /workspace: it waits, and says why.
+        real = os.path.ismount
+        root = self.n["n1"].root
+        os.makedirs(root, exist_ok=True)
+        node_sync.os.path.ismount = lambda p: p == root or real(p)
+        try:
+            self.turn("n1", times=1)
+        finally:
+            node_sync.os.path.ismount = real
+        self.assertFalse(os.path.exists(self.at("n1", "a.txt")))
+        self.assertEqual(self.n["n1"].status()["alpha"]["error"], node_sync.MOUNTED)
+        self.turn("n1", times=1)
+        self.assertEqual(read(self.at("n1", "a.txt")), "one\n")
+        self.assertEqual(self.n["n1"].status()["alpha"]["error"], "")
+
     def test_a_first_copy_is_one_download(self):
         self.turn("n1", times=1)
         self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"] * len(self.n["n1"].projects))  # one a project

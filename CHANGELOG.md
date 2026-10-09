@@ -96,6 +96,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Enroll node asks its questions and hands over one script that provisions and enrolls the machine. Through WireGuard it carries your router's config, routed to the controller alone, and the dialog gives the router's one-way rules. (76d587f)
 - A node can hold its projects as a copy kept in step through the controller instead of mounting the share: saves go both ways in a couple of seconds, two nodes on one project stay in step, and a file changed in two places keeps both versions with the bell saying so. (4e7d51d)
 - A node holding synced copies also gets, read-only, the projects its projects read, so a session sees them at /workspace/NAME as it did on the share. (e1f20c3)
+- A node on the projects share moves to a synced copy with one press, Move to a synced copy in its Sessions section: its sessions end, the share is unmounted from /workspace and each project is copied down (045a959)
 
 ### Changed
 
