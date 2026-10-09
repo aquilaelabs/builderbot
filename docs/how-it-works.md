@@ -1053,9 +1053,12 @@ lives in its body. The cards:
   a project has a permanent id and a directory that is never handed out again,
   and everything (the notebook, the containers, the sessions, Claude's own
   transcripts and memories) is keyed by the directory, so a rename moves
-  nothing and needs nothing closed first. Two live projects are never shown
-  under one name: a second gets Name (2), whether it was created, cloned or
-  put back from the trash. A name ever used gives a new project the next free
+  nothing and needs nothing closed first. A name follows GitHub's rules for a
+  repository's: letters, digits, `-`, `_` and `.` only, each run of anything
+  else one `-`, so "Turing Lens" is shown as Turing-Lens, and the dialogs say
+  so as it is typed. Two live projects are never shown under one name: a
+  second gets Name-2, whether it was created, cloned or put back from the
+  trash. A name ever used gives a new project the next free
   directory (Name-2), so it never inherits an old project's notebook or
   containers, and a project put back from the trash always fits where it was.
   Only BuilderBot makes a project (create, clone, or start from an imported

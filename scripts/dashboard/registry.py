@@ -26,7 +26,9 @@ WORKSPACE = None
 write_json = None
 TRASH = ".trash"
 STATES = ("live", "trashed", "purged")
-NAME_MAX = 60
+# GitHub's for a repository's name (the operator, 9 Oct): a project is one,
+# or becomes one, and a name GitHub would refuse or rewrite is not one to show.
+NAME_MAX = 100
 
 _lock = threading.RLock()
 _cache = {"mtime": None, "data": None}
@@ -110,6 +112,16 @@ def sync():
             for name in sorted(gone - live):
                 # A numbered delete from before ids (X-2) was X.
                 _add(d, name, re.sub(r"-\d+$", "", name), "trashed")["legacy"] = True
+        # A name stored before GitHub's rules held here ("Turing Lens", or a
+        # clash numbered "Name (2)") is brought to them once, as it would have
+        # been given: numbered if another live project already has it.
+        for name, r in ps.items():
+            was = str(r.get("name") or "")
+            if was and clean_name(was) != was:
+                r["name"] = clean_name(was) or name
+                if r.get("state") == "live":
+                    r["name"] = unique_name(r["name"], but=name)
+                changed = True
         for name, r in ps.items():
             st = r.get("state")
             if st == "live" and name not in live:
@@ -156,10 +168,13 @@ def id_of(dirname):
 
 
 def clean_name(raw):
-    """A shown name: trimmed, one line, printable, at most NAME_MAX."""
-    s = re.sub(r"\s+", " ", str(raw or "")).strip()
-    s = "".join(ch for ch in s if ch.isprintable())
-    return s[:NAME_MAX].strip()
+    """A shown name by GitHub's rules for a repository's: ASCII letters,
+    digits, - _ and . only, each run of anything else one -, as GitHub turns
+    "Turing Lens" into Turing-Lens, at most NAME_MAX, and never . or ..
+    (the operator, 9 Oct: a rename to "Turing Lens" kept the space)."""
+    s = re.sub(r"[^A-Za-z0-9._-]+", "-", str(raw or "").strip()).strip("-")
+    s = s[:NAME_MAX].strip("-")
+    return "" if s in (".", "..") else s
 
 
 def live_named(name, but=None):
@@ -172,13 +187,14 @@ def live_named(name, but=None):
 
 
 def unique_name(name, but=None):
-    """`name`, or `name (2)`, `name (3)`: never the name a live project is
-    shown under, so two clones of one repository read apart (the operator,
-    8 Oct)."""
+    """`name`, or `name-2`, `name-3`, as a directory is numbered: never the
+    name a live project is shown under, so two clones of one repository read
+    apart (the operator, 8 Oct), and a name GitHub would take as it is."""
     name = clean_name(name)
     cand, n = name, 2
     while live_named(cand, but=but):
-        cand = f"{name} ({n})"
+        sfx = f"-{n}"
+        cand = name[:NAME_MAX - len(sfx)] + sfx
         n += 1
     return cand
 

@@ -1190,16 +1190,29 @@ function rnFolderLine(name){
   return `Folder: /workspace/${name}${pid ? ` · project #${pid}` : ""}. Renaming changes the name shown, never the folder.`;
 }
 
+// A shown name by GitHub's rules for a repository's, as the server keeps it
+// (registry.clean_name): letters, digits, - _ and . only, each run of
+// anything else one -, at most 100 (the operator, 9 Oct).
+function ghName(raw){
+  const s = String(raw || "").trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "")
+    .slice(0, 100).replace(/-+$/, "");
+  return s === "." || s === ".." ? "" : s;
+}
+
 function rnShow(){
-  const raw = $("rnName").value.trim().replace(/\s+/g, " ");
+  const typed = $("rnName").value.trim(), raw = ghName(typed);
   $("rnHint").textContent = rnFolderLine(rnFor);
   const taken = raw && raw.toLowerCase() !== projLabel(rnFor).toLowerCase()
                 && (state?.projects || []).some(p => p.name !== rnFor
                      && String(p.label || p.name).toLowerCase() === raw.toLowerCase());
   $("rnName").classList.toggle("bad", !!taken || !raw);
   $("rnPreview").classList.toggle("bad", !!taken || !raw);
-  $("rnPreview").hidden = !taken && !!raw;
-  $("rnPreview").textContent = taken ? `${raw} is already a project's name` : "A project needs a name";
+  // Said as it is typed: the name it will be, when GitHub's rule changes it.
+  const as = raw && raw !== typed;
+  $("rnPreview").hidden = !taken && !!raw && !as;
+  $("rnPreview").textContent = !raw ? "A project needs a name: letters, digits, - _ or ."
+    : taken ? `${raw} is already a project's name`
+    : `Saved as ${raw}: names follow GitHub's rule, letters, digits, - _ and . only`;
 }
 
 function closeRename(){
