@@ -52,7 +52,12 @@ function truth(code, file) {
       if (par.type === 'AssignmentExpression' && par.left.type === 'Identifier') return par.left.name;
       if (par.type === 'AssignmentExpression' && par.left.type === 'MemberExpression' && !par.left.computed)
         return par.left.property.name;
-      if (par.type === 'AssignmentPattern' && par.left.type === 'Identifier') return par.left.name;
+      if (par.type === 'AssignmentPattern' && par.left.type === 'Identifier') {
+        // a parameter's default, destructured or not, is no definition (B601)
+        let up = path.parentPath;
+        while (up && /^(AssignmentPattern|ObjectPattern|ArrayPattern|ObjectProperty)$/.test(up.node.type)) up = up.parentPath;
+        return up && /Function|ClassMethod|ObjectMethod/.test(up.node.type) ? null : par.left.name;
+      }
       if (par.type === 'ObjectProperty' && par.key.type === 'Identifier') return par.key.name;
       if (n.id) return n.id.name;
     }
