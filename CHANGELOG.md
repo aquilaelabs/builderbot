@@ -357,6 +357,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A capture or build keeps dist/ out of git in a project whose .gitignore does not name it, through the clone's own .git/info/exclude (5049d8a)
 - A Claude session already running is no longer ended when its node's report says Claude Code is not installed; that reading still keeps a new session from starting. (e030d4b)
 - BuilderBot for VS Code: Search Project Files opens the match you pick instead of showing an error. (e030d4b)
+- bb map no longer lists a parameter's default value (why = () => "") as a function of its own. (f3abb92)
 
 ### Security
 
