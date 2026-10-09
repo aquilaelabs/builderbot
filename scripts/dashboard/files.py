@@ -134,10 +134,15 @@ def _write(p, raw):
         tmp.unlink(missing_ok=True)
 
 
+on_change = None          # (project) -> None: wssync.changed, so a synced node hears at once (R162)
+
+
 def _changed(project, by, action, rel, **more):
     if audit:
         audit(by, f"files-{action}", f"{project}:{rel}"[:200], more)
     _poke(project)
+    if on_change:
+        on_change(project)
 
 
 # ---- the editor's file system ---------------------------------------------------

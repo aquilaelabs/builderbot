@@ -568,6 +568,14 @@ def node_update(principal, node_id, fields):
         clean = {str(k)[:40]: str(v)[:120]
                  for k, v in list(fields["labels"].items())[:24]}
         sets.append("labels = ?"); args.append(json.dumps(clean))
+    if "workspace" in fields:
+        # How the node holds its projects (R162): the share mounted at
+        # /workspace, or a copy there kept in step through this controller.
+        if fields["workspace"] not in ("mount", "sync"):
+            return {"error": "workspace is mount (the projects share) or sync (a synced copy)"}
+        cfg = dict(n.get("config") or {}, workspace=fields["workspace"])
+        sets.append("config = ?"); args.append(json.dumps(cfg))
+        _synced["at"] = 0.0
     if not sets:
         return {"error": "nothing to change"}
     args.append(node_id)
@@ -753,7 +761,7 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
-def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None):
+def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, workspace="mount"):
     """Add node, agent kind: a pending row and the one token that fills it.
 
     The row exists BEFORE the machine does, which is the operator's view of
@@ -777,7 +785,9 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None):
         # The node's address in a tunnel, from the config the script
         # carries (R161): what the controller refuses all but the agent's
         # own API from, before the node has said anything itself.
-        "config": {"user": user, **({"tunnel": tunnel} if tunnel else {})},
+        "config": {"user": user, **({"tunnel": tunnel} if tunnel else {}),
+                   # How it holds its projects (R162): the share, or a synced copy.
+                   **({"workspace": "sync"} if workspace == "sync" else {})},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
@@ -799,7 +809,9 @@ def enroll_script(principal, req):
     user = re.sub(r"[^a-z0-9_-]", "", (field(req, "user") or "bb").lower())[:32] or "bb"
     tunnel = ({"kind": "wireguard", "addr": ans["tunnel_addr"]}
               if ans["reach"] == "wireguard" else None)
-    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel)
+    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel,
+                    workspace="sync" if field(req, "workspace") == "sync" else "mount")
+    _synced["at"] = 0.0
     if m.get("error"):
         return m
     name = node(m["id"])["name"]
@@ -2344,6 +2356,15 @@ def heartbeat(nid, sample, addr, running=0):
     # like everything a node says; absent when the agent did not send it.
     if isinstance(s.get("sessions"), list):
         rep["sessions"] = _session_rows(s["sessions"])
+    # Each synced project's state on the node (R162): whether its first
+    # copy is done, what is waiting to go up, and why not when it cannot.
+    if isinstance(s.get("sync"), dict):
+        rep["sync"] = {re.sub(r"[^A-Za-z0-9._-]", "", str(k))[:100]: {
+            "ready": bool((v or {}).get("ready")), "rev": int((v or {}).get("rev") or 0),
+            "pending": max(0, min(10**7, int((v or {}).get("pending") or 0))),
+            "copying": max(0, min(10**7, int((v or {}).get("copying") or 0))),
+            "error": str((v or {}).get("error") or "")[:200]}
+            for k, v in list(s["sync"].items())[:64] if isinstance(v, dict)}
     store_merge(rep.get("stores") or {}, clean["stores"], totals)
     _exec("UPDATE nodes SET agent = ?, reported = ? WHERE id = ?",
           (json.dumps(ag), json.dumps(rep), nid))
@@ -2847,6 +2868,32 @@ def ask_hello(node_id):
 _kills = {}
 
 
+# node id -> {project: revision}: synced projects that moved since the
+# node's agent last heard (R162), taken by its held work request.
+_sync_hints = {}
+
+
+def sync_hint(node_id, project, rev):
+    with _wake:
+        _sync_hints.setdefault(node_id, {})[project] = rev
+        _wake.notify_all()
+
+
+_synced = {"at": 0.0, "ids": frozenset()}
+
+
+def sync_node_ids():
+    """The nodes that hold their projects as a synced copy rather than
+    mounting the share (R162): config workspace = "sync". Read again at
+    most every two seconds: it is asked per project."""
+    now = time.monotonic()
+    if now - _synced["at"] > 2:
+        _synced.update(at=now, ids=frozenset(
+            n["id"] for n in node_list()
+            if (n.get("config") or {}).get("workspace") == "sync" and n.get("state") != "retired"))
+    return _synced["ids"]
+
+
 def session_kill(node_id, name):
     """End a tmux session on a node: queued for the agent's held poll, and
     the poll woken so it goes now. The name is the node's own (the session
@@ -3082,6 +3129,13 @@ def job_next(node_id, wait, runner="node", alive=None):
                 # answer. This is how the next one does not.
                 if _hello_wanted.pop(node_id, None):
                     return {"hello": True}
+                # ...and the synced projects that moved (R162, wssync.py):
+                # the agent asks what changed, so a save on another node or
+                # in VS Code reaches this one in a second, not at its next
+                # look of its own.
+                moved = _sync_hints.pop(node_id, None)
+                if moved:
+                    return {"sync": moved}
             left = deadline - time.time()
             if left <= 0:
                 return None

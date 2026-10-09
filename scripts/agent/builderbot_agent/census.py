@@ -181,7 +181,10 @@ def session_now(state):
     if not SESSION:
         return {}
     out = dict(SESSION)
-    out["workspace"] = os.path.ismount(SHARE)
+    # A node that holds its projects as a synced copy (R162) has /workspace
+    # as a directory of its own, not a mount.
+    out["workspace"] = os.path.ismount(SHARE) or (state.get("workspace_mode") == "sync" and os.path.isdir(SHARE))
+    out["synced"] = state.get("workspace_mode") == "sync"
     # ...and writable: a projects share mounted read-only was the right
     # arrangement for a Docker-only sandbox (nothing there wrote source), and
     # is the wrong one for a machine that runs sessions: Claude could not

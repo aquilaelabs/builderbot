@@ -1352,6 +1352,16 @@ def session_target(project, claude=False, node=""):
                "the /workspace mount on its row on the Nodes tab and apply, or `sudo "
                "bb-sandbox readonly /workspace off` on the machine")
         _ask_hello(nid)
+    elif (n.get("config") or {}).get("workspace") == "sync" \
+            and not ((rep.get("sync") or {}).get(project) or {}).get("ready"):
+        # A synced copy (R162) that is not there yet: a session started now
+        # would open an empty or half-copied tree.
+        got = (rep.get("sync") or {}).get(project) or {}
+        why = (f"{project} is being copied to {name}"
+               + (f" ({got['copying']} files to go)" if got.get("copying") else "")
+               + (f": {got['error']}" if got.get("error") else "")
+               + "; the session starts once the copy is there")
+        passing = waiting = True
     elif not se.get("boot"):
         # Without the node's boot the page would stamp this container's into
         # the tab, and bb-tty there would refuse every reconnect as a stale
@@ -3099,6 +3109,23 @@ import diag                                                      # noqa: E402
 import reports                                                   # noqa: E402
 import files                                                     # noqa: E402
 files.configure(workspace=WORKSPACE, audit=db.audit)
+# A node's projects as a synced copy (R162): the nodes in sync mode a
+# project is bound to, and VS Code's writes reaching them at once.
+import wssync                                                    # noqa: E402
+
+
+def _sync_bound(project):
+    if NODES_OK:
+        return []
+    pr = prefs.get(project)
+    synced = nodes.sync_node_ids()
+    return [i for i in dict.fromkeys([pr.get("node") or "", *(pr.get("nodes") or [])]) if i and i in synced]
+
+
+wssync.configure(workspace=WORKSPACE, nodes_module=nodes, bound_nodes=_sync_bound,
+                 changed=files._poke, audit_fn=db.audit)
+wssync.configure_projects(lambda: list(prefs.all_projects()))
+files.on_change = wssync.changed
 reports.configure(write_json=write_json, state=STATE, redact=diag.redact,
                   build=lambda: image_stamp().get("version") or image_stamp().get("rev") or "")
 # A report says which node its project builds on, and clearing them all is
@@ -3326,6 +3353,9 @@ def snapshot(who):
         # A project this account sees whose main branch's newest CI run
         # failed (ciwatch.red, R117): a bell row while it is true.
         "ci_red": ciwatch.red([p["name"] for p in ps]),
+        # A file changed on two synced copies at once (R162, wssync.py): the
+        # copy kept beside it, listed until it is deleted.
+        "sync_conflicts": wssync.conflicts(lambda p: users.may_see(who, p)),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
@@ -5471,12 +5501,19 @@ class Handler(BaseHTTPRequestHandler):
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb == "artifact":
+        if verb in ("artifact", "sync-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 length = 0
+            if verb == "sync-put":
+                return self._json(*channel.sync_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
+        if verb == "sync-file":
+            got, status = channel.sync_file(auth, q)
+            if status != 200:
+                return self._json(got, status)
+            return self._send_file(got)
         if self.command != "POST":
             return self._json({"error": "POST"}, 405)
         req = self._read_json()

@@ -397,6 +397,18 @@ function nodeRunnerSection(n, c){
 // session there gets, and which are open right now. The reasons a project
 // cannot be sent here are the proxy's (server.session_target), repeated in
 // the same words so the row and the refusal agree.
+// A node that holds its projects as a copy kept in step through the
+// controller rather than mounting the share (R162): each project's state.
+function nodeSyncRow(n){
+  if ((n.config || {}).workspace !== "sync") return "";
+  const rows = Object.entries(n.reported?.sync || {});
+  const one = ([p, v]) => `<code>${esc(p)}</code> ${v.error ? `<span class="bad">${esc(v.error)}</span>`
+    : !v.ready ? `copying${v.copying ? ` (${v.copying} to go)` : ""}`
+    : v.pending ? `${v.pending} change${v.pending === 1 ? "" : "s"} going up` : "in step"}`;
+  return `<div class="sub">Projects here are a copy kept in step through the controller, with no share mounted${
+    rows.length ? `: ${rows.map(one).join(", ")}` : "; none is bound to this node yet"}.</div>`;
+}
+
 function nodeSessionsSection(n){
   const se = n.reported?.session;
   const list = n.reported?.sessions || [];
@@ -432,6 +444,7 @@ function nodeSessionsSection(n){
         : iso.sessions ? `<div class="sub">Each session sees only its own project.</div>`
         : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
       ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}</div>` : ""}
+      ${nodeSyncRow(n)}
       ${nodeSessNetRow(n)}
       ${nodeTurnsRow(n)}`;
   }
@@ -1247,6 +1260,7 @@ function wireNodesTab(root){
               value="bb"></div>
         </div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
+        <label class="ndcap"><input type="checkbox" id="ndEnSync"> Its projects are a copy kept in step through the controller, with no share to mount</label>
       </div>
       <div class="field">
         <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
@@ -1272,7 +1286,10 @@ function wireNodesTab(root){
       $b(k)[typeof v === "boolean" ? "checked" : "value"] = v;
     const reach = $b("#ndEnReach");
     const showWg = () => { $b("#ndEnWgRow").hidden = reach.value !== "wireguard"; };
-    reach.onchange = showWg; showWg();
+    // Behind a tunnel the share is one more thing to open through it, so a
+    // synced copy is where it starts (R162); a choice either way.
+    reach.onchange = () => { showWg(); $b("#ndEnSync").checked = reach.value === "wireguard"; };
+    showWg();
     // No focus, like every other dialog here: on a phone it would raise the
     // keyboard over the box it just opened.
     $b("#ndEnCancel").onclick = shut;
@@ -1284,7 +1301,8 @@ function wireNodesTab(root){
     // What was typed comes back after a refusal: a redraw to its defaults
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
-      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value});
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
+      "#ndEnSync": $b("#ndEnSync").checked});
     const go = $b("#ndEnGo");
     go.onclick = () => pressing(go, async () => {
       const kept = keep();
@@ -1295,6 +1313,7 @@ function wireNodesTab(root){
       busy(go, "Making");
       const r = await nodeAct({action: "enroll", script: true, ...answers(),
         sessions: $b("#ndEnSess").checked, reach: reach.value,
+        workspace: $b("#ndEnSync").checked ? "sync" : "mount",
         controller: $b("#ndEnCtl").value.trim(),
         wg_conf: file ? await file.text() : ""});
       if (r.error){ mintForm(kept); return; }

@@ -583,6 +583,39 @@ agent on every hello (`share_images()`) and by the controller at boot
   viewing mechanism, never the execution mechanism. The agent exposes
   "list/read under this job's directory", not a filesystem.
 
+### A synced copy instead of the share (R162, 9 Oct)
+
+A node can hold its projects without mounting anything: its `/workspace` is
+a directory of its own, and each project bound to it is a copy the agent
+keeps in step with the controller's over the agent API, the one connection
+a node behind a one-way tunnel may open. The controller's copy on the share
+stays the original; a node is never told about another node, only the
+controller is.
+
+- **Up.** The agent compares the tree with its record of what the two last
+  agreed (in the data store, so it survives a restart). A file that has
+  changed and then held still for a tick goes up as a put naming the hash
+  it was changed from.
+- **Down.** A put, a write from VS Code (files.py tells wssync.py) or a
+  change a scan of the share finds bumps the project's revision and leaves
+  a hint the node's held work request takes at once; the agent then asks
+  what changed since its revision. It also asks every ten seconds, which is
+  what finds a change made on the share some other way.
+- **Conflicts.** A put whose base is not what the controller has now keeps
+  the controller's version and puts the node's beside it as
+  `NAME.conflict-NODE-TIME.EXT` (inside `.git`, under
+  `.git/bbsync-conflicts/`), which syncs everywhere; the node then takes the
+  version kept. The bell lists it until the copy is deleted.
+- **Not synced:** what a node rebuilds (`node_modules`, `.gradle`, virtualenvs,
+  caches), git's lock files, and a symlink pointing out of the project.
+  `.git` and `dist/` are synced: a session commits on the node, and a build
+  there lands its artifacts where the Artifacts tab reads them.
+- **A session waits** for its project's first copy: the node reports each
+  project as copying or ready, and the Claude button says which.
+
+The index is a table (`migrations/0005_workspace_sync.sql`), one row per
+file with its hash and the revision it last changed at, deletions kept.
+
 ### Materializing a job's source
 
 1. **Dirty-tree snapshot (the default).** Most work here is uncommitted: the

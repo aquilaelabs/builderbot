@@ -18,6 +18,7 @@ from .runners import RunnersMixin
 from .census import Sampler, census
 from .jobs import Job
 from .ftp import FtpServers
+from .wssync import WorkspaceSync
 from .sessions import SessionWatch, SessionsMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
@@ -53,6 +54,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.sessnet = SessionNet(self)    # each session kept to its own project's network (R79)
         self.sesswatch = SessionWatch(self)  # its sessions reported as they change
         self.ftp = FtpServers(self)        # a project's file access over FTP (R151)
+        self.wssync = WorkspaceSync(self)  # its projects as a synced copy, where it holds them so (R162)
         # The runner as a child of this process where there is no systemd:
         # run.sh in the foreground, supervised here.
         self.runner_procs = {}            # runner directory -> its process
@@ -329,6 +331,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.session_try()
         self.sessnet.start()
         self.sesswatch.start()
+        self.wssync.start()
         while True:
             # The monotonic clock: a clock step killed a running job as timed
             # out and stopped hello for the size of the step (B286). Zero
@@ -380,6 +383,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             logins = self.logins_now()
             if logins is not None:
                 sample["logins"] = logins
+            # ...and each synced project's state here (R162).
+            synced = self.wssync.status()
+            if synced is not None:
+                sample["sync"] = synced
             st, r = self.ctl.call("work", {"sample": sample, "running": n, "wait": wait},
                                   timeout=wait + 15)
             if st == 204:
@@ -398,6 +405,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # a console's line, a macro: typed into the pane as the
                 # dashboard would type them into its own tmux.
                 self.tmux_ops(r["tmux"] if isinstance(r["tmux"], list) else [])
+                continue
+            if st == 200 and r.get("sync"):
+                # ...or synced projects that moved: the sync thread asks
+                # what changed now rather than at its next look (R162).
+                self.wssync.nudge(r["sync"] if isinstance(r["sync"], dict) else {})
                 continue
             if st == 200 and r.get("hello"):
                 # The controller refused something on the strength of a

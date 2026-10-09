@@ -74,6 +74,9 @@ function drawBell(){
   // A project whose main branch's newest CI run failed (R117): from the
   // poll, so it leaves when a run passes.
   const ciRed = state?.ci_red || [];
+  // A file changed on two synced copies at once (R162): listed until the
+  // copy kept beside it is deleted.
+  const syncC = state?.sync_conflicts || [];
   const unread = Math.max(0, notes.length - notesSeen);
   // The WORST of what is unread, not the newest. notes are unshifted, so the
   // first `unread` of them are the new ones. A failure followed by three
@@ -84,18 +87,19 @@ function drawBell(){
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
   const pendingOn = asks.length + waiting.length + invites.length;
-  const attOn = att.some(a => a.window) || ciRed.length ? "bad" : att.length ? "warn" : "";
-  dot.hidden = !(pendingOn || att.length || ciRed.length || unread);
+  const attOn = att.some(a => a.window) || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
+  dot.hidden = !(pendingOn || att.length || ciRed.length || syncC.length || unread);
   // An ask outranks every level of record: one is a thing that happened, the
   // other is a thing that has not happened yet because it is waiting on you.
   // A node alert sits between: red when work is stopped, amber when an
   // update merely waits.
   dot.className = "dot" + (pendingOn ? " ask" : attOn ? " " + attOn : worst ? " " + worst : "");
-  bell.classList.toggle("has", !!(pendingOn || att.length || ciRed.length || unread));
+  bell.classList.toggle("has", !!(pendingOn || att.length || ciRed.length || syncC.length || unread));
   bell.classList.toggle("waiting", pendingOn > 0);
   bell.title = pendingOn
     ? `${pendingOn} waiting on an answer`
-    : att.length + ciRed.length ? `${att.length + ciRed.length} need${att.length + ciRed.length === 1 ? "s" : ""} attention`
+    : att.length + ciRed.length + syncC.length
+      ? `${att.length + ciRed.length + syncC.length} need${att.length + ciRed.length + syncC.length === 1 ? "s" : ""} attention`
     : unread ? `${unread} new` : "notifications";
   // Drawn whenever it is ON SCREEN, which is the question that matters, and
   // not when a flag says it is open; those two disagreed and the panel a
@@ -195,6 +199,10 @@ function drawBell(){
         <div class="bfoot"><span>this stays until the check passes again</span>
           <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
             <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
+    ...syncC.map(c => `<div class="bnote ask">
+        <div class="btag">changed in two places: ${esc(projLabel(c.project))}</div>
+        <div class="bwhy">${esc(c.path)} was changed on ${esc(c.node)} after another copy had changed it; that version is kept as ${esc(c.kept_as)}</div>
+        <div class="bfoot"><span>this stays until that copy is deleted</span><span>${esc(ago(c.at))}</span></div></div>`),
     ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),

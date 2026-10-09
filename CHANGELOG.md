@@ -94,6 +94,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - BuilderBot for VS Code: sign in as yourself, open a project as a folder with no share mounted, see a Claude session's changes as it saves them, search its files, and work in its terminal; a project's File access settings gain a switch for it, and it can do nothing your account cannot (239d386)
 - bb map checks itself against babel, python's own parser and hand-checked examples in the other languages on every test run, and rebuilds every stored index by itself whenever the way it reads code changes (239d386)
 - Enroll node asks its questions and hands over one script that provisions and enrolls the machine. Through WireGuard it carries your router's config, routed to the controller alone, and the dialog gives the router's one-way rules. (76d587f)
+- A node can hold its projects as a copy kept in step through the controller instead of mounting the share: saves go both ways in a couple of seconds, two nodes on one project stay in step, and a file changed in two places keeps both versions with the bell saying so. (4e7d51d)
 
 ### Changed
 
