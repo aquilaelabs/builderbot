@@ -24,7 +24,7 @@ let ph = null, phBusy = "", phRev = 0, phFetching = false;
 let phNode = "";                 // the picked node's id; "" until the first answer
 // Held outside the render, because the tab is rebuilt whole on every draw and
 // a field that emptied itself mid-sentence would be unusable.
-let phIp = "", phPort = "", phCode = "";
+let phIp = "", phPort = "", phCode = "", phConnPort = "";
 // The lend controls' picks, kept across a redraw (R113).
 let phLendTo = "", phLendFor = "1";
 
@@ -119,13 +119,17 @@ function phonePanel(n){
          n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
          >Disconnect</button></span>` : ""}
      </div>`,
-    // An IP and no port. Android hands out a new connect port every time
-    // wireless debugging is toggled, so the node scans for it rather than
-    // sending anybody back to the phone to read a number that has changed.
+    // An IP and its port, both read off the phone's wireless debugging
+    // screen. Android hands out a new port every time wireless debugging is
+    // toggled; the node used to scan the phone for it, which across a VPN is
+    // what a network flags as port scanning (the operator, 9 Oct).
     `<div class="row">
-       <div class="grow setrow col">${lbl("phIp", "Phone IP address", "from its wireless debugging screen. The port is found for you")}
+       <div class="grow setrow col">${lbl("phIp", "Phone IP address", "from its wireless debugging screen, before the colon")}
          <input id="phIp" maxlength="15" autocomplete="off"
          placeholder="192.168.0.10" value="${esc(phIp)}"${off ? " disabled" : ""}></div>
+       <div class="setrow col">${lbl("phConnPort", "Port", "after the colon under IP address &amp; port on the wireless debugging screen: it changes each time wireless debugging is turned on, and the node never scans the phone for it")}
+         <input id="phConnPort" maxlength="5" inputmode="numeric" autocomplete="off"
+         placeholder="41235" value="${esc(phConnPort)}"${off ? " disabled" : ""}></div>
        <span class="acts"><button type="button" id="phConnect" class="primary"${
          off ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
@@ -264,13 +268,15 @@ function wirePhoneTab(root){
   // The fields keep what is in them across a redraw.
   const keep = (id, set) => { const el = $$(id); if (el) el.oninput = e => set(e.target.value); };
   keep("phIp", v => phIp = v);
+  keep("phConnPort", v => phConnPort = v);
   keep("phPairPort", v => phPort = v);
   keep("phPairCode", v => phCode = v);
   const on = (id, fn) => { const el = $$(id); if (el) el.onclick = fn; };
   on("phConnect", () => {
     if (!phIp.trim()) return notify("the phone's IP, from its wireless debugging screen", true);
-    phBusy = "looking for the phone"; phRev++; drawPanes();
-    phFetch({action: "connect", ip: phIp.trim()});
+    if (!phConnPort.trim()) return notify("the port too: after the colon under IP address & port on its wireless debugging screen", true);
+    phBusy = "connecting"; phRev++; drawPanes();
+    phFetch({action: "connect", ip: phIp.trim(), port: phConnPort.trim()});
   });
   on("phDisconnect", () => {
     // An administrator ending somebody else's connection is told whose it
@@ -286,8 +292,14 @@ function wirePhoneTab(root){
   });
   root.querySelectorAll("[data-kconnect]").forEach(b => b.onclick = () => {
     phIp = b.dataset.kconnect;
-    phBusy = "looking for the phone"; phRev++; drawPanes();
-    phFetch({action: "connect", ip: phIp});
+    // Its port is today's, on the phone: asked for rather than guessed.
+    if (!phConnPort.trim()){
+      drawPanes();
+      $$("phConnPort")?.focus();
+      return notify("type today's port: after the colon under IP address & port on its wireless debugging screen", true);
+    }
+    phBusy = "connecting"; phRev++; drawPanes();
+    phFetch({action: "connect", ip: phIp, port: phConnPort.trim()});
   });
   root.querySelectorAll("[data-kforget]").forEach(b => b.onclick = () =>
     phFetch({action: "forget", ip: b.dataset.kforget}));

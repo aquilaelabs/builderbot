@@ -59,11 +59,21 @@ for (const [what, body] of [
   const r = await api('/api/phone', body);
   ok(r.status === 400 && r.body.error, `refused: ${what}`);
 }
+// The port is the phone's to say, never scanned for (the operator, 9 Oct:
+// probing a phone's ports across a VPN is port scanning), and a connect
+// adb says "connected to" that never gives a usable phone is no success
+// (B598): the stub lists 192.168.9.9:5555 alone as a device.
+{
+  const noPort = await api('/api/phone', { action: 'connect', node: sandbox.id, ip: '192.168.9.9' });
+  ok(noPort.status === 400 && /connect port is needed/.test(noPort.body.error || '') && /IP address & port/.test(noPort.body.error),
+     `a connect with no port is refused and says where to read it, rather than scanning the phone (${noPort.body.error})`);
+  const wrong = await api('/api/phone', { action: 'connect', node: sandbox.id, ip: '192.168.9.9', port: '6000' });
+  ok(wrong.status === 400 && /192\.168\.9\.9:6000, but the phone is not listed there, not usable/.test(wrong.body.error || ''),
+     `a port adb "connects" to that gives no usable phone is reported as that, not as connected (${wrong.body.error})`);
+}
 page.errors = [];
 
 // ---- connecting, and who then owns it --------------------------------------
-// With the port given, so nothing scans: the scan is a job on the node
-// probing the phone's network, and the fixture's phone is a stub.
 const conn = await api('/api/phone', { action: 'connect', node: sandbox.id, ip: '192.168.9.9', port: '5555' });
 ok(conn.status === 200 && conn.body.serial === '192.168.9.9:5555',
    `Connect runs adb on the node and reports the serial (${JSON.stringify(conn.body).slice(0, 80)})`);

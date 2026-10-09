@@ -113,7 +113,6 @@ IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 # The window Android picks a wireless-debugging port from. Wider than it needs
 # to be on any phone seen so far; a scan takes about a minute on the node and
 # only happens when the operator asks to connect without a port.
-PORT_LO, PORT_HI = 30000, 45000
 
 
 def configure(*, write_json, state, workspace):
@@ -400,41 +399,12 @@ def pair(nid, ip, port, code, uid, name):
     return {"ok": True, "message": r["out"].strip().splitlines()[-1]}
 
 
-# The scan, run ON THE NODE: the phone is on the node's network, not the
-# controller's. Python because every node has it (the agent needs it) and
-# the fixture node has no bb to run.
-SCAN = r"""
-import socket, sys
-from concurrent.futures import ThreadPoolExecutor
-ip, lo, hi = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-found = []
-def probe(p):
-    if found: return
-    s = socket.socket(); s.settimeout(0.35)
-    try:
-        if s.connect_ex((ip, p)) == 0: found.append(p)
-    except OSError: pass
-    finally: s.close()
-with ThreadPoolExecutor(max_workers=400) as pool: pool.map(probe, range(lo, hi + 1))
-print(found[0] if found else 0)
-"""
-
-
-def find_port(nid, ip, by="phone"):
-    """Which port the phone is listening on for `adb connect`, scanned from
-    the node. Android picks a new one every time wireless debugging is
-    toggled, so the number on the phone's screen is only true until it is
-    not, and sending the operator back to read it each time is the kind of
-    small friction that stops a thing being used."""
-    if not _valid_ip(ip) or nodes is None:
-        return None
-    r = nodes.run_wait(by, nid, ["python3", "-c", SCAN, ip, str(PORT_LO), str(PORT_HI)],
-                       timeout=120)
-    try:
-        n = int((r.get("out") or "0").strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        n = 0
-    return n or None
+def _is_device(nid, serial):
+    """adb's state for `serial` on the node now: "device" when it is usable."""
+    for d in devices(nid, force=True):
+        if d.get("serial") == serial:
+            return d.get("state") or "unknown"
+    return "not listed"
 
 
 def connect(nid, ip, port, uid, name):
@@ -448,19 +418,29 @@ def connect(nid, ip, port, uid, name):
     # A port that was given and is nonsense is an error, not a reason to go
     # looking: scanning would paper over a typo and connect to something the
     # operator did not ask for.
-    if port not in (None, "", 0):
-        n = _valid_port(port)
-        if not n:
-            return {"error": f"not a port: {port}"}
-    else:
-        n = find_port(nid, ip, by=f"user:{name}")
-        if not n:
-            return {"error": f"nothing on {ip} is listening for adb from the node. "
-                             "Is wireless debugging still on? It hands out a new "
-                             "port every time it is toggled."}
+    # The port comes from the phone: the companion app reads it off its own
+    # adbd's announcement, or the person types it from the Wireless debugging
+    # screen. Never scanned for: probing thousands of ports on a phone across
+    # a VPN is what a provider or a network flags as port scanning (the
+    # operator, 9 Oct), whoever's phone it is.
+    n = _valid_port(port)
+    if not n:
+        return {"error": "the phone's connect port is needed: the BuilderBot app finds it, or read "
+                         "it under IP address & port on Android's Wireless debugging screen (the "
+                         "number after the colon) and type it in"}
+    # "connected to" is a socket, not a phone: the port of something else
+    # says it and the phone never becomes a device, which the app took for
+    # success while the Phone tab said not connected (B598).
     r = _adb(nid, "connect", f"{ip}:{n}", timeout=30, by=f"user:{name}")
     if "connected to" not in r["out"]:
         return {"error": (r["out"].strip().splitlines() or ["connect failed"])[-1]}
+    st = _is_device(nid, f"{ip}:{n}")
+    if st != "device":
+        _adb(nid, "disconnect", f"{ip}:{n}", timeout=15, by=f"user:{name}")
+        hint = (" The phone does not trust this node yet: pair it again." if st == "unauthorized" else
+                " That port is not Wireless debugging's own: read it again under IP address & port, "
+                "which changes every time Wireless debugging is turned on.")
+        return {"error": f"the node reached {ip}:{n}, but the phone is {st} there, not usable.{hint}"}
     dev = phone_on(nid, force=True) or {}
     _put(nid, {"owner": uid, "owner_name": name, "ip": ip,
                "serial": dev.get("serial") or f"{ip}:{n}",
