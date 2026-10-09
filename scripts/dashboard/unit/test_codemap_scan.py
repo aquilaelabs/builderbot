@@ -246,6 +246,23 @@ class ThirdPass(unittest.TestCase):
             self.assertEqual(codemap.q_suites(idx, ["page.js"]), ["test/a.mjs  (1: openTab())"])
 
 
+class FourthPass(unittest.TestCase):
+    """The fourth pass (9 Oct)."""
+
+    def test_a_parameters_default_is_not_a_definition(self):
+        s = scan('function pick(id, why = () => "") {\n  return why(id);\n}\n'
+                 "function mock({ token = 1, now = () => Date.now() } = {}) {}\n"
+                 "const f = (a, cb = async () => 0) => cb(a);\n", "a.js")
+        self.assertEqual({d[0] for d in defs(s)} - {"(anonymous)"}, {"pick", "mock", "f"})
+
+    def test_a_handler_or_a_stand_in_inside_a_call_still_is(self):
+        s = scan("rows.forEach(b => b.onclick = () => go(b));\n"
+                 "page.evaluate(() => { draw = () => { boom(); }; });\n", "a.js")
+        names = {d[0] for d in defs(s)}
+        self.assertTrue({"onclick", "draw"} <= names, names)
+        self.assertIn(("go", 1, "onclick"), calls(s))
+
+
 class Shell(unittest.TestCase):
     def test_a_nested_function_ends_at_its_own_brace(self):
         s = scan("outer() {\n    inner() {\n        die x\n    }\n    inner\n}\n", "a.sh")

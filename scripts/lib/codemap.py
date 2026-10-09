@@ -412,6 +412,9 @@ class JSScanner:
         self.prev_ident = ""
         self.last_kw = ""
         self.parens = 0
+        # the paren depth at each open brace: an arrow assigned in parens
+        # opened since is a parameter's default, not a definition
+        self.brace_parens = []
         self.paren_at_pending = 0
         self.maybe_method = None
         self.receiver = False
@@ -924,6 +927,7 @@ class JSScanner:
             # TypeScript's `function f(): { a: T } {`: the first brace after
             # the colon is the return type's, the next one is the body
             self.depth += 1
+            self.brace_parens.append((self.parens, self.in_parens() and self.opens_pattern()))
             self.last_sig = "{"
             return
         if c == "{":
@@ -973,10 +977,13 @@ class JSScanner:
                 # destructured `constructor({ now } = {})`, leaves it be)
                 self.maybe_method = None
             self.depth += 1
+            self.brace_parens.append((self.parens, self.in_parens() and self.opens_pattern()))
             self.last_sig = "{"
             return
         if c == "}":
             self.depth -= 1
+            if self.brace_parens:
+                self.brace_parens.pop()
             if self.pending is not None and self.pending_depth > self.depth:
                 # an interface's `fun f(x: Int)` with no body ends with its scope
                 self.pending = None
@@ -1007,6 +1014,8 @@ class JSScanner:
                     self.pending_async = self.pending_anon = False
                 m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?" + self.params + r"\s*$",
                               s[max(0, self.i - 200):self.i])
+                if m and self.is_default(s[max(0, self.i - 200):self.i], m.start(1)):
+                    m = None
                 # (the window's first line is cut short unless it is the file's)
                 w = s[max(0, self.i - 200):self.i]
                 key = None if m else self.obj_key.search(w if self.i <= 200 else w[w.find("\n") + 1:])
@@ -1060,12 +1069,35 @@ class JSScanner:
         # (an anonymous body at the top pushes the top's name: no parent)
         return st[-1][0] if st and st[-1][0] != self.top else ""
 
+    def is_default(self, head, start):
+        # A parameter's default, inside parens opened since the innermost
+        # brace and right after `(`, `,` or `{`: `function nodePick(id, why
+        # = () => "")` gave the map a function `why`, with the next
+        # section's comment for what it says. `forEach(b => b.onclick = ()
+        # => go())` is a handler, and stays one.
+        if not self.in_parens() and not (self.brace_parens and self.brace_parens[-1][1]):
+            # (nor in a brace opened in parens: `f({ now = () => 0 } = {})`)
+            return False
+        return bool(re.search(r"[(,{]\s*$", head[:start]))
+
+    def opens_pattern(self):
+        # a brace right after `(` or `,` is a destructured parameter; one
+        # after `=>` or `)` is a body, `evaluate(() => { x = () => 0 })`
+        return bool(re.search(r"[(,]\s*$", self.s[max(0, self.i - 80):self.i]))
+
+    def in_parens(self):
+        # inside parens opened since the innermost brace
+        return self.parens > (self.brace_parens[-1][0] if self.brace_parens else 0)
+
     def arrow_name(self):
         # `const NAME = (...) =>` or `NAME = async x =>` : the identifier
         # before the `=` that precedes the arrow's parameters, on this line
         # or the one before.
         head = self.s[max(0, self.i - 200):self.i]
         m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?" + self.params + r"\s*=>\s*$", head)
+        if m and self.is_default(head, m.start(1)):
+            self._prop = False
+            return ""
         # A property (`nb.clashResume = () =>`) is the object's to call:
         # kept as a definition for the attribution of what it draws, marked
         # so `unused` does not name it as never called (B271).
