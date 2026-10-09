@@ -355,6 +355,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The build-folder links BuilderBot puts in a Gradle project are kept out of git through the repository's own exclude file (942bcac)
 - bb -p names a project the session does not read and says where Reads are set; bb bug add -h prints help; a bug whose repro uses bb files in the project's own tracker; a python toolchain (uv and Python 3.12 with pip and venv) (8e7cd14)
 - A capture or build keeps dist/ out of git in a project whose .gitignore does not name it, through the clone's own .git/info/exclude (5049d8a)
+- A Claude session already running is no longer ended when its node's report says Claude Code is not installed; that reading still keeps a new session from starting. (e030d4b)
+- BuilderBot for VS Code: Search Project Files opens the match you pick instead of showing an error. (e030d4b)
 
 ### Security
 
