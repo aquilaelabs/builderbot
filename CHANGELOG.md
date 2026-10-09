@@ -213,6 +213,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A Docker container's row shows its project, where it is built from, its ports and its settings at every width; on a phone they were behind a Details fold (a70950b)
 - Every section starts open, on a phone too, and a long surface (project settings among them) has a line of section names at the top to jump to each; nothing shuts one section when another opens (3b1cbf8)
 - A project's name follows GitHub's rules for a repository's name: 'Turing Lens' is shown as Turing-Lens, a second of one name is Name-2, older names are brought to the rule once, and the dialogs show the name as it is typed (6754fcb)
+- A phone's connect port is typed beside its IP address (or found by the companion app on the phone itself): the node no longer scans the phone's ports, and a connect that gives no usable phone says so (a56d61f)
 
 ### Removed
 
