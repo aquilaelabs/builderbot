@@ -1058,6 +1058,20 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await hello({ ...CENSUS, session: { up: true, port: 7700, user: 'bb-s', workspace: true, boot: '1' },
                   mounts: [...CENSUS.mounts, { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs',
                                                ro: false, mounted: true, real: 'nas:/mnt/user/projects' }] });
+    // What only the heartbeat carries (its sessions, a synced copy's state)
+    // outlives the next hello, which replaces the rest of the record.
+    const ws = { ...CENSUS, session: { up: true, port: 7700, user: 'bb-s', workspace: true, boot: '1' },
+                 mounts: [...CENSUS.mounts, { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs',
+                                              ro: false, mounted: true, real: 'nas:/mnt/user/projects' }] };
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+        sessions: [{ name: `${JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid}~claude-beta` }],
+        sync: { beta: { ready: true, rev: 3 } } }, running: [], wait: 0 }) });
+    await hello(ws);
+    const kept = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).reported;
+    ok(kept.sessions?.length === 1 && kept.sync?.beta?.ready === true,
+       `a hello keeps what the heartbeat said: its sessions and its synced copy's state (${JSON.stringify([kept.sessions?.length, kept.sync])})`);
     await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: { mounts: [
       { path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs' },
       { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs' }] } });
@@ -1082,6 +1096,10 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
       await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
     await napi('/api/v1/nodes', { action: 'update', id: minted.id, fields: { workspace: 'mount' } });
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync: {} },
+                             running: [], wait: 0 }) });
     await hello(CENSUS);
   }
   // The fold is held to the document rules the same as any tab surface
@@ -1245,6 +1263,10 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
          (nodeRow.match(/\d+ sessions? open[^:]*/) || ['none'])[0]})`);
     ok(!rows.some(t => /Flutter/.test(t) && /reopen/.test(t)),
        '...and says nothing on a row no job has put there since they started');
+    // Gone again: a hello no longer clears what a heartbeat said.
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, sessions: [] }, running: 0, wait: 0 }) });
   }
   // ---- one store, two machines (roadmap #18) ------------------------------
   // The controller reaches the toolchain store through Unraid's FUSE layer and a

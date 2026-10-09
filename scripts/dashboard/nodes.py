@@ -2275,10 +2275,17 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     # dial in" is not the same question as "how old is this answer", and it
     # is the second one a refusal is reasoning from.
     census_at = int(time.time())
+    # What only the heartbeat carries is kept across the census replacing
+    # the record: dropped, a synced project read as not copied (the session
+    # gate held it) and the node's sessions as none (Move to a synced copy
+    # ended nothing) until the next heartbeat, and hellos come every half
+    # minute or so on a busy node.
+    beat = {k: rep[k] for k in ("sessions", "published", "sync") if k in rep}
     rep = _census(census)
     rep["at"] = census_at
     if sample:
         rep["sample"] = sample
+    rep.update(beat)
     _exec("UPDATE nodes SET agent = ?, reported = ?, os = ?, arch = ? "
           "WHERE id = ?", (json.dumps(ag), json.dumps(rep), rep["system"],
                            rep["arch"], nid))
