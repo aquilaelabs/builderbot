@@ -56,6 +56,11 @@ class ClaudeToolchain(unittest.TestCase):
         self.assertIn("Claude Code is not installed on clbox: its Toolchains tab installs it",
                       claudecode.holds().get("n1", ""))
 
+    def test_none_installed_does_not_end_a_running_session(self):
+        # B540: the sweep ended live sessions on a stale "not installed".
+        self.use(node(claude=""))
+        self.assertEqual(claudecode.holds(reap=True), {})
+
     def test_no_session_account_no_row_and_no_hold(self):
         n = node(up=False)
         self.use(n)

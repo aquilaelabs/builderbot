@@ -270,6 +270,12 @@ const lockUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).user
 tmuxNew(`${lockUid}~claude-ep_silon`);
 await page.evaluate(() => refresh());
 const ndx = page.dialogs.length;
+// The question reads claude_with, which the polls fill on their own
+// schedules: wait on it, reading only (a refresh in the wait redraws the
+// rows and the click never lands). B540 was the compat sweep ending both
+// sessions here, a second apart, once the stub node said it has no Claude
+// Code; a running session is never reaped on that any more.
+await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
 await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the sessions
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });

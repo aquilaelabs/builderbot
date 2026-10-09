@@ -170,11 +170,16 @@ def attention(project_nodes):
     return out
 
 
-def holds():
+def holds(reap=False):
     """{node id: why} while no session can start on a node's Claude Code:
     while it is being updated (the project rows start them again after),
     and where it is not installed at all, which the node's Toolchains tab
-    does on purpose (R145: the provisioner no longer installs it)."""
+    does on purpose (R145: the provisioner no longer installs it).
+
+    reap: only the holds that end a session already running, for the
+    sweep. Not installed is not one: a running session shows it was there,
+    so the reading is stale or wrong, and the sweep ended the harness's
+    sessions every second on it (B540); remove() ends them itself."""
     out = {}
     for n in nodes.node_list() if nodes else []:
         if n.get("kind") != "agent":
@@ -182,7 +187,7 @@ def holds():
         if updating(n["id"]):
             out[n["id"]] = (f"Claude Code is updating on {n['name']}: its Claude sessions were ended for "
                             "it, and start again from the project rows when it is done")
-        elif missing(n):
+        elif missing(n) and not reap:
             out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Toolchains tab installs it")
     return out
 

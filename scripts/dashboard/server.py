@@ -391,32 +391,33 @@ def window_cost(name):
     return {"window": nodes.agent_window(nodes.agent_file()["version"]), "projects": held}
 
 
-def node_holds():
+def node_holds(reap=False):
     """{node id: why} for every agent node no Claude session may start on
     right now: its agent is from another compatibility window than this
     controller ships, or its Claude Code is being updated (claudecode.py),
     which ends the sessions there first. The half of a project's hold that
     is its node's. Being merely behind is not here: inside a window an
     older agent takes a job and a session, and the Nodes tab's Update is a
-    courtesy rather than a gate."""
+    courtesy rather than a gate. reap: only what ends a running session
+    (claudecode.holds)."""
     out = {}
     if NODES_OK:
         return out
     for n in nodes.node_list():
         if n["kind"] == "agent" and nodes.agent_gap(n):
             out[n["id"]] = nodes.agent_stale(n)
-    out.update(claudecode.holds())
+    out.update(claudecode.holds(reap))
     return out
 
 
-def compat_holds():
+def compat_holds(reap=False):
     """{project: why} for every project no Claude session may run on right
     now, which since R63 step 3 means one thing: its node's agent is from
     another compatibility window. Per project on purpose, because another
     project's node being out of window is that project's problem and this
     one's button stays live."""
     out = {}
-    holds = node_holds()
+    holds = node_holds(reap)
     pp = prefs.all_projects()
     try:
         dirs = [d for d in WORKSPACE.iterdir() if d.is_dir()]
@@ -450,7 +451,7 @@ def compat_reap_once():
     start, which is the moment after a controller update, and on a timer
     after that for a window that moves under a running server (a bump
     landing on a `bb dashboard dev` restart, a node enrolled behind)."""
-    holds = compat_holds()
+    holds = compat_holds(reap=True)
     if not holds:
         return []
     wanted = {claude_session(p): why for p, why in holds.items()}
