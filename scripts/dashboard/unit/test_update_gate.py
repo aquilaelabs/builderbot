@@ -3,7 +3,6 @@ a self-update while another job runs, and a node a session builds and tests
 on all day refused every press of Update agent. So while one is queued the
 node is handed nothing new, and the update once the node is idle; one that
 waited UPDATE_QUIET_S is failed, naming what kept the node busy."""
-import importlib.util
 import os
 import shutil
 import sys
@@ -14,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import nodes  # noqa: E402
+import agentpkg  # noqa: E402
 
 
 class UpdateGate(unittest.TestCase):
@@ -136,10 +136,7 @@ class HeldJobs(unittest.TestCase):
         self.assertIn("press Update agent again", err)
 
 
-_spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_held", os.path.join(os.path.dirname(__file__), "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent_held")
 agent.log = lambda *a, **k: None
 
 

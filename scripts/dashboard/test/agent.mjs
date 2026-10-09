@@ -1,5 +1,5 @@
 // Phase 3 of the controller design (docs/nodes.md): the agent, enrollment,
-// and the numbers. The REAL agent (scripts/agent/builderbot-agent.py) is run
+// and the numbers. The REAL agent (scripts/agent: the entry and its package) is run
 // here as a child process against the harness server, with its node.json
 // pointed into the scratch dir: enroll with a token the tab minted, dial in,
 // take an exec job, stream its log, report the result, and be cut off. Every
@@ -12,6 +12,12 @@ import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileS
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
+// The agent's own modules, in-process: a fresh copy of the package as one
+// object (unit/agentpkg.py), the way the single file was loaded by path.
+const LOAD_AGENT = `import sys; sys.path.insert(0, ${JSON.stringify(`${REPO}/scripts/dashboard/unit`)}); import agentpkg`;
+// What a node runs: the zip the controller ships (builderbot_agent/bundle.py).
+const agentZip = () => execFileSync('python3', ['-c', 'import sys; sys.path.insert(0, sys.argv[1]); '
+  + 'from builderbot_agent import bundle; sys.stdout.buffer.write(bundle.build(sys.argv[1]))', `${REPO}/scripts/agent`]);
 // Under bb tests coverage (R76) every python this file starts, the agent it
 // runs and the module it drives in-process alike, counts the agent's
 // functions into its own file: PID is each process's own, so a self-update's
@@ -19,7 +25,7 @@ const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
 if (process.env.BB_COVERAGE_DIR){
   process.env.BB_COVERAGE_OUT = `${process.env.BB_COVERAGE_DIR}/agent-PID.json`;
   process.env.BB_COVERAGE_SUITE = 'agent';
-  process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot-agent.py';   // the copy counts as the file
+  process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot_agent';   // the copy's modules count as the tree's
 }
 // The toolchain store is scoped by platform (roadmap R19): a machine's
 // toolchains live under <store>/<os>-<arch>, so every fixture written INTO a
@@ -66,8 +72,8 @@ ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(mint
 {
   const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download',
     { headers: { Authorization: 'Bearer ' + minted.token } });
-  const body = await r.text();
-  ok(r.status === 200 && body === readFileSync(AGENT, 'utf8')
+  const body = Buffer.from(await r.arrayBuffer());
+  ok(r.status === 200 && body.equals(agentZip())
      && /^sha256:[0-9a-f]{64}$/.test(r.headers.get('x-agent-digest')),
      'the enroll token downloads the agent the controller ships, digest in a header');
   const bad = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download',
@@ -388,8 +394,8 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     writeFileSync(NODE_JSON, JSON.stringify(without));
     execFileSync('python3', ['-c',
       'import importlib.util,sys\n' +
-      `spec=importlib.util.spec_from_file_location("a","${AGENT}")\n` +
-      'm=importlib.util.module_from_spec(spec);sys.modules["a"]=m;spec.loader.exec_module(m)\n' +
+      `${LOAD_AGENT}\n` +
+      'm=agentpkg.load()\n' +
       'st=m.load_state()\n' +
       'm.fill_default_stores(st)\n' +
       'm.save_state(st)\n'],
@@ -449,9 +455,10 @@ const agentOut = openSync(AGENT_LOG_FILE, 'a');
 // Run from a copy, not from the file the controller ships: the self-update
 // below moves the shipped file and has to find the running one behind it,
 // which is what every node sees on a controller update.
-const AGENT_RUN = `${DIR}/agent-run/builderbot-agent.py`;
+// The zip, as a node keeps it: one file, run with python3 like the script it was.
+const AGENT_RUN = `${DIR}/agent-run/builderbot-agent`;
 mkdirSync(`${DIR}/agent-run`, { recursive: true });
-copyFileSync(AGENT, AGENT_RUN);
+writeFileSync(AGENT_RUN, agentZip());
 const agent = spawn('python3', [AGENT_RUN, 'run'], { env: agentEnv, stdio: ['ignore', agentOut, agentOut] });
 const agentLog = () => { try { return readFileSync(AGENT_LOG_FILE, 'utf8'); } catch { return ''; } };
 try {
@@ -563,8 +570,8 @@ try {
     {
       const tool = execFileSync('python3', ['-c', `
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 t = m.extract_sandbox_tool(open(${JSON.stringify(`${REPO}/nodes/provision-linux.sh`)}).read())
 print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
 `], { encoding: 'utf8' }).trim().split('\n');
@@ -580,8 +587,8 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.share_images = lambda *a, **k: None
 m.census = lambda state: {}
@@ -620,8 +627,8 @@ print(json.dumps({'moved': case('sha256:old', 'sha256:new'), 'same': case('sha25
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, time, threading
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 a = object.__new__(m.Agent)
 a.hello_at, a.census_thread, a.census_next = 1.0, None, None
@@ -655,8 +662,8 @@ print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'd
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, shutil, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.os.geteuid = lambda: 0
 m.shutil.which = lambda n: '/usr/bin/' + n
@@ -686,8 +693,8 @@ os.unlink(stamp)
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.os.geteuid = lambda: 0
 m.shutil.which = lambda n: '/usr/bin/' + n
@@ -724,8 +731,8 @@ print(json.dumps({'first': first, 'again': case('process'), 'guest': case('contr
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, stat, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 store = tempfile.mkdtemp()
 os.makedirs(os.path.join(store, '.bb', 'current', 'scripts'))
@@ -752,8 +759,8 @@ print(json.dumps(open(seen).read().splitlines() if os.path.exists(seen) else [])
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 logged = []
 m.log = lambda msg, *a, **k: logged.append(msg)
 store = tempfile.mkdtemp()
@@ -785,8 +792,8 @@ print(json.dumps({"logged": logged, "report": a.keep_report()}))
       const bin = '/opt/fake/bb-session';
       const out = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, re
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 home = '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
 # A launcher line with the projects the session reads, one --reads each
@@ -837,8 +844,8 @@ print(json.dumps({
     {
       const sn = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 d = tempfile.mkdtemp()
 def f(name, text):
     p = os.path.join(d, name); open(p, 'w').write(text); return p
@@ -942,8 +949,8 @@ print(json.dumps({
       // only after a half-minute grace.
       const st = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile, time
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.SESSNET_DIR = tempfile.mkdtemp()
 ran = []
@@ -995,8 +1002,8 @@ print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'ref
     // through a run: thirty-three deliveries is not something to wait for.
     const pruned = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile, time
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 d = tempfile.mkdtemp(); now = time.time(); names = []
 for i in range(12):
     n = '%016x' % i
@@ -2928,7 +2935,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     });
     const agent = CASES.map(mp => execFileSync('python3', ['-c',
       `import importlib.util as u, json, sys\n` +
-      `s = u.spec_from_file_location('a', sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)\n` +
+      `${LOAD_AGENT}\nm = agentpkg.load()\n` +
       `st = json.loads(sys.argv[3])\n` +
       `print(','.join(sorted(r for r, p in st.items() if m.mount_covering(p, [{'path': sys.argv[2]}]))))`,
       `${REPO}/scripts/agent/builderbot-agent.py`, mp, JSON.stringify(stores)],
@@ -2994,7 +3001,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     }, 60000);
     ok(back !== null, `...and dials in again on the shipped digest, live (${back?.agent?.digest?.slice(0, 19)})`);
     ok(/re-executing the new agent/.test(agentLog()), '...having re-executed itself in place, the same process');
-    ok(readFileSync(AGENT_RUN, 'utf8').includes('from here on the controller ships a newer agent'),
+    ok(readFileSync(AGENT_RUN, 'latin1').includes('from here on the controller ships a newer agent'),
        '...and the file it runs from is the shipped one now');
     const cur2 = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
     ok(cur2.ok && cur2.current === true, '...so it is current again and no job is queued');
@@ -3391,8 +3398,8 @@ os.environ['BUILDERBOT_NETPLAN_BIN'] = ${JSON.stringify(`${DIR}/bin/netplan`)}
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
 log = ${JSON.stringify(`${DIR}/netplan.log`)}
 applied_before = open(log).read().count('apply')
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 open(d + '/90-builderbot.yaml', 'w').write('network:\\n  version: 2\\n  ethernets:\\n    eth0:\\n      dhcp4: true\\n')
 a = m.Agent.__new__(m.Agent)
@@ -3427,8 +3434,8 @@ import importlib.util, json, os, sys, tempfile
 os.environ['BUILDERBOT_NETPLAN_BIN'] = '/nonexistent/netplan'
 os.environ['BUILDERBOT_NMCLI_BIN'] = ${JSON.stringify(`${DIR}/bin/nmcli`)}
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 a = m.Agent.__new__(m.Agent)
 a.state = {'stores': {}}
@@ -3516,8 +3523,8 @@ os.environ['BUILDERBOT_INTERFACES_FILE'] = ifs = os.path.join(tempfile.mkdtemp()
 os.environ['BUILDERBOT_IFUP_BIN'] = ${JSON.stringify(`${NB}/ifup`)}
 os.environ['BUILDERBOT_IFDOWN_BIN'] = ${JSON.stringify(`${NB}/ifdown`)}
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 fam = {}
 for k in ${JSON.stringify(Object.keys(SAMPLES))}:
@@ -3596,8 +3603,8 @@ os.environ['BUILDERBOT_WICKED_BIN'] = ${JSON.stringify(`${NB}/wicked`)}
 os.environ['BUILDERBOT_SYSCONFIG_NET_DIR'] = sc = tempfile.mkdtemp()
 os.environ['BUILDERBOT_DHCPCD_CONF'] = dc = os.path.join(tempfile.mkdtemp(), 'dhcpcd.conf')
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 a = m.Agent.__new__(m.Agent); a.state = {'stores': {}}
 class J:
@@ -3655,8 +3662,8 @@ print(json.dumps({'w_backend': w_backend, 'r1': r1, 'w_files': w_files, 'r2': r2
   const out = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
 os.environ['BUILDERBOT_BREW_BIN'] = '/nonexistent/brew'
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 store = tempfile.mkdtemp()
 scope = m.tc_scope()
 for d in ('jdk/bin', 'android/system-images/android-30/google_apis/x86_64', 'android/platform-tools'):
@@ -3703,8 +3710,8 @@ open(nftf, 'w').write('table inet builderbot_session {\\n    chain input {\\n   
 os.environ['BUILDERBOT_SESSION_NFT'] = nftf
 os.environ['BUILDERBOT_NFT_BIN'] = ${JSON.stringify(`${NB}/nft`)}
 os.environ['BUILDERBOT_SESSION_BIND'] = ''
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.os.geteuid = lambda: 0
 a = m.Agent.__new__(m.Agent)
 a.state = {'controller': 'http://127.0.0.1:1', 'stores': {'toolchains': d}}
@@ -3741,7 +3748,10 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
 // does not think about the agent. That is the bump this is about, so the
 // check is here rather than in anybody's memory.
 {
-  const src = readFileSync(AGENT, 'utf8');
+  // the package's sources, the number in its __init__
+  const PKG = `${REPO}/scripts/agent/builderbot_agent`;
+  const src = readdirSync(PKG).filter(f => f.endsWith('.py')).sort()
+    .map(f => readFileSync(`${PKG}/${f}`, 'utf8')).join('\n');
   const av = /^AGENT_VERSION\s*=\s*"([^"]+)"/m.exec(src)?.[1] || '';
   const win = /^(\d+\.\d+)\./.exec(av)?.[1] || '';
   const proj = readFileSync(`${REPO}/VERSION`, 'utf8').trim();
@@ -3793,8 +3803,8 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
     stub('dpkg', installed); stub('apt-cache', carried);
     return JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json
-spec = importlib.util.spec_from_file_location("agent", ${JSON.stringify(`${REPO}/scripts/agent/builderbot-agent.py`)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 cat = {"toolchains": [{"name": "r", "system": {"apt": ["libnew|libold", "libplain"]}}]}
 print(json.dumps(m.sysdeps_missing(cat, "r", "apt", [m.DPKG_BIN, "-s"])[0]))`],
       { encoding: 'utf8', env: { ...process.env, BUILDERBOT_DPKG_BIN: `${alt}/dpkg`,

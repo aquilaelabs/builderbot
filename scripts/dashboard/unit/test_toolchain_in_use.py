@@ -1,19 +1,16 @@
 """A toolchain update or removal on a node is refused while anything runs
 from it, naming whose (the operator, 6 Oct): an update replaces files in
 place, and a session's build or emulator running from them breaks under it."""
-import importlib.util
 import os
 import shutil
 import subprocess
 import tempfile
 import time
 import unittest
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_tc", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent_tc")
 agent.log = lambda *a, **k: None
 
 

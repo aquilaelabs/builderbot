@@ -1,16 +1,13 @@
 """The node agent's sound in its census (R107): ALSA's cards read from
 /proc/asound/cards, the virtual ones apart, and the sound server installed.
 Drives _sound against a cards file of the test's own."""
-import importlib.util
 import os
 import tempfile
 import unittest
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent")
 
 CARDS = """ 0 [PCH            ]: HDA-Intel - HDA Intel PCH
                       HDA Intel PCH at 0xf7f10000 irq 32

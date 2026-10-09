@@ -2,7 +2,6 @@
 the Toolchains tab draws from that census, what a job is refused for first,
 and the gate a compose file that reserves the GPU meets before it starts.
 test_sandbox_gpu.py runs the helper's own install and removal."""
-import importlib.util
 import os
 import shutil
 import stat
@@ -14,12 +13,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 import devapp  # noqa: E402
 import toolchains  # noqa: E402
+import agentpkg  # noqa: E402
 
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-assert spec is not None and spec.loader is not None
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent")
 
 CARD = "NVIDIA Corporation GA104 [GeForce RTX 3070 Ti] [10de:2482] (rev a1)"
 LOADED = {"installed": "610.57.04", "loaded": "610.57.04", "bound": "nvidia"}

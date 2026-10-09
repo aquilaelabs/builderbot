@@ -20,6 +20,7 @@ db.py's, and so are the one-way doors it was built to keep.
 """
 import contextlib
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -3518,27 +3519,46 @@ def job_counts():
 # ---------------------------------------------------------------------------
 # the agent file: served to nodes, and the digest hello compares against
 
-AGENT_PY = HERE.parent / "agent" / "builderbot-agent.py"
+AGENT_DIR = HERE.parent / "agent"
+AGENT_VERSION_PY = AGENT_DIR / "builderbot_agent" / "__init__.py"
 _agent_cache = {}
 
 
+def _agent_bundle():
+    """builderbot_agent/bundle.py, loaded by path: it makes the zip a node
+    runs, and the agent itself makes the same one to know its own digest."""
+    if "bundle" not in _agent_cache:
+        spec = importlib.util.spec_from_file_location("bb_agent_bundle", AGENT_DIR / "builderbot_agent" / "bundle.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _agent_cache["bundle"] = mod
+    return _agent_cache["bundle"]
+
+
 def agent_file():
-    """The agent this controller ships: bytes, sha256, version string.
-    Read once per mtime, so the digest hello answers with is the file on
-    disk right now, which is what makes 'is my agent current' a byte
-    comparison on the node rather than a version number anyone typed."""
+    """The agent this controller ships: bytes, sha256, version string. The
+    agent is a package now, shipped as one zip (bundle.py) that a node runs
+    as it ran the single file. Built once per change of its sources, so the
+    digest hello answers with is the sources on disk right now, which is
+    what makes 'is my agent current' a byte comparison on the node rather
+    than a version number anyone typed."""
     try:
-        st = AGENT_PY.stat()
-    except OSError:
+        b = _agent_bundle()
+        mtime = b.newest(str(AGENT_DIR))
+    except (OSError, ImportError, SyntaxError, ValueError):
         return {"body": b"", "digest": "", "version": ""}
-    if _agent_cache.get("mtime") != st.st_mtime:
-        body = AGENT_PY.read_bytes()
-        m = re.search(rb'^AGENT_VERSION\s*=\s*"([^"]+)"', body, re.MULTILINE)
+    if _agent_cache.get("mtime") != mtime:
+        try:
+            body = b.build(str(AGENT_DIR))
+            init = AGENT_VERSION_PY.read_bytes()
+        except OSError:
+            return {"body": b"", "digest": "", "version": ""}
+        m = re.search(rb'^AGENT_VERSION\s*=\s*"([^"]+)"', init, re.MULTILINE)
         _agent_cache.update({
-            "mtime": st.st_mtime, "body": body,
+            "mtime": mtime, "body": body,
             "digest": "sha256:" + hashlib.sha256(body).hexdigest(),
             "version": m.group(1).decode() if m else "?"})
-    return dict(_agent_cache)
+    return {k: v for k, v in _agent_cache.items() if k != "bundle"}
 
 
 # ---------------------------------------------------------------------------

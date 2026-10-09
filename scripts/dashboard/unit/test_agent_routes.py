@@ -2,16 +2,13 @@
 agent drives renders a node's routes beside its address, in either mode,
 and dhcpcd, which has no setting for one, refuses them by name rather than
 dropping them. What each file says, read back as text."""
-import importlib.util
 import os
 import tempfile
 import unittest
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_routes", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent_routes")
 agent.log = lambda *a, **k: None
 
 R = [{"to": "10.20.0.0/24", "via": "192.168.1.1"}, {"to": "172.16.5.0/24", "via": "192.168.1.2"}]

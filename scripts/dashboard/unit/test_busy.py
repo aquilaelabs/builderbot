@@ -1,6 +1,5 @@
 """Whether a node is quiet enough to time on (R108): busy.verdict's word
 and reasons, and the agent's count of what runs there by kind."""
-import importlib.util
 import os
 import sys
 import tempfile
@@ -10,11 +9,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 import busy  # noqa: E402
+import agentpkg  # noqa: E402
 
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_busy", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent_busy")
 
 
 def sample(**k):

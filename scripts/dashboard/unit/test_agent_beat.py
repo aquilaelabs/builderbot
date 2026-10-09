@@ -4,7 +4,6 @@ there, over a minute on a busy node, and the controller read the node as
 not answering on every project row. census_beating tells it the node is
 there every BEAT_S meanwhile, and stops when the census is done; the
 controller's beat stamps last_seen and touches nothing else."""
-import importlib.util
 import json
 import os
 import sys
@@ -13,10 +12,8 @@ import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_beat", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+import agentpkg  # noqa: E402
+agent = agentpkg.load("builderbot_agent_beat")
 agent.log = lambda *a, **k: None
 sys.path.insert(0, os.path.join(HERE, ".."))
 import nodes  # noqa: E402

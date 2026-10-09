@@ -184,9 +184,30 @@ scripts/
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in and sign-out on one node, as jobs there
     test/                        its Playwright suite: `bb dashboard test`, isolated
-    unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight
-  agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
-  agent/ruff.toml                the linter's settings for it, pinned to the python a Rocky node carries
+    unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight (agentpkg.py loads the node agent for it)
+  agent/builderbot-agent.py      the node agent's entry: runs the package beside it, and is the __main__.py of the zip a node runs
+  agent/builderbot_agent/        the node agent, stdlib only, shipped to nodes by the dashboard as one zip
+    __init__.py                  what the agent is and how it runs, and AGENT_VERSION
+    base.py                      the constants naming the node's paths and tools, the log, own_path and own_digest
+    bundle.py                    the zip a node runs, built the same on the controller and the node, so the digests agree
+    controller.py                the connection to the controller, verified by pin
+    stores.py                    the node's stores, a store's path rules, and node.json
+    backends.py                  the machine's package manager and network configuration backends
+    toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
+    gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
+    sessnet.py                   each session kept to its own project's network (R79)
+    runners.py                   the CI runners: their slots and state, and Agent's runner verbs
+    census.py                    the census and the sample every hello carries
+    jobs.py                      Job: one piece of the controller's work, on its own thread
+    ftp.py                       the file-access servers a project's settings open
+    sessions.py                  the session half (#24): ttyds, tokens, firewall and upkeep, as Agent's methods
+    workspace.py                 a job's source on disk, its artifacts, and the bundle of bb
+    work.py                      compose, toolchains, signing, images and system packages, as Agent's methods
+    configplane.py               the configuration plane: the node's system, storage and network, as root
+    agent.py                     Agent: hello, the loop and self-update, made of the parts above
+    cli.py                       enroll, run, status, sample
+    coverage.py                  function coverage under bb tests coverage only
+  agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
 vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
   package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
