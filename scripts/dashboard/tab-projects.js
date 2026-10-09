@@ -483,11 +483,6 @@ const pSwitch = m => { if (pMode === m) return;
 // pressing anything, and the two agreeing is checked by a test rather than
 // hoped for. If they ever disagree the server wins, and the row that appears
 // carries the name it actually made.
-const projName = (raw) => (raw || "").trim()
-  .replace(/[^A-Za-z0-9._-]/g, "-")
-  .replace(/-{2,}/g, "-")
-  .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
-
 function pNameShow(){
   const raw = $("pName").value.trim();
   // Cloning with the field left empty takes the repository's name, so a

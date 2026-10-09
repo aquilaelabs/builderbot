@@ -2197,8 +2197,11 @@ def suites_for(idx, paths):
     # `remove()` or `load()` defined in a module matched every suite's DOM
     # and its own helpers; a unit test calls one qualified, below.
     js = {f for f in files if idx["files"].get(f, {}).get("lang") in ("js", "html")}
+    # ...and only a top-level one: a suite reaches the page's globals, and a
+    # local `const done = () =>` inside a draw, or a table's `open:` arrow,
+    # matched every suite that calls its own library's done() (9 Oct).
     names = {d["name"] for d in idx["defs"] if d["file"] in js and not d["name"].startswith("(")
-             and len(d["name"]) > 3}
+             and len(d["name"]) > 3 and not d.get("parent") and not d.get("prop")}
     things = {(d["what"], d["kind"]) for d in idx["draws"] if d["file"] in files and d["kind"] != "import"}
     # A python change: the paths its functions answer, through the handlers
     # that call them (up to three hops of callers, within the python).

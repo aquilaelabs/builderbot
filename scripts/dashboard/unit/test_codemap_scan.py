@@ -232,6 +232,20 @@ class SecondPass(unittest.TestCase):
             self.assertTrue(codemap.q_suites(idx, ["src/solver.ts"])[0].startswith("src/solver.test.ts"))
 
 
+class ThirdPass(unittest.TestCase):
+    """The third pass (9 Oct)."""
+
+    def test_a_suite_reaches_the_pages_globals_not_a_local_of_the_same_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "page.js").write_text("function draw(){\n  const done = () => 1;\n  done();\n}\n"
+                                          "function openTab(){}\n")
+            Path(d, "test").mkdir()
+            Path(d, "test/a.mjs").write_text("import { done } from './lib.mjs';\nopenTab();\ndone();\n")
+            Path(d, "test/b.mjs").write_text("import { done } from './lib.mjs';\ndone();\n")
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_suites(idx, ["page.js"]), ["test/a.mjs  (1: openTab())"])
+
+
 class Shell(unittest.TestCase):
     def test_a_nested_function_ends_at_its_own_brace(self):
         s = scan("outer() {\n    inner() {\n        die x\n    }\n    inner\n}\n", "a.sh")
