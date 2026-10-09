@@ -55,6 +55,9 @@ STORE_APPDATA=/var/lib/builderbot/appdata
 REMOVE=0; YES=""
 declare -a SHARES=() NFS=()
 CHECK_ONLY=0
+# --wg-conf FILE: the node reaches the controller through WireGuard (R161),
+# with the config the Nodes tab's enroll script carries.
+WG_CONF=""
 
 usage() {
     cat <<'EOF'
@@ -138,6 +141,11 @@ it, which is a paste rather than a questionnaire.
                        opened for it. It runs jobs as the docker account
                        (--user, bb), never as root. Re-run with a fresh token to enroll again; a
                        re-run without either leaves the enrollment alone.
+  --wg-conf FILE       reach the controller through WireGuard: the config
+                       (from the Nodes tab's enroll script, which carries
+                       it) goes in as wg-quick@bb before anything else, the
+                       controller is checked through it, and the session
+                       ports listen on the tunnel's address alone.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -196,6 +204,7 @@ while [ $# -gt 0 ]; do
         --nfs)   NFS+=("$2"); shift 2 ;;
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
+        --wg-conf) WG_CONF="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -219,6 +228,11 @@ done
 # apt later. Said now.
 if { [ -n "$CONTROLLER" ] && [ -z "$TOKEN" ]; } || { [ -z "$CONTROLLER" ] && [ -n "$TOKEN" ]; }; then
     echo "--controller and --token go together" >&2; exit 1
+fi
+if [ -n "$WG_CONF" ]; then
+    [ -n "$CONTROLLER" ] || { echo "--wg-conf is the tunnel an enrollment dials through: it goes with --controller and --token" >&2; exit 1; }
+    [ "${GUEST:-0}" != 1 ] || { echo "--wg-conf needs root to bring a tunnel up, and a guest node runs without it" >&2; exit 1; }
+    [ -r "$WG_CONF" ] || { echo "cannot read the WireGuard config ${WG_CONF}" >&2; exit 1; }
 fi
 case "$TOKEN" in
     ""|bbe_*) ;;
@@ -645,6 +659,8 @@ pkg_names() {
         reel:alpine)  echo "xvfb xdotool xdpyinfo" ;;
         reel:void)    echo "xorg-server-xvfb xdotool xdpyinfo" ;;
         reel:gentoo)  echo "x11-base/xorg-server x11-misc/xdotool x11-apps/xdpyinfo" ;;
+        wg:gentoo)    echo "net-vpn/wireguard-tools" ;;
+        wg:*)         echo "wireguard-tools" ;;
         nft:deb)      echo "nftables" ;;
         nft:gentoo)   echo "net-firewall/nftables" ;;
         nft:*)        echo "nftables" ;;
@@ -802,6 +818,39 @@ if is_vm; then
     # shellcheck disable=SC2046
     pkg $(pkg_names guest) 2>/dev/null && svc_enable "$(pkg_names guestsvc)" >/dev/null 2>&1 \
         || warn "the qemu guest agent did not install, so Unraid will pull the plug instead of shutting this VM down"
+fi
+
+# --- the tunnel to the controller (R161) ------------------------------------
+# Before anything that has to reach the controller, and before an hour of
+# Docker: a tunnel that does not come up is said now. The config is the one
+# the person's router made, narrowed by the Nodes tab to route the
+# controller's address alone, so this machine's own traffic is untouched.
+# The home end (the router) is what keeps it one-way; nothing done here
+# could, since root here could undo it.
+WG_ADDR=""
+if [ -n "$WG_CONF" ]; then
+    say "tunnel: WireGuard to the controller"
+    [ "$INIT" = systemd ] || { warn "the tunnel is brought up by wg-quick@ under systemd, and this machine runs ${INIT:-no init this knows}"; exit 1; }
+    # shellcheck disable=SC2046
+    command -v wg-quick >/dev/null 2>&1 || pkg $(pkg_names wg) \
+        || { warn "wireguard-tools did not install, so there is no tunnel to enroll through"; exit 1; }
+    install -d -m 0700 /etc/wireguard
+    install -m 0600 "$WG_CONF" /etc/wireguard/bb.conf
+    WG_ADDR="$(awk -F= 'tolower($1) ~ /^ *address *$/ {gsub(/ /, "", $2); n = split($2, a, ","); for (i = 1; i <= n; i++) if (a[i] !~ /:/) { sub(/\/.*/, "", a[i]); print a[i]; exit }}' /etc/wireguard/bb.conf)"
+    systemctl enable wg-quick@bb >/dev/null 2>&1 || true
+    systemctl restart wg-quick@bb || { warn "wg-quick@bb did not start: journalctl -u wg-quick@bb says why"; exit 1; }
+    # Through the tunnel or not at all: any HTTP answer is the controller
+    # answering. A handshake can take a few seconds after the interface.
+    reached=""
+    for _ in $(seq 1 15); do
+        code="$(curl -s -o /dev/null -m 4 -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+        case "$code" in 000|"") sleep 2 ;; *) reached=1; break ;; esac
+    done
+    if [ -z "$reached" ]; then
+        warn "the tunnel is up (${WG_ADDR}) but ${CONTROLLER} does not answer through it. On the router: is this peer enabled, does it route the tunnel to the LAN, and is TCP to the controller's port allowed from ${WG_ADDR}? \`wg show bb\` says whether a handshake happened"
+        exit 1
+    fi
+    printf '   up as %s; %s answers through it\n' "$WG_ADDR" "$CONTROLLER"
 fi
 
 say "docker"
@@ -1818,6 +1867,13 @@ cmd_uninstall() {
             rm -f /usr/local/bin/ttyd
         fi
     fi
+    # The tunnel to the controller last (R161): an uninstall pressed on the
+    # Nodes tab arrived through it, and the job reports back through it.
+    if [ -f /etc/wireguard/bb.conf ]; then
+        say "taking down the WireGuard tunnel to the controller"
+        have systemctl && systemctl disable --now wg-quick@bb >/dev/null 2>&1 || true
+        rm -f /etc/wireguard/bb.conf
+    fi
     say "BuilderBot is off this machine; docker, the packages, the empty mountpoints and the shares' contents are as they were"
     rm -f /usr/local/sbin/bb-sandbox
     exit 0
@@ -2497,6 +2553,17 @@ if [ -n "$CONTROLLER" ]; then
         --store "data=${STORE_DATA}" --store "toolchains=${STORE_TOOLCHAINS}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
         --store "appdata=${STORE_APPDATA}"
+    # The tunnel into the node's own record (R161): the agent binds the
+    # session ports to its address there, and reports it.
+    if [ -n "$WG_ADDR" ]; then
+        python3 - "$WG_ADDR" <<'PY'
+import json, sys
+p = "/etc/builderbot/node.json"
+d = json.load(open(p))
+d["tunnel"] = {"kind": "wireguard", "iface": "bb", "addr": sys.argv[1]}
+json.dump(d, open(p, "w"), indent=2)
+PY
+    fi
     svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     # Enrolled on an earlier run. The agent does NOT keep itself current

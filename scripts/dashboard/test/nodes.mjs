@@ -1966,7 +1966,7 @@ await page.fill('#ndBody #ndEnUser', 'joe');
   ok(held.user === 'joe' && held.name === 'joesbox',
      `the enroll dialog holds the name and the account typed into it (${JSON.stringify(held)})`);
 }
-await page.click('#ndBody #ndEnGo');
+await page.click('#ndBody #ndEnTok');
 await page.waitForSelector('#ndBody .ndtoken', { timeout: 15000 });
 ok(await page.$eval('#ndBody .ndtoken', el => /--user joe/.test(el.textContent)),
    '...and the provision command it prints carries a account that is not the default');
@@ -1998,6 +1998,60 @@ await page.evaluate(async () => {
   const n = nodesList.find(x => x.name === 'joesbox');
   if (n) await nodeAct({ action: 'retire', id: n.id });
 });
+
+// Enroll node asks its questions and answers with one script (R161): the
+// provisioner, the answers and the token inside, and behind WireGuard the
+// router's config narrowed to the controller, with the router's one-way
+// rules on the dialog. A config that cannot be used is refused before a
+// pending row is made.
+{
+  const WG = ['[Interface]', 'PrivateKey = cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MDA=',
+    'Address = 10.6.0.5/32', 'DNS = 192.168.1.1', '', '[Peer]',
+    'PublicKey = cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHViMDA=', 'AllowedIPs = 0.0.0.0/0',
+    'Endpoint = home.example.net:51820', ''].join('\n');
+  const rows = async () => (await page.evaluate(async () => { await loadNodes(); return nodesList.length; }));
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  ok(await page.$eval('#ndBody #ndEnWgRow', r => r.hidden) && await page.$eval('#ndBody #ndEnCtl', i => i.value) === new globalThis.URL(URL).origin,
+     'Enroll node asks how the machine reaches the controller, at this page\'s address, with no config to choose on the LAN');
+  await page.fill('#ndBody #ndEnName', 'cloudbox');
+  await page.selectOption('#ndBody #ndEnReach', 'wireguard');
+  ok(!await page.$eval('#ndBody #ndEnWgRow', r => r.hidden), '...and asks for the router\'s config once WireGuard is picked');
+  // A name, not an address: nothing resolves names through the tunnel.
+  const before = await rows();
+  await page.fill('#ndBody #ndEnCtl', 'http://builderbot.lan:7680');
+  await page.setInputFiles('#ndBody #ndEnWg', { name: 'cloudbox.conf', mimeType: 'text/plain', buffer: Buffer.from(WG) });
+  await page.click('#ndBody #ndEnGo');
+  await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
+    && document.querySelector('#ndBody #ndEnName')?.value === 'cloudbox', null, { timeout: 15000 });
+  ok(await rows() === before && await page.$eval('#ndBody #ndEnReach', s => s.value) === 'wireguard'
+     && await page.$eval('#ndBody #ndEnCtl', i => i.value) === 'http://builderbot.lan:7680',
+     'a controller named rather than addressed is refused, no pending row made, and the answers are still there');
+  await page.fill('#ndBody #ndEnCtl', 'http://192.168.1.16:7680');
+  await page.setInputFiles('#ndBody #ndEnWg', { name: 'cloudbox.conf', mimeType: 'text/plain', buffer: Buffer.from(WG) });
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const file = dl.suggestedFilename();
+  const script = readFileSync(await dl.path(), 'utf8');
+  const part = tag => { const m = script.match(new RegExp(`<<'${tag}'\\n([\\s\\S]*?)\\n${tag}\\n`));
+                        return m ? Buffer.from(m[1].replace(/\n/g, ''), 'base64').toString('utf8') : ''; };
+  const prov = readFileSync(`${REPO}/nodes/provision-linux.sh`, 'utf8');
+  ok(file === 'enroll-cloudbox.sh' && script.startsWith('#!/usr/bin/env bash') && part('PROVISIONER') === prov,
+     `Make the script saves ${file}, the provisioner this controller ships inside it`);
+  const conf = part('WGCONF');
+  ok(/AllowedIPs = 192\.168\.1\.16\/32/.test(conf) && !/0\.0\.0\.0\/0|DNS/.test(conf) && /PersistentKeepalive = 25/.test(conf),
+     `...with the router's config routing the controller alone (${conf.split('\n').filter(l => /Allowed|Keep/.test(l)).join('; ')})`);
+  const run = script.trim().split('\n').pop();
+  ok(/--controller 'http:\/\/192\.168\.1\.16:7680' --token 'bbe_[^']+'/.test(run) && /--wg-conf "\$dir\/bb\.conf"/.test(run),
+     `...and runs it with the controller, the token and the tunnel (${run.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
+  const home = await page.$eval('#ndBody #ndHome', e => e.textContent);
+  ok(/ip saddr 10\.6\.0\.5 ip daddr 192\.168\.1\.16 tcp dport 7680 accept/.test(home) && /ip saddr 10\.6\.0\.5 drop/.test(home),
+     'the dialog gives the router\'s half: the node may open the controller\'s port and nothing else');
+  const row = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'cloudbox'); });
+  ok(row?.state === 'pending' && row.config?.tunnel?.addr === '10.6.0.5',
+     `...and the pending row knows its tunnel address before the machine exists (${JSON.stringify(row?.config)})`);
+  await page.click('#ndBody #ndTokDone');
+  if (row) await page.evaluate(id => nodeAct({ action: 'retire', id }), row.id);
+}
 
 // What is offered (roadmap R54, step 6): with unvetted features off the
 // generator knows one hypervisor, the one every sandbox here was made on,

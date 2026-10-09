@@ -83,6 +83,18 @@ def _sound():
     return {"cards": cards[:8], "virtual": virtual[:8], "server": server}
 
 
+def tunnel_now(state):
+    """The tunnel this node reaches the controller through, as its enroll
+    script set it up (R161): the kind, the address in it, and whether the
+    interface is there now. {} on a node that dials over its own network."""
+    t = state.get("tunnel") if isinstance(state.get("tunnel"), dict) else {}
+    if not t.get("addr"):
+        return {}
+    iface = str(t.get("iface") or "bb")
+    return {"kind": str(t.get("kind") or ""), "addr": str(t["addr"]),
+            "up": os.path.exists(f"/sys/class/net/{iface}")}
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -121,6 +133,7 @@ def census(state):
         "gpu_display": _gpu_display(),
         "sound": _sound(),
         "sshd": _sshd_listening(),
+        "tunnel": tunnel_now(state),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),

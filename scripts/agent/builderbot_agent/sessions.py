@@ -226,6 +226,11 @@ class SessionsMixin:
     def session_bind(self):
         if SESSION_BIND:
             return SESSION_BIND
+        # A node behind a tunnel (R161) is reached at its address there,
+        # and only there: the session ports listen on nothing else.
+        t = self.state.get("tunnel") if isinstance(self.state.get("tunnel"), dict) else {}
+        if t.get("addr"):
+            return str(t["addr"])
         for a in (network_now().get("addresses") or []):
             if ":" not in a:
                 return a.split("/")[0]

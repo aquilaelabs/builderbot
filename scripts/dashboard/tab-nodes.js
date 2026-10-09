@@ -1230,7 +1230,11 @@ function wireNodesTab(root){
   // The box narrows for the question and widens for the answer: one field
   // does not want 760px, and a shell line that wraps lies about what runs.
   const boxWidth = wide => modal.querySelector(".box").classList.toggle("wide", wide);
-  const mintForm = () => {
+  // The questions, and one script as the answer (R161): the provisioner
+  // with the answers, the token and (behind WireGuard) the tunnel inside,
+  // built on the press and kept nowhere but the file the browser saves.
+  // "Just a token" is the old way: the commands to paste, a Mac's included.
+  const mintForm = (was = {}) => {
     document.getElementById("ndTitle").textContent = "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
@@ -1242,40 +1246,101 @@ function wireNodesTab(root){
             <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
               value="bb"></div>
         </div>
-        <div class="hint">The token is good once, for a day.</div>
+        <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
       </div>
+      <div class="field">
+        <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
+          "how the machine dials in. Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel")}
+          <select id="ndEnReach">
+            <option value="lan">on this network</option>
+            <option value="wireguard">through WireGuard, with a config from my router</option>
+          </select></div>
+        <div class="setrow col">${lbl("ndEnCtl", "Controller's address",
+          "the URL the machine dials. Behind WireGuard, the controller's address on your network, which the tunnel routes to")}
+          <input id="ndEnCtl" autocomplete="off" spellcheck="false" value="${esc(location.origin)}"></div>
+        <div class="setrow col" id="ndEnWgRow" hidden>${lbl("ndEnWg", "WireGuard config")}
+          <input type="file" id="ndEnWg" accept=".conf,text/plain"></div>
+      </div>
+      <div class="field"><div class="hint">The script carries a token good once, for a day, and runs as root on a Linux machine.</div></div>
       <div class="foot">
-        <button type="button" class="primary" id="ndEnGo">Mint a token</button>
+        <button type="button" class="primary" id="ndEnGo">Make the script</button>
+        <button type="button" id="ndEnTok">Just a token</button>
         <button type="button" id="ndEnCancel">Cancel</button>
       </div>`;
+    const $b = sel => body.querySelector(sel);
+    for (const [k, v] of Object.entries(was)) if ($b(k) && v !== undefined)
+      $b(k)[typeof v === "boolean" ? "checked" : "value"] = v;
+    const reach = $b("#ndEnReach");
+    const showWg = () => { $b("#ndEnWgRow").hidden = reach.value !== "wireguard"; };
+    reach.onchange = showWg; showWg();
     // No focus, like every other dialog here: on a phone it would raise the
     // keyboard over the box it just opened.
-    body.querySelector("#ndEnCancel").onclick = shut;
-    const go = body.querySelector("#ndEnGo");
-    go.onclick = () => pressing(go, async () => {
-      busy(go, "Minting");
-      const name = body.querySelector("#ndEnName").value;
+    $b("#ndEnCancel").onclick = shut;
+    const answers = () => ({name: $b("#ndEnName").value,
       // The account rides along, so the row says the right one before the
       // machine exists and the command below carries it. The record follows
-      // whatever the agent reports at enrollment either way; this is what
-      // stops the two disagreeing in between, and what stops somebody
-      // having to remember the flag.
-      const user = body.querySelector("#ndEnUser").value.trim() || "bb";
-      const r = await nodeAct({action: "enroll", name, user});
-      // nodeAct has said why; the form comes back holding what was typed,
-      // since a redraw to its defaults lost the name and the account on
-      // every refusal (B331's shape: an account read as bb after joe).
-      if (r.error){ mintForm(); body.querySelector("#ndEnName").value = name;
-                    body.querySelector("#ndEnUser").value = user; unbusy(go, "Mint a token"); return; }
+      // whatever the agent reports at enrollment either way.
+      user: $b("#ndEnUser").value.trim() || "bb"});
+    // What was typed comes back after a refusal: a redraw to its defaults
+    // lost the name and the account on every one (B331's shape).
+    const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value});
+    const go = $b("#ndEnGo");
+    go.onclick = () => pressing(go, async () => {
+      const kept = keep();
+      const file = $b("#ndEnWg").files?.[0];
+      if (reach.value === "wireguard" && !file){
+        notify("choose the WireGuard config your router made for this machine", true); return;
+      }
+      busy(go, "Making");
+      const r = await nodeAct({action: "enroll", script: true, ...answers(),
+        sessions: $b("#ndEnSess").checked, reach: reach.value,
+        controller: $b("#ndEnCtl").value.trim(),
+        wg_conf: file ? await file.text() : ""});
+      if (r.error){ mintForm(kept); return; }
+      mintScript(r);
+      nodesRev++; drawPanes();              // the pending row joins the picker
+    });
+    const tok = $b("#ndEnTok");
+    tok.onclick = () => pressing(tok, async () => {
+      const kept = keep(), a = answers();
+      busy(tok, "Minting");
+      const r = await nodeAct({action: "enroll", ...a});
+      if (r.error){ mintForm(kept); return; }
       // The URL the node should dial: this page's origin, which is the only
       // address the browser knows the controller by. A proxy in front is the
       // operator's to substitute.
-      mintToken({name: name || "node", token: r.token, url: location.origin, user});
-      nodesRev++; drawPanes();              // the pending row joins the picker
+      mintToken({name: a.name || "node", token: r.token, url: location.origin, user: a.user});
+      nodesRev++; drawPanes();
     });
-    body.querySelector("#ndEnName").onkeydown = e => {
+    $b("#ndEnName").onkeydown = e => {
       if (e.key === "Enter"){ e.preventDefault(); go.click(); }
     };
+  };
+  // The script, saved the moment it arrives and again from the button: it
+  // lives in this dialog and nowhere else, so closing it is the end of it.
+  const mintScript = (r) => {
+    document.getElementById("ndTitle").textContent = `${r.filename}: run it on the machine`;
+    boxWidth(true);
+    const url = URL.createObjectURL(new Blob([r.script], {type: "text/x-shellscript"}));
+    body.innerHTML = `<div class="field ndtoken">
+        <div class="hint">Copy it to the machine and run it once, as root. It brings ${
+          r.reach === "wireguard" ? `the tunnel up as ${esc(r.tunnel_addr)}, checks the controller answers through it, ` : ""}provisions the machine and enrolls it; the row goes live when it is done.</div>
+        <pre class="ndcmd">sudo bash ${esc(r.filename)}</pre>
+        <div class="hint">It holds a token good once, until ${esc(new Date(r.expires * 1000).toLocaleString())}${
+          r.reach === "wireguard" ? ", and the machine's WireGuard private key" : ""}: delete it once the node is live.</div>
+      </div>${r.home ? `
+      <div class="field ndtoken">
+        <label class="lbl">On your router</label>
+        <pre class="ndcmd" id="ndHome">${esc(r.home)}</pre>
+      </div>` : ""}
+      <div class="foot"><span class="sp"></span>
+        <button type="button" class="primary" id="ndScriptGet">Download ${esc(r.filename)}</button>
+        <button type="button" id="ndTokDone">Done</button></div>`;
+    const save = () => Object.assign(document.createElement("a"), {href: url, download: r.filename}).click();
+    body.querySelector("#ndScriptGet").onclick = save;
+    save();
+    body.querySelector("#ndTokDone").onclick = () => { URL.revokeObjectURL(url); shut(); };
   };
   const mintToken = (m) => {
     document.getElementById("ndTitle").textContent = `${m.name}: enroll it with one of these`;

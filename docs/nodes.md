@@ -431,6 +431,22 @@ would use if a deployment ever wants one: the shape is there, unbuilt.
 4. Rotation and revocation are rows: revoke a token and the node's next call
    fails closed, showing offline with "credential revoked".
 
+**Enroll node is one script (R161, 9 Oct).** The dialog asks the name, the
+account jobs run as, whether sessions run there, how the machine reaches the
+controller and at what address, and answers with a file: the provisioner with
+those answers and the token inside, built on the press and kept nowhere.
+Behind WireGuard the config the person's router made goes in too, narrowed
+to route the controller's address alone, with its own commands (PostUp) and
+resolver dropped and a keepalive added; the provisioner brings it up as
+`wg-quick@bb` before anything else and checks the controller answers through
+it, and the agent binds the session ports to the tunnel's address. The
+tunnel is one-way only where the home end makes it so (the node may open the
+controller's port and nothing else, and the LAN opens the session ports
+back), because root on the node could undo anything done there; the dialog
+gives the router's rules. The controller holds up its half: a node's tunnel
+address is answered on `/api/v1/agent/*` and refused everything else, by the
+socket's own address. "Just a token" is the old commands, a Mac's included.
+
 **mTLS is a later layer, not a redesign**: the pinned-cert enrollment above is
 where a private CA slots in when a security review asks for it: same
 enrollment flow, the token exchange returns a client cert instead of (or

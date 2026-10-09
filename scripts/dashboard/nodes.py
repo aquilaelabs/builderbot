@@ -30,6 +30,7 @@ import secrets
 import sqlite3
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 import sys
 # Beside this file, whichever way it was loaded: bb's own Python and the
@@ -39,6 +40,7 @@ import names   # noqa: E402
 from fields import field   # noqa: E402
 import db   # noqa: E402
 import turns   # noqa: E402
+import enrollscript   # noqa: E402
 from db import _exec, _lock, _rows, audit, mint   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -751,7 +753,7 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
-def enroll_mint(principal, name, capabilities=None, user="bb"):
+def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None):
     """Add node, agent kind: a pending row and the one token that fills it.
 
     The row exists BEFORE the machine does, which is the operator's view of
@@ -772,12 +774,42 @@ def enroll_mint(principal, name, capabilities=None, user="bb"):
         "capabilities": caps, "services": {},
         "labels": {"disposable": "true"},
         "agent": {}, "reported": {}, "routing": {},
-        "config": {"user": user},
+        # The node's address in a tunnel, from the config the script
+        # carries (R161): what the controller refuses all but the agent's
+        # own API from, before the node has said anything itself.
+        "config": {"user": user, **({"tunnel": tunnel} if tunnel else {})},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
     return {"ok": True, "id": nid, "token": secret,
             "expires": int(time.time()) + ENROLL_TTL}
+
+
+def enroll_script(principal, req):
+    """Enroll node's questions answered, as one script to download (R161,
+    enrollscript.py): checked before anything is minted, so a config that
+    cannot be used leaves no pending row; then the row and its token, and
+    the provisioner with the answers inside. Nothing of it is kept here."""
+    ans = enrollscript.check(req)
+    if ans.get("error"):
+        return ans
+    prov = AGENT_DIR.parent.parent / "nodes" / "provision-linux.sh"
+    if not prov.is_file():
+        return {"error": "this controller ships no provisioner"}
+    user = re.sub(r"[^a-z0-9_-]", "", (field(req, "user") or "bb").lower())[:32] or "bb"
+    tunnel = ({"kind": "wireguard", "addr": ans["tunnel_addr"]}
+              if ans["reach"] == "wireguard" else None)
+    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel)
+    if m.get("error"):
+        return m
+    name = node(m["id"])["name"]
+    u = urllib.parse.urlparse(ans["controller"])
+    port = u.port or (443 if u.scheme == "https" else 80)
+    return m | {"script": enrollscript.build(ans, name=name, user=user, token=m["token"],
+                                              expires=m["expires"], provisioner=prov.read_bytes()),
+                "filename": enrollscript.filename(name), "reach": ans["reach"],
+                "home": enrollscript.home_rules(ans, port),
+                "tunnel_addr": ans.get("tunnel_addr", "")}
 
 
 def enroll(auth, census, addr, version="", digest="", user=""):
@@ -901,6 +933,12 @@ def _census(c):
     # own generator, run there. Whitelisted like store_dirs, and for the same
     # reason: a value the agent reports and this drops is a value that does
     # not exist.
+    # The tunnel the node reaches the controller through (R161): its kind,
+    # its address there, and whether the interface is up.
+    t = c.get("tunnel") if isinstance(c.get("tunnel"), dict) else {}
+    if t.get("addr") and re.fullmatch(r"[0-9.]{7,15}", str(t["addr"])):
+        out["tunnel"] = {"kind": re.sub(r"[^a-z]", "", str(t.get("kind") or ""))[:20],
+                         "addr": str(t["addr"]), "up": bool(t.get("up"))}
     pv = c.get("toolchain_versions") if isinstance(c.get("toolchain_versions"), dict) else {}
     out["toolchain_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
@@ -1571,12 +1609,48 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
                    {"apply": "runner", "config": cfg, "timeout": 1800})
 
 
+def tunnel_addr(n):
+    """A node's address in the tunnel it reaches the controller through,
+    '' for one on the LAN: what it reports, else what its enroll script was
+    made with (R161)."""
+    t = ((n.get("reported") or {}).get("tunnel") or {}).get("addr") \
+        or ((n.get("config") or {}).get("tunnel") or {}).get("addr") or ""
+    return t if re.fullmatch(r"[0-9.]{7,15}", t) else ""
+
+
+_tunnels = {"at": 0.0, "addrs": frozenset()}
+
+
+def tunnel_addrs():
+    """Every node's tunnel address, read again at most every five seconds:
+    the server asks on every request."""
+    now = time.monotonic()
+    if now - _tunnels["at"] > 5:
+        _tunnels.update(at=now, addrs=frozenset(
+            a for a in (tunnel_addr(n) for n in node_list() if n.get("state") != "retired") if a))
+    return _tunnels["addrs"]
+
+
+def tunnel_refuses(addr, path):
+    """Why a request from `addr` for `path` is refused, or "": a node that
+    reaches the controller through a tunnel is answered on the agent's own
+    API and nothing else (R161), so the tunnel open on a machine somebody
+    else may own reaches no login, no page and no other account's API."""
+    if addr not in tunnel_addrs() or path.startswith("/api/v1/agent/"):
+        return ""
+    return "this address is a node's tunnel, which reaches the agent's API and nothing else"
+
+
 def route_host(node_id):
     """The host a published port on this node is reached at from the LAN:
-    the address the node last dialed in from. '' for local and the unknown."""
+    its address in the tunnel it dials through (R161), else the address the
+    node last dialed in from. '' for local and the unknown."""
     n = node(node_id)
     if not n or n["kind"] == "local":
         return ""
+    t = tunnel_addr(n)
+    if t:
+        return t
     a = (n.get("agent") or {}).get("addr") or ""
     a = re.sub(r"^[a-z][a-z0-9+.-]*://", "", a)
     a = a.split("@")[-1].split("/")[0].split(":")[0]
@@ -3662,6 +3736,8 @@ def verb(principal, req):
         return node_lock(principal, nid, act == "lock")
 
     def enroll():
+        if req.get("script"):
+            return enroll_script(principal, req)
         return enroll_mint(principal, field(req, "name"),
                            req.get("capabilities"),
                            field(req, "user") or "bb")

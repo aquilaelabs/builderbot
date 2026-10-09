@@ -3305,7 +3305,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     ok(await page.$('.nodestab #ndEnName') === null,
        'Enroll node opens a dialog rather than a panel at the foot of the tab');
     await page.fill('#ndEnName', 'second');
-    await page.click('#ndEnGo');
+    await page.click('#ndEnTok');
     await page.waitForSelector('#ndmodal .ndtoken', { timeout: 15000 });
     const shown = await page.$eval('#ndmodal .ndtoken', e => e.textContent);
     ok(/bbe_/.test(shown) && /provision-linux\.sh/.test(shown) && /provision-macos\.sh/.test(shown) && /--controller/.test(shown),
