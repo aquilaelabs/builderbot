@@ -255,6 +255,10 @@ class FourthPass(unittest.TestCase):
                  "const f = (a, cb = async () => 0) => cb(a);\n", "a.js")
         self.assertEqual({d[0] for d in defs(s)} - {"(anonymous)"}, {"pick", "mock", "f"})
 
+    def test_a_section_under_a_bare_rule_is_read(self):
+        s = scan("# " + "-" * 40 + "\n# the connection\n\nX = 1\n# " + "-" * 40 + "\n# jobs\n", "a.py")
+        self.assertEqual([(x["name"], x["line"]) for x in s.sections], [("the connection", 1), ("jobs", 5)])
+
     def test_a_handler_or_a_stand_in_inside_a_call_still_is(self):
         s = scan("rows.forEach(b => b.onclick = () => go(b));\n"
                  "page.evaluate(() => { draw = () => { boom(); }; });\n", "a.js")

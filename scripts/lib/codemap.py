@@ -202,15 +202,24 @@ class Sink:
 
 
 SECTION_HEAD = re.compile(r"^\s*(?://|#)\s*----\s*(.*?)\s*-{3,}\s*$")
+SECTION_RULE = re.compile(r"^(?://|#)\s*-{20,}\s*$")
+SECTION_TITLE = re.compile(r"^(?://|#)\s+(\S.*?)\s*$")
 
 
 def scan_sections(text, sink):
     """The `// ---- name ----` (or `# ----`) headers a file is written in:
     the units a person reads it by, and the units a cleanup moves."""
-    for i, line in enumerate(text.split("\n"), 1):
+    lines = text.split("\n")
+    for i, line in enumerate(lines, 1):
         m = SECTION_HEAD.match(line)
         if m and m.group(1):
             sink.sections.append({"name": m.group(1), "line": i})
+        elif SECTION_RULE.match(line) and i < len(lines):
+            # the agent's form: a bare rule, then `# the name` under it (it
+            # read as one section in 7,500 lines)
+            t = SECTION_TITLE.match(lines[i])
+            if t and not SECTION_RULE.match(lines[i]):
+                sink.sections.append({"name": t.group(1), "line": i})
 
 
 def scan_python(text, sink):
