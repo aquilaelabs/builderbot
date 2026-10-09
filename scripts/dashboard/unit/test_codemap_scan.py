@@ -255,6 +255,16 @@ class FourthPass(unittest.TestCase):
                  "const f = (a, cb = async () => 0) => cb(a);\n", "a.js")
         self.assertEqual({d[0] for d in defs(s)} - {"(anonymous)"}, {"pick", "mock", "f"})
 
+    def test_a_suite_naming_a_directory_reaches_the_files_in_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "scripts/inner").mkdir(parents=True)
+            Path(d, "scripts/inner/mod.py").write_text("def work():\n    return 1\n")
+            Path(d, "test").mkdir()
+            Path(d, "test/a.mjs").write_text("const P = 'scripts/inner';\n")
+            Path(d, "test/b.mjs").write_text("const Q = 'scripts/innerness';\n")
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_suites(idx, ["scripts/inner/mod.py"]), ["test/a.mjs  (1: scripts/inner/)"])
+
     def test_a_section_under_a_bare_rule_is_read(self):
         s = scan("# " + "-" * 40 + "\n# the connection\n\nX = 1\n# " + "-" * 40 + "\n# jobs\n", "a.py")
         self.assertEqual([(x["name"], x["line"]) for x in s.sections], [("the connection", 1), ("jobs", 5)])

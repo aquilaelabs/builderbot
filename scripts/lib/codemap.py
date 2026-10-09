@@ -2284,6 +2284,12 @@ def suites_for(idx, paths):
         elif d["kind"] in ("file", "import") and any(f == d["what"] or f.endswith("/" + d["what"])
                                                      or os.path.splitext(f)[0] == d["what"] for f in files):
             hits.setdefault(d["file"], set()).add(d["what"])
+        elif d["kind"] == "file" and "/" in d["what"].strip("/") \
+                and any(f.startswith(d["what"].strip("/") + "/") for f in files):
+            # a directory named whole reaches what is in it: agent.mjs names
+            # scripts/agent/builderbot_agent, the package it loads and runs,
+            # and its modules each read as reached by no suite (9 Oct)
+            hits.setdefault(d["file"], set()).add(d["what"] + "/")
     for c in idx["calls"]:
         if is_test(c["file"]) and not c["qual"] and c["name"] in names:
             hits.setdefault(c["file"], set()).add(c["name"] + "()")
