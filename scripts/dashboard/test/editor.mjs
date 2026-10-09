@@ -194,9 +194,15 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
       onDidChangeConfiguration: () => ({ dispose() {} }),
       workspaceFolders: [],
     },
-    window: { showWarningMessage() {}, showErrorMessage() {}, showInformationMessage() {} },
-    commands: { registerCommand: () => ({ dispose() {} }) },
+    window: { showWarningMessage() {}, showErrorMessage: m => errors.push(m), showInformationMessage() {},
+              showInputBox: async () => 'again', showQuickPick: async items => items.find(i => i.project === 'alpha') || items[0],
+              showTextDocument: async u => { const ed = { uri: u, revealRange: r => { ed.revealed = r; } }; opened.push(ed); return ed; } },
+    Position: class { constructor(l, c) { this.line = l; this.character = c; } translate(dl, dc) { return new vscode.Position(this.line + dl, this.character + dc); } },
+    Selection: class { constructor(a, b) { this.anchor = a; this.active = b; } },
+    Range: class { constructor(a, b) { this.start = a; this.end = b; } },
+    commands: { registerCommand: (id, f) => { commands[id] = f; return { dispose() {} }; } },
   };
+  const commands = {}, opened = [], errors = [];
   const load = Module._load;
   Module._load = function (req, ...rest) { return req === 'vscode' ? vscode : load.call(this, req, ...rest); };
   const ext = require(`${REPO}/vscode/extension.js`);
@@ -219,6 +225,10 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   catch (e) { refused = e; }
   ok(refused && /changed on the controller/.test(refused.message) && readFileSync(`${tree}/editor-probe.txt`, 'utf8') === 'Claude again\n',
      `...a save over a file Claude changed since it was opened is refused, keeping Claude's (${refused?.message})`);
+  await commands['builderbot.search']();
+  const ed = opened[0];
+  ok(!errors.length && ed && /^\/alpha\//.test(ed.uri.path) && ed.selection?.active.character - ed.selection?.anchor.character === 'again'.length,
+     `...Search Project Files opens the match it picked with the word selected (${errors[0] || ed?.uri.path})`);
   const w = provider.watch(uri('/'), { recursive: true, excludes: [] });
   await new Promise(r => setTimeout(r, 1500));
   writeFileSync(`${tree}/watched.txt`, 'appears\n');

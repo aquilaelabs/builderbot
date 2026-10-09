@@ -274,10 +274,12 @@ async function cmdSearch(context) {
       label: `${m.path}:${m.line}`, description: m.text.trim().slice(0, 120), m,
     })), { placeHolder: `${j.matches.length}${j.complete ? '' : '+'} matches`, matchOnDescription: true });
     if (!pick) return;
-    const doc = await vscode.window.showTextDocument(at(project, pick.m.path));
-    const at = new vscode.Position(pick.m.line - 1, pick.m.col);
-    doc.selection = new vscode.Selection(at, at.translate(0, pick.m.len));
-    doc.revealRange(new vscode.Range(at, at));
+    // Named pos, not at: a const at here would shadow the function above
+    // and the call before it would throw (it did, on every pick).
+    const editor = await vscode.window.showTextDocument(at(project, pick.m.path));
+    const pos = new vscode.Position(pick.m.line - 1, pick.m.col);
+    editor.selection = new vscode.Selection(pos, pos.translate(0, pick.m.len));
+    editor.revealRange(new vscode.Range(pos, pos));
   } catch (e) {
     say(e);
   }
