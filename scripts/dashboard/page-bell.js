@@ -173,7 +173,8 @@ function drawBell(){
       ? `<div class="bnote ask">
         <div class="btag">toolchain update${a.tools.length === 1 ? "" : "s"} available</div>
         <div class="bwhy">on ${esc(a.node)}: ${a.tools.map(t =>
-          `${esc(t.label)} ${esc(t.from || "?")} → ${esc(t.to)}`).join(", ")}${
+          // A check that cannot name the version out says "newer".
+          `${esc(t.label)} ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join(", ")}${
           a.tools.some(t => t.name === "claude-code") && a.projects.length
             ? `. Updating Claude Code ends the Claude sessions there first; ${a.projects.map(esc).join(", ")} run${
                 a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>

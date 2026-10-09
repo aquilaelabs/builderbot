@@ -317,7 +317,7 @@ object Watch {
         // Toolchains behind what is out on a node, Claude Code among them
         // (API 9): one line per node, as the bell has it.
         "toolchain" -> "${a.str("node")}: " + a.arr("tools").joinToString(", ") {
-            "${it.str("label")} ${it.str("from").ifBlank { "?" }} → ${it.str("to")}" }
+            "${it.str("label")} ${it.str("from").ifBlank { "?" }} → ${it.str("to").let { v -> if (v == "newer") "a newer version" else v }}" }
         else -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
             (if (a.bool("window")) " (out of window, work there is stopped)" else "")
     }

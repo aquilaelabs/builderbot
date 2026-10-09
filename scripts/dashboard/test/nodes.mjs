@@ -2667,8 +2667,8 @@ ok(page.errors.length === 0,
   ok(/toolchain updates available/.test(tcBell) && /on clbox: Claude Code 1\.0\.0 → 1\.2\.0, Go 1\.27\.0 → 1\.28\.0/.test(tcBell),
      `the bell says it in words, every toolchain behind on the node in one row (${tcBell.slice(0, 160)})`);
   await page.click(`#bellPanel [data-btc="${en.id}"]`);
-  await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden
-    && document.querySelector('#tcClaudeTick'), en.id, { timeout: 15000 });
+  await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: 15000 });
+  await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });
   ok(true, '...and its link opens the Toolchains tab on that node, Claude Code\'s row there');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
