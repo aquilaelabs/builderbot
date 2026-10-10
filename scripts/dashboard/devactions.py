@@ -1455,10 +1455,20 @@ def _file_rows(project):
     a = devapp.available()
     out = []
     for rel in devapp.compose_files(project):
-        row = {"path": rel, "problems": [], "risks": [], "port_clash": []}
+        row = {"path": rel, "problems": [], "risks": [], "port_clash": [], "needs": []}
         if a["on"]:
             with devapp.composing(rel):
                 cfg = devapp._config(project, devapp.MAIN)
+                # A variable the file requires and nothing has set yet stops
+                # compose before it reads a line, and that is the env's to
+                # set after Send, not a fault (Turing Lens's deploy/vps,
+                # 10 Oct): said as needed, and the rest judged with a stand-in.
+                if cfg is None and "required variable" in devapp.config_error():
+                    need = devapp.insisted_vars(project, devapp.MAIN)
+                    if need:
+                        cfg = devapp._config(project, devapp.MAIN, env_extra={v: "set-later" for v in need})
+                        if cfg is not None:
+                            row["needs"] = need
                 if cfg is None:
                     said = devapp.config_error()
                     row["problems"] = ["compose cannot read it on its own (a file meant to be "

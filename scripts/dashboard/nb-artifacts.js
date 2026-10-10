@@ -88,7 +88,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         <div class="grow">
           <div class="top"><span class="pill">docker</span>
             <b>${esc(c.path)}</b></div>
-          ${devLines("will not work as written", c.problems, "bad")}
+          ${devLines("will not work as written", c.problems, "bad")}${
+          // Variables the file requires: its env's to set once it is sent
+          // (the Docker tab's Env), not a fault, so the quiet voice.
+          c.needs?.length ? `<div class="dim li">needs ${esc(c.needs.join(", "))} set in its env before it starts</div>` : ""}
           ${devLines("asks for more than its own directory", c.risks, "risk")}${
           // A port another container holds is not a fault in the file: the
           // container Send makes gets an env of its own, and the port goes in

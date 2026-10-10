@@ -103,5 +103,15 @@ class ComposeFiles(unittest.TestCase):
         finally:
             devapp._run = was
 
+    def test_a_variable_the_file_requires_is_a_need_not_a_fault(self):
+        """${ADMIN_TOKEN:?...} stops compose before Send has made an env
+        (Turing Lens's deploy/vps, 10 Oct): named as needed, once each."""
+        f = self.p / "deploy" / "vps" / "compose.yml"
+        f.parent.mkdir(parents=True)
+        f.write_text("services:\n  r:\n    environment:\n      A: ${ADMIN_TOKEN:?set it}\n"
+                     "      B: ${UI_PASSWORD?set}\n      C: ${ADMIN_TOKEN:?again}\n      D: ${OPTIONAL:-x}\n")
+        with devapp.composing("deploy/vps/compose.yml"):
+            self.assertEqual(devapp.insisted_vars("Clanker-Detector"), ["ADMIN_TOKEN", "UI_PASSWORD"])
+
 if __name__ == "__main__":
     unittest.main()

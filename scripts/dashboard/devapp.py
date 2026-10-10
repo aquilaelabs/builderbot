@@ -3144,7 +3144,26 @@ def config_error():
     return getattr(_cfg_err, "said", "")
 
 
-def _config(project, instance=MAIN):
+# A variable the file says it cannot start without: ${NAME:?why} or ${NAME?why}.
+_REQUIRED_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*):?\?")
+
+
+def insisted_vars(project, instance=MAIN):
+    """The variables the compose file insists on (${NAME:?...}), in order,
+    once each: what its env must set before compose will read it at all."""
+    cf = compose_file(project, instance)
+    try:
+        text = cf.read_text(encoding="utf-8") if cf is not None else ""
+    except OSError:
+        return []
+    out = []
+    for m in _REQUIRED_RE.finditer(text):
+        if m.group(1) not in out:
+            out.append(m.group(1))
+    return out[:32]
+
+
+def _config(project, instance=MAIN, env_extra=None):
     """The compose file as compose itself resolves it: variables substituted,
     relative paths made absolute against the project directory.
 
@@ -3159,7 +3178,7 @@ def _config(project, instance=MAIN):
     than making it cheap to ask carelessly: state() does that for one row, and
     overview() for the listing it draws.
     """
-    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30)
+    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30, env_extra=env_extra)
     _cfg_err.said = ""
     if r["code"] != 0:
         # What compose said, kept for the caller that shows it (the
