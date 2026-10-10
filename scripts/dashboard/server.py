@@ -4391,13 +4391,14 @@ class Handler(BaseHTTPRequestHandler):
     def _tunnel_refused(self):
         """A node's tunnel address asks for the agent's API or nothing
         (nodes.tunnel_refuses, R161): by the socket's own address, and
-        through Cloudflare (R170) by the hostname the node was enrolled at
-        or cloudflared's own headers, which only narrow their writer."""
+        through a tunnel from home (R170) by the hostname the node was
+        enrolled at, or an edge's own headers, which only narrow their writer."""
         if NODES_OK:
             return False
         why = nodes.tunnel_refuses(self.client_address[0] if self.client_address else "",
                                    self.path.partition("?")[0],
                                    host=self.headers.get("Host", ""),
+                                   # Cloudflare's own mark; other tunnels are known by the hostname.
                                    edge="Cf-Ray" in self.headers)
         if why:
             self._safely(lambda: self._json({"error": why}, 403))

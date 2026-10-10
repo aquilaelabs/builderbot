@@ -47,16 +47,16 @@ def cmd_enroll(args):
         except OSError as e:
             print(f"note: {role} store {path} could not be created ({e.strerror}); "
                   "it will report no space until it exists")
-    if opts["--reach"] not in ("", "cloudflare"):
-        raise SystemExit("--reach takes cloudflare: the controller published at a hostname by a "
-                         "Cloudflare Tunnel, verified by the system's CAs")
-    # Through Cloudflare (R170) the controller's own certificate is never
-    # seen, only the hostname's public one: verified by CA, never pinned.
-    if opts["--reach"] == "cloudflare":
+    if opts["--reach"] not in ("", "public"):
+        raise SystemExit("--reach takes public: the controller published at a hostname by a tunnel "
+                         "from home, verified by the system's CAs")
+    # Through a public hostname (R170) the controller's own certificate is
+    # never seen, only the name's public one: verified by CA, never pinned.
+    if opts["--reach"] == "public":
         opts["--pin"] = Controller.CA
     ctl = Controller(opts["--controller"], opts["--token"], opts["--pin"])
-    if opts["--reach"] == "cloudflare" and ctl.scheme != "https":
-        raise SystemExit("through Cloudflare the controller is an https hostname")
+    if opts["--reach"] == "public" and ctl.scheme != "https":
+        raise SystemExit("through a public hostname the controller is an https hostname")
     state = {"controller": ctl.url, "user": opts["--user"], "stores": stores,
              "store_made": marks}
     if opts["--reach"]:
@@ -75,7 +75,7 @@ def cmd_enroll(args):
         state["pin"] = pin
         if pin == Controller.CA:
             print(f"the controller is {ctl.host}, verified by the system's certificate authorities "
-                  "on every call (a hostname behind Cloudflare, whose own certificate this node never sees)")
+                  "on every call (a hostname behind a tunnel, whose own certificate this node never sees)")
         elif not opts["--pin"]:
             print(f"pinned the controller's certificate on first use: {pin}\n"
                   f"  check it against the controller; a different one next "

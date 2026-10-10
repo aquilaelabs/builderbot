@@ -1,4 +1,4 @@
-"""The agent's connection through Cloudflare (R170): with the pin `ca` the
+"""The agent's connection through a public hostname (R170): with the pin `ca` the
 controller is verified by the system's CAs and the hostname, as a browser
 would, and nothing is pinned; any other pin is compared as before."""
 import http.client

@@ -169,8 +169,9 @@ class WorkMixin:
                 return "failed", 66
             size = os.path.getsize(real)
             job.say(f"sending {what} to the controller ({size >> 20} MB)\n")
-            if self.state.get("reach") == "cloudflare" and verb.startswith("devdata"):
-                # Cloudflare takes at most 100 MB a request (R170): in pieces.
+            if self.state.get("reach") == "public" and verb.startswith("devdata"):
+                # A tunnel's edge may cap a request's body (Cloudflare: 100
+                # MB, R170): in pieces.
                 code, r = self.ctl.upload_pieces(verb, real, 64 << 20, timeout=int(stp.get("timeout") or 3600),
                                                  say=lambda off: job.say(f"  {off >> 20} MB sent\n"))
             else:

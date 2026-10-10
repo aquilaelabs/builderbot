@@ -1361,16 +1361,16 @@ function wireNodesTab(root){
       </div>
       <div class="field">
         <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
-          "how the machine dials in. Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel. Through Cloudflare, cloudflared at home publishes the controller at a hostname and the machine dials that: nothing on your router changes and it never learns your address")}
+          "how the machine dials in. Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel. Through a public hostname, a tunnel at home (Cloudflare Tunnel, Tailscale Funnel, ngrok, frp) publishes the controller at a name and the machine dials that: nothing on your router changes and it never learns your address")}
           <select id="ndEnReach">
             <option value="lan">on this network</option>
             <option value="wireguard">WireGuard</option>
-            <option value="cloudflare">Cloudflare Tunnel</option>
+            <option value="public">a public hostname (a tunnel from home)</option>
           </select></div>
         <div class="setrow col">${lbl("ndEnCtl", "Controller's address",
-          "the URL the machine dials. Behind WireGuard, the controller's address on your network, which the tunnel routes to. Through Cloudflare, the hostname cloudflared publishes, as https://bb.example.com")}
+          "the URL the machine dials. Behind WireGuard, the controller's address on your network, which the tunnel routes to. Through a public hostname, the name the tunnel publishes, as https://bb.example.com")}
           <input id="ndEnCtl" autocomplete="off" spellcheck="false" value="${esc(location.origin)}"></div>
-        <div class="hint" id="ndEnCfHint" hidden>Hosting only, and no sessions: the controller cannot reach back through Cloudflare. The machine verifies the hostname's public certificate and never sees your home address.</div>
+        <div class="hint" id="ndEnCfHint" hidden>Hosting only, and no sessions: the controller cannot reach back through the tunnel. The machine verifies the hostname's public certificate and never sees your home address.</div>
         <div class="setrow col" id="ndEnWgRow" hidden>${lbl("ndEnWgText", "WireGuard config",
             "the .conf your router made for this machine: choose the file, or paste what is in it. Only the controller's address is routed through it on the machine")}
           <input type="file" id="ndEnWg" accept=".conf,text/plain" aria-label="choose the WireGuard config file">
@@ -1388,11 +1388,11 @@ function wireNodesTab(root){
       $b(k)[typeof v === "boolean" ? "checked" : "value"] = v;
     const reach = $b("#ndEnReach");
     // Hosting only takes sessions with it: the box is to run containers.
-    // Through Cloudflare it is so by construction (R170): the switch is
-    // ticked and held, and the address field asks for the hostname.
+    // Through a public hostname it is so by construction (R170): the
+    // switch is ticked and held, and the address field asks for the name.
     const host = $b("#ndEnHost"), sess = $b("#ndEnSess");
     const showHost = () => {
-      const cf = reach.value === "cloudflare";
+      const cf = reach.value === "public";
       if (cf) host.checked = true;
       host.disabled = cf;
       $b("#ndEnHostHint").hidden = !host.checked;
@@ -1405,8 +1405,8 @@ function wireNodesTab(root){
     const showWg = () => {
       $b("#ndEnWgRow").hidden = reach.value !== "wireguard";
       const ctl = $b("#ndEnCtl");
-      if (reach.value === "cloudflare" && /^https?:\/\/(\d+\.|localhost|\[)/.test(ctl.value)) ctl.value = "https://";
-      else if (reach.value !== "cloudflare" && ctl.value === "https://") ctl.value = location.origin;
+      if (reach.value === "public" && /^https?:\/\/(\d+\.|localhost|\[)/.test(ctl.value)) ctl.value = "https://";
+      else if (reach.value !== "public" && ctl.value === "https://") ctl.value = location.origin;
       showHost();
     };
     reach.onchange = showWg;
@@ -1474,13 +1474,13 @@ function wireNodesTab(root){
     body.innerHTML = `<div class="field ndtoken">
         <div class="hint">Copy it to the machine and run it once, as root. It ${
           r.reach === "wireguard" ? `brings the tunnel up as ${esc(r.tunnel_addr)}, checks the controller answers through it, `
-          : r.reach === "cloudflare" ? "checks the controller answers at its hostname, " : ""}provisions the machine and enrolls it; the row goes live when it is done.</div>
+          : r.reach === "public" ? "checks the controller answers at its hostname, " : ""}provisions the machine and enrolls it; the row goes live when it is done.</div>
         <pre class="ndcmd">sudo bash ${esc(r.filename)}</pre>
         <div class="hint">It holds a token good once, until ${esc(new Date(r.expires * 1000).toLocaleString())}${
           r.reach === "wireguard" ? ", and the machine's WireGuard private key until it has run: once the node has enrolled it takes the WireGuard config out of itself and keeps the rest, to change and run again" : ""}.</div>
       </div>${r.home ? `
       <div class="field ndtoken">
-        <label class="lbl">${r.reach === "cloudflare" ? "At home, in cloudflared" : "On your router"}</label>
+        <label class="lbl">${r.reach === "public" ? "At home, on the tunnel" : "On your router"}</label>
         <pre class="ndcmd" id="ndHome">${esc(r.home)}</pre>
       </div>` : ""}
       <div class="foot"><span class="sp"></span>

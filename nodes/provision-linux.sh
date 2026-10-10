@@ -58,8 +58,8 @@ CHECK_ONLY=0
 # --wg-conf FILE: the node reaches the controller through WireGuard (R161),
 # with the config the Nodes tab's enroll script carries.
 WG_CONF=""
-# --reach cloudflare: the controller is a hostname a Cloudflare Tunnel
-# publishes (R170); the agent verifies it by the system's CAs.
+# --reach public: the controller is a hostname a tunnel from home publishes
+# (R170); the agent verifies it by the system's CAs.
 REACH=""
 
 usage() {
@@ -145,11 +145,12 @@ it, which is a paste rather than a questionnaire.
                        it) goes in as wg-quick@bb before anything else, the
                        controller is checked through it, and the session
                        ports listen on the tunnel's address alone.
-  --reach cloudflare   the controller is the hostname a Cloudflare Tunnel
-                       publishes from home (https://bb.example.com): checked
-                       before enrolling, and verified by the system's CAs
-                       on every call rather than pinned. Such a node is
-                       hosting only, with no sessions.
+  --reach public       the controller is a hostname a tunnel publishes from
+                       home (https://bb.example.com; Cloudflare Tunnel,
+                       Tailscale Funnel or another): checked before
+                       enrolling, and verified by the system's CAs on every
+                       call rather than pinned. Such a node is hosting only,
+                       with no sessions.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -241,10 +242,10 @@ if [ -n "$WG_CONF" ]; then
     [ -r "$WG_CONF" ] || { echo "cannot read the WireGuard config ${WG_CONF}" >&2; exit 1; }
 fi
 if [ -n "$REACH" ]; then
-    [ "$REACH" = cloudflare ] || { echo "--reach takes cloudflare" >&2; exit 1; }
-    [ -z "$WG_CONF" ] || { echo "--reach cloudflare and --wg-conf are two ways to the controller: one or the other" >&2; exit 1; }
+    [ "$REACH" = public ] || { echo "--reach takes public" >&2; exit 1; }
+    [ -z "$WG_CONF" ] || { echo "--reach public and --wg-conf are two ways to the controller: one or the other" >&2; exit 1; }
     [ -n "$CONTROLLER" ] || { echo "--reach goes with --controller and --token" >&2; exit 1; }
-    case "$CONTROLLER" in https://*) ;; *) echo "through Cloudflare the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
+    case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
 fi
 case "$TOKEN" in
     ""|bbe_*) ;;
@@ -862,15 +863,15 @@ if [ -n "$WG_CONF" ]; then
     fi
     printf '   up as %s; %s answers through it\n' "$WG_ADDR" "$CONTROLLER"
 fi
-# Through Cloudflare (R170): nothing to bring up here, since the tunnel is
-# cloudflared's at home; that the hostname answers, with a certificate the
+# Through a public hostname (R170): nothing to bring up here, since the
+# tunnel is at home; that the hostname answers, with a certificate the
 # system trusts, is checked now rather than after an hour of Docker.
-if [ "$REACH" = cloudflare ]; then
-    say "reach: ${CONTROLLER} through Cloudflare"
+if [ "$REACH" = public ]; then
+    say "reach: ${CONTROLLER} through its public hostname"
     code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
     case "$code" in
-        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is cloudflared running at home with the ingress the Nodes tab showed, and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
-        404) warn "${CONTROLLER} answers 404 on the agent's API: cloudflared's ingress at home does not forward /api/v1/agent/ to the controller yet (the Nodes tab showed the rules)"; exit 1 ;;
+        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is the tunnel at home up with the rule the Nodes tab showed, and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
+        404) warn "${CONTROLLER} answers 404 on the agent's API: the tunnel at home does not forward /api/v1/agent/ to the controller yet (the Nodes tab showed the rule)"; exit 1 ;;
     esac
     printf '   %s answers (%s)\n' "$CONTROLLER" "$code"
 fi

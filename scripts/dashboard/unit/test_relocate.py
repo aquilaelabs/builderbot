@@ -115,7 +115,7 @@ class Relocate(unittest.TestCase):
         self.assertEqual(p.read_bytes(), body)
 
     def test_the_data_may_come_in_pieces(self):
-        """Through Cloudflare a request carries at most 100 MB (R170): the
+        """Through a tunnel's edge a request may carry at most 100 MB (R170): the
         agent sends offset and total, a piece that landed already is not
         taken twice, and the file is whole only when the last piece is."""
         r = relocate.start("alpha", "main", "copy", "n2", "alpha-web")
