@@ -1095,6 +1095,60 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(/already/.test(again.error || ''), `a second press is refused in words (${again.error})`);
     for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
       await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
+    // ...and off it again (R164): Stop syncing holds sessions while what is
+    // left goes up, Clean up is offered once the node says nothing is, and
+    // from off one press moves it to a synced copy again.
+    const beat = extra => fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync: {}, ...extra },
+                             running: [], wait: 0 }) });
+    const asks = async () => (await fetch(base + '/api/v1/agent/sync', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'projects' }) })).json();
+    const conf = async () => (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config;
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="sync-stop"]`);
+    await page.waitForSelector(`${ROW} [data-nd="sync-clean"]`, { timeout: 10000 });
+    ok(page.dialogs.length === 1 && /Stop syncing[\s\S]*No session starts there/.test(page.dialogs[0]),
+       `Stop syncing asks first, saying sessions are held (${page.dialogs[0]?.slice(0, 60)})`);
+    ok((await conf()).leaving === true && (await asks()).leaving === true && (await asks()).mode === 'sync',
+       '...marks the node leaving, and the agent hears it still in sync mode, so it keeps sending');
+    await beat({ sync_drain: { files: 2, claude: 1, walked: true } });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => /2 file changes and 1 conversation file still to go up/.test(
+      document.querySelector(sel)?.textContent || ''), ROW, { timeout: 10000 });
+    ok(await page.$eval(`${ROW} [data-nd="sync-clean"]`, b => b.disabled),
+       '...and Clean up stays dead while the node has changes and conversations to send up, said on the row');
+    const early = await napi('/api/v1/nodes', { action: 'sync-clean', id: minted.id });
+    ok(/still has 2 file changes and 1 conversation file/.test(early.error || ''),
+       `...and asked anyway it is refused in the same words (${early.error})`);
+    await beat({ sync_drain: { files: 0, claude: 0, walked: true } });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => !document.querySelector(sel + ' [data-nd="sync-clean"]')?.disabled,
+                               ROW, { timeout: 10000 });
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="sync-clean"]`);
+    await page.waitForFunction(sel => /holds no projects/.test(document.querySelector(sel)?.textContent || ''),
+                               ROW, { timeout: 10000 });
+    const off = await conf(), told = await asks();
+    ok(page.dialogs.length === 1 && /Remove the project copies/.test(page.dialogs[0])
+       && off.workspace === 'off' && off.clean && told.mode === 'off' && told.clean === off.clean,
+       `once everything is up, Clean up asks, marks the node off and hands the agent its clean-up by a token (${JSON.stringify([off.workspace, told.mode, !!told.clean])})`);
+    ok(await page.$eval(`${ROW} [data-nd="to-sync"]`, b => b.disabled),
+       '...and Move to a synced copy waits while the copies are being removed');
+    await beat({ sync_clean: { token: off.clean, freed: 5 * 1048576, error: '' } });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => /copies were removed, 5MB freed/.test(document.querySelector(sel)?.textContent || ''),
+                               ROW, { timeout: 10000 });
+    ok(true, '...and the row says when they are gone and what that freed');
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="to-sync"]`);
+    await page.waitForSelector(`${ROW} [data-nd="sync-stop"]`, { timeout: 10000 });
+    const back = await conf();
+    ok(back.workspace === 'sync' && !back.clean && !back.leaving,
+       `from off, Move to a synced copy holds the projects again (${JSON.stringify(back)})`);
+    for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
+      await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
     await napi('/api/v1/nodes', { action: 'update', id: minted.id, fields: { workspace: 'mount' } });
     await fetch(base + '/api/v1/agent/work', { method: 'POST',
       headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },

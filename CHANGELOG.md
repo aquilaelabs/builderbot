@@ -98,6 +98,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node holding synced copies also gets, read-only, the projects its projects read, so a session sees them at /workspace/NAME as it did on the share. (e1f20c3)
 - A node on the projects share moves to a synced copy with one press, Move to a synced copy in its Sessions section: its sessions end, the share is unmounted from /workspace and each project is copied down (045a959)
 - bb transcripts fetch ID copies one of your conversations into this machine's folder for it (b996a95)
+- A node can stop syncing its projects: Stop syncing holds its sessions while what is left there goes up, then Clean up /workspace removes the copies and says what it freed; Move to a synced copy brings it back (4263d0d)
 
 ### Changed
 

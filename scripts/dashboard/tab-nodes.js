@@ -402,7 +402,7 @@ function nodeRunnerSection(n, c){
 function nodeSyncRow(n){
   // A node still on the projects share moves in one press (R163): its
   // sessions end, the share is unmounted and the copy is made.
-  if ((n.config || {}).workspace !== "sync") return n.kind !== "agent" ? "" : `
+  if (!["sync", "off"].includes((n.config || {}).workspace)) return n.kind !== "agent" ? "" : `
     <div class="sub">Projects here come from the projects share mounted at <code>/workspace</code>.</div>
     <div><button type="button" data-nd="to-sync" ${n.live ? "" : "disabled"}>Move to a synced copy</button></div>
     ${n.live ? "" : `<div class="sub dim">It moves once the node is answering.</div>`}`;
@@ -410,8 +410,34 @@ function nodeSyncRow(n){
   const one = ([p, v]) => `<code>${esc(p)}</code> ${v.error ? `<span class="bad">${esc(v.error)}</span>`
     : !v.ready ? `copying${v.copying ? ` (${v.copying} to go)` : ""}`
     : v.pending ? `${v.pending} change${v.pending === 1 ? "" : "s"} going up` : "in step"}`;
+  const conf = n.config || {}, live = n.live ? "" : "disabled";
+  // Off its synced copy (R164): no projects and no sessions here, the
+  // copies removed or on their way out, and one press back.
+  if (conf.workspace === "off"){
+    const c = n.reported?.sync_clean || {};
+    const done = conf.clean && c.token === conf.clean;
+    return `<div class="sub">This node holds no projects, so no session starts here${
+      !conf.clean ? "." : !done ? "; its copies are being removed." : c.error
+        ? `; its copies could not all be removed: <span class="bad">${esc(c.error)}</span>`
+        : `; its copies were removed, ${esc(gb(Math.round((c.freed || 0) / 1048576)))} freed.`}</div>
+    <div><button type="button" data-nd="to-sync" ${live} ${conf.clean && !done ? "disabled" : ""}>Move to a synced copy</button></div>`;
+  }
+  // Leaving it: sessions held while what is left goes up, then Clean up.
+  if (conf.leaving){
+    const d = n.reported?.sync_drain;
+    const left = d ? [d.files ? `${d.files} file change${d.files === 1 ? "" : "s"}` : "",
+                      d.claude ? `${d.claude} conversation file${d.claude === 1 ? "" : "s"}` : ""].filter(Boolean) : [];
+    const drained = d && d.walked && !left.length;
+    return `<div class="sub">Leaving its synced copy: no session starts here, and ${
+      !d ? "the node has not said yet what is left to send up"
+      : left.length ? `${left.join(" and ")} still to go up to the controller`
+      : !d.walked ? "the node is looking at every file once more" : "everything here has reached the controller"}.</div>
+    <div><button type="button" data-nd="sync-clean" ${live} ${drained ? "" : "disabled"}>Clean up /workspace</button>
+      <button type="button" data-nd="sync-resume" ${live}>Keep syncing</button></div>`;
+  }
   return `<div class="sub">Projects here are a copy kept in step through the controller, with no share mounted${
-    rows.length ? `: ${rows.map(one).join(", ")}` : "; none is bound to this node yet"}.</div>`;
+    rows.length ? `: ${rows.map(one).join(", ")}` : "; none is bound to this node yet"}.</div>
+    <div><button type="button" data-nd="sync-stop" ${live}>Stop syncing</button></div>`;
 }
 
 function nodeSessionsSection(n){
@@ -1589,6 +1615,20 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               + "The projects share is unmounted from /workspace and each project there is copied down "
               + "from the controller; a session starts again once its project's copy is there.")) return;
       }
+      // Leaving the synced copy (R164) ends the sessions, as moving onto it
+      // did; cleaning up removes the copies, which only the drain allows.
+      if (act === "sync-stop"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        const here = (state?.sessions || []).filter(x => x.node_id === id);
+        if (!confirm(`Stop syncing ${name}?\n\n`
+              + (here.length ? `This ends the ${here.length} session${here.length === 1 ? "" : "s"} open there; transcripts are kept. ` : "")
+              + "No session starts there while it sends up what is left; then Clean up /workspace removes its copies.")) return;
+      }
+      if (act === "sync-clean"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Remove the project copies on ${name}?\n\n`
+              + "Everything there has reached the controller. The node then holds no projects until it moves to a synced copy again.")) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
@@ -1599,6 +1639,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                online: "Undraining", "cache-clear": "Clearing",
                retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
+               "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();

@@ -1317,6 +1317,14 @@ def session_target(project, claude=False, node=""):
                + (f": {se['why']}" if se.get("why") else
                   "; provision it with --session-user"))
         _ask_hello(nid)
+    elif (n.get("config") or {}).get("leaving") or (n.get("config") or {}).get("workspace") == "off":
+        # Off its synced copy, or on the way off it (R164): nothing to open a
+        # session on, and its row on the Nodes tab is the way back.
+        why = (f"{project}'s sessions run on {name}, which "
+               + ("is leaving its synced copy: what is left there is going up to the controller"
+                  if (n.get("config") or {}).get("leaving") else "holds no projects now")
+               + ". Its row on the Nodes tab moves it to a synced copy again,"
+               " or bind the project to another node")
     elif not se.get("workspace"):
         up = se.get("up_s")
         # The server's own reason, when the agent tried the mount and kept

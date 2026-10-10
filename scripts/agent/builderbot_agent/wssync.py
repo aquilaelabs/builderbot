@@ -26,6 +26,8 @@ import errno
 import hashlib
 import json
 import os
+import re
+import shutil
 import stat as st
 import struct
 import tarfile
@@ -237,6 +239,13 @@ class WorkspaceSync:
         self.mode = ""
         self.asked_at = 0.0
         self.thread = None
+        # Leaving the synced copy (R164): the controller holds new sessions
+        # and waits for this node to say nothing is left to send, then asks
+        # for the copies to be removed, by a token it says again until the
+        # answer names it.
+        self.leaving_at = 0.0     # monotonic, when the controller first said leaving; 0 when not
+        self.clean_ask = ""
+        self.cleaned = None       # {"token", "freed", "error"}, the last clean-up's answer
 
     # -- what the rest of the agent sees ------------------------------------------
     def start(self):
@@ -293,6 +302,12 @@ class WorkspaceSync:
                 self.agent.state["workspace_mode"] = mode
                 self.agent.hello_at = 0
             self.mode = mode
+            if r.get("leaving") and not self.leaving_at:
+                self.leaving_at = time.monotonic()
+                log("sync: leaving the synced copy; sending up what is left")
+            elif not r.get("leaving"):
+                self.leaving_at = 0.0
+            self.clean_ask = str(r.get("clean") or "")[:64]
             want = r.get("projects") if isinstance(r.get("projects"), dict) else {}
             # ...and the projects those read, read-only: a session sees them
             # at /workspace/NAME and writes none of them (R163).
@@ -317,6 +332,8 @@ class WorkspaceSync:
                     if int(rev or 0) != p.rev:
                         p.hinted = True
         if self.mode != "sync":
+            if self.mode == "off" and self.clean_ask and self.clean_ask != (self.done() or {}).get("token"):
+                self.clean(self.clean_ask)
             return
         if os.path.ismount(self.root):
             # A node moving off the projects share (R163) is told it is
@@ -332,7 +349,81 @@ class WorkspaceSync:
         for p in list(self.projects.values()):
             if p.error == MOUNTED:
                 p.error = ""
+            if self.leaving_at and p.walked_at < self.leaving_at:
+                # Leaving: one whole walk after it was said, so what the
+                # drain reports rests on every file and not on the watcher.
+                p.walked_at = 0.0
             self.one(p)
+
+    # -- leaving the synced copy (R164) -------------------------------------------------
+    def drain(self):
+        """While leaving, for the heartbeat: what is still to go up here,
+        and whether every project has been walked whole since it began.
+        None when not leaving."""
+        if not self.leaving_at:
+            return None
+        with self.lock:
+            mine = [p for p in self.projects.values() if not p.ro]
+            files = sum(len(p.moving) + (0 if p.ready else 1) + (1 if p.error else 0) for p in mine)
+            walked = all(p.walked_at > self.leaving_at for p in mine if p.ready)
+        cs = getattr(self.agent, "claudesync", None)
+        claude, listed = (cs.left, cs.listed_at > self.leaving_at) if cs else (0, True)
+        return {"files": files, "claude": claude, "walked": bool(walked and listed)}
+
+    def done(self):
+        """The last clean-up's answer, from memory or the file it left."""
+        if self.cleaned is None:
+            try:
+                with open(self.cleaned_path()) as f:
+                    self.cleaned = dict(json.load(f))
+            except (OSError, ValueError):
+                self.cleaned = {}
+        return self.cleaned or None
+
+    def cleaned_path(self):
+        data = ((self.agent.state.get("stores") or {}).get("data")) or "/var/lib/builderbot/data"
+        return os.path.join(data, "sync-cleaned.json")
+
+    def clean(self, token):
+        """Remove this node's copies once it no longer holds them (R164): each
+        project a record names, its record, and the conversations' folder.
+        Only ever in mode off, and never through a mount: with the projects
+        share at /workspace these would be the controller's own trees."""
+        freed, err = 0, ""
+        if os.path.ismount(self.root):
+            err = "the projects share is mounted at /workspace, so nothing there is this node's to remove"
+        else:
+            rd = self.record_dir()
+            names = [f[:-5] for f in os.listdir(rd) if f.endswith(".json") and f != "claude.json"]
+            for name in names + [".claude"]:
+                if name != ".claude" and (not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name.startswith(".")):
+                    continue
+                top = os.path.join(self.root, name)
+                if os.path.ismount(top) or any(os.path.ismount(os.path.join(d, x))
+                                               for d, dirs, _ in os.walk(top) for x in dirs):
+                    err = err or f"{top} has something mounted in it, so it was left"
+                    continue
+                if os.path.isdir(top) and not os.path.islink(top):
+                    for d, _, files in os.walk(top):
+                        for x in files:
+                            with contextlib.suppress(OSError):
+                                freed += os.lstat(os.path.join(d, x)).st_blocks * 512
+                    shutil.rmtree(top, ignore_errors=True)
+                    if os.path.exists(top):
+                        err = err or f"{top} could not be removed whole"
+                        continue
+                for rec in (os.path.join(rd, name + ".json"),) + ((os.path.join(rd, "claude.json"),)
+                                                                  if name == ".claude" else ()):
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(rec)
+        self.cleaned = {"token": token, "freed": freed, "error": err}
+        with contextlib.suppress(OSError):
+            with open(self.cleaned_path() + ".new", "w") as f:
+                json.dump(self.cleaned, f)
+            os.replace(self.cleaned_path() + ".new", self.cleaned_path())
+        log(f"sync: /workspace cleaned up, {freed // (1024 * 1024)} MB freed" if not err
+            else f"sync: /workspace not cleaned up whole ({freed // (1024 * 1024)} MB freed): {err}")
+        self.agent.hello_at = 0
 
     def one(self, p):
         top = os.path.join(self.root, p.name)

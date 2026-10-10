@@ -631,6 +631,18 @@ controller is.
   node at once (`wssync.held_changed`), so the first copy starts on the
   save rather than at the node's next look of its own, half a minute
   later.
+- **Leaving it** (R164, 10 Oct). Stop syncing in the node's Sessions
+  section ends its sessions and holds new ones, while the agent keeps
+  sending up what is waiting: it walks every project whole once more and
+  reports what is left, files and conversations (`sync_drain` on the
+  heartbeat). Clean up /workspace is live only once that is nothing: the
+  node is then off (config `workspace: off`), and the agent removes each
+  project its records name, the records and `/workspace/.claude`, once, by
+  the token the controller handed it, never through a mount, and says what
+  it freed (`sync_clean`). Keep syncing undoes Stop before the clean-up;
+  from off, Move to a synced copy holds the projects again. There is no way
+  back to the projects share: no node mounts the controller's disk (the
+  operator, 10 Oct).
 - **Conversations with Claude** (B613, 10 Oct). Every home's
   `~/.claude/projects` links to `/workspace/.claude/<uid>/projects`, which
   on a synced node is the node's own: the agent makes `/workspace/.claude`

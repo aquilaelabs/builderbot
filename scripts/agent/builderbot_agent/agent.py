@@ -390,6 +390,13 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             synced = self.wssync.status()
             if synced is not None:
                 sample["sync"] = synced
+            # ...and, leaving it, what is still to go up; and the last
+            # clean-up's answer, until the controller has read it (R164).
+            drain = self.wssync.drain()
+            if drain is not None:
+                sample["sync_drain"] = drain
+            if self.wssync.clean_ask and (self.wssync.done() or {}).get("token") == self.wssync.clean_ask:
+                sample["sync_clean"] = self.wssync.done()
             st, r = self.ctl.call("work", {"sample": sample, "running": n, "wait": wait},
                                   timeout=wait + 15)
             if st == 204:

@@ -2122,6 +2122,8 @@ def node_to_sync(principal, node_id):
     conf = dict(n.get("config") or {})
     if conf.get("workspace") == "sync":
         return {"error": f"{n['name']} already holds its projects as a synced copy"}
+    if conf.get("workspace") == "off" and conf.get("clean") and not sync_cleaned(n):
+        return {"error": f"{n['name']} is still removing its last copy; move it once that is done"}
     if n["state"] != "online":
         return {"error": f"the node is {n['state']}; it moves while online"}
     if node_locked(n):
@@ -2149,6 +2151,8 @@ def node_to_sync(principal, node_id):
         if name and not session_kill(node_id, name).get("error"):
             ended.append(name)
     conf["workspace"] = "sync"
+    conf.pop("clean", None)
+    conf.pop("leaving", None)
     if share:
         conf["desired"] = dict(desired, mounts=keep, stores=desired.get("stores") or {})
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
@@ -2166,6 +2170,117 @@ def node_to_sync(principal, node_id):
                                     "is fixed; until then its copy waits"}
         out["job"] = r.get("job")
     return out
+
+
+# ---- leaving a synced copy (R164) ------------------------------------------------------
+#
+# The way back from node_to_sync, in three presses with the node's word
+# between them: Stop syncing ends the sessions and holds new ones while the
+# agent sends up what is waiting (files, and conversations: claudesync.py);
+# Clean up /workspace, offered once the node says nothing is left, has the
+# agent remove its copies; and from there the node stays off, or moves to
+# a synced copy again. There is no way back to the projects share: no node
+# mounts the controller's disk (the operator, 10 Oct). A copy is never
+# removed while anything in it has not reached the controller: it may be
+# the only place a change lives.
+
+def _leave_check(node_id):
+    n = node(node_id)
+    if not n:
+        return None, {"error": "no such node"}
+    if n["kind"] != "agent":
+        return None, {"error": "only an agent node holds a synced copy"}
+    if node_locked(n):
+        return None, {"error": node_locked(n)}
+    return n, None
+
+
+def _set_conf(node_id, conf):
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _synced["at"] = 0.0
+    # A hint naming no project: the agent asks again now how it holds them.
+    sync_hint(node_id, "", 0)
+
+
+def sync_drained(n):
+    """Whether a leaving node has said nothing is left to send, after a
+    whole walk of every project and a fresh look at its conversations."""
+    d = (n.get("reported") or {}).get("sync_drain") or {}
+    return bool(d.get("walked")) and not d.get("files") and not d.get("claude")
+
+
+def sync_cleaned(n):
+    """The node's answer to the clean-up asked of it, or None while it is
+    still to come."""
+    conf = n.get("config") or {}
+    c = (n.get("reported") or {}).get("sync_clean") or {}
+    return c if conf.get("clean") and c.get("token") == conf.get("clean") else None
+
+
+def node_sync_stop(principal, node_id):
+    """Stop syncing: the node's sessions ended and new ones held while what
+    is waiting there goes up."""
+    n, no = _leave_check(node_id)
+    if no:
+        return no
+    conf = dict(n.get("config") or {})
+    if conf.get("workspace") != "sync":
+        return {"error": f"{n['name']} does not hold its projects as a synced copy"}
+    if conf.get("leaving"):
+        return {"error": f"{n['name']} is already leaving its synced copy"}
+    ended = []
+    for s in (node_sessions().get(node_id) or ("", []))[1]:
+        name = str((s or {}).get("name") or "")
+        if name and not session_kill(node_id, name).get("error"):
+            ended.append(name)
+    conf["leaving"] = True
+    _set_conf(node_id, conf)
+    _touch(node_id, principal, "node-sync-stop", {"ended": len(ended)})
+    return {"ok": True, "ended": ended}
+
+
+def node_sync_resume(principal, node_id):
+    """Keep syncing after all: a node still leaving holds sessions again."""
+    n, no = _leave_check(node_id)
+    if no:
+        return no
+    conf = dict(n.get("config") or {})
+    if conf.get("workspace") != "sync" or not conf.get("leaving"):
+        return {"error": f"{n['name']} is not leaving its synced copy"}
+    conf.pop("leaving", None)
+    _set_conf(node_id, conf)
+    _touch(node_id, principal, "node-sync-resume", {})
+    return {"ok": True}
+
+
+def node_sync_clean(principal, node_id):
+    """Clean up /workspace: the node off its synced copy, and asked to remove
+    the copies, which it does once and answers by the token."""
+    n, no = _leave_check(node_id)
+    if no:
+        return no
+    conf = dict(n.get("config") or {})
+    if conf.get("workspace") == "sync" and not conf.get("leaving"):
+        return {"error": f"press Stop syncing on {n['name']} first, so nothing is lost"}
+    if conf.get("workspace") not in ("sync", "off"):
+        return {"error": f"{n['name']} holds no synced copy to clean up"}
+    if conf.get("workspace") == "sync":
+        if n["state"] != "online" or n.get("live") is False:
+            return {"error": f"{n['name']} is not answering, so it cannot say whether everything there has gone up"}
+        if not sync_drained(n):
+            d = (n.get("reported") or {}).get("sync_drain") or {}
+            left = [f"{d['files']} file change{'s' if d['files'] != 1 else ''}" if d.get("files") else "",
+                    f"{d['claude']} conversation file{'s' if d['claude'] != 1 else ''}" if d.get("claude") else ""]
+            left = [x for x in left if x]
+            return {"error": f"{n['name']} still has " + " and ".join(left) + " to send up; it is removed once they are there"
+                    if left else f"{n['name']} has not finished looking at every file yet; try again in a moment"}
+    conf["workspace"] = "off"
+    conf.pop("leaving", None)
+    conf["clean"] = secrets.token_hex(8)
+    _set_conf(node_id, conf)
+    _touch(node_id, principal, "node-sync-clean", {"token": conf["clean"]})
+    return {"ok": True}
+
 
 
 # Set by server.py at boot, because toolchains.py imports this one and the
@@ -2280,7 +2395,7 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     # gate held it) and the node's sessions as none (Move to a synced copy
     # ended nothing) until the next heartbeat, and hellos come every half
     # minute or so on a busy node.
-    beat = {k: rep[k] for k in ("sessions", "published", "sync") if k in rep}
+    beat = {k: rep[k] for k in ("sessions", "published", "sync", "sync_drain", "sync_clean") if k in rep}
     rep = _census(census)
     rep["at"] = census_at
     if sample:
@@ -2434,6 +2549,20 @@ def heartbeat(nid, sample, addr, running=0):
             "copying": max(0, min(10**7, int((v or {}).get("copying") or 0))),
             "error": str((v or {}).get("error") or "")[:200]}
             for k, v in list(s["sync"].items())[:64] if isinstance(v, dict)}
+    # ...leaving it (R164): what is still to go up; absent when not leaving.
+    if isinstance(s.get("sync_drain"), dict):
+        d = s["sync_drain"]
+        rep["sync_drain"] = {"files": max(0, min(10**7, int(d.get("files") or 0))),
+                             "claude": max(0, min(10**7, int(d.get("claude") or 0))),
+                             "walked": d.get("walked") is True}
+    else:
+        rep.pop("sync_drain", None)
+    # ...and the answer to the clean-up asked of it, by the asker's token.
+    if isinstance(s.get("sync_clean"), dict):
+        c = s["sync_clean"]
+        rep["sync_clean"] = {"token": str(c.get("token") or "")[:64],
+                             "freed": max(0, int(c.get("freed") or 0)),
+                             "error": str(c.get("error") or "")[:300]}
     store_merge(rep.get("stores") or {}, clean["stores"], totals)
     _exec("UPDATE nodes SET agent = ?, reported = ? WHERE id = ?",
           (json.dumps(ag), json.dumps(rep), nid))
@@ -3911,6 +4040,16 @@ def verb(principal, req):
         # and the share unmounted. An administrator's, like the rest.
         return node_to_sync(principal, nid)
 
+    def sync_stop():
+        # ...and off it again (R164): stop, then clean up.
+        return node_sync_stop(principal, nid)
+
+    def sync_resume():
+        return node_sync_resume(principal, nid)
+
+    def sync_clean():
+        return node_sync_clean(principal, nid)
+
     def runner():
         # One of the node's runners (phase 7, one per git host): a system
         # job, minting from the token stored for that runner. The URL is
@@ -4036,7 +4175,8 @@ def verb(principal, req):
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net,
-             "root-asks": root_asks, "apply": apply, "to-sync": to_sync, "runner": runner,
+             "root-asks": root_asks, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
              "paths": paths, "check-paths": check_paths, "funnel": funnel,
              "update-agent": update_agent, "cache-clear": cache_clear,

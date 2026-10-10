@@ -134,6 +134,7 @@ class ClaudeMirror:
         self.listed_at = 0.0
         self.rec = None
         self.thread = None
+        self.left = 0             # files here not yet agreed with the controller, for the drain (R164)
 
     def start(self):
         if self.thread is None:
@@ -239,6 +240,7 @@ class ClaudeMirror:
         with ws.lock:
             held = [n for n, p in ws.projects.items() if not p.ro]
         if not held:
+            self.left = 0
             return
         fresh = False
         now = time.monotonic()
@@ -260,6 +262,7 @@ class ClaudeMirror:
                 log(f"claudesync: {act} {key}: {e}")
         if json.dumps(rec, sort_keys=True) != before:
             self.save()
+        self.left = sum(1 for k, v in self.walk(held).items() if not same(v, rec.get(k)))
 
     # -- the actions ------------------------------------------------------------------------
     def path(self, key):

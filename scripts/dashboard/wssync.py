@@ -338,11 +338,18 @@ def configure_projects(fn):
 def projects(nid):
     """The projects this node holds as a synced copy, and each one's
     revision, for the agent to compare with its own."""
-    mode = ((nodes.node(nid) or {}).get("config") or {}).get("workspace") or "mount"
+    conf = (nodes.node(nid) or {}).get("config") or {}
+    mode = conf.get("workspace") or "mount"
+    if mode == "off":
+        # Off its synced copy (R164): nothing held, and the clean-up the
+        # page asked for, by its token, until the node answers it.
+        return {"mode": mode, "projects": {}, "reads": {}, "clean": str(conf.get("clean") or "")}
     if mode != "sync":
         return {"mode": mode, "projects": {}, "reads": {}}
     return {"mode": mode, "projects": {p: rev_of(p) for p in bound_projects(nid)},
-            "reads": {p: rev_of(p) for p in read_projects(nid)}}
+            "reads": {p: rev_of(p) for p in read_projects(nid)},
+            # Leaving (R164): kept in step as ever, so what is waiting goes up.
+            "leaving": bool(conf.get("leaving"))}
 
 
 def state(nid, project):
