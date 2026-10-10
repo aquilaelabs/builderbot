@@ -61,6 +61,11 @@ class ComposeFiles(unittest.TestCase):
         argv = devapp._compose("Clanker-Detector", "site", "config")
         self.assertEqual(argv[argv.index("--project-directory") + 1], str(self.p / "site"))
         self.assertEqual(devapp.example_file("Clanker-Detector", "site"), self.p / "site" / ".env.example")
+        r = devapp.create_instance("Clanker-Detector", "api", compose="api/v2/compose.yml")
+        self.assertTrue(r.get("ok"), r)
+        self.assertFalse(devapp.example_file("Clanker-Detector", "api").is_file(),
+                         "a folder with no example of its own does not take the root's")
+        self.assertEqual(devapp.missing_env("Clanker-Detector", "api"), [])
         # ...and the project's own container stays on the root's file.
         argv = devapp._compose("Clanker-Detector", devapp.MAIN, "config")
         self.assertEqual(argv[argv.index("--project-directory") + 1], str(self.p))

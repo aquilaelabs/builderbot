@@ -1593,12 +1593,12 @@ def compose_ok(project, rel):
 
 
 def example_file(project, instance=MAIN):
-    """The .env.example beside the instance's compose file, else the root's."""
-    sub = compose_sub(project, instance)
-    for p in ([WORKSPACE / project / sub / ".env.example"] if sub else []) + [WORKSPACE / project / ".env.example"]:
-        if p.is_file():
-            return p
-    return WORKSPACE / project / ".env.example"
+    """The .env.example beside the instance's compose file: the root's for
+    the root's, a folder's own for one in a folder. Not the root's for a
+    folder's: compose reads a file's .env from its own folder, and the
+    root's example asked a one-service site in a folder for every key of
+    the project's own app (found sending R167's test container, 10 Oct)."""
+    return WORKSPACE / project / compose_sub(project, instance) / ".env.example"
 
 
 def compose_file(project, instance=MAIN):
