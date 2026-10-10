@@ -2550,18 +2550,23 @@ def nodes_of(whose):
     return [str(n) for n in got if n]
 
 
-def on_project_node(whose, node=""):
+def on_project_node(whose, node="", ship=False):
     """(why, node): the node a container for project `whose` goes to, or the
     reason it cannot go anywhere. One rule, said in one place: a container
     lives on one of its project's nodes (R79 makes any other unreachable
     from the project's sessions), so `node` may only be one of those, and
-    nothing means the primary."""
+    nothing means the primary. The exception is `ship` (R166): a container
+    sent on purpose to a node the project is not on, whose image is built on
+    one of the project's own nodes and shipped there, so the project's
+    source never reaches it; the project still needs a node to build on."""
     own = nodes_of(whose)
     if own is None:
         return "", str(node or "")
     if not own:
         return (f"{whose} has no node, so there is nowhere to make its container: "
                 "set its node in the project's settings first", "")
+    if ship and node:
+        return "", str(node)
     if node and str(node) not in own:
         return (f"{whose} works on {', '.join(node_name(n) for n in own)}, and a container "
                 "for it anywhere else is out of reach of its sessions", "")
@@ -2610,7 +2615,7 @@ def new_refusal(project, key):
     return _taken(project, key, _load())
 
 
-def create_instance(project, name, node="", owner=None):
+def create_instance(project, name, node="", owner=None, ship=False):
     """Register a new instance of a project. Nothing is built or started.
 
     `owner` is the project it belongs to when the caller said (another one,
@@ -2638,8 +2643,10 @@ def create_instance(project, name, node="", owner=None):
     # given one first. A container for no project may go where it is asked.
     whose = project if owner is None else owner
     picked = str(node or "")
+    # Sent to a node the project is not on (R166): shipped, never built there.
+    ship = bool(ship and picked and whose and picked not in (nodes_of(whose) or []))
     if whose:
-        why, node = on_project_node(whose, node)
+        why, node = on_project_node(whose, node, ship=ship)
         if why:
             return {"error": why}
         # Named by the caller: bound to it. Not named: the record carries no
@@ -2656,6 +2663,8 @@ def create_instance(project, name, node="", owner=None):
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
+        if ship:
+            rec["ship"] = True
         # Stored the way owner_of reads it: nothing for the default.
         if owner is not None and owner != project:
             rec["for"] = str(owner)[:100]
@@ -2860,12 +2869,21 @@ def session_net_own(node_id):
             for port in pub.get(key) or []:
                 o["peers"].add((addr, int(port)))
 
+    # ...and every node holding a container the project owns, its own or
+    # one sent elsewhere on purpose (R166), so a session on the project's
+    # node reaches a container shipped to another.
+    held = {}
+    for p, insts in _load().items():
+        for i, rec in insts.items():
+            owner = owner_of(p, i, rec)
+            if owner:
+                held.setdefault(owner, set()).add(_instance_node(p, i))
     for project, nids in sets.items():
         if node_id not in (nids or []):
             continue
         o = out.setdefault(project, blank())
-        for other in nids:
-            if other != node_id:
+        for other in list(nids) + sorted(held.get(project, set()) - set(nids)):
+            if other and other != node_id:
                 reach(o, project, other)
         # ...and what its settings name besides (Also reaches, the operator,
         # 7 Oct): a whole machine, or one port on it.

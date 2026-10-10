@@ -200,6 +200,27 @@ def claude_put(auth, q, stream, length):
     return claudesync.put(auth["node"], q, stream, length)
 
 
+# ---- an image shipped between two nodes (R166, devactions.py) -------------------
+
+def devimage_put(auth, q, stream, length):
+    """The build node's saved image, raw in the body, for its shipping job."""
+    if (no := _node_only(auth)):
+        return no
+    import devactions
+    return devactions.image_put(auth["node"], q, stream, length)
+
+
+def devimage_file(auth, q):
+    """That image, for the instance node's loading job."""
+    if (no := _node_only(auth)):
+        return no
+    import devactions
+    path, no = devactions.image_path(auth["node"], q)
+    if no:
+        return no
+    return {"path": path, "ctype": "application/x-tar", "headers": {}}, 200
+
+
 def _sync(nid, req):
     act = field(req, "action")
     project = field(req, "project")

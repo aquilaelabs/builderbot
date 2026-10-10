@@ -644,6 +644,20 @@ controller is.
   from off, Move to a synced copy holds the projects again. There is no way
   back to the projects share: no node mounts the controller's disk (the
   operator, 10 Oct).
+- **Daily snapshots** (R165, 10 Oct), so a node gone wrong, or
+  compromised, cannot destroy the original through its copy: once a day
+  each project's tree, exactly what the sync carries, `.git` included, is
+  snapshotted on the controller (`snapshots.py`, in the project-snapshots
+  store of `paths.py`, where no node API reaches). A file's contents are
+  stored once by hash, read-only, and a day is a list of paths and hashes,
+  so an unchanged file costs nothing. Kept for the project's *Snapshots
+  kept for* days (14 by default, 0 for none), older days and the objects
+  only they named removed. The project settings' Snapshots fold restores the
+  whole tree as of a day, or one file; a restore first snapshots the tree
+  as it is (a *before restore* day), writes through the files the sync
+  reads, and tells the sync, so every node follows. An administrator's;
+  never a session's. Beside it, a node's writes into `.git` that would run
+  something on the controller are refused outright (B618).
 - **Conversations with Claude** (B613, 10 Oct). Every home's
   `~/.claude/projects` links to `/workspace/.claude/<uid>/projects`, which
   on a synced node is the node's own: the agent makes `/workspace/.claude`
@@ -900,6 +914,25 @@ node with a route IS the deployment, and the compose job is its long-lived
 job. The unhardwiring this phase owes: deploy targets touch no environment
 variable of their own: `DOCKER_HOST` became a node in phase 2, and both it
 and `DOCKER_HOST_PATHS` have since left the five places entirely (§11).
+
+**A container on a node its project is not on (R166, 10 Oct).** For a box
+that should run a project's container without ever holding its source (a
+web-facing one, a project kept off any public repository), Send to Docker
+offers every node, and one outside the project's set is marked *image
+shipped*. That instance is recorded `ship`, and its rebuild is two jobs: on
+the project's own node (the first that is up), build from its synced copy,
+`docker save` the images the compose file builds, and upload them to the
+controller (`devimage-put`, accepted only from that node for that running
+job, into the images store of `paths.py`); then on the instance's node,
+fetch it (`devimage`, the same rule), `docker load`, remove the file, and
+`up --no-build --pull never` from the instance's own compose directory.
+The image file is gone from the controller when the second job ends. A
+bind into the project's tree is refused before the build, since that node
+has no tree and must not. Making one is a person's (docker-write and the
+project's node right); the project's sessions rebuild it, as they do their
+own node's, and reach its published ports (`session_net_own` counts every
+node holding a container the project owns). What the image itself holds is
+the Dockerfile's: a final stage that copies the source carries the source.
 
 ## 8. Security model
 

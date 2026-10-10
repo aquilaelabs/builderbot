@@ -63,7 +63,7 @@ function rnLoadModelNow(name){
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
                  node: "", nodes: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
-                 capture_days: "7", dev_keep: "3", gate: "", color: "", debug: ""};
+                 capture_days: "7", snapshot_days: "14", dev_keep: "3", gate: "", color: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -121,6 +121,7 @@ function rnFillPrefs(p){
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
+               snapshot_days: String(p?.prefs?.snapshot_days ?? 14),
                dev_keep: String(p?.prefs?.dev_keep ?? 3),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
@@ -349,6 +350,7 @@ function rnFillPrefsRest(p){
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
+  $("rnSnapDays").value = String(p?.prefs?.snapshot_days ?? 14);
   $("rnDevKeep").value = String(p?.prefs?.dev_keep ?? 3);
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -587,6 +589,7 @@ function renameProject(name, mode = "all"){
   $("rnDelete").hidden = git || !p;
   rnLoadAuth(name);
   rnLoadSigning(name);
+  rnLoadSnapshots(name);
   rnLoadPeople(name);
   rnLoadFtp(name);
   rnFillPrefs(p);
@@ -827,6 +830,67 @@ function rnLoadSigning(name){
 }
 
 const rnFp = sha => sha ? `${sha.slice(0, 8)}…${sha.slice(-8)}` : "";
+
+// The project's daily snapshots (R165): each day kept, with Restore for the
+// whole tree and a box to restore one file. An administrator's, and acted on
+// at the press after a confirmation, not staged with Save: a restore is the
+// thing done when something went wrong, and it first snapshots the tree as
+// it is, so the line it leaves says how to undo it.
+let rnSnap = null;
+
+function rnLoadSnapshots(name){
+  rnSnap = null;
+  $("rnSnapField").hidden = true;
+  if (rnMode === "git" || !state?.admin) return;
+  fetch("/api/snapshots?project=" + encodeURIComponent(name))
+    .then(r => r.json())
+    .then(j => { if (rnFor === name && !j.error){ rnSnap = j; rnDrawSnapshots(); } })
+    .catch(() => {});
+}
+
+function rnDrawSnapshots(){
+  if (!rnSnap) return;
+  const name = rnFor;
+  $("rnSnapField").hidden = false;
+  const days = rnSnap.days || [];
+  const when = d => d.at ? new Date(d.at * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : d.day;
+  $("rnSnapRows").innerHTML = (days.length ? days.map(d => `<div class="rnsnap actbar" data-day="${esc(d.day)}">
+      <span class="grow">${esc(when(d))}${d.why ? ` <span class="dim">(${esc(d.why.replace(/-/g, " "))})</span>` : ""}
+        <span class="dim">· ${d.files} files · ${esc(humanBytes(d.bytes))}</span></span>
+      <input type="text" data-snapfile placeholder="a file, from the tree's top" spellcheck="false" autocomplete="off"
+             aria-label="the file to restore from this day">
+      <button type="button" data-snapone>Restore file</button>
+      <button type="button" data-snapall>Restore all</button>
+    </div>`).join("")
+    : `<div class="dim">none yet: the first is taken within half an hour of the setting being above 0</div>`)
+    + `<div class="actbar"><button type="button" data-snaptake>Take one now</button></div>`;
+  $("rnSnapHint").textContent = rnSnap.keep
+    ? `One a day, kept ${rnSnap.keep} day${rnSnap.keep === 1 ? "" : "s"}. A restore snapshots the tree first, so it can be undone from the line it leaves.`
+    : "Snapshots kept is 0, so none are taken; the ones here go at the next daily look.";
+  const act = async (b, body, ask) => {
+    if (ask && !confirm(ask)) return;
+    await pressing(b, async () => {
+      const r = await postJSON("/api/snapshots", {project: name, ...body});
+      const j = await r.json();
+      if (j.error) return notify(j.error, true);
+      notify(body.action === "take" ? `snapshot taken: ${j.files} files`
+        : `restored: ${j.wrote} written, ${j.removed} removed; undo from ${j.undo}`);
+      rnLoadSnapshots(name);
+    });
+  };
+  $("rnSnapRows").querySelectorAll(".rnsnap").forEach(row => {
+    const day = row.dataset.day;
+    row.querySelector("[data-snapall]").onclick = e => act(e.target, {action: "restore", day},
+      `Put all of ${name} back as it was on ${day}?\n\nFiles changed since are written back and files added since are removed, on the controller and then every node. The tree as it is now is snapshotted first.`);
+    row.querySelector("[data-snapone]").onclick = e => {
+      const path = row.querySelector("[data-snapfile]").value.trim();
+      if (!path) return notify("type the file to restore, from the tree's top", true);
+      act(e.target, {action: "restore", day, path}, `Put ${path} back as it was on ${day}?`);
+    };
+  });
+  const take = $("rnSnapRows").querySelector("[data-snaptake]");
+  if (take) take.onclick = e => act(e.target, {action: "take"}, "");
+}
 
 function rnDrawSigning(){
   if (!rnSignKeys || rnMode === "git") return;     // the remote's door alone (B539)
@@ -1255,6 +1319,7 @@ async function rnSubmit(){
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const capture_days = $("rnCaptureDays").value.trim();
+  const snapshot_days = $("rnSnapDays").value.trim();
   const dev_keep = $("rnDevKeep").value.trim();
   const gate = rnGateNow();
   const color = rnColorNow();
@@ -1274,6 +1339,7 @@ async function rnSubmit(){
     || JSON.stringify(reaches) !== rnPrefWas.reaches
     || (dbg && rnDebugKey(dbg.diag, dbg.log_from) !== rnPrefWas.debug)
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
+    || snapshot_days !== rnPrefWas.snapshot_days
     || dev_keep !== rnPrefWas.dev_keep
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
@@ -1305,6 +1371,7 @@ async function rnSubmit(){
     [test_change !== rnPrefWas.test_change, "During a test run, a change asked for"],
     [gpu !== rnPrefWas.gpu, "The node's GPU"],
     [capture_days !== rnPrefWas.capture_days, "Captures kept"],
+    [snapshot_days !== rnPrefWas.snapshot_days, "Snapshots kept"],
     [dev_keep !== rnPrefWas.dev_keep, "Dev builds kept"],
   ].filter(([changed]) => changed).map(([, label]) => label);
   const launchChanged = takesAtStart.length > 0;
@@ -1318,6 +1385,8 @@ async function rnSubmit(){
     return fail("type the keystore's password: a key is checked with it before it is kept");
   if (capture_days !== "" && !/^\d{1,3}$/.test(capture_days))
     return fail("captures kept is a number of days, 0 to 365");
+  if (snapshot_days !== "" && !/^\d{1,4}$/.test(snapshot_days))
+    return fail("snapshots kept is a number of days, 0 to 3650");
   if (dev_keep !== "" && !/^\d{1,2}$/.test(dev_keep))
     return fail("dev builds kept is a number of builds, 0 to 99");
   // The one combination the dialog will not write: authenticating with a token
@@ -1371,6 +1440,7 @@ async function rnSubmit(){
                               tests_in, test_change, gpu, reply, asks, devbuild, report, sign, keys, release,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
+                              ...(snapshot_days !== "" ? {snapshot_days: +snapshot_days} : {}),
                               ...(dev_keep !== "" ? {dev_keep: +dev_keep} : {}),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

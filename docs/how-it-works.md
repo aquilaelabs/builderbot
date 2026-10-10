@@ -1608,7 +1608,12 @@ tab, and **Users**. The Settings tab is what the
 **controller** owns and can apply live. The session-log policy lives there,
 and the idle rule for Claude sessions: end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
-so the rule holds while this container is down, and the tab says
+so the rule holds while this container is down; its **Storage** section,
+where each kind of thing that grows (project snapshots, job snapshots, the
+git relay's repositories, the Git view's working area, the logs) is kept,
+moved to a new empty path on Apply and switched once all of it is there,
+while the records, the database, the signing keys and the git credentials
+stay in the state directory (`paths.py`); and the tab says
 plainly what still comes from the environment and why (the placement rule and
 the unhardwiring are docs/nodes.md §13 and §11). One switch in its
 Debugging dialog, *Offer dev features* (Debug mode on, then Debug settings),

@@ -39,6 +39,7 @@ from names import claude_session  # noqa: E402
 WORKSPACE = None
 WORKTREES = None
 STATE = None
+paths = None              # set by server.py: paths.py, where what grows is kept
 TELL = None               # notify.tell: type a line into a session, injected
 TMUX_NAME = None
 ACCOUNTS = None           # () -> {uid: account name}, injected: whose a branch is
@@ -155,7 +156,7 @@ def _own(repo, write=False):
         if common.is_symlink() or not common.is_dir():
             return None
         common = common.resolve()
-        d = (STATE / "gitview"
+        d = ((paths.of("gitview") if paths else STATE / "gitview")
              / (hashlib.sha256(str(common).encode()).hexdigest()[:16] + (".w" if write else "")))
         for sub in ("refs/heads", "refs/tags", "objects/info", "hooks"):
             (d / sub).mkdir(parents=True, exist_ok=True)

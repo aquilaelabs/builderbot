@@ -40,6 +40,7 @@ import statefile  # noqa: E402
 
 # Injected by configure().
 STATE = None
+paths = None              # set by server.py: paths.py, where what grows is kept
 WORKSPACE = None
 push_record = None      # project -> {"repo", "host", "how"} or None
 token_helper = None     # project -> "store --file=..." or ""
@@ -287,7 +288,7 @@ def _atomic(path, text):
 
 
 def _base():
-    base = STATE / "gitrelay"
+    base = paths.of("gitrelay") if paths else STATE / "gitrelay"
     base.mkdir(parents=True, exist_ok=True)
     os.chmod(base, 0o700)
     (base / "no-hooks").mkdir(exist_ok=True)

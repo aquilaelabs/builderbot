@@ -14,7 +14,7 @@
 "use strict";
 
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.idle, state?.log_days]);
+  return JSON.stringify([state?.settings?.settings, state?.idle, state?.log_days, state?.paths]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one
@@ -23,7 +23,7 @@ function settingsLive(){
 const settingsDraft = {};
 const sdVal = (id, value) => settingsDraft[id] ?? value;
 function settingsKeep(el){
-  el.querySelectorAll("input[data-set], select[data-set], #idleMin, #logDays").forEach(i => {
+  el.querySelectorAll("input[data-set], select[data-set], #idleMin, #logDays, input[data-path]").forEach(i => {
     const on = () => { settingsDraft[i.id] = i.type === "checkbox" ? i.checked : i.value; };
     i.oninput = on; i.onchange = on;
   });
@@ -49,6 +49,7 @@ function renderSettingsInto(i){
     <div class="row stack2">
       <div class="grow">${idleSection()}</div>
     </div>
+    ${pathsSection()}
     ${settingsSections()}
     <div class="row stack2" data-group="Reset">
       <div class="grow">
@@ -68,6 +69,7 @@ function renderSettingsInto(i){
   d.setFoot(`a change applies at once or at the next start: each section says which.`);
   wireLogSection(d.el);
   wireIdleSection(d.el);
+  wirePathsSection(d.el);
   wireSettingsSections(d.el);
   settingsKeep(d.el);
   const nd = d.el.querySelector("#setNodes");
@@ -331,6 +333,73 @@ function wireIdleSection(el){
   };
   el.querySelector("#idleApply").onclick = apply;
   inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
+}
+
+// Where the controller keeps what grows (paths.py): each kind on its own line,
+// the path in use, and a move in flight or the last one's error. Applying a
+// path moves what is there and switches once it has all arrived. The JSON
+// records, the database, the signing keys and the git credentials stay in
+// /config whatever is set here, and the section says so. An administrator's:
+// the poll carries nothing for anybody else, and the section is absent.
+function pathsSection(){
+  const list = state?.paths?.paths;
+  if (!list) return "";
+  const line = p => {
+    const id = "path_" + p.name;
+    const note = p.pinned ? `<div class="dim">${esc(p.pinned)}</div>`
+      : p.moving?.error ? `<div class="sub bad">moving to ${esc(p.moving.to)} stopped: ${esc(p.moving.error)}</div>`
+      : p.moving ? `<div class="dim">moving to ${esc(p.moving.to)}; ${esc(p.path)} is in use until it is done</div>`
+      : !p.set ? "" : `<div class="dim">default: ${esc(p.default)}</div>`;
+    return `<div class="logdays setrow col">
+        ${lbl(id, p.name, p.what)}
+        <input id="${id}" type="text" data-path="${esc(p.name)}" spellcheck="false" autocomplete="off"
+               value="${esc(sdVal(id, p.path))}"${p.pinned || (p.moving && !p.moving.error) ? " disabled" : ""}>
+        ${note}
+      </div>`;
+  };
+  return `<div class="row stack2" data-group="Storage">
+      <div class="grow">
+        <h4>Storage on this controller</h4>
+        <div class="logset">
+          <div class="dim">Where what grows is kept. A new path must be empty or new; what is there is moved across.
+            The records, the database, the signing keys and the git credentials stay in the state directory.</div>
+          ${list.map(line).join("")}
+          <div class="actbar">
+            <span class="state">applies once what is there has moved</span>
+            <button type="button" id="pathsApply" title="move each changed one to its new path">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function wirePathsSection(el){
+  const btn = el.querySelector("#pathsApply");
+  if (!btn) return;
+  const apply = async () => {
+    const list = state?.paths?.paths || [];
+    const changed = [...el.querySelectorAll("input[data-path]")]
+      .filter(i => !i.disabled && i.value.trim() !== (list.find(p => p.name === i.dataset.path)?.path || ""));
+    if (!changed.length) return notify("nothing changed");
+    busy(btn, "Applying");
+    try{
+      for (const i of changed){
+        const r = await fetch("/api/paths", {method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name: i.dataset.path, path: i.value.trim()})});
+        const j = await r.json();
+        if (j.error) return notify(`${i.dataset.path}: ${j.error}`, true);
+        delete settingsDraft[i.id];
+        notify(j.moving ? `${i.dataset.path}: moving what is there; it switches once it has arrived`
+                        : `${i.dataset.path} is kept at ${i.value.trim() || "its default"}`);
+      }
+      refresh();
+    }catch(e){ notify("storage: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  };
+  btn.onclick = apply;
+  el.querySelectorAll("input[data-path]").forEach(i => {
+    i.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
+  });
 }
 
 // The global rules (R63) are not on this tab: every project's notebook lists

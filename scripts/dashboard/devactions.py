@@ -21,6 +21,7 @@ the compose runner to jobs.py through configure() here.
 """
 
 import contextlib
+import json
 import os
 import re
 import sys
@@ -168,7 +169,11 @@ def set_compose(project, instance, text):
 def _plan(project, instance, action, extra=None):
     pname = devapp._pname(project, instance)
     at = devapp.work_tree(project, instance)
-    pdir = (str(at) if at is not None
+    ship = shipped(project, instance)
+    # A shipped instance (R166) lives on a node that does not hold the
+    # project: it runs from its own compose directory there, and its image
+    # comes built from elsewhere, so nothing here builds or pulls on it.
+    pdir = ("{cdir}" if ship else str(at) if at is not None
             else str(devapp.WORKSPACE / project) if devapp._read_rec(project, instance).get("source") != "file"
             else (devapp.dev_data_dir(project, instance, make=False)
                   or str(Path(devapp.appdata_root()) / pname)))
@@ -192,7 +197,8 @@ def _plan(project, instance, action, extra=None):
     # --remove-orphans on both (B592): a service the compose file no longer
     # names, renamed or dropped since it was started, was left running by
     # down and by remove, holding its ports, and the next up failed on them.
-    up = {"name": "starting", "argv": stamped + base + ["up", "-d", "--remove-orphans"], "timeout": 1800, "env": env}
+    up = {"name": "starting", "argv": stamped + base + ["up", "-d", "--remove-orphans"]
+          + (["--no-build", "--pull", "never"] if ship else []), "timeout": 1800, "env": env}
     down = {"name": "stopping", "argv": base + ["down", "--remove-orphans"], "timeout": 180, "env": ienv}
     build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
@@ -233,6 +239,192 @@ def _plan(project, instance, action, extra=None):
         test = [{"name": "testing", "argv": argv, "timeout": 3600, "env": ienv}]
     return {"up": [up], "down": [down], "remove": [down],
             "rebuild": rebuild, "test": test}.get(action) or []
+
+
+# ---- an image shipped to a node that does not hold the project (R166) ------------
+#
+# A project's dev instance may live on a node the project is not bound to (a
+# web-facing box), and the project's source never goes there: the image is
+# built on a node that holds the project, saved, sent up to the controller,
+# and fetched, loaded and started on the instance's node. Two jobs, one per
+# node: the build node's (ship: build) and, queued when that one succeeds,
+# the instance node's (ship: run). The image file lives in the controller's
+# images store (paths.py) from the first job's upload to the second job's
+# end, and on each node only inside that job's own compose directory.
+
+# Run on the build node by python3 (the agent's own interpreter): the images
+# the compose file BUILDS, by their names, saved to one file. A service that
+# only pulls an image is left to be pulled where it runs.
+SAVE_PY = r"""
+import json, subprocess, sys
+argv, out, pname = json.loads(sys.argv[1]), sys.argv[2], sys.argv[3]
+cfg = json.loads(subprocess.run(argv + ["config", "--format", "json"], check=True,
+                                capture_output=True, text=True).stdout)
+names = sorted({(sv.get("image") or f"{pname}-{name}")
+                for name, sv in (cfg.get("services") or {}).items() if sv.get("build")})
+if not names:
+    sys.exit("nothing in the compose file is built here, so there is no image to ship")
+print("saving " + ", ".join(names), flush=True)
+subprocess.run(["docker", "save", "-o", out, *names], check=True)
+"""
+
+
+def shipped(project, instance):
+    """Whether this instance's image is built elsewhere and shipped (R166)."""
+    return bool(devapp._read_rec(project, instance).get("ship"))
+
+
+def ship_binds(project, cfg):
+    """The binds of a shipped instance that reach into the project's tree,
+    which its node does not have and must not: refused before a build."""
+    if cfg is None:
+        return []
+    tree = str(devapp.WORKSPACE / project)
+    out = []
+    for name, sv in sorted(devapp._services(cfg).items()):
+        for src in devapp._binds(sv, project):
+            if src == tree or src.startswith(tree + "/"):
+                out.append(f"{name} mounts {src}")
+    return out
+
+
+def _image_file(project, instance):
+    import paths
+    d = paths.of("images")
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{devapp._pname(project, instance)}.tar"
+
+
+def _ship_build_spec(project, instance, job_id):
+    """The build node's half: build from its own copy, save what was built,
+    send it up. Never starts anything there."""
+    spec = _plan_spec(project, instance, "rebuild")
+    pname = devapp._pname(project, instance)
+    pdir = str(devapp.WORKSPACE / project)
+    base = [devapp.DOCKER, "compose", "--project-name", pname,
+            "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
+    if "instance.env" in spec["files"]:
+        base += ["--env-file", "{cdir}/instance.env"]
+    env = ({"BB_INSTANCE_ENV": "{cdir}/instance.env"} if "instance.env" in spec["files"] else {}) \
+        | devapp._dev_data_env(project, instance) | devapp._build_env(project, instance)
+    build = {"name": "building", "argv": base + ["build"], "timeout": 3600, "env": env}
+    save = {"name": "saving", "argv": ["python3", "-c", SAVE_PY, json.dumps(base), "{cdir}/image.tar", pname],
+            "timeout": 1800, "env": env}
+    ship = {"name": "shipping", "upload": "{cdir}/image.tar", "to": f"devimage-put?job={job_id}", "timeout": 3600}
+    return spec | {"dirs": [], "gate": False, "ship": "build", "plan": [build, save, ship]}
+
+
+def _ship_run_spec(project, instance, job_id):
+    """The instance node's half: fetch the image, load it, start the
+    instance from it."""
+    spec = _plan_spec(project, instance, "rebuild")
+    plan = [p for p in _plan(project, instance, "rebuild") if p["name"] != "building"]
+    fetch = {"name": "fetching", "fetch": f"devimage?job={job_id}", "dest": "{cdir}/image.tar", "timeout": 3600}
+    load = {"name": "loading", "argv": [devapp.DOCKER, "load", "-i", "{cdir}/image.tar"], "timeout": 1800}
+    drop = {"name": "loading", "argv": ["rm", "-f", "{cdir}/image.tar"], "timeout": 60}
+    return spec | {"ship": "run", "plan": [fetch, load, drop, *plan]}
+
+
+def _ship_submit(project, instance, target):
+    """A shipped instance's rebuild: the build node's job now, the instance
+    node's when it succeeds (ship_next, from compose_done)."""
+    own = devapp.nodes_of(project) or []
+    if not own:
+        return {"error": f"{project} has no node of its own to build its image on: set one in its settings"}
+    builder, _ = devapp.queue.first_up(own) if hasattr(devapp.queue, "first_up") else (own[0], "")
+    builder = builder or own[0]
+    held = {"project": project, "instance": instance, "action": "rebuild", "hold": True,
+            "ship": "build", "target": target}
+    r = devapp.queue.job_add("operator", {"node": builder}, "compose", held, project)
+    if r.get("error"):
+        return r
+    devapp._bump()
+
+    def prepare():
+        try:
+            with devapp.on_node(builder):
+                cfg = devapp._config(project, instance)
+                bad = ship_binds(project, cfg)
+                if bad:
+                    devapp.queue.job_refuse(r["job"], (
+                        f"{devapp.node_name(target)} does not hold {project}, so a bind into its tree has "
+                        "nothing behind it there: " + "; ".join(bad)
+                        + ". Use a named volume, or the instance's data directory"))
+                    return
+                if devapp.queue.job_release(r["job"], _ship_build_spec(project, instance, r["job"])):
+                    with devapp._lock:
+                        d = devapp._load()
+                        devapp._rec(d, project, instance)["building_since"] = int(time.time())
+                        devapp.write_json(devapp.FILE, d)
+        except Exception as e:                                       # noqa: BLE001
+            print(f"[devapp] preparing the shipped build of {project}/{instance}: {type(e).__name__}: {e}",
+                  flush=True)
+            devapp.queue.job_refuse(r["job"], f"could not prepare the build: {e}")
+        finally:
+            devapp._bump()
+
+    threading.Thread(target=prepare, name=f"prepare-{r['job']}", daemon=True).start()
+    return {"ok": True, "started": True, "job": r["job"], "built_on": devapp.node_name(builder)}
+
+
+def ship_next(job, state):
+    """After the build node's half: on success, the instance node's half,
+    queued with its own job id in its plan; on anything else, the image
+    file goes and the row says why (compose_done returns the reason)."""
+    sp = job.get("spec") or {}
+    project, instance = sp.get("project", ""), sp.get("instance") or devapp.MAIN
+    if state != "succeeded" or not _image_file(project, instance).is_file():
+        _image_file(project, instance).unlink(missing_ok=True)
+        _clear_marker(project, instance)
+        return
+    target = sp.get("target") or devapp._instance_node(project, instance)
+    held = {"project": project, "instance": instance, "action": "rebuild", "hold": True, "ship": "run"}
+    r = devapp.queue.job_add("operator", {"node": target}, "compose", held, project)
+    if r.get("error"):
+        _image_file(project, instance).unlink(missing_ok=True)
+        _clear_marker(project, instance)
+        return
+    with devapp.on_node(target):
+        devapp.queue.job_release(r["job"], _ship_run_spec(project, instance, r["job"]))
+
+
+def image_put(nid, q, stream, length):
+    """The build node's upload (agent verb devimage-put): only for a job of
+    that node's that is shipping, into the images store, whole or not at all."""
+    j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
+    sp = (j or {}).get("spec") or {}
+    if not j or j.get("node") != nid or j.get("state") != "running" or sp.get("ship") != "build":
+        return {"error": "no image is being shipped by that job from this node"}, 403
+    if length <= 0 or length > 64 * 1024 ** 3:
+        return {"error": "an image is between 1 byte and 64 GB"}, 413
+    dest = _image_file(sp.get("project", ""), sp.get("instance") or devapp.MAIN)
+    tmp = dest.with_name(f".{dest.name}.{os.getpid()}")
+    got = 0
+    with open(tmp, "wb") as f:
+        while got < length:
+            chunk = stream.read(min(1 << 20, length - got))
+            if not chunk:
+                break
+            f.write(chunk)
+            got += len(chunk)
+    if got != length:
+        tmp.unlink(missing_ok=True)
+        return {"error": "the image ended early"}, 400
+    os.replace(tmp, dest)
+    return {"ok": True, "bytes": got}, 200
+
+
+def image_path(nid, q):
+    """The image for the instance node's fetch (agent verb devimage): only
+    for a job of that node's that is loading one."""
+    j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
+    sp = (j or {}).get("spec") or {}
+    if not j or j.get("node") != nid or j.get("state") != "running" or sp.get("ship") != "run":
+        return None, ({"error": "no image is being loaded by that job on this node"}, 403)
+    p = _image_file(sp.get("project", ""), sp.get("instance") or devapp.MAIN)
+    if not p.is_file():
+        return None, ({"error": "the image is not here: build it again"}, 404)
+    return p, None
 
 
 def _plan_spec(project, instance, action, extra=None):
@@ -278,6 +470,16 @@ def _compose_done(job, state):
     sp = (job or {}).get("spec") or {}
     project, instance = sp.get("project", ""), sp.get("instance") or devapp.MAIN
     action = sp.get("action")
+    if sp.get("ship") == "build":
+        # The build node's half (R166): nothing is recorded against it; the
+        # instance node's half follows, or the row says why it did not, in
+        # the words below.
+        ship_next(job, state)
+        if state == "succeeded":
+            devapp._bump()
+            return ""
+    if sp.get("ship") == "run":
+        _image_file(project, instance).unlink(missing_ok=True)
     # Only for a plan the AGENT ran. The controller's own runner does this
     # bookkeeping inline as it goes, and running it again from here undid
     # what it had decided: the env gate sets await_env after stopping, and
@@ -291,7 +493,10 @@ def _compose_done(job, state):
     # rebuild records the build as soon as the build step passed, even when
     # the down or up after it did not: what was built IS built, and a row
     # that forgets says the code never compiled.
-    if action == "rebuild" and steps >= 1:
+    # A shipped instance's build is recorded on its own node once the image
+    # is loaded there (fetch, load, remove: three steps), never on the node
+    # that built it (R166).
+    if action == "rebuild" and sp.get("ship") != "build" and steps >= (3 if sp.get("ship") == "run" else 1):
         _record_build(project, instance)
     if state != "succeeded":
         _clear_marker(project, instance)
@@ -310,7 +515,10 @@ def _compose_done(job, state):
         # The output's last words ride the reason: the row shows the last
         # line of it, and the whole log is the Jobs tab's.
         tail = (devapp.queue.job_tail(job["id"], 500) if devapp.queue is not None else "").strip()
-        head = {"building": "build failed", "stopping": "stopping it failed",
+        head = {"building": "build failed", "saving": "saving the image failed",
+                "shipping": "sending the image to the controller failed",
+                "fetching": "fetching the image from the controller failed",
+                "loading": "loading the image failed", "stopping": "stopping it failed",
                 "starting": "up failed", "testing": "the tests failed",
                 "preparing": "a bind directory could not be made on the node"}.get(step, "")
         # The head stays whole and only the tail is cut: sliced from the end
@@ -388,6 +596,8 @@ def _submit(project, instance, action, extra=None, check=None):
     if _active_job(project, instance):
         return dict(BUSY)
     nid = devapp._instance_node(project, instance)
+    if action == "rebuild" and shipped(project, instance):
+        return _ship_submit(project, instance, nid)
     # An instance that follows its project (no node of its own) runs where
     # the project's primary is, or on the first of the set that is up when
     # the primary is not (R82 step 6); a bound instance stays where it is.
@@ -989,7 +1199,7 @@ def _job_rebuild(project, instance, run):
         devapp._bump()
 
 
-def make_instance(project, instance, node="", owner=None, ref=""):
+def make_instance(project, instance, node="", owner=None, ref="", ship=False):
     """A new container of a project, pinned to the branch it is to build
     from when one is named: `new` from the dialog or a session, and Allow on
     a session's asked one, which is the same making. Nothing is built.
@@ -1000,7 +1210,7 @@ def make_instance(project, instance, node="", owner=None, ref=""):
     container already exists (B259); nothing was built, so there is nothing
     else to undo.
     """
-    r = devapp.create_instance(project, instance or devapp.MAIN, node, owner)
+    r = devapp.create_instance(project, instance or devapp.MAIN, node, owner, ship=ship)
     if not r.get("error") and ref:
         p = devapp.set_ref(project, r["instance"], ref)
         if p.get("error"):
@@ -1042,7 +1252,8 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # somewhere an arbitrary one should reach.
         # The project it belongs to when the request says, "" being none.
         r = make_instance(project, instance, f(req, "node"),
-                          f(req, "owner") if "owner" in req else None, f(req, "ref"))
+                          f(req, "owner") if "owner" in req else None, f(req, "ref"),
+                          ship=req.get("ship") is True)
         if not r.get("error") and isinstance(req.get("text"), str) \
                 and req["text"].strip():
             # Written before the build that follows, so the first one has

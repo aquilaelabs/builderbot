@@ -44,6 +44,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 WORKSPACE = None
 SNAPS = None
+paths = None              # set by server.py: paths.py, where what grows is kept
 KEEP_PER_PROJECT = 5
 ARTIFACT_MAX = 1024 * 1024 * 1024        # a gigabyte: an APK is 30MB, an installer 300
 _lock = threading.Lock()
@@ -53,6 +54,13 @@ _bundle = {}
 def configure(*, workspace, state):
     globals()["WORKSPACE"] = Path(workspace)
     globals()["SNAPS"] = Path(state) / "snapshots"
+
+
+def _snaps():
+    """Where jobs' trees are kept: the Settings tab's choice when the server
+    has handed this module paths.py, read at use so a move applies to the
+    next one; the state directory's own otherwise (a module test)."""
+    return paths.of("job-snapshots") if paths else SNAPS
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +97,9 @@ def snapshot(project):
     if not root.is_dir():
         return {"error": f"no project directory for {project}"}
     files = _files(root)
-    SNAPS.mkdir(parents=True, exist_ok=True)
-    tmp = SNAPS / f".{project}.{os.getpid()}.{threading.get_ident()}.tar"
+    snaps = _snaps()
+    snaps.mkdir(parents=True, exist_ok=True)
+    tmp = snaps / f".{project}.{os.getpid()}.{threading.get_ident()}.tar"
     n = size = 0
     with open(tmp, "wb") as fh, tarfile.open(fileobj=fh, mode="w", format=tarfile.PAX_FORMAT) as tar:
         for rel in files:
@@ -133,12 +142,12 @@ def snapshot(project):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     hexd = h.hexdigest()
-    final = SNAPS / f"{hexd}.tar"
+    final = snaps / f"{hexd}.tar"
     with _lock:
         os.replace(tmp, final)
         meta = {"project": project, "at": int(time.time()), "files": n,
                 "bytes": size, "tar": final.stat().st_size}
-        (SNAPS / f"{hexd}.json").write_text(json.dumps(meta))
+        (snaps / f"{hexd}.json").write_text(json.dumps(meta))
         _prune(project)
     return {"digest": "sha256:" + hexd} | meta
 
@@ -148,7 +157,7 @@ def _prune(project):
     one gets 'no such snapshot' from the node and fails plainly, which is
     the honest answer to a tree that has moved on five times since."""
     have = []
-    for mp in SNAPS.glob("*.json"):
+    for mp in _snaps().glob("*.json"):
         try:
             m = json.loads(mp.read_text())
         except (OSError, ValueError):
@@ -168,9 +177,9 @@ def path_for(digest):
     """The tar for a digest, or None. The digest is the file name, so a
     node asking for one it made up gets nothing rather than a path."""
     m = re.fullmatch(r"(?:sha256:)?([0-9a-f]{64})", str(digest or ""))
-    if not m or SNAPS is None:
+    if not m or _snaps() is None:
         return None
-    p = SNAPS / f"{m.group(1)}.tar"
+    p = _snaps() / f"{m.group(1)}.tar"
     return p if p.is_file() else None
 
 

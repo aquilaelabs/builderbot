@@ -99,6 +99,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node on the projects share moves to a synced copy with one press, Move to a synced copy in its Sessions section: its sessions end, the share is unmounted from /workspace and each project is copied down (045a959)
 - bb transcripts fetch ID copies one of your conversations into this machine's folder for it (b996a95)
 - A node can stop syncing its projects: Stop syncing holds its sessions while what is left there goes up, then Clean up /workspace removes the copies and says what it freed; Move to a synced copy brings it back (4263d0d)
+- Controller settings has a Storage section: where project snapshots, job snapshots, the git relay, the Git view's working area and the logs are kept can be changed, and what is there is moved across (b639f1a)
+- Send to Docker can put a project's container on any node, one the project is not on included: its image is built on the project's own node and shipped there, so the codebase never reaches that machine, and the project's sessions can still rebuild it (b639f1a)
+- Each project's tree is snapshotted once a day on the controller and kept for the days its settings say (14 unless changed); the whole tree or one file can be restored from its settings, and a restore can itself be undone (b639f1a)
 
 ### Changed
 

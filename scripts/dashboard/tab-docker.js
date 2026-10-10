@@ -204,11 +204,25 @@ function dnNodeSay(){
     $("dnGo").disabled = true;
     return;
   }
+  // Every node is offered (R166): the project's own build and run it there;
+  // any other gets the image built on the project's node and shipped, so the
+  // codebase never reaches it. Said on the option and under the field.
   fillNodeSelect($("dnNode"), field, set[0],
-                 () => { if (dnFor === project && !$("dnmodal").hidden) dnNodeSay(); }, set);
-  say.textContent = set.length > 1
-    ? `One of ${whose}'s nodes, its primary unless picked; an instance stays where it was made.`
-    : `${whose}'s node, ${esc(row?.node_name || "")}: where its sessions can reach it.`;
+                 () => { if (dnFor === project && !$("dnmodal").hidden) dnNodeSay(); });
+  field.hidden = false;
+  [...$("dnNode").options].forEach(o => {
+    if (!set.includes(o.value)) o.textContent += " · not its node: image shipped";
+  });
+  const says = () => {
+    const ship = !set.includes($("dnNode").value);
+    say.textContent = ship
+      ? `Not one of ${whose}'s nodes: the image is built on ${whose}'s node and shipped there, so the codebase never goes to it; binds into the project's tree are refused, and ${whose}'s sessions can rebuild it.`
+      : set.length > 1
+        ? `One of ${whose}'s nodes, its primary unless picked; an instance stays where it was made.`
+        : `${whose}'s node, ${esc(row?.node_name || "")}: where its sessions can reach it.`;
+  };
+  $("dnNode").onchange = says;
+  says();
   say.classList.remove("bad");
   $("dnGo").disabled = false;
 }
@@ -323,6 +337,8 @@ async function dnSubmit(){
       body: JSON.stringify({project, action:"new", instance:name,
                             owner: $("dnUnder").value,
                             node: $("dnNodeField").hidden ? "" : $("dnNode").value,
+                            ship: !$("dnNodeField").hidden && !!$("dnNode").value
+                              && !((state?.projects?.find(p => p.name === ($("dnUnder").value || project))?.prefs?.nodes) || []).includes($("dnNode").value),
                             ref: $("dnRefField").hidden ? "" : $("dnRef").value,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
     const j = await r.json();

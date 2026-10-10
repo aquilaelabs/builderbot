@@ -2378,6 +2378,11 @@ gitview.configure(workspace=WORKSPACE,
                   audit=lambda *row: None if NODES_OK else db.audit(*row),
                   host_of=forges.host_label, ci_of=lambda n: ciwatch.read(n),
                   ci_fix=lambda n, where: ciwatch.fix(n, where))
+# Where what grows is kept, as the Settings tab sets it (paths.py): read at
+# use by every module below that keeps one of them, so a change applies to
+# the next write without a restart.
+import paths                                                     # noqa: E402
+paths.configure(state=STATE, workspace=WORKSPACE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -2883,6 +2888,8 @@ gitrelay.configure(state=STATE, workspace=WORKSPACE,
                    push_record=lambda p: projects.load_push().get(p),
                    token_helper=projects.token_helper, parse_url=forges.parse,
                    host_of=forges.host_of, git_env=projects._git_env)
+# The modules that keep something that grows read where from paths.py.
+workspace.paths = gitview.paths = logs.paths = gitrelay.paths = paths
 
 # ---- the bb relay -----------------------------------------------------------
 # A bb verb from a session on a node, run here (roadmap #24): which verbs
@@ -3095,6 +3102,12 @@ wssync.configure(workspace=WORKSPACE, nodes_module=nodes, bound_nodes=_sync_boun
                  changed=files._poke, audit_fn=db.audit)
 wssync.configure_projects(lambda: list(prefs.all_projects()))
 wssync.configure_reads(lambda p: prefs.get(p).get("reads") or [])
+# Each project's daily snapshots (R165): what a node gone wrong through its
+# synced copy is undone from, kept for the days its settings say.
+import snapshots                                                 # noqa: E402
+snapshots.configure(workspace=WORKSPACE, days=lambda p: prefs.get(p)["snapshot_days"],
+                    names=lambda: [p for p in prefs.all_projects() if (WORKSPACE / p).is_dir()],
+                    audit_fn=lambda *row: None if NODES_OK else db.audit(*row))
 files.on_change = wssync.changed
 # A synced node writes the transcripts of the projects it holds and nothing
 # else: bound to it, never one it only reads (B613).
@@ -3387,6 +3400,8 @@ def snapshot(who):
         "max_tabs": layout.max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
         "settings": settings.payload(),
+        # ...and where the controller keeps what grows, an administrator's.
+        "paths": {} if users.may(who, "admin") else paths.view(),
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
         # removed cannot leave a button that posts a name the server rejects.
@@ -3495,6 +3510,7 @@ GET_ROUTES = (
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/transcripts", "_get_transcripts"),
+    ("prefix", "/api/snapshots", "_get_snapshots"),
     ("prefix", "/api/transcript", "_get_transcript"),
     ("prefix", "/api/git", "_get_git"),
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
@@ -3589,6 +3605,8 @@ POST_ROUTES = (
     ("prefix", "/api/emulator", "_emulator"),
     ("prefix", "/api/logs", "_logs"),
     ("prefix", "/api/idle", "_idle"),
+    ("prefix", "/api/paths", "_paths"),
+    ("prefix", "/api/snapshots", "_snapshots"),
     ("prefix", "/api/settings", "_settings_post"),
     ("prefix", "/api/rules", "_rules"),
     ("prefix", "/api/global-rules", "_global_rules"),
@@ -5488,7 +5506,7 @@ class Handler(BaseHTTPRequestHandler):
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb in ("artifact", "sync-put", "claude-put"):
+        if verb in ("artifact", "sync-put", "claude-put", "devimage-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
@@ -5497,10 +5515,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(*channel.sync_put(auth, q, self.rfile, length))
             if verb == "claude-put":
                 return self._json(*channel.claude_put(auth, q, self.rfile, length))
+            if verb == "devimage-put":
+                return self._json(*channel.devimage_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
-        if verb in ("sync-file", "sync-tar", "claude-file"):
+        if verb in ("sync-file", "sync-tar", "claude-file", "devimage"):
             got, status = {"sync-file": channel.sync_file, "sync-tar": channel.sync_tar,
-                           "claude-file": channel.claude_file}[verb](auth, q)
+                           "claude-file": channel.claude_file, "devimage": channel.devimage_file}[verb](auth, q)
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
@@ -5757,6 +5777,20 @@ class Handler(BaseHTTPRequestHandler):
         r = idle.set_minutes(req.get("minutes"))
         return self._result(r)
 
+    def _paths(self, req):
+        """Where the controller keeps one kind of what grows (paths.py), and
+        what is there moved across. An administrator's, never a session's:
+        it is this machine's disks."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "the controller's storage is the operator's"}, 403)
+        if self._refused("admin"):
+            return
+        name = field(req, "name")
+        r = paths.set_path(name, field(req, "path"))
+        if r.get("ok"):
+            db.audit(self._principal(), "paths", name, {"path": field(req, "path"), "moving": r.get("moving")})
+        return self._result(r)
+
     def _devapp(self, req):
         """The dev-instance controls: the Docker tab's buttons, and `bb devapp`
         from a session. Who may press which is decided below, by the verb, by
@@ -5846,10 +5880,20 @@ class Handler(BaseHTTPRequestHandler):
         # row that happens to carry this project's name, and a rebuild would
         # bounce a service still being used. The operator keeps both, through
         # the Docker manager, which is where an instance is removed.
+        # The exception is one SENT there on purpose (R166): its image is
+        # built on the project's own node and shipped, and the project's
+        # sessions are the ones meant to rebuild it.
+        if act == "new" and req.get("ship") is True:
+            if session:
+                return self._json({"error": "sending a project's container to a node it is not on is a "
+                                            "person's: it puts the project's image on another machine"}, 403)
+            if self._refused("node", name):
+                return None
         if act not in ("starter", "state") and session:
             on = devapp.instance_node(name, field(req, "instance"))
             mine = devapp.project_daemon(sess)
-            if on and mine and on != mine:
+            shipped_there = devapp._read_rec(name, devapp.instance_key(name, field(req, "instance") or devapp.MAIN)).get("ship")
+            if on and mine and on != mine and not shipped_there:
                 return self._json({"error": "this dev instance is on another node: it stayed "
                                             "where it was running when this project moved, "
                                             "and a session works on its own node's. The "
@@ -6441,6 +6485,41 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*profiletab.view(me))
         payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
+
+    def _get_snapshots(self):
+        """GET /api/snapshots?project=NAME: the days kept of the project's
+        tree (snapshots.py), newest first, and how many it keeps. An
+        administrator's, like a restore."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a project's snapshots are the operator's"}, 403)
+        if self._refused("admin"):
+            return None
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return None
+        return self._json({"project": name, "keep": prefs.get(name)["snapshot_days"],
+                           "days": snapshots.days(name)})
+
+    def _snapshots(self, req):
+        """POST /api/snapshots: take one now, or restore the whole tree as of a
+        day or one file of it (snapshots.restore, which snapshots the tree
+        first so it can be undone). Never a session's: a session is what a
+        restore may be undoing."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a project's snapshots are the operator's"}, 403)
+        if self._refused("admin"):
+            return None
+        name = field(req, "project")
+        if self._not_project(name):
+            return None
+        act = field(req, "action")
+        if act == "take":
+            return self._result(snapshots.take(name))
+        if act == "restore":
+            return self._result(snapshots.restore(name, field(req, "day"), field(req, "path"),
+                                                  who=self._principal()))
+        return self._json({"error": "take or restore"}, 400)
 
     def _get_transcripts(self):
         """GET /api/transcripts?project=NAME: the signed-in account's own

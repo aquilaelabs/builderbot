@@ -4258,8 +4258,22 @@ body.booting .pane>.loading{margin:auto}
            session is still reading one (R96). -->
       <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-tip="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
         <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
+      <!-- The project's daily snapshots (R165): what a node gone wrong, or
+           compromised, through its synced copy is undone from. -->
+      <div class="logdays setrow"><label class="ndcap" for="rnSnapDays">Snapshots kept for<span class="help" data-tip="the project's tree is snapshotted once a day on the controller, where no node reaches, and each day is kept this long; 0 takes none. Restored from Snapshots below" tabindex="0">?</span></label>
+        <input id="rnSnapDays" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="days a snapshot is kept"> <span class="dim">days</span></div>
       <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-tip="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
         <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:snapshots"><summary><span class="t">Snapshots</span></summary><div class="body">
+    <!-- The days kept of the project's tree (R165), an administrator's:
+         restoring the whole tree or one file acts on the press, after a
+         confirmation, and snapshots the tree first so it can be undone. -->
+    <div class="field" id="rnSnapField" hidden>
+      <label id="rnSnapLabel">Days kept<span class="help" data-tip="each a copy of every file the project's nodes can change, as it was that day; a restore writes it back on the controller and every node follows" tabindex="0">?</span></label>
+      <div id="rnSnapRows" role="group" aria-labelledby="rnSnapLabel"></div>
+      <div class="hint" id="rnSnapHint"></div>
     </div>
     </div></details>
     <details class="sect rngroup" data-sect="rn:signing"><summary><span class="t">Android signing</span></summary><div class="body">

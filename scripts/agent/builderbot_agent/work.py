@@ -103,6 +103,21 @@ class WorkMixin:
                 job.say("stopped\n")
                 job.outputs.append({"kind": "compose", "steps_done": done})
                 return "canceled", 130
+            # An image shipped between two nodes (R166): the build node
+            # uploads what it saved to the controller, and the node the
+            # instance lives on fetches it, so the project's source never
+            # reaches a node that does not hold the project. The file is the
+            # job's alone: named under its own compose directory, and removed
+            # here once it has gone up.
+            if stp.get("upload") or stp.get("fetch"):
+                job.step(str(stp.get("name") or "shipping"))
+                st_, code = self.ship_step(job, stp, cdir)
+                if st_ != "succeeded":
+                    job.outputs.append({"kind": "compose", "steps_done": done,
+                                        "failed_at": stp.get("name")})
+                    return st_, code
+                done += 1
+                continue
             argv = [str(a).replace("{cdir}", cdir) for a in (stp.get("argv") or [])]
             if not argv:
                 continue
@@ -128,6 +143,46 @@ class WorkMixin:
                 return st_, code
             done += 1
         job.outputs.append({"kind": "compose", "steps_done": done})
+        return "succeeded", 0
+
+    def ship_step(self, job, stp, cdir):
+        """One half of shipping an image (R166): `upload` sends a file under
+        this job's compose directory to the controller and removes it here;
+        `fetch` brings one down into it. The path never leaves the compose
+        directory, and the controller's verb is the only one either names."""
+        path = str(stp.get("upload") or stp.get("dest") or "").replace("{cdir}", cdir)
+        real = os.path.realpath(path)
+        if not real.startswith(os.path.realpath(cdir) + "/"):
+            job.say(f"refused: {path} is not in this job's directory\n")
+            return "failed", 78
+        verb = str(stp.get("to") or stp.get("fetch") or "")
+        if not verb.startswith("devimage"):
+            job.say(f"refused: not the controller's image verb: {verb[:40]}\n")
+            return "failed", 78
+        if stp.get("upload"):
+            if not os.path.isfile(real):
+                job.say(f"nothing to send: {path} is not there\n")
+                return "failed", 66
+            size = os.path.getsize(real)
+            job.say(f"sending the image to the controller ({size >> 20} MB)\n")
+            code, r = self.ctl.upload(verb, real, timeout=int(stp.get("timeout") or 3600))
+            with contextlib.suppress(OSError):
+                os.remove(real)
+            if code != 200:
+                job.say(f"the controller answered {code}: {(r or {}).get('error') or ''}\n")
+                return "failed", 75
+            job.say("sent, and removed here\n")
+            return "succeeded", 0
+        job.say("fetching the image from the controller\n")
+        code, _ = self.ctl.fetch(verb, real, timeout=int(stp.get("timeout") or 3600))
+        if code != 200:
+            job.say(f"the controller answered {code}\n")
+            return "failed", 75
+        who = self.drop_privileges({})
+        if who:
+            with contextlib.suppress(OSError):
+                os.chown(real, who["user"], who["group"])
+        job.say(f"fetched ({os.path.getsize(real) >> 20} MB)\n")
         return "succeeded", 0
 
     def cache_clear(self, job, spec):
