@@ -705,6 +705,23 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   background:color-mix(in srgb, var(--bad) 13%, var(--panel))}
 .bnote.ask.bad .btag{background:var(--bad);color:var(--bg)}
 .bnote.ask.bad .bwhy{color:var(--bad)}
+/* The drawer in three groups, each headed by what it is and how many
+   (the operator, 10 Oct: one amber wall). A head is a label, not a row. */
+.bgroup{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;
+  font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);
+  border-bottom:1px solid var(--line);background:var(--sunk)}
+.bgroup button{margin-left:auto}
+/* What needs doing but is not a question: the bar down its side says how
+   much it matters, the words stay in ink, and the long part is folded. */
+.bnote.att{border-left:3px solid var(--warn)}
+.bnote.att.bad{border-left-color:var(--bad)}
+.bnote .bt{font-weight:600}
+.bnote .bsum{color:var(--dim);margin-top:2px;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bnote .bwarn{color:var(--warn);font:var(--f-note);margin-top:3px}
+.bnote.att .acts a{padding:3px 10px;border-radius:var(--r-control);border:1px solid var(--line);
+  text-decoration:none}
+.bfootbar > span{margin-right:auto;color:var(--dim);font:var(--f-note);align-self:center}
 .bempty{padding:14px 10px;color:var(--dim);font:var(--f-note);text-align:center}
 .bfootbar{display:flex;justify-content:flex-end;padding:6px 8px;
   border-top:1px solid var(--line)}

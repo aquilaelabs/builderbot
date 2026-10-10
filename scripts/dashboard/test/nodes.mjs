@@ -1170,8 +1170,11 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
                                null, { timeout: 10000 });
     ok(page.dialogs.length === 1 && /Remove gamma from[\s\S]*on no node/.test(page.dialogs[0]),
        `Remove asks first, naming what it leaves (${page.dialogs[0]?.slice(0, 60)})`);
-    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    // The section is drawn after the poll that brings the change, so its
+    // going is waited for rather than read the moment the state moves.
+    await page.waitForSelector(projBtn, { state: 'detached', timeout: 10000 }).catch(() => {});
     ok(!(await page.$(projBtn)), '...and gamma is gone from the node\'s Projects section');
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     page.dialogs.length = 0;
     await page.click(`${ROW} [data-nd="host-only"]`);
@@ -1776,11 +1779,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.waitForFunction(id => (state?.attention || []).some(a => a.id === id && !a.window),
                              minted.id, { timeout: 30000 });
   await page.click('#bBell');
-  await page.waitForSelector('#bellPanel .bnote.ask', { timeout: 10000 });
+  await page.waitForSelector('#bellPanel .bnote.att', { timeout: 10000 });
   const bellText = await page.$eval('#bellPanel', e => e.textContent.replace(/\s+/g, ' '));
-  ok(/agent update available/i.test(bellText) && /runs agent 3 and this controller ships/.test(bellText)
+  ok(/Needs attention/i.test(bellText) && /agent update on/i.test(bellText) && /runs agent 3 and this controller ships/.test(bellText)
      && await page.$('#bellPanel [data-bnode]') !== null,
-     `the bell pins "agent update available" for the node, with a way to the Nodes tab (${bellText.slice(0, 160)})`);
+     `the bell lists "Agent update on" the node under Needs attention, with a way to the Nodes tab (${bellText.slice(0, 160)})`);
   ok(await page.$eval('#bBell .dot', d => d.classList.contains('warn')),
      '...in amber: an update waiting is not work stopped');
   // Its link goes to THIS node, whichever the tab was on, with Update agent
@@ -1886,10 +1889,12 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
                                      && a.projects.includes('alpha')),
                              minted.id, { timeout: 30000 });
   await page.click('#bBell');
-  await page.waitForSelector('#bellPanel .bnote.ask.bad', { timeout: 10000 });
-  ok(await page.$eval('#bellPanel .bnote.ask.bad', e => /agent out of window/i.test(e.textContent)
-                                                        && /alpha cannot build, test or use the emulator/.test(e.textContent)),
-     'an agent from another window is a red pinned alert naming the projects it stops');
+  await page.waitForSelector('#bellPanel .bnote.att.bad', { timeout: 10000 });
+  ok(await page.$eval('#bellPanel .bnote.att.bad', e => /agent is out of window/i.test(e.textContent)
+                                                        && /projects? cannot build, test or use the emulator/.test(e.textContent)
+                                                        && /alpha/.test(e.querySelector('.bdetail')?.textContent || '')
+                                                        && !e.querySelector('[data-bdismiss]')),
+     'an agent from another window is a red alert counting the projects it stops, naming them under its fold, and it cannot be dismissed');
   ok(await page.$eval('#bBell .dot', d => d.classList.contains('bad')), '...and the dot is red');
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
@@ -2867,8 +2872,22 @@ ok(page.errors.length === 0,
   await page.click('#bBell');
   await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 10000 });
   const tcBell = await page.$eval(`#bellPanel [data-btc="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
-  ok(/toolchain updates available/.test(tcBell) && /on clbox: Claude Code 1\.0\.0 → 1\.2\.0, Go 1\.27\.0 → 1\.28\.0/.test(tcBell),
-     `the bell says it in words, every toolchain behind on the node in one row (${tcBell.slice(0, 160)})`);
+  ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
+     && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),
+     `the bell says it in a line, every toolchain behind on the node in one row, the versions under its fold (${tcBell.slice(0, 160)})`);
+  // Dismiss puts that version away for this account (bellseen.py, R144),
+  // with the drawer left open; Show again brings it back.
+  await page.click(`#bellPanel [data-bdismiss]`);
+  await page.waitForFunction(id => !(state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id)
+                                   && state.bell_hidden === 2, en.id, { timeout: 15000 });
+  await page.waitForSelector('#bellRestore', { timeout: 10000 });
+  ok(!(await page.$eval('#bellPanel', e => e.hidden)) && /2 updates dismissed/.test(await page.textContent('#bellPanel')),
+     'Dismiss puts both updates away, leaves the drawer open, and says how many are put away');
+  await page.click('#bellRestore');
+  await page.waitForFunction(id => state.bell_hidden === 0 && (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id),
+                             en.id, { timeout: 15000 });
+  await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 15000 });
+  ok(true, '...and Show again brings them back');
   await page.click(`#bellPanel [data-btc="${en.id}"]`);
   await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: 15000 });
   await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });

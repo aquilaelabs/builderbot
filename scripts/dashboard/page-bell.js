@@ -58,6 +58,40 @@ function logNote(msg, bad){
   drawBell();
 }
 
+// One row of what needs doing on a node, in the drawer's quiet shape: a
+// title in ink, one line of what, the one thing to know before acting said
+// on the row, the long part (every version, every project) folded, and the
+// way there and Dismiss on the row. Out of window is red and cannot be put
+// away: work there is stopped until it is updated.
+function attRow(a){
+  if (a.kind === "toolchain"){
+    const keys = a.tools.map(t => t.key).filter(Boolean).join(" ");
+    const cc = a.tools.some(t => t.name === "claude-code") && a.projects.length;
+    const n = a.tools.length;
+    return `<div class="bnote att">
+      <div class="bt">${n} toolchain update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
+      <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
+      ${cc ? `<div class="bwarn">Updating Claude Code ends the Claude sessions there
+        (${a.projects.length} project${a.projects.length === 1 ? "" : "s"})</div>` : ""}
+      <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and projects" : ""}</summary><pre>${
+        a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
+        cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
+      <div class="bfoot"><span>on its Toolchains tab</span>
+        <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
+          <a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`;
+  }
+  return `<div class="bnote att${a.window ? " bad" : ""}">
+    <div class="bt">${a.window ? `${esc(a.node)}'s agent is out of window` : `Agent update on ${esc(a.node)}`}</div>
+    <div class="bsum">runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${a.window
+      ? `: ${a.projects.length ? `${a.projects.length} project${a.projects.length === 1 ? "" : "s"} cannot build, test or use the emulator there`
+                               : "nothing works there"} until it is updated` : ""}</div>
+    ${a.window && a.projects.length ? `<details class="bdetail"${sectAttr("bell:agent:" + a.id)}><summary>projects</summary><pre>${
+      a.projects.map(esc).join(", ")}</pre></details>` : ""}
+    <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
+      <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+        <a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`;
+}
+
 function drawBell(){
   const bell = $("bBell"), panel = $("bellPanel");
   if (!bell) return;
@@ -106,7 +140,7 @@ function drawBell(){
   // reader was looking at stopped updating.
   if (panel.hidden) return;
   const when = t => fmtTime(t, {hour: "2-digit", minute: "2-digit"});
-  const rows = [
+  const answer = [
     // Above everything the page merely said: somebody is blocked on these.
     // A root ask (roadmap R38) is the same row with the stakes said: which
     // machine, and that it is root there. `#` is the prompt root gets.
@@ -164,63 +198,71 @@ function drawBell(){
         <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(projLabel(p.name))}</div>
         <div class="bfoot"><span>on the notebook</span>
           <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
+  ];
+  // What needs doing but is not a question: a node behind, a red CI run, a
+  // file changed in two places. One quiet shape (attRow): a title, one line
+  // of what, the action on the row, the long part folded (the operator,
+  // 10 Oct: the amber wall of versions and project names).
+  const needs = [
     // ...and the nodes. Out of window is red and names the projects it
     // stops; behind is amber and waits for a press on the Nodes tab.
     // A window move holds every project at once, so several of these is the
     // normal case after a minor bump and one row per project was six rows
     // saying one thing. Collapsed into one, with one press behind it (B93).
-    ...att.map(a => a.kind === "toolchain"
-      // A node with toolchains behind what is out, Claude Code among them
-      // (toolchains.attention): one row per node in one shape for all of
-      // them, amber, opening that node's Toolchains tab, where each is
-      // updated (the operator, 9 Oct).
-      ? `<div class="bnote ask">
-        <div class="btag">toolchain update${a.tools.length === 1 ? "" : "s"} available</div>
-        <div class="bwhy">on ${esc(a.node)}: ${a.tools.map(t =>
-          // A check that cannot name the version out says "newer".
-          `${esc(t.label)} ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join(", ")}${
-          a.tools.some(t => t.name === "claude-code") && a.projects.length
-            ? `. Updating Claude Code ends the Claude sessions there first; ${a.projects.map(esc).join(", ")} run${
-                a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>
-        <div class="bfoot"><span>on the node's Toolchains tab</span>
-          <span class="acts"><a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`
-      : `<div class="bnote ask${a.window ? " bad" : ""}">
-        <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
-        <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
-          a.window
-            ? `.${a.projects.length
-                ? ` ${a.projects.map(esc).join(", ")} cannot build, test or use the emulator there` : " Nothing works there"} until it is updated`
-            : ""}</div>
-        <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
-          <span class="acts"><a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`),
-    ...ciRed.map(c => `<div class="bnote ask bad">
-        <div class="btag">CI failing in ${esc(projLabel(c.project))}</div>
-        <div class="bwhy">${esc(c.text)}</div>
-        <div class="bfoot"><span>this stays until the check passes again</span>
+    ...att.map(attRow),
+    ...ciRed.map(c => `<div class="bnote att bad">
+        <div class="bt">CI failing in ${esc(projLabel(c.project))}</div>
+        <div class="bsum">${esc(c.text)}</div>
+        <div class="bfoot"><span>until the check passes again</span>
           <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
             <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
-    ...syncC.map(c => `<div class="bnote ask">
-        <div class="btag">changed in two places: ${esc(projLabel(c.project))}</div>
-        <div class="bwhy">${esc(c.path)} was changed on ${esc(c.node)} after another copy had changed it; that version is kept as ${esc(c.kept_as)}</div>
-        <div class="bfoot"><span>this stays until that copy is deleted</span><span>${esc(ago(c.at))}</span></div></div>`),
-    ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
-        <div class="bwhy">${esc(n.msg)}</div>
-        <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
+    ...syncC.map(c => `<div class="bnote att">
+        <div class="bt">Changed in two places: ${esc(projLabel(c.project))}</div>
+        <div class="bsum">${esc(c.path)} was changed on ${esc(c.node)} after another copy had changed it; that version is kept as ${esc(c.kept_as)}</div>
+        <div class="bfoot"><span>until that copy is deleted · ${esc(ago(c.at))}</span></div></div>`),
   ];
-  panel.innerHTML = rows.length
-    ? rows.join("") + (notes.length
-        ? `<div class="bfootbar"><button type="button" id="bellClear">Clear</button></div>` : "")
-    : `<div class="bempty">nothing to report</div>`;
+  const said = notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
+        <div class="bwhy">${esc(n.msg)}</div>
+        <div class="bfoot"><span>${when(n.at)}</span></div></div>`);
+  // Three groups, each headed with its count, so what waits on an answer is
+  // never under what the page merely said; Clear heads the one it clears.
+  const hidden = state?.bell_hidden || 0;
+  const group = (title, list, extra = "") => list.length
+    ? `<div class="bgroup"><span>${title} · ${list.length}</span>${extra}</div>` + list.join("") : "";
+  const putAway = hidden ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
+      <button type="button" id="bellRestore">Show again</button></div>` : "";
+  panel.innerHTML = (answer.length + needs.length + said.length
+    ? group("Waiting on you", answer) + group("Needs attention", needs)
+      + group("Recent", said, `<button type="button" id="bellClear">Clear</button>`)
+    : `<div class="bempty">nothing to report</div>`) + putAway;
   // Any press in the drawer closes it, after the press's own handler has
   // run (the operator, 7 Oct): Approve, Deny, an invitation's answer, Clear,
   // a link to where a row is about. One listener on the drawer, so a row
   // added later is covered without remembering to.
   panel.onclick = e => {
-    if (e.target.closest?.("button, a")) queueMicrotask(() => toggleBell(false));
+    // ...except Dismiss and Show again, which change the drawer itself and
+    // are pressed several in a row.
+    if (e.target.closest?.("button, a") && !e.target.closest("[data-bdismiss], #bellRestore"))
+      queueMicrotask(() => toggleBell(false));
   };
   const clear = $("bellClear");
   // Only the page's own log clears: an ask is not this button's to dismiss.
   if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
+  // Dismiss (bellseen.py): the update to that version, for this account, on
+  // every browser it opens; a newer version notes again.
+  panel.querySelectorAll("[data-bdismiss]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const j = await (await postJSON("/api/bell", {action: "dismiss", keys: a.dataset.bdismiss.split(" ")}))
+      .json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    refresh();
+  });
+  const restore = $("bellRestore");
+  if (restore) restore.onclick = async () => {
+    const j = await (await postJSON("/api/bell", {action: "restore"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    refresh();
+  };
   panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
     e.preventDefault();
     phBusy = "running it"; phRev++; drawPanes();

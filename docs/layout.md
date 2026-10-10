@@ -185,6 +185,7 @@ scripts/
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     share.py                     a part's share of what a session is sent: the rules, the roadmap and the bugs say less per row before they leave one out
     layout.py                    what the page keeps here: each account's tab strip and panes, and the sidebar's cards
+    bellseen.py                  what each account has dismissed from its bell: an update to one version, until a newer one is out
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing

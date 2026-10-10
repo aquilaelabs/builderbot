@@ -292,6 +292,10 @@ _state_lock = threading.Lock()
 import layout                                                    # noqa: E402
 
 layout.configure(state=STATE, write_json=write_json, lock=_state_lock)
+# ...and what each account has put away from its bell: bellseen.py.
+import bellseen                                                  # noqa: E402
+
+bellseen.configure(state=STATE, write_json=write_json)
 
 
 
@@ -1130,11 +1134,14 @@ def _attention(who):
     toolchain behind what is out, Claude Code among them
     (toolchains.attention), for whoever may install toolchains on it."""
     if NODES_OK:
-        return []
+        return [], 0
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
-    return (([] if users.may(who, "node") else nodes.attention(where))
+    rows = (([] if users.may(who, "node") else nodes.attention(where))
             + [a for a in toolchains.attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])])
+    # ...less what this account has put away (bellseen.py, R144): an update
+    # to a version it dismissed, until a newer one is out.
+    return bellseen.filter_rows(users.uid_of(who), rows)
 
 
 def _claude_code_for(who, ps):
@@ -3344,6 +3351,7 @@ def snapshot(who):
         p = by_name.get(top)
         s["git"] = bool(p and p["git_ok"])
         s["github"] = bool(p and p.get("github"))
+    attention, bell_hidden = _attention(who)
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
@@ -3364,7 +3372,10 @@ def snapshot(who):
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
-        "attention": _attention(who),
+        "attention": attention,
+        # How many of them this account has put away, for the drawer's
+        # "show them again".
+        "bell_hidden": bell_hidden,
         # Claude Code per node against the latest known, for the Nodes
         # tab's section.
         "claude_code": {} if NODES_OK else _claude_code_for(who, ps),
@@ -3607,6 +3618,7 @@ POST_ROUTES = (
     ("prefix", "/api/say", "_say"),
     ("prefix", "/api/chat", "_chat"),
     ("prefix", "/api/layout", "_layout"),
+    ("exact", "/api/bell", "_bell"),
     ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
@@ -7021,6 +7033,17 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("command-pin"):
             return None
         return self._json(*macros.pin(req.get("name", ""), bool(req.get("pinned"))))
+
+    def _bell(self, req):
+        """Put a bell note away for this account, or bring every one back
+        (bellseen.py). The account's own, so no grant; a session has no bell."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a session has no bell"}, 403)
+        uid = users.uid_of(who)
+        if field(req, "action") == "restore":
+            return self._json(*bellseen.restore(uid))
+        return self._json(*bellseen.dismiss(uid, req.get("keys")))
 
     def _layout(self, req):
         """Store this account's open tabs: layout.save_tabs."""

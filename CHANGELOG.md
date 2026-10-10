@@ -238,6 +238,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Send to Docker offers a name from what the project is called now, so a renamed project no longer offers its old folder's name, with the file's folder or variant after it (turing-lens-site) (b7e6a24)
 - The node pickers on Send and Copy or move list the project's own nodes first, where its development and Claude sessions happen, and the rest after, where its image is shipped (5e57004)
 - Send, Copy or move and a container's Project and Built from offer only projects on your own list, administrators and the owner included, and the server refuses any other (5e57004)
+- The bell's drawer is grouped as Waiting on you, Needs attention and Recent. An update on a node is a short row, versions folded, with Dismiss: that version stays away for your account on every device until a newer one is out (3f597ad)
 
 ### Removed
 

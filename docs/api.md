@@ -82,6 +82,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/say` | prefix | `_say` | Type a message into a CLAUDE session and press Enter. |  |
 | POST | `/api/chat` | prefix | `_chat` | Read a conversation, send into one, or mark one seen: chat.converse. |  |
 | POST | `/api/layout` | prefix | `_layout` | Store this account's open tabs: layout.save_tabs. |  |
+| POST | `/api/bell` | exact | `_bell` | Put a bell note away for this account, or bring every one back (bellseen.py). |  |
 | POST | `/api/cards` | prefix | `_cards` | Store the sidebar card arrangement: layout.save_card_order. |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |
 | POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: admin |
