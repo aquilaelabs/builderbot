@@ -20,6 +20,7 @@ import time
 import urllib.parse
 
 import bbapi
+import syncwait
 import waits
 
 
@@ -116,6 +117,9 @@ def _client(instance=None):
 def rebuild():
     auth = os.environ["BB_DEV_AUTH"]
     post, look = _client()
+    # A rebuild's plan carries the compose file and env from the
+    # controller's copy, so an edit made here goes up first (B623).
+    syncwait.up(os.environ["BB_DEV_PROJECT"], "the rebuild takes the compose file from the controller's copy")
     # What it was built from before, because that is the only signal that says a
     # build HAPPENED. A job that succeeded is not news to the row (job_view
     # returns nothing for one), so "no job running" reads the same three seconds
@@ -228,6 +232,9 @@ def new():
     devapp rebuild` builds."""
     auth = os.environ["BB_DEV_AUTH"]
     post, _ = _client()
+    # The compose file is read from the controller's copy: what was written
+    # here a moment ago goes up first (B623).
+    syncwait.up(os.environ["BB_DEV_PROJECT"], "the controller reads the compose file from its copy")
     body = {"action": "new", "why": os.environ.get("BB_DEV_WHY", ""),
             "ref": os.environ.get("BB_DEV_REF", ""),
             "compose": os.environ.get("BB_DEV_COMPOSE", "")}
