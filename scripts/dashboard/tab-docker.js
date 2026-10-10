@@ -1192,7 +1192,11 @@ async function dmLogs(name, node = dockerNode){
   const modal = $("dlmodal"), body = $("dlBody");
   if (!modal || !body) return;
   $("dlTitle").textContent = `Log: ${name}`;
-  body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>`;
+  // Its foot from the first frame: a log read on a busy node takes seconds,
+  // and a dialog with no Close meanwhile is one you cannot leave (B498).
+  body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>
+    <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
+  body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
   modal.hidden = false;
   try{
     // The node the list came from: a project's notebook lists its own
