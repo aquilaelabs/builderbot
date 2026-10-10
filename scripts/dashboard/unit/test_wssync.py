@@ -286,6 +286,20 @@ class Sync(unittest.TestCase):
         self.assertIn("is not a project", ctl_sync.may("n9", ".worktrees/alpha/u_87654321"),
                       "a worktree is its project's nodes' alone")
 
+    def test_a_nodes_index_wins_over_one_refreshed_here(self):
+        # B617: git status on the controller rewrote .git/index; the node's
+        # own index after a commit then lost to it and came back stale.
+        write(f"{self.ws}/alpha/.git/index", "index before\n")
+        self.turn("n1")
+        base = ctl_sync._load("alpha")[".git/index"]["sha"]
+        write(f"{self.ws}/alpha/.git/index", "index refreshed here\n")
+        ctl_sync.scan("alpha", force=True)
+        body = b"index after the commit\n"
+        out, code = ctl_sync.put("n1", "alpha", {"path": [".git/index"], "base": [base]}, io.BytesIO(body), len(body))
+        self.assertEqual((code, out.get("conflict")), (200, None), out)
+        self.assertEqual(read(f"{self.ws}/alpha/.git/index"), "index after the commit\n")
+        self.assertFalse(any("bbsync-conflicts" in c["kept_as"] for c in ctl_sync._conflicts))
+
     def test_a_first_copy_is_one_download(self):
         self.turn("n1", times=1)
         self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"] * len(self.n["n1"].projects))  # one a project

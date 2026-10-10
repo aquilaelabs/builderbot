@@ -637,7 +637,13 @@ def put(nid, project, q, stream, length):
                 # Already so: the same change made on both sides, or a
                 # retry of one that landed.
                 return {"ok": True, "rev": rev_of(project), "sha": sha}, 200
-            if base != cur:
+            # git's index is a cache of the tree it was written beside, and
+            # the node's tree is where the work is: its index wins a
+            # disagreement, since one kept here instead put the node's index
+            # back to before its own commit (B617), and a conflict copy of an
+            # index is no use to anybody.
+            if base != cur and rel.split("/")[-2:] != [".git", "index"] \
+                    and not (rel.startswith(".git/worktrees/") and rel.endswith("/index")):
                 if gone:
                     # Deleted there, changed here: the change stays, and
                     # comes back down to the node.
