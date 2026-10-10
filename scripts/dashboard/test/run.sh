@@ -149,13 +149,16 @@ sweep_leftovers() {
     done
 }
 [ -n "${BB_TEST_WORKER:-}" ] || sweep_leftovers
-# BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this.
-# A covered run is copied wherever the tree is: coverage rewrites the files
-# it runs, and a node holding its projects as a synced copy (R163) has the
-# tree on its own disk, which ran no suite at all (B616).
-if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
-   && { [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ] \
-        || { [ -n "${BB_COVERAGE:-}" ] && [ -z "${BB_TEST_WORKER:-}" ]; }; }; then
+# Every run is from a copy of the tree, wherever the tree is. A run in place
+# serves the page's scripts from disk on every load while its server keeps
+# the python it started with, so an edit made during the run (a session
+# carrying on while the suite runs) gave a run of neither version, and a
+# verdict about nothing. On NFS the copy also spares the suite's own waits
+# (B124), and a covered run rewrites the files it runs (B616). Since every
+# node holds its projects on its own disk (R163) nothing else made a copy.
+# BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this, and
+# then nothing under the dashboard is edited until it ends.
+if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ]; then
     _src="$(cd "$HERE/../../.." && pwd)"
     _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
     echo $$ > "$_dst/.bb-run-pid"
@@ -172,9 +175,7 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
         --exclude=./android/app/build --exclude=./android/build -X "$_skip" . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
     rm -f "$_skip"
-    printf '[dashboard-test] running from %s: %s\n' "$_dst" \
-        "$([ -n "${BB_COVERAGE:-}" ] && echo 'a covered run rewrites the files it runs, never the tree' \
-            || echo 'this tree is on NFS, which fails the suite own waits (B124)')" >&2
+    printf '[dashboard-test] running from %s, a copy, so an edit to the tree meanwhile does not reach this run\n' "$_dst" >&2
     BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
 fi
 DASH="$(dirname "$HERE")"

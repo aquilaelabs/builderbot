@@ -73,8 +73,12 @@ by hand cost four commands and still could not see the failed builds.
   errors collected) is the one to follow. `BB_TEST_TIMING=1` prefixes every
   result with the seconds since the last one; feed that output to `bb tests
   ingest` and the notebook's Tests tab keeps the numbers. The house rule
-  `tests` carries the discipline: one run at a time, no edits under the
-  dashboard during one, kill by pid. Why each clause is there: three suites
+  `tests` carries the discipline: one run at a time, every run from a copy
+  of the tree, kill by pid. Why each clause is there: the page loads its
+  scripts from disk on every reload while its server keeps the python it
+  started with, so a run in a tree edited meanwhile was a run of neither
+  version, and run.sh now copies the tree for every run rather than only on
+  NFS (B616, 10 Oct; BB_TEST_INPLACE=1 still runs in place); three suites
   side by side is bug 13's reproducer, which is what the lock is for; a
   lock a canceled CI job left is taken over on the next run, since the
   directory is world-writable and not sticky; `pkill -f` and `pgrep -f`
