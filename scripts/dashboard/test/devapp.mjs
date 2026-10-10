@@ -3908,7 +3908,14 @@ print(json.dumps(out))
   // Read once the node is idle: while a job runs there, a listing is
   // answered from the last one kept, which predates the mark just written.
   await idle();
-  const own = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
+  // ...and asked again for a while: a job that started meanwhile (another
+  // check's, a poll's probe) answers from the listing kept before the mark,
+  // which says nothing is running there yet (B620).
+  let own = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
+  for (let i = 0; i < 20 && own.status !== 200; i++) {
+    await sleep(500);
+    own = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
+  }
   ok(own.status === 200 && /hello from helper-for-eps-app-1/.test(own.text || ''),
      `...and the log of its own container by the name ls prints, which is its services' (${own.status}: ${
         String(own.error || own.text).trim().slice(0, 60)})`);
