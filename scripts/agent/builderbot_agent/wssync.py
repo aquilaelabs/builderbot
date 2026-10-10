@@ -626,7 +626,8 @@ class WorkspaceSync:
         """The controller's tar of the project, into an empty tree here,
         owned by the session account. Paths that would leave the tree, and
         anything but files, directories and links inside it, are refused."""
-        tmp = os.path.join(self.record_dir(), f".{p.name}.tar")
+        # A worktree's name has slashes in it: its file sits beside its record.
+        tmp = os.path.join(self.record_dir(), "." + p.name.replace("/", "%") + ".tar")
         q = urllib.parse.urlencode({"project": p.name})
         try:
             code, _ = self.agent.ctl.fetch(f"sync-tar?{q}", tmp, timeout=3600)
