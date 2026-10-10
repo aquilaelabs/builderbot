@@ -56,6 +56,9 @@ class Routes(unittest.TestCase):
         self.assertIn("nginx_conf:\n    content: |\n", text)
         self.assertIn("      location / { proxy_pass http://127.0.0.1:3000; }", text)
         self.assertNotIn("tls_cert", text)
+        # nginx's variables survive compose's own interpolation: $$host, never $host.
+        self.assertIn("proxy_set_header Host $$host;", text)
+        self.assertNotRegex(text, r"[^$]\$host")
 
 
 class Certificate(unittest.TestCase):

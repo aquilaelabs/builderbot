@@ -173,7 +173,10 @@ def compose_text(nid, rec):
     if has_cert:
         out += ["      - source: tls_cert", "        target: /etc/nginx/certs/cert.pem",
                 "      - source: tls_key", "        target: /etc/nginx/certs/key.pem", "        mode: 0400"]
-    out += ["configs:", "  nginx_conf:", "    content: |", _indent(conf, 6)]
+    # compose reads $name in a config's content as its own variable and
+    # empties it (nginx's $host became nothing on bb-dev-sandbox, 10 Oct):
+    # a literal dollar is written $$ there.
+    out += ["configs:", "  nginx_conf:", "    content: |", _indent(conf.replace("$", "$$"), 6)]
     if has_cert:
         cert, key = _read_cert(nid)
         out += ["  tls_cert:", "    content: |", _indent(cert, 6),

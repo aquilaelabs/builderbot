@@ -59,6 +59,9 @@ ok(rec?.main?.source === 'file' && rec.main.node === sandbox.node && !rec.main.f
    && /network_mode: host/.test(written.compose || '') && /www\.example\.com/.test(written.compose || '')
    && /proxy_pass http:\/\/127\.0\.0\.1:8080/.test(written.compose || ''),
    `Deploy writes nginx-sandbox on the node, for no project, its compose carrying the config inline (${JSON.stringify(rec?.main).slice(0, 80)})`);
+// The section is drawn after the answer lands, so its Remove is waited
+// for rather than read the moment the list moved.
+await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
 ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('summary').textContent) && s.querySelector('[data-ngremove]') && !s.querySelector('[data-ngdeploy]')),
    '...and the section now says so, with Remove in place of Deploy');
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
@@ -73,10 +76,17 @@ ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.
 
 // Remove: the container goes, the routes stay for a redeploy.
 await page.click(`${sect} [data-ngremove]`);
-await page.waitForFunction(id => { const n = (nginxList || []).find(x => x.node === id); return n && !n.deployed; }, sandbox.node, { timeout: 20000 });
-const after = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
+// A node read as quiet queues the down and keeps the row until it has
+// run (B597), which under a whole gate is a while: the record's going is
+// waited for, not read at once.
+let after = null;
+for (let i = 0; i < 60; i++){
+  after = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
+  if (!after.deployed && !('nginx-sandbox' in JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8')))) break;
+  await new Promise(r => setTimeout(r, 1000));
+}
 ok(!after.deployed && after.routes.length === 2 && !('nginx-sandbox' in JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))),
-   'Remove takes the container off the Docker tab and keeps the routes here');
+   `Remove takes the container off the Docker tab and keeps the routes here (${JSON.stringify([after.deployed, after.routes.length])})`);
 
 // The Enroll dialog's tick: a node enrolled with it gets nginx on its first
 // hello, with the routes saved for it beforehand.
