@@ -980,7 +980,9 @@ the pieces stack:
    fetch an image shipped to it and carry a container's data in a copy or a
    move, and nothing else (refusals audited, once an hour a verb). Only
    container, storage and network, self-update and cache-clearing jobs are
-   placed on it.
+   placed on it. A node a project still lists is refused until it is taken
+   off; the node's own Projects section lists them, each with Remove
+   (`nodeProjectsSection`), which saves that project's settings without it.
 3. *Move the containers over* with Copy or move: each comes with its
    volumes and data, its image built on the project's own node at home and
    shipped, its env changed on the way where the VPS needs another port or

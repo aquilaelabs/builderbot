@@ -451,6 +451,35 @@ function nodeHostRow(n){
        <div><button type="button" data-nd="host-only" ${n.live ? "" : "disabled"}>Make it hosting only</button></div>`;
 }
 
+// The projects that have this node among theirs (the operator, 10 Oct): read
+// off the projects this account is shown, primary first in each, with Remove
+// on the ones the account is on. Remove is the project's settings saved
+// without the node, so the same gates hold (the node grant, a read-only
+// project) and the server names the refusal; a project the account is not on
+// says so rather than offering it, the accident guard the pickers keep too.
+function nodeProjects(id){
+  return (state?.projects || []).filter(p => (p.prefs?.nodes || []).includes(id) || p.prefs?.node === id)
+    .sort((a, b) => projLabel(a.name).localeCompare(projLabel(b.name), undefined, {sensitivity: "base"}));
+}
+function nodeProjectsSection(n){
+  const list = nodeProjects(n.id);
+  const rows = list.map(p => {
+    const set = p.prefs?.nodes || [];
+    const primary = p.prefs?.node === n.id;
+    const rest = set.filter(x => x !== n.id);
+    const then = !rest.length ? "it is then on no node, so nothing builds or runs a session until one is picked"
+      : primary ? `${esc((nodesList || []).find(x => x.id === rest[0])?.name || rest[0])} becomes its primary` : "";
+    return `<div class="row ndproj">
+      <div class="grow"><div class="name">${esc(projLabel(p.name))}${primary ? ` <span class="dim">· primary</span>` : ""}</div>
+        ${p.mine ? (then ? `<div class="sub dim">Removing it: ${then}.</div>` : "")
+          : `<div class="sub dim">Not one of your projects: add yourself to it to change its nodes.</div>`}</div>
+      ${p.mine ? `<button type="button" data-ndproj="${esc(p.name)}">Remove</button>` : ""}
+    </div>`;
+  }).join("");
+  const body = rows || `<div class="empty">No project you can see has this node. A project's settings add one.</div>`;
+  return docSection("nodes", "projects", "Projects", list.length ? `${list.length}` : "none", body);
+}
+
 function nodeSessionsSection(n){
   const se = n.reported?.session;
   const list = n.reported?.sessions || [];
@@ -1165,6 +1194,7 @@ function renderNodesInto(i){
       </div>
       <div class="ndsections">
         ${health}
+        ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
@@ -1256,10 +1286,36 @@ function nodesReadOnly(root){
   });
 }
 
+// Remove a project from this node: its settings saved with the node out of
+// its set, the primary moving to the next of the set as the dialog's own
+// save does. What ends with it is said before the press.
+async function nodeProjectRemove(b, name, id){
+  const p = (state?.projects || []).find(x => x.name === name);
+  if (!p || !id) return;
+  const nname = (nodesList || []).find(x => x.id === id)?.name || "this node";
+  const rest = (p.prefs?.nodes || []).filter(x => x !== id);
+  const node = p.prefs?.node === id ? (rest[0] || "") : (p.prefs?.node || "");
+  const inIt = c => { const m = /^\/workspace\/(?:\.worktrees\/)?([^/]+)/.exec(c || ""); return m && m[1] === name; };
+  const here = (state?.sessions || []).filter(x => x.node_id === id && inIt(x.cwd));
+  if (!confirm(`Remove ${projLabel(name)} from ${nname}?\n\n`
+        + (rest.length ? "" : "It is then on no node: nothing builds, tests or opens a session for it until one is picked. ")
+        + (here.length ? `Its ${here.length} session${here.length === 1 ? "" : "s"} open there keep running until closed. ` : "")
+        + "Its containers there keep running, and the Docker tab still reaches them.")) return;
+  busy(b, "Removing");
+  const j = await (await postJSON("/api/prefs", {project: name, node, nodes: rest}))
+    .json().catch(() => ({error: "no answer"}));
+  if (j.error) notify(j.error, true);
+  else notify(`${projLabel(name)} no longer uses ${nname}`);
+  await refresh();
+  nodesRev++; drawPanes();
+}
+
 function wireNodesTab(root){
   wireSignin(root);
   root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
   root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
+  root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () =>
+    nodeProjectRemove(b, b.dataset.ndproj, b.closest("[data-node]")?.dataset.node || ""));
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };

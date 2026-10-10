@@ -1156,9 +1156,22 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const held = await napi('/api/v1/nodes', { action: 'host-only', id: minted.id });
     ok(/gamma lists this node/.test(held.error || ''),
        `a node a project lists cannot be made hosting only until it is moved off (${held.error})`);
-    const cleared = await napi('/api/prefs', { project: 'gamma', node: '', nodes: [] });
-    ok(!cleared.error, `(gamma's nodes cleared: ${cleared.error || 'ok'})`);
-    await page.evaluate(() => loadNodes());
+    // ...which the node's own Projects section does (the operator, 10 Oct):
+    // the projects that have it, each with Remove, asked first.
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    const projBtn = `${ROW} .ndproj [data-ndproj="gamma"]`;
+    await page.waitForSelector(projBtn, { timeout: 10000 });
+    ok(/primary/.test(await page.textContent(`${ROW} .ndproj`)) &&
+       /on no node/.test(await page.textContent(`${ROW} .ndproj`)),
+       'the node\'s Projects section lists gamma as its primary, and says it would then be on no node');
+    page.dialogs.length = 0;
+    await page.click(projBtn);
+    await page.waitForFunction(() => !(state.projects.find(p => p.name === 'gamma')?.prefs?.nodes || []).length,
+                               null, { timeout: 10000 });
+    ok(page.dialogs.length === 1 && /Remove gamma from[\s\S]*on no node/.test(page.dialogs[0]),
+       `Remove asks first, naming what it leaves (${page.dialogs[0]?.slice(0, 60)})`);
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    ok(!(await page.$(projBtn)), '...and gamma is gone from the node\'s Projects section');
     await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     page.dialogs.length = 0;
     await page.click(`${ROW} [data-nd="host-only"]`);

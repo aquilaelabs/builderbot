@@ -105,6 +105,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every compose file in a project gets its own row and Send on the Artifacts tab, in subfolders and variants too (an override is left out); a container is built from its file in that file's folder, and its Docker tab row names the file. bb devapp new --compose FILE does the same (b7e6a24)
 - Copy or move on a Docker tab row takes a container to another node with its volumes and data, its env editable on the way; a move takes the old one down only once the new one is up, and goes back if it does not come up (5e57004)
 - A node can be made hosting only, on its row or when it is enrolled: it runs the containers sent to it, no project's code, sessions or bb go there, and its agent may ask the controller for its own jobs and nothing else (13e9f47)
+- A node's row on the Nodes tab has a Projects section: the projects that have the node, its primary marked, with Remove on the ones you are on, which takes the node out of that project's settings after asking (4f20c0a)
 
 ### Changed
 
