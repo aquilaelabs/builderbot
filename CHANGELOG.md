@@ -389,6 +389,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A bug report whose title runs past 300 characters is refused with where the rest goes, rather than cut short and the rest lost (90921e0)
 - On a synced node a second person's sessions get their own worktree again, synced both ways with the controller, instead of falling back to the owner's tree (bcb4648)
 - On a synced node git's index no longer goes back to before a commit: the controller's own git status stops rewriting it, and a node's index wins over the controller's (40ee8ec)
+- Removing a container while its node read as not answering for a moment no longer forgets the row and leaves the container running: the removal waits in the node's queue and happens when it answers (7a3c716)
 
 ### Security
 

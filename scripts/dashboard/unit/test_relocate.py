@@ -152,6 +152,27 @@ class Relocate(unittest.TestCase):
         self.assertIn("main", devapp._load().get("alpha", {}))
         self.assertFalse(devapp.env_path("alpha", "alpha-web").exists())
 
+    def test_a_remove_on_a_quiet_node_queues_the_down_and_keeps_the_row(self):
+        # B597: a node reads quiet for a minute every few (B550), and a remove
+        # landing then forgot the row and left the container running.
+        devapp._avail_hosts.clear()
+        devapp._avail.update(val=None, when=0)
+        r = devactions.remove_instance("alpha", "main")
+        self.assertTrue(r.get("job"), r)
+        self.assertEqual(self.q.jobs[r["job"]]["node"], "n1")
+        self.assertIn("main", devapp._load().get("alpha", {}), "the row stays until the down has run")
+        self.q.jobs[r["job"]]["state"] = "running"
+        self.end(r["job"])
+        self.assertNotIn("alpha", devapp._load(), "and goes once it has")
+
+    def test_a_remove_on_a_retired_node_forgets_the_row(self):
+        self.q.nodes["n1"]["state"] = "retired"
+        devapp._avail_hosts.clear()
+        devapp._avail.update(val=None, when=0)
+        r = devactions.remove_instance("alpha", "main")
+        self.assertTrue(r.get("forgot"), r)
+        self.assertNotIn("alpha", devapp._load())
+
     def test_refusals(self):
         self.assertIn("already on", relocate.start("alpha", "main", "move", "n1")["error"])
         self.assertIn("name of its own", relocate.start("alpha", "main", "copy", "n2", "")["error"])

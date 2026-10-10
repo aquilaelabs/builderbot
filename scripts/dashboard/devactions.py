@@ -742,6 +742,14 @@ def remove_instance(project, instance):
     if instance not in (devapp._load().get(project) or {}):
         return {"error": f"{project} has no instance called {instance}"}
     got = devapp.available_cached()
+    # ...but an enrolled agent node that is only quiet has not gone away: a
+    # compose job waits in its queue for its next poll (nodes.job_add takes
+    # one on a quiet agent), and a node reads quiet for a minute every few
+    # (B550). Forgetting the row there left the container running with no
+    # row to remove it from and its name taken (B597), so the down is queued.
+    n = devapp._agent_here()
+    if not got.get("on") and n and n.get("state") == "online" and not n.get("live"):
+        return _submit(project, instance, "remove")
     if not got.get("on"):
         _remove_records(project, instance)
         return {"ok": True, "forgot": True,
