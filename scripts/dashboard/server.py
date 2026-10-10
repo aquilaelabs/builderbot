@@ -5508,7 +5508,7 @@ class Handler(BaseHTTPRequestHandler):
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb in ("artifact", "sync-put", "claude-put", "devimage-put"):
+        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
@@ -5519,10 +5519,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(*channel.claude_put(auth, q, self.rfile, length))
             if verb == "devimage-put":
                 return self._json(*channel.devimage_put(auth, q, self.rfile, length))
+            if verb == "devdata-put":
+                return self._json(*channel.devdata_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
-        if verb in ("sync-file", "sync-tar", "claude-file", "devimage"):
+        if verb in ("sync-file", "sync-tar", "claude-file", "devimage", "devdata"):
             got, status = {"sync-file": channel.sync_file, "sync-tar": channel.sync_tar,
-                           "claude-file": channel.claude_file, "devimage": channel.devimage_file}[verb](auth, q)
+                           "claude-file": channel.claude_file, "devimage": channel.devimage_file,
+                           "devdata": channel.devdata_file}[verb](auth, q)
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
@@ -5860,6 +5863,23 @@ class Handler(BaseHTTPRequestHandler):
         # tree: a write to the project as well as to its container.
         if act == "compose-set" and self._readonly(name):
             return None
+        # Sending, copying or moving a container, or putting it under another
+        # project, names only projects on the asker's own list, for an
+        # administrator and the owner as for a user (the operator, 10 Oct):
+        # they could add any project to their list first, and this is the
+        # seatbelt against a container landing under the wrong one.
+        if not session and act in ("new", "relocate", "owner", "move"):
+            for target in [name if act in ("new", "relocate") else "",
+                           field(req, "owner") if act in ("new", "owner") else "",
+                           field(req, "to") if act == "move" else ""]:
+                # A project, not a container written here: one of those is
+                # nobody's list to be on.
+                if target and registry.is_project(target) and not users.may_work(me, target):
+                    return self._json({"error": f"{registry.label(target)} is not on your list of projects: "
+                                                "add it to your own list on the Users tab first"}, 403)
+        if act == "relocate" and session:
+            return self._json({"error": "copying or moving a container to another node is a person's: "
+                                        "it puts the project's data on another machine"}, 403)
         # A SESSION is a further question, and the answer is a per-project
         # dial with the notebook's own three words. Rebuild runs the project's
         # own Dockerfile and brings the container up on the node's daemon: for

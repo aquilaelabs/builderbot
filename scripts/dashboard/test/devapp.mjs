@@ -2766,6 +2766,52 @@ await showRow();
 ok(await page.$('#devSend'),
    '...and the project can still send another: the artifact row persists');
 
+// Copy or move (the operator, 10 Oct): a row's button opens a dialog with
+// the node it is on left out, the project's own nodes grouped first, and its
+// env to change on the way. The jobs themselves are the unit tier's
+// (test_relocate.py): this harness's docker has volumes enough for them, but
+// one node.
+{
+  await openManager();
+  await page.click(`${DM} [data-dmrel]`);
+  await page.waitForSelector('#rlmodal:not([hidden])');
+  await page.waitForFunction(() => !/reading/.test(document.getElementById('rlEnvHint').textContent), null,
+                             { timeout: patience(10000) }).catch(() => {});
+  const dlg = await page.evaluate(() => ({
+    groups: [...document.querySelectorAll('#rlNode optgroup')].map(g => g.label),
+    here: [...document.querySelectorAll('#rlNode option')].some(o => o.value === (dockerList?.node || dockerNode)),
+    env: document.getElementById('rlEnv').value, name: document.getElementById('rlName').value,
+    go: document.getElementById('rlGo').textContent }));
+  ok(!dlg.here && /PORT=/.test(dlg.env) && dlg.name.endsWith('-copy') && dlg.go === 'Copy',
+     `Copy or move opens on a copy, its env to change, never offering the node it is on (${JSON.stringify(dlg).slice(0, 160)})`);
+  await page.check('input[name="rlMode"][value="move"]');
+  ok(await page.$eval('#rlNameField', e => e.hidden) && await page.$eval('#rlGo', e => e.textContent) === 'Move'
+     && /comes? down|come down/.test(await page.$eval('#rlModeHint', e => e.textContent)),
+     '...and a move keeps its name and says the old node\'s containers come down once it is up');
+  await page.click('#rlCancel');
+  // The grouping itself, on a picker of three nodes: the project's own first
+  // and said so, the one a container is on left out.
+  const grouped = await page.evaluate(() => {
+    const sel = document.createElement('select');
+    sel.innerHTML = '<option value="a">a</option><option value="b">b</option><option value="c">c</option>';
+    groupNodeOptions(sel, ['b'], 'ep.silon', 'c');
+    return [...sel.querySelectorAll('optgroup')].map(g => [g.label.split(':')[0], [...g.children].map(o => o.value)]);
+  });
+  ok(JSON.stringify(grouped) === '[["ep.silon\'s nodes",["b"]],["Other nodes",["a"]]]',
+     `the node picker puts the project's own nodes first and leaves out the one it is on (${JSON.stringify(grouped)})`);
+  // The projects a container may be put under, sent from or moved to: the
+  // account's own list, whatever its role, and a row's own project kept.
+  const picked = await page.evaluate(() => {
+    const was = state.projects;
+    state.projects = [{ name: 'mine1', mine: true }, { name: 'theirs', mine: false }];
+    const r = myProjectNames('rowsown');
+    state.projects = was;
+    return r;
+  });
+  ok(JSON.stringify(picked) === '["mine1","rowsown"]',
+     `the project pickers offer only the account's own projects, and the row's current one (${JSON.stringify(picked)})`);
+}
+
 // Every compose file in the repository is a row with its own Send (the
 // operator, 10 Oct): one in a folder, a variant beside the root's, never an
 // override, which is half a file. Sent from its row, a container is made

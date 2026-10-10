@@ -33,6 +33,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import devapp  # noqa: E402
+import relocate  # noqa: E402
 
 
 def configure(*, runner=None):
@@ -241,8 +242,12 @@ def _plan(project, instance, action, extra=None):
                        "-e", "BB_IN_INSTANCE=1", "-e", "BB_TEST_WORKERS", *wd, extra["service"],
                        "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
         test = [{"name": "testing", "argv": argv, "timeout": 3600, "env": ienv}]
+    # Stopped and started again in place, its containers kept: what copying
+    # or moving an instance's data does around reading it (relocate.py).
+    stop = {"name": "stopping", "argv": base + ["stop"], "timeout": 180, "env": ienv}
+    start = {"name": "starting", "argv": base + ["start"], "timeout": 300, "env": ienv}
     return {"up": [up], "down": [down], "remove": [down],
-            "rebuild": rebuild, "test": test}.get(action) or []
+            "rebuild": rebuild, "test": test, "stop": [stop], "start": [start]}.get(action) or []
 
 
 # ---- an image shipped to a node that does not hold the project (R166) ------------
@@ -466,8 +471,17 @@ def compose_done(job, state):
     # Whatever the node's listing said before this action is no longer
     # true of it, and the row is read the moment the job ends.
     devapp._forget_reads((job or {}).get("node") or "")
+    sp = (job or {}).get("spec") or {}
     with devapp.on_node((job or {}).get("node") or ""):
-        return _compose_done(job, state)
+        # A relocation's own jobs (relocate.py) are its to follow on from.
+        if sp.get("relocate"):
+            return relocate.done(job, state)
+        said = _compose_done(job, state)
+    # ...and the rebuild that ends one: the last half of a shipped one, or
+    # the only one; a ship's first half that failed ends it too.
+    if sp.get("action") == "rebuild" and not (sp.get("ship") == "build" and state == "succeeded"):
+        relocate.built(sp.get("project", ""), sp.get("instance") or devapp.MAIN, state == "succeeded")
+    return said
 
 
 def _compose_done(job, state):
@@ -1292,6 +1306,12 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         if _active_job(project, instance) is not None:
             return {"error": "a job is running on it: wait for it, or Stop it, then move it"}, 400
         r = devapp.move_instance(project, instance, f(req, "to"))
+        return r, (400 if r.get("error") else 200)
+    if action == "relocate":
+        # To another node, its data with it (relocate.py): a copy beside
+        # it under a new name, or the same one moved.
+        env = req.get("text") if isinstance(req.get("text"), str) else None
+        r = relocate.start(project, instance, f(req, "mode"), f(req, "node"), f(req, "name"), env)
         return r, (400 if r.get("error") else 200)
     if action == "owner":
         # Which project it belongs to. An administrator's too, and the name

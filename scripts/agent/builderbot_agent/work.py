@@ -156,15 +156,18 @@ class WorkMixin:
             job.say(f"refused: {path} is not in this job's directory\n")
             return "failed", 78
         verb = str(stp.get("to") or stp.get("fetch") or "")
-        if not verb.startswith("devimage"):
-            job.say(f"refused: not the controller's image verb: {verb[:40]}\n")
+        # The image a shipped instance runs (R166), or the data a copied or
+        # moved one carries (relocate.py on the controller).
+        if not verb.startswith(("devimage", "devdata")):
+            job.say(f"refused: not the controller's image or data verb: {verb[:40]}\n")
             return "failed", 78
+        what = "the data" if verb.startswith("devdata") else "the image"
         if stp.get("upload"):
             if not os.path.isfile(real):
                 job.say(f"nothing to send: {path} is not there\n")
                 return "failed", 66
             size = os.path.getsize(real)
-            job.say(f"sending the image to the controller ({size >> 20} MB)\n")
+            job.say(f"sending {what} to the controller ({size >> 20} MB)\n")
             code, r = self.ctl.upload(verb, real, timeout=int(stp.get("timeout") or 3600))
             with contextlib.suppress(OSError):
                 os.remove(real)
@@ -173,7 +176,7 @@ class WorkMixin:
                 return "failed", 75
             job.say("sent, and removed here\n")
             return "succeeded", 0
-        job.say("fetching the image from the controller\n")
+        job.say(f"fetching {what} from the controller\n")
         code, _ = self.ctl.fetch(verb, real, timeout=int(stp.get("timeout") or 3600))
         if code != 200:
             job.say(f"the controller answered {code}\n")

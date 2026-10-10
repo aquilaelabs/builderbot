@@ -210,6 +210,25 @@ def devimage_put(auth, q, stream, length):
     return devactions.image_put(auth["node"], q, stream, length)
 
 
+def devdata_put(auth, q, stream, length):
+    """A copied or moved instance's packed data, from its old node's job."""
+    if (no := _node_only(auth)):
+        return no
+    import relocate
+    return relocate.data_put(auth["node"], q, stream, length)
+
+
+def devdata_file(auth, q):
+    """That data, for the new node's unpacking job."""
+    if (no := _node_only(auth)):
+        return no
+    import relocate
+    path, no = relocate.data_path(auth["node"], q)
+    if no:
+        return no
+    return {"path": path, "ctype": "application/x-tar", "headers": {}}, 200
+
+
 def devimage_file(auth, q):
     """That image, for the instance node's loading job."""
     if (no := _node_only(auth)):

@@ -593,6 +593,11 @@ def manager_view(nid, seen):
     # button rather than by waiting for the memo to lapse.
     devapp.forget_available()
     got = devapp.overview(nid or None)
+    # A copy or move under way, or why the last one did not happen
+    # (relocate.py): the row's line while the jobs pass it between nodes.
+    import relocate
+    for i in got.get("instances") or []:
+        i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
     if seen is not None:
         got["instances"] = [i for i in got.get("instances") or []
                             if i.get("owner") in seen]

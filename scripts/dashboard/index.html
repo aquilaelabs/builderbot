@@ -4558,6 +4558,39 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </div>
 
+<!-- Copy or move a container to another node, its data with it (the
+     operator, 10 Oct): Send makes a fresh one, this carries what the old one
+     had. Its env is shown on the way, to change for the new node. -->
+<div id="rlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rlTitle">
+  <div class="box wide">
+    <h3 id="rlTitle">Copy or move</h3>
+    <div class="field">
+      <label class="ndcap"><input type="radio" name="rlMode" value="copy" checked> Copy: a new container beside this one, its data copied</label>
+      <label class="ndcap"><input type="radio" name="rlMode" value="move"> Move: this container, its data with it</label>
+      <div class="hint" id="rlModeHint"></div>
+    </div>
+    <div class="field" id="rlNameField">
+      <label for="rlName">Name of the copy</label>
+      <input id="rlName" maxlength="60" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field" id="rlNodeField">
+      <label for="rlNode">Node<span class="help" data-tip="where it goes: the project's own nodes first; any other gets its image shipped, never the codebase" tabindex="0">?</span></label>
+      <select id="rlNode"></select>
+      <div class="hint" id="rlNodeHint"></div>
+    </div>
+    <div class="field">
+      <label for="rlEnv">Environment</label>
+      <textarea id="rlEnv" spellcheck="false"></textarea>
+      <div class="hint" id="rlEnvHint">Its env as it is now: change what the new node needs (a port, an address) before it starts there.</div>
+    </div>
+    <div class="field" id="rlErrWrap" hidden><div class="hint bad" id="rlErr"></div></div>
+    <div class="foot">
+      <button id="rlGo" class="primary">Copy</button>
+      <button id="rlCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Deleting a project moves it to /workspace/.trash and says so; this is
      where those go to be looked at, put back, or finally destroyed. The last
      of those is the only irreversible thing on this page, so it asks for the
@@ -5669,6 +5702,11 @@ $("dnName").oninput = dnShow;
 $("dnGo").onclick = dnSubmit;
 $("dnCancel").onclick = closeSendToDocker;
 $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker(); };
+$("rlGo").onclick = rlSubmit;
+$("rlCancel").onclick = closeRelocate;
+$("rlmodal").onclick = e => { if (e.target === $("rlmodal")) closeRelocate(); };
+document.querySelectorAll('input[name="rlMode"]').forEach(r => r.onchange = rlSay);
+$("rlNode").onchange = rlSay;
 
 // ---- a project's settings dialog, wired ---------------------------------
 // Its declarations are page-projsettings.js; what runs at load is below.

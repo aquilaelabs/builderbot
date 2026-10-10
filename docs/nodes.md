@@ -934,6 +934,35 @@ own node's, and reach its published ports (`session_net_own` counts every
 node holding a container the project owns). What the image itself holds is
 the Dockerfile's: a final stage that copies the source carries the source.
 
+**Copy or move a container to another node, its data with it (10 Oct).**
+Send to Docker makes a fresh container; Copy or move on a Docker tab row
+takes one that exists, with its named volumes and its data directory, to
+any agent node, the project's own listed first (and only they carry its
+codebase, its development and its Claude sessions; on any other its image
+is shipped as above). The dialog shows its env to change for the new node.
+`relocate.py` runs it as three jobs, each queued when the one before
+succeeds: on the old node, stop it, pack every volume of its compose
+project and its data directory (through a `busybox` container, since a
+volume has no path the job's account reaches) and upload the file
+(`devdata-put`); on the new node, fetch it (`devdata`), make each volume
+again under the new name, labeled as compose labels its own, refusing one
+already there, and fill them; then the new instance's ordinary rebuild. A
+copy starts the original again after packing and is a new record carrying
+the original's ref, compose file, project and risk acknowledgement; a move
+keeps its name, takes its old node's containers down only once it is up
+there (`down`, so the old node keeps a copy of its volumes until somebody
+removes them), and goes back and starts there again if it does not come
+up. The row says each step, and why the last one did not happen. A
+person's only: a session cannot copy or move one.
+
+**Which projects a container may go under.** The project pickers on Send,
+on a row's Project and Built from, and the project a Send, copy or move is
+made from, are the asker's own list of projects, for an administrator and
+the owner as for a user (`users.may_work`, refused on the server as well as
+left out of the picker): they could add any project to their list first,
+and the list is the seatbelt against a container landing under the wrong
+one.
+
 ## 8. Security model
 
 New as a section, because "usable in an enterprise" is mostly this.
