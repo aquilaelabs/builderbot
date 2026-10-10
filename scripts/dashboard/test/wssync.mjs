@@ -58,8 +58,9 @@ for (const name of ['syncone', 'synctwo']){
   execFileSync('python3', [RUN, 'enroll', '--controller', URL, '--token', minted.token,
     '--user', process.env.USER || 'builder', '--store', `data=${home}/data`, '--store', `toolchains=${home}/tc`],
     { env, encoding: 'utf8', stdio: 'pipe' });
-  const set = await api('/api/v1/nodes', { action: 'update', id: minted.id, fields: { workspace: 'sync' } });
-  ok(set.ok, `${name} is set to hold its projects as a synced copy (${JSON.stringify(set)})`);
+  // A node enrolls holding its projects as a synced copy: the one way (R163).
+  const conf = (await api('/api/v1/nodes')).nodes.find(n => n.id === minted.id)?.config || {};
+  ok(conf.workspace === 'sync', `${name} holds its projects as a synced copy from enrollment (${JSON.stringify(conf.workspace)})`);
   nodes[name] = { id: minted.id, ws: `${home}/workspace/${P}`, log: `${home}/agent.log` };
   agents.push(spawn('python3', [RUN, 'run'], { env, stdio: ['ignore', openSync(nodes[name].log, 'a'), openSync(nodes[name].log, 'a')] }));
 }
