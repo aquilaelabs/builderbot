@@ -1460,8 +1460,10 @@ def _file_rows(project):
             with devapp.composing(rel):
                 cfg = devapp._config(project, devapp.MAIN)
                 if cfg is None:
+                    said = devapp.config_error()
                     row["problems"] = ["compose cannot read it on its own (a file meant to be "
-                                       "merged onto another, or one with a mistake in it)"]
+                                       "merged onto another, or one with a mistake in it)"
+                                       + (f": {said}" if said else "")]
                 else:
                     row["risks"] = devapp.risks(project, cfg)
                     row["problems"] = devapp.problems(project, cfg) + devapp.host_map()[1]

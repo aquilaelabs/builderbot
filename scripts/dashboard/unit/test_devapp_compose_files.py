@@ -89,5 +89,19 @@ class ComposeFiles(unittest.TestCase):
         self.assertEqual(devapp.send_name("Clanker-Detector"), "Clanker-Detector")
 
 
+    def test_a_file_compose_cannot_read_says_what_compose_said(self):
+        """The Artifacts row carried "compose cannot read it" and nothing of
+        why (Turing Lens, 10 Oct): compose's own last lines go with it."""
+        was = devapp._run
+        devapp._run = lambda *a, **k: {"code": 15, "out": "noise\nservice \"web\" refers to undefined network front: invalid compose project"}
+        try:
+            self.assertIsNone(devapp._config("Clanker-Detector"))
+            self.assertIn("undefined network front", devapp.config_error())
+            devapp._run = lambda *a, **k: {"code": 0, "out": "{}"}
+            self.assertEqual(devapp._config("Clanker-Detector"), {})
+            self.assertEqual(devapp.config_error(), "", "a read that worked clears it")
+        finally:
+            devapp._run = was
+
 if __name__ == "__main__":
     unittest.main()

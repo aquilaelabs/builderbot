@@ -3134,6 +3134,16 @@ def _load():
             if isinstance(val, dict) and all(isinstance(v, dict) for v in val.values())}
 
 
+# The last _config failure on this thread, in compose's own words.
+_cfg_err = threading.local()
+
+
+def config_error():
+    """What compose said when the last _config on this thread failed, "" if
+    it did not or said nothing."""
+    return getattr(_cfg_err, "said", "")
+
+
 def _config(project, instance=MAIN):
     """The compose file as compose itself resolves it: variables substituted,
     relative paths made absolute against the project directory.
@@ -3150,7 +3160,13 @@ def _config(project, instance=MAIN):
     overview() for the listing it draws.
     """
     r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30)
+    _cfg_err.said = ""
     if r["code"] != 0:
+        # What compose said, kept for the caller that shows it (the
+        # Artifacts tab's row): "cannot read it" without compose's own
+        # sentence left a session guessing which line was wrong.
+        lines = [x.strip() for x in str(r.get("out") or "").splitlines() if x.strip()]
+        _cfg_err.said = " ".join(lines[-3:])[:400]
         return None
     try:
         d = json.loads(r["out"])
