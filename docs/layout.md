@@ -200,6 +200,7 @@ scripts/
     bundle.py                    the zip a node runs, built the same on the controller and the node, so the digests agree
     controller.py                the connection to the controller, verified by pin
     stores.py                    the node's stores, a store's path rules, and node.json
+    storage.py                   what the disks hold, by filesystem, store and project: an hourly walk on its own thread, for the Storage tab (R169)
     backends.py                  the machine's package manager and network configuration backends
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit

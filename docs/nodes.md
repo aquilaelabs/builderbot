@@ -987,6 +987,13 @@ the pieces stack:
    volumes and data, its image built on the project's own node at home and
    shipped, its env changed on the way where the VPS needs another port or
    address.
+4. *Name it under Hosts its containers on*, in the project's settings
+   (Where it runs, `prefs.hosts`; only a hosting-only node may be named,
+   by whoever may set the project's node). The project's sessions may then
+   make a container there (`bb devapp new --node NAME`, built on the
+   project's own node and shipped) and rebuild and remove the ones there,
+   under its Claude may: Run its container, as on its own node; a node not
+   named stays a person's to send to.
 
 What runs in those containers has no node token (it lives root-owned in
 the agent's own file) and reaches the controller, if at all, only as the

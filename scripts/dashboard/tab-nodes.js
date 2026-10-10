@@ -1362,7 +1362,7 @@ function wireNodesTab(root){
           "how the machine dials in. Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel")}
           <select id="ndEnReach">
             <option value="lan">on this network</option>
-            <option value="wireguard">through WireGuard, with a config from my router</option>
+            <option value="wireguard">WireGuard</option>
           </select></div>
         <div class="setrow col">${lbl("ndEnCtl", "Controller's address",
           "the URL the machine dials. Behind WireGuard, the controller's address on your network, which the tunnel routes to")}

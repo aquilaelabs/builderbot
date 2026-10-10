@@ -2,7 +2,8 @@
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
-         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold, registerProject } from './lib.mjs';
+         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold, registerProject,
+         saveDialog, sectSave } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -1608,15 +1609,10 @@ ok(signRows.length === 2 && /^Play upload key: none$/.test(signRows[0]) && /^Sid
 await page.click('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]');
 writeFileSync(`${DIR}/not-a-keystore.p12`, 'not a keystore');
 await page.setInputFiles('#rnSignRows .rnsign[data-route="sideload"] [data-signfile]', `${DIR}/not-a-keystore.p12`);
-await page.click('#rnGo');
-await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 5000 });
-ok(/type the keystore's password/.test(await page.$eval('#rnErr', e => e.textContent)),
-   '...a picked keystore with no password is stopped before anything is sent');
+ok(/type the keystore's password/.test(await sectSave(page, 'signing')),
+   '...a picked keystore with no password is stopped on its section\'s bar before anything is sent');
 await page.fill('#rnSignRows .rnsign[data-route="sideload"] [data-signpass]', 'p');
-await page.click('#rnGo');
-await page.waitForFunction(() => /Sideload signing key: /.test(document.getElementById('rnErr').textContent),
-                           null, { timeout: 15000 });
-const signErr = await page.$eval('#rnErr', e => e.textContent);
+const signErr = await sectSave(page, 'signing');
 ok(!await page.$eval('#rnmodal', e => e.hidden)
    && !(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload,
    `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
@@ -1705,16 +1701,13 @@ const addrWas = await page.$eval('#rnAddr', e => e.value);
 ok(!await page.$eval('#rnAddrField', e => e.hidden) && /alpha/.test(addrWas),
    `the chain's door shows where the remote points, to change after a rename on the host (${addrWas})`);
 await page.fill('#rnAddr', 'https://elsewhere.example/someone/alpha.git');
-await page.click('#rnGo');
-await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
-const addrErr = await page.$eval('#rnErr', e => e.textContent);
+const addrErr = await sectSave(page, 'repo');
 ok(/another host/.test(addrErr) && !await page.$eval('#rnmodal', e => e.hidden),
    `...an address on another host is refused in the dialog, which stays open (${addrErr.slice(0, 80)})`);
 const addrAfter = await api('/api/project-auth', { name: 'alpha' });
 ok(addrAfter.body.url === addrWas, '...and the remote still points where it did');
 await page.fill('#rnAddr', addrWas);
-await page.evaluate(() => { document.getElementById('rnErrWrap').hidden = true; rnAskReset();
-  const g = document.getElementById('rnGo'); g.disabled = false; g.textContent = 'Save'; });
+await page.evaluate(() => { rnBarSay('repo', ''); rnBars(); });
 
 // Test (the operator, 7 Oct): a press asks the server for a read and a
 // dry-run push and draws what is missing in red under the button, a list
@@ -1796,9 +1789,7 @@ ok(v.onToken && v.token,
    'clearing the token leaves the pick where it was, and ghosts it');
 ok(v.bad && /none will be stored/.test(v.hint),
    '...saying in red that there will be nothing to authenticate with');
-await page.click('#rnGo');
-await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 8000 });
-ok(/no access token after this save/.test(await page.$eval('#rnErr', e => e.textContent)),
+ok(/no access token after this save/.test(await sectSave(page, 'repo')),
    '...and Save refuses rather than writing a remote with no credential');
 // Disabled is the third answer, and always takeable: it is the absence of a
 // credential rather than the presence of one.
@@ -1826,9 +1817,7 @@ await page.click('#rnCancel');
     value: e.querySelector('#rnFtpPort').value }));
   ok(shut.port && shut.people && !open.port && open.people >= 1 && open.noNode && open.value === '2121',
      `the owner's File access section offers the port and each account once it is ticked, and says alpha has no node (${JSON.stringify(open)})`);
-  await page.click('#rnGo');
-  await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
-  const err = await page.$eval('#rnErr', e => e.textContent);
+  const err = await sectSave(page, 'files');
   ok(/no node to run its file access on/.test(err) && !await page.$eval('#rnmodal', e => e.hidden),
      `...and Save refuses turning it on with no node, in the dialog (${err.slice(0, 70)})`);
   const uid = await page.$eval('#rnFtp [data-ftpuid]', s => s.dataset.ftpuid);
@@ -1861,8 +1850,9 @@ await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',
    'the dialog is the project\'s settings, not a rename form wearing its name');
-ok(await page.$eval('#rnGo', e => e.textContent.trim()) === 'Save',
-   '...so its button saves rather than renames');
+ok(await page.$$eval('.rnbar', bs => bs.length >= 5 && bs.every(b => b.querySelector('[data-rnsave]') && b.querySelector('[data-rnrevert]')
+     && [...b.querySelectorAll('button')].every(x => x.disabled))),
+   '...each section with its own Save and Revert, dead while nothing in it has changed');
 // The bin is here too, at the foot of the gear's door: on the All projects
 // tab it sits behind the row's fold on a phone, which is where it was not
 // being found. It asks first, and a declined ask moves nothing.
@@ -1892,7 +1882,12 @@ ok(await page.$$eval('#rnColor [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
    'the dialog offers a color, with none picked for a project nobody colored');
 await page.click('#rnColor [data-color="teal"]');
-await page.click('#rnGo');
+ok(await page.$eval('.rnbar[data-rnbar="project"] [data-rnsave]', b => !b.disabled)
+   && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
+   'a change wakes its own section\'s Save and no other');
+ok(!(await sectSave(page, 'project')), '...which saves it');
+await page.click('#rnCancel');
+await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: 10000 });
 await refreshUntil(page, () => (state?.projects || [])
   .find(p => p.name === 'alpha')?.prefs?.color === 'teal', { timeout: 20000 });
 ok(await page.$eval('.doc .projtab [data-row="alpha"]', r =>
@@ -1946,9 +1941,11 @@ await page.click('#rnCancel');
   ok(/Fable is Claude's own default here/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
      'with nothing set, the picker shows the model the last session ran on and the hint says it is the default');
   const askedBefore = page.dialogs.length;
-  await page.click('#rnGo');
+  ok(await page.$eval('.rnbar[data-rnbar="yours"] [data-rnsave]', b => b.disabled),
+     'with that model left where it was nothing is unsaved: its section\'s Save stays dead');
+  await page.click('#rnCancel');
   await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
-  ok(page.dialogs.length === askedBefore, 'saving with that model left where it was asks nothing');
+  ok(page.dialogs.length === askedBefore, '...and closing asks nothing');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))
        && !(state?.projects || []).find(p => p.name === 'alpha')?.yours?.model),
      '...restarts nothing, and stores nothing: the default is still the default');
@@ -1957,40 +1954,37 @@ await page.click('#rnCancel');
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnModel', 'sonnet');
   await page.selectOption('#rnAsks', 'fewer');
-  // The question is the dialog's own now (the operator, 29 Sep): the first
-  // press of Save names what a running session takes only at its start,
-  // saves nothing, and puts the two answers in the foot.
+  // Both answers are on the section's bar from the start (the operator,
+  // 10 Oct): a first press that only asked saved nothing for whoever pressed
+  // it once and moved on.
   const before = page.dialogs.length;
-  await page.click('#rnGo');
-  await page.waitForSelector('#rnRestartAsk:not([hidden])', { timeout: 10000 });
-  const asked = await page.evaluate(() => ({
-    what: document.getElementById('rnRestartWhat').textContent,
-    go: document.getElementById('rnGo').textContent, keep: document.getElementById('rnKeep').hidden,
-    open: !document.getElementById('rnmodal').hidden,
+  await page.waitForSelector('.rnbar[data-rnbar="yours"] [data-rnkeep]:not([hidden])', { timeout: 10000 });
+  const asked = await page.$eval('.rnbar[data-rnbar="yours"]', b => ({
+    state: b.querySelector('.state').textContent, save: b.querySelector('[data-rnsave]').hidden,
+    keep: b.querySelector('[data-rnkeep]').textContent, end: b.querySelector('[data-rnend]').textContent,
+    others: [...document.querySelectorAll('.rnbar:not([data-rnbar="yours"]) [data-rnsave]')].every(x => x.disabled),
     stored: (state?.projects || []).find(p => p.name === 'alpha')?.yours?.model || '' }));
-  ok(asked.open && asked.what === 'Changed: Model, Questions.' && asked.go === 'Save and end it' && !asked.keep
-     && asked.stored === '' && page.dialogs.length === before,
-     `a running session is asked about in the dialog, which names the changes it takes only at its start and saves nothing yet (${JSON.stringify(asked)})`);
-  await page.click('#rnKeep');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  ok(asked.save && asked.keep === 'Save, keep it running' && asked.end === 'Save and end it'
+     && /^Model, Questions changed; its running session takes Model, Questions only when it starts$/.test(asked.state)
+     && asked.others && asked.stored === '' && page.dialogs.length === before,
+     `with a session running, the section's bar names what it takes only at its start and offers both answers at once (${JSON.stringify(asked)})`);
+  ok(!(await sectSave(page, 'yours')), '...Save, keep it running saves');
   await refreshUntil(page, () => (state?.projects || [])
     .find(p => p.name === 'alpha')?.yours?.model === 'sonnet', { timeout: 20000 });
   ok(true, '...and keeping it running still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
+  ok(await page.$eval('.rnbar[data-rnbar="yours"]', b => !b.querySelector('[data-rnsave]').hidden && b.querySelector('[data-rnsave]').disabled
+       && !document.getElementById('rnmodal').hidden),
+     '...and the bar goes quiet with the form still open');
   // The other answer: saved, and the session ended for the next press of
   // Claude to start on the new setting.
-  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
-  await page.waitForSelector('#rnmodal:not([hidden])');
-  ok(await page.$eval('#rnRestartAsk', e => e.hidden) && await page.$eval('#rnGo', e => e.textContent) === 'Save',
-     'opened again, the dialog has put the question away');
   await page.selectOption('#rnAsks', '');
-  await page.click('#rnGo');
-  await page.waitForSelector('#rnRestartAsk:not([hidden])', { timeout: 10000 });
-  ok(await page.$eval('#rnRestartWhat', e => e.textContent) === 'Changed: Questions.',
-     '...and names only what changed this time');
-  await page.click('#rnGo');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  await page.waitForFunction(() => /^Questions changed/.test(document.querySelector('.rnbar[data-rnbar="yours"] .state').textContent),
+                             null, { timeout: 5000 });
+  ok(true, '...and names only what changed this time');
+  ok(!(await sectSave(page, 'yours', { end: true })), 'Save and end it saves');
+  await page.click('#rnCancel');
   await refreshUntil(page, () => !liveSessions().has(myClaude('alpha')), { timeout: 20000 });
   ok(await page.evaluate(() => ((state?.projects || []).find(p => p.name === 'alpha')?.yours?.asks || '') === ''),
      'Save and end it saves the setting and ends the session');
@@ -2002,16 +1996,14 @@ await page.click('#rnCancel');
   await page.waitForSelector('#rnmodal:not([hidden])');
   const wasBuild = await page.$eval('#rnBuildCmd', e => e.value);
   await page.fill('#rnBuildCmd', wasBuild + ' && make all');
-  await page.click('#rnGo');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
-  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))) && page.dialogs.length === before
-     && await page.$eval('#rnRestartAsk', e => e.hidden),
+  const plain = await page.$eval('.rnbar[data-rnbar="build"]', b => !b.querySelector('[data-rnsave]').hidden && b.querySelector('[data-rnend]').hidden);
+  await saveDialog(page);
+  ok(plain && await page.evaluate(() => liveSessions().has(myClaude('alpha'))) && page.dialogs.length === before,
      'a change the session reads when it is used (the build command) asks nothing and ends nothing');
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.fill('#rnBuildCmd', wasBuild);
-  await page.click('#rnGo');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  await saveDialog(page);
   // Back to the default, so nothing after this runs against a project whose
   // sessions were left on another mode. The session goes FIRST: with nothing
   // running there is nothing to interrupt, so this save asks nothing and the
@@ -2022,9 +2014,7 @@ await page.click('#rnCancel');
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnModel', '');
-  await page.click('#rnGo');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
-                             { timeout: 15000 });
+  await saveDialog(page);
   // `|| ''` because a record back at every default is REMOVED rather than
   // stored (the file says only what somebody chose), so the row carries no
   // model key at all, which every reader of it defaults the same way.
@@ -2056,7 +2046,7 @@ await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTokenField', el => el.hidden)
    && !await page.$eval('#rnGitNone', el => el.hidden),
    '...and a read-only project is told there is nothing to set, not shown a blank field');
-ok(await page.$eval('#rnGo', el => el.hidden),
+ok(await page.$$eval('.rnbar', bs => bs.every(b => !b.checkVisibility())),
    '...with no Save to press, since nothing there can be saved');
 // Back to alpha's dialog: everything below is about the name field, and a
 // collision check run against the wrong project's name proves nothing.

@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog, openSection } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog, sectSave, openSection } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -1196,10 +1196,40 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(/hosts containers only, and a exec job/.test(ex.error || ''), `only container jobs go to it (${ex.error})`);
     const bind = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
     ok(/hosts containers only/.test(bind.error || ''), `and no project may list it (${bind.error})`);
+    // ...except as where its containers may also go (prefs.hosts, the
+    // operator, 10 Oct), which only a hosting-only node may be.
+    const hosted = await napi('/api/prefs', { project: 'gamma', hosts: [minted.id] });
+    // The poll answers from what it last read, so asked until it has it.
+    const gammaHosts = want => page.evaluate(async want => {
+      for (let i = 0; i < 40; i++){
+        await refresh();
+        const h = state.projects.find(p => p.name === 'gamma')?.prefs?.hosts || [];
+        if (h.join() === want) return h;
+        await new Promise(r => setTimeout(r, 250));
+      }
+      return state.projects.find(p => p.name === 'gamma')?.prefs?.hosts || [];
+    }, want);
+    const hostsNow = await gammaHosts(minted.id);
+    ok(!hosted.error && hostsNow.join() === minted.id,
+       `...but a project may name it under Hosts its containers on (${hosted.error || hostsNow.join()})`);
+    await page.evaluate(n => renameProject(n), 'gamma');
+    await page.waitForSelector('#rnHosts:not([hidden]) input:checked', { timeout: 10000 });
+    ok(await page.$eval('#rnHostsLabel', e => e.textContent) === 'Hosts its containers on'
+       && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
+       '...shown ticked in the project\'s Where it runs, nothing unsaved');
+    await page.click('#rnHosts input:checked');
+    const unErr = await sectSave(page, 'runs');
+    const left = (await gammaHosts('')).length;
+    ok(!unErr && left === 0, `...and unticked there and saved, it is taken off (${unErr || left})`);
+    await page.click('#rnCancel');
+    await napi('/api/prefs', { project: 'gamma', hosts: [] });
     await page.click(`${ROW} [data-nd="host-off"]`);
     await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     ok((await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json()).host_only === false,
        '...and Let projects use it again undoes it');
+    const notHost = await napi('/api/prefs', { project: 'gamma', hosts: [minted.id] });
+    ok(/is not a hosting-only node/.test(notHost.error || ''),
+       `...after which no project may name it as a hosting node (${notHost.error})`);
     // ...and a box enrolled for it (a cloud VPS) is hosting only from the
     // start, before its first hello.
     const vps = await napi('/api/v1/nodes', { action: 'enroll', name: 'vps-host', host_only: true });

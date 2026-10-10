@@ -62,7 +62,7 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", nodes: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", hosts: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
                  capture_days: "7", snapshot_days: "14", dev_keep: "3", gate: "", color: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -114,6 +114,7 @@ function rnFillPrefs(p){
                git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
                nodes: (p?.prefs?.nodes || []).join(","),
+               hosts: (p?.prefs?.hosts || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
@@ -206,6 +207,24 @@ function rnFillNode(){
     // ...and the field shows for it even when no other node is enrolled.
     if (gone) wrap.hidden = $("rnSeesField").hidden = $("rnReachField").hidden = rnMode === "git";
     rnFillNodesMore();
+    rnFillHosts();
+}
+
+// The hosting-only nodes its containers may also go to (prefs.hosts): every
+// such node, a listbox row each, ticked for the ones named. Read-only
+// without the `node` grant, like the node picker above.
+function rnFillHosts(){
+  const box = $("rnHosts");
+  if (!box) return;
+  const was = new Set(rnPrefWas.hosts.split(",").filter(Boolean));
+  const hosts = (nodesList || []).filter(n => n.config?.host_only && n.state !== "retired");
+  // A named node that is gone or no longer hosting-only stays, ticked, so
+  // Save does not drop it without anybody seeing.
+  const gone = [...was].filter(id => !hosts.some(n => n.id === id));
+  box.hidden = $("rnHostsLabel").hidden = $("rnHostsHint").hidden = rnMode === "git" || !(hosts.length || gone.length);
+  box.innerHTML = hosts.map(n => lrow(n.id, n.name, `${n.state}${n.live === false ? ", quiet" : ""}`, was.has(n.id))).join("")
+    + gone.map(id => lrow(id, id, "not a hosting node now", true)).join("");
+  if (state?.can?.node === false) box.querySelectorAll("input").forEach(i => { i.disabled = true; });
 }
 
 // Also reaches (the operator, 7 Oct): addresses a session here may still
@@ -443,9 +462,9 @@ function rnDrawPrefs(){
     ? "Locked; this project is yours to run, so no session starts here."
     : running
       ? (changed
-          ? "A session is running here. Save asks whether to end it now (the "
-            + "conversation resumes from the Claude button) or keep it running."
-          : "Applies when a session starts; changing it asks about the one running "
+          ? "A session is running here: Save and end it, below, ends it now (the "
+            + "conversation resumes from the Claude button); Save, keep it running leaves it as it started."
+          : "Applies when a session starts; changing it offers to end the one running "
             + "here." + dflt)
       : "Applied the next time Claude starts here, and kept until you change it." + dflt;
   $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
@@ -486,16 +505,6 @@ async function unlinkProject(name){
 // rather than hides: the alternative is a project whose roadmap silently
 // stayed behind under a name nothing points at any more.
 let rnFor = null;                        // the project the dialog is open on
-// The answer to the question at the foot (rnRestartAsk): "end" or "keep"
-// once one of its two buttons was pressed, null while it has not been asked.
-let rnAsked = null;
-
-// The question put away: on open, on close, and on a save that failed.
-function rnAskReset(){
-  rnAsked = null;
-  $("rnRestartAsk").hidden = true;
-  $("rnKeep").hidden = true;
-}
 let rnMode = "all";                      // "all" from the gear, "git" from the chain
 
 // The form shown in a notebook's Settings view instead of the dialog (R119
@@ -508,7 +517,7 @@ function settingsOut(){
   const box = rnHost.querySelector(":scope > .box");
   if (box) $("rnmodal").appendChild(box);
   rnHost = null;
-  $("rnCancel").textContent = "Cancel";
+  $("rnCancel").hidden = false;
 }
 function settingsInto(name, host){
   if (!host) return;
@@ -519,8 +528,9 @@ function settingsInto(name, host){
   // A view, never a dialog to shut: whatever hid it is undone here.
   host.removeAttribute("hidden");
   rnHost = host;
-  // In place there is nothing to cancel out of: Revert puts the fields back.
-  $("rnCancel").textContent = "Revert";
+  // In place there is nothing to close: each section's Revert puts its
+  // fields back.
+  $("rnCancel").hidden = true;
 }
 // A project's settings: its notebook's Settings view.
 function openProjectSettings(name){ openNotebook(name, "settings"); }
@@ -596,14 +606,11 @@ function renameProject(name, mode = "all"){
   // The sessions at the foot: the gear's door, and an administrator's.
   $("rnSessField").hidden = true;
   if (!git && state?.admin) rnSessionsLoad(name);
-  $("rnGo").disabled = false;
-  $("rnGo").textContent = "Save";
-  rnAskReset();
-  // Nothing to save is nothing to press: with no credential to set, Cancel is
-  // the only honest way out of this door, but Unlink still is one.
-  $("rnGo").hidden = !$("rnGitNone").hidden;
   $("rnmodal").hidden = false;
   rnFolds();
+  // Each section's Save and Revert, drawn dead until something changes.
+  document.querySelectorAll(".rnbar .state.bad").forEach(x => { x.classList.remove("bad"); x.textContent = ""; });
+  rnBars();
 }
 
 // Sections, every one open unless this person shut it here (the operator,
@@ -1133,8 +1140,8 @@ function rnLoadAuth(name){
       $("rnAddr").value = j.url || "";
       $("rnAddrField").hidden = !j.url;
       $("rnTestField").hidden = !j.url;
-      if (j.url) $("rnGo").hidden = false;
       rnDrawAuth();
+      rnBars();
     })
     .catch(() => {});                          // the rename itself still works
 }
@@ -1285,224 +1292,327 @@ function closeRename(){
   if (rnHost){
     const n = rnFor, h = rnHost;
     settingsOut();
-    rnFor = null; rnAskReset();
+    rnFor = null;
     Promise.resolve(refresh()).finally(() => {
       if (h.isConnected && (state?.projects || []).some(p => p.name === n)) settingsInto(n, h);
     });
     return;
   }
-  $("rnmodal").hidden = true; rnFor = null; rnAskReset();
+  $("rnmodal").hidden = true; rnFor = null;
 }
 
-async function rnSubmit(){
-  const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
-  // "" for "leave the remote alone", which is every save that is only a
-  // rename: the server treats the field's absence and a no-op the same way,
-  // but sending the current mode back would make every save a rewrite.
-  const auth = rnAuthPick && rnAuthPick !== rnAuthNow ? rnAuthPick : "";
-  // A typed token replaces rather than clears, so the two never both go: the
-  // server would otherwise write one and delete it in the same request.
-  const clear_token = rnClearToken && !token;
-  // Sent only when it was changed: "" leaves the remote where it points.
-  const addrNow = $("rnAddr").value.trim();
-  const address = !$("rnAddrField").hidden && rnAuthOpts?.url && addrNow && addrNow !== rnAuthOpts.url
-    ? addrNow : "";
-  const model = rnModelPick(), effort = $("rnEffort").value;
+// ---- each section's own Save and Revert (the operator, 10 Oct) ---------------
+// Every section that holds a setting carries its own Save and Revert at its
+// foot, as the notebook's other views do (nb-core.js sectBar), and they write
+// or put back that section's fields and nothing else. One Save at the foot of
+// eleven sections was a long way from the field it saved, and its first press
+// with a session running only asked a question: a person who pressed it once
+// and moved on had saved nothing (Reads on BuilderBot, 10 Oct). Where the
+// section holds something a running session takes only when it starts, its
+// bar offers both answers at once: Save, keep it running and Save and end it.
+const RN_SECTS = ["project", "repo", "runs", "files", "sees", "build", "signing", "claude", "yours"];
+// Which section each of rnPrefWas's fields is in, and what it is called.
+const RN_WAS = {
+  color: ["project", "Color"],
+  node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
+  reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"], debug: ["sees", "Debugging"],
+  build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
+  capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], dev_keep: ["build", "Dev builds kept"],
+  gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
+  devbuild: ["claude", "Claude may"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
+  keys: ["claude", "Claude may"], release: ["claude", "Claude may"], version: ["claude", "Move the version"],
+  model: ["yours", "Model"], effort: ["yours", "Effort"], reply: ["yours", "Replies"], asks: ["yours", "Questions"],
+  git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
+};
+// What a running session takes only when it starts (the briefing, the launch
+// flags, the view it runs in); everything else is read when it is used.
+const RN_AT_START = new Set(["model", "effort", "reply", "asks", "git_name", "git_email", "node", "nodes",
+                             "reads", "sees", "test_change", "gpu", "capture_days", "snapshot_days", "dev_keep"]);
+
+// The fields as they stand, in rnPrefWas's own shape, so each compares with
+// its saved value directly.
+function rnEnc(){
   const node = $("rnNode").value;
-  const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
-  const reads = [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value);
-  const sees = $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean);
-  const reaches = rnReachNow();
-  // Sent only where it was drawn: an account without the debug grant is
-  // never shown it, so it never sends it, and the server never asks.
   const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
-  const build = $("rnBuildCmd").value.trim(),
-        test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
-  const capture_days = $("rnCaptureDays").value.trim();
-  const snapshot_days = $("rnSnapDays").value.trim();
-  const dev_keep = $("rnDevKeep").value.trim();
-  const gate = rnGateNow();
-  const color = rnColorNow();
-  // With the node's group: nothing here restarts a session.
-  const tests_in = $("rnDevTest").value || "node";
-  const test_change = $("rnTestChange").value || "wait";
-  const gpu = $("rnGpu").value || "on";
-  const reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
-  const devbuild = $("rnGateDocker").value || "deny";
-  const report = $("rnGateReport").value || "auto";
-  const sign = $("rnGateSign").value || "ask";
-  const keys = $("rnGateKeys").value || "ask";
-  const release = $("rnGateRelease").value || "ask";
-  const verPol = $("rnGateVersion").value || "locked";
-  const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
-    || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
-    || JSON.stringify(reaches) !== rnPrefWas.reaches
-    || (dbg && rnDebugKey(dbg.diag, dbg.log_from) !== rnPrefWas.debug)
-    || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
-    || snapshot_days !== rnPrefWas.snapshot_days
-    || dev_keep !== rnPrefWas.dev_keep
-    || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
-    || gpu !== rnPrefWas.gpu
-    || devbuild !== rnPrefWas.devbuild
-    || report !== rnPrefWas.report
-    || sign !== rnPrefWas.sign
-    || keys !== rnPrefWas.keys
-    || release !== rnPrefWas.release;
-  const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
-  // Yours, so they travel with the model and the effort rather than with the
-  // project's group: the same request, a different store on the server.
-  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
-    || reply !== rnPrefWas.reply || asks !== rnPrefWas.asks
-    || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
-  // What a running session takes only when it starts, named as the dialog
-  // labels it: the launch flags (model, effort), the author it commits as
-  // and the briefing it is handed (replies, questions, how a test run
-  // meets a change, how long captures are kept), the node it runs on, and
-  // the view it runs in (reads, sees). Everything else here is read when
-  // it is used (the build and test commands, the dials, where tests run),
-  // so a change to those reaches a running session without a restart.
-  const takesAtStart = [
-    [model !== rnPrefWas.model, "Model"], [effort !== rnPrefWas.effort, "Effort"],
-    [reply !== rnPrefWas.reply, "Replies"], [asks !== rnPrefWas.asks, "Questions"],
-    [git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email, "Commit name and email"],
-    [node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes, "Node"],
-    [reads.join(",") !== rnPrefWas.reads, "Reads"], [sees.join(", ") !== rnPrefWas.sees, "Also sees"],
-    [test_change !== rnPrefWas.test_change, "During a test run, a change asked for"],
-    [gpu !== rnPrefWas.gpu, "The node's GPU"],
-    [capture_days !== rnPrefWas.capture_days, "Captures kept"],
-    [snapshot_days !== rnPrefWas.snapshot_days, "Snapshots kept"],
-    [dev_keep !== rnPrefWas.dev_keep, "Dev builds kept"],
-  ].filter(([changed]) => changed).map(([, label]) => label);
-  const launchChanged = takesAtStart.length > 0;
-  const running = liveSessions().has(myClaude(name));
-  const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
-  if (!to.trim()) return fail("a new name is needed");
-  const signDraft = rnSignPending() ? [1] : [];
-  if (Object.values(rnSignDraft).some(d => d.open && !d.file && (d.pass || d.alias)))
-    return fail("pick the keystore file for the key whose password you typed");
-  if (Object.values(rnSignDraft).some(d => d.file && !d.pass))
-    return fail("type the keystore's password: a key is checked with it before it is kept");
-  if (capture_days !== "" && !/^\d{1,3}$/.test(capture_days))
-    return fail("captures kept is a number of days, 0 to 365");
-  if (snapshot_days !== "" && !/^\d{1,4}$/.test(snapshot_days))
-    return fail("snapshots kept is a number of days, 0 to 3650");
-  if (dev_keep !== "" && !/^\d{1,2}$/.test(dev_keep))
-    return fail("dev builds kept is a number of builds, 0 to 99");
-  // The one combination the dialog will not write: authenticating with a token
-  // it is being told to throw away. The hint has been saying so; this is what
-  // makes it true rather than advice.
-  if (rnAuthPick === "https" && !((rnAuthOpts?.token && !rnClearToken) || token))
-    return fail("pick a credential that will exist: there will be no access "
-                + "token after this save");
-  // Asked before anything is written, and only when it costs something: a
-  // session that is not running has nothing to interrupt, and a dialog that
-  // was opened and closed unchanged should never ask at all.
-  //
-  // The answer decides the RESTART and nothing else. It used to decide the
-  // save as well (declining returned before anything was written) so
-  // somebody who wanted the setting kept and the conversation left alone got
-  // neither: the dialog stayed open looking unsaved, the setting never
-  // landed, and restarting the session by hand afterwards changed nothing,
-  // because there was nothing to read. Saving and interrupting are two
-  // decisions and only one of them was being asked about.
-  //
-  // Asked in the dialog itself, naming the changes, with the two answers
-  // in the foot (the operator, 29 Sep): the first press of Save shows the
-  // question and saves nothing; the press that answers it saves.
-  let restartNow = false;
-  if (launchChanged && running){
-    if (rnAsked === null){
-      $("rnRestartWhat").textContent = `Changed: ${takesAtStart.join(", ")}.`;
-      $("rnRestartAsk").hidden = false;
-      $("rnKeep").hidden = false;
-      $("rnGo").textContent = "Save and end it";
-      $("rnRestartAsk").scrollIntoView({block: "nearest"});
-      return;
-    }
-    restartNow = rnAsked === "end";
+  return {model: rnModelPick(), effort: $("rnEffort").value,
+          git_name: $("rnGitName").value.trim(), git_email: $("rnGitEmail").value.trim(),
+          node, nodes: (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : []).join(","),
+          hosts: [...$("rnHosts").querySelectorAll("input:checked")].map(i => i.value).join(","),
+          reads: [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value).join(","),
+          sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
+          reaches: JSON.stringify(rnReachNow()),
+          debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
+          build: $("rnBuildCmd").value.trim(), test: $("rnTestCmd").value.trim(),
+          outputs: $("rnOutputs").value.trim(),
+          capture_days: $("rnCaptureDays").value.trim(), snapshot_days: $("rnSnapDays").value.trim(),
+          dev_keep: $("rnDevKeep").value.trim(), gate: gateKey(rnGateNow()),
+          tests_in: $("rnDevTest").value || "node", test_change: $("rnTestChange").value || "wait",
+          gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
+          devbuild: $("rnGateDocker").value || "deny", report: $("rnGateReport").value || "auto",
+          sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
+          keys: $("rnGateKeys").value || "ask", version: $("rnGateVersion").value || "locked",
+          color: rnColorNow()};
+}
+
+// What one section holds unsaved, as the names its fields go by, and which
+// of them a running session takes only at its start.
+function rnSectChanges(sect, enc = rnEnc()){
+  const said = [], start = [];
+  for (const [k, [s, label]] of Object.entries(RN_WAS)){
+    if (s !== sect || String(enc[k] ?? "") === String(rnPrefWas[k] ?? "")) continue;
+    if (!said.includes(label)) said.push(label);
+    if (RN_AT_START.has(k) && !start.includes(label)) start.push(label);
   }
-  // Only what actually changed goes to the server. A rename request is
-  // refused outright while a terminal is open, so a settings-only save must
-  // not make one: it would fail on a project you were sitting in.
+  if (sect === "project"){
+    if ($("rnName").value.trim().replace(/\s+/g, " ") !== projLabel(rnFor) && !$("rnNameField").hidden) said.unshift("Name");
+    if (rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
+        || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only))) said.push("People");
+  }
+  if (sect === "repo"){
+    if ($("rnToken").value.trim() || rnClearToken) said.push("Token");
+    if (rnAuthPick && rnAuthPick !== rnAuthNow) said.push("Authentication");
+    const a = $("rnAddr").value.trim();
+    if (!$("rnAddrField").hidden && rnAuthOpts?.url && a && a !== rnAuthOpts.url) said.push("Address");
+  }
+  if (sect === "files" && rnFtpChange()) said.push("File access");
+  if (sect === "signing" && rnSignPending()) said.push("Signing keys");
+  return {said, start};
+}
+
+const rnDirty = () => RN_SECTS.filter(s => rnSectChanges(s).said.length);
+
+// The bars, put in once and then kept in step with what is typed: dead
+// rather than gone while there is nothing to save, so nothing moves under a
+// thumb (sectBar's rule).
+function rnBars(){
+  if (rnFor === null) return;
+  const enc = rnEnc(), running = liveSessions().has(myClaude(rnFor));
+  for (const sect of RN_SECTS){
+    const body = document.querySelector(`details.rngroup[data-sect="rn:${sect}"] > .body`);
+    if (!body) continue;
+    let bar = body.querySelector(":scope > .rnbarf > .rnbar");
+    if (!bar){
+      body.insertAdjacentHTML("beforeend", `<div class="field rnbarf"><div class="actbar sectbar rnbar" data-rnbar="${sect}">
+        <span class="state"></span><span class="sp"></span>
+        <button type="button" data-rnsave="${sect}">Save</button>
+        <button type="button" data-rnkeep="${sect}" hidden>Save, keep it running</button>
+        <button type="button" class="caution" data-rnrevert="${sect}">Revert</button>
+        <button type="button" class="danger" data-rnend="${sect}" hidden>Save and end it</button></div></div>`);
+      bar = body.querySelector(":scope > .rnbarf > .rnbar");
+    }
+    // A remote it can only read has nothing here to save (rnGitNone).
+    bar.parentElement.hidden = sect === "repo" && !$("rnGitNone").hidden;
+    if (bar.dataset.busy) continue;
+    const {said, start} = rnSectChanges(sect, enc);
+    const ask = running && start.length > 0;
+    const st = bar.querySelector(".state");
+    if (!st.classList.contains("bad"))
+      st.textContent = !said.length ? ""
+        : ask ? `${said.join(", ")} changed; its running session takes ${start.join(", ")} only when it starts`
+        : `${said.join(", ")} changed`;
+    bar.querySelector("[data-rnsave]").hidden = ask;
+    bar.querySelector("[data-rnkeep]").hidden = bar.querySelector("[data-rnend]").hidden = !ask;
+    for (const b of bar.querySelectorAll("button")) b.disabled = !said.length;
+  }
+}
+
+// One section put back to what it was when the settings were drawn or last
+// saved; the other sections keep what is typed in them.
+function rnRevertSect(sect){
+  const w = rnPrefWas;
+  if (sect === "project"){
+    $("rnName").value = projLabel(rnFor); rnShow();
+    $("rnPreview").hidden = true; $("rnName").classList.remove("bad");
+    rnFillColor(w.color);
+    rnPeopleDraft = {}; rnDrawPeople();
+  } else if (sect === "repo"){
+    $("rnToken").value = ""; rnClearToken = false; rnAuthPick = rnAuthNow;
+    if (rnAuthOpts?.url) $("rnAddr").value = rnAuthOpts.url;
+    rnDrawAuth();
+  } else if (sect === "runs"){
+    delete $("rnNodesMore").dataset.drawn;
+    rnFillNode();
+    $("rnGpu").value = w.gpu; $("rnDevTest").value = w.tests_in;
+  } else if (sect === "files"){
+    rnFtpDraft = {}; rnDrawFtp();
+  } else if (sect === "sees"){
+    rnFillReads();
+    $("rnSees").value = w.sees;
+    $("rnReachRows").innerHTML = "";
+    rnReachDraft = JSON.parse(w.reaches || "[]");
+    rnDrawReach();
+    rnFillDebug();
+    const on = new Set(String(w.debug).replace(/^diag;/, "").split(",").filter(Boolean));
+    $("rnDebug").querySelectorAll("input").forEach(i => {
+      i.checked = i.value === "@diag" ? String(w.debug).startsWith("diag;") : on.has(i.value); });
+  } else if (sect === "build"){
+    $("rnBuildCmd").value = w.build; $("rnTestCmd").value = w.test; $("rnOutputs").value = w.outputs;
+    $("rnCaptureDays").value = w.capture_days; $("rnSnapDays").value = w.snapshot_days;
+    $("rnDevKeep").value = w.dev_keep;
+  } else if (sect === "signing"){
+    rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = []; rnDrawSigning();
+  } else if (sect === "claude"){
+    const g = String(w.gate).split(",");
+    Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
+    $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild;
+    $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
+    $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
+    $("rnGateVersion").value = w.version;
+  } else if (sect === "yours"){
+    $("rnModel").value = w.model || rnModelNow; $("rnEffort").value = w.effort;
+    $("rnReply").value = w.reply; $("rnAsks").value = w.asks;
+    $("rnGitName").value = w.git_name; $("rnGitEmail").value = w.git_email;
+    rnDrawPrefs();
+  }
+  rnBarSay(sect, "");
+  rnBars();
+}
+
+// A sentence on one section's bar: an error in red, or nothing.
+function rnBarSay(sect, msg, bad = true){
+  const st = document.querySelector(`.rnbar[data-rnbar="${sect}"] .state`);
+  if (!st) return;
+  st.textContent = msg;
+  st.classList.toggle("bad", !!msg && bad);
+}
+
+// rnPrefWas's shape back into what the server is sent.
+function rnDec(w){
+  const dk = String(w.debug || "");
+  const g = String(w.gate || "").split(",");
+  return {...w,
+    nodes: String(w.nodes || "").split(",").filter(Boolean),
+    hosts: String(w.hosts || "").split(",").filter(Boolean),
+    reads: String(w.reads || "").split(",").filter(Boolean),
+    sees: String(w.sees || "").split(",").map(x => x.trim()).filter(Boolean),
+    reaches: JSON.parse(w.reaches || "[]"),
+    dbg: $("rnDebugField").hidden ? null
+      : {diag: dk.startsWith("diag;"), log_from: dk.replace(/^diag;/, "").split(",").filter(Boolean)},
+    gate: Object.fromEntries(Object.keys(GATE_IDS).map((k, i) => [k, g[i] || "auto"]))};
+}
+
+// One section's Save: its own fields sent, every other section's as they
+// were saved, so nothing typed elsewhere goes with it. `end` is the answer
+// to a running session, from the bar's two buttons.
+async function rnSubmit(sect, end = false){
+  const name = rnFor;
+  const bar = document.querySelector(`.rnbar[data-rnbar="${sect}"]`);
+  const fail = m => { rnBarSay(sect, m); return false; };
+  rnBarSay(sect, "");
+  const enc = rnEnc();
+  const mine = Object.keys(RN_WAS).filter(k => RN_WAS[k][0] === sect);
+  const merged = {...rnPrefWas, ...Object.fromEntries(mine.map(k => [k, enc[k]]))};
+  const v = rnDec(merged);
+  const {start} = rnSectChanges(sect, enc);
+  const prefsChanged = mine.some(k => k !== "version" && String(enc[k] ?? "") !== String(rnPrefWas[k] ?? ""));
+  const running = liveSessions().has(myClaude(name));
+  // The name and the remote are their own sections' alone.
+  const to = sect === "project" ? $("rnName").value : projLabel(name);
+  const token = sect === "repo" ? $("rnToken").value.trim() : "";
+  const auth = sect === "repo" && rnAuthPick && rnAuthPick !== rnAuthNow ? rnAuthPick : "";
+  const clear_token = sect === "repo" && rnClearToken && !token;
+  const addrNow = $("rnAddr").value.trim();
+  const address = sect === "repo" && !$("rnAddrField").hidden && rnAuthOpts?.url && addrNow && addrNow !== rnAuthOpts.url
+    ? addrNow : "";
+  if (!to.trim()) return fail("a new name is needed");
+  if (sect === "signing"){
+    if (Object.values(rnSignDraft).some(d => d.open && !d.file && (d.pass || d.alias)))
+      return fail("pick the keystore file for the key whose password you typed");
+    if (Object.values(rnSignDraft).some(d => d.file && !d.pass))
+      return fail("type the keystore's password: a key is checked with it before it is kept");
+  }
+  if (merged.capture_days !== "" && !/^\d{1,3}$/.test(merged.capture_days))
+    return fail("captures kept is a number of days, 0 to 365");
+  if (merged.snapshot_days !== "" && !/^\d{1,4}$/.test(merged.snapshot_days))
+    return fail("snapshots kept is a number of days, 0 to 3650");
+  if (merged.dev_keep !== "" && !/^\d{1,2}$/.test(merged.dev_keep))
+    return fail("dev builds kept is a number of builds, 0 to 99");
+  // The one combination this will not write: authenticating with a token it
+  // is being told to throw away.
+  if (sect === "repo" && rnAuthPick === "https" && !((rnAuthOpts?.token && !rnClearToken) || token))
+    return fail("pick a credential that will exist: there will be no access token after this save");
   const renaming = to.trim().replace(/\s+/g, " ") !== projLabel(name);
   const needRename = renaming || !!token || !!auth || clear_token || !!address;
-  $("rnGo").disabled = true; $("rnGo").textContent = "Saving…";
-  const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
-                      rnAskReset(); return fail(m); };
+  const restartNow = !!end && running && start.length > 0;
+  bar.dataset.busy = "1";
+  const pressed = bar.querySelector(end ? "[data-rnend]" : running && start.length ? "[data-rnkeep]" : "[data-rnsave]");
+  const word = pressed.textContent;
+  bar.querySelectorAll("button").forEach(b => { b.disabled = true; });
+  busy(pressed, "Saving");
+  const stop = m => { delete bar.dataset.busy; unbusy(pressed, word); rnBars(); return fail(m); };
   try{
-    if (prefChanged || nodeChanged){
-      const r = await fetch("/api/prefs", {method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, nodes, reads, sees, reaches, build, test, gate, color,
-                              ...(dbg || {}),
-                              tests_in, test_change, gpu, reply, asks, devbuild, report, sign, keys, release,
-                              outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
-                              ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
-                              ...(snapshot_days !== "" ? {snapshot_days: +snapshot_days} : {}),
-                              ...(dev_keep !== "" ? {dev_keep: +dev_keep} : {}),
-                              // The node binding never restarts a session;
-                              // it is about containers, not the conversation.
+    if (prefsChanged){
+      const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project: name, model: v.model, effort: v.effort, git_name: v.git_name, git_email: v.git_email,
+                              node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
+                              build: v.build, test: v.test, gate: v.gate, color: v.color, ...(v.dbg || {}),
+                              tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
+                              devbuild: v.devbuild, report: v.report, sign: v.sign, keys: v.keys, release: v.release,
+                              outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
+                              ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),
+                              ...(v.snapshot_days !== "" ? {snapshot_days: +v.snapshot_days} : {}),
+                              ...(v.dev_keep !== "" ? {dev_keep: +v.dev_keep} : {}),
                               restart: restartNow})});
       const j = await r.json();
       if (j.error) return stop(j.error);
-      // Said out loud when it did not happen, and which of the two reasons it
-      // is: a session quietly left on the old model is exactly the confusion
-      // this whole thing exists to remove, and a session deliberately left
-      // running is not a fault to color red.
-      if (running && launchChanged && !j.ended)
+      // Said out loud when the session was left on what it started with,
+      // and why, and when it was ended.
+      if (running && start.length && !j.ended)
         notify(restartNow
-                 ? `${projLabel(name)}: saved, but the session was not ended: `
-                   + (j.why || "it is still on what it started with")
-                 : `${projLabel(name)}: saved. Its running session keeps what it started `
-                   + `with until you end it and press Claude again.`,
+                 ? `${projLabel(name)}: saved, but the session was not ended: ` + (j.why || "it is still on what it started with")
+                 : `${projLabel(name)}: saved. Its running session keeps what it started with until you end it and press Claude again.`,
                restartNow);
       else if (restartNow && j.ended)
-        notify(`${projLabel(name)}: saved, and its session ended: press Claude to start `
-               + `one on it, resuming the conversation`);
+        notify(`${projLabel(name)}: saved, and its session ended: press Claude to start one on it, resuming the conversation`);
     }
-    const peopleChanged = !!rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
-      || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only));
-    if (peopleChanged){
+    if (sect === "project" && rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
+        || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only))){
       const why = await rnSavePeople(name);
       if (why) return stop(why);
+      rnLoadPeople(name);
     }
     // Move the version is version.py's policy: written where the Artifacts
     // tab writes it, so the two never disagree.
-    if (verPol !== rnPrefWas.version){
-      const j = await (await postJSON("/api/version", {project: name, action: "policy", policy: verPol})).json();
+    if (sect === "claude" && enc.version !== rnPrefWas.version){
+      const j = await (await postJSON("/api/version", {project: name, action: "policy", policy: enc.version})).json();
       if (j.error) return stop(j.error);
     }
-    const ftpChange = rnFtpChange();
+    const ftpChange = sect === "files" ? rnFtpChange() : null;
     if (ftpChange){
       const why = await rnSaveFtp(name, ftpChange);
       if (why) return stop(why);
+      rnLoadFtp(name);
     }
-    if (signDraft.length){
+    if (sect === "signing" && rnSignPending()){
       const why = await rnSaveSigning(name);
       if (why) return stop(why);
       notify(`${projLabel(name)}: signing keys saved`);
+      rnLoadSigning(name);
     }
-    if (!needRename){
-      closeRename();
-      if (!prefChanged && !nodeChanged && !signDraft.length && !peopleChanged && !ftpChange
-          && verPol === rnPrefWas.version) return;   // nothing changed
-      refresh();
-      return;
+    if (needRename){
+      const r = await postJSON("/api/rename", {name, to, token, auth, clear_token, address});
+      const j = await r.json();
+      if (j.error) return stop(j.error);
+      notify(renaming ? `${j.from || projLabel(name)} is now ${j.label || to}`
+        : address ? `${projLabel(name)}: ${(j.moved || []).find(m => /points at/.test(m)) || "saved"}`
+        : `${projLabel(name)} saved`);
+      // A new name is a new project key everywhere: drawn again under it.
+      if (renaming){ delete bar.dataset.busy; closeRename(); refresh(); return true; }
+      $("rnToken").value = ""; rnClearToken = false;
+      rnLoadAuth(name);
     }
-    const r = await postJSON("/api/rename", {name, to, token, auth, clear_token, address});
-    const j = await r.json();
-    if (j.error) return stop(j.error);
-    closeRename();
-    // Named rather than assumed: the server tidies what was typed, and the
-    // operator should see the name that actually took.
-    notify(renaming ? `${j.from || projLabel(name)} is now ${j.label || to}`
-      : address ? `${projLabel(name)}: ${(j.moved || []).find(m => /points at/.test(m)) || "saved"}`
-      : `${projLabel(name)} saved`);
   }catch(e){ return stop("save failed: " + e); }
+  // Saved: what this section shows is now what is saved, and the rest keep
+  // what is typed in them.
+  rnPrefWas = merged;
+  delete bar.dataset.busy;
+  unbusy(pressed, word);
+  rnBarSay(sect, "");
+  rnBars();
   refresh();
+  return true;
 }
+
 
 // Deleting asks once and says where the files go, rather than asking twice or
 // making somebody type the name. The roadmap item this came from called for a

@@ -1417,7 +1417,11 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
             env=text if isinstance(text, str) and (action == "env-set" or text.strip()) else None,
             create=action == "new", remove=action == "remove", target="" if project == sess else project,
             ref=devapp.field(req, "ref") if action == "new" else "",
-            compose=devapp.field(req, "compose") if action == "new" else "")
+            compose=devapp.field(req, "compose") if action == "new" else "",
+            # Made on a hosting node the project names (prefs.hosts): built
+            # on its own node and shipped there, once Allow is pressed.
+            host=devapp.field(req, "node") if action == "new" and req.get("ship") is True else "",
+            host_name=devapp.node_name(devapp.field(req, "node")) if action == "new" and req.get("ship") is True else "")
         # Which container it will be, which the session did not necessarily
         # choose, keyed and named as the auto path answers: it follows that
         # container's build once Allow starts it.

@@ -106,6 +106,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Copy or move on a Docker tab row takes a container to another node with its volumes and data, its env editable on the way; a move takes the old one down only once the new one is up, and goes back if it does not come up (5e57004)
 - A node can be made hosting only, on its row or when it is enrolled: it runs the containers sent to it, no project's code, sessions or bb go there, and its agent may ask the controller for its own jobs and nothing else (13e9f47)
 - A node's row on the Nodes tab has a Projects section: the projects that have the node, its primary marked, with Remove on the ones you are on, which takes the node out of that project's settings after asking (4f20c0a)
+- Hosts its containers on, in a project's Where it runs: hosting-only nodes the project's sessions may make, rebuild and remove containers on, built at home and shipped (bb devapp new --node). (fdc65ea)
 
 ### Changed
 
@@ -239,6 +240,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The node pickers on Send and Copy or move list the project's own nodes first, where its development and Claude sessions happen, and the rest after, where its image is shipped (5e57004)
 - Send, Copy or move and a container's Project and Built from offer only projects on your own list, administrators and the owner included, and the server refuses any other (5e57004)
 - The bell's drawer is grouped as Waiting on you, Needs attention and Recent. An update on a node is a short row, versions folded, with Dismiss: that version stays away for your account on every device until a newer one is out (3f597ad)
+- A project's settings save a section at a time: each section has its own Save and Revert, and where a running session would only take a change when it starts, the section offers Save, keep it running and Save and end it at once. (fdc65ea)
 
 ### Removed
 
@@ -392,6 +394,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Removing a container while its node read as not answering for a moment no longer forgets the row and leaves the container running: the removal waits in the node's queue and happens when it answers (7a3c716)
 - The companion app no longer offers to install the build it is already running when it is behind the dashboard; it says a newer one has to be built and signed first. (b06bf68)
 - A compose file the Artifacts tab says compose cannot read now says what compose itself said is wrong with it. (ebc91a8)
+- A compose file that requires a variable its env does not have yet is no longer called broken on the Artifacts tab: it says which variables it needs and is judged with them stood in. (fdc65ea)
 
 ### Security
 

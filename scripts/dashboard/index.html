@@ -1404,7 +1404,8 @@ select:focus{outline-offset:-2px}
    open at a time (the operator, 7 Oct), and a section with no field showing
    gone with its heading. Its fields are bands with their own inset, so the
    fold's body adds none of its own. */
-.rngroup:not(:has(> .body > .field:not([hidden]))){display:none}
+/* A section shows while a setting in it does; its own Save bar does not count. */
+.rngroup:not(:has(> .body > .field:not([hidden]):not(.rnbarf))){display:none}
 .rngroup > .body{padding:0 0 var(--row-y);gap:0}
 /* The jump bar over a long surface (sectJump): its sections' names in a
    line that wraps, each a link to its own. */
@@ -4187,6 +4188,13 @@ body.booting .pane>.loading{margin:auto}
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
       <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
+      <!-- The hosting-only nodes its containers may also go to (prefs.hosts,
+           the operator, 10 Oct): built on its own node and shipped there,
+           and its sessions may make, rebuild and remove them under Run its
+           container. Drawn by rnFillHosts; hidden with no hosting node. -->
+      <label id="rnHostsLabel" hidden>Hosts its containers on</label>
+      <div class="lbox" id="rnHosts" role="group" aria-labelledby="rnHostsLabel" hidden></div>
+      <div class="hint" id="rnHostsHint" hidden>Hosting-only nodes: no code or session goes there. Its containers there are built on its own node and sent, and its sessions may make, rebuild and remove them under Claude may: Run its container.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
       <div class="prefrow">
@@ -4420,22 +4428,11 @@ body.booting .pane>.loading{margin:auto}
       <div id="rnSessList"></div>
     </div>
     </div></details>
-    <!-- Save pressed with a change a running session takes only when it
-         starts (its model and effort, its author, the projects it reads
-         and the places it sees, its node, what its briefing says): named
-         here, with the choice in the foot. Saving and ending are two
-         decisions and the setting lands either way (B88); this used to be
-         a browser confirm that named none of the changes. -->
-    <div class="field" id="rnRestartAsk" hidden>
-      <label>A session of yours is running here</label>
-      <div class="hint" id="rnRestartWhat"></div>
-      <div class="hint">It takes these only when it starts: ending it costs the turn in flight, and Claude resumes the conversation.</div>
-    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
-      <button id="rnGo" class="primary">Rename</button>
-      <button id="rnKeep" hidden>Save, keep it running</button>
-      <button id="rnCancel">Cancel</button>
+      <!-- Each section saves itself (page-projsettings.js rnBars); the foot
+           only closes the dialog, and is not there in the notebook. -->
+      <button id="rnCancel">Close</button>
       <!-- Pushed to the far end, like every other verb here that cannot be
            undone. Only on the chain's door: it is about the remote, and the
            gear is about the project. -->
@@ -5728,8 +5725,24 @@ $("rlNode").onchange = rlSay;
 // ---- a project's settings dialog, wired ---------------------------------
 // Its declarations are page-projsettings.js; what runs at load is below.
 $("rnName").oninput = rnShow;
-$("rnGo").onclick = () => { if (!$("rnRestartAsk").hidden) rnAsked = "end"; rnSubmit(); };
-$("rnKeep").onclick = () => { rnAsked = "keep"; rnSubmit(); };
+// Each section's Save, Save, keep it running, Save and end it and Revert,
+// and every change kept in step with its bar. On the form itself, which
+// moves between the dialog and a notebook's Settings view.
+{
+  const box = $("rnmodal").querySelector(":scope > .box");
+  box.addEventListener("click", e => {
+    const b = e.target.closest("[data-rnsave],[data-rnkeep],[data-rnend],[data-rnrevert]");
+    if (b && !b.disabled){
+      if (b.dataset.rnrevert){
+        const said = rnSectChanges(b.dataset.rnrevert).said;
+        if (said.length && confirm(`Revert ${said.join(", ")}?\n\nIt goes back to what is saved.`)) rnRevertSect(b.dataset.rnrevert);
+      } else rnSubmit(b.dataset.rnsave || b.dataset.rnkeep || b.dataset.rnend, !!b.dataset.rnend);
+      return;
+    }
+    setTimeout(rnBars, 0);
+  });
+  for (const ev of ["input", "change"]) box.addEventListener(ev, () => setTimeout(rnBars, 0));
+}
 $("rnColor").onclick = e => {
   const b = e.target.closest("[data-color]");
   if (!b) return;
@@ -5753,10 +5766,15 @@ $("rnTest").onclick = rnTestAuth;
 
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
-$("rnCancel").onclick = closeRename;
+// Closing with a section unsaved asks, naming what would go.
+$("rnCancel").onclick = () => {
+  const d = rnDirty().map(x => document.querySelector(`details.rngroup[data-sect="rn:${x}"] .t`)?.textContent || x);
+  if (d.length && !confirm(`Close without saving? ${d.join(", ")} would be dropped.`)) return;
+  closeRename();
+};
 // The settings' sections take turns, one open at a time, as a tab's do.
 wireSections($("rnmodal"));
-$("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
+$("rnmodal").onclick = e => { if (e.target === $("rnmodal")) $("rnCancel").click(); };
 
 // ---- creating a project -------------------------------------------------
 $("pCreate").onclick = createProject;

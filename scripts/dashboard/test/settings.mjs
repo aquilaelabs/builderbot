@@ -6,7 +6,7 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, saveDialog, openFold, URL, DIR, unfold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, sectSave, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -306,8 +306,8 @@ ok(elsewhere.git_name === 'T. Person',
 
 // ---- a project's settings live in its notebook (R119 step 3) ---------------
 // The row's gear went, and the form is the notebook's Settings view: the
-// same form, moved there while the view is on screen, Revert rather than
-// Cancel, and back to the dialog when another view is picked.
+// same form, moved there while the view is on screen, each section saving
+// itself, and back to the dialog when another view is picked.
 {
   await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); });
   ok(!(await page.$('#projects [data-rn]')) && !(await page.$('.doc .projtab [data-rn]')),
@@ -315,9 +315,27 @@ ok(elsewhere.git_name === 'T. Person',
   await page.evaluate(() => openProjectSettings('alpha'));
   await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 15000 });
   const inView = await page.evaluate(() => ({ name: $('rnName').value, modal: $('rnmodal').hidden,
-    revert: $('rnCancel').textContent, shown: $('rnName').checkVisibility() }));
-  ok(inView.name === 'alpha' && inView.modal && inView.revert === 'Revert' && inView.shown,
-     `the notebook's Settings view holds the form, the dialog shut (${JSON.stringify(inView)})`);
+    close: $('rnCancel').hidden, shown: $('rnName').checkVisibility(),
+    bars: [...document.querySelectorAll('.nbsettings .rnbar')].filter(b => b.checkVisibility()).length }));
+  ok(inView.name === 'alpha' && inView.modal && inView.close && inView.shown && inView.bars >= 5,
+     `the notebook's Settings view holds the form, the dialog shut, each section with its own Save and Revert (${JSON.stringify(inView)})`);
+  // A section's Save writes that section alone, and what is typed in another
+  // stays typed (the operator, 10 Oct: one Save for eleven sections).
+  await page.fill('#rnBuildCmd', 'make one');
+  await page.selectOption('#rnGateRoadmap', 'deny');
+  const err = await sectSave(page, 'build');
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make one', { timeout: 20000 });
+  const after = await page.evaluate(() => ({ gate: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.roadmap || 'auto',
+    typed: $('rnGateRoadmap').value, claude: !document.querySelector('.rnbar[data-rnbar="claude"] [data-rnsave]').disabled,
+    build: document.querySelector('.rnbar[data-rnbar="build"] [data-rnsave]').disabled }));
+  ok(!err && after.gate === 'auto' && after.typed === 'deny' && after.claude && after.build,
+     `...Build and test's Save stores the build command and nothing of Claude may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
+  await page.click('.rnbar[data-rnbar="claude"] [data-rnrevert]');
+  ok(await page.evaluate(() => $('rnGateRoadmap').value === 'auto'
+       && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled
+       && $('rnBuildCmd').value === 'make one'),
+     '...and its Revert puts Claude may back alone');
+  await post('/api/prefs', { project: 'alpha', build: '' });
   await page.evaluate(() => getNotebook('alpha').view('roadmap'));
   ok(await page.evaluate(() => !!document.querySelector('#rnmodal > .box') && $('rnmodal').hidden),
      '...and picking another view puts the form back where the dialog keeps it');

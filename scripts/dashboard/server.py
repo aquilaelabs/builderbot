@@ -5258,6 +5258,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": f"{', '.join(host)} hosts containers only: no project's code "
                                             "or sessions go there. Send a container to it from the "
                                             "Docker tab instead"}, 400)
+        # The hosting nodes its containers may also go to (prefs.hosts): a
+        # node is shared, so naming one is for whoever may set the project's
+        # node, and only a hosting-only node is one: a node that holds the
+        # project is in its node set already. Only a change is asked about.
+        if req.get("hosts") is not None and prefs.hosts_changed(name, req.get("hosts")):
+            if self._refused("node", name):
+                return
+            if not NODES_OK:
+                got = req.get("hosts") if isinstance(req.get("hosts"), list) else str(req.get("hosts")).split(",")
+                bad = [(nodes.node(n) or {}).get("name") or n for n in got
+                       if str(n).strip() and not nodes.host_only(str(n).strip())]
+                if bad:
+                    return self._json({"error": f"{', '.join(bad)} is not a hosting-only node: a node the "
+                                                "project works on takes its containers already, from Where it runs"}, 400)
         # Which other projects a session here may read is BuilderBot's
         # owner's alone (the operator, 6 Oct): it hands one project's sessions
         # another's code and notebook, which no administrator or user grants
@@ -5957,11 +5971,21 @@ class Handler(BaseHTTPRequestHandler):
         # The exception is one SENT there on purpose (R166): its image is
         # built on the project's own node and shipped, and the project's
         # sessions are the ones meant to rebuild it.
+        # A node named by its name (bb devapp new --node NAME) is its id here.
+        if act == "new" and req.get("node") and not NODES_OK and not nodes.node(str(req["node"])):
+            hit = [n for n in nodes.node_list() if n.get("name") == str(req["node"]) and n.get("state") != "retired"]
+            if hit:
+                req["node"] = hit[0]["id"]
         if act == "new" and req.get("ship") is True:
-            if session:
+            # A session may make one there when its project names the node
+            # under Hosts its containers on (prefs.hosts, the operator, 10
+            # Oct), under its Run its container dial below; anywhere else it
+            # is a person's.
+            if session and (name != sess or str(req.get("node") or "") not in (prefs.get(sess).get("hosts") or [])):
                 return self._json({"error": "sending a project's container to a node it is not on is a "
-                                            "person's: it puts the project's image on another machine"}, 403)
-            if self._refused("node", name):
+                                            "person's, unless the node is under Hosts its containers on in "
+                                            "the project's settings: it puts the project's image on another machine"}, 403)
+            if not session and self._refused("node", name):
                 return None
         if act not in ("starter", "state") and session:
             on = devapp.instance_node(name, field(req, "instance"))

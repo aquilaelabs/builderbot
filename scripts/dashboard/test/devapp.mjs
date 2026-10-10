@@ -3189,6 +3189,11 @@ ok(await page.$('#devSend'),
        `...and creates its project's own container (${made.error || made.instance})`);
     const under = await asSession({ project: 'ep.silon', action: 'new', instance: 'elsewhere', owner: 'alpha' });
     ok(under.status === 403, `...but not one belonging to another project (${under.status})`);
+    // ...nor one sent to a node its project does not name under Hosts its
+    // containers on (prefs.hosts, the operator, 10 Oct): that is a person's.
+    const away = await asSession({ project: 'ep.silon', action: 'new', instance: 'away', node: 'nowhere-node', ship: true });
+    ok(away.status === 403 && /unless the node is under Hosts its containers on/.test(away.error || ''),
+       `...nor one shipped to a node its project's settings do not name, said with where to name it (${away.status})`);
     // ...and removes one, under the same setting (the operator, 24 Sep):
     // the row goes, its env and data stay, as the tab's Remove leaves them.
     const gone = await asSession({ project: 'ep.silon', action: 'remove', instance: 'fresh' });

@@ -226,8 +226,8 @@ def new():
     container made from its own compose file on its own node, then built and
     started, with this waiting for the verdict. BB_DEV_INSTANCE names it;
     unnamed, the controller gives it the project's own name while it has
-    none and one beside it after. BB_DEV_REF pins the branch it builds from
-    and BB_DEV_FILE is its env. On `ask` one request carries all of it and
+    none and one beside it after. BB_DEV_REF pins the branch it builds from,
+    BB_DEV_HOST a hosting node to ship it to, and BB_DEV_FILE is its env. On `ask` one request carries all of it and
     Allow makes and builds it; on `auto` it is made, then built as `bb
     devapp rebuild` builds."""
     auth = os.environ["BB_DEV_AUTH"]
@@ -238,6 +238,10 @@ def new():
     body = {"action": "new", "why": os.environ.get("BB_DEV_WHY", ""),
             "ref": os.environ.get("BB_DEV_REF", ""),
             "compose": os.environ.get("BB_DEV_COMPOSE", "")}
+    # A hosting node the project names (Hosts its containers on): built on
+    # its own node and shipped there (R166).
+    if os.environ.get("BB_DEV_HOST"):
+        body["node"], body["ship"] = os.environ["BB_DEV_HOST"], True
     path = os.environ.get("BB_DEV_FILE", "")
     if path:
         body["text"] = open(path, encoding="utf-8").read()

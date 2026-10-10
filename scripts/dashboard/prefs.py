@@ -243,6 +243,13 @@ def _clean(rec):
             # worked on from either. Everything that reads one node keeps
             # reading `node`; containers may live on any of these.
             "nodes": _nodes_of(rec),
+            # The nodes outside that set its containers may also run on: a
+            # hosting-only node (nodes.host_only) holds no code and no
+            # session, and a container of this project there is built on
+            # its own node and shipped (R166). Naming one here lets the
+            # project's sessions make, rebuild and remove containers there
+            # under its Run its container dial (the operator, 10 Oct).
+            "hosts": _hosts_of(rec),
             # The other projects a session here may READ: their trees, bound
             # read-only into the session's view on a node, and their
             # notebooks through the API and the relayed verbs, every write
@@ -468,6 +475,25 @@ def node_changed(project, req):
     return (str(want["node"] or "")[:40] != str(cur.get("node") or "")[:40]
             or _nodes_of(want) != _nodes_of(cur))
 
+def _hosts_of(rec):
+    """The hosting nodes a project's containers may also go to, as stored:
+    node ids, at most 16, in the order given."""
+    got = rec.get("hosts") if isinstance(rec.get("hosts"), list) else []
+    out = []
+    for n in got:
+        n = str(n or "").strip()[:40]
+        if n and n not in out:
+            out.append(n)
+    return out[:16]
+
+
+def hosts_changed(project, hosts):
+    """Whether `hosts`, as the dialog sends it, names other nodes than the
+    ones stored."""
+    got = hosts if isinstance(hosts, list) else str(hosts).split(",")
+    return _hosts_of({"hosts": got}) != ((get(project) or {}).get("hosts") or [])
+
+
 def _nodes_of(rec):
     """The project's node set, primary first, from a record that may carry
     only `node` (from before R82) or a `nodes` list as well."""
@@ -582,7 +608,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None,
-              release=None, log_from=None, diag=None, build_local=None, reaches=None):
+              release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -709,6 +735,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if not 0 <= n <= 99:
                 return {"error": f"dev builds kept is a number of builds, 0 to 99, not {dev_keep}"}
             cur["dev_keep"] = n
+        if hosts is not None:
+            cur["hosts"] = _hosts_of({"hosts": hosts if isinstance(hosts, list) else str(hosts).split(",")})
         if log_from is not None:
             cur["log_from"] = _log_from({"log_from": log_from})
         if diag is not None:
@@ -718,7 +746,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
+        if (cur["node"] or cur["hosts"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
                 or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
@@ -857,7 +885,7 @@ def dialog_save(name, req, uid):
                   dev_keep=req.get("dev_keep"), sign=req.get("sign"), keys=req.get("keys"),
                   release=req.get("release"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
-                  reaches=req.get("reaches"),
+                  reaches=req.get("reaches"), hosts=req.get("hosts"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)

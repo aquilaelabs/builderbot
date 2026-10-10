@@ -270,7 +270,7 @@ bb devapp rebuild [--why "..."]
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
                    interpolate them; its other options are the compose file's own
-bb devapp new [NAME] [--branch REF] [--compose FILE] [--env FILE] [--why "..."]
+bb devapp new [NAME] [--branch REF] [--compose FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
                    own compose file on its node, then built and started, and this
@@ -279,8 +279,10 @@ bb devapp new [NAME] [--branch REF] [--compose FILE] [--env FILE] [--why "..."]
                    with -2, -3 and on; a second needs ports of its own, so give it
                    an env that sets them with --env. --branch builds it
                    from that branch; --compose names another of its compose
-                   files (site/compose.yml), the root's own by default. On ask,
-                   one request carries all of it and
+                   files (site/compose.yml), the root's own by default. --node
+                   puts it on a hosting node the project's settings name under
+                   Hosts its containers on: built on the project's own node and
+                   shipped there. On ask, one request carries all of it and
                    Allow makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;
