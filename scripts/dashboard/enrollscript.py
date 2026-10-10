@@ -41,6 +41,11 @@ import time
 import urllib.parse
 
 REACH = ("lan", "wireguard", "public")
+# The doors in for SSH (R174): a tunnel client on the node, switched from
+# its row. cloudflared publishes port 22 at a hostname of its own with a
+# tunnel token; Tailscale joins the node to a tailnet with an auth key and
+# answers ssh there (tailscale ssh), with no public name at all.
+DOORS = ("cloudflared", "tailscale")
 # Lines a router's config carries that the node's copy goes without: a
 # resolver (only the controller is reached, by address, and wg-quick's DNS
 # needs resolvconf), commands wg-quick would run as root, and settings that
@@ -140,6 +145,20 @@ def check(answers):
     if not host:
         return {"error": "the controller's address is a URL the node dials, like http://192.168.1.10:7680"}
     out = {"reach": reach, "controller": url, "sessions": answers.get("sessions") is not False}
+    # A door in for SSH (R174): which recipe, its name, and its secret.
+    door = str(answers.get("door") or "")
+    if door:
+        if door not in DOORS:
+            return {"error": f"no such door: {door}; one of {', '.join(DOORS)}"}
+        host = str(answers.get("door_host") or "").strip().lower()
+        secret = str(answers.get("door_secret") or "").strip()
+        if door == "cloudflared" and not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", host):
+            return {"error": "cloudflared's door is a hostname of its own, like ssh-vps.example.com (not the "
+                             "controller's): the public hostname set on the tunnel in Zero Trust"}
+        if not secret or len(secret) > 4000 or any(c.isspace() for c in secret):
+            return {"error": "the door's secret is one line: cloudflared's tunnel token, or Tailscale's auth key"}
+        out.update(door=door, door_host=host if door == "cloudflared" else "", door_secret=secret,
+                   door_close22=answers.get("door_close22") is True)
     if reach == "public":
         # A public name over HTTPS, verified by the system's CAs: an address
         # or plain http here is a LAN enrollment wearing the wrong word.
@@ -173,6 +192,9 @@ def check(answers):
 
 
 WG_BEGIN = "base64 -d > \"$dir/bb.conf\" <<'WGCONF'"
+# The door's secret, the same way (R174): in the script until it has run.
+DOOR_BEGIN = "base64 -d > \"$dir/door-secret\" <<'DOORSECRET'"
+DOOR_AFTER = ": # the door's secret left this file once the node enrolled; the node keeps it"
 # What stands where the config was, once it has run: the tunnel's config as
 # this node installed it.
 WG_AFTER = ('[ -r /etc/wireguard/bb.conf ] || { echo "the WireGuard config left this file once the node '
@@ -198,6 +220,12 @@ def build(ans, *, name, user, token, expires, provisioner):
         flags.append("--session-user none")
     if ans["reach"] == "public":
         flags.append("--reach public")
+    if ans.get("door"):
+        flags.append(f"--door {_q(ans['door'])}")
+        if ans.get("door_host"):
+            flags.append(f"--door-host {_q(ans['door_host'])}")
+        if ans.get("door_close22"):
+            flags.append("--door-close22")
     when = time.strftime("%d %b %Y %H:%M UTC", time.gmtime(expires))
     lines = [
         "#!/usr/bin/env bash",
@@ -211,6 +239,9 @@ def build(ans, *, name, user, token, expires, provisioner):
            "# (the node's copy is /etc/wireguard/bb.conf) and keeps the rest, which",
            "# can be changed and run again on this machine with a new token."]
           if ans["reach"] == "wireguard" else []),
+        *(["# Until it has run it holds the door's secret as well (a tunnel token or",
+           "# an auth key): once the node has enrolled it takes that out of itself."]
+          if ans.get("door") else []),
         "set -euo pipefail",
         # One block, read whole before any of it runs: the end of it rewrites
         # this file, and bash otherwise reads a script as it goes.
@@ -227,22 +258,31 @@ def build(ans, *, name, user, token, expires, provisioner):
         lines += [WG_BEGIN, _b64(ans["wg_conf"]), "WGCONF",
                   'chmod 600 "$dir/bb.conf"']
         flags.append('--wg-conf "$dir/bb.conf"')
+    if ans.get("door"):
+        lines += [DOOR_BEGIN, _b64(ans["door_secret"]), "DOORSECRET",
+                  'chmod 600 "$dir/door-secret"']
+        flags.append('--door-secret "$dir/door-secret"')
     lines.append(f'bash "$dir/provision-linux.sh" {" ".join(flags)} "$@"')
-    if ans["reach"] == "wireguard":
-        # Only after the provisioner succeeded (set -e ends a failed run
-        # above, with the config still in here for another try): the
-        # config block out of this file, the rest kept to be changed and run
-        # again, which then takes the tunnel's config as installed. The old
-        # copy shredded where shred exists, since a rename leaves its blocks.
+    # Only after the provisioner succeeded (set -e ends a failed run above,
+    # with the secrets still in here for another try): each secret block out
+    # of this file, the rest kept to be changed and run again, which then
+    # takes the tunnel's config as installed and the door's service as it
+    # is. The old copy shredded where shred exists, since a rename leaves
+    # its blocks.
+    for begin, end, after, said in (
+            (WG_BEGIN, "WGCONF", WG_AFTER, "the WireGuard config is out of %s now; this node keeps its own in /etc/wireguard/bb.conf"),
+            (DOOR_BEGIN, "DOORSECRET", DOOR_AFTER, "the door secret is out of %s now; this node keeps it")):
+        if (begin == WG_BEGIN and ans["reach"] != "wireguard") or (begin == DOOR_BEGIN and not ans.get("door")):
+            continue
         lines += [
-            "if [ -f \"$0\" ] && grep -qxF " + _q(WG_BEGIN) + " \"$0\"; then",
+            "if [ -f \"$0\" ] && grep -qxF " + _q(begin) + " \"$0\"; then",
             '    new="$(mktemp "$0.XXXXXX")"',
-            "    awk -v b=" + _q(WG_BEGIN) + " -v r=" + _q(WG_AFTER)
-            + " '$0 == b { print r; skip = 1; next } skip && $0 == \"WGCONF\" { skip = 0; next } !skip' \"$0\" > \"$new\"",
+            "    awk -v b=" + _q(begin) + " -v r=" + _q(after)
+            + " '$0 == b { print r; skip = 1; next } skip && $0 == \"" + end + "\" { skip = 0; next } !skip' \"$0\" > \"$new\"",
             '    chmod --reference="$0" "$new" 2>/dev/null || chmod 600 "$new"',
             '    if command -v shred >/dev/null 2>&1; then shred -u "$0"; else rm -f "$0"; fi',
             '    mv "$new" "$0"',
-            "    printf '\\n== the WireGuard config is out of %s now; this node keeps its own in /etc/wireguard/bb.conf\\n' \"$0\"",
+            "    printf '\\n== " + said + "\\n' \"$0\"",
             "fi"]
     lines += ["exit 0", "}", ""]
     return "\n".join(lines)

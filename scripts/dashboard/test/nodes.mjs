@@ -1236,6 +1236,33 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === vps.id);
     ok(vps.ok && rec?.config?.host_only === true, `a node enrolled as hosting only is so from the start (${vps.error || 'ok'})`);
     await napi('/api/v1/nodes', { action: 'retire', id: vps.id });
+    // The row's switch, on the sandbox fixture node once it reports a door.
+    const hello = census => agent('hello', { census, version: shipped.version, digest: shipped.digest });
+    await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: true } });
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    await page.waitForSelector(`${ROW} .nddoor [data-nd="door"]`, { timeout: 10000 });
+    const doorRow = await page.$eval(`${ROW} .nddoor`, e => ({ text: e.textContent, on: e.querySelector('[data-nd="door"]').dataset.on,
+      cmd: e.querySelector('.ndcmd')?.textContent || '' }));
+    ok(/SSH door: cloudflared, open/.test(doorRow.text) && doorRow.on === '0' && /Shut it/.test(doorRow.text)
+       && /cloudflared access ssh --hostname ssh-shed\.example\.com/.test(doorRow.cmd),
+       `a node reporting its door open shows Shut it and the ssh command (${doorRow.cmd.slice(0, 90)})`);
+    page.dialogs.length = 0;
+    await page.click(`${ROW} .nddoor [data-nd="door"]`);
+    const doorJob = await (async () => { for (let i = 0; i < 40; i++){
+      const js = (await napi('/api/v1/jobs?active=1')).jobs || [];
+      const j = js.find(x => x.type === 'system' && x.spec?.apply === 'door');
+      if (j) return j;
+      await sleep(250);
+    } return null; })();
+    ok(page.dialogs.length === 1 && /Shut the SSH door/.test(page.dialogs[0]) && doorJob && doorJob.spec.config.on === false,
+       `Shut it asks, then queues the door system job with on: false (${JSON.stringify(doorJob?.spec)})`);
+    if (doorJob) await napi('/api/v1/jobs', { action: 'cancel', id: doorJob.id });
+    await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: false } });
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    await page.waitForFunction(sel => /SSH door: cloudflared, shut/.test(document.querySelector(sel + ' .nddoor')?.textContent || ''), ROW, { timeout: 10000 });
+    ok(await page.$eval(`${ROW} .nddoor`, e => /Open it/.test(e.textContent) && !e.querySelector('.ndcmd')),
+       '...and reported shut, the row offers Open it and no command');
+    await hello(CENSUS);
   }
   // The fold is held to the document rules the same as any tab surface
   // (uniform.mjs cannot see it: that suite has no sandbox node to open one
@@ -2279,6 +2306,33 @@ await page.evaluate(async () => {
      `...and a request wearing a tunnel edge's headers reaches the agent's API alone (${JSON.stringify(gate)})`);
   await page.click('#ndBody #ndTokDone');
   if (row2) await page.evaluate(id => nodeAct({ action: 'retire', id }), row2.id);
+  // A door in for SSH (R174): the dialog's recipe, its hostname and secret;
+  // the script carries the secret in a block and runs the provisioner with
+  // the door's flags; the pending row knows the door; and once the node
+  // reports it, the row's switch queues the system job.
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnDoor', { timeout: 10000 });
+  await page.fill('#ndBody #ndEnName', 'doorbox');
+  await page.selectOption('#ndBody #ndEnDoor', 'cloudflared');
+  const dv = await page.evaluate(() => ({ host: !$('ndEnDoorHostRow').hidden, secret: !$('ndEnDoorSecretRow').hidden,
+    close: !$('ndEnDoorCloseRow').hidden, hint: !$('ndEnDoorHint').hidden }));
+  ok(dv.host && dv.secret && dv.close && dv.hint, `picking cloudflared asks for its hostname and secret, and offers closing port 22 (${JSON.stringify(dv)})`);
+  await page.fill('#ndBody #ndEnDoorHost', 'ssh-doorbox.example.com');
+  await page.fill('#ndBody #ndEnDoorSecret', 'eyJ.door.token');
+  const [dl3] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const script3 = readFileSync(await dl3.path(), 'utf8');
+  const run3 = script3.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
+  const part3 = (sc, tag) => { const m = sc.match(new RegExp(`<<'${tag}'\\n([\\s\\S]*?)\\n${tag}\\n`));
+                               return m ? Buffer.from(m[1].replace(/\n/g, ''), 'base64').toString('utf8') : ''; };
+  const secret3 = part3(script3, 'DOORSECRET');
+  ok(/--door 'cloudflared' --door-host 'ssh-doorbox\.example\.com'/.test(run3) && /--door-secret "\$dir\/door-secret"/.test(run3)
+     && !/--door-close22/.test(run3) && secret3 === 'eyJ.door.token',
+     `the script carries the door's secret in its own block and the provisioner's flags (${run3.replace(/bbe_[^']+/, 'bbe_…').slice(0, 160)})`);
+  const row3 = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'doorbox'); });
+  ok(row3?.config?.door?.kind === 'cloudflared' && row3.config.door.host === 'ssh-doorbox.example.com',
+     `...and the pending row knows the door (${JSON.stringify(row3?.config?.door)})`);
+  await page.click('#ndBody #ndTokDone');
+  if (row3) await page.evaluate(id => nodeAct({ action: 'retire', id }), row3.id);
 }
 
 // What is offered (roadmap R54, step 6): with unvetted features off the

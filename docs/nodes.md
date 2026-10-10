@@ -1011,6 +1011,22 @@ the pieces stack:
    project's own node and shipped) and rebuild and remove the ones there,
    under its Claude may: Run its container, as on its own node; a node not
    named stays a person's to send to.
+4b. *A door in for SSH* (R174): a tunnel client on the node, switched on
+   and off from the node's row (a `door` system job the agent answers by
+   starting or stopping it; the census reports `door: {kind, host,
+   installed, active}` and the row's switch reads that). Which client is a
+   recipe the provisioner knows (`--door`): cloudflared publishing port 22
+   at a hostname of its own with a tunnel token (`/etc/cloudflared/env`,
+   root's, read by its unit; the public hostname goes to
+   `ssh://localhost:22` in Zero Trust, since a token tunnel is remotely
+   managed), or Tailscale joining a tailnet with an auth key and answering
+   ssh there (`tailscale up --ssh`), with no public name. The secret rides
+   in the enroll script until it has run, then leaves it as the WireGuard
+   config does; the controller keeps none of it. Who reaches the door is
+   the tunnel's own say (Cloudflare Access, the tailnet's ACLs). Closing
+   public port 22 (`--door-close22`, an nftables rule leaving the loopback
+   and the tailnet) is a separate, default-off choice, since the person
+   running the script is usually on that port.
 5. *Put nginx in front of them* (R171, the nginx tab): one reverse proxy
    per node, BuilderBot's own, listed for every node on the Tools card's
    nginx tab. Its routes (a hostname or path to a port a container

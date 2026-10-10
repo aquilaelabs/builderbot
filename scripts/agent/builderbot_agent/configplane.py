@@ -78,6 +78,8 @@ class ConfigPlaneMixin:
             return self._apply_power(job, what)
         if what == "gpu":
             return self._apply_gpu(job)
+        if what == "door":
+            return self._apply_door(job, cfg)
         if what == "gpu-off":
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
@@ -86,6 +88,31 @@ class ConfigPlaneMixin:
             return ("succeeded", 0) if rc == 0 else ("failed", rc)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def _apply_door(self, job, cfg):
+        """The door in for SSH on or off (R174): cloudflared's service
+        started or stopped (and kept so across a boot), or the node brought
+        up on its tailnet or taken down. Root's, like every system job; the
+        census that follows is what the row's switch reads."""
+        d = self.state.get("door") if isinstance(self.state.get("door"), dict) else {}
+        kind = str(d.get("kind") or "")
+        if kind not in ("cloudflared", "tailscale"):
+            job.say("refused: this node was provisioned with no door in (the Enroll dialog's SSH door)\n")
+            return "failed", 77
+        on = cfg.get("on", True)
+        if kind == "cloudflared":
+            sc = shutil.which("systemctl")
+            if not sc:
+                job.say("refused: cloudflared's service is systemd's, and this machine has none\n")
+                return "failed", 77
+            code = self._sh(job, [sc, "enable" if on else "disable", "--now", "cloudflared"], timeout=120)
+        else:
+            code = self._sh(job, [TAILSCALE_BIN, "up", "--ssh"] if on else [TAILSCALE_BIN, "down"], timeout=120)
+        self.hello_at = 0
+        if code != 0:
+            return "failed", code
+        job.say(f"the door is {'open' if on else 'shut'}: {kind}{' at ' + d['host'] if d.get('host') else ''}\n")
+        return "succeeded", 0
 
     def _apply_gpu(self, job):
         """The NVIDIA driver and a headless X server on the card, for the

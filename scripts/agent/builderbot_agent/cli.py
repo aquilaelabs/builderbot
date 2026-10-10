@@ -15,7 +15,7 @@ from .agent import Agent
 
 def cmd_enroll(args):
     opts = {"--controller": "", "--token": "", "--user": "bb", "--pin": "",
-            "--session-user": "", "--reach": ""}
+            "--session-user": "", "--reach": "", "--door": "", "--door-host": ""}
     stores = dict(DEFAULT_STORES)
     it = iter(args)
     for a in it:
@@ -62,6 +62,12 @@ def cmd_enroll(args):
     if opts["--reach"]:
         state["reach"] = opts["--reach"]
         state["tunnel"] = {"kind": opts["--reach"], "host": ctl.host}
+    # The door in for SSH (R174): which client the provisioner installed,
+    # and its name, so the census says so and the row's switch finds it.
+    if opts["--door"]:
+        if opts["--door"] not in ("cloudflared", "tailscale"):
+            raise SystemExit("--door takes cloudflared or tailscale")
+        state["door"] = {"kind": opts["--door"], "host": opts["--door-host"][:253]}
     # The account sessions run as (roadmap #24), when this agent runs as
     # root. Recorded even when empty, so `status` shows the decision.
     state["session_user"] = opts["--session-user"]

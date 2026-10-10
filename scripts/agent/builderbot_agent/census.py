@@ -96,6 +96,30 @@ def tunnel_now(state):
             "up": os.path.exists(f"/sys/class/net/{iface}")}
 
 
+def door_now(state):
+    """The door in for SSH this node was provisioned with (R174): its kind,
+    its name, whether the client is here and whether it is up now, so the
+    row's switch reads the machine and not its own last press. {} on a
+    node with none."""
+    d = state.get("door") if isinstance(state.get("door"), dict) else {}
+    kind = str(d.get("kind") or "")
+    if kind not in ("cloudflared", "tailscale"):
+        return {}
+    out = {"kind": kind, "host": str(d.get("host") or "")[:253], "installed": False, "active": False}
+    if kind == "cloudflared":
+        out["installed"] = bool(shutil.which("cloudflared") or os.access("/usr/local/bin/cloudflared", os.X_OK))
+        out["active"] = _run(["systemctl", "is-active", "cloudflared"], timeout=10) == "active"
+    else:
+        out["installed"] = bool(shutil.which(TAILSCALE_BIN) or os.access(TAILSCALE_BIN, os.X_OK))
+        try:
+            st = json.loads(_run([TAILSCALE_BIN, "status", "--json"], timeout=15) or "{}")
+            out["active"] = str(st.get("BackendState") or "") == "Running"
+            out["host"] = str((st.get("Self") or {}).get("DNSName") or "").rstrip(".")[:253] or out["host"]
+        except (ValueError, AttributeError):
+            pass
+    return out
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -135,6 +159,8 @@ def census(state):
         "sound": _sound(),
         "sshd": _sshd_listening(),
         "tunnel": tunnel_now(state),
+        # The door in for SSH (R174), as the machine has it now.
+        "door": door_now(state),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),

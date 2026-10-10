@@ -61,6 +61,12 @@ WG_CONF=""
 # --reach public: the controller is a hostname a tunnel from home publishes
 # (R170); the agent verifies it by the system's CAs.
 REACH=""
+# --door cloudflared|tailscale: a door in for SSH (R174), switched on and
+# off from the node's row: cloudflared publishing port 22 at --door-host
+# with the tunnel token in --door-secret, or Tailscale joining a tailnet
+# with the auth key in it and answering ssh there. --door-close22 drops
+# public port 22 once the door is up.
+DOOR=""; DOOR_HOST=""; DOOR_SECRET=""; DOOR_CLOSE22=0
 
 usage() {
     cat <<'EOF'
@@ -151,6 +157,17 @@ it, which is a paste rather than a questionnaire.
                        enrolling, and verified by the system's CAs on every
                        call rather than pinned. Such a node is hosting only,
                        with no sessions.
+  --door cloudflared   a door in for SSH, switched on and off from the
+  --door tailscale     node's row on the Nodes tab. cloudflared publishes
+                       this machine's port 22 at --door-host HOST (a
+                       public hostname set on the tunnel in Zero Trust,
+                       with the tunnel's token in --door-secret FILE);
+                       Tailscale joins the tailnet with the auth key in
+                       --door-secret FILE and answers ssh there (tailscale
+                       ssh), with no public name. --door-close22 drops
+                       port 22 from anywhere but the loopback afterwards:
+                       off unless asked, since the person running this is
+                       usually on that port.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -212,6 +229,10 @@ while [ $# -gt 0 ]; do
         --token) TOKEN="$2"; shift 2 ;;
         --wg-conf) WG_CONF="$2"; shift 2 ;;
         --reach) REACH="$2"; shift 2 ;;
+        --door) DOOR="$2"; shift 2 ;;
+        --door-host) DOOR_HOST="$2"; shift 2 ;;
+        --door-secret) DOOR_SECRET="$2"; shift 2 ;;
+        --door-close22) DOOR_CLOSE22=1; shift ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -246,6 +267,11 @@ if [ -n "$REACH" ]; then
     [ -z "$WG_CONF" ] || { echo "--reach public and --wg-conf are two ways to the controller: one or the other" >&2; exit 1; }
     [ -n "$CONTROLLER" ] || { echo "--reach goes with --controller and --token" >&2; exit 1; }
     case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
+fi
+if [ -n "$DOOR" ]; then
+    case "$DOOR" in cloudflared|tailscale) ;; *) echo "--door takes cloudflared or tailscale" >&2; exit 1 ;; esac
+    [ "${GUEST:-0}" != 1 ] || { echo "--door installs a service, which needs root, and a guest node runs without it" >&2; exit 1; }
+    [ "$DOOR" != cloudflared ] || [ -n "$DOOR_HOST" ] || { echo "--door cloudflared needs --door-host HOST, the public hostname set on the tunnel" >&2; exit 1; }
 fi
 case "$TOKEN" in
     ""|bbe_*) ;;
@@ -874,6 +900,88 @@ if [ "$REACH" = public ]; then
         404) warn "${CONTROLLER} answers 404 on the agent's API: the tunnel at home does not forward /api/v1/agent/ to the controller yet (the Nodes tab showed the rule)"; exit 1 ;;
     esac
     printf '   %s answers (%s)\n' "$CONTROLLER" "$code"
+fi
+
+# --- a door in for SSH (R174) ------------------------------------------------
+# A tunnel client of the operator's choice, installed and started here, and
+# from then on the node's row switches it on and off (the agent's door
+# system job). The secret goes into the service's own files, root's, and
+# never into node.json; a re-run without the secret file leaves a door that
+# is already installed as it is.
+door_secret() { [ -n "$DOOR_SECRET" ] && [ -r "$DOOR_SECRET" ] && tr -d '\r\n' < "$DOOR_SECRET"; }
+if [ "$DOOR" = cloudflared ]; then
+    say "door: cloudflared, publishing port 22 at ${DOOR_HOST}"
+    [ "$INIT" = systemd ] || { warn "cloudflared's service is systemd's, and this machine runs ${INIT:-no init this knows}"; exit 1; }
+    if ! command -v cloudflared >/dev/null 2>&1 && [ ! -x /usr/local/bin/cloudflared ]; then
+        case "$(uname -m)" in x86_64) cfarch=amd64 ;; aarch64|arm64) cfarch=arm64 ;; armv7l) cfarch=arm ;; *) warn "no cloudflared build for $(uname -m)"; exit 1 ;; esac
+        # Cloudflare's own release, the latest: the client updates itself
+        # from there too, so pinning here would be the one copy left behind.
+        curl -fsSL -o /usr/local/bin/cloudflared.new "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${cfarch}" \
+            || { warn "could not download cloudflared from its release"; rm -f /usr/local/bin/cloudflared.new; exit 1; }
+        chmod 755 /usr/local/bin/cloudflared.new; mv -f /usr/local/bin/cloudflared.new /usr/local/bin/cloudflared
+    fi
+    cfbin="$(command -v cloudflared || echo /usr/local/bin/cloudflared)"
+    install -d -m 0700 /etc/cloudflared
+    if [ -n "$(door_secret)" ]; then
+        # The token in a root-only env file the unit reads, never on the
+        # unit's own command line, which any account here could read.
+        umask 077; printf 'TUNNEL_TOKEN=%s\n' "$(door_secret)" > /etc/cloudflared/env; umask 022
+    elif [ ! -s /etc/cloudflared/env ]; then
+        warn "no tunnel token: the door's secret left the enroll script once it ran; make a new script on the Nodes tab"; exit 1
+    fi
+    svc_install cloudflared "BuilderBot: the door in for SSH (cloudflared)" "${cfbin} --no-autoupdate tunnel run" "EnvironmentFile=/etc/cloudflared/env"
+    printf '   up; in Zero Trust the tunnel'"'"'s public hostname %s goes to ssh://localhost:22, and Cloudflare Access decides who reaches it\n' "$DOOR_HOST"
+elif [ "$DOOR" = tailscale ]; then
+    say "door: Tailscale, this machine on your tailnet with ssh"
+    if ! command -v tailscale >/dev/null 2>&1; then
+        curl -fsSL https://tailscale.com/install.sh | sh || { warn "Tailscale did not install"; exit 1; }
+    fi
+    if [ -n "$(door_secret)" ]; then
+        tailscale up --ssh --auth-key="$(door_secret)" || { warn "tailscale up did not join the tailnet: is the auth key still valid?"; exit 1; }
+    else
+        tailscale status >/dev/null 2>&1 || { warn "no auth key: the door's secret left the enroll script once it ran; make a new script on the Nodes tab"; exit 1; }
+    fi
+    printf '   up; ssh reaches this machine on the tailnet, and its ACLs decide who\n'
+fi
+if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ]; then
+    # Public port 22 shut, the loopback (cloudflared's path) and a tailnet
+    # address left alone: its own table, re-applied at boot by a unit where
+    # this machine has systemd.
+    say "port 22: closed to the internet (the door is the way in)"
+    # shellcheck disable=SC2046
+    command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
+    install -d -m 0755 /etc/builderbot
+    cat > /etc/builderbot/door-22.nft <<'NFT'
+# Written by BuilderBot's provision-linux.sh: port 22 from the loopback and the tailnet only.
+table inet builderbot_door
+delete table inet builderbot_door
+table inet builderbot_door {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        tcp dport 22 iifname "lo" accept
+        tcp dport 22 ip saddr 100.64.0.0/10 accept
+        tcp dport 22 drop
+    }
+}
+NFT
+    if nft -f /etc/builderbot/door-22.nft 2>/dev/null; then
+        if [ "$INIT" = systemd ]; then
+            cat > /etc/systemd/system/builderbot-door-22.service <<UNIT
+[Unit]
+Description=BuilderBot: port 22 reachable through the door only
+After=network-pre.target
+[Service]
+Type=oneshot
+ExecStart=$(command -v nft) -f /etc/builderbot/door-22.nft
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+            systemctl enable builderbot-door-22 >/dev/null 2>&1 || true
+        fi
+    else
+        warn "nft could not apply the port 22 rule, so port 22 stays as it was"
+    fi
 fi
 
 say "docker"
@@ -2570,6 +2678,7 @@ if [ -n "$CONTROLLER" ]; then
     svc_stop builderbot-agent
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
         ${SESSION_NAME:+--session-user "$SESSION_NAME"} ${REACH:+--reach "$REACH"} \
+        ${DOOR:+--door "$DOOR"} ${DOOR_HOST:+--door-host "$DOOR_HOST"} \
         --store "data=${STORE_DATA}" --store "toolchains=${STORE_TOOLCHAINS}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
         --store "appdata=${STORE_APPDATA}"

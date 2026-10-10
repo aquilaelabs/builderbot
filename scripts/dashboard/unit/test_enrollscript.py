@@ -170,6 +170,49 @@ class PublicHostname(unittest.TestCase):
         self.assertIn(":7680", rules)
 
 
+class Door(unittest.TestCase):
+    """A door in for SSH (R174): the recipe's answers checked, the secret in
+    the script until it has run and out of it after, the flags to the
+    provisioner."""
+    def test_the_answers_are_checked(self):
+        base = {"reach": "lan", "controller": "http://192.168.1.16:7680"}
+        self.assertIn("no such door", es.check(base | {"door": "pigeon"})["error"])
+        self.assertIn("hostname of its own", es.check(base | {"door": "cloudflared", "door_secret": "tok"})["error"])
+        self.assertIn("one line", es.check(base | {"door": "tailscale", "door_secret": "two\nlines"})["error"])
+        ans = es.check(base | {"door": "cloudflared", "door_host": "SSH-vps.Example.com", "door_secret": "eyJ.tok", "door_close22": True})
+        self.assertEqual((ans["door"], ans["door_host"], ans["door_secret"], ans["door_close22"]),
+                         ("cloudflared", "ssh-vps.example.com", "eyJ.tok", True))
+        ts = es.check(base | {"door": "tailscale", "door_host": "ignored.example.com", "door_secret": "tskey-auth-x"})
+        self.assertEqual((ts["door"], ts["door_host"], ts["door_close22"]), ("tailscale", "", False))
+
+    def test_the_script_carries_the_secret_until_it_has_run(self):
+        ans = es.check({"reach": "lan", "controller": "http://192.168.1.16:7680", "door": "cloudflared",
+                        "door_host": "ssh-vps.example.com", "door_secret": "eyJ.tok", "door_close22": True})
+        s = es.build(ans, name="vps", user="bb", token="bbe_x", expires=0, provisioner=b'echo "provisioned with $*"\n')
+        self.assertEqual(section(s, "DOORSECRET"), b"eyJ.tok")
+        run = next(x for x in s.splitlines() if x.startswith('bash "$dir/provision-linux.sh"'))
+        self.assertIn("--door 'cloudflared' --door-host 'ssh-vps.example.com' --door-close22", run)
+        self.assertIn('--door-secret "$dir/door-secret"', run)
+        s = s.replace('[ "$(id -u)" -eq 0 ]', "true")
+        d = tempfile.mkdtemp()
+        try:
+            f = os.path.join(d, "enroll-vps.sh")
+            with open(f, "w") as fh:
+                fh.write(s)
+            p = subprocess.run(["bash", f], capture_output=True, text=True, timeout=30)
+            with open(f) as fh:
+                after = fh.read()
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("--door-secret", p.stdout)
+        self.assertIsNone(section(after, "DOORSECRET"))
+        self.assertNotIn("eyJ.tok", after)
+        self.assertNotIn(base64.b64encode(b"eyJ.tok").decode(), after)
+        self.assertIn("the node keeps it", after)
+        self.assertIn("out of", p.stdout)
+
+
 class TunnelGate(unittest.TestCase):
     def setUp(self):
         self.was = nodes.tunnel_addrs, nodes.tunnel_hosts

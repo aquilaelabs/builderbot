@@ -439,6 +439,26 @@ function nodeSyncRow(n){
 // Hosting only (the operator, 10 Oct): a node that runs containers sent to
 // it and nothing else, so nothing of it comes back to the controller. Said in
 // the Sessions section, since what it takes away is sessions and code.
+// The door in for SSH (R174): what the machine reports, or what the enroll
+// script set up while it has not reported yet; the switch is a system job,
+// and the line says the ssh command to use.
+function nodeDoorRow(n){
+  if (n.kind !== "agent") return "";
+  const d = n.reported?.door || n.config?.door;
+  if (!d?.kind) return "";
+  const known = !!n.reported?.door;
+  const cmd = d.kind === "cloudflared"
+    ? `ssh -o ProxyCommand="cloudflared access ssh --hostname ${esc(d.host || "HOST")}" ${esc(n.config?.user || "bb")}@${esc(d.host || "HOST")}`
+    : `ssh ${esc(n.config?.user || "bb")}@${esc(d.host || n.name)}`;
+  const state = !known ? "not reported yet" : !d.installed ? "not installed" : d.active ? "open" : "shut";
+  return `<div class="field nddoor">
+      <div class="actbar"><span class="state">SSH door: ${esc(d.kind)}, ${esc(state)}${
+        d.kind === "cloudflared" ? " (Cloudflare Access decides who reaches it)" : " (the tailnet's ACLs decide who reaches it)"}</span><span class="sp"></span>
+        ${known && d.installed ? `<button type="button" data-nd="door" data-on="${d.active ? "0" : "1"}" ${n.live ? "" : "disabled"}>${d.active ? "Shut it" : "Open it"}</button>` : ""}</div>
+      ${known && d.installed && d.active ? `<pre class="ndcmd">${cmd}</pre>` : ""}
+    </div>`;
+}
+
 function nodeHostRow(n){
   if (n.kind !== "agent") return "";
   return n.config?.host_only
@@ -485,7 +505,7 @@ function nodeSessionsSection(n){
   const list = n.reported?.sessions || [];
   let status, cls, body;
   if (n.config?.host_only){
-    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeToolsLine(n), {cls: "ok"});
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls: "ok"});
   }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
@@ -519,7 +539,7 @@ function nodeSessionsSection(n){
   // (R121): a line at the foot of this section opens them. It was a band
   // between sections, which read as part of Sessions yet stayed when Sessions
   // folded, and sat without the section's inset (the operator, 7 Oct).
-  return docSection("nodes", "sessions", "Sessions", status, body + nodeHostRow(n) + nodeToolsLine(n), {cls});
+  return docSection("nodes", "sessions", "Sessions", status, body + nodeHostRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls});
 }
 
 // Claude Code on this node: this account's sign-in here (a login is one
@@ -1356,6 +1376,21 @@ function wireNodesTab(root){
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
+        <div class="setrow col">${lbl("ndEnDoor", "SSH door",
+          "a way in for ssh, switched on and off from the node's row. cloudflared publishes the machine's port 22 at a hostname of its own, with a tunnel token from Zero Trust; Tailscale joins the machine to your tailnet with an auth key and answers ssh there, with no public name")}
+          <select id="ndEnDoor">
+            <option value="">none</option>
+            <option value="cloudflared">cloudflared: port 22 at a hostname</option>
+            <option value="tailscale">Tailscale: ssh on the tailnet</option>
+          </select></div>
+        <div class="setrow col" id="ndEnDoorHostRow" hidden>${lbl("ndEnDoorHost", "The door's hostname",
+          "a public hostname of its own on the tunnel (not the controller's), set in Zero Trust to go to ssh://localhost:22")}
+          <input id="ndEnDoorHost" autocomplete="off" spellcheck="false" placeholder="ssh-vps.example.com"></div>
+        <div class="setrow col" id="ndEnDoorSecretRow" hidden>${lbl("ndEnDoorSecret", "The door's secret",
+          "cloudflared's tunnel token, or a Tailscale auth key. It rides in the script until the script has run, then leaves it; the node keeps it")}
+          <input id="ndEnDoorSecret" type="password" autocomplete="off" spellcheck="false"></div>
+        <label class="ndcap" id="ndEnDoorCloseRow" hidden><input type="checkbox" id="ndEnDoorClose"> Close port 22 to the internet once the door is up</label>
+        <div class="hint" id="ndEnDoorHint" hidden>Who gets to the door is the tunnel's own say (Cloudflare Access, or the tailnet's ACLs); the machine's keys decide after that. Leave port 22 open until you have come in through the door once.</div>
         <label class="ndcap"><input type="checkbox" id="ndEnNginx"> Put nginx on it once it is enrolled</label>
         <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx tab holds for it (set them there first or after).</div>
       </div>
@@ -1402,6 +1437,13 @@ function wireNodesTab(root){
     };
     const ngx = $b("#ndEnNginx");
     ngx.onchange = () => { $b("#ndEnNginxHint").hidden = !ngx.checked; };
+    const door = $b("#ndEnDoor");
+    const showDoor = () => {
+      $b("#ndEnDoorHostRow").hidden = door.value !== "cloudflared";
+      $b("#ndEnDoorSecretRow").hidden = $b("#ndEnDoorCloseRow").hidden = $b("#ndEnDoorHint").hidden = !door.value;
+    };
+    door.onchange = showDoor;
+    showDoor();
     const showWg = () => {
       $b("#ndEnWgRow").hidden = reach.value !== "wireguard";
       const ctl = $b("#ndEnCtl");
@@ -1430,6 +1472,7 @@ function wireNodesTab(root){
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
       "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnNginx": ngx.checked,
+      "#ndEnDoor": door.value, "#ndEnDoorHost": $b("#ndEnDoorHost").value, "#ndEnDoorClose": $b("#ndEnDoorClose").checked,
       "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
       "#ndEnWgText": $b("#ndEnWgText").value});
     const go = $b("#ndEnGo");
@@ -1443,6 +1486,8 @@ function wireNodesTab(root){
       const r = await nodeAct({action: "enroll", script: true, ...answers(),
         sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
         host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
+        door: door.value, door_host: $b("#ndEnDoorHost").value.trim(),
+        door_secret: $b("#ndEnDoorSecret").value.trim(), door_close22: $b("#ndEnDoorClose").checked,
         controller: $b("#ndEnCtl").value.trim(),
         wg_conf: reach.value === "wireguard" ? conf : ""});
       if (r.error){ mintForm(kept); return; }
@@ -1716,6 +1761,10 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               + "the controller for nothing but its own jobs. A project that lists it now has to be "
               + "moved off it first.")) return;
       }
+      if (act === "door" && b.dataset.on === "0"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
@@ -1852,7 +1901,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (j.ok && !j.error) notify("Moved: each project is copied down now");
         return;
       }
-      await nodeAct({action: act, id});
+      // The door's press says which way (R174); every other verb is its name.
+      await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {})});
     }));
     wireNodeConf(box, id);
     const pi = box.querySelector('.ndpaths [data-k="paths"]');

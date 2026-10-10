@@ -767,7 +767,7 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
-def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False, nginx=False):
+def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False, nginx=False, door=None):
     """Add node, agent kind: a pending row and the one token that fills it.
 
     The row exists BEFORE the machine does, which is the operator's view of
@@ -799,7 +799,10 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
                    # to run containers): no code, sessions or bb, ever.
                    **({"host_only": True} if host_only else {}),
                    # nginx put on it once it has enrolled (R171, ON_ENROLL).
-                   **({"nginx": True} if nginx else {})},
+                   **({"nginx": True} if nginx else {}),
+                   # The door in for SSH the script sets up (R174): its kind
+                   # and name, so the row knows before the machine reports.
+                   **({"door": door} if door else {})},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
@@ -827,7 +830,8 @@ def enroll_script(principal, req):
     # ticked (enrollscript.check): the session ports cannot be reached back.
     ho = ho or ans["reach"] == "public"
     m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho,
-                    nginx=req.get("nginx") is True)
+                    nginx=req.get("nginx") is True,
+                    door={"kind": ans["door"], "host": ans.get("door_host", "")} if ans.get("door") else None)
     _synced["at"] = 0.0
     if m.get("error"):
         return m
@@ -1084,6 +1088,12 @@ def _census(c):
                 "stale": bool(m.get("stale")),
                 # What mount said when it failed: the server's own reason.
                 "error": str(m.get("error") or "")[:200]})
+    # The door in for SSH (R174), as the machine has it: its kind, its
+    # name, whether the client is there and whether it is up.
+    dr = c.get("door") if isinstance(c.get("door"), dict) else {}
+    if dr.get("kind") in ("cloudflared", "tailscale"):
+        out["door"] = {"kind": dr["kind"], "host": re.sub(r"[^a-z0-9.-]", "", str(dr.get("host") or "").lower())[:253],
+                       "installed": bool(dr.get("installed")), "active": bool(dr.get("active"))}
     sv = c.get("services") if isinstance(c.get("services"), dict) else {}
 
     def one_runner(ar):
@@ -1973,6 +1983,30 @@ def node_uninstall(principal, node_id):
                 {"apply": "uninstall", "config": {}, "timeout": 900})
     if r.get("ok"):
         audit(principal, "node-uninstall", node_id, {"job": r["job"]})
+    return r
+
+
+def node_door(principal, node_id, on):
+    """The door in for SSH on or off (R174): a system job the agent answers
+    by starting or stopping the door's client (cloudflared's service, or
+    the node on its tailnet). Only a node provisioned with one."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    kind = ((n.get("reported") or {}).get("door") or (n.get("config") or {}).get("door") or {}).get("kind")
+    if kind not in ("cloudflared", "tailscale"):
+        return {"error": f"{n['name']} was provisioned with no door in: Enroll node's SSH door sets one up"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "door", "config": {"on": on is not False}, "timeout": 300})
+    if r.get("ok"):
+        audit(principal, "node-door", node_id, {"job": r["job"], "on": on is not False})
     return r
 
 
@@ -4239,6 +4273,7 @@ def verb(principal, req):
              "test-workers": test_workers, "session-net": session_net,
              "root-asks": root_asks, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
+             "door": lambda: node_door(principal, nid, req.get("on")),
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
              "paths": paths, "check-paths": check_paths, "funnel": funnel,
