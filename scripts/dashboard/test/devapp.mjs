@@ -792,6 +792,7 @@ await dmClick('up');
 // The job first, then the row: the reason reaches the row only once the
 // job has released, and a flat wait on the row ran out under load while
 // the job was still running (B340).
+await idle(60000);
 await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: patience(20000) })
   .catch(() => {});
 const failed = await page.evaluate(() => dockerList?.job || {});
@@ -855,6 +856,11 @@ await page.waitForFunction((SEL) => {
 }, DM, { timeout: 20000 });
 await dmClick('rebuild');
 await dmTextUntil(/a build was interrupted/, 30000, true);
+// The line goes as the rebuild STARTS, not as it ends: its build, down and up
+// went on behind the next steps, and its up landed after their Down, which
+// was B477 (Up dead at :951, the pill never down at :906). Its end is waited
+// for here, where it was pressed.
+await idle(90000);
 ok(!JSON.parse(readFileSync(devFile, 'utf8'))['ep.silon'].building_since,
    '...and the marker is gone once a build reaches an end, whichever end');
 
@@ -895,8 +901,13 @@ const risky = (vols) => writeFileSync(stubCfg, JSON.stringify(
   { services: { app: { build: { context: '.' }, privileged: true, volumes: vols } } }));
 
 // From stopped: the failed build above left the instance running, because a
-// build that never succeeded never reached the down-and-up.
-if (await pill() !== 'down') {
+// build that never succeeded never reached the down-and-up. Asked of the
+// server, not read off the pill: a listing drawn as the failed job ended
+// could still say down, Down was skipped, and Up below stayed dead (B477).
+const live0 = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ project: 'ep.silon', action: 'state' }) })).json()).state || {});
+if (live0.running || live0.exists || await pill() !== 'down') {
   await dmClick('down');
   await pillIs('down');
 }
