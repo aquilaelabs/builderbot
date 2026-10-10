@@ -15,7 +15,7 @@ from .agent import Agent
 
 def cmd_enroll(args):
     opts = {"--controller": "", "--token": "", "--user": "bb", "--pin": "",
-            "--session-user": ""}
+            "--session-user": "", "--reach": ""}
     stores = dict(DEFAULT_STORES)
     it = iter(args)
     for a in it:
@@ -47,9 +47,21 @@ def cmd_enroll(args):
         except OSError as e:
             print(f"note: {role} store {path} could not be created ({e.strerror}); "
                   "it will report no space until it exists")
+    if opts["--reach"] not in ("", "cloudflare"):
+        raise SystemExit("--reach takes cloudflare: the controller published at a hostname by a "
+                         "Cloudflare Tunnel, verified by the system's CAs")
+    # Through Cloudflare (R170) the controller's own certificate is never
+    # seen, only the hostname's public one: verified by CA, never pinned.
+    if opts["--reach"] == "cloudflare":
+        opts["--pin"] = Controller.CA
     ctl = Controller(opts["--controller"], opts["--token"], opts["--pin"])
+    if opts["--reach"] == "cloudflare" and ctl.scheme != "https":
+        raise SystemExit("through Cloudflare the controller is an https hostname")
     state = {"controller": ctl.url, "user": opts["--user"], "stores": stores,
              "store_made": marks}
+    if opts["--reach"]:
+        state["reach"] = opts["--reach"]
+        state["tunnel"] = {"kind": opts["--reach"], "host": ctl.host}
     # The account sessions run as (roadmap #24), when this agent runs as
     # root. Recorded even when empty, so `status` shows the decision.
     state["session_user"] = opts["--session-user"]
@@ -61,7 +73,10 @@ def cmd_enroll(args):
     if ctl.scheme == "https":
         pin = opts["--pin"] or getattr(ctl, "seen_pin", "")
         state["pin"] = pin
-        if not opts["--pin"]:
+        if pin == Controller.CA:
+            print(f"the controller is {ctl.host}, verified by the system's certificate authorities "
+                  "on every call (a hostname behind Cloudflare, whose own certificate this node never sees)")
+        elif not opts["--pin"]:
             print(f"pinned the controller's certificate on first use: {pin}\n"
                   f"  check it against the controller; a different one next "
                   f"time is refused")

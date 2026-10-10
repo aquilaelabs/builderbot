@@ -20,6 +20,15 @@ controller into the tunnel (AllowedIPs), runs nothing of the config's own
 provider's NAT (PersistentKeepalive). The narrowing is hygiene, not the
 security: the node is the end not trusted, and root there can undo it.
 
+Through Cloudflare (R170, the operator, 10 Oct): the controller is published
+at a hostname by a Cloudflare Tunnel that cloudflared at home dials out, with
+an ingress that forwards /api/v1/agent/ and answers everything else 404, so
+the node dials a public name over HTTPS, nothing at home is opened, and the
+node never learns the home address (it only ever talks to Cloudflare). Such a
+node is hosting only: the controller cannot open its session ports back
+through Cloudflare. It verifies the hostname's public certificate rather
+than pinning the controller's own, which it never sees.
+
 Stdlib only; nodes.py hands in the provisioner's bytes.
 """
 import base64
@@ -28,7 +37,7 @@ import re
 import time
 import urllib.parse
 
-REACH = ("lan", "wireguard")
+REACH = ("lan", "wireguard", "cloudflare")
 # Lines a router's config carries that the node's copy goes without: a
 # resolver (only the controller is reached, by address, and wg-quick's DNS
 # needs resolvconf), commands wg-quick would run as root, and settings that
@@ -128,6 +137,21 @@ def check(answers):
     if not host:
         return {"error": "the controller's address is a URL the node dials, like http://192.168.1.10:7680"}
     out = {"reach": reach, "controller": url, "sessions": answers.get("sessions") is not False}
+    if reach == "cloudflare":
+        # A public name over HTTPS, verified by the system's CAs: an address
+        # or plain http here is a LAN enrollment wearing the wrong word.
+        if urllib.parse.urlparse(url).scheme != "https":
+            return {"error": f"through Cloudflare the controller is reached over https at the tunnel's "
+                             f"hostname, like https://bb.example.com, not {url}"}
+        try:
+            ipaddress.ip_address(host)
+            return {"error": f"through Cloudflare the controller is reached at the tunnel's hostname, "
+                             f"not an address ({host}): the name is what Cloudflare routes"}
+        except ValueError:
+            pass
+        # Hosting only, whatever was ticked: the controller cannot reach
+        # back through Cloudflare to a session's ports.
+        out.update(sessions=False, tunnel_host=host.lower())
     if reach == "wireguard":
         try:
             ip = ipaddress.ip_address(host)
@@ -169,6 +193,8 @@ def build(ans, *, name, user, token, expires, provisioner):
         flags.append(f"--user {_q(user)}")
     if not ans["sessions"]:
         flags.append("--session-user none")
+    if ans["reach"] == "cloudflare":
+        flags.append("--reach cloudflare")
     when = time.strftime("%d %b %Y %H:%M UTC", time.gmtime(expires))
     lines = [
         "#!/usr/bin/env bash",
@@ -228,6 +254,8 @@ def home_rules(ans, port):
     """What the home end enforces so the tunnel is one-way, for the person
     to apply on their router: words first, then the rules in nftables'
     form, which an OpenWrt or any Linux router takes as they are."""
+    if ans["reach"] == "cloudflare":
+        return cloudflare_ingress(ans, port)
     if ans["reach"] != "wireguard":
         return ""
     node, ctl = ans["tunnel_addr"], ans["controller_ip"]
@@ -244,3 +272,26 @@ def home_rules(ans, port):
         f"# ...and in the input chain, the router itself:\n"
         f"ip saddr {node} ct state established,related accept\n"
         f"ip saddr {node} drop\n")
+
+
+def cloudflare_ingress(ans, port):
+    """What the home end runs so the hostname reaches the agent's API and
+    nothing else: cloudflared's ingress, for the person to put in its
+    config (or the same two rules in the Zero Trust dashboard). The tunnel
+    is cloudflared's to keep up; the controller's own gate (nodes.
+    tunnel_refuses) answers the hostname on the agent's API alone as well,
+    so a wider ingress still reaches no page."""
+    host = ans.get("tunnel_host") or controller_host(ans["controller"])
+    return (
+        f"At home, cloudflared publishes {host} and forwards only the agent's API to the controller; "
+        f"everything else at that name answers 404, so it serves no page. In cloudflared's config.yml "
+        f"(or as the same two public hostname rules in Zero Trust > Networks > Tunnels):\n\n"
+        f"ingress:\n"
+        f"  - hostname: {host}\n"
+        f"    path: ^/api/v1/agent/\n"
+        f"    service: http://CONTROLLER_LAN_ADDRESS:{port}\n"
+        f"  - hostname: {host}\n"
+        f"    service: http_status:404\n"
+        f"  - service: http_status:404\n\n"
+        f"CONTROLLER_LAN_ADDRESS is the controller as cloudflared reaches it on your network. Nothing on "
+        f"your router changes, and the node only ever talks to Cloudflare.\n")

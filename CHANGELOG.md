@@ -107,6 +107,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node can be made hosting only, on its row or when it is enrolled: it runs the containers sent to it, no project's code, sessions or bb go there, and its agent may ask the controller for its own jobs and nothing else (13e9f47)
 - A node's row on the Nodes tab has a Projects section: the projects that have the node, its primary marked, with Remove on the ones you are on, which takes the node out of that project's settings after asking (4f20c0a)
 - Hosts its containers on, in a project's Where it runs: hosting-only nodes the project's sessions may make, rebuild and remove containers on, built at home and shipped (bb devapp new --node). (fdc65ea)
+- Enroll node offers Cloudflare Tunnel: the node dials the hostname cloudflared publishes at home over HTTPS, nothing on the router changes, it never learns the home address, and it is hosting only; the dialog prints cloudflared's ingress. (6602fe2)
 
 ### Changed
 

@@ -818,8 +818,12 @@ def enroll_script(principal, req):
     if not prov.is_file():
         return {"error": "this controller ships no provisioner"}
     user = re.sub(r"[^a-z0-9_-]", "", (field(req, "user") or "bb").lower())[:32] or "bb"
-    tunnel = ({"kind": "wireguard", "addr": ans["tunnel_addr"]}
-              if ans["reach"] == "wireguard" else None)
+    tunnel = ({"kind": "wireguard", "addr": ans["tunnel_addr"]} if ans["reach"] == "wireguard"
+              else {"kind": "cloudflare", "host": ans["tunnel_host"]} if ans["reach"] == "cloudflare"
+              else None)
+    # Through Cloudflare the node is hosting only, whatever was ticked
+    # (enrollscript.check): the session ports cannot be reached back.
+    ho = ho or ans["reach"] == "cloudflare"
     m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho)
     _synced["at"] = 0.0
     if m.get("error"):
@@ -1650,19 +1654,47 @@ def tunnel_addrs():
     the server asks on every request."""
     now = time.monotonic()
     if now - _tunnels["at"] > 5:
-        _tunnels.update(at=now, addrs=frozenset(
-            a for a in (tunnel_addr(n) for n in node_list() if n.get("state") != "retired") if a))
+        tunnel_hosts()
     return _tunnels["addrs"]
 
 
-def tunnel_refuses(addr, path):
+def tunnel_hosts():
+    """Every hostname a node reaches the controller at through Cloudflare
+    (R170), read again at most every five seconds like tunnel_addrs."""
+    now = time.monotonic()
+    if now - _tunnels["at"] > 5 or "hosts" not in _tunnels:
+        rows = [n for n in node_list() if n.get("state") != "retired"]
+        _tunnels.update(at=now, addrs=frozenset(a for a in (tunnel_addr(n) for n in rows) if a),
+                        hosts=frozenset(h for h in (tunnel_host(n) for n in rows) if h))
+    return _tunnels["hosts"]
+
+
+def tunnel_host(n):
+    """The hostname a node dials the controller at through Cloudflare, ''
+    for any other node: its enroll script's answer."""
+    t = (n.get("config") or {}).get("tunnel") or {}
+    h = str(t.get("host") or "").lower() if t.get("kind") == "cloudflare" else ""
+    return h if re.fullmatch(r"[a-z0-9.-]{1,253}", h) else ""
+
+
+def tunnel_refuses(addr, path, host="", edge=False):
     """Why a request from `addr` for `path` is refused, or "": a node that
     reaches the controller through a tunnel is answered on the agent's own
     API and nothing else (R161), so the tunnel open on a machine somebody
-    else may own reaches no login, no page and no other account's API."""
-    if addr not in tunnel_addrs() or path.startswith("/api/v1/agent/"):
+    else may own reaches no login, no page and no other account's API.
+    `host` is the request's Host header and `edge` whether it carries
+    Cloudflare's own headers (R170): through cloudflared every request
+    comes from cloudflared's address, so the hostname a node was enrolled
+    at is the mark instead. A header can only narrow what its writer gets,
+    never widen it, which is why one is read here at all."""
+    if path.startswith("/api/v1/agent/"):
         return ""
-    return "this address is a node's tunnel, which reaches the agent's API and nothing else"
+    if addr in tunnel_addrs():
+        return "this address is a node's tunnel, which reaches the agent's API and nothing else"
+    h = str(host or "").lower().rsplit(":", 1)[0].strip("[]") if host else ""
+    if (h and h in tunnel_hosts()) or edge:
+        return "this hostname is a node's tunnel, which reaches the agent's API and nothing else"
+    return ""
 
 
 def route_host(node_id):

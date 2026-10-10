@@ -145,13 +145,45 @@ class Script(unittest.TestCase):
         self.assertEqual(es.filename("cloud box/1"), "enroll-cloud-box-1.sh")
 
 
+class Cloudflare(unittest.TestCase):
+    """Through a Cloudflare Tunnel (R170): a hostname over https, hosting
+    only whatever was ticked, the agent told to verify by CA, and the home
+    end told cloudflared's ingress."""
+    def test_the_controller_is_an_https_hostname(self):
+        self.assertIn("https", es.check({"reach": "cloudflare", "controller": "http://bb.example.com"})["error"])
+        self.assertIn("not an address", es.check({"reach": "cloudflare", "controller": "https://1.2.3.4"})["error"])
+        ans = es.check({"reach": "cloudflare", "controller": "https://BB.Example.com/", "sessions": True})
+        self.assertEqual((ans["sessions"], ans["tunnel_host"], ans["controller"]),
+                         (False, "bb.example.com", "https://BB.Example.com"))
+
+    def test_the_script_says_so_and_carries_no_tunnel(self):
+        ans = es.check({"reach": "cloudflare", "controller": "https://bb.example.com"})
+        s = es.build(ans, name="vps", user="bb", token="bbe_x", expires=0, provisioner=b"x")
+        run = next(x for x in s.splitlines() if x.startswith('bash "$dir/provision-linux.sh"'))
+        self.assertIn("--reach cloudflare", run)
+        self.assertIn("--session-user none", run)
+        self.assertNotIn("WGCONF", s)
+        rules = es.home_rules(ans, 7680)
+        self.assertIn("hostname: bb.example.com", rules)
+        self.assertIn("path: ^/api/v1/agent/", rules)
+        self.assertIn("http_status:404", rules)
+        self.assertIn(":7680", rules)
+
+
 class TunnelGate(unittest.TestCase):
     def setUp(self):
-        self.was = nodes.tunnel_addrs
+        self.was = nodes.tunnel_addrs, nodes.tunnel_hosts
         nodes.tunnel_addrs = lambda: frozenset({"10.6.0.5"})
+        nodes.tunnel_hosts = lambda: frozenset({"bb.example.com"})
 
     def tearDown(self):
-        nodes.tunnel_addrs = self.was
+        nodes.tunnel_addrs, nodes.tunnel_hosts = self.was
+
+    def test_a_tunnel_hostname_reaches_the_agent_api_and_nothing_else(self):
+        self.assertEqual(nodes.tunnel_refuses("172.16.0.9", "/api/v1/agent/work", host="bb.example.com"), "")
+        self.assertIn("hostname", nodes.tunnel_refuses("172.16.0.9", "/api/status", host="BB.example.com:443"))
+        self.assertIn("hostname", nodes.tunnel_refuses("172.16.0.9", "/", edge=True), "cloudflared's own headers mark it too")
+        self.assertEqual(nodes.tunnel_refuses("172.16.0.9", "/api/status", host="builderbot.lan"), "")
 
     def test_a_tunnel_address_reaches_the_agent_api_and_nothing_else(self):
         self.assertEqual(nodes.tunnel_refuses("10.6.0.5", "/api/v1/agent/work"), "")

@@ -25,6 +25,11 @@ class Controller:
     network, and no better.
     """
 
+    # The pin that means "no pin: the hostname's public certificate, by the
+    # system's CAs" (R170): a controller behind Cloudflare presents the
+    # edge's certificate, which changes under it and is not the controller's.
+    CA = "ca"
+
     def __init__(self, url, token, pin=""):
         u = urllib.parse.urlsplit(url)
         if u.scheme not in ("http", "https") or not u.hostname:
@@ -38,6 +43,14 @@ class Controller:
         if self.scheme == "http":
             return http.client.HTTPConnection(self.host, self.port, timeout=timeout)
         ctx = ssl.create_default_context()
+        if self.pin == self.CA:
+            # A public hostname (R170): the system's CAs and the name, as a
+            # browser would; nothing is pinned, since the certificate the
+            # node sees is Cloudflare's edge's and not the controller's.
+            c = http.client.HTTPSConnection(self.host, self.port, timeout=timeout, context=ctx)
+            c.connect()
+            self.seen_pin = self.CA
+            return c
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE       # the pin below is the check
         # The certificate is pinned on first use and any other refused; a CA
@@ -103,6 +116,27 @@ class Controller:
             return 200, (r.getheader("X-Snapshot-Digest") or r.getheader("X-Bundle-Digest") or "")
         except (OSError, http.client.HTTPException) as e:
             return 0, str(e)
+
+    def upload_pieces(self, path, src, piece, timeout=600, say=None):
+        """upload() in pieces of `piece` bytes, each its own request with
+        offset and total in the query (relocate.data_put takes them): what
+        a body limit on the way (Cloudflare's 100 MB, R170) asks for. The
+        last piece's answer is the whole upload's; a piece the controller
+        says it has already is not sent again."""
+        size = os.path.getsize(src)
+        sep = "&" if "?" in path else "?"
+        off = 0
+        while True:
+            n = min(piece, size - off)
+            code, r = self.upload(f"{path}{sep}offset={off}&total={size}", src, timeout=timeout,
+                                  offset=off, length=n)
+            if code != 200:
+                return code, r
+            off = int((r or {}).get("bytes") or off + n)
+            if say and off < size:
+                say(off)
+            if off >= size or not (r or {}).get("more"):
+                return code, r
 
     def upload(self, path, src, timeout=600, offset=0, length=None):
         """POST a file as the raw body, or `length` bytes of it from

@@ -2235,6 +2235,50 @@ await page.evaluate(async () => {
      `...and the pending row knows its tunnel address before the machine exists (${JSON.stringify(row?.config)})`);
   await page.click('#ndBody #ndTokDone');
   if (row) await page.evaluate(id => nodeAct({ action: 'retire', id }), row.id);
+  // Through a Cloudflare Tunnel (R170): the dialog holds Hosting only on,
+  // asks for the hostname, refuses an address, and the script runs the
+  // provisioner with --reach cloudflare; the home end is cloudflared's
+  // ingress, and the controller answers that hostname on the agent's API
+  // alone.
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  await page.fill('#ndBody #ndEnName', 'vpsbox');
+  await page.selectOption('#ndBody #ndEnReach', 'cloudflare');
+  const cf = await page.evaluate(() => ({ host: $('ndEnHost').checked, held: $('ndEnHost').disabled,
+    sess: $('ndEnSess').checked, ctl: $('ndEnCtl').value, hint: !$('ndEnCfHint').hidden, wg: $('ndEnWgRow').hidden }));
+  ok(cf.host && cf.held && !cf.sess && cf.ctl === 'https://' && cf.hint && cf.wg,
+     `Cloudflare Tunnel holds Hosting only on, takes sessions off, and asks for the hostname (${JSON.stringify(cf)})`);
+  await page.fill('#ndBody #ndEnCtl', 'https://192.168.1.16');
+  await page.click('#ndBody #ndEnGo');
+  await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
+                                   && document.querySelector('#ndBody #ndEnName'), null, { timeout: 10000 });
+  ok(await page.$eval('#ndBody #ndEnReach', s => s.value) === 'cloudflare' && await page.$eval('#ndBody #ndEnName', e => e.value) === 'vpsbox',
+     'an address instead of the hostname is refused, with the answers kept');
+  await page.fill('#ndBody #ndEnCtl', 'https://bb.example.com');
+  const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const script2 = readFileSync(await dl2.path(), 'utf8');
+  const run2 = script2.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
+  ok(/--controller 'https:\/\/bb\.example\.com'/.test(run2) && /--reach cloudflare/.test(run2) && /--session-user none/.test(run2)
+     && !/WGCONF/.test(script2),
+     `...and the script runs the provisioner with --reach cloudflare, no tunnel inside (${run2.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
+  const home2 = await page.$eval('#ndBody #ndHome', e => e.textContent);
+  ok(/hostname: bb\.example\.com/.test(home2) && /path: \^\/api\/v1\/agent\//.test(home2) && /http_status:404/.test(home2)
+     && /cloudflared/.test(await page.$eval('#ndBody .ndtoken .lbl', e => e.textContent)),
+     'the dialog gives cloudflared\'s ingress: the agent\'s API forwarded, everything else 404');
+  const row2 = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'vpsbox'); });
+  ok(row2?.state === 'pending' && row2.config?.tunnel?.host === 'bb.example.com' && row2.config?.host_only === true,
+     `...and the pending row is hosting only with its hostname (${JSON.stringify(row2?.config)})`);
+  // The controller's half: that hostname reaches the agent's API and nothing
+  // else, by the Host header and by cloudflared's own headers.
+  const gate = await page.evaluate(async () => {
+    const h = async (path, headers) => (await fetch(path, { headers })).status;
+    return { page: await h('/api/status', { 'X-BB-Host': 'x' }), tunnel: await h('/api/status', { 'Cf-Ray': 'abc' }),
+             agent: await h('/api/v1/agent/hello', { 'Cf-Ray': 'abc' }) };
+  });
+  ok(gate.page === 200 && gate.tunnel === 403 && gate.agent !== 403,
+     `...and a request wearing Cloudflare's headers reaches the agent's API alone (${JSON.stringify(gate)})`);
+  await page.click('#ndBody #ndTokDone');
+  if (row2) await page.evaluate(id => nodeAct({ action: 'retire', id }), row2.id);
 }
 
 // What is offered (roadmap R54, step 6): with unvetted features off the

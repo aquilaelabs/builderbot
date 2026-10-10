@@ -966,11 +966,26 @@ for nothing (10 Oct).** For a cloud VPS that should run a project's
 workers and web-facing containers and never be a way into the home network,
 the pieces stack:
 
-1. *Enroll it through a one-way tunnel* (R161): the script narrows the
-   router's WireGuard config to the controller's one address, and the
-   router's rules (the dialog prints them) let the VPS open connections to
-   the controller's port and nothing else at home; the controller in turn
-   answers its tunnel address on the agent API alone (`tunnel_refuses`).
+1. *Enroll it through a one-way tunnel.* Two kinds. Through Cloudflare
+   (R170): cloudflared at home publishes the controller at a hostname
+   (`bb.example.com`) with an ingress that forwards `/api/v1/agent/` and
+   answers everything else 404 (the dialog prints it), the VPS dials that
+   name over HTTPS with its node token, nothing on the router changes, and
+   the VPS never learns the home address, since it only ever talks to
+   Cloudflare; the controller answers that hostname on the agent API alone
+   (`tunnel_refuses`, by the Host header and cloudflared's own headers,
+   which only narrow their writer). The agent verifies the hostname's
+   public certificate by the system's CAs (`--reach cloudflare`, the pin
+   `ca`) rather than pinning the controller's own, which it never sees, and
+   sends a container's data home in pieces under Cloudflare's 100 MB
+   request limit (`Controller.upload_pieces`, `relocate.data_put`). Such a
+   node is hosting only by construction: the controller cannot reach its
+   session ports back through Cloudflare. Through WireGuard (R161), for a
+   remote reached by address: the script narrows the router's WireGuard
+   config to the controller's one address, and the router's rules (the
+   dialog prints them) let the VPS open connections to the controller's
+   port and nothing else at home; the controller in turn answers its tunnel
+   address on the agent API alone.
 2. *Make it hosting only*, ticked in the Enroll dialog or later on its row
    (`nodes.host_only`): no project may list it, so no code, synced copy or
    session goes there, and its hello hands it no bb bundle, no session

@@ -365,9 +365,29 @@ def data_put(nid, q, stream, length):
     if length <= 0 or length > 256 * 1024 ** 3:
         return {"error": "the data is between 1 byte and 256 GB"}, 413
     dest = _data_file(sp.get("project", ""), rel.get("to") or "")
-    tmp = dest.with_name(f".{dest.name}.{os.getpid()}")
+    # In pieces (R170): a node behind Cloudflare may send at most 100 MB a
+    # request, so the agent sends `offset` and `total`, each piece appended
+    # to one part file, and the file is whole when the last piece lands.
+    # One body is offset 0 of its own length, the way it always was.
+    try:
+        offset = int(q.get("offset", ["0"])[0] or 0)
+        total = int(q.get("total", [str(length)])[0] or length)
+    except ValueError:
+        return {"error": "offset and total are numbers"}, 400
+    if offset < 0 or total < length or offset + length > total or total > 256 * 1024 ** 3:
+        return {"error": "that piece is not within the data"}, 400
+    tmp = dest.with_name(f".{dest.name}.part")
+    have = tmp.stat().st_size if tmp.is_file() else 0
+    if offset != have:
+        # Not the next piece: a retry of one that landed is answered as
+        # landed, anything else is said, so the file never has a hole.
+        if offset + length <= have:
+            return {"ok": True, "bytes": have, "again": True}, 200
+        tmp.unlink(missing_ok=True) if offset == 0 else None
+        if offset != 0:
+            return {"error": f"the data has {have} bytes here and this piece starts at {offset}"}, 409
     got = 0
-    with open(tmp, "wb") as f:
+    with open(tmp, "ab" if offset else "wb") as f:
         while got < length:
             chunk = stream.read(min(1 << 20, length - got))
             if not chunk:
@@ -375,10 +395,16 @@ def data_put(nid, q, stream, length):
             f.write(chunk)
             got += len(chunk)
     if got != length:
-        tmp.unlink(missing_ok=True)
+        if not offset:
+            tmp.unlink(missing_ok=True)
+        else:
+            with open(tmp, "ab") as f:
+                f.truncate(offset)
         return {"error": "the data ended early"}, 400
+    if offset + got < total:
+        return {"ok": True, "bytes": offset + got, "more": True}, 200
     os.replace(tmp, dest)
-    return {"ok": True, "bytes": got}, 200
+    return {"ok": True, "bytes": total}, 200
 
 
 def data_path(nid, q):

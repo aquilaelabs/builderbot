@@ -114,6 +114,19 @@ class Relocate(unittest.TestCase):
         self.assertIsNone(no)
         self.assertEqual(p.read_bytes(), body)
 
+    def test_the_data_may_come_in_pieces(self):
+        """Through Cloudflare a request carries at most 100 MB (R170): the
+        agent sends offset and total, a piece that landed already is not
+        taken twice, and the file is whole only when the last piece is."""
+        r = relocate.start("alpha", "main", "copy", "n2", "alpha-web")
+        self.q.jobs[r["job"]]["state"] = "running"
+        q = lambda off, tot: {"job": [r["job"]], "offset": [str(off)], "total": [str(tot)]}  # noqa: E731
+        self.assertEqual(relocate.data_put("n1", q(0, 6), io.BytesIO(b"abc"), 3), ({"ok": True, "bytes": 3, "more": True}, 200))
+        self.assertEqual(relocate.data_put("n1", q(0, 6), io.BytesIO(b"abc"), 3)[0].get("again"), True, "a retry of a landed piece")
+        self.assertEqual(relocate.data_put("n1", q(4, 6), io.BytesIO(b"x"), 1)[1], 409, "a hole is refused")
+        self.assertEqual(relocate.data_put("n1", q(3, 6), io.BytesIO(b"def"), 3), ({"ok": True, "bytes": 6}, 200))
+        self.assertEqual(relocate._data_file("alpha", "alpha-web").read_bytes(), b"abcdef")
+
     def test_a_move_switches_node_after_the_data_and_takes_the_old_down_once_up(self):
         r = relocate.start("alpha", "main", "move", "n3")
         self.q.jobs[r["job"]]["state"] = "running"

@@ -58,6 +58,9 @@ CHECK_ONLY=0
 # --wg-conf FILE: the node reaches the controller through WireGuard (R161),
 # with the config the Nodes tab's enroll script carries.
 WG_CONF=""
+# --reach cloudflare: the controller is a hostname a Cloudflare Tunnel
+# publishes (R170); the agent verifies it by the system's CAs.
+REACH=""
 
 usage() {
     cat <<'EOF'
@@ -142,6 +145,11 @@ it, which is a paste rather than a questionnaire.
                        it) goes in as wg-quick@bb before anything else, the
                        controller is checked through it, and the session
                        ports listen on the tunnel's address alone.
+  --reach cloudflare   the controller is the hostname a Cloudflare Tunnel
+                       publishes from home (https://bb.example.com): checked
+                       before enrolling, and verified by the system's CAs
+                       on every call rather than pinned. Such a node is
+                       hosting only, with no sessions.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -202,6 +210,7 @@ while [ $# -gt 0 ]; do
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
         --wg-conf) WG_CONF="$2"; shift 2 ;;
+        --reach) REACH="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -230,6 +239,12 @@ if [ -n "$WG_CONF" ]; then
     [ -n "$CONTROLLER" ] || { echo "--wg-conf is the tunnel an enrollment dials through: it goes with --controller and --token" >&2; exit 1; }
     [ "${GUEST:-0}" != 1 ] || { echo "--wg-conf needs root to bring a tunnel up, and a guest node runs without it" >&2; exit 1; }
     [ -r "$WG_CONF" ] || { echo "cannot read the WireGuard config ${WG_CONF}" >&2; exit 1; }
+fi
+if [ -n "$REACH" ]; then
+    [ "$REACH" = cloudflare ] || { echo "--reach takes cloudflare" >&2; exit 1; }
+    [ -z "$WG_CONF" ] || { echo "--reach cloudflare and --wg-conf are two ways to the controller: one or the other" >&2; exit 1; }
+    [ -n "$CONTROLLER" ] || { echo "--reach goes with --controller and --token" >&2; exit 1; }
+    case "$CONTROLLER" in https://*) ;; *) echo "through Cloudflare the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
 fi
 case "$TOKEN" in
     ""|bbe_*) ;;
@@ -846,6 +861,18 @@ if [ -n "$WG_CONF" ]; then
         exit 1
     fi
     printf '   up as %s; %s answers through it\n' "$WG_ADDR" "$CONTROLLER"
+fi
+# Through Cloudflare (R170): nothing to bring up here, since the tunnel is
+# cloudflared's at home; that the hostname answers, with a certificate the
+# system trusts, is checked now rather than after an hour of Docker.
+if [ "$REACH" = cloudflare ]; then
+    say "reach: ${CONTROLLER} through Cloudflare"
+    code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+    case "$code" in
+        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is cloudflared running at home with the ingress the Nodes tab showed, and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
+        404) warn "${CONTROLLER} answers 404 on the agent's API: cloudflared's ingress at home does not forward /api/v1/agent/ to the controller yet (the Nodes tab showed the rules)"; exit 1 ;;
+    esac
+    printf '   %s answers (%s)\n' "$CONTROLLER" "$code"
 fi
 
 say "docker"
@@ -2541,7 +2568,7 @@ if [ -n "$CONTROLLER" ]; then
     chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
     svc_stop builderbot-agent
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
-        ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
+        ${SESSION_NAME:+--session-user "$SESSION_NAME"} ${REACH:+--reach "$REACH"} \
         --store "data=${STORE_DATA}" --store "toolchains=${STORE_TOOLCHAINS}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
         --store "appdata=${STORE_APPDATA}"
