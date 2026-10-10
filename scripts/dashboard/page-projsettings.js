@@ -175,7 +175,7 @@ function rnFillNode(){
     const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && !removed.has(n.id));
     if (nodesList === null){
       const opened = rnFor;
-      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); } });
+      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); rnBars(); } });
     }
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
@@ -1332,12 +1332,17 @@ const RN_AT_START = new Set(["model", "effort", "reply", "asks", "git_name", "gi
 // The fields as they stand, in rnPrefWas's own shape, so each compares with
 // its saved value directly.
 function rnEnc(){
-  const node = $("rnNode").value;
+  // The node pickers are drawn once the node list has arrived: until then
+  // they say nothing, and reading them as a change woke the Where it runs
+  // bar on every open under load (the gate, 10 Oct).
+  const drawn = nodesList !== null;
+  const node = drawn ? $("rnNode").value : rnPrefWas.node;
   const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
   return {model: rnModelPick(), effort: $("rnEffort").value,
           git_name: $("rnGitName").value.trim(), git_email: $("rnGitEmail").value.trim(),
-          node, nodes: (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : []).join(","),
-          hosts: [...$("rnHosts").querySelectorAll("input:checked")].map(i => i.value).join(","),
+          node, nodes: !drawn ? rnPrefWas.nodes
+            : (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : []).join(","),
+          hosts: !drawn ? rnPrefWas.hosts : [...$("rnHosts").querySelectorAll("input:checked")].map(i => i.value).join(","),
           reads: [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value).join(","),
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),

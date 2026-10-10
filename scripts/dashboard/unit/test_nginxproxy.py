@@ -47,6 +47,10 @@ class Routes(unittest.TestCase):
         self.assertLess(conf.index("location /relay/"), conf.index("location / "), "the longest path first")
         plain = npx.nginx_conf(routes, has_cert=False)
         self.assertNotIn("443", plain, "no certificate, no 443")
+        # A * route is the default server itself: no second one beside it.
+        star = npx.nginx_conf(npx.clean_routes([{"host": "*", "path": "/", "port": 8089}]), has_cert=True)
+        self.assertEqual(star.count("default_server"), 2, "one for 80 and one for 443, both the * route's")
+        self.assertNotIn("return 444", star)
 
     def test_the_compose_file_carries_it_all_inline(self):
         npx.save_routes("n1", [{"host": "*", "path": "/", "port": "3000"}])

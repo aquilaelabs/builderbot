@@ -119,10 +119,15 @@ def nginx_conf(routes, has_cert):
              "  proxy_set_header X-Forwarded-Proto $scheme;",
              "  proxy_set_header Upgrade $http_upgrade;",
              "  proxy_set_header Connection $http_connection;",
-             "  proxy_read_timeout 300s;",
-             # A name nothing routes: the connection closed, no page.
-             "  server { listen 80 default_server; server_name _; return 444; }"]
-    if has_cert:
+             "  proxy_read_timeout 300s;"]
+    # A name nothing routes: the connection closed, no page. Unless a * route
+    # takes any name, which is then the default server itself (two default
+    # servers on one port is nginx's "duplicate default server", seen on
+    # bb-dev-sandbox, 10 Oct).
+    any_host = "*" in by_host
+    if not any_host:
+        lines.append("  server { listen 80 default_server; server_name _; return 444; }")
+    if has_cert and not (any_host and any(r["tls"] for r in by_host["*"])):
         lines.append("  server { listen 443 ssl default_server; server_name _; "
                      "ssl_certificate /etc/nginx/certs/cert.pem; ssl_certificate_key /etc/nginx/certs/key.pem; return 444; }")
     for host, rs in by_host.items():
