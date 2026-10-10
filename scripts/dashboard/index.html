@@ -1449,10 +1449,13 @@ select:focus{outline-offset:-2px}
    their own inset, so the body adds none (as a settings group's does). */
 .nginxtab .sect>.body{padding:0 0 var(--row-y);gap:0}
 /* ...and its route rows: hostname, path, port, TLS. */
-.ngroute{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ngroute input[data-ng="host"]{flex:2 1 12em;min-width:0}
-.ngroute input[data-ng="path"]{flex:1 1 7em;min-width:0}
-.ngroute input[data-ng="port"]{flex:0 1 6em;min-width:0}
+.ngroute{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0}
+/* The field band gives every input its full width; a route's share it. */
+.ngroute input[data-ng="host"]{width:auto;flex:2 1 12em;min-width:0}
+.ngroute input[data-ng="path"]{width:auto;flex:1 1 7em;min-width:0}
+.ngroute input[data-ng="port"]{width:auto;flex:0 1 6em;min-width:0}
+.ngroute .ndcap{white-space:nowrap}
+.ngroute .eye{flex:0 0 auto;width:auto}
 .ngroutes:empty{display:none}
 .rnreach{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .modal .rnreach input[data-reach]{flex:1 1 12em;width:auto;min-width:0}

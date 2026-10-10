@@ -48,7 +48,7 @@ async function nginxAct(body){
 
 // A route as a row of fields: hostname, path, port, TLS, and Remove.
 function nginxRouteRow(n, r, i){
-  return `<div class="prefrow ngroute" data-i="${i}">
+  return `<div class="ngroute" data-i="${i}">
     <input data-ng="host" value="${esc(r.host)}" placeholder="www.example.com or *" aria-label="hostname" autocomplete="off" spellcheck="false">
     <input data-ng="path" value="${esc(r.path)}" placeholder="/" aria-label="path" autocomplete="off" spellcheck="false">
     <input data-ng="port" value="${esc(String(r.port))}" placeholder="8080" aria-label="port on the node" inputmode="numeric" autocomplete="off">
