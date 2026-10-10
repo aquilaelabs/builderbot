@@ -248,6 +248,17 @@ def _wake(project, but=""):
             nodes.sync_hint(nid, project, rev)
 
 
+def held_changed():
+    """A project's nodes or what it reads changed (the settings dialog): every
+    synced node is told to ask again which projects it holds now, so a
+    project bound to a node starts its first copy at once rather than at
+    the node's next look of its own (ASK_EVERY there), and one unbound or
+    no longer read stops being kept in step. The hint names no project: the
+    agent asks again whenever a hint names one it does not hold."""
+    for nid in nodes.sync_node_ids() if nodes else ():
+        nodes.sync_hint(nid, "", -1)
+
+
 def changed(project):
     """A write made here some other way (VS Code, files.py): seen now."""
     with contextlib.suppress(ValueError):

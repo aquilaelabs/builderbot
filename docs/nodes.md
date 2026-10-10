@@ -626,7 +626,26 @@ controller is.
   `.git` and `dist/` are synced: a session commits on the node, and a build
   there lands its artifacts where the Artifacts tab reads them.
 - **A session waits** for its project's first copy: the node reports each
-  project as copying or ready, and the Claude button says which.
+  project as copying or ready, and the Claude button says which. Binding a
+  project to a synced node, or changing what it reads, tells every synced
+  node at once (`wssync.held_changed`), so the first copy starts on the
+  save rather than at the node's next look of its own, half a minute
+  later.
+- **Conversations with Claude** (B613, 10 Oct). Every home's
+  `~/.claude/projects` links to `/workspace/.claude/<uid>/projects`, which
+  on a synced node is the node's own: the agent makes `/workspace/.claude`
+  as the session account, and its mirror (`claudesync.py` on both sides)
+  keeps the folders of the projects bound to the node in step with the
+  controller's, which the Profile and Memory tabs, `bb transcripts` and
+  the resume offer read. A transcript only grows, so a change goes up as
+  its new tail, checked against the controller's last 4 KB; a memory goes
+  whole. What the controller has that the node never had comes down when it
+  is a megabyte or less; a longer conversation comes down when it is
+  resumed there (bb-tty runs `bb transcripts fetch`), since every long
+  conversation on every node is gigabytes nobody asked for. A memory
+  removed on one side goes on the other; a conversation is never removed
+  across. Before this, moving a node over left the link pointing at
+  nothing and its sessions saved no conversation at all.
 - **bb waits for the copy** where the controller acts on its own copy for a
   session (R163): a relayed `bb git`, `bb version` or `bb changelog`, `bb
   sign`, and `bb version release --edit --attach`. Before, until a tick of
@@ -1855,7 +1874,9 @@ above, in order:
    account, one login. **Transcripts and memories are one place**: every
    account's `~/.claude/projects`, on every machine, is a link to
    `/workspace/.claude/<uid>/projects` on the projects share
-   (`claude_projects_link` in lib/common.sh, made when the home is), and
+   (`claude_projects_link` in lib/common.sh, made when the home is; on a
+   node holding a synced copy, the node's own directory, mirrored with the
+   controller's: see the synced copy above), and
    the tree rule is the same on both machines: the owner in the project
    directory, everybody else in a worktree, so the transcript slug is the
    same string wherever the session ran, and the controller's Memory tab and

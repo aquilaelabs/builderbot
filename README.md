@@ -419,6 +419,9 @@ bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile tab lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
                    command Claude ran and what it answered
+bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
+                   for it: how a node holding its projects as a synced copy
+                   resumes a conversation it does not have (bb-tty runs it)
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs

@@ -104,10 +104,12 @@ class Controller:
         except (OSError, http.client.HTTPException) as e:
             return 0, str(e)
 
-    def upload(self, path, src, timeout=600):
-        """POST a file as the raw body. (status, decoded answer)."""
+    def upload(self, path, src, timeout=600, offset=0, length=None):
+        """POST a file as the raw body, or `length` bytes of it from
+        `offset` (a transcript's new tail: the file may grow while it is
+        sent, and only what was asked for goes). (status, decoded answer)."""
         try:
-            size = os.path.getsize(src)
+            size = os.path.getsize(src) - offset if length is None else length
             c = self._conn(timeout)
             c.putrequest("POST", f"{self.base}/api/v1/agent/{path}")
             c.putheader("Authorization", "Bearer " + self.token)
@@ -116,8 +118,14 @@ class Controller:
             c.putheader("Content-Length", str(size))
             c.endheaders()
             with open(src, "rb") as f:
-                for chunk in iter(lambda: f.read(1 << 20), b""):
+                f.seek(offset)
+                left = size
+                while left > 0:
+                    chunk = f.read(min(1 << 20, left))
+                    if not chunk:
+                        raise OSError(f"{src} is shorter than when it was measured")
                     c.send(chunk)
+                    left -= len(chunk)
             r = c.getresponse()
             payload = r.read()
             c.close()

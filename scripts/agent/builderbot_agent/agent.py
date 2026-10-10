@@ -19,6 +19,7 @@ from .census import Sampler, census
 from .jobs import Job
 from .ftp import FtpServers
 from .wssync import WorkspaceSync
+from .claudesync import ClaudeMirror
 from .sessions import SessionWatch, SessionsMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
@@ -55,6 +56,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.sesswatch = SessionWatch(self)  # its sessions reported as they change
         self.ftp = FtpServers(self)        # a project's file access over FTP (R151)
         self.wssync = WorkspaceSync(self)  # its projects as a synced copy, where it holds them so (R162)
+        self.claudesync = ClaudeMirror(self, self.wssync)  # ...and its sessions' conversations with them (B613)
         # The runner as a child of this process where there is no systemd:
         # run.sh in the foreground, supervised here.
         self.runner_procs = {}            # runner directory -> its process
@@ -332,6 +334,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.sessnet.start()
         self.sesswatch.start()
         self.wssync.start()
+        self.claudesync.start()
         while True:
             # The monotonic clock: a clock step killed a running job as timed
             # out and stopped hello for the size of the step (B286). Zero

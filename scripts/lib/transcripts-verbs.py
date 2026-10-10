@@ -3,7 +3,9 @@ conversations with Claude on a project, through the controller's API as
 the caller (transcripts.py on the dashboard's side, the Profile tab's
 list and download). `list` prints them newest first with the first thing
 typed; `show ID [--tz ZONE]` prints one as the Profile's download reads,
-stamped in ZONE (the controller's own when none). A session reads its
+stamped in ZONE (the controller's own when none); `fetch ID` copies the
+file itself into this machine's folder for it, which is how a synced node
+resumes a conversation it does not have (B613). A session reads its
 account's conversations on its own project and on one its project reads
 (`bb -p NAME transcripts`), and nobody else's: the controller looks under
 the account's transcripts and nowhere else. BB_TRANSCRIPTS_AUTH is the
@@ -60,4 +62,58 @@ if verb == "show":
     sys.stdout.write(r.get("text") or "")
     raise SystemExit(0)
 
-fail("bb transcripts [list | show ID [--tz ZONE]]")
+if verb == "fetch":
+    # The conversation as Claude Code wrote it, into this machine's folder
+    # for it, so a node holding its projects as a synced copy can resume one
+    # it does not have (B613): bb-tty runs this before claude --resume. A
+    # copy here that is as long is left alone.
+    import re
+    sid = argv[1] if len(argv) > 1 and not argv[1].startswith("--") else ""
+    if not sid or not re.fullmatch(r"[0-9A-Za-z-]+", sid):
+        fail("bb transcripts fetch ID [--into DIR]: the id from bb transcripts")
+    into = ""
+    if "--into" in argv:
+        k = argv.index("--into")
+        into = argv[k + 1] if k + 1 < len(argv) else ""
+    if not into:
+        into = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", os.getcwd()))
+    dest = os.path.join(into, sid + ".jsonl")
+    have = os.path.getsize(dest) if os.path.isfile(dest) else -1
+    q = urllib.parse.urlencode({"project": proj, "id": sid, "as": "raw", "have": have})
+    try:
+        c, base = bbapi._conn(600)
+        c.request("GET", f"{base}/api/transcript?{q}", None, {"Authorization": auth})
+        r = c.getresponse()
+        if r.status != 200 or r.getheader("Content-Type", "").startswith("application/json"):
+            import json
+            got = json.loads(r.read() or b"{}")
+            c.close()
+            if r.status != 200:
+                fail(got.get("error") or f"HTTP {r.status}")
+            print(f"{sid} is here already")
+            raise SystemExit(0)
+        os.makedirs(into, exist_ok=True)
+        tmp = os.path.join(into, f".bbsync-{sid}.jsonl")
+        n = 0
+        with open(tmp, "wb") as f:
+            for chunk in iter(lambda: r.read(1 << 20), b""):
+                f.write(chunk)
+                n += len(chunk)
+        c.close()
+        want = int(r.getheader("Content-Length") or n)
+        if n != want:
+            os.remove(tmp)
+            fail(f"the download stopped at {size(n)} of {size(want)}")
+        mt = int(r.getheader("X-Mtime-Ms") or 0)
+        if mt:
+            # The controller's time, so the node's mirror reads the two as
+            # one file and sends nothing back.
+            os.utime(tmp, ns=(mt * 1_000_000, mt * 1_000_000))
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, dest)
+    except OSError as e:
+        fail(f"could not fetch {sid}: {e}")
+    print(f"fetched {sid} ({size(n)}) from the controller")
+    raise SystemExit(0)
+
+fail("bb transcripts [list | show ID [--tz ZONE] | fetch ID [--into DIR]]")

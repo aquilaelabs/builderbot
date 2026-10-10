@@ -3846,9 +3846,10 @@ Each account works as itself:
 - **its transcripts and memories in one place whichever machine ran the
   session**: the home's `~/.claude/projects` is a link to the account's own
   directory on the projects share (`/workspace/.claude/<uid>/projects`),
-  made on this container and on every node alike, so a conversation held on
-  a node is offered here to resume and its memories show on the notebook's
-  Memory tab. A home that already held transcripts has them copied across
+  made on this container and on every node alike (a node holding a synced
+  copy keeps that directory itself and its agent mirrors it here), so a
+  conversation held on a node is offered here to resume and its memories
+  show on the notebook's Memory tab. A home that already held transcripts has them copied across
   once, the original kept beside the link as `projects.moved-<date>` for
   you to delete. The login itself stays in the home, per machine
 - **its own terminals.** A shell session is named for the account, so two

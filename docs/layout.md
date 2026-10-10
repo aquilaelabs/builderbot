@@ -130,6 +130,7 @@ scripts/
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
     ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
     wssync.py                    a node's projects as a synced copy: the index, state, since, get and put for its agent, and conflicts (R162)
+    claudesync.py                a synced node's Claude conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
     files.py                     a project's files for a person's editor (R159): stat, list, read, write, rename, delete, search and changes, inside the project and never .git
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
@@ -204,6 +205,7 @@ scripts/
     jobs.py                      Job: one piece of the controller's work, on its own thread
     ftp.py                       the file-access servers a project's settings open
     wssync.py                    keeps a node's synced copy of its projects in step with the controller's (R162)
+    claudesync.py                keeps a synced node's Claude conversations and memories in step with the controller's (B613)
     sessions.py                  the session half (#24): ttyds, tokens, firewall and upkeep, as Agent's methods
     workspace.py                 a job's source on disk, its artifacts, and the bundle of bb
     work.py                      compose, toolchains, signing, images and system packages, as Agent's methods

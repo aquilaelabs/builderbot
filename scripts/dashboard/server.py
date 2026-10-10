@@ -36,7 +36,6 @@ import time
 # because write_json is defined from it before any of those load.
 import statefile
 from names import PROJECT_NAME, claude_session, tmux_name   # noqa: F401 - re-exported to the modules
-import shutil
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -3112,6 +3111,7 @@ files.configure(workspace=WORKSPACE, audit=db.audit)
 # A node's projects as a synced copy (R162): the nodes in sync mode a
 # project is bound to, and VS Code's writes reaching them at once.
 import wssync                                                    # noqa: E402
+import claudesync                                                # noqa: E402
 
 
 def _sync_bound(project):
@@ -3127,6 +3127,9 @@ wssync.configure(workspace=WORKSPACE, nodes_module=nodes, bound_nodes=_sync_boun
 wssync.configure_projects(lambda: list(prefs.all_projects()))
 wssync.configure_reads(lambda p: prefs.get(p).get("reads") or [])
 files.on_change = wssync.changed
+# A synced node writes the transcripts of the projects it holds and nothing
+# else: bound to it, never one it only reads (B613).
+claudesync.configure(workspace=WORKSPACE, held=lambda nid: wssync.bound_projects(nid))
 reports.configure(write_json=write_json, state=STATE, redact=diag.redact,
                   build=lambda: image_stamp().get("version") or image_stamp().get("rev") or "")
 # A report says which node its project builds on, and clearing them all is
@@ -5276,9 +5279,15 @@ class Handler(BaseHTTPRequestHandler):
                 and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
                 and self._refused("docker-write"):
             return
+        held = (("node" in req or "nodes" in req) and prefs.node_changed(name, req)) \
+            or (req.get("reads") is not None and prefs.reads_changed(name, req.get("reads")))
         got = prefs.dialog_save(name, req, users.uid_of(self._who()))
         if reach and not got[0].get("error"):
             net_nudge()
+        # A synced node that now holds this project (or stops) hears it at
+        # once, so its first copy starts and the Claude button follows it.
+        if held and not got[0].get("error") and not NODES_OK:
+            wssync.held_changed()
         return self._json(*got)
 
     def _nodes(self, req):
@@ -5510,16 +5519,19 @@ class Handler(BaseHTTPRequestHandler):
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb in ("artifact", "sync-put"):
+        if verb in ("artifact", "sync-put", "claude-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 length = 0
             if verb == "sync-put":
                 return self._json(*channel.sync_put(auth, q, self.rfile, length))
+            if verb == "claude-put":
+                return self._json(*channel.claude_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
-        if verb in ("sync-file", "sync-tar"):
-            got, status = (channel.sync_file if verb == "sync-file" else channel.sync_tar)(auth, q)
+        if verb in ("sync-file", "sync-tar", "claude-file"):
+            got, status = {"sync-file": channel.sync_file, "sync-tar": channel.sync_tar,
+                           "claude-file": channel.claude_file}[verb](auth, q)
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
@@ -5560,10 +5572,19 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             got["stream"](self.wfile)
         elif "path" in got:
-            self.send_header("Content-Length", str(got["path"].stat().st_size))
+            size = got["path"].stat().st_size
+            self.send_header("Content-Length", str(size))
             self.end_headers()
+            # Exactly what was promised: a transcript may grow while it is
+            # sent (B613), and bytes past the length would be the next
+            # response's to a client that reuses nothing but reads them.
             with open(got["path"], "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
+                while size > 0:
+                    chunk = f.read(min(1 << 20, size))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    size -= len(chunk)
         else:
             self.send_header("Content-Length", str(len(got["body"])))
             self.end_headers()
@@ -6485,6 +6506,22 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
+        if q.get("as", [""])[0] == "raw":
+            # The file as Claude Code wrote it, for bb transcripts fetch: a
+            # synced node resuming a conversation it does not have (B613).
+            # Nothing when it is no longer than the copy the node has.
+            f = transcripts.raw(uid, name, q.get("id", [""])[0])
+            if f is None:
+                return self._json({"error": "no such conversation of yours"}, 404)
+            st = f.stat()
+            try:
+                have = int(q.get("have", ["-1"])[0])
+            except ValueError:
+                have = -1
+            if st.st_size <= have:
+                return self._json({"size": st.st_size}, 200)
+            return self._send_file({"path": f, "ctype": "application/octet-stream",
+                                    "headers": {"X-Mtime-Ms": str(st.st_mtime_ns // 1_000_000)}})
         text, fname = transcripts.render(uid, name, q.get("id", [""])[0],
                                          transcripts.zone(q.get("tz", [""])[0]))
         if text is None:

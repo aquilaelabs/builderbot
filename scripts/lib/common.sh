@@ -537,11 +537,30 @@ BB_CLAUDE_SHARE="${BB_CLAUDE_SHARE:-${WORKSPACE:-/workspace}/.claude}"
 claude_projects_link() {
     local home="$1" uid="$2" share="$BB_CLAUDE_SHARE" target link keep
     [ -n "$home" ] && [ -n "$uid" ] && [ -d "$home" ] || return 0
-    [ -d "${share%/*}" ] && [ -w "${share%/*}" ] || return 0
     target="$share/$uid/projects"
     link="$home/.claude/projects"
+    # A node holding its projects as a synced copy has no share: its agent
+    # makes $share on the node's own /workspace, the session account's,
+    # and mirrors it with the controller's (claudesync.py, B613). /workspace
+    # itself is root's there, so the share being writable is enough.
+    if ! { [ -d "$share" ] && [ -w "$share" ]; } \
+            && ! { [ -d "${share%/*}" ] && [ -w "${share%/*}" ]; }; then
+        # Nowhere to link to. A link left from when there was (a node moved
+        # off the projects share) points at nothing, and Claude Code then
+        # saves no conversation at all: taken down, so the home keeps its
+        # own folder until the share is there again (B613).
+        if [ -L "$link" ] && [ ! -e "$link" ]; then
+            rm -f "$link"
+        fi
+        return 0
+    fi
     if [ -L "$link" ]; then
-        [ "$(readlink "$link")" = "$target" ] && return 0
+        if [ "$(readlink "$link")" = "$target" ]; then
+            # The folder it names may be gone though the link is right: a
+            # node's /workspace made new when it moved to a synced copy.
+            [ -d "$target" ] || { mkdir -p "$target" && chmod 700 "$share/$uid"; } 2>/dev/null || true
+            return 0
+        fi
         rm -f "$link"
     fi
     if [ ! -d "$share" ]; then

@@ -97,6 +97,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node can hold its projects as a copy kept in step through the controller instead of mounting the share: saves go both ways in a couple of seconds, two nodes on one project stay in step, and a file changed in two places keeps both versions with the bell saying so. (4e7d51d)
 - A node holding synced copies also gets, read-only, the projects its projects read, so a session sees them at /workspace/NAME as it did on the share. (e1f20c3)
 - A node on the projects share moves to a synced copy with one press, Move to a synced copy in its Sessions section: its sessions end, the share is unmounted from /workspace and each project is copied down (045a959)
+- bb transcripts fetch ID copies one of your conversations into this machine's folder for it (b996a95)
 
 ### Changed
 
@@ -224,6 +225,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The enroll script keeps itself once the node has enrolled, with the WireGuard config taken out of it, so it can be changed and run again; the dialog takes the WireGuard config as a file or pasted into a box. (9f6ece9)
 - A node's first copy of a synced project is one download instead of a request a file, and the node notices its own saves as they happen instead of rereading its tree every second. (fb23932)
 - On a node holding synced copies, bb git, bb version, bb changelog, bb sign and attaching files to a release first wait for the node's saves to reach the controller, and for the controller's changes to come back. (6908ecd)
+- Adding a node to a project, or changing what a project reads, starts the synced node's first copy at once instead of up to half a minute later (b996a95)
 
 ### Removed
 
@@ -368,6 +370,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - BuilderBot for VS Code: Search Project Files opens the match you pick instead of showing an error. (e030d4b)
 - bb map no longer lists a parameter's default value (why = () => "") as a function of its own. (f3abb92)
 - builderbot-agent --help starts with its first words again. (a9188eb)
+- A node holding its projects as a synced copy saves its Claude conversations again and can resume one started anywhere: each node keeps its own copy, mirrored with the controller's, and a long conversation comes down when it is resumed there (b996a95)
 
 ### Security
 

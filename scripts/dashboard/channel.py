@@ -22,6 +22,7 @@ import runners
 import signing
 import toolchains
 import wssync
+import claudesync
 import workspace
 from fields import field
 
@@ -180,6 +181,25 @@ def sync_put(auth, q, stream, length):
     return wssync.put(auth["node"], q.get("project", [""])[0], q, stream, length)
 
 
+# ---- a synced node's Claude conversations (B613, claudesync.py) -----------------
+
+def claude_file(auth, q):
+    """One of an account's transcript files, for a synced node's copy."""
+    if (no := _node_only(auth)):
+        return no
+    path, no = claudesync.file_path(auth["node"], q.get("uid", [""])[0], q.get("path", [""])[0])
+    if no:
+        return no
+    return {"path": path, "ctype": "application/octet-stream", "headers": {}}, 200
+
+
+def claude_put(auth, q, stream, length):
+    """One transcript file the node wrote: whole, its new tail, or gone."""
+    if (no := _node_only(auth)):
+        return no
+    return claudesync.put(auth["node"], q, stream, length)
+
+
 def _sync(nid, req):
     act = field(req, "action")
     project = field(req, "project")
@@ -210,6 +230,10 @@ def verb(name, auth, req, addr):
     nid = auth["node"]
     if name == "sync":
         return _sync(nid, req)
+    if name == "claude":
+        # What the controller has of the transcripts of the projects this
+        # node holds, for its mirror to compare (B613).
+        return claudesync.listing(nid), 200
     if name == "runner-token":
         # A registration or removal token for the node's runner, minted
         # now from the root-only stash and never stored: the PAT stays

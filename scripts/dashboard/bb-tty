@@ -1072,6 +1072,14 @@ case "$target" in
             case "$resume" in
                 *[!0-9a-fA-F-]*|"") bad "Not a session id: ${resume}" ;;
             esac
+            # A node with no projects share keeps its own copy of the
+            # account's conversations (B613): one started elsewhere, or
+            # carried on elsewhere since, comes down first. Asked only of a
+            # node; on the share the file is the controller's own.
+            if on_node; then
+                ( cd "$dir" 2>/dev/null && BB_PROJECT="$proj" bb transcripts fetch "$resume" \
+                      --into "$HOME/.claude/projects/${dir//\//-}" >/dev/null 2>&1 ) || true
+            fi
             if [ ! -f "$HOME/.claude/projects/${dir//\//-}/${resume}.jsonl" ]; then
                 bad "No transcript ${resume} for ${proj}." \
                     "It may have been cleaned up; start a new conversation instead."

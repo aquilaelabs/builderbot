@@ -148,6 +148,22 @@ class Sync(unittest.TestCase):
     def at(self, k, rel):
         return os.path.join(self.tmp, k, "workspace", "alpha", rel)
 
+    def test_a_node_bound_to_a_project_is_told_at_once(self):
+        """The settings dialog binding a project (or changing what it reads)
+        hints every synced node, and the hint makes the agent ask again
+        which projects it holds rather than wait for its own next look."""
+        Nodes.sync_node_ids = staticmethod(lambda: frozenset({"n1", "n2"}))
+        try:
+            self.turn("n1")
+            self.n["n1"].asked_at = 10 ** 9           # its own next look is far off
+            ctl_sync.held_changed()
+            mine = {p: r for nid, p, r in Nodes.hints if nid == "n1"}
+            self.assertIn("", mine)
+            self.n["n1"].nudge(mine)
+            self.assertEqual(self.n["n1"].asked_at, 0.0)
+        finally:
+            del Nodes.sync_node_ids
+
     def test_a_first_copy_is_the_project_less_what_is_not_synced(self):
         self.turn("n1", times=1)
         self.assertEqual(read(self.at("n1", "a.txt")), "one\n")
