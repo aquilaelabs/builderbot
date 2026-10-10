@@ -728,6 +728,9 @@ await page.waitForFunction((SEL) => {
 }, DM, { timeout: 20000 });
 await dmClick('up');
 await dmTextUntil(/running/);
+// ...and its job's end, as for a rebuild below (B477): "running" is drawn
+// before the job has written its last.
+await idle(60000);
 ok(true, '...and Up is manual after the gate, exactly as asked');
 
 // Start on boot on an instance's row reads the instance's own containers
