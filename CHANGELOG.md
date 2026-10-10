@@ -102,6 +102,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Controller settings has a Storage section: where project snapshots, job snapshots, the git relay, the Git view's working area and the logs are kept can be changed, and what is there is moved across (b639f1a)
 - Send to Docker can put a project's container on any node, one the project is not on included: its image is built on the project's own node and shipped there, so the codebase never reaches that machine, and the project's sessions can still rebuild it (b639f1a)
 - Each project's tree is snapshotted once a day on the controller and kept for the days its settings say (14 unless changed); the whole tree or one file can be restored from its settings, and a restore can itself be undone (b639f1a)
+- Every compose file in a project gets its own row and Send on the Artifacts tab, in subfolders and variants too (an override is left out); a container is built from its file in that file's folder, and its Docker tab row names the file. bb devapp new --compose FILE does the same (b7e6a24)
 
 ### Changed
 
@@ -230,6 +231,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's first copy of a synced project is one download instead of a request a file, and the node notices its own saves as they happen instead of rereading its tree every second. (fb23932)
 - On a node holding synced copies, bb git, bb version, bb changelog, bb sign and attaching files to a release first wait for the node's saves to reach the controller, and for the controller's changes to come back. (6908ecd)
 - Adding a node to a project, or changing what a project reads, starts the synced node's first copy at once instead of up to half a minute later (b996a95)
+- The Artifacts tab's docker rows no longer follow the containers made from them: no running or down, no build progress, no Open link. They say what the compose file will do, and Send makes a new container each time under the name you give it; the Docker tab is where containers are watched and run (b7e6a24)
+- Send to Docker offers a name from what the project is called now, so a renamed project no longer offers its old folder's name, with the file's folder or variant after it (turing-lens-site) (b7e6a24)
 
 ### Removed
 
@@ -376,6 +379,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb map no longer lists a parameter's default value (why = () => "") as a function of its own. (f3abb92)
 - builderbot-agent --help starts with its first words again. (a9188eb)
 - A node holding its projects as a synced copy saves its Claude conversations again and can resume one started anywhere: each node keeps its own copy, mirrored with the controller's, and a long conversation comes down when it is resumed there (b996a95)
+- A build cut short by a BuilderBot restart is said on the container's Docker tab row, which only the Artifacts tab used to say (b7e6a24)
 
 ### Security
 

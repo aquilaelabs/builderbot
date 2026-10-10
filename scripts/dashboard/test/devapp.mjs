@@ -97,7 +97,8 @@ async function dmClick(act){
       return { state: r?.querySelector('.state')?.textContent.trim(), title: e?.title,
                running: d.running, exists: d.exists, missing_env: d.missing_env, job: d.job };
     }, [b, DM]);
-    throw new Error(`B477: ${act} stayed disabled 45s: ${JSON.stringify(seen).slice(0, 400)}`);
+    throw new Error(`B477: ${act} stayed disabled 45s: ${JSON.stringify(seen).slice(0, 400)}\n`
+      + dockerLog().split('\n').filter(l => /ep-silon /.test(l)).slice(-12).join('\n'));
   }
   await page.click(b);
 }
@@ -132,6 +133,23 @@ async function dmRefresh(){
   await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
   await openManager();
 }
+// The manager row's words, asked again until they match: a container's
+// state is the Docker tab's alone since the Artifacts row stopped following
+// it (the operator, 10 Oct), and that tab redraws from its own fetch.
+async function dmTextUntil(re, timeout = 20000, not = false){
+  const end = Date.now() + patience(timeout);
+  let t = '';
+  while (Date.now() < end){
+    await dmRefresh();
+    t = await page.$eval(DM, e => e.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    if (re.test(t) !== not) return t;
+    // Every refresh is a listing job on the node, in the queue the compose
+    // jobs wait in: asked every half second, it pushed their order about
+    // and an Up landed after the test's Down (B477's shape).
+    await sleep(2000);
+  }
+  throw new Error(`the manager row never ${not ? 'lost' : 'said'} ${re}: ${t.slice(0, 200)}`);
+}
 // The manager lists what has been SENT to it (a project with a compose file
 // no longer gets a phantom row there), so the fixture's instance has to exist
 // before anything can be pressed on it. Through the API rather than the modal:
@@ -143,12 +161,11 @@ await page.evaluate(async () => {
     body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'main' }) });
 });
 
-const row = async () => ({
-  text: await page.$eval('#devRow', e => e.textContent.replace(/\s+/g, ' ').trim()),
-  up: await dmDisabled('up'),
-  down: await dmDisabled('down'),
-  rebuild: await dmDisabled('rebuild'),
-});
+const row = async () => {
+  const up = await dmDisabled('up'), down = await dmDisabled('down'), rebuild = await dmDisabled('rebuild');
+  return { up, down, rebuild,
+           text: await page.$eval(DM, e => e.textContent.replace(/\s+/g, ' ').trim()) };
+};
 // The state, read from the parenthetical beside the name and never out of the
 // row's whole text: that text carries the buttons' own labels, so "down" in it
 // could as easily be the Down button. The pill says what the row IS: docker,
@@ -271,20 +288,18 @@ const pillIs = async (want) => {
 
 let r = await row();
 ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker'
-   && await page.$eval('#devRow .top b', e => e.textContent.trim()) === 'ep-silon',
-   'a project with a compose file gets the row: kind on the pill, its own name in bold');
-// What the row does NOT say any more. The build state and the wiring were here
-// while this screen ran the container; building, Up and Down all live in the
-// Docker manager now, and a second copy of a container's ports and mounts on
-// the tab you send it FROM is a thing to keep in step for no reader.
-ok(!/never built/.test(r.text),
-   '...and says nothing where it used to name a Build button this screen no longer has');
-ok(await page.$$eval('#devRow .grow > .dim.li:not(.warn)', els => els.length) === 0,
-   '...nor its ports and mounts, which the manager folds open per container');
-// The single published port earns a link. Not before it is up: a link to a
-// port with nothing behind it is a broken link.
-ok(!await page.$('#devRow a.btn'),
-   'no Open link while the instance is down, whatever it publishes');
+   && await page.$eval('#devRow .top b', e => e.textContent.trim()) === 'docker-compose.yml'
+   && !!await page.$('#devRow #devSend'),
+   'a project with a compose file gets a row for it: kind on the pill, the file in bold, and Send');
+// What the row does NOT say: anything about a container made from it. That
+// is the Docker tab's, and the row that said "down" read as a second place
+// to run it (the operator, 10 Oct): no state, no build, no Open, no ports.
+{
+  const t = await page.$eval('#devRow', e => e.textContent.replace(/\s+/g, ' '));
+  ok(!/\b(down|running|stopped|built from|never built)\b/.test(t) && !await page.$('#devRow a.btn')
+     && await page.$$eval('#devRow .grow > .dim.li:not(.warn)', els => els.length) === 0,
+     `...and nothing about a container made from it: no state, no build, no Open (${t.slice(0, 80)})`);
+}
 // One fact per line, never a run-on joined by semicolons: these are separate
 // facts about separate services, and reading them is the point of showing them.
 // The wiring lines carry .li too and are not what these two are counting, so
@@ -336,10 +351,7 @@ ok(/nothing saved yet/.test(await page.$eval('#cEnvHint', e => e.textContent)),
 await page.fill('#cEnv', 'PORT=9090\n');
 await saveEdit();
 // Wait for the save to land: the hint stops calling it a draft.
-await page.waitForFunction(() => {
-  const r = document.querySelector('#devRow');
-  return r && !/fill in the env/.test(r.textContent);
-}, { timeout: 20000 }).catch(() => {});
+await dmTextUntil(/fill in the env/, 20000, true).catch(() => {});
 await page.waitForTimeout(1200);
 // The buttons map to the compose commands, no rules of this dashboard's
 // invention on top: `compose up` builds an image that is missing, so Up on a
@@ -364,10 +376,9 @@ await dmClick('rebuild');
 // A running instance says so and counts its containers; "built from <sha>" is
 // what it says when it is NOT running, so waiting for both at once waits for a
 // state that cannot exist. The argv trail below is what proves the build ran.
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && /built from [0-9a-f]{7}/.test(e.textContent);
-}, { timeout: 30000 });
+// "running" is what the Docker row says once the build is up; "built from"
+// is its word for a container that is not running.
+await dmTextUntil(/running/, 30000);
 const log = dockerLog();
 ok(/compose --project-name ep-silon .*build/.test(log)
    && /compose --project-name ep-silon .*up -d/.test(log),
@@ -618,9 +629,9 @@ ok(await page.$eval(`${DM} [data-dm="rebuild"]`, e => e.textContent.trim())
    === 'Build',
    '...so the button offers Build, which is what pressing it would do');
 writeFileSync(devapps, JSON.stringify(wasBuilt));
-await page.waitForFunction(
-  () => /built from [0-9a-f]{7}/.test(document.querySelector('#devRow')?.textContent || ''),
-  { timeout: 20000 });
+await dmRefresh();
+await page.waitForFunction(sel => document.querySelector(sel + ' [data-dm="rebuild"]')?.textContent.trim() === 'Rebuild',
+                           DM, { timeout: patience(20000) });
 
 // The code moves, and Rebuild wakes.
 writeFileSync(`${D}/newfile.txt`, 'x');
@@ -668,10 +679,7 @@ writeFileSync(`${D}/.env.example`, 'PORT=8080\nAPI_KEY=\n');
 git('add', '-A');
 git('commit', '-qm', 'needs a key');
 await dmClick('rebuild');
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && /fill in the env/.test(e.textContent);
-}, { timeout: 30000 });
+await dmTextUntil(/fill in the env/, 30000);
 // The pill as well as the text: the text lands with the record the job
 // wrote, and on an agent node the pill comes from a listing read a moment
 // later, so the two can arrive a fetch apart (B143).
@@ -719,10 +727,7 @@ await page.waitForFunction((SEL) => {
   return b && !b.disabled;
 }, DM, { timeout: 20000 });
 await dmClick('up');
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && /running/.test(e.textContent);
-}, { timeout: 20000 });
+await dmTextUntil(/running/);
 ok(true, '...and Up is manual after the gate, exactly as asked');
 
 // Start on boot on an instance's row reads the instance's own containers
@@ -732,6 +737,10 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 {
   await page.evaluate(() => openDocker());
   await page.waitForSelector(`${DM} [data-dmboot]`, { timeout: 20000 }).catch(() => {});
+  // ...and the listing itself, which a refresh empties until its answer
+  // lands: read in that gap it held no instance at all.
+  await page.waitForFunction(() => (dockerList?.instances || []).some(x => x.exists), null,
+                             { timeout: patience(20000) }).catch(() => {});
   const drawn = await page.evaluate(sel => {
     const d = (dockerList?.instances || []).find(x => x.exists);
     if (!d) return null;
@@ -783,7 +792,6 @@ await dmClick('up');
 // The job first, then the row: the reason reaches the row only once the
 // job has released, and a flat wait on the row ran out under load while
 // the job was still running (B340).
-await idle(60000);
 await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: patience(20000) })
   .catch(() => {});
 const failed = await page.evaluate(() => dockerList?.job || {});
@@ -827,12 +835,9 @@ const before = JSON.parse(readFileSync(devFile, 'utf8'));
 before['ep.silon'].main.building_since = Math.floor(Date.now() / 1000);
 writeFileSync(devFile, JSON.stringify(before));
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && /a build was interrupted/.test(e.textContent);
-}, { timeout: 20000 });
-ok(/still on [0-9a-f]{7}/.test(await page.$eval('#devRow', e => e.textContent)),
-   'an interrupted build says so, and still names the last one that finished');
+const cut = await dmTextUntil(/a build was interrupted/);
+ok(/still on [0-9a-f]{7}/.test(cut),
+   'an interrupted build says so on its Docker row, and still names the last one that finished');
 // And it clears the moment a build reaches any end, rather than sticking.
 // The code has to move first: Rebuild is correctly asleep while the last
 // build matches HEAD, interrupted marker or not. The marker says what
@@ -849,10 +854,7 @@ await page.waitForFunction((SEL) => {
   return b && !b.disabled;
 }, DM, { timeout: 20000 });
 await dmClick('rebuild');
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && !/a build was interrupted/.test(e.textContent);
-}, { timeout: 30000 });
+await dmTextUntil(/a build was interrupted/, 30000, true);
 ok(!JSON.parse(readFileSync(devFile, 'utf8'))['ep.silon'].building_since,
    '...and the marker is gone once a build reaches an end, whichever end');
 
@@ -869,12 +871,10 @@ await page.waitForFunction((SEL) => {
   return b && !b.disabled;
 }, DM, { timeout: 20000 });
 await dmClick('rebuild');
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && /build failed/.test(e.textContent);
-}, { timeout: 30000 });
-ok(/stub build exploded/.test(await page.$eval('#devRow', e => e.textContent)),
-   'a failed build shows its own last words, and nothing was started');
+const blew = await dmTextUntil(/stub build exploded/, 30000);
+await idle(60000);
+ok(/stub build exploded/.test(blew),
+   'a failed build shows its own last words on its Docker row, and nothing was started');
 rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 
 // What the compose FILE asks for, which is the half no check on a NAME can
@@ -980,42 +980,6 @@ ok(page.dialogs.slice(seen).some(d => /runs privileged/.test(d)),
   risky(['/:/host']);
   await nudge();
 }
-// ...and once it is up, the one port it publishes is a link to it. The stub's
-// risky config publishes nothing, so this reads the earlier shape back.
-writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
-  ports: [{ target: 7474, published: '7475', protocol: 'tcp' }] } } }));
-await nudge();
-// attached, not visible: the manager tab is in front now, and what is being
-// asserted is what the row RENDERS, not which pane is on top.
-await page.waitForSelector('#devRow a.btn', { state: 'attached', timeout: 20000 });
-// The DAEMON's host, not this page's. They are different machines (the whole
-// point of the sandbox VM), and a container publishing 7475 publishes it over
-// there. This used to be location.hostname, which on a real box is the Unraid
-// server: a link to a port where either nothing answers or something else does.
-// The sandbox node dialed in from `stub`, so the answer is `stub`.
-ok(await page.$eval('#devRow a.btn', a => a.getAttribute('href'))
-     === 'http://stub:7475/',
-   'a running instance opens on the machine its daemon runs, not on the one serving this page');
-writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
-  ports: [{ target: 80, published: '8080', protocol: 'tcp' },
-          { target: 81, published: '8081', protocol: 'tcp' }] } } }));
-await nudge();
-await showRow();
-await openDev();
-await page.waitForSelector('#devOpen', { timeout: 20000 });
-ok(!await page.$('#devRow a.btn'),
-   '...and two of them get a chooser instead: nothing here knows which is the web UI');
-await page.click('#devOpen');
-await page.waitForSelector('.nbsheet .portpick a', { timeout: 10000 });
-const picks = await page.$$eval('.nbsheet .portpick a', as => as.map(a => a.getAttribute('href')));
-ok(picks.length === 2 && picks[0] === 'http://stub:8080/'
-   && picks[1] === 'http://stub:8081/',
-   '...listing every published port, on that same machine, for the operator to answer');
-await page.click('#sheetClose');
-await page.waitForFunction(() => document.querySelector('.nbsheet').hidden);
-ok(await page.$('.nbsheet .portpick') === null,
-   '...and the list, built for the sheet, goes when the sheet does');
-
 // Asked once per set, not once per press: an acknowledgement the operator has
 // to give again every time is one they stop reading.
 await dmClick('down');
@@ -2791,6 +2755,68 @@ await showRow();
 ok(await page.$('#devSend'),
    '...and the project can still send another: the artifact row persists');
 
+// Every compose file in the repository is a row with its own Send (the
+// operator, 10 Oct): one in a folder, a variant beside the root's, never an
+// override, which is half a file. Sent from its row, a container is made
+// from that file and its compose calls run in its folder, which is what the
+// file's relative paths mean; the manager says which file made it.
+{
+  mkdirSync(`${D}/site`, { recursive: true });
+  writeFileSync(`${D}/site/compose.yml`, 'services:\n  web:\n    build: .\n');
+  writeFileSync(`${D}/docker-compose.prod.yml`, 'services:\n  app:\n    image: nginx\n');
+  writeFileSync(`${D}/docker-compose.override.yml`, 'services: {}\n');
+  const nudge2 = async () => {
+    const f = `${DIR}/state/devapps.json`;
+    writeFileSync(f, readFileSync(f, 'utf8'));
+    await page.evaluate(() => refresh());
+  };
+  await nudge2();
+  await showRow();
+  await page.waitForFunction(() => document.querySelectorAll('[data-devsend]').length === 3, null, { timeout: patience(20000) })
+    .catch(() => {});
+  const files = await page.$$eval('#devRow, [data-devrow]', rs => rs.map(r => r.querySelector('.top b')?.textContent.trim()));
+  ok(JSON.stringify(files) === '["docker-compose.yml","docker-compose.prod.yml","site/compose.yml"]',
+     `every compose file is a row of its own, the root's first and no override (${JSON.stringify(files)})`);
+  const at = files.indexOf('site/compose.yml');
+  await page.click(`[data-devsend="${at}"]`);
+  await page.waitForSelector('#dnmodal:not([hidden])');
+  const named = await page.$eval('#dnName', e => e.value);
+  ok(named === 'ep-silon-site' && /site\/compose\.yml/.test(await page.$eval('#dnHint', e => e.textContent)),
+     `its Send opens on a name of its own and says which file (${named})`);
+  await page.click('#dnGo');
+  await page.waitForFunction(() => document.querySelector('.dmtab .row[data-inst="ep.silon|ep-silon-site"]'),
+                             null, { timeout: patience(20000) });
+  let log = '';
+  for (let i = 0; i < 40 && !/--project-name ep-silon-site .*build/.test(log); i++){ await sleep(500); log = dockerLog(); }
+  const line = log.split('\n').find(l => /--project-name ep-silon-site .*build/.test(l)) || '';
+  // On an agent node the file's text travels with the job and lands in its
+  // own folder there: read back, it is the site's.
+  const shipped = (line.match(/ -f (\S+)/) || [])[1] || '';
+  let text = '';
+  try { text = readFileSync(shipped, 'utf8'); } catch {}
+  ok(line.includes(`--project-directory ${D}/site `) && /web:/.test(text) && !/app:/.test(text),
+     `...and its build runs compose in that file's folder, on that file (${line.slice(0, 120)}; ${text.replace(/\s+/g, ' ').slice(0, 40)})`);
+  await dmRefresh();
+  ok(/made from site\/compose\.yml/.test(await page.$eval('.dmtab .row[data-inst="ep.silon|ep-silon-site"]', r => r.textContent)),
+     '...and its Docker row says which file made it');
+  const again = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'stray', compose: 'docker-compose.override.yml' }) })).json()));
+  ok(/has no compose file docker-compose\.override\.yml/.test(again.error || ''),
+     `a file that is not one of its compose files is refused by name (${again.error})`);
+  await idle(60000);
+  await page.click('.dmtab .row[data-inst="ep.silon|ep-silon-site"] [data-dm="remove"]');
+  await page.waitForFunction(() => !document.querySelector('.dmtab .row[data-inst="ep.silon|ep-silon-site"]'),
+                             null, { timeout: patience(20000) });
+  rmSync(`${D}/site`, { recursive: true, force: true });
+  rmSync(`${D}/docker-compose.prod.yml`, { force: true });
+  rmSync(`${D}/docker-compose.override.yml`, { force: true });
+  await nudge2();
+  // Left only once its Remove has finished: a job still on the node is a
+  // listing the next block reads half-drawn.
+  await idle(60000);
+}
+
 
 
 // ---- building an instance from another branch -----------------------------
@@ -2830,9 +2856,21 @@ ok(await page.$('#devSend'),
   // What it is built FROM is that branch's tip, not the checkout's, so the
   // row stops saying "the code has moved" every time the project's own
   // branch does, and says it when the pinned one moves.
-  await dmRefresh();
-  const refPick = await page.$eval(DM, r => r.querySelector('[data-dmref]')?.value || '');
-  ok(refPick === 'sidebranch', `...and the Ref control holds it (${refPick || 'empty'})`);
+  // Asked again a few times: once in about ten runs the page's branch list
+  // still read ["master"] after the server had listed sidebranch (B619),
+  // and one read made that a failure.
+  let refPick = '';
+  for (let i = 0; i < 5 && refPick !== 'sidebranch'; i++){
+    await dmRefresh();
+    refPick = await page.$eval(DM, r => r.querySelector('[data-dmref]')?.value || '');
+    if (refPick !== 'sidebranch') await sleep(1000);
+  }
+  const refSeen = refPick === 'sidebranch' ? '' : await page.evaluate(sel => {
+    const r = document.querySelector(sel);
+    return JSON.stringify({ inst: r?.dataset.inst, control: !!r?.querySelector('[data-dmref]'),
+                            refs: dockerList?.refs?.['ep.silon'], rows: [...document.querySelectorAll(sel)].length });
+  }, DM);
+  ok(refPick === 'sidebranch', `...and the Ref control holds it (${refPick || 'empty'} ${refSeen})`);
   const st = await api({ project: 'ep.silon', instance: 'main', action: 'state' });
   ok((st.state || {}).ref === 'sidebranch', 'the state carries the pin for the row');
   // The PIN is not a build. Pressing Apply changes what the next build is made

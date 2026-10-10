@@ -1520,6 +1520,87 @@ def project_has_compose(project):
     return any((WORKSPACE / project / n).is_file() for n in COMPOSE_NAMES)
 
 
+# Every compose file a project has, not only the one at its root (the
+# operator, 10 Oct): a repo with a site in site/ and an api in api/, or a
+# docker-compose.prod.yml beside the main one. An override file is left out:
+# compose merges it onto the file beside it, and alone it is half a file.
+COMPOSE_RE = re.compile(r"(docker-)?compose(\.[A-Za-z0-9_-]+)?\.ya?ml")
+COMPOSE_SKIP = {".git", "node_modules", ".gradle", "__pycache__", ".venv", "venv",
+                ".next", ".cache", ".bb-map", "dist", "build", "vendor", ".worktrees"}
+COMPOSE_DEPTH = 3
+COMPOSE_MAX_FILES = 12
+# Which file the next lookup means, over the record's: the Artifacts tab
+# judges each file in turn this way (devactions.file_rows).
+_pick = threading.local()
+
+
+@contextlib.contextmanager
+def composing(rel):
+    """Within this, every lookup means `rel`, whatever the record says: a
+    file judged as what Send would make of it."""
+    was = getattr(_pick, "rel", None)
+    _pick.rel = rel
+    try:
+        yield
+    finally:
+        _pick.rel = was
+
+
+def compose_files(project):
+    """The project's compose files, relative to its root, the root's own
+    first: what the Artifacts tab offers to send, one row each. A symlink is
+    never one, file or directory (the audit of 26 Sep)."""
+    top = WORKSPACE / project
+    out = [n for n in COMPOSE_NAMES if (top / n).is_file() and not (top / n).is_symlink()][:1]
+    for d, dirs, files in os.walk(top):
+        rel = os.path.relpath(d, top)
+        depth = 0 if rel == "." else rel.count("/") + 1
+        dirs[:] = sorted(x for x in dirs if x not in COMPOSE_SKIP and not x.startswith(".")
+                         and not os.path.islink(os.path.join(d, x)) and depth < COMPOSE_DEPTH)
+        for f in sorted(files):
+            if not COMPOSE_RE.fullmatch(f) or ".override." in f:
+                continue
+            r = f if rel == "." else f"{rel}/{f}"
+            if r not in out and not os.path.islink(os.path.join(d, f)):
+                out.append(r)
+        if len(out) >= COMPOSE_MAX_FILES:
+            break
+    return out[:COMPOSE_MAX_FILES]
+
+
+def compose_rel(project, instance=MAIN):
+    """The compose file an instance is built from, relative to its project:
+    the one Send was pressed on, else the root's own."""
+    rel = getattr(_pick, "rel", None) or str(_read_rec(project, instance).get("compose") or "")
+    if rel:
+        return rel
+    return next((n for n in COMPOSE_NAMES if (WORKSPACE / project / n).is_file()), "")
+
+
+def compose_sub(project, instance=MAIN):
+    """The folder that file is in, "" for the root: compose resolves the
+    file's relative paths (build: ., ./data) against it, so it is the
+    project directory every compose call names."""
+    d = posixpath.dirname(compose_rel(project, instance))
+    return "" if d in ("", ".") else d
+
+
+def compose_ok(project, rel):
+    """"" when `rel` is one of the project's compose files, else why not."""
+    if rel and rel not in compose_files(project):
+        return f"{project} has no compose file {rel}"
+    return ""
+
+
+def example_file(project, instance=MAIN):
+    """The .env.example beside the instance's compose file, else the root's."""
+    sub = compose_sub(project, instance)
+    for p in ([WORKSPACE / project / sub / ".env.example"] if sub else []) + [WORKSPACE / project / ".env.example"]:
+        if p.is_file():
+            return p
+    return WORKSPACE / project / ".env.example"
+
+
 def compose_file(project, instance=MAIN):
     """The compose file behind an instance.
 
@@ -1534,11 +1615,15 @@ def compose_file(project, instance=MAIN):
         return f if f.is_file() and not f.is_symlink() else None
     # A real file, never a link: a compose file symlinked to a controller
     # file went into the job spec and onto the node (the audit of 26 Sep).
-    for n in COMPOSE_NAMES:
-        p = WORKSPACE / project / n
-        if p.is_file() and not p.is_symlink():
-            return p
-    return None
+    rel = compose_rel(project, instance)
+    if not rel or ".." in rel.split("/") or rel.startswith("/"):
+        return None
+    p = WORKSPACE / project / rel
+    try:
+        inside = p.resolve().is_relative_to((WORKSPACE / project).resolve())
+    except OSError:
+        return None
+    return p if inside and p.is_file() and not p.is_symlink() else None
 
 
 def pname(project, instance=MAIN):
@@ -1679,7 +1764,9 @@ def _compose(project, instance, *args):
         # changed, so a controller-run build quietly came from the project's
         # checkout while the row said it came from a branch.
         at = work_tree(project, instance)
-        pdir = str(at) if at is not None else str(WORKSPACE / project)
+        # ...and inside it, the folder the compose file is in.
+        sub = compose_sub(project, instance)
+        pdir = str((at if at is not None else WORKSPACE / project) / sub).rstrip("/")
     ep = env_path(project, instance)
     if ep.is_file() and cf is not None and cf.is_file():
         # The copy whose env_file lines name the instance's env, beside it,
@@ -2190,7 +2277,7 @@ def starter(project, instance=MAIN):
     the stored file and Up stays honestly dead until the values are real.
     """
     try:
-        example = (WORKSPACE / project / ".env.example").read_text(
+        example = example_file(project, instance).read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return ""
@@ -2249,7 +2336,7 @@ def missing_env(project, instance=MAIN):
     never names stays required: the example says it matters, and this side
     cannot tell what reads it.""" 
     try:
-        example = (WORKSPACE / project / ".env.example").read_text(
+        example = example_file(project, instance).read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return []
@@ -2271,7 +2358,7 @@ def _gate_env(project, instance=MAIN):
     """
     old = read_env(project, instance)
     try:
-        example = (WORKSPACE / project / ".env.example").read_text(
+        example = example_file(project, instance).read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         example = ""
@@ -2413,7 +2500,14 @@ def _overview_here(picked):
                 # names a branch that may never have been built here.
                 "built_ref": rec.get("built_ref", "") if same_daemon else "",
                 "await_env": bool(rec.get("await_env")) if same_daemon else False,
+                # A build marker with no job behind it: BuilderBot restarted
+                # while it was building (the Artifacts row said so until it
+                # stopped following containers, 10 Oct).
+                "interrupted": bool(same_daemon and rec.get("building_since")
+                                    and not (job_view(project, inst) or {}).get("running")),
                 "compose": compose_file(project, inst) is not None,
+                # Which of the project's compose files, when not the root's.
+                "compose_path": str(rec.get("compose") or ""),
                 "source": "file" if filed else "project",
                 # A file read and one git call. risks/problems stay out:
                 # those are judgements to put in front of somebody about to
@@ -2615,7 +2709,7 @@ def new_refusal(project, key):
     return _taken(project, key, _load())
 
 
-def create_instance(project, name, node="", owner=None, ship=False):
+def create_instance(project, name, node="", owner=None, ship=False, compose=""):
     """Register a new instance of a project. Nothing is built or started.
 
     `owner` is the project it belongs to when the caller said (another one,
@@ -2632,7 +2726,7 @@ def create_instance(project, name, node="", owner=None, ship=False):
     refused rather than silently becoming the first.
     """
     slug = instance_key(project, name)
-    why = new_refusal(project, slug)
+    why = new_refusal(project, slug) or compose_ok(project, compose)
     if why:
         return {"error": why}
     # A container lives on the node of the project it belongs to and nowhere
@@ -2665,6 +2759,11 @@ def create_instance(project, name, node="", owner=None, ship=False):
             rec["node"] = str(node)
         if ship:
             rec["ship"] = True
+        # The file Send was pressed on, when it is not the root's own: what
+        # every build of this container comes from from now on.
+        if compose and compose != next((n for n in COMPOSE_NAMES
+                                         if (WORKSPACE / project / n).is_file()), ""):
+            rec["compose"] = str(compose)
         # Stored the way owner_of reads it: nothing for the default.
         if owner is not None and owner != project:
             rec["for"] = str(owner)[:100]
@@ -2976,18 +3075,34 @@ def only_instance(project):
     return have[0] if len(have) == 1 else MAIN
 
 
-def send_name(project):
-    """The name a new container of a project gets when nobody typed one: the
-    project's own while it has none, then <project>-2, -3 and on, the first
-    that no container here holds. Send to Docker opens on it and `bb devapp
-    new` takes it, so sending a project again makes another container beside
-    the first rather than a refusal naming the one it already has (the
-    operator, 26 Sep)."""
+# The name a project is shown under, which a rename changes and its folder
+# does not (R154): set by server.py to registry.label.
+label_of = lambda p: p   # noqa: E731
+
+
+def send_name(project, compose=""):
+    """The name a new container of a project gets when nobody typed one:
+    named for what the project is called now (a renamed Clanker-Detector
+    offers turing-lens, not its folder's name: the operator, 10 Oct), with
+    the folder or the variant of the compose file it is made from after it
+    (turing-lens-site, turing-lens-prod), so two files are not offered one
+    name. The project's own container while that is free, then -2, -3 and on,
+    the first no container here holds. Send to Docker opens on it and `bb
+    devapp new` takes it, so sending again makes another container beside
+    the first rather than a refusal (the operator, 26 Sep)."""
+    base = _slug(label_of(project)) or _slug(project) or "container"
+    rel = str(compose or "")
+    sub = posixpath.dirname(rel)
+    m = COMPOSE_RE.fullmatch(posixpath.basename(rel)) if rel else None
+    tail = [_slug(sub.replace("/", "-"))] if sub else []
+    if m and m.group(2):
+        tail.append(_slug(m.group(2)[1:]))
+    base = "-".join([base] + [t for t in tail if t])
     d = _load()
-    if not _taken(project, MAIN, d):
-        return project
-    base, n = _slug(project) or "container", 2
-    while _taken(project, f"{base}-{n}", d):
+    if not _taken(project, instance_key(project, base), d):
+        return project if instance_key(project, base) == MAIN else base
+    n = 2
+    while _taken(project, instance_key(project, f"{base}-{n}"), d):
         n += 1
     return f"{base}-{n}"
 

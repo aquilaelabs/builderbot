@@ -70,124 +70,45 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                      : n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB"
                      : n >= 1 << 10 ? Math.round(n / (1 << 10)) + " KB"
                      : n + " B";
-    // The dev instance: a service in the file list's row language. Not a
-    // file (nothing in dist/ backs it), but the operator asked for it where
-    // the push and download buttons live, and a row with state and actions
-    // is exactly what this list already speaks.
-    const da = art.devapp || {};
-    // Every container of the project's own, one row each, the first
-    // carrying the ids the rest of this view and the suite address. The
-    // row described the project's own instance whether or not it existed,
-    // so a project whose only container was web-dev read "web (down)" with
-    // web-dev nowhere on the tab (B300). A project with no container yet
-    // keeps its one row, which is what Send is for.
-    const insts = (art.devapps || []).filter(d => d && d.compose
-      && (d.exists || d.running || d.built_rev || d.job?.running || d.job?.error));
-    const shown = insts.length ? insts : da.compose ? [da] : [];
-    const daJob = shown.find(d => d.job?.running)?.job || da.job;
-    const devTcpOf = d => (d.ports || []).filter(p => p.proto === "TCP" && p.published);
-    const devUrl = p => `http://${daemonHost()}:${p.published}/`;
+    // Sending to Docker: a row a compose file in the repository, each with
+    // its own Send, which makes a new container from that file on the Docker
+    // tab, as many as are wanted under as many names (the operator, 10 Oct).
+    // Nothing here follows a container once it is made: whether it is up,
+    // built, or answering is the Docker tab's, and a row here that said
+    // "down" read as a second place to run it. What a row says is about the
+    // FILE: what will not work as written, what reaches beyond its folder,
+    // a port already taken on the node.
+    const cf = art.compose_files || {files: []};
+    const cfFiles = cf.files || [];
     const devLines = (label, items, cls) => !items?.length ? "" :
       `<div class="dim ${cls}">${label}</div>`
       + items.map(x => `<div class="dim ${cls} li">${esc(x)}</div>`).join("");
-    const rowFor = (da, i) => {
-    const daJob = da.job;
-    // The same row the files use, because it IS one of the rows: kind on a
-    // pill, the thing's own name in bold, what is known about it underneath.
-    // The pill says what it is (docker) rather than what it is doing; the
-    // doing goes in parentheses after the name, where an artifact's size and
-    // age go. A list whose rows are shaped alike is read; one where every row
-    // argues its own case is scanned.
-    const devState = da.running ? "running" : da.exists ? "stopped" : "down";
-    // The ports and the mounts, written the way Unraid's own Docker tab writes
-    // them, because that is where the operator reads the same two facts about
-    // every other container on the box, and a second notation for them would
-    // be one to translate every time. Container side on the left, host side on
-    // the right, and the arrow says which way it goes: one way in for a
-    // read-only mount and for a published port, both ways for a writable one.
-    //
-    // The host is this page's own address, which is the honest answer to
-    // "where do I reach that port": the dashboard and the published port are
-    // on the same machine, and this is the name the operator got there by.
-    // A way in. One published port is a link straight there; several is a
-    // question, and the answer is the operator's; nothing here knows which
-    // of them is the web UI, and Unraid does not either: its own tab reads a
-    // port somebody wrote into a template, or the net.unraid.docker.webui
-    // label. So the single case is known, and the rest is asked rather than
-    // guessed. Only while it is up: a link to a port with nothing behind it
-    // is a broken link.
-    const devTcp = devTcpOf(da);
-    // The route's URL when the instance has one (docs/nodes.md §7): a
-    // funnel's public address, or lan on the node the instance is on: else
-    // the old guess from the daemon's host.
-    const devWeb = !da.running ? ""
-      : da.route?.url && da.route.ready ? da.route.url
-      : devTcp.length === 1 ? devUrl(devTcp[0]) : "";
-    const devAsk = da.running && devTcp.length > 1;
-    // The ports and mounts used to be listed here, unfolded, on the reasoning
-    // that they are what the instance IS. They are, and this is no longer the
-    // screen that runs it. Building, bringing up and taking down all moved to
-    // the Docker manager, where every container of every project lives; a
-    // second copy of a container's wiring on the tab you send it FROM is a
-    // thing to keep in step for no reader. The manager's rows fold it open.
-    // One line each, never a run-on joined by semicolons. These are separate
-    // facts about separate services and reading them is the whole point.
-    return `
-      <div class="artrow${i ? " devRow" : ""}"${i ? ` data-devrow="${i}"` : ' id="devRow"'}>
+    const rowFor = (c, i) => `
+      <div class="artrow"${i ? ` data-devrow="${i}"` : ' id="devRow"'}>
         <div class="grow">
           <div class="top"><span class="pill">docker</span>
-            <b>${esc(da.name || "dev instance")}</b>
-            <span class="dim state ${da.running ? "ok" : ""}">(${devState})</span></div>
-          <div class="dim">${
-            daJob?.running ? esc(daJob.step || "working") + '<span class="dots"></span>'
-            // The reason's head and its last words, on one line: "build
-            // failed: stub build exploded". The whole output is the Jobs
-            // tab's, and the shell's through the Tests view.
-            : daJob?.error ? esc((l => l.length > 1 && l[0] !== l[l.length - 1] ? `${l[0]} ${l[l.length - 1]}` : l[0] || "")(
-                String(daJob.error).split("\n").map(x => x.trim()).filter(Boolean)))
-            : da.await_env ? "built: fill in the env (Env), then Up"
-            : da.interrupted ? `a build was interrupted: BuilderBot restarted
-                while it was running${da.built_rev
-                  ? `; still on ${esc(da.built_rev)}` : ", and nothing was built"}`
-            : da.built_rev ? `built from ${esc(da.built_rev)}${
-                da.changed_why === "moved" ? ": the code has moved since"
-                : da.changed_why === "dirty"
-                  ? ": uncommitted changes are not in it" : ""}`
-            // Nothing, where it used to say "never built: Build makes the
-            // first image". That sentence named a button this screen no longer
-            // has: building moved to the Docker manager with the rest of the
-            // running controls, and an instruction pointing at a control that
-            // is not here is worse than silence. The states that remain are
-            // facts about THIS project's build, which is what this tab is for.
-            : ""}</div>
-          ${devLines("will not work as written", da.problems, "bad")}
-          ${devLines("asks for more than its own directory", da.risks, "risk")}${
+            <b>${esc(c.path)}</b></div>
+          ${devLines("will not work as written", c.problems, "bad")}
+          ${devLines("asks for more than its own directory", c.risks, "risk")}${
           // A port another container holds is not a fault in the file: the
-          // instance Send makes gets an env of its own, and the port goes in
+          // container Send makes gets an env of its own, and the port goes in
           // it. So a note, in the quiet voice, not a verdict in red.
-          da.port_clash?.length ? `<div class="dim li">port ${esc(da.port_clash.join(", "))} ${
-            da.port_clash.length === 1 ? "is" : "are"} already published on this node</div>` : ""}
+          c.port_clash?.length ? `<div class="dim li">port ${esc(c.port_clash.join(", "))} ${
+            c.port_clash.length === 1 ? "is" : "are"} already published on this node</div>` : ""}
         </div>
         <span class="acts">
-          ${devWeb ? `<a class="btn" href="${esc(devWeb)}" target="_blank"
-            rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
-          ${devAsk ? `<button type="button" data-devopen="${i}"${i ? "" : ' id="devOpen"'}
-            title="it publishes ${devTcp.length} ports: pick one">Open</button>` : ""}
-          ${i ? "" : `<button type="button" id="devSend" class="primary"
-            title="make a container from this project and manage it on the Docker tab"
-            >Send to Docker manager</button>`}
+          <button type="button" data-devsend="${i}"${i ? "" : ' id="devSend"'} class="primary"
+            title="make a new container from ${esc(c.path)} and manage it on the Docker tab"
+            >Send to Docker manager</button>
         </span>
       </div>`;
-    };
-    const devHtml = !da.compose ? "" : !da.available ? `
+    const devHtml = !cfFiles.length ? "" : !cf.available ? `
       <div class="artrow job"><span class="pill">docker</span>
-        <span class="grow">${esc(da.why || "docker is not reachable")}${
-          // The machine it asked, because an instance stays on the node it
-          // was made on: "it could not find the daemon on the node I pointed
-          // it at" is the same sentence whether it looked there or somewhere
-          // else, and only this tells the two apart.
-          da.daemon || da.where ? ` <span class="dim">(${esc(da.daemon || da.where)})</span>` : ""}</span>
-      </div>` : shown.map(rowFor).join("");
+        <span class="grow">${esc(cf.why || "docker is not reachable")}${
+          // The machine it asked: a project's containers live on its own
+          // node, and the refusal is about that one.
+          cf.daemon || cf.where ? ` <span class="dim">(${esc(cf.daemon || cf.where)})</span>` : ""}</span>
+      </div>` + cfFiles.map(rowFor).join("") : cfFiles.map(rowFor).join("");
     // An install is one shot rather than a session, so it reports its own
     // line: what it is doing, and what went wrong in words when it does.
     // The push session, as a row: live once web-ext says the add-on is on
@@ -283,8 +204,9 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                 : "pin: keep it, whatever builds come after it"}">${TACK}</button>
           </span>
         </div>`).join("");
-    list.innerHTML = (devHtml ? docSection("artifacts", "dev", "Dev instance",
-                                            da.available === false ? "unreachable" : String(shown.length), devHtml) : "")
+    list.innerHTML = (devHtml ? docSection("artifacts", "dev", "Docker",
+                                            cf.available === false ? "unreachable"
+                                            : `${cfFiles.length} compose file${cfFiles.length === 1 ? "" : "s"}`, devHtml) : "")
       + docSection("artifacts", "files", "Files", rows.length ? `${rows.length} in dist/` : "none yet", filesBody, {prime: true});
     wireSections(list);
     paginate(list.querySelector('[data-sect="artifacts:files"] > .body'), ":scope > .artrow", {key: "artList", noun: "files"});
@@ -372,25 +294,15 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     }
     if (!tcDotsTimer && list.querySelector(".dots"))
       tcDotsTimer = setInterval(tcTickDots, 400);
-    list.querySelectorAll("[data-devopen]").forEach(b => b.onclick = () => {
-      const devTcp = devTcpOf(shown[Number(b.dataset.devopen)] || {});
-      const box = document.createElement("div");
-      box.className = "portpick";
-      box.innerHTML = `<div class="hint">It publishes ${devTcp.length} ports: pick one.</div>`
-        + devTcp.map(p => `<a class="btn" href="${esc(devUrl(p))}" target="_blank"
-            rel="noreferrer">${esc(daemonHost())}:${esc(p.published)}
-            <span class="dim">→ ${esc(p.target)}:${esc(p.proto)}</span></a>`).join("");
-      box.querySelectorAll("a").forEach(a => a.addEventListener("click", nb.closeSheet));
-      nb.openSheet("Open which port?", [box]);
+    list.querySelectorAll("[data-devsend]").forEach(b => b.onclick = () => {
+      const c = cfFiles[+b.dataset.devsend] || {};
+      openSendToDocker(project, c.send_as || art.send_as, art.containers || 0, c.path || "");
     });
-    const send = list.querySelector("#devSend");
-    if (send) send.onclick = () => openSendToDocker(project, art.send_as, (art.devapps || []).length);
     // THIS project's daemon, which is its node's and need not be the default
     // one the poll asked about. The row above already draws the reason when
     // there is one, so what is passed here is the same answer the row is
     // wearing rather than a second opinion about another machine.
-    gateDocker(list, !da.compose ? "" : da.available ? ""
-                     : (da.why || "docker is not reachable"));
+    gateDocker(list, !cfFiles.length || cf.available ? "" : (cf.why || "docker is not reachable"));
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
       busy(b, "Pushing");
@@ -462,7 +374,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     clearInterval(artTimer); artTimer = null;
     // Polled while either thing is in flight. An install is the slower of the
     // two (a 24MB APK over wifi) and is the reason this exists at all.
-    if ((job.running || inst.running || daJob?.running)
+    if ((job.running || inst.running)
         && !root.querySelector('[data-view="artifacts"]').hidden)
       artTimer = setTimeout(loadArtifacts, 2000);
   }

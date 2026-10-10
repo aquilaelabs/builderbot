@@ -2649,6 +2649,8 @@ phone.container_maker = containers.create_container
 phone.container_free = containers.name_free
 phone.container_builds = containers.build_refusal
 phone.instance_maker = devactions.make_instance
+# What a renamed project is called now, for the name Send offers (R154).
+devapp.label_of = registry.label
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = containers.ctl_on
 # ---- what the page may type into a terminal -------------------------------------
@@ -5821,7 +5823,7 @@ class Handler(BaseHTTPRequestHandler):
         # same answer a stranger's container gets, whatever the verb, so a
         # session cannot learn by asking what another project runs.
         if not users.is_admin(me):
-            want = field(req, "instance") or (devapp.send_name(name) if act == "new"
+            want = field(req, "instance") or (devapp.send_name(name, field(req, "compose")) if act == "new"
                                               else devapp.only_instance(name))
             owner = devapp.owner_of(name, want)
             # ...and a session reads what belongs to a project its own reads
@@ -5962,7 +5964,7 @@ class Handler(BaseHTTPRequestHandler):
         # exist (15 Sep). With several, `main`; bb takes --instance for that.
         # A NEW one named by nobody takes the name Send would offer: the
         # project's own while it has none, then one beside it.
-        inst = field(req, "instance") or (devapp.send_name(name) if act == "new"
+        inst = field(req, "instance") or (devapp.send_name(name, field(req, "compose")) if act == "new"
                                           else devapp.only_instance(name))
         # A session at `ask` puts the change in front of a person instead;
         # devactions.request says which changes those are.

@@ -1066,7 +1066,7 @@ def ask_keys(why, project, action, args, to_uid, to_name, asker_name=""):
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                 asker_admin=False, env=None, create=False, target="", ctl="",
-                node="", remove=False, ref=""):
+                node="", remove=False, ref="", compose=""):
     """A session asking to rebuild its project's dev instance, for a project
     whose dial is on `ask` (Claude may: Run its container, in the project's
     settings).
@@ -1097,8 +1097,10 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                    else (asker_uid, f"{asker_name or 'you'} (your own account: it is "
                                     "on the Docker tab and your bell)"))
     ref = str(ref or "") if create else ""
+    compose = str(compose or "") if create else ""
     cmd = (["devapp", ctl, name] if ctl
-           else ["devapp", "new", name] + (["--branch", ref] if ref else []) if create
+           else ["devapp", "new", name] + (["--branch", ref] if ref else [])
+           + (["--compose", compose] if compose else []) if create
            else ["devapp", "remove", name] if remove
            else ["devapp", "env", "set", name] if env is not None
            else ["devapp", "rebuild", name])
@@ -1106,7 +1108,7 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                   extra={"instance": str(instance or ""), "create": bool(create), "remove": bool(remove),
                          "env": None if env is None else str(env),
                          "target": str(target or ""), "ctl": str(ctl or ""),
-                         "name": str(name or ""), "ref": ref})
+                         "name": str(name or ""), "ref": ref, "compose": compose})
 
 
 def ask_container(why, name, compose, env, nid, node_name, project, for_project="",
@@ -1214,7 +1216,8 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                          out=str(res.get("error") or res.get("job") or "removed"))
             return {"error": res["error"]} if res.get("error") else {"ok": True}
         if r.get("create") and instance_maker is not None:
-            res = instance_maker(key, r.get("instance") or "", ref=r.get("ref") or "") or {}
+            res = instance_maker(key, r.get("instance") or "", ref=r.get("ref") or "",
+                                 compose=r.get("compose") or "") or {}
         if not res.get("error") and r.get("env") is not None and env_writer is not None:
             res = env_writer(key, r["env"], r.get("instance") or "") or {}
         # Allow does what the card said: a fresh container is created,

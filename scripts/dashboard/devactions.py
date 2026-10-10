@@ -173,8 +173,12 @@ def _plan(project, instance, action, extra=None):
     # A shipped instance (R166) lives on a node that does not hold the
     # project: it runs from its own compose directory there, and its image
     # comes built from elsewhere, so nothing here builds or pulls on it.
-    pdir = ("{cdir}" if ship else str(at) if at is not None
-            else str(devapp.WORKSPACE / project) if devapp._read_rec(project, instance).get("source") != "file"
+    # ...and inside the tree, the folder its compose file is in, which is
+    # what the file's relative paths mean.
+    sub = devapp.compose_sub(project, instance)
+    pdir = ("{cdir}" if ship else str(at / sub).rstrip("/") if at is not None
+            else str(devapp.WORKSPACE / project / sub).rstrip("/")
+            if devapp._read_rec(project, instance).get("source") != "file"
             else (devapp.dev_data_dir(project, instance, make=False)
                   or str(Path(devapp.appdata_root()) / pname)))
     base = [devapp.DOCKER, "compose", "--project-name", pname,
@@ -300,7 +304,7 @@ def _ship_build_spec(project, instance, job_id):
     send it up. Never starts anything there."""
     spec = _plan_spec(project, instance, "rebuild")
     pname = devapp._pname(project, instance)
-    pdir = str(devapp.WORKSPACE / project)
+    pdir = str(devapp.WORKSPACE / project / devapp.compose_sub(project, instance)).rstrip("/")
     base = [devapp.DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
     if "instance.env" in spec["files"]:
@@ -1199,7 +1203,7 @@ def _job_rebuild(project, instance, run):
         devapp._bump()
 
 
-def make_instance(project, instance, node="", owner=None, ref="", ship=False):
+def make_instance(project, instance, node="", owner=None, ref="", ship=False, compose=""):
     """A new container of a project, pinned to the branch it is to build
     from when one is named: `new` from the dialog or a session, and Allow on
     a session's asked one, which is the same making. Nothing is built.
@@ -1210,7 +1214,7 @@ def make_instance(project, instance, node="", owner=None, ref="", ship=False):
     container already exists (B259); nothing was built, so there is nothing
     else to undo.
     """
-    r = devapp.create_instance(project, instance or devapp.MAIN, node, owner, ship=ship)
+    r = devapp.create_instance(project, instance or devapp.MAIN, node, owner, ship=ship, compose=compose)
     if not r.get("error") and ref:
         p = devapp.set_ref(project, r["instance"], ref)
         if p.get("error"):
@@ -1244,7 +1248,13 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # yet: the send dialog opens on it so the env is filled in before
         # the first build rather than after it stops at the gate. Reads
         # nothing of the instance, which is the point: there is none.
-        return {"text": devapp.starter(project)}, 200
+        # The one beside the compose file Send was pressed on, when it has
+        # its own.
+        rel = f(req, "compose")
+        if devapp.compose_ok(project, rel):
+            return {"error": devapp.compose_ok(project, rel)}, 400
+        with devapp.composing(rel or None):
+            return {"text": devapp.starter(project)}, 200
     if action == "new":
         # The one action whose instance does not exist yet, which is what it
         # is for. Everything below names one that must exist, because the
@@ -1253,7 +1263,7 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # The project it belongs to when the request says, "" being none.
         r = make_instance(project, instance, f(req, "node"),
                           f(req, "owner") if "owner" in req else None, f(req, "ref"),
-                          ship=req.get("ship") is True)
+                          ship=req.get("ship") is True, compose=f(req, "compose"))
         if not r.get("error") and isinstance(req.get("text"), str) \
                 and req["text"].strip():
             # Written before the build that follows, so the first one has
@@ -1360,7 +1370,8 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
         want = devapp.instance_key(project, instance) if action == "new" else instance
         # A name no answer could make is refused here rather than put in
         # front of a person first.
-        why = devapp.new_refusal(project, want) if action == "new" else ""
+        why = (devapp.new_refusal(project, want)
+               or devapp.compose_ok(project, devapp.field(req, "compose"))) if action == "new" else ""
         if why:
             return {"error": why}, 400
         text = req.get("text") if action in ("env-set", "new") else None
@@ -1377,7 +1388,8 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
             asker_admin=users.is_admin(acct),
             env=text if isinstance(text, str) and (action == "env-set" or text.strip()) else None,
             create=action == "new", remove=action == "remove", target="" if project == sess else project,
-            ref=devapp.field(req, "ref") if action == "new" else "")
+            ref=devapp.field(req, "ref") if action == "new" else "",
+            compose=devapp.field(req, "compose") if action == "new" else "")
         # Which container it will be, which the session did not necessarily
         # choose, keyed and named as the auto path answers: it follows that
         # container's build once Allow starts it.
@@ -1398,15 +1410,52 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
     return payload, status
 
 
+def file_rows(project):
+    """The Artifacts tab's docker rows, one per compose file (the operator,
+    10 Oct): what Send would make of each, judged before it is sent: what
+    cannot work as written, what reaches beyond its own folder, a port
+    already taken. Never which containers were made from it or how they are
+    doing; that is the Docker tab's, and a row here that said "down" read as
+    a second place to run them."""
+    # Asked of the node a new container of the project would be made on, the
+    # one state() asks for the project's own (_on_instance).
+    with devapp.on_node(devapp._instance_node(project, devapp.MAIN)):
+        return _file_rows(project)
+
+
+def _file_rows(project):
+    a = devapp.available()
+    out = []
+    for rel in devapp.compose_files(project):
+        row = {"path": rel, "problems": [], "risks": [], "port_clash": []}
+        if a["on"]:
+            with devapp.composing(rel):
+                cfg = devapp._config(project, devapp.MAIN)
+                if cfg is None:
+                    row["problems"] = ["compose cannot read it on its own (a file meant to be "
+                                       "merged onto another, or one with a mistake in it)"]
+                else:
+                    row["risks"] = devapp.risks(project, cfg)
+                    row["problems"] = devapp.problems(project, cfg) + devapp.host_map()[1]
+                    nogpu = devapp.gpu_gate(project, devapp.MAIN, cfg)
+                    if nogpu:
+                        row["problems"].append(nogpu)
+                    row["port_clash"] = devapp.taken_ports(
+                        project, devapp.MAIN, devapp.wiring(cfg).get("ports"))
+        row["send_as"] = devapp.send_name(project, rel)
+        out.append(row)
+    return {"available": a["on"], "why": a["why"], "where": a.get("where", ""),
+            "daemon": a.get("kind", ""), "files": out}
+
+
 def row_states(name):
-    """A project's dev instances for the Artifacts tab: `devapp` is the main
-    instance, which is what the row shows; `devapps` is every instance,
-    which the manager reads. Both, so the row keeps working while the
-    manager grows around it. One read scope for the row and the manager's
-    list: on an agent node each is a probe job, and both ask the same
-    daemon."""
+    """What the Artifacts tab says about sending a project to Docker: a row
+    a compose file (file_rows), the name Send opens on, and how many
+    containers the project already has, which its dialog says. Not how any
+    of them is doing: that is the Docker tab's (the operator, 10 Oct). One
+    read scope, since on an agent node each check is a probe job."""
     with devapp.read_scope():
-        return {"devapp": state(name), "devapps": states(name),
-                # The name Send opens on: its own for a project with none,
-                # another beside it for one that has it.
-                "send_as": devapp.send_name(name)}
+        return {"compose_files": file_rows(name),
+                # Its own for a project with none, another beside it after.
+                "send_as": devapp.send_name(name),
+                "containers": len(devapp._load().get(name) or {})}

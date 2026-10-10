@@ -10,7 +10,8 @@ names), ls, or ctl (log, start, stop and restart, which BB_DEV_VERB names).
 BB_DEV_AUTH is the auth header, BB_DEV_PROJECT the project, BB_DEV_INSTANCE
 and BB_DEV_CONTAINER which of its containers, BB_DEV_WHY the reason a person
 reads, BB_DEV_FILE and BB_DEV_SET the env file and whether it is being set,
-BB_DEV_REF the branch a new container builds from, BB_DEV_NAME the container
+BB_DEV_REF the branch a new container builds from, BB_DEV_COMPOSE which of the
+project's compose files it is made from, BB_DEV_NAME the container
 a ctl verb acts on.
 """
 import os
@@ -228,7 +229,8 @@ def new():
     auth = os.environ["BB_DEV_AUTH"]
     post, _ = _client()
     body = {"action": "new", "why": os.environ.get("BB_DEV_WHY", ""),
-            "ref": os.environ.get("BB_DEV_REF", "")}
+            "ref": os.environ.get("BB_DEV_REF", ""),
+            "compose": os.environ.get("BB_DEV_COMPOSE", "")}
     path = os.environ.get("BB_DEV_FILE", "")
     if path:
         body["text"] = open(path, encoding="utf-8").read()

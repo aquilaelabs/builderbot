@@ -182,6 +182,9 @@ async function loadDocker(){
 // containers this is; what it is built from is settled by the project, which
 // is why there is nothing else to fill in here.
 let dnFor = null;
+// ...and which of its compose files, "" for the root's own (the Artifacts
+// tab's row it was pressed on).
+let dnCompose = "";
 
 // Where a sent container goes: one of the nodes of the project it will
 // belong to (the one under Project, its own by default), the primary picked,
@@ -232,16 +235,18 @@ function dnNodeSay(){
 // beside it, so pressing Send again makes another container rather than a
 // refusal naming the first (the operator, 26 Sep). `have` is how many it
 // has already, whose ports a second one must not take.
-function openSendToDocker(project, sendAs, have){
+function openSendToDocker(project, sendAs, have, compose){
   dnFor = project;
+  dnCompose = compose || "";
   $("dnTitle").textContent = "New container from " + projLabel(project);
   $("dnName").value = sendAs || project;
   $("dnErrWrap").hidden = true;
   $("dnPreview").hidden = true;
   $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+  const from = dnCompose ? `${dnCompose} in ${projLabel(project)}` : `${projLabel(project)}'s codebase`;
   $("dnHint").textContent = have
-    ? `Built from ${projLabel(project)}'s codebase, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
-    : `Built from ${projLabel(project)}'s codebase. Its own name makes its own container; another name makes a second one.`;
+    ? `Built from ${from}, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
+    : `Built from ${from}. Its own name makes its own container; another name makes a second one.`;
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);
@@ -258,7 +263,7 @@ function openSendToDocker(project, sendAs, have){
   // example: a blank Environment box on a project with nothing to fill in is
   // a question with no answer.
   fetch("/api/devapp", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({project, action:"starter"})})
+    body: JSON.stringify({project, action:"starter", compose: dnCompose})})
     .then(r => r.json()).then(j => {
       if (dnFor !== project || !(j.text || "").trim()) return;
       $("dnEnv").value = j.text;
@@ -340,6 +345,7 @@ async function dnSubmit(){
                             ship: !$("dnNodeField").hidden && !!$("dnNode").value
                               && !((state?.projects?.find(p => p.name === ($("dnUnder").value || project))?.prefs?.nodes) || []).includes($("dnNode").value),
                             ref: $("dnRefField").hidden ? "" : $("dnRef").value,
+                            compose: dnCompose,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
     const j = await r.json();
     if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
@@ -1054,6 +1060,9 @@ function dmState(d, job, mine, busy, blind){
   // account of what went wrong was in the tail below it, and an abort, which
   // ends a job on purpose, said nothing at all.
   if (mine && job.error) return esc(jobWhy(job.error));
+  if (d.interrupted && !d.running)
+    return `a build was interrupted: BuilderBot restarted while it was running${
+      d.built_rev ? `; still on ${esc(d.built_rev)}` : ", and nothing was built"}`;
   if (d.running) return `running · ${d.containers} container(s)`;
   if (d.exists) return "stopped: its containers are still there";
   if (d.built_rev) return `${dmBuilt(d)}, not running`;
@@ -1137,6 +1146,7 @@ function dmRowsHtml(ins, job, blind){
           `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
             esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
+        ${d.compose_path ? `<div class="sub dim dmfrom">made from <code>${esc(d.compose_path)}</code></div>` : ""}
         ${d.astray ? `<div class="sub bad">on this node, but ${esc(projLabel(d.owner || d.project))} works on ${
           esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${dmMoveLine(d)}${
@@ -1647,4 +1657,4 @@ function renderDockerInto(i){
 // The new-project dialog that followed this list is tab-projects.js now; its fields and its submit are wired further down.
 const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],'
                   + '[data-dm="rebuild"],'
-                  + '#devSend,#bDockerNew';
+                  + '[data-devsend],#bDockerNew';
