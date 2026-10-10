@@ -35,6 +35,7 @@ import hashlib
 import os
 import re
 import stat as st
+import subprocess
 import tarfile
 import threading
 import time
@@ -437,6 +438,73 @@ def _conflict_name(rel, who):
     return (d + "/" if d else "") + base
 
 
+# What a node may not write into git's own directory (B618): the controller
+# runs git in every project tree (the status poll, the Git view, a relayed
+# bb version), and git runs what its config and hooks name. A key here is
+# one whose value is a program, or that points git somewhere else. Matched
+# against the lowercased key; alias only when its value runs a shell.
+GIT_EXEC = re.compile(
+    r"(core\.(fsmonitor|hookspath|sshcommand|pager|editor|askpass|gitproxy|alternaterefscommand|worktree)"
+    r"|sequence\.editor|diff\.external|diff\..+\.(textconv|command)|merge\..+\.driver"
+    r"|filter\..+\.(clean|smudge|process)|credential(\..+)?\.helper|gpg(\..+)?\.program"
+    r"|include\.path|includeif\..+\.path|pager\..+|web\.browser|browser\..+\.(cmd|path)"
+    r"|man\..+\.(cmd|path)|remote\..+\.(uploadpack|receivepack|vcs)|uploadpack\.packobjectshook"
+    r"|ssh\.variant|receive\.procreceiverefs)")
+
+
+def git_config_danger(path):
+    """The first key in a git config file that would run something, or
+    pointed git elsewhere, as "key", or "" when there is none. Read by git
+    itself, which runs nothing to read a file; one it cannot read is
+    refused, since a config git cannot parse is not one to hand it."""
+    try:
+        r = subprocess.run(["git", "config", "--file", str(path), "--no-includes", "--list", "-z"],
+                           capture_output=True, timeout=10,
+                           env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent",
+                                "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"})
+    except (OSError, subprocess.SubprocessError) as e:
+        return f"unreadable ({type(e).__name__})"
+    if r.returncode != 0:
+        return "unreadable: " + r.stderr.decode("utf-8", "replace").strip()[:120]
+    for item in r.stdout.split(b"\0"):
+        key, _, value = item.decode("utf-8", "replace").partition("\n")
+        key = key.strip().lower()
+        if not key:
+            continue
+        if GIT_EXEC.fullmatch(key) or (key.startswith("alias.") and value.lstrip().startswith("!")):
+            return key
+    return ""
+
+
+def _refused(nid, project, rel, why):
+    """A refused write is audited: it is either a mistake or an attack."""
+    if audit:
+        audit(f"node:{nid}", "sync-refused", f"{project}:{rel}"[:200], {"why": why[:200]})
+
+
+def git_guard(rel, link):
+    """Why a node's write to `rel` (a symlink to `link`, or a file) is refused
+    before it is read, or "" (B618). Nothing in .git/hooks, no .git file at
+    a tree's top (it names another directory as the repository), no link
+    inside .git, and no link anywhere that climbs out of the project."""
+    parts = rel.split("/")
+    if link:
+        up = os.path.normpath(os.path.join(os.path.dirname(rel), link))
+        if up == ".." or up.startswith("../"):
+            return "a link out of the project is not synced"
+    if ".git" not in parts:
+        return ""
+    i = parts.index(".git")
+    inside = parts[i + 1:]
+    if not inside:
+        return "a .git file names another directory as the repository; not synced from a node"
+    if "hooks" in inside:
+        return "git hooks run on the controller; a node does not write them"
+    if link:
+        return "a link inside .git is not synced from a node"
+    return ""
+
+
 def put(nid, project, q, stream, length):
     """One file the node changed: its bytes in the body, or a deletion, or a
     symlink, with `base` the hash the node had before it changed it ("" for
@@ -461,6 +529,9 @@ def put(nid, project, q, stream, length):
         mode = 0o644
     if link and os.path.isabs(link):
         return {"error": "a link out of the project is not synced"}, 400
+    if (why := git_guard(rel, link)):
+        _refused(nid, project, rel, why)
+        return {"error": why}, 403
     if not gone and not link and (length < 0 or length > MAX_FILE):
         return {"error": f"over {MAX_FILE >> 20} MB: not synced"}, 413
     target = root / rel
@@ -486,6 +557,15 @@ def put(nid, project, q, stream, length):
             if left:
                 return {"error": "the body ended early"}, 400
             sha = h.hexdigest()
+            # A git config file is read before it can land (B618): one that
+            # sets a key naming a program is refused, the rest go through.
+            if ".git" in rel.split("/") and rel.rsplit("/", 1)[-1] in ("config", "config.worktree"):
+                bad = git_config_danger(tmp)
+                if bad:
+                    why = (f"{rel} sets {bad}, which git would run on the controller"
+                           if not bad.startswith("unreadable") else f"{rel} is {bad}")
+                    _refused(nid, project, rel, why)
+                    return {"error": why + "; not synced from a node"}, 403
         elif link:
             sha = link_sha(link)
         with _lock(project):

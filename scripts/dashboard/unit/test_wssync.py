@@ -148,6 +148,34 @@ class Sync(unittest.TestCase):
     def at(self, k, rel):
         return os.path.join(self.tmp, k, "workspace", "alpha", rel)
 
+    def test_a_node_cannot_plant_what_git_runs_on_the_controller(self):
+        """B618: the controller runs git in every tree, and git runs what its
+        config and hooks name, so a node's write of either is refused and
+        audited; an ordinary config change (an upstream) still lands."""
+        def put(rel, body=b"", link=""):
+            q = {"path": [rel], "base": [""], "mode": ["420"]}
+            if link:
+                q["link"] = [link]
+            return ctl_sync.put("n1", "alpha", q, io.BytesIO(body), len(body))
+        fsmon = b"[core]\n\tfsmonitor = touch /tmp/pwned\n"
+        out, code = put(".git/config", fsmon)
+        self.assertEqual(code, 403, out)
+        self.assertIn("core.fsmonitor", out["error"])
+        self.assertFalse(os.path.exists(f"{self.ws}/alpha/.git/config"))
+        for bad in (b'[filter "x"]\n\tclean = sh -c id\n', b"[include]\n\tpath = /etc/evil\n",
+                    b'[alias]\n\tst = !sh -c id\n', b"[core]\n\tworktree = /\n"):
+            self.assertEqual(put(".git/config", bad)[1], 403, bad)
+        self.assertEqual(put(".git/modules/sub/config", fsmon)[1], 403, "a submodule's config too")
+        self.assertEqual(put(".git/hooks/post-checkout", b"#!/bin/sh\nid\n")[1], 403)
+        self.assertEqual(put(".git", b"gitdir: /etc\n")[1], 403, "a .git file naming another repository")
+        self.assertEqual(put("src/escape", link="../../../etc/passwd")[1], 403, "a link climbing out")
+        self.assertEqual(put(".git/refs/heads/x", link="main")[1], 403, "a link inside .git")
+        fine = b'[branch "main"]\n\tremote = origin\n\tmerge = refs/heads/main\n[alias]\n\tst = status\n'
+        out, code = put(".git/config", fine)
+        self.assertEqual(code, 200, out)
+        self.assertEqual(read(f"{self.ws}/alpha/.git/config"), fine.decode())
+        self.assertEqual(put("src/link", link="../a.txt")[1], 200, "a link inside the project is fine")
+
     def test_a_node_bound_to_a_project_is_told_at_once(self):
         """The settings dialog binding a project (or changing what it reads)
         hints every synced node, and the hint makes the agent ask again
