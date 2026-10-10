@@ -568,6 +568,20 @@ def node_update(principal, node_id, fields):
         clean = {str(k)[:40]: str(v)[:120]
                  for k, v in list(fields["labels"].items())[:24]}
         sets.append("labels = ?"); args.append(json.dumps(clean))
+    if "host_only" in fields:
+        on = fields["host_only"] is True
+        if on:
+            import wssync
+            held = wssync.bound_projects(node_id)
+            if held:
+                return {"error": f"{', '.join(held)} {'lists' if len(held) == 1 else 'list'} this node "
+                                 "among its nodes: take it out of their settings first, so no code "
+                                 "or session is left on a node that is to host containers only"}
+        cfg = dict(n.get("config") or {}, host_only=True)
+        if not on:
+            cfg.pop("host_only", None)
+        sets.append("config = ?"); args.append(json.dumps(cfg))
+        _synced["at"] = 0.0
     if not sets:
         return {"error": "nothing to change"}
     args.append(node_id)
@@ -753,7 +767,7 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
-def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None):
+def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False):
     """Add node, agent kind: a pending row and the one token that fills it.
 
     The row exists BEFORE the machine does, which is the operator's view of
@@ -780,7 +794,10 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None):
         "config": {"user": user, **({"tunnel": tunnel} if tunnel else {}),
                    # Its projects as a synced copy (R162), the one way a node
                    # holds them: no node mounts the controller's disk (R163).
-                   "workspace": "sync"},
+                   "workspace": "sync",
+                   # Hosting only from its first hello (a cloud box enrolled
+                   # to run containers): no code, sessions or bb, ever.
+                   **({"host_only": True} if host_only else {})},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
@@ -793,7 +810,8 @@ def enroll_script(principal, req):
     enrollscript.py): checked before anything is minted, so a config that
     cannot be used leaves no pending row; then the row and its token, and
     the provisioner with the answers inside. Nothing of it is kept here."""
-    ans = enrollscript.check(req)
+    ho = req.get("host_only") is True
+    ans = enrollscript.check(req | ({"sessions": False} if ho else {}))
     if ans.get("error"):
         return ans
     prov = AGENT_DIR.parent.parent / "nodes" / "provision-linux.sh"
@@ -802,7 +820,7 @@ def enroll_script(principal, req):
     user = re.sub(r"[^a-z0-9_-]", "", (field(req, "user") or "bb").lower())[:32] or "bb"
     tunnel = ({"kind": "wireguard", "addr": ans["tunnel_addr"]}
               if ans["reach"] == "wireguard" else None)
-    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel)
+    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho)
     _synced["at"] = 0.0
     if m.get("error"):
         return m
@@ -2374,7 +2392,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             "layout": layout_of() or None,
             # The bb bundle's digest (roadmap #24): a node keeps an unpacked
             # copy for the sessions it runs, and refreshes it when this moves.
-            "bundle": bundle_digest() or "",
+            "bundle": "" if host_only(nid) else bundle_digest() or "",
+            # A hosting-only node is told so, and keeps no session half, no
+            # synced copy and no bb of its own (host_only).
+            "host_only": host_only(nid),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -2389,14 +2410,14 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             # one. So the machine the session is on refreshes it instead, on
             # the beat it already has. A token lives as long as its tmux
             # session does, and none is ever accepted past its expiry.
-            "session_tokens": session_tokens_for(nid, live_sessions),
+            "session_tokens": [] if host_only(nid) else session_tokens_for(nid, live_sessions),
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79). The node keeps it, so it
             # holds while this controller is down.
             "session_net": session_net_for(nid),
             # The FTPS servers this node runs for its projects' file access
             # (R151): one per project, rooted at its tree.
-            "ftp": ftp_for(nid)}
+            "ftp": [] if host_only(nid) else ftp_for(nid)}
 
 
 def store_merge(census, free, totals):
@@ -2772,6 +2793,8 @@ def job_add(principal, placement, type, spec, project="", source=None):
             return {"error": "no such node"}
         if n["state"] != "online":
             return {"error": f"node is {n['state']}; it takes no new work"}
+        if host_only(n) and type not in HOST_JOBS:
+            return {"error": f"{n['name']} hosts containers only, and a {type} job is not one of those"}
         if n["kind"] == "agent" and type != "compose" and not n.get("live"):
             return {"error": "the agent on this node is not dialing in; the "
                              "job would wait until it does"}
@@ -3042,6 +3065,37 @@ def sync_node_ids():
             if n.get("kind") == "agent" and n.get("state") != "retired"
             and ((n.get("config") or {}).get("workspace") or "sync") == "sync"))
     return _synced["ids"]
+
+
+# ---- a hosting-only node (the operator, 10 Oct) ---------------------------------
+# A node that holds no project's code and runs no sessions, only containers
+# sent to it (a web-facing box): nothing of it comes back to the controller
+# but what running those containers needs. Its agent may say hello, beat,
+# take work, report a job's log and result, update itself, fetch an image
+# shipped to it and carry a container's data in a copy or a move; nothing
+# else. No project may list it, no session runs there, and only container,
+# storage and network, self-update and cache-clearing jobs go to it.
+HOST_VERBS = frozenset(("hello", "beat", "work", "log", "result", "download",
+                        "devimage", "devdata", "devdata-put"))
+HOST_JOBS = frozenset(("compose", "system", "self-update", "cache-clear"))
+
+
+def host_only(n):
+    """Whether a node (its row or its id) hosts containers and nothing else."""
+    n = node(n) if isinstance(n, str) else n
+    return bool(((n or {}).get("config") or {}).get("host_only"))
+
+
+def host_refuses(nid, verb, what=""):
+    """Why this node's agent may not use `verb`, or "": only a hosting-only
+    node's are narrowed. `what` is a download's: the agent itself may come,
+    the bb bundle may not."""
+    if not host_only(nid):
+        return ""
+    if verb in HOST_VERBS and not (verb == "download" and what):
+        return ""
+    return (f"this node hosts containers only: {verb}"
+            + (f" ({what})" if what else "") + " is not something it is given or may send")
 
 
 def session_kill(node_id, name):
@@ -3944,7 +3998,7 @@ def verb(principal, req):
             return enroll_script(principal, req)
         return enroll_mint(principal, field(req, "name"),
                            req.get("capabilities"),
-                           field(req, "user") or "bb")
+                           field(req, "user") or "bb", host_only=req.get("host_only") is True)
 
     def power():
         return node_power(principal, nid, act)
@@ -3986,6 +4040,14 @@ def verb(principal, req):
 
     def apply():
         return node_apply(principal, nid, field(req, "what"))
+
+    def host_on():
+        # Hosting only: containers and nothing of a project or a session.
+        # An administrator's, like the rest.
+        return node_update(principal, nid, {"host_only": True})
+
+    def host_off():
+        return node_update(principal, nid, {"host_only": False})
 
     def to_sync():
         # Back onto its synced copy from off (R164). An administrator's,
@@ -4128,6 +4190,7 @@ def verb(principal, req):
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net,
              "root-asks": root_asks, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "host-only": host_on, "host-off": host_off,
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
              "paths": paths, "check-paths": check_paths, "funnel": funnel,

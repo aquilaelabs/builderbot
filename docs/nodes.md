@@ -961,6 +961,36 @@ removes them), and goes back and starts there again if it does not come
 up. The row says each step, and why the last one did not happen. A
 person's only: a session cannot copy or move one.
 
+**A hosting-only node: a public box that runs containers and reaches back
+for nothing (10 Oct).** For a cloud VPS that should run a project's
+workers and web-facing containers and never be a way into the home network,
+the pieces stack:
+
+1. *Enroll it through a one-way tunnel* (R161): the script narrows the
+   router's WireGuard config to the controller's one address, and the
+   router's rules (the dialog prints them) let the VPS open connections to
+   the controller's port and nothing else at home; the controller in turn
+   answers its tunnel address on the agent API alone (`tunnel_refuses`).
+2. *Make it hosting only*, ticked in the Enroll dialog or later on its row
+   (`nodes.host_only`): no project may list it, so no code, synced copy or
+   session goes there, and its hello hands it no bb bundle, no session
+   tokens and no FTP; the agent stops its session half and runs no sync. At
+   the agent door (`Handler._agent`, `nodes.host_refuses`) it may say hello,
+   beat, take work, report its own jobs' logs and results, update its agent,
+   fetch an image shipped to it and carry a container's data in a copy or a
+   move, and nothing else (refusals audited, once an hour a verb). Only
+   container, storage and network, self-update and cache-clearing jobs are
+   placed on it.
+3. *Move the containers over* with Copy or move: each comes with its
+   volumes and data, its image built on the project's own node at home and
+   shipped, its env changed on the way where the VPS needs another port or
+   address.
+
+What runs in those containers has no node token (it lives root-owned in
+the agent's own file) and reaches the controller, if at all, only as the
+tunnel's address, which is refused everything but the agent API.
+Development stays on the project's own nodes.
+
 **Which projects a container may go under.** The project pickers on Send,
 on a row's Project and Built from, and the project a Send, copy or move is
 made from, are the asker's own list of projects, for an administrator and

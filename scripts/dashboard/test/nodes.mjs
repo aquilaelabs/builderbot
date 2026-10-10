@@ -1146,6 +1146,51 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
                              running: [], wait: 0 }) });
     await hello(CENSUS);
   }
+  // Hosting only (the operator, 10 Oct): a node that runs containers sent to
+  // it and nothing else, so nothing of it comes back to the controller.
+  {
+    const H = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const agent = (verb, body) => fetch(base + '/api/v1/agent/' + verb,
+      { method: 'POST', headers: H, body: JSON.stringify(body || {}) });
+    await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
+    const held = await napi('/api/v1/nodes', { action: 'host-only', id: minted.id });
+    ok(/gamma lists this node/.test(held.error || ''),
+       `a node a project lists cannot be made hosting only until it is moved off (${held.error})`);
+    const cleared = await napi('/api/prefs', { project: 'gamma', node: '', nodes: [] });
+    ok(!cleared.error, `(gamma's nodes cleared: ${cleared.error || 'ok'})`);
+    await page.evaluate(() => loadNodes());
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="host-only"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-off"]`, { timeout: 10000 });
+    ok(page.dialogs.length === 1 && /hosting only[\s\S]*nothing but its own jobs/.test(page.dialogs[0]),
+       `Make it hosting only asks first, saying what it keeps and what it stops (${page.dialogs[0]?.slice(0, 50)})`);
+    const hi = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(hi.host_only === true && hi.bundle === '' && (hi.session_tokens || []).length === 0,
+       `its hello says so, hands it no bb bundle and no session token (${JSON.stringify([hi.host_only, hi.bundle])})`);
+    const codes = {};
+    for (const v of ['sync', 'claude', 'sessions', 'runner-token', 'signing-key'])
+      codes[v] = (await agent(v, { action: 'projects' })).status;
+    codes.bundle = (await fetch(base + '/api/v1/agent/download?what=bundle', { headers: H })).status;
+    codes.source = (await fetch(base + '/api/v1/agent/source?digest=x', { headers: H })).status;
+    codes.agent = (await fetch(base + '/api/v1/agent/download', { headers: H })).status;
+    ok(Object.entries(codes).every(([k, c]) => k === 'agent' ? c === 200 : c === 403),
+       `everything but its own jobs is refused at the door, its own update still served (${JSON.stringify(codes)})`);
+    const ex = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['true'] });
+    ok(/hosts containers only, and a exec job/.test(ex.error || ''), `only container jobs go to it (${ex.error})`);
+    const bind = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
+    ok(/hosts containers only/.test(bind.error || ''), `and no project may list it (${bind.error})`);
+    await page.click(`${ROW} [data-nd="host-off"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    ok((await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json()).host_only === false,
+       '...and Let projects use it again undoes it');
+    // ...and a box enrolled for it (a cloud VPS) is hosting only from the
+    // start, before its first hello.
+    const vps = await napi('/api/v1/nodes', { action: 'enroll', name: 'vps-host', host_only: true });
+    const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === vps.id);
+    ok(vps.ok && rec?.config?.host_only === true, `a node enrolled as hosting only is so from the start (${vps.error || 'ok'})`);
+    await napi('/api/v1/nodes', { action: 'retire', id: vps.id });
+  }
   // The fold is held to the document rules the same as any tab surface
   // (uniform.mjs cannot see it: that suite has no sandbox node to open one
   // on): every control wears the field skin, and at phone width nothing

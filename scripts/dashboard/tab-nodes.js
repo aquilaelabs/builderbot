@@ -436,10 +436,28 @@ function nodeSyncRow(n){
     <div><button type="button" data-nd="sync-stop" ${live}>Stop syncing</button></div>`;
 }
 
+// Hosting only (the operator, 10 Oct): a node that runs containers sent to
+// it and nothing else, so nothing of it comes back to the controller. Said in
+// the Sessions section, since what it takes away is sessions and code.
+function nodeHostRow(n){
+  if (n.kind !== "agent") return "";
+  return n.config?.host_only
+    ? `<div class="sub">It hosts containers only: no project lists it, no session or synced copy runs here,
+        and its agent may ask the controller for nothing but its own jobs, an image shipped to it
+        and a container's data in a copy or a move.</div>
+       <div><button type="button" data-nd="host-off">Let projects use it again</button></div>`
+    : `<div class="sub dim">A node that only runs containers sent to it (a web-facing one) can be made
+        hosting only: no code, no sessions, and nothing of it comes back but its own jobs.</div>
+       <div><button type="button" data-nd="host-only" ${n.live ? "" : "disabled"}>Make it hosting only</button></div>`;
+}
+
 function nodeSessionsSection(n){
   const se = n.reported?.session;
   const list = n.reported?.sessions || [];
   let status, cls, body;
+  if (n.config?.host_only){
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeToolsLine(n), {cls: "ok"});
+  }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
     body = `<div class="sub">Update the agent: this one is too old to run sessions.</div>`;
@@ -472,7 +490,7 @@ function nodeSessionsSection(n){
   // (R121): a line at the foot of this section opens them. It was a band
   // between sections, which read as part of Sessions yet stayed when Sessions
   // folded, and sat without the section's inset (the operator, 7 Oct).
-  return docSection("nodes", "sessions", "Sessions", status, body + nodeToolsLine(n), {cls});
+  return docSection("nodes", "sessions", "Sessions", status, body + nodeHostRow(n) + nodeToolsLine(n), {cls});
 }
 
 // Claude Code on this node: this account's sign-in here (a login is one
@@ -1280,6 +1298,8 @@ function wireNodesTab(root){
               value="bb"></div>
         </div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
+        <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
+        <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
       </div>
       <div class="field">
         <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
@@ -1310,6 +1330,15 @@ function wireNodesTab(root){
     const showWg = () => { $b("#ndEnWgRow").hidden = reach.value !== "wireguard"; };
     reach.onchange = showWg;
     showWg();
+    // Hosting only takes sessions with it: the box is to run containers.
+    const host = $b("#ndEnHost"), sess = $b("#ndEnSess");
+    const showHost = () => {
+      $b("#ndEnHostHint").hidden = !host.checked;
+      sess.disabled = host.checked;
+      if (host.checked) sess.checked = false;
+    };
+    host.onchange = showHost;
+    showHost();
     // A file chosen lands in the box, which is what is sent: one place to
     // read it, change it, or paste it instead.
     $b("#ndEnWg").onchange = async e => {
@@ -1327,7 +1356,8 @@ function wireNodesTab(root){
     // What was typed comes back after a refusal: a redraw to its defaults
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
-      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked,
+      "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
       "#ndEnWgText": $b("#ndEnWgText").value});
     const go = $b("#ndEnGo");
     go.onclick = () => pressing(go, async () => {
@@ -1338,7 +1368,8 @@ function wireNodesTab(root){
       }
       busy(go, "Making");
       const r = await nodeAct({action: "enroll", script: true, ...answers(),
-        sessions: $b("#ndEnSess").checked, reach: reach.value,
+        sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
+        host_only: $b("#ndEnHost").checked,
         controller: $b("#ndEnCtl").value.trim(),
         wg_conf: reach.value === "wireguard" ? conf : ""});
       if (r.error){ mintForm(kept); return; }
@@ -1349,7 +1380,7 @@ function wireNodesTab(root){
     tok.onclick = () => pressing(tok, async () => {
       const kept = keep(), a = answers();
       busy(tok, "Minting");
-      const r = await nodeAct({action: "enroll", ...a});
+      const r = await nodeAct({action: "enroll", ...a, host_only: $b("#ndEnHost").checked});
       if (r.error){ mintForm(kept); return; }
       // The URL the node should dial: this page's origin, which is the only
       // address the browser knows the controller by. A proxy in front is the
@@ -1603,6 +1634,13 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         if (!confirm(`Remove the project copies on ${name}?\n\n`
               + "Everything there has reached the controller. The node then holds no projects until it moves to a synced copy again.")) return;
+      }
+      if (act === "host-only"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Make ${name} hosting only?\n\nIt keeps running the containers sent to it. `
+              + "No project may list it, no session or synced copy runs there, and its agent may ask "
+              + "the controller for nothing but its own jobs. A project that lists it now has to be "
+              + "moved off it first.")) return;
       }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "

@@ -234,6 +234,8 @@ class ConfigPlaneMixin:
         visudo before it replaces anything, since a broken file under
         sudoers.d takes sudo away from every account on the machine; and it is
         written beside its final name with a dot in it, which sudo skips."""
+        if self.state.get("host_only"):
+            return                       # no sessions on a hosting-only node
         with self.tool_lock:
             self._refresh_session_tool()
 

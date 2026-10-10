@@ -369,6 +369,12 @@ class SessionsMixin:
         """session_refresh, never fatal: the session half must not take the
         job half down with it: a toolchain store this process cannot write
         is a node with no sessions, not a node with no agent."""
+        # A hosting-only node runs no sessions and keeps no bb (the
+        # controller's flag, said in every hello).
+        if self.state.get("host_only"):
+            SESSION.update(up=False, port=0, ro_port=0, bundle="",
+                           why="this node hosts containers only, so it runs no sessions")
+            return
         try:
             self.session_refresh(digest)
         except (OSError, RuntimeError, subprocess.SubprocessError) as e:

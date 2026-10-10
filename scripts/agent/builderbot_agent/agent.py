@@ -200,6 +200,17 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # dead token is never renewed, which is what makes the life mean
             # anything for one that leaked. So the machine the session is on
             # keeps it, on the beat it already has.
+            # Hosting only (the operator, 10 Oct): kept in node.json, and the
+            # session half stopped the moment it is said; nothing of a
+            # session, a synced copy or bb runs here after.
+            ho = bool(r.get("host_only"))
+            if ho != bool(self.state.get("host_only")):
+                self.state["host_only"] = ho
+                save_state(self.state)
+                log("hosting only: containers, and nothing of a project or a session" if ho
+                    else "no longer hosting only")
+                if ho:
+                    self.session_stop()
             self.keep_session_tokens(r.get("session_tokens") or [])
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79), kept in node.json so it

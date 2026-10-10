@@ -104,6 +104,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Each project's tree is snapshotted once a day on the controller and kept for the days its settings say (14 unless changed); the whole tree or one file can be restored from its settings, and a restore can itself be undone (b639f1a)
 - Every compose file in a project gets its own row and Send on the Artifacts tab, in subfolders and variants too (an override is left out); a container is built from its file in that file's folder, and its Docker tab row names the file. bb devapp new --compose FILE does the same (b7e6a24)
 - Copy or move on a Docker tab row takes a container to another node with its volumes and data, its env editable on the way; a move takes the old one down only once the new one is up, and goes back if it does not come up (5e57004)
+- A node can be made hosting only, on its row or when it is enrolled: it runs the containers sent to it, no project's code, sessions or bb go there, and its agent may ask the controller for its own jobs and nothing else (13e9f47)
 
 ### Changed
 

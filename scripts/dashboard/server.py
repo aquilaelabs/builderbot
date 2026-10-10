@@ -432,6 +432,10 @@ def compat_holds(reap=False):
     return out
 
 
+# When a hosting-only node's refused verb was last audited (Handler._agent).
+_host_refused_at = {}
+
+
 # How often the sweep below runs. Settable only so the suite need not wait
 # half a minute to see a session end.
 COMPAT_SWEEP_S = float(os.environ.get("BB_COMPAT_SWEEP") or 30)
@@ -1279,7 +1283,12 @@ def session_target(project, claude=False, node="", uid=""):
     rep = n.get("reported") or {}
     se = rep.get("session")
     passing = waiting = False
-    if n.get("state") == "retired":
+    if nodes.host_only(n):
+        # Made hosting-only after the project named it: no session goes
+        # there, whatever the settings still say.
+        why = (f"{name} hosts containers only, so no session runs there: pick another node in "
+               f"{project}'s settings")
+    elif n.get("state") == "retired":
         # Un-enrolled (the operator, 5 Oct): the fact first, for the row, and
         # what to do after it, for the tooltip.
         why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
@@ -5228,6 +5237,15 @@ class Handler(BaseHTTPRequestHandler):
         if ("node" in req or "nodes" in req) and prefs.node_changed(name, req) \
                 and self._refused("node", name):
             return
+        # A hosting-only node holds no project: its code and its sessions are
+        # what the flag keeps off it (nodes.host_only).
+        if ("node" in req or "nodes" in req) and not NODES_OK:
+            want = (req.get("nodes") if isinstance(req.get("nodes"), list) else []) + [req.get("node") or ""]
+            host = [(nodes.node(n) or {}).get("name") or n for n in want if n and nodes.host_only(n)]
+            if host:
+                return self._json({"error": f"{', '.join(host)} hosts containers only: no project's code "
+                                            "or sessions go there. Send a container to it from the "
+                                            "Docker tab instead"}, 400)
         # Which other projects a session here may read is BuilderBot's
         # owner's alone (the operator, 6 Oct): it hands one project's sessions
         # another's code and notebook, which no administrator or user grants
@@ -5511,6 +5529,19 @@ class Handler(BaseHTTPRequestHandler):
         bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
         auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        # A hosting-only node (nodes.host_only) is held to what running the
+        # containers sent to it needs, before any verb is read: nothing of
+        # it comes back otherwise, and asking is audited.
+        if auth.get("kind") == "node":
+            why = nodes.host_refuses(auth["node"], verb, q.get("what", [""])[0] if verb == "download" else "")
+            if why:
+                # Once an hour a node and verb: an agent from before the flag
+                # asks for its sync every half minute.
+                key = (auth["node"], verb)
+                if time.monotonic() - _host_refused_at.get(key, -3600) >= 3600:
+                    _host_refused_at[key] = time.monotonic()
+                    db.audit(f"node:{auth['node']}", "host-refused", verb[:60], {})
+                return self._json({"error": why}, 403)
         # The verbs that serve or take a FILE, on any method.
         if verb in ("source", "file", "download"):
             got, status = channel.fetch(verb, auth, q, authed=self._authed)

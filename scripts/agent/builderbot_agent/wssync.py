@@ -317,6 +317,11 @@ class WorkspaceSync:
         return d
 
     def step(self):
+        if (getattr(self.agent, "state", None) or {}).get("host_only"):
+            # Hosts containers only: no project of anybody's is held here,
+            # and the controller refuses the asking.
+            self.mode = "off"
+            return
         now = time.monotonic()
         if now - self.asked_at > ASK_EVERY:
             st_, r = self.agent.ctl.call("sync", {"action": "projects"}, timeout=30)

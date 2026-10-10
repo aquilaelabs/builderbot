@@ -234,6 +234,8 @@ class ClaudeMirror:
     # -- the loop -------------------------------------------------------------------------
     def step(self):
         ws = self.wssync
+        if (getattr(self.agent, "state", None) or {}).get("host_only"):
+            return                       # a hosting-only node holds no project
         if ws.mode != "sync" or os.path.ismount(ws.root) or not os.path.isdir(ws.root):
             return
         self.ready_top()
