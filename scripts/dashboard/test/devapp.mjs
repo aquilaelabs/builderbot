@@ -179,9 +179,14 @@ const pillIs = async (want) => {
   const t0 = Date.now();
   for (;;){
     try{
-      return await page.waitForFunction(
+      const got = await page.waitForFunction(
         ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
         [want, DM], { timeout: 5000 });
+      // ...and the job that put it there ended: the pill is drawn before the
+      // job has written its last, and a step pressed meanwhile was overtaken
+      // by it (B477, at :782, :951 and :1014 by turns).
+      await idle(30000);
+      return got;
     }catch(e){
       if (Date.now() - t0 > 25000) throw e;
       await page.evaluate(() => { dockerList = null; loadDocker(); });
