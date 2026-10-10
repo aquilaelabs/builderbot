@@ -390,6 +390,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a synced node a second person's sessions get their own worktree again, synced both ways with the controller, instead of falling back to the owner's tree (bcb4648)
 - On a synced node git's index no longer goes back to before a commit: the controller's own git status stops rewriting it, and a node's index wins over the controller's (40ee8ec)
 - Removing a container while its node read as not answering for a moment no longer forgets the row and leaves the container running: the removal waits in the node's queue and happens when it answers (7a3c716)
+- The companion app no longer offers to install the build it is already running when it is behind the dashboard; it says a newer one has to be built and signed first. (b06bf68)
 
 ### Security
 

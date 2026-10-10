@@ -801,7 +801,12 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
                     Text("This app is behind the dashboard", color = Warn, fontWeight = FontWeight.SemiBold)
                     Text("The dashboard serves API $serverApi and this build was written for ${BuildConfig.TARGET_API}. Some screens may show blanks until the newer app is installed" +
                         (if (m.str("apk").isNotBlank()) ": ${m.str("apk")}." else "."))
-                    if (m.str("apk").isNotBlank()) InstallNewer(api, m.str("apk"), m.str("apk_sha256"))
+                    // The newest signed build can be this very app (B625: dev.2414
+                    // was offered to the phone running dev.2414, and Install it
+                    // reinstalled it); then a newer one has to be built and signed.
+                    val same = m.str("apk").isNotBlank() && m.str("apk").contains("-" + BuildConfig.VERSION_NAME.replace('+', '-') + "-")
+                    if (same) Text("That is the build this phone already runs: a newer one has to be built and signed on BuilderBot's Artifacts tab first.", color = Bad)
+                    else if (m.str("apk").isNotBlank()) InstallNewer(api, m.str("apk"), m.str("apk_sha256"))
                 }
             } else if (serverApi < BuildConfig.TARGET_API) Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 Column(Modifier.padding(12.dp)) {
