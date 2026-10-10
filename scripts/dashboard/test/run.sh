@@ -150,8 +150,12 @@ sweep_leftovers() {
 }
 [ -n "${BB_TEST_WORKER:-}" ] || sweep_leftovers
 # BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this.
+# A covered run is copied wherever the tree is: coverage rewrites the files
+# it runs, and a node holding its projects as a synced copy (R163) has the
+# tree on its own disk, which ran no suite at all (B616).
 if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
-   && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
+   && { [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ] \
+        || { [ -n "${BB_COVERAGE:-}" ] && [ -z "${BB_TEST_WORKER:-}" ]; }; }; then
     _src="$(cd "$HERE/../../.." && pwd)"
     _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
     echo $$ > "$_dst/.bb-run-pid"
@@ -168,7 +172,9 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
         --exclude=./android/app/build --exclude=./android/build -X "$_skip" . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
     rm -f "$_skip"
-    printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
+    printf '[dashboard-test] running from %s: %s\n' "$_dst" \
+        "$([ -n "${BB_COVERAGE:-}" ] && echo 'a covered run rewrites the files it runs, never the tree' \
+            || echo 'this tree is on NFS, which fails the suite own waits (B124)')" >&2
     BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
 fi
 DASH="$(dirname "$HERE")"
@@ -181,7 +187,7 @@ DASH="$(dirname "$HERE")"
 # Once: a worker runs from the copy its parent already instrumented, and a
 # counter counted twice is a function that ran twice.
 if [ -n "${BB_COVERAGE:-}" ] && [ -z "${BB_TEST_WORKER:-}" ]; then
-    [ -n "${BB_TEST_COPY:-}" ] || { printf '[dashboard-test] ERROR: coverage instruments the run copy and there is none here (BB_TEST_INPLACE)\n' >&2; exit 1; }
+    [ -n "${BB_TEST_COPY:-}" ] || { printf '[dashboard-test] ERROR: coverage instruments the run copy, and BB_TEST_INPLACE runs without one\n' >&2; exit 1; }
     python3 "$DASH/../lib/codemap.py" instrument "$DASH" >&2 || exit 1
 fi
 # shellcheck source=/dev/null
