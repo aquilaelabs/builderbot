@@ -384,6 +384,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node holding its projects as a synced copy saves its Claude conversations again and can resume one started anywhere: each node keeps its own copy, mirrored with the controller's, and a long conversation comes down when it is resumed there (b996a95)
 - A build cut short by a BuilderBot restart is said on the container's Docker tab row, which only the Artifacts tab used to say (b7e6a24)
 - A bug report whose title runs past 300 characters is refused with where the rest goes, rather than cut short and the rest lost (90921e0)
+- On a synced node a second person's sessions get their own worktree again, synced both ways with the controller, instead of falling back to the owner's tree (bcb4648)
 
 ### Security
 

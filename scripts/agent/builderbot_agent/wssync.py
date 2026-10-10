@@ -50,6 +50,11 @@ MOUNTED = ("something is mounted at /workspace, where this node's synced copy go
            "unmount it on the machine")
 
 
+# A second account's worktree of a project (B615): a unit of its own,
+# named for where it lives under the projects root, as the controller names it.
+WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})")
+
+
 def skipped(rel):
     parts = rel.split("/")
     if any(p in SKIP_DIRS for p in parts[:-1]) or parts[-1] in SKIP_DIRS:
@@ -207,6 +212,9 @@ class Project:
 
     def __init__(self, name, path, ro=False):
         self.name, self.path, self.ro = name, path, ro
+        # A worktree: its top .git line is git's own on each side and never
+        # sent (the controller refuses it), and it may be made here first.
+        self.wt = bool(WT_UNIT.fullmatch(name))
         self.rev, self.files, self.ready = 0, {}, False
         self.moving = {}         # rel -> entry seen last tick, waiting to hold still
         self.pulled_at = 0.0
@@ -283,6 +291,25 @@ class WorkspaceSync:
             self.wake.wait(TICK)
             self.wake.clear()
 
+    def record_of(self, name):
+        """A unit's record file: a worktree's name has slashes in it."""
+        return os.path.join(self.record_dir(), name.replace("/", "%") + ".json")
+
+    def local_worktrees(self, own):
+        """Worktrees made here of the projects bound here (session_dir makes
+        a second account's on first use), as unit names: sent up before the
+        controller has heard of them, rather than kept on this node alone."""
+        out = []
+        for proj in own:
+            d = os.path.join(self.root, ".worktrees", proj)
+            with contextlib.suppress(OSError):
+                for uid in sorted(os.listdir(d)):
+                    name = f".worktrees/{proj}/{uid}"
+                    if WT_UNIT.fullmatch(name) and os.path.isdir(os.path.join(d, uid)) \
+                            and os.path.exists(os.path.join(d, uid, ".git")):
+                        out.append(name)
+        return out
+
     def record_dir(self):
         data = ((self.agent.state.get("stores") or {}).get("data")) or "/var/lib/builderbot/data"
         d = os.path.join(data, "sync")
@@ -311,12 +338,15 @@ class WorkspaceSync:
             # at /workspace/NAME and writes none of them (R163).
             reads = r.get("reads") if isinstance(r.get("reads"), dict) else {}
             ro = {n for n in reads if n not in want}
-            want = {**{n: reads[n] for n in ro}, **want}
+            # ...and the worktrees of the bound ones made here and not yet
+            # on the controller, which it does not list (B615).
+            own = [n for n in want if not WT_UNIT.fullmatch(n)]
+            local = {n: 0 for n in self.local_worktrees(own) if n not in want}
+            want = {**{n: reads[n] for n in ro}, **local, **want}
             with self.lock:
                 for name in want:
                     if name not in self.projects:
-                        self.projects[name] = Project(name, os.path.join(self.record_dir(), name + ".json"),
-                                                      ro=name in ro)
+                        self.projects[name] = Project(name, self.record_of(name), ro=name in ro)
                         log(f"sync: {name} is held here as a synced copy" + (", read-only" if name in ro else ""))
                     self.projects[name].ro = name in ro
                 for name in list(self.projects):
@@ -528,6 +558,12 @@ class WorkspaceSync:
         for push to send as a change from nothing, which the controller
         keeps as a conflict copy, so nothing that was here is lost."""
         st_, r = self.agent.ctl.call("sync", {"action": "state", "project": p.name}, timeout=300)
+        if st_ == 404 and p.wt and os.path.isdir(top):
+            # A worktree made here that the controller has not got: nothing to
+            # copy down, and everything here goes up as new.
+            p.files, p.rev, p.ready, p.error = {}, 0, True, ""
+            p.save()
+            return
         if st_ != 200:
             p.error = str(r.get("error") or f"the controller answered {st_}")
             return
@@ -710,6 +746,8 @@ class WorkspaceSync:
     def push(self, p, top):
         moved = {}
         for rel, e in self.looked(p, top).items():
+            if p.wt and rel == ".git":
+                continue
             rec = p.files.get(rel)
             if e is None:
                 if rec is not None:

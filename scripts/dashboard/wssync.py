@@ -90,7 +90,58 @@ def skipped(rel):
     return ".git" in parts and parts[-1].endswith(".lock")
 
 
-def _root(project):
+# A second account's worktree of a project (session_dir in lib/common.sh):
+# its own sync unit beside the project, named for where it lives under the
+# projects root, so it reaches every node holding the project and comes back
+# from the one it was made on (B615). A dot directory, so no project scan
+# meets it.
+WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})")
+
+
+def _worktrees():
+    return Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
+
+
+def worktree_of(unit):
+    """(project, uid) for a worktree's unit name, else None."""
+    m = WT_UNIT.fullmatch(unit or "")
+    return (m.group(1), m.group(2)) if m else None
+
+
+def worktrees_of(project):
+    """The unit names of a project's worktrees here."""
+    d = _worktrees() / project
+    try:
+        return sorted(f".worktrees/{project}/{u.name}" for u in d.iterdir()
+                      if u.is_dir() and not u.is_symlink() and re.fullmatch(r"u_[0-9a-f]{8}", u.name))
+    except OSError:
+        return []
+
+
+def worktree_unit(project, uid):
+    """The unit of this account's worktree of the project, when the
+    controller holds one: the session gate waits for it on a node."""
+    unit = f".worktrees/{project}/{uid}"
+    return unit if worktree_of(unit) and (_worktrees() / project / uid).is_dir() else ""
+
+
+def _root(project, make=False):
+    wt = worktree_of(project)
+    if wt:
+        # A worktree a node made first is made here as it arrives, with the
+        # .git line git itself writes (a node never sends that file:
+        # git_guard), so git on the controller finds it as the worktree it is.
+        if not _there(wt[0]):
+            raise ValueError("no such project")
+        r = _worktrees() / wt[0] / wt[1]
+        if not r.is_dir():
+            if not make or not (WORKSPACE / wt[0] / ".git" / "worktrees" / wt[1]).is_dir():
+                raise ValueError("no such worktree")
+            r.mkdir(parents=True, exist_ok=True)
+        dot = r / ".git"
+        if make and not dot.exists():
+            dot.write_text(f"gitdir: {WORKSPACE / wt[0] / '.git' / 'worktrees' / wt[1]}\n")
+        return r
     if not re.fullmatch(r"[A-Za-z0-9._-]+", project or "") or project.startswith("."):
         raise ValueError("no such project")
     r = WORKSPACE / project
@@ -276,7 +327,12 @@ def _row_out(r):
 def may(nid, project, write=False):
     """Why this node may not sync the project, or "". A project a bound
     project reads comes down to the node read-only (R163): it may be read,
-    never written."""
+    never written. A worktree is its project's: read and written by the
+    nodes the project is bound to, and no other."""
+    wt = worktree_of(project)
+    if wt:
+        return "" if wt[0] in (bound_projects(nid) if nodes else []) \
+            else f"{wt[0]} is not a project this node holds as a synced copy"
     if project in (bound_projects(nid) if nodes else []):
         return ""
     if not write and project in read_projects(nid):
@@ -306,6 +362,9 @@ def read_projects(nid):
 
 def _watchers(project):
     """The nodes that hold this project, bound to it or reading it."""
+    wt = worktree_of(project)
+    if wt:
+        return list(bound(wt[0]) if bound else [])
     out = list(bound(project) if bound else [])
     for q in _all_projects():
         if project in (_reads_of(q) or []):
@@ -346,7 +405,9 @@ def projects(nid):
         # Off its synced copy (R164): nothing held, and the clean-up the
         # page asked for, by its token, until the node answers it.
         return {"mode": "off", "projects": {}, "reads": {}, "clean": str(conf.get("clean") or "")}
-    return {"mode": mode, "projects": {p: rev_of(p) for p in bound_projects(nid)},
+    own = bound_projects(nid)
+    return {"mode": mode, "projects": {p: rev_of(p) for p in own}
+            | {u: rev_of(u) for p in own for u in worktrees_of(p)},
             "reads": {p: rev_of(p) for p in read_projects(nid)},
             # Leaving (R164): kept in step as ever, so what is waiting goes up.
             "leaving": bool(conf.get("leaving"))}
@@ -517,7 +578,7 @@ def put(nid, project, q, stream, length):
     if not _rel_ok(rel) or skipped(rel):
         return {"error": "not a synced path"}, 400
     try:
-        root = _root(project)
+        root = _root(project, make=True)
     except ValueError as e:
         return {"error": str(e)}, 404
     base = q.get("base", [""])[0]

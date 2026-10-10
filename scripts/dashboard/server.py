@@ -1215,7 +1215,7 @@ def _ask_hello(nid):
         nodes.ask_hello(nid)
 
 
-def session_target(project, claude=False, node=""):
+def session_target(project, claude=False, node="", uid=""):
     # `claude` is the question R47 added. A project's SHELL follows its node
     # (the tree is that machine's mount and its toolchains are what a build
     # there uses), and a project with NO node still gets a shell here, on the
@@ -1329,6 +1329,14 @@ def session_target(project, claude=False, node=""):
                + (f" ({got['copying']} files to go)" if got.get("copying") else "")
                + (f": {got['error']}" if got.get("error") else "")
                + "; the session starts once the copy is there")
+        passing = waiting = True
+    elif uid and (wt := wssync.worktree_unit(project, uid)) \
+            and not ((rep.get("sync") or {}).get(wt) or {}).get("ready"):
+        # ...and this account's own worktree of it (B615): a session that
+        # opened before it arrived made none of its own there and worked in
+        # the owner's tree instead.
+        why = (f"your worktree of {project} is being copied to {name}; "
+               "the session starts once it is there")
         passing = waiting = True
     elif not se.get("boot"):
         # Without the node's boot the page would stamp this container's into
@@ -4032,7 +4040,7 @@ class Handler(BaseHTTPRequestHandler):
             return mapping.held(project)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        t = session_target(project, claude=True, node=_arg_node(arg))
+        t = session_target(project, claude=True, node=_arg_node(arg), uid=uid)
         if t["where"] != "node":
             return ""
         # Claude Code on that node first (claudecode.py): an update running
@@ -4156,7 +4164,8 @@ class Handler(BaseHTTPRequestHandler):
         arg0 = _term_arg(rest0)
         target = session_target(_arg_project(arg0),
                                 claude=arg0.startswith("claude:"),
-                                node=_arg_node(arg0))
+                                node=_arg_node(arg0),
+                                uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")

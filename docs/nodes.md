@@ -622,6 +622,12 @@ controller is.
   expects it: devapp's path mapping takes the node's own `/workspace` as the
   projects root, as it took the share mounted there (R163), and a dev
   instance lives on its project's own nodes, which hold the project.
+- **A second account's worktree** (`/workspace/.worktrees/PROJECT/UID`,
+  session_dir) is a sync unit of its own beside its project, held by the
+  project's nodes (B615): one the controller has comes down, and one a
+  session made on a node goes up, the controller writing its `.git` line as
+  git does (a node never sends a `.git` file). A session on a node waits for
+  its account's worktree as it waits for the project.
 - **Not synced:** what a node rebuilds (`node_modules`, `.gradle`, virtualenvs,
   caches), git's lock files, and a symlink pointing out of the project.
   `.git` and `dist/` are synced: a session commits on the node, and a build

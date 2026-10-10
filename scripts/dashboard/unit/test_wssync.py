@@ -260,6 +260,32 @@ class Sync(unittest.TestCase):
         got = ctl_sync.projects("n1")
         self.assertEqual((sorted(got["projects"]), sorted(got["reads"])), (["alpha"], ["beta"]))
 
+    def test_a_second_accounts_worktree_goes_both_ways(self):
+        # B615: a worktree the controller holds comes down to the project's
+        # nodes, one made on a node goes up, and its .git line is each
+        # side's own, never sent.
+        wt = f"{self.ws}/.worktrees/alpha/u_12345678"
+        write(f"{wt}/.git", f"gitdir: {self.ws}/alpha/.git/worktrees/u_12345678\n")
+        write(f"{wt}/notes.txt", "from the controller\n")
+        self.assertIn(".worktrees/alpha/u_12345678", ctl_sync.projects("n1")["projects"])
+        self.turn("n1")
+        there = os.path.join(self.tmp, "n1", "workspace", ".worktrees", "alpha", "u_12345678")
+        self.assertEqual(read(f"{there}/notes.txt"), "from the controller\n")
+        # Made on the node: its worktree directory, and git's record of it in
+        # the project's own .git, which reaches the controller with alpha.
+        mine = os.path.join(self.tmp, "n1", "workspace", ".worktrees", "alpha", "u_87654321")
+        write(f"{mine}/.git", "gitdir: somewhere the node chose\n")
+        write(f"{mine}/work.py", "x = 1\n")
+        write(self.at("n1", ".git/worktrees/u_87654321/HEAD"), "ref: refs/heads/claude/dev2\n")
+        self.n["n1"].asked_at = 0
+        self.turn("n1", times=4)
+        up = f"{self.ws}/.worktrees/alpha/u_87654321"
+        self.assertEqual(read(f"{up}/work.py"), "x = 1\n")
+        self.assertEqual(read(f"{up}/.git"), f"gitdir: {self.ws}/alpha/.git/worktrees/u_87654321\n",
+                         "the controller writes git's own line; the node's is never taken")
+        self.assertIn("is not a project", ctl_sync.may("n9", ".worktrees/alpha/u_87654321"),
+                      "a worktree is its project's nodes' alone")
+
     def test_a_first_copy_is_one_download(self):
         self.turn("n1", times=1)
         self.assertEqual(self.n["n1"].agent.ctl.fetched, ["sync-tar"] * len(self.n["n1"].projects))  # one a project
