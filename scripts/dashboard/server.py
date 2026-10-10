@@ -2586,6 +2586,7 @@ import devapp                                                    # noqa: E402
 devapp.label_of = registry.label
 import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
+import nginxproxy                                                # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
@@ -2759,6 +2760,15 @@ containers.dial = lambda p: prefs.get(p)["devbuild"]
 containers.users = users
 containers.ask_rebuild = phone.ask_rebuild
 containers.net_nudge = net_nudge
+# One nginx per node, from the nginx tab (R171): its records here, the
+# container through containers.py, and the node's own view of its ports.
+nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
+                     node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
+                     taken_ports=devapp.taken_ports)
+# ...and put on a node the moment it enrolls when the Enroll dialog asked
+# for it (config.nginx), so a box runs the script and nginx appears.
+nodes.ON_ENROLL.append(lambda nid: nginxproxy.deploy(nid, containers, devactions, devapp)
+                       if ((nodes.node(nid) or {}).get("config") or {}).get("nginx") else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target; the module's docstring says
@@ -3560,6 +3570,7 @@ GET_ROUTES = (
     ("prefix", "/api/emulator", "_get_emulator"),
     ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
+    ("prefix", "/api/nginx", "_get_nginx"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/docker", "_get_docker"),
@@ -3619,6 +3630,7 @@ POST_ROUTES = (
     ("prefix", "/api/chat", "_chat"),
     ("prefix", "/api/layout", "_layout"),
     ("exact", "/api/bell", "_bell"),
+    ("exact", "/api/nginx", "_nginx"),
     ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
@@ -7060,6 +7072,43 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("command-pin"):
             return None
         return self._json(*macros.pin(req.get("name", ""), bool(req.get("pinned"))))
+
+    def _get_nginx(self):
+        """The nginx tab (nginxproxy.view): every node's nginx, for an
+        account that may read the Nodes tab; never a session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a node's proxy is a person's"}, 403)
+        if not users.is_admin(who) and not roles.level_of(who, "nodes"):
+            return self._json({"error": "the nginx tab is the Nodes tab's area: ask for Read on Nodes"}, 403)
+        return self._json(nginxproxy.view(devapp, devactions.state))
+
+    def _nginx(self, req):
+        """Deploy, save, certificate, remove on one node's nginx
+        (nginxproxy.py): writing a compose file and building it on a node,
+        so docker-write like a written container, and never a session's."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a node's proxy is a person's"}, 403)
+        if self._refused("docker-write"):
+            return
+        act, nid = field(req, "action"), field(req, "node")
+        if not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        if act == "deploy":
+            r = nginxproxy.deploy(nid, containers, devactions, devapp)
+        elif act == "save":
+            r = nginxproxy.save_routes(nid, req.get("routes"))
+            if not r.get("error") and isinstance(req.get("cert"), str) and req.get("cert").strip():
+                r = nginxproxy.set_cert(nid, req.get("cert"), req.get("key"))
+            if not r.get("error") and req.get("drop_cert") is True:
+                r = nginxproxy.drop_cert(nid)
+            if not r.get("error"):
+                r = nginxproxy.apply(nid, containers, devactions, devapp)
+        elif act == "remove":
+            r = nginxproxy.remove(nid, devactions, devapp)
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        return self._result(r)
 
     def _bell(self, req):
         """Put a bell note away for this account, or bring every one back

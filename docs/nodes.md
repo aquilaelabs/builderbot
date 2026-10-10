@@ -1009,6 +1009,22 @@ the pieces stack:
    project's own node and shipped) and rebuild and remove the ones there,
    under its Claude may: Run its container, as on its own node; a node not
    named stays a person's to send to.
+5. *Put nginx in front of them* (R171, the nginx tab): one reverse proxy
+   per node, BuilderBot's own, listed for every node on the Tools card's
+   nginx tab. Its routes (a hostname or path to a port a container
+   publishes on that node, with or without TLS) and its certificate (a
+   Cloudflare origin certificate for a site behind Cloudflare) are kept on
+   the controller (`nginxproxy.py`, the key 0600 and never shown back), and
+   Deploy writes a container from them through the written-container path
+   (`containers.create_container`), its nginx config and certificate inline
+   in the compose file as compose `configs`, so the node's compose job needs
+   nothing new. nginx runs on the host network and proxies to 127.0.0.1, so
+   it holds 80 and 443 on the machine and a container publishing either is
+   named as the clash. Save rewrites and rebuilds a deployed one; Remove
+   takes it off the Docker tab and keeps the routes. The Enroll dialog's
+   "Put nginx on it once it is enrolled" (`config.nginx`, `nodes.ON_ENROLL`)
+   deploys it on the node's first hello, so a box runs the script and
+   nginx appears with whatever the tab holds for it.
 
 What runs in those containers has no node token (it lives root-owned in
 the agent's own file) and reaches the controller, if at all, only as the

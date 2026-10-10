@@ -64,7 +64,7 @@ const SURFACE = [
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbDesignView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'nbWikiView', 'wikiMarkdown', 'wikiSlug', 'wikiToc', 'pullScroller', 'pullRefresh', 'wirePull', 'openReport', 'sendReport', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
-  'pFillGates', 'pFillNode', 'rnFillReads', 'tcClaudeRow', 'rnFillDebug', 'rnDebugNow', 'rnBars', 'rnBarSay', 'rnRevertSect', 'rnSectChanges', 'rnEnc', 'rnDec', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
+  'pFillGates', 'pFillNode', 'rnFillReads', 'tcClaudeRow', 'rnFillDebug', 'rnDebugNow', 'rnFillHosts', 'rnBars', 'rnBarSay', 'rnRevertSect', 'rnSectChanges', 'rnEnc', 'rnDec', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
   // A terminal in its own window (R8).
   'popOut', 'reattachTab',
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',
@@ -78,6 +78,7 @@ const SURFACE = [
   'postTrash', 'projectRow', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneButton', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'wirePhoneTab',
+  'openNginxTab', 'loadNginx', 'nginxAct', 'nginxRouteRow', 'nginxRedraw', 'nginxDraftOf', 'nginxSection', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
   // guides are top-level consts, which are not window properties.
   'abShow', 'abLoadLog', 'abDrawLog', 'openAbout', 'closeAbout', 'welcomeOnce',

@@ -1356,6 +1356,8 @@ function wireNodesTab(root){
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
+        <label class="ndcap"><input type="checkbox" id="ndEnNginx"> Put nginx on it once it is enrolled</label>
+        <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx tab holds for it (set them there first or after).</div>
       </div>
       <div class="field">
         <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
@@ -1398,6 +1400,8 @@ function wireNodesTab(root){
       sess.disabled = host.checked;
       if (host.checked) sess.checked = false;
     };
+    const ngx = $b("#ndEnNginx");
+    ngx.onchange = () => { $b("#ndEnNginxHint").hidden = !ngx.checked; };
     const showWg = () => {
       $b("#ndEnWgRow").hidden = reach.value !== "wireguard";
       const ctl = $b("#ndEnCtl");
@@ -1425,7 +1429,7 @@ function wireNodesTab(root){
     // What was typed comes back after a refusal: a redraw to its defaults
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
-      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked,
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnNginx": ngx.checked,
       "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
       "#ndEnWgText": $b("#ndEnWgText").value});
     const go = $b("#ndEnGo");
@@ -1438,7 +1442,7 @@ function wireNodesTab(root){
       busy(go, "Making");
       const r = await nodeAct({action: "enroll", script: true, ...answers(),
         sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
-        host_only: $b("#ndEnHost").checked,
+        host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
         controller: $b("#ndEnCtl").value.trim(),
         wg_conf: reach.value === "wireguard" ? conf : ""});
       if (r.error){ mintForm(kept); return; }
@@ -1449,7 +1453,7 @@ function wireNodesTab(root){
     tok.onclick = () => pressing(tok, async () => {
       const kept = keep(), a = answers();
       busy(tok, "Minting");
-      const r = await nodeAct({action: "enroll", ...a, host_only: $b("#ndEnHost").checked});
+      const r = await nodeAct({action: "enroll", ...a, host_only: $b("#ndEnHost").checked, nginx: ngx.checked});
       if (r.error){ mintForm(kept); return; }
       // The URL the node should dial: this page's origin, which is the only
       // address the browser knows the controller by. A proxy in front is the

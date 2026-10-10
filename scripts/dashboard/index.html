@@ -1445,6 +1445,15 @@ select:focus{outline-offset:-2px}
 .rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 /* Also reaches: an address per row, its nodes ticked beside it, and its bin. */
 #rnReachRows{display:flex;flex-direction:column;gap:6px}
+/* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
+   their own inset, so the body adds none (as a settings group's does). */
+.nginxtab .sect>.body{padding:0 0 var(--row-y);gap:0}
+/* ...and its route rows: hostname, path, port, TLS. */
+.ngroute{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ngroute input[data-ng="host"]{flex:2 1 12em;min-width:0}
+.ngroute input[data-ng="path"]{flex:1 1 7em;min-width:0}
+.ngroute input[data-ng="port"]{flex:0 1 6em;min-width:0}
+.ngroutes:empty{display:none}
 .rnreach{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .modal .rnreach input[data-reach]{flex:1 1 12em;width:auto;min-width:0}
 .rnreach .rnreachnodes{display:flex;gap:10px;flex-wrap:wrap}
@@ -5071,6 +5080,7 @@ body.booting .pane>.loading{margin:auto}
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bEmulator" onclick="openEmulator()">Emulator</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
+        <button id="bNginx" onclick="openNginxTab()">nginx</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bPhone" onclick="openPhoneTab()">Phone</button>
         <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
@@ -5159,6 +5169,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="tab-nodes.js"></script>
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
+<script src="tab-nginx.js"></script>
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
 <script src="tab-roles.js"></script>

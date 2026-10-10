@@ -1044,6 +1044,7 @@ Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Bla
   5. Footer (the band at the foot): New container and Refresh, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
+  The nginx tab (R171) is a document tab of the same shape beside it: a section per node, every one open, its status on the heading (not deployed, N routes, down); each section its own form, route rows (hostname, path, port, 443 too, remove) with Add route, the certificate's line (its name and when it ends; the key is never shown back) over two PEM boxes, the clash in red under the routes since nginx holds 80 and 443 on the host, and Save, Revert then Deploy or Remove on its action bar, the destructive one last.
 
 ### the Nodes tab (Web app)
 

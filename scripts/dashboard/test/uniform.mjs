@@ -83,6 +83,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
   },
+  nginx: {
+    // A section per node, or the empty band on a box with none (R171).
+    open: () => page.evaluate(() => openNginxTab()),
+    readyWhen: '.nginxtab .sect, .nginxtab .empty',
+  },
   users: {
     // There is always at least one row: the owner, seeded on the first boot,
     // which cannot be deleted and so cannot be absent.

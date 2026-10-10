@@ -767,7 +767,7 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
-def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False):
+def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False, nginx=False):
     """Add node, agent kind: a pending row and the one token that fills it.
 
     The row exists BEFORE the machine does, which is the operator's view of
@@ -797,7 +797,9 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
                    "workspace": "sync",
                    # Hosting only from its first hello (a cloud box enrolled
                    # to run containers): no code, sessions or bb, ever.
-                   **({"host_only": True} if host_only else {})},
+                   **({"host_only": True} if host_only else {}),
+                   # nginx put on it once it has enrolled (R171, ON_ENROLL).
+                   **({"nginx": True} if nginx else {})},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
@@ -824,7 +826,8 @@ def enroll_script(principal, req):
     # Through Cloudflare the node is hosting only, whatever was ticked
     # (enrollscript.check): the session ports cannot be reached back.
     ho = ho or ans["reach"] == "cloudflare"
-    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho)
+    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho,
+                    nginx=req.get("nginx") is True)
     _synced["at"] = 0.0
     if m.get("error"):
         return m
@@ -836,6 +839,13 @@ def enroll_script(principal, req):
                 "filename": enrollscript.filename(name), "reach": ans["reach"],
                 "home": enrollscript.home_rules(ans, port),
                 "tunnel_addr": ans.get("tunnel_addr", "")}
+
+
+# What runs once a node has enrolled, each handed its id (the nginx tab's
+# deploy for a node the Enroll dialog ticked it on, R171): filled by the
+# server, run after the row is online, each on its own so one's failure
+# never costs the enrollment.
+ON_ENROLL = []
 
 
 def enroll(auth, census, addr, version="", digest="", user=""):
@@ -864,6 +874,11 @@ def enroll(auth, census, addr, version="", digest="", user=""):
                        "last_seen": int(time.time())}),
            json.dumps(rep), json.dumps(cfg), rep["system"], rep["arch"], nid))
     _touch(nid, auth["principal"], "node-enroll", {"addr": addr})
+    for fn in ON_ENROLL:
+        try:
+            fn(nid)
+        except Exception as e:  # noqa: BLE001 (said, never the enrollment's failure)
+            print(f"[nodes] after enrolling {nid}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
     return {"ok": True, "node_id": nid, "token": secret,
             "name": n["name"], "capabilities": n["capabilities"],
             "user": cfg.get("user", "bb"), "poll": POLL_S}
@@ -4030,7 +4045,8 @@ def verb(principal, req):
             return enroll_script(principal, req)
         return enroll_mint(principal, field(req, "name"),
                            req.get("capabilities"),
-                           field(req, "user") or "bb", host_only=req.get("host_only") is True)
+                           field(req, "user") or "bb", host_only=req.get("host_only") is True,
+                           nginx=req.get("nginx") is True)
 
     def power():
         return node_power(principal, nid, act)
