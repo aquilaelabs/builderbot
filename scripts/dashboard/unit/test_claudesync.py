@@ -224,7 +224,7 @@ class Mirror(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.node_ws, ".claude", ".bbignore")))
 
     def test_nothing_while_mounted_or_not_synced(self):
-        self.ws.mode = "mount"
+        self.ws.mode = "off"
         self.tick()
         self.assertFalse(os.path.exists(os.path.join(self.node_ws, ".claude")))
 

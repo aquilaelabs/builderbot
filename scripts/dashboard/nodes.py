@@ -568,14 +568,6 @@ def node_update(principal, node_id, fields):
         clean = {str(k)[:40]: str(v)[:120]
                  for k, v in list(fields["labels"].items())[:24]}
         sets.append("labels = ?"); args.append(json.dumps(clean))
-    if "workspace" in fields:
-        # How the node holds its projects (R162): the share mounted at
-        # /workspace, or a copy there kept in step through this controller.
-        if fields["workspace"] not in ("mount", "sync"):
-            return {"error": "workspace is mount (the projects share) or sync (a synced copy)"}
-        cfg = dict(n.get("config") or {}, workspace=fields["workspace"])
-        sets.append("config = ?"); args.append(json.dumps(cfg))
-        _synced["at"] = 0.0
     if not sets:
         return {"error": "nothing to change"}
     args.append(node_id)
@@ -761,7 +753,7 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
-def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, workspace="mount"):
+def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None):
     """Add node, agent kind: a pending row and the one token that fills it.
 
     The row exists BEFORE the machine does, which is the operator's view of
@@ -786,8 +778,9 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, work
         # carries (R161): what the controller refuses all but the agent's
         # own API from, before the node has said anything itself.
         "config": {"user": user, **({"tunnel": tunnel} if tunnel else {}),
-                   # How it holds its projects (R162): the share, or a synced copy.
-                   **({"workspace": "sync"} if workspace == "sync" else {})},
+                   # Its projects as a synced copy (R162), the one way a node
+                   # holds them: no node mounts the controller's disk (R163).
+                   "workspace": "sync"},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
@@ -809,8 +802,7 @@ def enroll_script(principal, req):
     user = re.sub(r"[^a-z0-9_-]", "", (field(req, "user") or "bb").lower())[:32] or "bb"
     tunnel = ({"kind": "wireguard", "addr": ans["tunnel_addr"]}
               if ans["reach"] == "wireguard" else None)
-    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel,
-                    workspace="sync" if field(req, "workspace") == "sync" else "mount")
+    m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel)
     _synced["at"] = 0.0
     if m.get("error"):
         return m
@@ -1084,8 +1076,8 @@ def _census(c):
         # https port -> the local port it forwards to, as the node reports it
         "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
     # The session half (roadmap #24): whether this node runs sessions, on
-    # which ports, as which account, and whether the projects share is
-    # mounted where they expect it. Absent (not empty) from an agent too
+    # which ports, as which account, and whether /workspace, where its
+    # synced copy is, is there. Absent (not empty) from an agent too
     # old to report it, so the row can tell "no sessions here" from "did not
     # say"; the proxy relays a project's session to a node only on the
     # strength of this.
@@ -1096,9 +1088,10 @@ def _census(c):
             "ro_port": _mb(se.get("ro_port")) or 0,
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
-            # None is "not probed", which the proxy reads as unknown rather
-            # than as read-only: a share the agent could not test is not a
-            # share it found closed.
+            # None is "not probed", read as unknown rather than read-only:
+            # a /workspace the agent could not test is not one it found
+            # closed. Said in bb diag; no gate reads it since the synced
+            # copy is the node's own directory (R163).
             "writable": None if "writable" not in se else bool(se.get("writable")),
             "claude": str(se.get("claude") or "")[:40],
             "bundle": str(se.get("bundle") or "")[:80],
@@ -1111,9 +1104,7 @@ def _census(c):
             # on); the row hands it to the page per project.
             "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40],
             # Seconds since the machine booted, from an agent that reports
-            # it: a missing /workspace on a node up for a minute is a mount
-            # still landing, and the gate says so instead of "add it".
-            # Finite: json.loads takes Infinity and NaN, and int() of either
+            # it. Finite: json.loads takes Infinity and NaN, and int() of either
             # raised, failing the node's whole hello (B180).
             "up_s": max(-1, int(se["up_s"])) if isinstance(se.get("up_s"), (int, float))
                     and math.isfinite(se["up_s"]) else None}
@@ -1207,8 +1198,7 @@ def _clean_config(cfg):
             # which is where a Linux box puts a mount and is what the
             # operator meant. The agent's bb-sandbox mkdir -p's it, so
             # naming a directory that does not exist yet is not a problem.
-            # Only a default: /workspace has to stay /workspace for path
-            # parity with the controller, so anything that matters is typed.
+            # Only a default: anything that matters is typed.
             tail = src.rsplit("/", 1)[-1] if kind == "nfs" else src
             tail = re.sub(r"[^A-Za-z0-9._-]", "", tail).strip(".")
             if not tail:
@@ -1216,6 +1206,10 @@ def _clean_config(cfg):
             path = "/mnt/" + tail
         if not path.startswith("/") or " " in path or ":" in path:
             return None, f"a mountpoint must be an absolute path without spaces: {path!r}"
+        if path.rstrip("/") == "/workspace" or path.startswith("/workspace/"):
+            # The node's own synced copy of its projects is there (R163): a
+            # mount would cover it, and no node mounts the controller's disk.
+            return None, "/workspace holds this node's synced copy of its projects; nothing is mounted there"
         if kind not in MOUNT_TYPES:
             return None, f"a mount is nfs or virtiofs, not {kind!r}"
         if kind == "nfs" and (":" not in src or src.startswith(":") or src.endswith(":")):
@@ -2107,69 +2101,27 @@ def node_apply(principal, node_id, what):
 
 
 def node_to_sync(principal, node_id):
-    """Move a node off the projects share onto a synced copy (R163 step 5),
-    in one press: its sessions ended, the node marked synced, so the session
-    gate holds new ones until its copy is there, and /workspace taken out of
-    its storage by the ordinary storage apply, which unmounts it. The agent
-    copies nothing while the share is still mounted (wssync.MOUNTED), so the
-    order the node hears these in does not matter. The other mounts and the
-    stores are left as they are."""
+    """Back onto its synced copy from off (R164): the node holds its bound
+    projects again, each copied down before a session there starts. The
+    one way a node holds them; no node mounts the projects share (R163)."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
     if n["kind"] != "agent":
         return {"error": "only an agent node holds a synced copy"}
     conf = dict(n.get("config") or {})
-    if conf.get("workspace") == "sync":
+    if (conf.get("workspace") or "sync") == "sync":
         return {"error": f"{n['name']} already holds its projects as a synced copy"}
-    if conf.get("workspace") == "off" and conf.get("clean") and not sync_cleaned(n):
+    if conf.get("clean") and not sync_cleaned(n):
         return {"error": f"{n['name']} is still removing its last copy; move it once that is done"}
-    if n["state"] != "online":
-        return {"error": f"the node is {n['state']}; it moves while online"}
     if node_locked(n):
         return {"error": node_locked(n)}
-    rep = n.get("reported") or {}
-    desired = dict(conf.get("desired") or {})
-    # What the node is meant to mount: the saved configuration when there
-    # is one, else what it reports, since a node provisioned with its
-    # mounts has never had one saved and an apply removes what is not listed.
-    have = desired["mounts"] if isinstance(desired.get("mounts"), list) else [
-        {k: m.get(k) for k in ("path", "source", "type", "ro")} for m in rep.get("mounts") or []]
-    keep = [m for m in have if str(m.get("path") or "").rstrip("/") != "/workspace"]
-    share = len(keep) != len(have) or any(
-        str(m.get("path") or "").rstrip("/") == "/workspace" for m in rep.get("mounts") or [])
-    if share:
-        if not rep.get("sandbox"):
-            return {"error": "this node was not provisioned as a BuilderBot sandbox, so its "
-                             "storage is not this tab's to change: unmount /workspace there "
-                             "and take it out of fstab, then press this again"}
-        if system_job_for(node_id):
-            return {"error": "a system job is already in flight on this node; one at a time"}
-    ended = []
-    for s in (node_sessions().get(node_id) or ("", []))[1]:
-        name = str((s or {}).get("name") or "")
-        if name and not session_kill(node_id, name).get("error"):
-            ended.append(name)
     conf["workspace"] = "sync"
     conf.pop("clean", None)
     conf.pop("leaving", None)
-    if share:
-        conf["desired"] = dict(desired, mounts=keep, stores=desired.get("stores") or {})
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _synced["at"] = 0.0
-    # A hint naming no project has the agent ask again now which projects it
-    # holds and how, rather than at its next half-minute ask.
-    sync_hint(node_id, "", 0)
-    _touch(node_id, principal, "node-to-sync", {"ended": len(ended), "unmount": share})
-    out = {"ok": True, "ended": ended}
-    if share:
-        r = node_apply(principal, node_id, "storage")
-        if r.get("error"):
-            return {**out, "error": f"{n['name']} is marked synced, but taking the share out did "
-                                    f"not start: {r['error']}. Apply storage on its row once that "
-                                    "is fixed; until then its copy waits"}
-        out["job"] = r.get("job")
-    return out
+    _set_conf(node_id, conf)
+    _touch(node_id, principal, "node-to-sync", {})
+    return {"ok": True}
 
 
 # ---- leaving a synced copy (R164) ------------------------------------------------------
@@ -2224,8 +2176,8 @@ def node_sync_stop(principal, node_id):
     if no:
         return no
     conf = dict(n.get("config") or {})
-    if conf.get("workspace") != "sync":
-        return {"error": f"{n['name']} does not hold its projects as a synced copy"}
+    if (conf.get("workspace") or "sync") != "sync":
+        return {"error": f"{n['name']} holds no projects to stop syncing"}
     if conf.get("leaving"):
         return {"error": f"{n['name']} is already leaving its synced copy"}
     ended = []
@@ -2245,7 +2197,7 @@ def node_sync_resume(principal, node_id):
     if no:
         return no
     conf = dict(n.get("config") or {})
-    if conf.get("workspace") != "sync" or not conf.get("leaving"):
+    if (conf.get("workspace") or "sync") != "sync" or not conf.get("leaving"):
         return {"error": f"{n['name']} is not leaving its synced copy"}
     conf.pop("leaving", None)
     _set_conf(node_id, conf)
@@ -2260,11 +2212,10 @@ def node_sync_clean(principal, node_id):
     if no:
         return no
     conf = dict(n.get("config") or {})
-    if conf.get("workspace") == "sync" and not conf.get("leaving"):
+    syncing = (conf.get("workspace") or "sync") == "sync"
+    if syncing and not conf.get("leaving"):
         return {"error": f"press Stop syncing on {n['name']} first, so nothing is lost"}
-    if conf.get("workspace") not in ("sync", "off"):
-        return {"error": f"{n['name']} holds no synced copy to clean up"}
-    if conf.get("workspace") == "sync":
+    if syncing:
         if n["state"] != "online" or n.get("live") is False:
             return {"error": f"{n['name']} is not answering, so it cannot say whether everything there has gone up"}
         if not sync_drained(n):
@@ -3081,14 +3032,15 @@ _synced = {"at": 0.0, "ids": frozenset()}
 
 
 def sync_node_ids():
-    """The nodes that hold their projects as a synced copy rather than
-    mounting the share (R162): config workspace = "sync". Read again at
-    most every two seconds: it is asked per project."""
+    """The nodes that hold their projects as a synced copy (R162), which is
+    every agent node not taken off it (R163, R164: config workspace "off").
+    Read again at most every two seconds: it is asked per project."""
     now = time.monotonic()
     if now - _synced["at"] > 2:
         _synced.update(at=now, ids=frozenset(
             n["id"] for n in node_list()
-            if (n.get("config") or {}).get("workspace") == "sync" and n.get("state") != "retired"))
+            if n.get("kind") == "agent" and n.get("state") != "retired"
+            and ((n.get("config") or {}).get("workspace") or "sync") == "sync"))
     return _synced["ids"]
 
 
@@ -4036,8 +3988,8 @@ def verb(principal, req):
         return node_apply(principal, nid, field(req, "what"))
 
     def to_sync():
-        # Off the projects share onto a synced copy (R163), sessions ended
-        # and the share unmounted. An administrator's, like the rest.
+        # Back onto its synced copy from off (R164). An administrator's,
+        # like the rest.
         return node_to_sync(principal, nid)
 
     def sync_stop():

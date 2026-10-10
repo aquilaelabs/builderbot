@@ -1202,9 +1202,6 @@ def _arg_project(arg):
     return ""
 
 
-# A node that came up this recently and reports no /workspace is one whose
-# network mount has not landed yet, not one missing a mount.
-BOOT_GRACE_S = 600
 _hello_asked = {}
 
 
@@ -1234,12 +1231,11 @@ def session_target(project, claude=False, node=""):
                                                               that cannot take one)
 
     A project bound to a node whose census says the session half is up and
-    the projects share is mounted gets its session THERE. One bound to a
-    node that is offline, runs no sessions or mounts no /workspace is
-    REFUSED rather than quietly started here: the tree is the same share
-    either way, but a session started on the wrong machine has the wrong
-    toolchains and its transcripts land in the wrong home, and switching
-    later splits a conversation across two boxes. The sentence says which
+    whose synced copy of the project is there gets its session THERE. One
+    bound to a node that is offline, runs no sessions or has no copy yet is
+    REFUSED rather than quietly started here: a session started on the
+    wrong machine has the wrong toolchains and its transcripts land in the
+    wrong home, and switching later splits a conversation across two boxes. The sentence says which
     of the three it was and what fixes it. A project with no node keeps its
     session here, as it always has.
 
@@ -1317,7 +1313,7 @@ def session_target(project, claude=False, node=""):
                + (f": {se['why']}" if se.get("why") else
                   "; provision it with --session-user"))
         _ask_hello(nid)
-    elif (n.get("config") or {}).get("leaving") or (n.get("config") or {}).get("workspace") == "off":
+    elif (n.get("config") or {}).get("leaving") or ((n.get("config") or {}).get("workspace") or "sync") != "sync":
         # Off its synced copy, or on the way off it (R164): nothing to open a
         # session on, and its row on the Nodes tab is the way back.
         why = (f"{project}'s sessions run on {name}, which "
@@ -1325,42 +1321,7 @@ def session_target(project, claude=False, node=""):
                   if (n.get("config") or {}).get("leaving") else "holds no projects now")
                + ". Its row on the Nodes tab moves it to a synced copy again,"
                " or bind the project to another node")
-    elif not se.get("workspace"):
-        up = se.get("up_s")
-        # The server's own reason, when the agent tried the mount and kept
-        # what it said: a refused mount is not a missing one, and the fix
-        # is on the host, not on this row.
-        merr = next((str(m.get("error") or "") for m in (rep.get("mounts") or [])
-                     if isinstance(m, dict) and m.get("path") == "/workspace" and m.get("error")), "")
-        if merr and "access denied" in merr.lower():
-            why = (f"{project}'s sessions run on {name}, which cannot mount the projects share at "
-                   f"/workspace: {merr}. The host's NFS export names another address, and this "
-                   f"node is on {nodes.route_host(nid) or 'a new one'}. Change the rule on the "
-                   "host (Unraid: Shares → the share → NFS Security Settings) and the mount "
-                   "lands on its own")
-        elif merr:
-            why = (f"{project}'s sessions run on {name}, which cannot mount the projects share at "
-                   f"/workspace: {merr}. Its row on the Nodes tab has the mount")
-        elif isinstance(up, int) and 0 <= up < BOOT_GRACE_S:
-            why = (f"{project}'s sessions run on {name}, which came up {up} seconds ago and has "
-                   "not mounted the projects share at /workspace yet; a network mount lands a "
-                   "moment after boot, and the button is back when it does")
-            passing = waiting = True
-        else:
-            why = (f"{project}'s sessions run on {name}, which does not mount the projects "
-                   "share at /workspace; add the mount on its row on the Nodes tab")
-        _ask_hello(nid)
-    elif se.get("writable") is False:
-        # Read-only was the right way to mount the share for a Docker-only
-        # sandbox and is the wrong way for one that runs sessions: nothing
-        # could be saved, and the transcripts link cannot be made there.
-        why = (f"{project}'s sessions run on {name}, which mounts the projects share "
-               "read-only; a session there could not save a file. Untick read-only on "
-               "the /workspace mount on its row on the Nodes tab and apply, or `sudo "
-               "bb-sandbox readonly /workspace off` on the machine")
-        _ask_hello(nid)
-    elif (n.get("config") or {}).get("workspace") == "sync" \
-            and not ((rep.get("sync") or {}).get(project) or {}).get("ready"):
+    elif not ((rep.get("sync") or {}).get(project) or {}).get("ready"):
         # A synced copy (R162) that is not there yet: a session started now
         # would open an empty or half-copied tree.
         got = (rep.get("sync") or {}).get(project) or {}

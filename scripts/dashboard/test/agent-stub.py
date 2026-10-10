@@ -62,20 +62,19 @@ CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           # rule the suite holds those editors to measured an empty box,
           # which is how a mount row's controls came to sit at three
           # different heights without anything failing.
-          "mounts": [{"path": "/workspace", "source": "nas:/mnt/user/projects",
+          "mounts": [{"path": "/mnt/media", "source": "nas:/mnt/user/media",
                       "type": "nfs", "ro": False, "mounted": True,
-                      "real": "nas:/mnt/user/projects"},
+                      "real": "nas:/mnt/user/media"},
                      {"path": "/devdata", "source": "nas:/mnt/user/devdata",
                       "type": "nfs", "ro": False, "mounted": True,
                       "real": "nas:/mnt/user/devdata"}],
           "network": {"interface": "ens3", "addresses": ["10.0.0.41/24"],
                       "gateway": "10.0.0.1", "dns": ["10.0.0.1"]},
-          # A session half that is up but on a read-only projects share:
-          # the arrangement a Docker-only sandbox was told to have, and the
-          # one that stranded the first real session (nothing could be
-          # saved). What the proxy refuses on, and the row says.
+          # A session half that is up, whose heartbeat reports no synced
+          # copy of any project yet (R163): what the proxy holds a session
+          # on, and the row says.
           "session": {"up": True, "port": 7681, "ro_port": 7682, "user": "bb",
-                      "workspace": True, "writable": False, "boot": "1.1"}}
+                      "workspace": True, "writable": True, "boot": "1.1"}}
 
 
 def call(verb, body, timeout=60):

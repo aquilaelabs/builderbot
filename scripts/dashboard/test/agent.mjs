@@ -321,18 +321,11 @@ const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
 const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 // The stub docker's own state, so the agent's compose reaches the same fake
 // daemon the controller's runner does; a real node needs nothing here.
-// The share the fixture node reports as mounted and writable. /workspace when
-// it is both; inside a session's view it is the view's read-only root, so the
-// mount holding the harness's own directory stands in, which is writable by
-// construction. What the tests assert is that the controller reads the
-// agent's answer, not which directory it was measured on.
-const SHARE = execFileSync('python3', ['-c', `
-import os, sys
-p = os.path.realpath(sys.argv[1])
-while not os.path.ismount(p):
-    p = os.path.dirname(p)
-ok = lambda d: os.path.ismount(d) and os.access(d, os.W_OK)
-print("/workspace" if ok("/workspace") else p)`, DIR], { encoding: 'utf8' }).trim();
+// The fixture node's /workspace: a directory of its own, where its agent
+// makes the synced copy of each project bound to it (R163), from this
+// harness's controller, as a real node does.
+const SHARE = `${DIR}/agentworkspace`;
+mkdirSync(SHARE, { recursive: true });
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_SHARE: SHARE,
   BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
@@ -491,7 +484,7 @@ try {
        && sess?.user === execFileSync('id', ['-un'], { encoding: 'utf8' }).trim(),
        `...on the ports it bound and as the account sessions run as (${sess?.port}, ${sess?.user})`);
     ok(typeof sess?.workspace === 'boolean' && /^sha256:/.test(sess?.bundle || ''),
-       '...saying whether /workspace is mounted and which bb bundle bb-tty runs from');
+       '...saying whether /workspace is there and which bb bundle bb-tty runs from');
     // This node's two; the container node enrolled above started its own.
     const runs = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id);
     ok(runs.length === 2 && runs.some(r => r.argv.includes('--writable'))
@@ -1675,7 +1668,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        `a store at /etc, at a bare /mnt, or under /usr is refused (${sys.error})`);
     const cfg = await api('/api/v1/nodes', { action: 'config', id: minted.id,
       config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
-                         { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
+                         { type: 'virtiofs', source: 'projects', path: '/srv/projects', ro: true }],
                 stores: { cache: `${DIR}/agentcache`, toolchains: `${DIR}/agenttoolchains`,
                           artifacts: `${DIR}/agentartifacts` },
                 network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
@@ -1693,10 +1686,10 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
     }, 30000);
     ok(fin && fin.state === 'succeeded' && /add-nfs nas:\/mnt\/user\/appdata:\/mnt\/appdata/.test(fin.log)
-       && /add-share projects:\/workspace:ro/.test(fin.log) && /cache store/.test(fin.log),
+       && /add-share projects:\/srv\/projects:ro/.test(fin.log) && /cache store/.test(fin.log),
        `the agent applies it through bb-sandbox and the stores, logging each step (${fin?.state})`);
     const stubState = JSON.parse(readFileSync(SANDBOX_STATE, 'utf8'));
-    ok(stubState.length === 2 && stubState.some(m => m.path === '/workspace' && m.ro),
+    ok(stubState.length === 2 && stubState.some(m => m.path === '/srv/projects' && m.ro),
        '...and the node now has both mounts, the read-only one read-only');
     const after = await until(async () => {
       const n = await nodeById(minted.id);
@@ -1932,7 +1925,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // Put it back, so what follows runs against the stores it expects.
       await api('/api/v1/nodes', { action: 'config', id: minted.id,
         config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
-                           { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
+                           { type: 'virtiofs', source: 'projects', path: '/srv/projects', ro: true }],
                   stores: { cache: `${DIR}/agentcache`, toolchains: `${DIR}/agenttoolchains`,
                             artifacts: `${DIR}/agentartifacts` },
                   network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
@@ -1987,12 +1980,19 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
 
     // ---- the terminal goes to the node (roadmap #24, phase 10b) --------------
     // alpha is bound to agentbox now, whose census says its session half is
-    // up and /workspace mounted (the stub reports what the agent measures;
-    // the harness runs in a container whose /workspace IS a mount). So the
-    // controller's /term proxy dials agentbox's ttyd (the stub above, which
-    // answers with the request line) with the account, its name and a
-    // session token stamped into the URL.
+    // up, and whose agent makes alpha's synced copy in its own /workspace
+    // (R163): once it says the copy is ready, the controller's /term proxy
+    // dials agentbox's ttyd (the stub above, which answers with the request
+    // line) with the account, its name and a session token stamped into
+    // the URL.
     {
+      const copied = await until(async () => {
+        const p = (await api('/api/status')).projects.find(x => x.name === 'alpha');
+        return p?.session_at === 'agentbox' && p?.session_why === '' ? p : null;
+      }, 60000);
+      ok(copied && existsSync(`${SHARE}/alpha`),
+         `the node's agent copies the project it is bound to into its own /workspace, and the button goes live once it has (${
+           copied ? 'ready' : ((await api('/api/status')).projects.find(x => x.name === 'alpha')?.session_why || '').slice(0, 80)})`);
       const term = async (arg, hdr = auth) => {
         const r = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent(arg),
                               { headers: hdr, redirect: 'manual' });
@@ -2051,32 +2051,31 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          && /enroll one on the Nodes tab/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);
-      // Bound to a node that cannot take one: the sandbox row reports its
-      // session half up on a READ-ONLY projects share, so the button is
-      // dead with the reason and the proxy says the same rather than
-      // starting a session that could not save a file.
+      // Bound to a node that cannot take one yet: the sandbox's session
+      // half is up but it reports no synced copy of the project (R163), so
+      // the button waits with the reason and the proxy says the same rather
+      // than starting a session on a tree that is not there.
       const sandbox = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
       await api('/api/prefs', { project: 'beta', node: sandbox.id });
       const beta = (await api('/api/status')).projects.find(p => p.name === 'beta');
-      ok(beta?.session_at === 'sandbox' && /read-only/.test(beta?.session_why || '')
-         && /bb-sandbox readonly \/workspace off/.test(beta?.session_why || ''),
-         `a project bound to a node that mounts the share read-only carries the reason and the fix on its row (${(beta?.session_why || '').slice(0, 60)})`);
+      ok(beta?.session_at === 'sandbox' && /beta is being copied to sandbox/.test(beta?.session_why || '')
+         && /the session starts once the copy is there/.test(beta?.session_why || ''),
+         `a project bound to a node that has no copy of it yet carries the reason on its row (${(beta?.session_why || '').slice(0, 60)})`);
       const refused = await term('claude:beta');
-      ok(refused.status === 503 && /sessions run on sandbox/.test(refused.body)
-         && /nowhere else/.test(refused.body),
-         '...and one bound to a node that cannot take it is refused with that node\'s reason');
+      ok(refused.status === 503 && /being copied to sandbox/.test(refused.body),
+         '...and one bound to a node that cannot take it yet is refused with that node\'s reason');
       // ...and there is no way to ask for it here. `here=1` was the dead
       // button's escape while this container could still run one; it cannot,
       // so the flag is gone and the same refusal answers whatever is asked.
       const here = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent('claude:beta') + '&here=1',
                                { headers: auth, redirect: 'manual' });
-      ok(here.status === 503 && /sessions run on sandbox/.test(await here.text()),
+      ok(here.status === 503 && /being copied to sandbox/.test(await here.text()),
          '...and asking for it on this container anyway changes nothing');
       // A shell follows the node for the same reason a session does (the
-      // tree is that machine's mount), so a node that cannot take one takes
+      // tree is that machine's copy), so a node that cannot take one takes
       // neither. That is unchanged; what R47 changed is the NO-node case.
       const shellRefused = await term('shell:beta');
-      ok(shellRefused.status === 503 && /sessions run on sandbox/.test(shellRefused.body),
+      ok(shellRefused.status === 503 && /being copied to sandbox/.test(shellRefused.body),
          '...and a shell on that project follows the node, so it is refused too');
       await api('/api/prefs', { project: 'beta', node: '' });
       const shellHere = await term('shell:beta');

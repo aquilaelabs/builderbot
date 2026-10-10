@@ -119,8 +119,8 @@ RESOLV_UPSTREAM = ("/run/systemd/resolve/resolv.conf", "/etc/resolv.conf")
 # multicast range. A session reaches none of it but what the sets name.
 SESSNET_LOCAL = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
                  "172.16.0.0/12", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/3")
-# Where the projects share is mounted, which is what a session works in. The
-# seam is for the suite: it runs its agent as a session account, and inside a
+# Where the node's synced copy of its projects is (R162), which is what a
+# session works in. The seam is for the suite: it runs its agent as a session account, and inside a
 # session's view /workspace is the view's own read-only root.
 SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # The pane a respawn may run again: bb-tty's claude launcher, in the project's

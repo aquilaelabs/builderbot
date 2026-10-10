@@ -1206,13 +1206,14 @@ projects on one VM share it. **Its Claude sessions too** (roadmap #24,
 docs/nodes.md §19): a node provisioned with a session account keeps two
 ttyds up beside the agent, running bb-tty from the bb the controller ships,
 so a session on a project bound to it works *on* that machine, with its
-toolchains, on the projects share it mounts at `/workspace` (one more row in
-the node's mounts on this tab). The row's census says whether that half is
-up (`session`: ports, account, whether `/workspace` is mounted, which Claude
-the account has); `bb roadmap`, `bb bug`, `bb version` and the other verbs
+toolchains, in the copy of the project its agent keeps at `/workspace` in
+step with this container's (a synced copy, the one way a node holds its
+projects: nothing mounts the projects share on a node). The row's census
+says whether that half is up (`session`: ports, account, which Claude the
+account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
 whose state is this container's are relayed back here over the API with the
 session's own token. The terminal proxy sends a bound project's session to
-that node when its row says the half is up and `/workspace` is mounted, and
+that node when its row says the half is up and the project's copy is there, and
 refuses with the reason (on the row's button and in the terminal) when
 the node cannot take one, rather than starting it on the wrong machine. A
 project with **no** node has no Claude session at all: this container carries
@@ -3147,7 +3148,7 @@ into the wrong tree by mistake, which is the common failure, and Bash is not
 under it.
 
 **The hard boundary is the session's view (roadmap R35).** Every session on a
-node runs as one account and the projects share is mounted whole, so file
+node runs as one account and the node holds every project bound to it, so file
 permissions cannot keep projects apart. On a Linux node provisioned as a
 sandbox, a project's Claude session and its project shells start inside a
 mount, PID and IPC namespace built by `nodes/bb-session`, a root helper that
@@ -3845,9 +3846,9 @@ Each account works as itself:
   pairing key, the AVDs and the build caches are not duplicated per person
 - **its transcripts and memories in one place whichever machine ran the
   session**: the home's `~/.claude/projects` is a link to the account's own
-  directory on the projects share (`/workspace/.claude/<uid>/projects`),
-  made on this container and on every node alike (a node holding a synced
-  copy keeps that directory itself and its agent mirrors it here), so a
+  directory at `/workspace/.claude/<uid>/projects`, made on this container
+  and on every node alike (a node keeps that directory itself and its agent
+  mirrors it here), so a
   conversation held on a node is offered here to resume and its memories
   show on the notebook's Memory tab. A home that already held transcripts has them copied across
   once, the original kept beside the link as `projects.moved-<date>` for
@@ -4099,8 +4100,9 @@ from Apple's own downloads (Xcode itself is Apple's to serve and needs an
 Apple ID once). The agent's package manager there is Homebrew, its service
 launchd; the Nodes tab offers no Storage or Network, because a Mac's mounts
 and address are its owner's, and asks for no root. Sessions on the Mac
-itself need the projects share at `/workspace`, which on macOS is one line
-in `/etc/synthetic.conf` and an SMB mount, and are not set up by the script.
+itself need a `/workspace` the agent can keep a synced copy in, which on
+macOS is one line in `/etc/synthetic.conf`, and are not set up by the
+script.
 
 Untested on a real Mac yet: the script and the agent's macOS path are
 written against Apple's documentation and the agent's own tests, and the

@@ -32,10 +32,10 @@ set -euo pipefail
 USER_NAME="bb"
 # The session account (roadmap #24), with the uid:gid the CONTROLLER writes
 # files as (Unraid's nobody:users, the container template's PUID:PGID
-# defaults), so a file a session saves on the projects share is owned exactly
-# as one saved from the controller is. A different uid here would leave the
-# share with files the rest of the array does not expect, which is the one
-# part of this that can spoil somebody's data. `none` makes no such account,
+# defaults), so a file a session saves in its synced copy goes up to the
+# controller owned exactly as one saved there is. A different uid here
+# would leave the controller's tree with files the rest of the array does
+# not expect, which is the one part of this that can spoil somebody's data. `none` makes no such account,
 # and then this node runs no sessions.
 SESSION_NAME="builder"
 SESSION_UID=99
@@ -82,8 +82,7 @@ it, which is a paste rather than a questionnaire.
   --session-user NAME|none   the account a Claude SESSION works as on this
                        node (builder), made with --session-uid/--session-gid
                        (99:100, the controller's PUID:PGID, so files it saves
-                       on the projects share are owned as the controller's
-                       are). In kvm for the emulator, in NO docker group. The
+                       are owned as the controller's are). In kvm for the emulator, in NO docker group. The
                        agent runs ttyd for it and the dashboard's terminals
                        reach it; Claude Code is installed into its home.
                        `none` makes no such account, and no sessions run here.
@@ -121,11 +120,8 @@ it, which is a paste rather than a questionnaire.
                        at PATH. Requires one: on bare metal there is nothing
                        to pass a share in, so use --nfs instead. Repeatable.
                        PATH MUST match the path BuilderBot uses. `:ro` mounts
-                       it read-only: right for the projects share on a
-                       Docker-only sandbox, where nothing writes source code;
-                       WRONG on a node with a session account, whose Claude
-                       sessions edit that share and are refused until it is
-                       read-write. Leave it off a share containers keep their
+                       it read-only. Never /workspace: a node's projects are
+                       a synced copy there, not a share. Leave it off a share containers keep their
                        data on.
   --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
                        cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
@@ -158,11 +154,12 @@ it, which is a paste rather than a questionnaire.
                        creates, fills and (for the cache) empties it.
 
 Path parity is not a style preference. A compose file's bind mounts are
-resolved by whatever runs the container, so if this VM calls the projects
-share /workspace exactly as BuilderBot does, a relative bind means the same
-directory on both sides and nothing has to translate between them. Mount it
-anywhere else and every project's compose file becomes wrong in a way that
-fails silently: docker creates the missing directory and mounts it empty.
+resolved by whatever runs the container, so a share this VM mounts at the
+path BuilderBot uses means the same directory on both sides and nothing has
+to translate between them. Mount it anywhere else and every compose file
+naming it becomes wrong in a way that fails silently: docker creates the
+missing directory and mounts it empty. The projects themselves are not a
+share: each node holds a synced copy at /workspace, as BuilderBot does.
 EOF
 }
 
@@ -549,9 +546,7 @@ svc_active() {
 # written the way this init wants one: a unit, an OpenRC script under
 # supervise-daemon, or a runit directory. Rewritten on every run, then
 # enabled and (re)started. Ordered after the network mounts (remote-fs,
-# netmount): the agent's first census says whether /workspace is mounted,
-# and one taken before the share landed ghosted every Claude button bound
-# to the node for the ten minutes until the next.
+# netmount): a store on a share is there before the agent's first census.
 # svc_install NAME DESC CMD [EXTRA]: the service, whichever init this is.
 # EXTRA is extra [Service] lines for systemd, where a unit's settings decide
 # what a stop reaches; the other inits take the command and nothing else.
@@ -1036,8 +1031,8 @@ fi
 # a hole to plug, it is the whole point of the VM: it exists to be wrecked, and
 # BuilderBot needs the daemon to do its job. What the split buys is that the
 # machine's OWN configuration is not one command away from a session that
-# wandered: the fstab that decides whether /workspace is the projects share,
-# and read-only, needs root, which neither account here has.
+# wandered: the fstab that decides what this machine mounts, and read-only,
+# needs root, which neither account here has.
 #
 # NO ADMINISTRATOR ACCOUNT IS MADE, and none is needed: the agent runs as
 # root under systemd and drops to --user for every job, bb-sandbox refuses to
@@ -1051,8 +1046,8 @@ fi
 # --- the session account (roadmap #24) ------------------------------------
 # The second account, and the one the design turns on: a Claude session on
 # this node's projects runs HERE, as this account, in a tmux the agent's
-# ttyd starts, with this machine's toolchains and the projects share this
-# machine mounts. Not bb, on purpose: bb is in the docker group, which is
+# ttyd starts, with this machine's toolchains and its synced copy of the
+# projects. Not bb, on purpose: bb is in the docker group, which is
 # root on any machine running a daemon, and a session is exactly the thing
 # to keep away from that. So: no docker, no sudo, kvm
 # for the emulator, a home of its own for the Claude login and the
@@ -1076,7 +1071,7 @@ else
             # the share will be owned by whatever uid it got, and that is
             # worth a line at provision time rather than a surprise later.
             warn "uid ${SESSION_UID} is already $(getent passwd "$SESSION_UID" | cut -d: -f1) on this machine"
-            printf '   %s is made with the next free uid; files it saves on the projects share\n' "$SESSION_NAME"
+            printf '   %s is made with the next free uid; files it saves for the controller\n' "$SESSION_NAME"
             printf '   will be owned by that uid rather than the controller'"'"'s %s\n' "$SESSION_UID"
             useradd -m -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
         else
@@ -1235,9 +1230,9 @@ esac
 # kept in a list of our own: fstab is what the machine actually boots from, and
 # a second list would be a claim about it rather than a reading of it. Which
 # means the type list has to hold every type a share is really mounted with,
-# not only the two this tool writes: a /workspace mounted by hand with nfs4 is
+# not only the two this tool writes: a share mounted by hand with nfs4 is
 # invisible to a filter that knows only nfs, and `settings` then prints a
-# a path mapping with the projects share missing from it.
+# path mapping with it missing.
 ours() {
     awk '$1 !~ /^#/ && $3 ~ /^(virtiofs|9p|nfs|nfs4|cifs)$/ {print $2}' \
         /etc/fstab 2>/dev/null | sort -u
@@ -1398,13 +1393,13 @@ mount_one() {
 # --- commands -----------------------------------------------------------
 cmd_add_share() {
     local spec="${1:?usage: bb-sandbox add-share TAG:PATH[:ro]}" tag path opts=defaults
-    # `:ro` mounts it read-only. The projects share wants this: the daemon
-    # only ever RESOLVES bind sources there, so read-only costs nothing and a
-    # container that mounts its project tree cannot scribble on the source.
+    # `:ro` mounts it read-only: a share containers only read from.
     case "$spec" in *:ro) opts=defaults,ro; spec="${spec%:ro}" ;; esac
     tag="${spec%%:*}"; path="${spec#*:}"
     [ "$tag" != "$spec" ] || die "add-share wants TAG:PATH, got '$spec'"
     case "$path" in /*) ;; *) die "the mountpoint must be absolute, got '$path'" ;; esac
+    case "${path%/}" in /workspace|/workspace/*)
+        die "/workspace holds this node's synced copy of its projects; nothing is mounted there" ;; esac
     add_fstab "$tag $path virtiofs $opts,nofail 0 0" "$path" && mount_one "$path"
 }
 
@@ -1425,6 +1420,8 @@ cmd_add_nfs() {
     # the export and the mountpoint both come out as the export.
     case "$rest" in *:*) ;; *) die "add-nfs wants HOST:EXPORT:PATH; '$spec' has no mountpoint" ;; esac
     case "$path" in /*) ;; *) die "the mountpoint must be absolute, got '$path'" ;; esac
+    case "${path%/}" in /workspace|/workspace/*)
+        die "/workspace holds this node's synced copy of its projects; nothing is mounted there" ;; esac
     add_fstab "$host:$exp $path nfs $opts,nofail,_netdev 0 0" "$path" && mount_one "$path"
 }
 
@@ -1432,13 +1429,7 @@ cmd_add_nfs() {
 #
 # The :ro suffix on add-share/add-nfs decides it when a mount is made; this
 # decides it afterwards, which is what somebody actually has, and without it
-# the only way to make /workspace read-only was to retype its whole spec.
-#
-# /workspace is the one that wants it: the daemon over here only ever RESOLVES
-# bind sources in the projects share (nothing on this machine compiles or
-# edits anything), so read-only costs nothing and means a container that mounts
-# its project tree cannot write to your source. The data shares stay writable,
-# being what they are for.
+# the only way to make a share read-only was to retype its whole spec.
 cmd_readonly() {
     local path="${1:?usage: bb-sandbox readonly PATH [on|off]}" want="${2:-on}"
     local hit line src mp fstype opts dump pass o new_opts=""
@@ -1697,7 +1688,7 @@ menu_whiptail() {
             share    "add a virtiofs share" \
             remove   "take a mount out of fstab (refused if a store is in it)" \
             appdata  "choose which mount holds container appdata" \
-            readonly "make a mount read-only (right for /workspace)" \
+            readonly "make a mount read-only" \
             check    "verify every mount is really there" \
             settings "the path mapping for this machine's row" \
             quit     "" 3>&1 1>&2 2>&3)" || return 0
@@ -1705,12 +1696,12 @@ menu_whiptail() {
             list)  cmd_list; pause ;;
             nfs)   ask "HOST:EXPORT:PATH" "192.168.1.15:/mnt/user/media:/auxiliary" \
                        && cmd_add_nfs "$REPLY"; pause ;;
-            share) ask "TAG:PATH" "workspace:/workspace" \
+            share) ask "TAG:PATH" "" \
                        && cmd_add_share "$REPLY"; pause ;;
             remove) ask "which mountpoint" "" && cmd_remove "$REPLY"; pause ;;
             appdata) ask "which mountpoint holds container appdata" "${APPDATA:-/devdata}" \
                        && cmd_appdata "$REPLY"; pause ;;
-            readonly) ask "which mountpoint to make read-only" "/workspace" \
+            readonly) ask "which mountpoint to make read-only" "" \
                        && cmd_readonly "$REPLY" on; pause ;;
             check) cmd_check || true; pause ;;
             settings) cmd_settings; pause ;;
@@ -1750,7 +1741,7 @@ EOF
             3) ask "TAG:PATH" "" && cmd_add_share "$REPLY" ;;
             4) ask "which mountpoint" "" && cmd_remove "$REPLY" ;;
             5) ask "which mountpoint holds container appdata" "${APPDATA:-}" && cmd_appdata "$REPLY" ;;
-            6) ask "which mountpoint to make read-only" "/workspace" && cmd_readonly "$REPLY" on ;;
+            6) ask "which mountpoint to make read-only" "" && cmd_readonly "$REPLY" on ;;
             7) cmd_check || true ;;
             8) cmd_settings ;;
             q|Q) return 0 ;;
@@ -1763,7 +1754,8 @@ EOF
 # What goes is what provision-linux.sh put here for BuilderBot alone: the
 # agent and its unit, the session-ports rule, the two accounts and their
 # homes (Claude Code, the runners' directories, caches), the mounts
-# BuilderBot used (/workspace and whatever a store sits on), the stores on
+# BuilderBot used (whatever a store sits on, and a /workspace share left from
+# before every node held a synced copy), the stores on
 # this disk, this tool. What stays is shared with the rest of the machine:
 # docker and the packages the provisioner installed (nfs-common, python3,
 # tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories,
@@ -2461,8 +2453,8 @@ printf '   /usr/local/sbin/bb-sandbox: run it as root to add mounts later\n'
 
 say "shares"
 # Written to fstab rather than mounted once, because a sandbox that comes back
-# from a reboot without the projects share is a sandbox that builds the wrong
-# thing rather than failing. bb-sandbox does the writing, and keeps doing it
+# from a reboot without a share it builds from is a sandbox that builds the
+# wrong thing rather than failing. bb-sandbox does the writing, and keeps doing it
 # every time a share is added after today: one implementation, not a copy per
 # entry point.
 declare -a MOUNTED=()
@@ -2482,7 +2474,7 @@ for spec in "${NFS[@]:-}"; do
 done
 # SELinux stays enforcing on the RHEL family (nothing here needs it off),
 # but by default it stops a container from reading an NFS mount, which is
-# exactly what a dev instance's bind of the projects share is. One boolean,
+# exactly what a dev instance's bind of a share is. One boolean,
 # persistent, says containers may; the mounts themselves are unaffected.
 # Set whenever SELinux enforces, not only when --nfs was given on this
 # run: a share added later through the Nodes tab goes through bb-sandbox,
@@ -2758,9 +2750,9 @@ EOF
 Sessions run here too, as ${SESSION_NAME}: the agent keeps a ttyd up on this
 machine's LAN address (port 7681, read-only twin on 7682) running bb-tty from
 the bb the controller ships, so a Claude session on a project bound to this
-node lives on this machine. It needs the projects share mounted at /workspace
-(add it on the Nodes tab, the way any mount is) and the account signed in
-to Claude once, from a shell here:
+node lives on this machine, in its synced copy of the project at
+/workspace, which the agent makes and keeps in step with the controller's.
+It needs the account signed in to Claude once, from a shell here:
 
   su - ${SESSION_NAME}              then: claude login
 
@@ -2795,9 +2787,8 @@ This script makes no administrator account. Whatever already has root here
 Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
 that group is root on this machine to anyone who wants it. This VM exists to be
 wrecked, so that is the arrangement and not a hole in it. What the split buys
-is that the machine's own configuration (the fstab deciding whether /workspace
-is the projects share, and read-only) is not one command away from a session
-that wandered.
+is that the machine's own configuration (the fstab deciding what it mounts,
+and read-only) is not one command away from a session that wandered.
 
   sudo bb-sandbox settings     the path mapping for this machine's row
   sudo bb-sandbox check        is every mount really there

@@ -1,7 +1,8 @@
-"""A node's projects as a synced copy instead of a mounted share (R162).
+"""A node's projects as a synced copy (R162), the one way a node holds them:
+no node mounts the controller's disk (R163).
 
-The controller's copy on the share stays the original. A node in sync mode
-holds each project bound to it as a local copy under /workspace, and its
+The controller's copy stays the original. A node holds each project bound
+to it as a local copy under /workspace, and its
 agent keeps the two in step over the agent API, the one connection a node
 behind a one-way tunnel may open:
 
@@ -339,13 +340,11 @@ def projects(nid):
     """The projects this node holds as a synced copy, and each one's
     revision, for the agent to compare with its own."""
     conf = (nodes.node(nid) or {}).get("config") or {}
-    mode = conf.get("workspace") or "mount"
-    if mode == "off":
+    mode = conf.get("workspace") or "sync"
+    if mode != "sync":
         # Off its synced copy (R164): nothing held, and the clean-up the
         # page asked for, by its token, until the node answers it.
-        return {"mode": mode, "projects": {}, "reads": {}, "clean": str(conf.get("clean") or "")}
-    if mode != "sync":
-        return {"mode": mode, "projects": {}, "reads": {}}
+        return {"mode": "off", "projects": {}, "reads": {}, "clean": str(conf.get("clean") or "")}
     return {"mode": mode, "projects": {p: rev_of(p) for p in bound_projects(nid)},
             "reads": {p: rev_of(p) for p in read_projects(nid)},
             # Leaving (R164): kept in step as ever, so what is waiting goes up.

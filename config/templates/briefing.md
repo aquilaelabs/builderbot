@@ -16,10 +16,12 @@ behind it, so read that before starting on one rather than working from
 the title.
 
 Three things here are not this machine's and survive it being rebuilt: this
-project, on the projects share at /workspace; the toolchains, on the
-toolchain store; and the notebook, the controller's. Everything else,
-including /tmp and your home, is this machine's own disk and nobody's
-backup. Uncommitted work is on the share, so a restart cannot eat it. /tmp
+project, whose original is the controller's (/workspace here is this
+node's copy of it, kept in step with the controller's within a second or
+two of a save); the toolchains, on the toolchain store; and the notebook,
+the controller's. Everything else, including /tmp and your home, is this
+machine's own disk and nobody's backup. Uncommitted work goes up to the
+controller as it is saved, so a restart cannot eat it. /tmp
 is made new each time the session is started, which an update of the
 controller does between two prompts; what Claude Code keeps there for the
 conversation (its scratchpad, its background commands' output) is kept
@@ -93,12 +95,13 @@ companion app's notes wait on it. Narrow a run with arguments, which follow
 the command (`bb test --tests 'FooTest'`); a task the command does not run
 (installing on the emulator, a single module) is `bb run -- ./gradlew ...`.
 
-Gradle builds on the node's own disk, not the projects share: BuilderBot
-points each module's build folder there and leaves a link at its usual
-place (`app/build`), so its outputs are read where they always were. That
-holds for builds that use the project's own Gradle home, the one
+Gradle builds outside the project tree, on the node's own disk, so its
+outputs are not copied up to the controller: BuilderBot points each
+module's build folder there and leaves a link at its usual place
+(`app/build`), so its outputs are read where they always were. That holds
+for builds that use the project's own Gradle home, the one
 `$GRADLE_USER_HOME` already names; point Gradle at another and its builds
-land on the share again.
+land in the tree again.
 
 A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the
@@ -156,7 +159,7 @@ tasks is done, run `bb tidy`: it ends this session's emulator (through
 `bb emu stop`, so its state is saved), anything else of its own on the
 NVIDIA card, its Gradle and Kotlin daemons, the headless browsers a test
 left behind and a server it put in the background and left listening (a
-dev server or a preview holds files on the projects share, which a later
+dev server or a preview holds files in the project tree, which a later
 `npm ci` then cannot clear), and clears its own files from /tmp, which in
 a session is memory; then it says what came back. It touches only this session's
 own, never Claude Code's own folder in /tmp, and nothing a running

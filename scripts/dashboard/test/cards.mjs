@@ -640,7 +640,7 @@ print(json.dumps(out))
 // button with no reason is the thing somebody stares at.
 //
 // Planted rather than arranged: the fixture has no node, and the four refusals
-// worth drawing (offline, no session half, no share, read-only share) are
+// worth drawing (offline, no session half, no copy yet, taken off its copy) are
 // nodes.mjs's to produce. This is about what the ROW does with one.
 {
   await holdPoll(page);

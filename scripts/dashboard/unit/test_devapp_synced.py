@@ -1,6 +1,7 @@
 """A dev instance on a node holding synced copies (R163 step 4): its own
-/workspace is the projects root as the share mounted there was, so the path
-mapping takes it as such with no mount in its census."""
+/workspace is the projects root, so the path mapping takes it as such with
+no mount in its census; every agent node holds them unless taken off its
+copy (R164), and the controller's own node never does."""
 import os
 import sys
 import unittest
@@ -24,9 +25,9 @@ class Synced(unittest.TestCase):
         devapp.WORKSPACE = Path("/workspace")
         devapp.queue = Queue({
             "n_sync": {"id": "n_sync", "kind": "agent", "config": {"workspace": "sync"}, "reported": {"mounts": []}},
-            "n_share": {"id": "n_share", "kind": "agent", "config": {}, "reported": {
-                "mounts": [{"path": "/workspace", "mounted": True}]}},
-            "n_none": {"id": "n_none", "kind": "agent", "config": {}, "reported": {"mounts": []}}})
+            "n_plain": {"id": "n_plain", "kind": "agent", "config": {}, "reported": {"mounts": []}},
+            "n_off": {"id": "n_off", "kind": "agent", "config": {"workspace": "off"}, "reported": {"mounts": []}},
+            "local": {"id": "local", "kind": "local", "config": {}, "reported": {"mounts": []}}})
 
     def tearDown(self):
         devapp.WORKSPACE, devapp.queue, devapp._node_ctx.node = self.was
@@ -44,12 +45,34 @@ class Synced(unittest.TestCase):
         self.assertFalse(devapp._node_mounts_at("/devdata"))
         self.assertFalse(devapp._daemon_mounts("/mnt/SDK"))
 
-    def test_a_node_on_the_share_is_judged_by_its_mount_as_before(self):
-        self.on("n_share")
-        self.assertTrue(devapp._node_mounts_at("/workspace"))
-        self.on("n_none")
+    def test_every_agent_node_but_one_taken_off_its_copy(self):
+        self.on("n_plain")
+        self.assertTrue(devapp._node_mounts_at("/workspace"), "a node with no workspace word holds its copy")
+        self.on("n_off")
         self.assertFalse(devapp._node_mounts_at("/workspace"))
-        self.assertFalse(devapp._daemon_mounts("/workspace"))
+        self.on("local")
+        self.assertFalse(devapp._node_mounts_at("/workspace"), "the controller's own node holds the original")
+
+    def test_a_bind_the_daemon_cannot_have_is_named(self):
+        """A compose binding into the project, addressed to a node taken off
+        its copy: the daemon there has no /workspace, docker would mount an
+        empty directory, and problems() says so before anything starts."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as ws:
+            devapp.WORKSPACE = Path(ws)
+            os.makedirs(os.path.join(ws, "alpha"))
+            was = devapp._pairs
+            devapp._pairs = lambda: []
+            try:
+                cfg = {"services": {"app": {"volumes": [f"{ws}/alpha/data:/data"]}}}
+                self.on("n_off")
+                got = devapp.problems("alpha", cfg)
+                self.assertEqual(len(got), 1, got)
+                self.assertIn("this container's path", got[0])
+                self.on("n_plain")
+                self.assertEqual(devapp.problems("alpha", cfg), [], "a node holding its copy has it")
+            finally:
+                devapp._pairs = was
 
 
 if __name__ == "__main__":

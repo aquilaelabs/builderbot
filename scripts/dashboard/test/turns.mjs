@@ -92,8 +92,9 @@ const CENSUS = { cpu: 4, mem_mb: 8192, arch: 'x86_64', system: 'linux',
 const en = await call('/api/v1/agent/enroll', { census: CENSUS, version: shipped.version,
   digest: shipped.digest, user: 'bb' }, bearer(minted.token));
 ok(en.ok && en.node_id === minted.id, 'a node that runs sessions enrolled');
+// ...with each project's synced copy there (R163), as an agent says.
 const beat = sessions => call('/api/v1/agent/work', { sample: { cpu_pct: 1, mem_mb: 8192,
-  mem_used_mb: 512, sessions }, running: 0, wait: 0 }, bearer(en.token));
+  mem_used_mb: 512, sessions, sync: { alpha: { ready: true, rev: 1 }, beta: { ready: true, rev: 1 }, gamma: { ready: true, rev: 1 }, delta: { ready: true, rev: 1 } } }, running: 0, wait: 0 }, bearer(en.token));
 await beat([]);
 await call('/api/prefs', { project: 'alpha', node: minted.id });
 

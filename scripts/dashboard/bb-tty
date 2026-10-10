@@ -281,7 +281,7 @@ cache_project_dir() {
 }
 
 # THE SESSION'S VIEW (R35). Every session on a node runs as one account and
-# the projects share is mounted whole, so the scope file below is all that
+# the node holds every project bound to it, so the scope file below is all that
 # stands between a session and another project, and Bash is not under it.
 # Where the node can build one, a project's session runs inside a view of the
 # machine that holds only that project: bb-session, root, and the one command
@@ -800,8 +800,7 @@ boot_id() {
 # A Gradle project's build folders on the node's own disk (B439): the init
 # script lib/gradle-local-build.gradle in the project's Gradle home, and the
 # place it builds into, BB_LOCAL_BUILD, under the account's cache on this
-# machine. Off in the project's settings, both go. Only on a node, where the
-# tree is the projects share and the home is the node's own disk.
+# machine. Off in the project's settings, both go. Only on a node.
 gradle_local_build() {
     [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "${account:-}" ] && on_node || return 0
     local init="$GRADLE_USER_HOME/init.d/builderbot-local-build.gradle"
@@ -1072,7 +1071,7 @@ case "$target" in
             case "$resume" in
                 *[!0-9a-fA-F-]*|"") bad "Not a session id: ${resume}" ;;
             esac
-            # A node with no projects share keeps its own copy of the
+            # A node keeps its own copy of the
             # account's conversations (B613): one started elsewhere, or
             # carried on elsewhere since, comes down first. Asked only of a
             # node; on the share the file is the controller's own.

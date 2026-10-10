@@ -1746,15 +1746,16 @@ def _pairs():
 
 def _synced_here(path):
     """Whether the node being addressed holds its projects as a synced copy
-    (R162) and `path` is the projects root: its own /workspace then is what
-    the share mounted there was, the same paths with the same trees, so a
-    compose's binds mean on it what they mean here (R163 step 4). A dev
-    instance lives on its project's own nodes, which always hold it."""
+    (R162), which every agent node does unless taken off it (R164), and
+    `path` is the projects root: its own /workspace holds the same trees at
+    the same paths, so a compose's binds mean on it what they mean here
+    (R163 step 4). A dev instance lives on its project's own nodes, which
+    always hold it."""
     nid = getattr(_node_ctx, "node", None) or _default_node()
     n = queue.node(nid) if (queue is not None and nid) else None
     ws = str(WORKSPACE).rstrip("/") if WORKSPACE else ""
-    return bool(n and ws and path.rstrip("/") == ws
-                and (n.get("config") or {}).get("workspace") == "sync")
+    return bool(n and ws and path.rstrip("/") == ws and n.get("kind") == "agent"
+                and ((n.get("config") or {}).get("workspace") or "sync") == "sync")
 
 
 def _node_mounts_at(path):
@@ -1788,11 +1789,10 @@ def host_map():
     roots, out, bad = _mount_roots(), {}, []
     root = None
     pairs = _pairs()
-    # The projects share at the same path on both machines is the ordinary
-    # arrangement (a sandbox VM mounts it at /workspace, as this container
-    # does), so where nobody has written a pair for it and the node reports
-    # the share mounted there, /workspace maps to itself. A written pair
-    # still wins, for the node whose owner put the share somewhere else.
+    # The projects at the same path on both machines is the ordinary
+    # arrangement (a node holds its synced copy at /workspace, as this
+    # container holds the original), so where nobody has written a pair for
+    # it, /workspace maps to itself. A written pair still wins.
     ws = str(WORKSPACE).rstrip("/") if WORKSPACE else ""
     if ws and not any(h.strip().rstrip("/") == ws for h, _ in pairs) and _node_mounts_at(ws):
         pairs.append((ws, ws))
@@ -1819,11 +1819,11 @@ def host_map():
             # the shipped default as misconfigured.
             #
             # An agent node is the other machine that really does have this
-            # path: the storage plane mounts the projects share at /workspace
-            # on every node it manages, so the identity is correct there for
-            # the same reason it is correct on the sandbox VM, and saying
-            # otherwise put a warning on every start once a second node was
-            # enrolled (B193). Its own census is the evidence, rather than the
+            # path: it holds its synced copy of the projects at /workspace
+            # (R163), so the identity is correct there for the same reason it
+            # is correct on the sandbox VM, and saying otherwise put a warning
+            # on every start once a second node was enrolled (B193). For any
+            # other path its own census is the evidence, rather than the
             # address or an assumption about what a node must look like: it
             # lists what is mounted where on that machine.
             #

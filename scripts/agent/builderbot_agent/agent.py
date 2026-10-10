@@ -45,7 +45,6 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.session_tried = 0
         self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
         self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
-        self.session_mount = None         # (mounted, writable) as the last census said, to notice it moving
         # The census for the loop's next hello, taken beside the loop rather
         # than in it (B380): the thread, and what it came back with.
         self.census_thread = None
@@ -162,8 +161,6 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         # `taken` is a census hello_step took beside the loop; anybody else
         # takes one here, now.
         c = taken if taken is not None else self.census_beating()
-        se = c.get("session") or {}
-        self.session_mount = (bool(se.get("workspace")), bool(se.get("writable"))) if se else None
         st, r = self.ctl.call("hello", {"census": c,
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
@@ -359,7 +356,6 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     continue
                 delay = 1
             self.session_check()
-            self.session_mount_check()
             self.session_firewall_check()
             self.session_idle_reap()
             self.runner_check()

@@ -46,7 +46,8 @@ TICK = 1.0
 PULL_EVERY = 10.0
 ASK_EVERY = 30.0
 WALK_EVERY = 60.0        # a whole walk even with the watcher, for what it cannot see
-MOUNTED = "the projects share is still mounted at /workspace; Apply storage on the node's row takes it out"
+MOUNTED = ("something is mounted at /workspace, where this node's synced copy goes; "
+           "unmount it on the machine")
 
 
 def skipped(rel):
@@ -295,12 +296,9 @@ class WorkspaceSync:
             if st_ != 200:
                 return
             self.asked_at = now
-            mode = str(r.get("mode") or "mount")
-            if mode != self.agent.state.get("workspace_mode"):
-                # The census says whether /workspace is there, and in sync
-                # mode it is a directory, not a mount: said again now.
-                self.agent.state["workspace_mode"] = mode
-                self.agent.hello_at = 0
+            # sync, or off once the node is taken off its copy (R164). Off is
+            # also what any other word means: nothing is held then.
+            mode = "sync" if str(r.get("mode") or "sync") == "sync" else "off"
             self.mode = mode
             if r.get("leaving") and not self.leaving_at:
                 self.leaving_at = time.monotonic()
@@ -336,10 +334,10 @@ class WorkspaceSync:
                 self.clean(self.clean_ask)
             return
         if os.path.ismount(self.root):
-            # A node moving off the projects share (R163) is told it is
-            # synced before its storage apply has taken the share out:
-            # copying now would write onto the controller's own files
-            # through the mount. Held, said, and started once it is gone.
+            # Something mounted where the copy goes (a share left in fstab
+            # from before R163): copying now could write onto somebody
+            # else's files through it. Held and said, and started once it
+            # is gone.
             for p in self.projects.values():
                 p.error = MOUNTED
             return
@@ -391,7 +389,7 @@ class WorkspaceSync:
         share at /workspace these would be the controller's own trees."""
         freed, err = 0, ""
         if os.path.ismount(self.root):
-            err = "the projects share is mounted at /workspace, so nothing there is this node's to remove"
+            err = "something is mounted at /workspace, so nothing there is this node's to remove"
         else:
             rd = self.record_dir()
             names = [f[:-5] for f in os.listdir(rd) if f.endswith(".json") and f != "claude.json"]

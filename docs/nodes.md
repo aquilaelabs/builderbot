@@ -575,7 +575,8 @@ agent on every hello (`share_images()`) and by the controller at boot
   whole, holding every project including uncommitted work. Sessions run here;
   the notebook is about these directories; `bb` works exactly as today. It is
   the source of truth and the only writable copy.
-- **On a node: nothing permanent.** A job gets
+- **On a node: a synced copy, for sessions** (below), and nothing
+  permanent for a job. A job gets
   `/var/lib/builderbot/jobs/<job-id>/workspace`, materialized before the first
   step and deleted after, with a retention window (keep the last failed job
   per project), so failures can be inspected.
@@ -583,9 +584,9 @@ agent on every hello (`share_images()`) and by the controller at boot
   viewing mechanism, never the execution mechanism. The agent exposes
   "list/read under this job's directory", not a filesystem.
 
-### A synced copy instead of the share (R162, 9 Oct)
+### A synced copy, the one way a node holds its projects (R162, R163)
 
-A node can hold its projects without mounting anything: its `/workspace` is
+A node holds its projects without mounting anything: its `/workspace` is
 a directory of its own, and each project bound to it is a copy the agent
 keeps in step with the controller's over the agent API, the one connection
 a node behind a one-way tunnel may open. The controller's copy on the share
@@ -667,16 +668,17 @@ controller is.
   before it is unbundled. The agent keeps each project's state in
   `.git/.bbsync-state` (or `.bbsync-state` without git) for bb to read
   (`lib/syncwait.py`); sync leaves the file alone.
-- **Moving a node over** is one press, Move to a synced copy in its
-  Sessions section (R163): its sessions end, it is marked synced, so the
-  session gate holds new ones until each copy is there, and `/workspace`
-  leaves its storage through the ordinary storage apply, which unmounts it
-  and takes it out of fstab; the other mounts and the stores stay. The
-  agent copies nothing while `/workspace` is still a mount, and says so on
-  the row, so the order the node hears these in does not matter. A node
-  not provisioned as a sandbox has its storage unmounted at its own console
-  first. On the dev VM the four projects were copied and ready within
-  fifteen seconds of the press (9 Oct).
+- **The only way** (R163 step 6, 10 Oct). A node enrolls holding a synced
+  copy, and nothing mounts the projects share on a node any more: the
+  enroll dialog's choice, Move to a synced copy as a move off the share,
+  the share reasons on the session gate (not mounted, refused by the
+  export, read-only), the agent's mount watcher and bb's NFS workarounds
+  (re-reading files after a relayed verb, running a build again after an
+  NFS lock) are gone. A desired mount at `/workspace` is refused on the
+  Storage section and by bb-sandbox, since it would cover the copy; the
+  agent still copies nothing through a mount it finds there, and Clean up
+  removes nothing through one. The operator's reason: nothing should reach
+  the controller's disk directly.
 
 The index is a table (`migrations/0005_workspace_sync.sql`), one row per
 file with its hash and the revision it last changed at, deletions kept.
@@ -1103,6 +1105,8 @@ Notably absent: a `--workspace` role for agent nodes, since job-scoped snapshots
 replaced it (§6) for JOBS. A node that runs sessions (§19, phase 10a) mounts
 the projects share at `/workspace` all the same, through the phase-5 config
 plane like any other mount; that is the session's tree, not a job's.
+*Since replaced* (R162, R163, 10 Oct): the session's tree is a synced copy
+the agent keeps at `/workspace`, and nothing is mounted there.
 
 **Any size of VM, by construction.** The script assumes no disk layout and no
 sizes: every role defaults to the node's own filesystem, a role can be pointed
@@ -1870,7 +1874,10 @@ above, in order:
    mount; a session's tree is the mount, because it edits one tree for
    hours. Path parity does the rest: `/workspace/<project>` means the same
    directory on both sides, which is what lets bb's relayed verbs run on the
-   controller in the tree the session is in.
+   controller in the tree the session is in. *Since replaced* (R162, R163,
+   9-10 Oct): the node holds a synced copy at `/workspace` and mounts
+   nothing there; path parity still holds, and relayed verbs wait for the
+   two copies to agree (§6, the synced copy).
 2. **A project with no node has no Claude session (R47, 12 Sep).** The fork
    below was settled the other way on 2 September and has been settled again:
    this container carries no Claude Code at all, so there is nothing here for
@@ -1940,7 +1947,10 @@ that came up under ten minutes ago whose network mount has not landed;
 the census carries the uptime (`session.up_s`) for that, the agent
 re-reports the moment `/workspace` appears rather than at the next
 ten-minute hello, and the provisioner's unit orders after `remote-fs.target`
-so the first census usually has the mount already. A mount the server
+so the first census usually has the mount already. *Since replaced* (R163
+step 6, 10 Oct): the mount refusals are gone with the mount; the gate
+waits for the project's synced copy instead ("being copied, N files to
+go"), and refuses a node taken off its copy (R164). A mount the server
 refused is neither: the agent tries an unmounted fstab entry when it takes
 the census and reports what mount said (`mounts[].error`), the row and the
 button repeat it, and Apply network asks each NFS server's exports

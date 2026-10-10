@@ -42,7 +42,7 @@ Three rules this file keeps that are worth knowing before changing it:
     jobs this keeps two ttyds up, the same two the controller's dashboard
     hook starts, running bb-tty from the bb bundle the controller ships,
     so a Claude session on this node's projects lives on this node, with
-    this node's toolchains and the projects share it mounts. They run as
+    this node's toolchains and its synced copy of the projects. They run as
     the session account the provisioner made (--session-user), which is in
     no docker group: docker is root on any machine with a daemon, and the
     account a session works as is the one thing here to keep away from it.
@@ -71,4 +71,4 @@ Runs anywhere Python 3.8+ is, with nothing installed:
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.154"
+AGENT_VERSION = "0.7.155"

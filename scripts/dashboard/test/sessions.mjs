@@ -392,11 +392,17 @@ const bapi = async (path, body, hdrs) => (await fetch(URL.replace(/\/$/, '') + p
              'Content-Type': 'application/json', ...(hdrs || {}) },
   ...(body ? { body: JSON.stringify(body) } : {}) })).json();
 const deskbox = await bapi('/api/v1/nodes', { action: 'enroll', name: 'deskbox' });
-await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
+const deskAgent = await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
     cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
     session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
                workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } } },
   { Authorization: 'Bearer ' + deskbox.token });
+// ...with alpha's synced copy there (R163), as its agent's heartbeat says;
+// its answer is a 204 when there is no job, so the body is not read.
+await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/work', { method: 'POST',
+  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + deskAgent.token },
+  body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+    sync: { alpha: { ready: true, rev: 1 } } }, running: [], wait: 0 }) });
 await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
 // ...with the tester signed in to Claude there, as that node would have
 // reported it: a Claude press on a node with no sign-in offers the sign-in

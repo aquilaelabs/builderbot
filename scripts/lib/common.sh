@@ -24,7 +24,7 @@ BOOT_READY_FILE="${BOOT_READY_FILE:-/run/builderbot-ready}"
 # `controller` is the management instance: the dashboard, the notebook, the
 # queue and the record. `node` is a machine that enrolled with a controller
 # and runs its jobs and, since roadmap #24, its SESSIONS: the same bb-tty
-# starts Claude there, on the projects share the node mounts, with this
+# starts Claude there, in the node's synced copy of the project, with this
 # library answering for a machine that keeps no /config and has no owner.
 #
 # BUILDERBOT_ROLE is not a setting on this image: the AGENT sets it, in the
@@ -353,7 +353,7 @@ XPY
 #
 # The dashboard has accounts, and each of them gets a home: own shell history,
 # own Claude login, own memories. What it is NOT is a second OS user: every
-# session still runs as `builder`, so everything written to the projects share
+# session still runs as `builder`, so everything written to the projects
 # stays PUID:PGID exactly as it always has. A second uid would write files the
 # rest of the array does not expect, which is the one part of this that can
 # spoil somebody's data, and the operator ruled it out.
@@ -506,8 +506,9 @@ user_home() {
 # (the login in it must be), so a project bound to a node would leave its
 # conversations on whichever box ran them, and unbinding it would strand the
 # node's. This is what keeps them one: the projects directory of every
-# account's home, on every machine, is a link to one directory on the
-# projects share, which both machines mount read-write at the same path.
+# account's home, on every machine, is a link to one directory at the same
+# path: the controller's own under /workspace/.claude, and on a node the
+# node's own there, which its agent mirrors with the controller's (B613).
 # The slug is the working directory with `/` turned into `-`, and path parity
 # (/workspace/<project> on both sides, worktrees included) makes it the same
 # string wherever the session ran, so the controller's Memory tab and
@@ -545,8 +546,8 @@ claude_projects_link() {
     # itself is root's there, so the share being writable is enough.
     if ! { [ -d "$share" ] && [ -w "$share" ]; } \
             && ! { [ -d "${share%/*}" ] && [ -w "${share%/*}" ]; }; then
-        # Nowhere to link to. A link left from when there was (a node moved
-        # off the projects share) points at nothing, and Claude Code then
+        # Nowhere to link to. A link left from when there was (a node that
+        # mounted the projects share before R163) points at nothing, and Claude Code then
         # saves no conversation at all: taken down, so the home keeps its
         # own folder until the share is there again (B613).
         if [ -L "$link" ] && [ ! -e "$link" ]; then

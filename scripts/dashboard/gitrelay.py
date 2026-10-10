@@ -1,8 +1,8 @@
 """A node session's git push, fetch, pull and ls-remote, done on the controller
 without trusting the session's repository (B148).
 
-The project tree is on the projects share, and a session on a node can write
-every file in it, .git/config and .git/hooks included. git runs what those
+The project tree is the controller's, kept in step with a node's synced copy,
+and a session on a node can write every file in it, .git/config and .git/hooks included. git runs what those
 name: a hook, an ssh command, a credential helper, an fsmonitor, a pack
 program. So this never runs git in that tree. Each project has a bare
 repository of the controller's own under STATE/gitrelay, whose config only

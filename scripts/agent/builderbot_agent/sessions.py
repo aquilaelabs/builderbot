@@ -21,7 +21,6 @@ from .base import (
     SESSION_NFT,
     SESSION_PORT,
     SESSION_RETRY_S,
-    SHARE,
     TTYD_BIN,
     _probe,
     _run,
@@ -838,29 +837,6 @@ class SessionsMixin:
             if claude and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
-
-    def session_mount_check(self):
-        """Once a loop: is the projects share at /workspace as the last
-        census said: mounted, and writable? A census rides hello every ten
-        minutes, and the first one after a boot is taken before the network
-        mounts land (the unit orders after remote-fs.target now, but a mount
-        with nofail can still be late, and a Mac's owner mounts the share by
-        hand), so it says the share is missing and the controller ghosts
-        every Claude button bound here for the rest of those ten minutes.
-        So the fact is measured each loop (two stats), and a change says
-        hello again at once."""
-        if not SESSION or self.session_mount is None:
-            return
-        try:
-            mounted = os.path.ismount(SHARE)
-            now = (mounted, mounted and os.access(SHARE, os.W_OK))
-        except OSError:
-            return
-        if now != self.session_mount:
-            log(f"sessions: the projects share at /workspace is {'mounted' if now[0] else 'not mounted'}"
-                f"{' read-only' if now[0] and not now[1] else ''} now; telling the controller")
-            self.session_mount = now
-            self.hello_at = 0
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often

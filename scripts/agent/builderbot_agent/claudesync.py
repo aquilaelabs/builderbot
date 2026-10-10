@@ -3,9 +3,9 @@ controller's (B613).
 
 Every account's ~/.claude/projects is a link to
 /workspace/.claude/<uid>/projects (lib/common.sh's claude_projects_link).
-On a node that mounts the projects share that is the controller's own
-directory. A node holding its projects as a synced copy (R162, R163) has
-no share, so this keeps that directory on the node itself, owned by the
+On the controller that is the original. A node holds its projects as a
+synced copy (R162, R163) with no share, so this keeps that directory on
+the node itself, owned by the
 session account, and mirrors it with the controller's (claudesync.py
 there), for the folders of the projects the node holds:
 

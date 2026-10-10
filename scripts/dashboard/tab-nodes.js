@@ -397,15 +397,11 @@ function nodeRunnerSection(n, c){
 // session there gets, and which are open right now. The reasons a project
 // cannot be sent here are the proxy's (server.session_target), repeated in
 // the same words so the row and the refusal agree.
-// A node that holds its projects as a copy kept in step through the
-// controller rather than mounting the share (R162): each project's state.
+// A node holds its projects as a copy kept in step through the controller
+// (R162), the one way it holds them (R163): each project's state, and the
+// presses that take it off its copy and back (R164).
 function nodeSyncRow(n){
-  // A node still on the projects share moves in one press (R163): its
-  // sessions end, the share is unmounted and the copy is made.
-  if (!["sync", "off"].includes((n.config || {}).workspace)) return n.kind !== "agent" ? "" : `
-    <div class="sub">Projects here come from the projects share mounted at <code>/workspace</code>.</div>
-    <div><button type="button" data-nd="to-sync" ${n.live ? "" : "disabled"}>Move to a synced copy</button></div>
-    ${n.live ? "" : `<div class="sub dim">It moves once the node is answering.</div>`}`;
+  if (n.kind !== "agent") return "";
   const rows = Object.entries(n.reported?.sync || {});
   const one = ([p, v]) => `<code>${esc(p)}</code> ${v.error ? `<span class="bad">${esc(v.error)}</span>`
     : !v.ready ? `copying${v.copying ? ` (${v.copying} to go)` : ""}`
@@ -413,7 +409,7 @@ function nodeSyncRow(n){
   const conf = n.config || {}, live = n.live ? "" : "disabled";
   // Off its synced copy (R164): no projects and no sessions here, the
   // copies removed or on their way out, and one press back.
-  if (conf.workspace === "off"){
+  if ((conf.workspace || "sync") !== "sync"){
     const c = n.reported?.sync_clean || {};
     const done = conf.clean && c.token === conf.clean;
     return `<div class="sub">This node holds no projects, so no session starts here${
@@ -435,7 +431,7 @@ function nodeSyncRow(n){
     <div><button type="button" data-nd="sync-clean" ${live} ${drained ? "" : "disabled"}>Clean up /workspace</button>
       <button type="button" data-nd="sync-resume" ${live}>Keep syncing</button></div>`;
   }
-  return `<div class="sub">Projects here are a copy kept in step through the controller, with no share mounted${
+  return `<div class="sub">Projects here are a copy kept in step through the controller${
     rows.length ? `: ${rows.map(one).join(", ")}` : "; none is bound to this node yet"}.</div>
     <div><button type="button" data-nd="sync-stop" ${live}>Stop syncing</button></div>`;
 }
@@ -453,13 +449,6 @@ function nodeSessionsSection(n){
       No Claude session can start here until it is up.</div>`;
   } else {
     const gaps = [];
-    const wsErr = (n.reported?.mounts || []).find(m => m.path === "/workspace")?.error || "";
-    if (!se.workspace && wsErr) gaps.push(`the projects share is not mounted at /workspace: ${wsErr}${
-      /access denied/i.test(wsErr) ? ": the host's NFS export names another address; change the rule there" : ""}`);
-    else if (!se.workspace) gaps.push(se.up_s != null && se.up_s >= 0 && se.up_s < 600
-      ? `the projects share is not mounted yet: the machine booted ${se.up_s} seconds ago. Check again in a minute`
-      : "the projects share is not mounted at /workspace: add it under Storage");
-    else if (se.writable === false) gaps.push("the projects share is read-only: untick read-only under Storage and press Apply storage");
     if (!se.boot) gaps.push("the agent reports no boot id: Update agent");
     // Whether a session here is kept to its own project (R35): said on the
     // status itself when it is not, since a folded section shows nothing else.
@@ -596,9 +585,9 @@ function nodeTurnsRow(n){
 
 // The node's path mapping (docs/nodes.md §11): what this container's paths
 // are called on that machine, because its daemon resolves a compose file's
-// bind sources over there. Nearly always the identity now that the projects
-// share is mounted at /workspace on both sides: path parity is a rule, not
-// a setting, so it lives under Advanced with the actions that are rarely
+// bind sources over there. Nearly always the identity, since a node holds
+// its projects at /workspace as the controller does: path parity is a rule,
+// not a setting, so it lives under Advanced with the actions that are rarely
 // pressed, and says why it is there. Still read by devapp.host_map for
 // every node addressed, so it is not gone.
 function nodeAdvancedSection(n, stale, inflight){
@@ -626,7 +615,7 @@ function nodeAdvancedSection(n, stale, inflight){
         maxlength="60" aria-label="node name"></div>
       <button type="button" data-nd="rename" title="a runner already installed keeps its old label until reinstalled">Rename</button>
     </div>
-    <div class="sub">Only needed when the projects share is not at <code>/workspace</code> on the node.</div>
+    <div class="sub">Only needed when a path a compose file names is somewhere else on the node.</div>
     <div class="ndpaths actbar">
       <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated")}
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
@@ -1291,7 +1280,6 @@ function wireNodesTab(root){
               value="bb"></div>
         </div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
-        <label class="ndcap"><input type="checkbox" id="ndEnSync"> Its projects are a copy kept in step through the controller, with no share to mount</label>
       </div>
       <div class="field">
         <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
@@ -1320,9 +1308,7 @@ function wireNodesTab(root){
       $b(k)[typeof v === "boolean" ? "checked" : "value"] = v;
     const reach = $b("#ndEnReach");
     const showWg = () => { $b("#ndEnWgRow").hidden = reach.value !== "wireguard"; };
-    // Behind a tunnel the share is one more thing to open through it, so a
-    // synced copy is where it starts (R162); a choice either way.
-    reach.onchange = () => { showWg(); $b("#ndEnSync").checked = reach.value === "wireguard"; };
+    reach.onchange = showWg;
     showWg();
     // A file chosen lands in the box, which is what is sent: one place to
     // read it, change it, or paste it instead.
@@ -1342,7 +1328,7 @@ function wireNodesTab(root){
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
       "#ndEnSess": $b("#ndEnSess").checked, "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
-      "#ndEnSync": $b("#ndEnSync").checked, "#ndEnWgText": $b("#ndEnWgText").value});
+      "#ndEnWgText": $b("#ndEnWgText").value});
     const go = $b("#ndEnGo");
     go.onclick = () => pressing(go, async () => {
       const kept = keep();
@@ -1353,7 +1339,6 @@ function wireNodesTab(root){
       busy(go, "Making");
       const r = await nodeAct({action: "enroll", script: true, ...answers(),
         sessions: $b("#ndEnSess").checked, reach: reach.value,
-        workspace: $b("#ndEnSync").checked ? "sync" : "mount",
         controller: $b("#ndEnCtl").value.trim(),
         wg_conf: reach.value === "wireguard" ? conf : ""});
       if (r.error){ mintForm(kept); return; }
@@ -1605,18 +1590,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                       + "This installs the NVIDIA driver and a headless X server on the card, which "
                       + "takes minutes, and the driver takes the card only after a reboot: the row "
                       + "says when to press Reboot.")) return;
-      // Moving off the share ends the sessions there, so the press names
-      // them, as a reboot's does.
-      if (act === "to-sync"){
-        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        const here = (state?.sessions || []).filter(x => x.node_id === id);
-        if (!confirm(`Move ${name} to a synced copy?\n\n`
-              + (here.length ? `This ends the ${here.length} session${here.length === 1 ? "" : "s"} open there; transcripts are kept. ` : "")
-              + "The projects share is unmounted from /workspace and each project there is copied down "
-              + "from the controller; a session starts again once its project's copy is there.")) return;
-      }
-      // Leaving the synced copy (R164) ends the sessions, as moving onto it
-      // did; cleaning up removes the copies, which only the drain allows.
+      // Leaving the synced copy (R164) ends the sessions, as a reboot does;
+      // cleaning up removes the copies, which only the drain allows.
       if (act === "sync-stop"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
@@ -1762,9 +1737,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       }
       if (act === "to-sync"){
         const j = await nodeAct({action: "to-sync", id});
-        if (j.ok && !j.error) notify(j.job
-          ? "Moving: a storage apply unmounts the share, then each project is copied down"
-          : "Moved: each project is copied down now");
+        if (j.ok && !j.error) notify("Moved: each project is copied down now");
         return;
       }
       await nodeAct({action: act, id});

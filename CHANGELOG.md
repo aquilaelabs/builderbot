@@ -236,6 +236,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The debug switch that let two accounts share one Claude login is gone, with the refusal it stood down: the Users tab still says when two accounts are on one login. (c8bb395)
 - The debug option Update Claude Code before a session starts is gone: a node's Claude Code updates when Update is pressed on the Toolchains tab, and nothing else (457ab4b)
 - A BuilderBot bug report is now a log in the diagnostics that a person reads and clears: bb report file, bb report close and a session's bb report listing are gone, since only an install that hosts BuilderBot's own project could answer one (075362f)
+- Nodes no longer mount the projects share in any form: every node holds its projects as a synced copy, a /workspace mount is refused on the Storage section and by bb-sandbox, and the enroll dialog no longer asks (279c51d)
 
 ### Fixed
 

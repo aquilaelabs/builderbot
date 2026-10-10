@@ -900,20 +900,19 @@ if (await pill() !== 'down') {
   await dmClick('down');
   await pillIs('down');
 }
-// A path of OURS handed to the host's daemon: it resolves bind-mount sources
-// on its own filesystem, where /workspace/<project> does not exist, and
-// docker answers a missing source by creating an empty directory rather than
-// by failing, so the app starts with no data and it reads as the app's bug.
-// Said on the row, kept apart from the risks below: those are decisions the
-// operator may reasonably make, this is a compose that cannot work.
+// A path of OURS handed to the node's daemon: it resolves bind-mount sources
+// on its own filesystem, and the node holds the project there as its synced
+// copy at the same path (R163), so a bind into the project is one it has and
+// the row says nothing against it. Where the daemon lacks the path (a node
+// taken off its copy), docker answers by creating an empty directory, which
+// the unit tier holds problems() to naming (test_devapp_synced).
 writeFileSync(stubCfg, JSON.stringify(
   { services: { app: { build: { context: '.' }, volumes: ['./data:/data'] } } }));
 await nudge();
-await page.waitForFunction(() => /will not work as written/.test(
-  document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
+await sleep(1500);
 const probs = await devLines("bad");
-ok(probs.length === 1 && /this container's path/.test(probs[0]),
-   'a bind the host cannot resolve is named on its own line, before anything starts');
+ok(probs.length === 0 && !/will not work as written/.test(await page.$eval('#devRow', r => r.textContent)),
+   `a bind into the project is one the node's synced copy has, so nothing is said against it (${probs.join(' | ').slice(0, 80)})`);
 
 // A compose that reserves the NVIDIA GPU on a node that cannot hand it to a
 // container (R102): Docker's own answer is "could not select device driver

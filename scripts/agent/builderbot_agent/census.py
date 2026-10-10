@@ -174,22 +174,15 @@ def census(state):
 
 def session_now(state):
     """Whether this node runs sessions, and what a proxy needs to reach
-    them: the ports, the account, whether the projects share is mounted at
-    /workspace (a session without it has nothing to work on), and which
+    them: the ports, the account, whether /workspace is there (the node's
+    synced copy of its projects, R162), and which
     Claude the session account has. Empty until the agent has tried once,
     so an old census never claims a node it has not measured."""
     if not SESSION:
         return {}
     out = dict(SESSION)
-    # A node that holds its projects as a synced copy (R162) has /workspace
-    # as a directory of its own, not a mount.
-    out["workspace"] = os.path.ismount(SHARE) or (state.get("workspace_mode") == "sync" and os.path.isdir(SHARE))
-    out["synced"] = state.get("workspace_mode") == "sync"
-    # ...and writable: a projects share mounted read-only was the right
-    # arrangement for a Docker-only sandbox (nothing there wrote source), and
-    # is the wrong one for a machine that runs sessions: Claude could not
-    # save a file, and the home's transcripts link cannot be made on it.
-    # The kernel answers EROFS for root too, so this is an honest probe.
+    # The node's own directory, which holds its synced copy (R163).
+    out["workspace"] = os.path.isdir(SHARE)
     out["writable"] = out["workspace"] and os.access(SHARE, os.W_OK)
     home = out.pop("home", "")
     out.pop("bind", None)

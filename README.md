@@ -93,7 +93,7 @@ Bare `bb` prints this list; `bb status` is the tool-version wall.
 ```
 bb -p NAME VERB    any verb, about another project this one reads (its
                    settings name them): bb -p NAME roadmap, bb -p NAME map find X
-bb status          tool versions, runner registration, mounted projects
+bb status          tool versions, runner registration, the projects here
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    manifest.json and Windows VERSIONINFO), --msi, --pep440,
@@ -183,7 +183,7 @@ bb changelog edit N "..."  reword one of them: a change that tweaks something
 bb changelog merge N M "..."   one line for several, carrying all their commits
 bb changelog split N     back into one line per commit it carries
 bb changelog rm N        drop one that stopped being true
-bb projects        mounted project dirs and their branches
+bb projects        the project dirs here and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
                    run on. Nothing is copied anywhere: each node is signed in

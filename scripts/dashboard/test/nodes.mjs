@@ -1048,9 +1048,10 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
      `Apply storage asks first when it would unmount something the node has (${page.dialogs[0]?.slice(0, 60)})`);
   for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
     await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
-  // Moving off the projects share (R163 step 5): one press on the
-  // Sessions section asks first, marks the node synced, and queues the
-  // storage apply that unmounts /workspace, keeping every other mount.
+  // A node holds its projects as a synced copy (R162), the one way it
+  // holds them (R163): no /workspace mount may be configured, the row says
+  // what each copy is doing, and the node can be taken off it and put back
+  // (R164).
   {
     const hello = census => fetch(base + '/api/v1/agent/hello', { method: 'POST',
       headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
@@ -1072,29 +1073,19 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const kept = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).reported;
     ok(kept.sessions?.length === 1 && kept.sync?.beta?.ready === true,
        `a hello keeps what the heartbeat said: its sessions and its synced copy's state (${JSON.stringify([kept.sessions?.length, kept.sync])})`);
-    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: { mounts: [
+    const share = await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: { mounts: [
       { path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs' },
       { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs' }] } });
+    ok(/\/workspace holds this node's synced copy/.test(share.error || ''),
+       `a mount at /workspace is refused: the node's synced copy is there (${share.error})`);
+    const fresh = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(fresh.config.workspace === 'sync', `a node enrolled holds its projects as a synced copy (${fresh.config.workspace})`);
     await page.evaluate(() => loadNodes());
-    await page.waitForSelector(`${ROW} [data-nd="to-sync"]`, { timeout: 10000 });
-    page.dialogs.length = 0;
-    await page.click(`${ROW} [data-nd="to-sync"]`);
-    await page.waitForFunction(sel => !document.querySelector(sel + ' [data-nd="to-sync"]'), ROW, { timeout: 10000 });
-    const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
-    const job = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.node === minted.id);
-    ok(page.dialogs.length === 1 && /synced copy[\s\S]*unmounted from \/workspace/.test(page.dialogs[0]),
-       `Move to a synced copy asks first, saying the share is unmounted (${page.dialogs[0]?.slice(0, 60)})`);
-    ok(rec.config.workspace === 'sync' && !rec.config.desired.mounts.some(m => m.path === '/workspace')
-       && rec.config.desired.mounts.some(m => m.path === '/mnt/old'),
-       `...marks the node synced and takes /workspace out of its storage, keeping /mnt/old (${JSON.stringify(rec.config.desired.mounts.map(m => m.path))})`);
-    ok(job && job.spec.apply === 'storage' && !job.spec.config.mounts.some(m => m.path === '/workspace'),
-       `...and queues the storage apply that unmounts it (${job?.id})`);
+    await page.waitForSelector(`${ROW} [data-nd="sync-stop"]`, { timeout: 10000 });
     ok(/a copy kept in step/.test(await page.$eval(ROW, r => r.textContent)),
-       '...and the row says its projects are a synced copy now');
+       '...and the row says its projects are a synced copy');
     const again = await napi('/api/v1/nodes', { action: 'to-sync', id: minted.id });
-    ok(/already/.test(again.error || ''), `a second press is refused in words (${again.error})`);
-    for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
-      await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
+    ok(/already/.test(again.error || ''), `Move to a synced copy is refused in words while it holds one (${again.error})`);
     // ...and off it again (R164): Stop syncing holds sessions while what is
     // left goes up, Clean up is offered once the node says nothing is, and
     // from off one press moves it to a synced copy again.
@@ -1149,7 +1140,6 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `from off, Move to a synced copy holds the projects again (${JSON.stringify(back)})`);
     for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
       await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
-    await napi('/api/v1/nodes', { action: 'update', id: minted.id, fields: { workspace: 'mount' } });
     await fetch(base + '/api/v1/agent/work', { method: 'POST',
       headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync: {} },
@@ -1863,43 +1853,28 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
                              minted.id, { timeout: 30000 });
   ok(true, 'an agent brought current takes its alert out of the bell by itself');
 
-  // ---- a node that just came up is waited for, not unbound -------------------
-  // The agent starts before the network mounts land, so its first census
-  // after a boot says /workspace is missing. With the uptime beside it the
-  // gate says "came up N seconds ago, not mounted yet" and no more; the
-  // same census from a machine up for hours is a missing mount, with the
-  // fix and the way out.
+  // ---- a project's copy not there yet is waited for -----------------------------
+  // A node holds its projects as a synced copy (R163): until its agent says
+  // a project's copy is ready, the button waits with the reason, and once it
+  // is, the session starts there. No mount is asked for, whatever the census
+  // says of /workspace.
   const sessionCensus = se => fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ census: { ...CENSUS, session: se }, version: shipped.version, digest: shipped.digest }) });
+  const syncBeat = sync => fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync }, running: [], wait: 0 }) });
   const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: false, writable: false, boot: '12.5', up_s: 40 };
   await napi('/api/prefs', { project: 'alpha', node: minted.id });
   await sessionCensus(SE);
+  await syncBeat({ alpha: { ready: false, rev: 0, copying: 12 } });
   let why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
-  ok(/came up 40 seconds ago/.test(why) && /not mounted the projects share/.test(why) && !/Unbind/.test(why),
-     `a node up for a minute with no /workspace is "not mounted yet", and nobody is told to unbind it (${why.slice(0, 70)})`);
-  // A mount the server refused is neither: the agent tried it and kept
-  // what the server said, and the fix is the export rule on the host,
-  // which is what actually happened when the sandbox moved to an address
-  // the rule did not name.
-  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
-    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ census: { ...CENSUS, session: SE, mounts: [...CENSUS.mounts,
-      { path: '/workspace', source: 'nas:/mnt/user/development/projects', type: 'nfs', ro: false, mounted: false, real: '',
-        error: 'access denied by server while mounting nas:/mnt/user/development/projects' }] },
-      version: shipped.version, digest: shipped.digest }) });
-  why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
-  ok(/access denied by server/.test(why) && /NFS export names another address/.test(why) && !/came up/.test(why),
-     `a mount the server refused says what the server said and points at the export rule, boot or no boot (${why.slice(0, 60)})`);
-  await sessionCensus({ ...SE, up_s: 5000 });
-  why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
-  ok(/does not mount the projects share/.test(why) && /add the mount/.test(why)
-     && /nowhere else/.test(why),
-     `...the same census from a machine up for hours is a missing mount, with the fix and the fact that there is nowhere else (${why.slice(0, 60)})`);
-  await sessionCensus({ ...SE, up_s: 5000, workspace: true, writable: true });
+  ok(/alpha is being copied to shed \(12 files to go\)/.test(why) && !/mount/.test(why) && !/Unbind/.test(why),
+     `a project whose copy is not there yet waits for it, says how much is left, and asks for no mount (${why.slice(0, 70)})`);
+  await syncBeat({ alpha: { ready: true, rev: 3 } });
   const row = (await napi('/api/status')).projects.find(p => p.name === 'alpha');
   ok(row?.session_at === 'shed' && row?.session_why === '',
-     'and once the share is mounted the button is live there');
+     'and once the copy is there the button is live there');
   // A mount that is there and answers Stale file handle (roadmap R41): every
   // list of mounts calls it fine and every read fails, and remounting on the
   // node does not help when the export was re-created under it on the host.
