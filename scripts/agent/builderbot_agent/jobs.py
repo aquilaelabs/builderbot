@@ -194,6 +194,8 @@ class Job(threading.Thread):
                 state, code = self.agent.sign(self, spec)
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
+            elif self.job.get("type") == "storage":
+                state, code = self.agent.storage_measure(self, spec)
             elif self.job.get("type") == "claude-login":
                 state, code = self.claude_login(spec)
                 # Said on the next heartbeat rather than in five minutes:

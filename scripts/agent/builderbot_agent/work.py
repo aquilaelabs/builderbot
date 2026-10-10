@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import urllib.request
 import zipfile
+from . import storage
 from .base import DRIVER, SANDBOX_BIN, TOOLKIT
 from .stores import tc_root
 from .backends import pkg_backend
@@ -206,6 +207,16 @@ class WorkMixin:
                 job.say(f"removed {t}\n")
                 n += 1
         job.say(f"cleared {n} director{'y' if n == 1 else 'ies'}\n")
+        self.hello()
+        return "succeeded", 0
+
+    def storage_measure(self, job, spec):
+        """The Storage tab's Measure now: a walk of the disks at once
+        rather than at the next hour, then a hello so the tab has it."""
+        job.say("measuring the disks\n")
+        got = storage.measure(self.state)
+        job.say(f"measured {len(got.get('filesystems') or [])} filesystems and "
+                f"{len(got.get('projects') or {})} projects in {got.get('took_s', 0)}s\n")
         self.hello()
         return "succeeded", 0
 

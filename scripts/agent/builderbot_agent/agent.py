@@ -24,6 +24,7 @@ from .sessions import SessionWatch, SessionsMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
 from .configplane import ConfigPlaneMixin
+from . import storage
 
 
 class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin):
@@ -294,6 +295,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
 
     def loop(self):
         delay = 1
+        # The hourly walk of the disks, on its own thread (storage.py).
+        storage.start(lambda: self.state)
         # What is THIS process's to end, ended by it. The ttyds go: a stop of
         # the unit is an update or a reboot, and the new agent starts its own.
         # The tmux servers they attached do not: they are their own daemons,

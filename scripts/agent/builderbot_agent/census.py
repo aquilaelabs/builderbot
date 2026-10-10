@@ -39,6 +39,7 @@ from .gpu import (
 )
 from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
+from . import storage
 
 
 def _sshd_listening():
@@ -169,6 +170,9 @@ def census(state):
         "services": services_now(),
         # The session half (roadmap #24), as this process is holding it.
         "session": session_now(state),
+        # What the disks hold (the Storage tab): the last hourly walk, never
+        # one taken here, since a walk of a big store is minutes.
+        "storage": storage.last(),
     }
 
 
