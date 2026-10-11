@@ -3263,6 +3263,25 @@ no session starts on that node until it works or the switch is turned off.
 A container in Docker's host network mode is not reachable from an isolated
 session, since it has no address of its own to allow.
 
+**Each project's containers on their own network (R178, the operator, 11
+Oct)** is the same idea for the containers themselves, for a node two
+web-facing projects share. Docker already keeps compose networks apart,
+but a container reached another project's container by the node's address
+(its published port, after Docker's DNAT) and the node's own ports, measured
+on the dev pair. The agent's keeper runs a second table,
+`builderbot_ctrnet`: forward from a compose bridge passes to its own
+bridge, the bridges of the projects its owner reads, the controller, DNS
+and the internet, and is dropped to any other bridge and rejected to the
+private ranges; into the node it passes to the controller, DNS, 80 and 443
+(nginx, the way in) and the published ports of its own project and the ones
+it reads. The hello carries the map (`devapp.container_net_own`, compose
+project to the compose projects it may reach) and the switch (config
+`container_net`, on by default for a hosting-only node, on the row beside
+the session switch elsewhere); a prefs change or the switch asks for a
+hello, so a container reaches a newly read project within a poll. Nothing
+is marked: a missing table leaves Docker's own rules, and the row says not
+in force rather than a container being cut off.
+
 **Also reaches**, under What a session sees in a project's settings, opens
 the rest by hand (the operator, 7 Oct): a machine its sessions may still
 reach, by its address, or one service on it, as `address:port`, without
