@@ -245,6 +245,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Send, Copy or move and a container's Project and Built from offer only projects on your own list, administrators and the owner included, and the server refuses any other (5e57004)
 - The bell's drawer is grouped as Waiting on you, Needs attention and Recent. An update on a node is a short row, versions folded, with Dismiss: that version stays away for your account on every device until a newer one is out (3f597ad)
 - A project's settings save a section at a time: each section has its own Save and Revert, and where a running session would only take a change when it starts, the section offers Save, keep it running and Save and end it at once. (fdc65ea)
+- The briefing says how a session sends any of its compose files to Docker, what a required variable means, that a hosting node named in its settings takes its containers, and that what stands in front of a container is the nginx tab, a person's. (0937b55)
 
 ### Removed
 

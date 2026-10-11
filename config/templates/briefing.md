@@ -532,26 +532,45 @@ names another, lives on one of the project's nodes, and either of those
 is always asked. It has no project tree behind it: compose resolves its
 relative paths, `build: .` included, against its own empty data
 directory, so one that builds from a path is refused. This project's own
-code goes into Docker from a compose file at the project's root
-(`docker-compose.yml` or `compose.yml`) with `bb devapp new`, which builds
-from this tree, and `bb devapp rebuild` after a change.
+code goes into Docker from one of its compose files with `bb devapp new`,
+which builds from this tree, and `bb devapp rebuild` after a change: the
+root's own (`docker-compose.yml` or `compose.yml`) unless `--compose FILE`
+names another, one in a folder (`site/compose.yml`) or one named for its
+service (`deploy/containers/admin.compose.yml`), each its own Send on the
+Artifacts tab. What stands in front of a container (a hostname, TLS, a
+reverse proxy) is the nginx tab, a person's: one nginx per node, its
+routes to the ports containers publish there, its certificates kept on
+the controller. Say in your reply which hostname should reach which port
+rather than writing a proxy container of your own; a session cannot read
+or change those routes yet.
 
-<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
+<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml compose.yaml */compose.yml */compose.yaml */*.compose.yml */*/compose.yml */*/*.compose.yml -->
 This project has a compose file, so it can have a container built from it:
 its dev instance, the place to prove a change. Up and Down are the
 operator's; under the same dial you may send the project to Docker and
 rebuild, change the env of and remove its containers. `bb devapp new [NAME]
-[--branch REF]` is the Artifacts tab's Send to Docker done from here: a
-container made from this project's compose file (its own while it has
-none, then another beside it, which needs ports of its own from `--env
-FILE`), built and started. That, not `bb container new`, is how this
-project's own code goes into Docker. `bb devapp` says what one was built
-from and whether it is running, then `bb devapp rebuild`, `bb devapp env
-set FILE` and `bb devapp remove`, which leaves its env and data for a
-remake. Its env is kept by BuilderBot, not as a file in the tree:
-`bb devapp env` prints it, and a compose line `env_file: .env` is pointed
-at it when the container runs, so a missing `.env` in the project is
-expected. A build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`
+[--branch REF] [--compose FILE] [--env FILE]` is the Artifacts tab's Send
+to Docker done from here: a container made from this project's compose
+file (its own while it has none, then another beside it, which needs
+ports of its own from `--env FILE`), built and started. That, not `bb
+container new`, is how this project's own code goes into Docker. `bb
+devapp` says what one was built from and whether it is running, then `bb
+devapp rebuild`, `bb devapp env set FILE` and `bb devapp remove`, which
+leaves its env and data for a remake; a remove on a node whose agent is
+quiet waits in its queue, and the row stays until it has run. Its env is
+kept by BuilderBot, not as a file in the tree: `bb devapp env` prints it,
+and a compose line `env_file: .env` is pointed at it when the container
+runs, so a missing `.env` in the project is expected. A compose file in a
+folder starts from its own folder's `.env.example`, never the root's, and
+a variable the file requires (`${NAME:?...}`) is a need the Artifacts tab
+names: set it in the env before the first build, or the build stops at the
+gate asking for it. A project may also name hosting-only nodes under
+Hosts its containers on in its settings: a node that holds no code and no
+session, where a container of this project is built on this node and
+shipped. `bb devapp new --node NODE` makes one there, and rebuild and
+remove reach it, under the same dial; sending a container to any other
+node, and copying or moving one with its data, is a person's on the
+Docker tab. A build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`
 in its environment (the commit it is built from, when, and the project's
 version), so a compose whose `build.args` interpolate them (`GIT_SHA:
 ${BB_BUILD_REV}`) stamps the image without reading `.git`; the rest of a
