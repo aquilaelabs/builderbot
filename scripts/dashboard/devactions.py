@@ -402,7 +402,7 @@ def image_put(nid, q, stream, length):
     that node's that is shipping, into the images store, whole or not at all."""
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or sp.get("ship") != "build":
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or sp.get("ship") != "build":
         return {"error": "no image is being shipped by that job from this node"}, 403
     if length <= 0 or length > 64 * 1024 ** 3:
         return {"error": "an image is between 1 byte and 64 GB"}, 413
@@ -428,7 +428,10 @@ def image_path(nid, q):
     for a job of that node's that is loading one."""
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or sp.get("ship") != "run":
+    # Assigned as well as running: the fetch is the run half's first step,
+    # and on a public node it reached here before the agent's first log post
+    # had marked the job running, so draconis was answered 403 (B648).
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or sp.get("ship") != "run":
         return None, ({"error": "no image is being loaded by that job on this node"}, 403)
     p = _image_file(sp.get("project", ""), sp.get("instance") or devapp.MAIN)
     if not p.is_file():

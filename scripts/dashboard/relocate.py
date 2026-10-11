@@ -360,7 +360,7 @@ def data_put(nid, q, stream, length):
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
     rel = sp.get("relocate") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or rel.get("stage") != "out":
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or rel.get("stage") != "out":
         return {"error": "no data is being sent by that job from this node"}, 403
     if length <= 0 or length > 256 * 1024 ** 3:
         return {"error": "the data is between 1 byte and 256 GB"}, 413
@@ -412,7 +412,7 @@ def data_path(nid, q):
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
     rel = sp.get("relocate") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or rel.get("stage") != "in":
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or rel.get("stage") != "in":
         return None, ({"error": "no data is being fetched by that job on this node"}, 403)
     p = _data_file(sp.get("project", ""), sp.get("instance") or "")
     if not p.is_file():

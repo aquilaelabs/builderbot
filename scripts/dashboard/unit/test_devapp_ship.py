@@ -124,6 +124,11 @@ class Ship(unittest.TestCase):
         self.assertIsNone(no)
         self.assertEqual(p.read_bytes(), body)
         self.assertTrue(str(p).startswith(str(paths.of("images"))))
+        # Handed over and not yet marked running: the fetch is the run half's
+        # first step and can reach here before the agent's first log post
+        # (B648), so an assigned job is served too.
+        self.q.jobs["j_2"]["state"] = "assigned"
+        self.assertIsNone(devactions.image_path("n2", {"job": ["j_2"]})[1], "an assigned job fetches it")
         self.q.jobs["j_2"]["state"] = "succeeded"
         self.assertIsNotNone(devactions.image_path("n2", {"job": ["j_2"]})[1], "nor once its job has ended")
 
