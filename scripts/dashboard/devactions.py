@@ -507,6 +507,10 @@ def compose_done(job, state):
     # the only one; a ship's first half that failed ends it too.
     if sp.get("action") == "rebuild" and not (sp.get("ship") == "build" and state == "succeeded"):
         relocate.built(sp.get("project", ""), sp.get("instance") or devapp.MAIN, state == "succeeded")
+    # ...and one that built or started since a failed copy or move: that
+    # failure is history, and the bell stops carrying it.
+    if sp.get("action") in ("up", "rebuild", "update") and state == "succeeded" and not sp.get("ship") == "build":
+        relocate.started(sp.get("project", ""), sp.get("instance") or devapp.MAIN)
     # ...and an update that pulled what was behind: nothing is, until the
     # next check says so (R195).
     if sp.get("action") == "update" and state == "succeeded":

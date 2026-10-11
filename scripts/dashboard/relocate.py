@@ -23,6 +23,7 @@ image does, and lives there from the first job's upload to the second job's
 end. Both nodes must be agent nodes: a plan is what carries the steps.
 """
 import posixpath
+import time
 import os
 import threading
 
@@ -452,14 +453,16 @@ def _undo(project, plan, why):
         if plan.get("stage") in ("out", "in"):
             _drop(project, dest)
         else:
-            _set(project, dest, relocating=None, relocate_why=why or None)
+            _set(project, dest, relocating=None, relocate_why=why or None,
+                 relocate_at=int(time.time()) if why else None)
         return
     old_env = devapp._read_rec(project, dest).get("relocate_env")
     if isinstance(old_env, str):
         devapp.write_env(project, old_env, dest)
     # As it was: its own node, or none when it followed its project's.
     _set(project, dest, relocating=None, relocate_env=None, node=plan.get("was_node") or None,
-         ship=True if plan.get("was_ship") else None, relocate_why=why or None)
+         ship=True if plan.get("was_ship") else None, relocate_why=why or None,
+         relocate_at=int(time.time()) if why else None)
     _queue_on(project, dest, plan["old"], "start")
 
 
@@ -527,7 +530,7 @@ def built(project, instance, ok):
             _queue_on(project, instance, plan["new"], "down")
         _undo(project, plan | {"stage": "build"}, "it would not build or start on the new node")
         return
-    _set(project, instance, relocating=None, relocate_env=None, relocate_why=None)
+    _set(project, instance, relocating=None, relocate_env=None, relocate_why=None, relocate_at=None)
     if plan["mode"] == "move":
         _queue_on(project, instance, plan["old"], "down")
 
@@ -610,7 +613,30 @@ def view(project, instance):
         return {"busy": True, "line": f"{verb} to {where}: {step}" if step else f"{verb} to {where}"}
     if rec.get("renaming"):
         return {"busy": True, "line": f"renaming it to {rec['renaming']}: the node carries its volumes and data"}
-    if rec.get("relocate_why"):
-        return {"busy": False, "line": f"the last copy or move did not happen: {rec['relocate_why']}"}
+    # Why the last one did not happen is the bell's (attention below), where
+    # it can be put away, and not the row's for ever (the operator, 11 Oct:
+    # a failure from hours before still sat on a row renamed since).
     return None
+
+
+def started(project, instance):
+    """The instance built or started since: a failed copy or move from
+    before is history, and the bell stops carrying it."""
+    if devapp._read_rec(project, instance).get("relocate_why"):
+        _set(project, instance, relocate_why=None, relocate_at=None)
+
+
+def attention(node_name):
+    """The bell's rows: each instance whose last copy or move did not
+    happen, kind relocate, keyed by bellseen on when it failed."""
+    out = []
+    for project, insts in devapp._load().items():
+        for inst, rec in insts.items():
+            if not rec.get("relocate_why") or rec.get("relocating"):
+                continue
+            nid = devapp._instance_node(project, inst)
+            out.append({"kind": "relocate", "id": f"{project}|{inst}", "name": devapp._pname(project, inst),
+                        "project": project, "node": node_name(nid) if nid else "", "node_id": nid or "",
+                        "why": str(rec["relocate_why"]), "at": int(rec.get("relocate_at") or 0)})
+    return out
 

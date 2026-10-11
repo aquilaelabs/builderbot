@@ -518,6 +518,18 @@ ok(dots.none === true && dots.quiet === false,
    '...and nothing at all when there is nothing unread');
 ok(dots.asking === 'dot ask' && dots.loud === true,
    'a question waiting on an answer lights the whole button, not just the dot');
+// Something new gone wrong flashes the button red twice and lets go (the
+// operator, 11 Oct); the same failure drawn again does not flash it again,
+// and an ask's amber is not held off by a flash left behind.
+{
+  await page.evaluate(() => { notes = []; notesSeen = 0; drawBell(); notify('compose up failed', true); });
+  const flashed = await page.$eval('#bBell', b => b.classList.contains('flash')
+    && getComputedStyle(b).animationName === 'bellbad' && getComputedStyle(b).animationIterationCount === '2');
+  await page.waitForFunction(() => !document.getElementById('bBell').classList.contains('flash'), null, { timeout: 5000 });
+  const again = await page.evaluate(() => { drawBell(); return document.getElementById('bBell').classList.contains('flash'); });
+  ok(flashed && !again, `a new failure flashes the bell red twice and lets go, and a redraw does not flash it again (${flashed}, ${again})`);
+  await page.evaluate(() => { notes = []; notesSeen = 0; drawBell(); });
+}
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

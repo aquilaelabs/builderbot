@@ -518,6 +518,15 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   0%,100%{background:var(--warn)}
   50%{background:color-mix(in srgb, var(--warn) 22%, var(--panel))}
 }
+/* Something new gone wrong (the operator, 11 Oct): the button fills red
+   twice and lets go, leaving the red dot. Twice and done, unlike the amber
+   above, which keeps on because somebody is waiting; this one is news that
+   has been delivered. The page leaves it off under reduced motion. */
+#bBell.flash{border-radius:var(--r-control);animation:bellbad .45s ease-in-out 2}
+@keyframes bellbad{
+  0%,100%{background:transparent}
+  50%{background:var(--bad);color:var(--bg)}
+}
 /* Still unmistakable without the animation: it is filled either way, and the
    fill is the part doing the work. */
 @media(prefers-reduced-motion:reduce){
