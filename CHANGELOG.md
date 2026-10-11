@@ -422,6 +422,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Artifacts tab offers Send for a compose file named for its service (admin.compose.yml), the container named for the service. (e97f661)
 - Install selected on the Toolchains tab takes Claude Code together with other toolchains: its own job is queued beside theirs rather than the press refused. (0c8bfe3)
 - The enroll script stops when the controller does not answer, demands a real answer from a public hostname, and closes port 22 for a door only after the node has enrolled and the door is up. (215c5b9)
+- A project's settings dialog no longer shows the model the last session ran on as if it were set: Claude's default stays picked and names it, and picking that model saves it (B639) (babe946)
+- A hosting-only node answers docker ps, inspect, logs, start, stop and restart about the containers it hosts, so the Docker tab lists them and a session reads their logs (B642) (babe946)
+- bb devapp new --node NODE from a session ships the container to the hosting node named, where it used to land unshipped on the project's own node (B645) (babe946)
+- The node agent takes a hello asked for again with its census beside the loop, so a nudge every minute no longer stops it taking jobs; the Docker and nginx tabs' docker ps jobs were waiting their 25s out (B644). Agent 0.7.166 (babe946)
 
 ### Security
 

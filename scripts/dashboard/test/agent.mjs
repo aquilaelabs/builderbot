@@ -636,18 +636,28 @@ second, turns = None, 0
 while second is None and turns < 100:
     time.sleep(0.05); turns += 1
     second = a.hello_step()
-# ...and a hello asked for at once (the clock zeroed) is said now, with a
-# census of its own, and a census still on its way is let go.
-a.hello_at = 0
+# ...and a hello asked for again (the clock zeroed) lets a census still on
+# its way go and takes a fresh one beside the loop too, saying hello once
+# it is there: taken on the loop, a controller nudging once a minute kept
+# the node in census all day and no job was picked up (B644).
+a.hello_said, a.hello_at = True, 0
 a.census_thread = threading.Thread(target=lambda: time.sleep(0.2)); a.census_thread.start()
 a.census_next = {'stale': True}
 now = a.hello_step()
-print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'dropped': a.census_next is None and a.census_thread is None}))
+fresh, turns = None, 0
+while fresh is None and turns < 100:
+    time.sleep(0.05); turns += 1
+    fresh = a.hello_step()
+# ...while the first hello of a process is said on the loop, at once.
+a.hello_said, a.hello_at = False, 0
+first_of_process = a.hello_step()
+print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'fresh': fresh, 'first_of_process': first_of_process, 'dropped': a.census_next is None and a.census_thread is None}))
 `], { encoding: 'utf8' }).trim();
       const r = JSON.parse(said);
-      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 2
-         && r.said[0] && r.said[0].slow && r.now && r.said[1] === null && r.dropped,
-         `the loop's hello waits for a census taken beside it and says hello with it, and a hello asked for at once takes its own census and lets a pending one go (${said})`);
+      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 3
+         && r.said[0] && r.said[0].slow && r.now === null && r.fresh && r.said[1] && r.said[1].slow
+         && r.first_of_process && r.said[2] === null && r.dropped,
+         `the loop's hello waits for a census taken beside it and says hello with it; one asked for again lets a pending census go and takes its own beside the loop; the process's first is said at once (${said})`);
     }
     // B167: the distribution's own root ttyd is switched off by the agent on
     // a managed node, not only by a provisioner run that may never come
@@ -3065,6 +3075,11 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
 echo "Installing Claude Code (stub) for $USER into $HOME"
 echo "stub-installed" >> "${DIR}/claude-installer.log"
 `, { mode: 0o755 });
+    // The record says the session half is up before Install is pressed: the
+    // ttyd restart above asked for a hello, whose census is taken beside the
+    // loop now rather than before the next job is taken (B644), so for a few
+    // seconds the row is behind the machine.
+    await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
     // From the node's Toolchains tab, where Claude Code is a row (R145).
     const cu = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['claude-code'] });
     ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains tab queues the claude-update job on this node (${cu.job || cu.error})`);

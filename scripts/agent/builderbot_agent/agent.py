@@ -36,6 +36,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.sampler = Sampler()
         self.poll = 25
         self.hello_at = 0
+        self.hello_said = False           # a hello has been answered once this process
+        self.census_asked = False         # a hello asked for again has its census on the way
         self.controller_digest = ""
         self.warned_caps = False
         # The session half (roadmap #24): the two ttyd processes, the bundle
@@ -111,14 +113,24 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         is there. Returns hello's (status, answer) when one was said, and
         None while the census is still being taken. The first hello of the
         process is said at once, as it always was: nothing here should run
-        before the controller has heard from this agent."""
-        if not self.hello_at:
-            # ...and one asked for now (the clock zeroed by a refusal or a
-            # job that changed the machine) is said with a census of its
-            # own; a census still on its way from before is let go.
+        before the controller has heard from this agent.
+
+        A hello asked for again (the clock zeroed by the controller's nudge,
+        a refusal, or a job that changed the machine) is said with a census
+        of its own, a census still on its way from before the ask let go,
+        and that census is taken beside the loop too: it used to be taken
+        on the loop, a minute on a busy node with no work poll meanwhile,
+        and a controller nudging once a minute kept the node in census all
+        day while every docker ps the Docker tab sent waited its 25s out and
+        was taken back (B644, 11 Oct)."""
+        if not self.hello_at and not getattr(self, "hello_said", False):
             self.census_thread = None
             self.census_next = None
             return self.hello()
+        if not self.hello_at and not getattr(self, "census_asked", False):
+            self.census_thread = None
+            self.census_next = None
+            self.census_asked = True
         if self.census_thread is None:
             self.census_next = None
 
@@ -133,6 +145,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         if self.census_thread.is_alive():
             return None
         self.census_thread = None
+        self.census_asked = False
         c, self.census_next = self.census_next, None
         return self.hello(taken=c) if c is not None else self.hello()
 
@@ -169,6 +182,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                                         "keep": self.keep_report()}, timeout=30)
         if st == 200:
             self.hello_at = time.monotonic()
+            self.hello_said = True           # the first is said on the loop; the rest beside it
             self.poll = int(r.get("poll") or 25)
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
             # Where toolchains land, from the controller's catalog. Kept on the
@@ -382,7 +396,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # and wakes a held poll when a job ends, so the poll is held at
             # full length whether or not anything is running. The count in
             # the sample is for the row's numbers, not for placement.
-            wait = self.poll
+            # ...except while a hello asked for again has its census on the
+            # way: the poll is held short, so the hello is said within
+            # seconds of the census landing and not a whole poll after it,
+            # which is what the retry a refusal asked for is waiting on.
+            wait = min(self.poll, 3) if getattr(self, "census_asked", False) else self.poll
             sample = self.sampler.sample(self.state, n)
             # The sessions this node runs ride the heartbeat (roadmap #24),
             # so the dashboard's Sessions card lists them beside its own.
@@ -441,7 +459,9 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # every ten minutes, which is fine for a display and too
                 # coarse for a gate. Say it again now, so the retry the
                 # operator is about to make reasons about this machine as it
-                # is rather than as it was.
+                # is rather than as it was. Logged, so a controller asking
+                # every minute is on the box's own record (B644).
+                log("the controller asked for a fresh census")
                 self.hello_at = 0
                 continue
             if st == 200 and r.get("id"):
