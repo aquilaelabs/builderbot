@@ -265,6 +265,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- The enroll script stops when the controller's address answers 200 with nothing BuilderBot would send (a public hostname whose rule points elsewhere), before the door and port 22, saying where the rule should point; it no longer installs an empty agent and reports the node enrolled.
 - bb-sandbox with no verb prints its help instead of opening the menu, which could open in the middle of an enroll on a console where it could not be worked; the menu is `sudo bb-sandbox menu`, at a terminal only.
 - An enroll script with an SSH door runs again after its first run (the repair) instead of stopping at once on the door secret it had already taken out of itself.
 - Closing port 22 behind a door no longer cuts the SSH session the enroll script is being run from: the rule keeps connections already open and refuses new ones, and the script says so.

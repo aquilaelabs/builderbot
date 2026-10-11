@@ -929,7 +929,18 @@ if [ "$REACH" = public ]; then
     # tunnel that answers something else is said by what it said (a 502
     # was taken as an answer once, and the run went on to close port 22
     # and fail to enroll, 11 Oct).
-    code="$(curl -s -o /dev/null -m 15 -H "Authorization: Bearer ${TOKEN}" -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+    # The headers too: a 200 is the controller only when it carries the
+    # agent's digest. A hostname whose path rule pointed somewhere else
+    # answered 200 with nothing in it, the run installed an empty agent,
+    # and the enrollment "succeeded" without reaching home (11 Oct).
+    rhdr="$(mktemp)"
+    code="$(curl -s -o /dev/null -D "$rhdr" -m 15 -H "Authorization: Bearer ${TOKEN}" -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+    rdig="$(tr -d '\r' < "$rhdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
+    rm -f "$rhdr"
+    if [ "$code" = 200 ] && [ -z "$rdig" ]; then
+        warn "${CONTROLLER} answers 200 on the agent's API, but not as BuilderBot does (no X-Agent-Digest, nothing in the body): the hostname's rule for /api/v1/agent/ goes somewhere other than the controller. In Zero Trust its service is http://localhost:7680 when the controller runs the tunnel itself, or the controller's LAN address and port (http://ADDRESS:7680) when cloudflared runs elsewhere at home; curl -sI ${CONTROLLER%/}/api/v1/agent/nosuch should answer 404"
+        exit 1
+    fi
     case "$code" in
         200) ;;
         000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is the tunnel at home up (the Settings tab's Public hostname line says connected), and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
@@ -2741,6 +2752,13 @@ if [ -n "$CONTROLLER" ]; then
     rm -f "$hdr"
     if [ -n "$want" ] && [ "$want" != "$got" ]; then
         warn "the agent that arrived does not match the digest the controller sent (${got} vs ${want})"
+        rm -f "${AGENT}.new"; exit 1
+    fi
+    # Nothing, or no digest to check it by, is not the controller's agent:
+    # an empty file ran as an empty script, said nothing, exited 0, and the
+    # node never enrolled (11 Oct).
+    if [ -z "$want" ] || [ ! -s "${AGENT}.new" ]; then
+        warn "what ${CONTROLLER} sent for the agent is not BuilderBot's ($(stat -c %s "${AGENT}.new" 2>/dev/null || echo 0) bytes, ${want:-no digest}): the address does not reach the controller's agent API"
         rm -f "${AGENT}.new"; exit 1
     fi
     chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
