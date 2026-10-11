@@ -558,7 +558,7 @@ not host-root.
 | Startup + runner supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
 | ...or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share, e.g. on the array, and the log moves there automatically | ✅ |
 | CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
-| A node's own logs (its agent, CI runner, terminal server, its nginx) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
+| A node's own logs (its agent, CI runner, terminal server, its nginx, the system journal, the kernel ring, the previous boot) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
 
 Inside the container, `bb logs` tails the persistent startup log (`bb logs -f`
 to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing to

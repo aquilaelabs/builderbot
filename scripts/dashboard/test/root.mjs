@@ -260,6 +260,14 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   r = await readLog('nginx');
   ok(/nginx is not deployed on sandbox: the nginx tab puts it there/.test(r.body.error || ''),
      `the nginx stream on a node without nginx says where it comes from (${(r.body.error || 'ran').slice(0, 60)})`);
+  // The box itself (R183): the journal of this boot, the kernel ring, and
+  // the previous boot's last lines, each one journalctl call.
+  ok(/^journalctl --system --no-pager -n 5$/.test(await ranArgv(await readLog('system'))),
+     "the system stream is this boot's journal, every unit");
+  ok(/^journalctl -k --no-pager -n 5$/.test(await ranArgv(await readLog('kernel'))),
+     '...the kernel stream its ring');
+  ok(/^journalctl -b -1 --no-pager -n 5$/.test(await ranArgv(await readLog('crash'))),
+     "...and the crash stream the previous boot's last lines");
 
   await census(null);
   await api('/api/prefs', { project: 'alpha', log_from: [] });

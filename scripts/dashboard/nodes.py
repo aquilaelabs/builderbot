@@ -1523,6 +1523,14 @@ LOG_STREAMS = {
     # container wants (R182). The container's name is the node's (nginx_for).
     "nginx": {"what": "the node's nginx: each request it routed and what the proxy met",
               "argv": ["docker", "logs", "--tail", "{lines}", "{nginx}"], "nginx": True},
+    # The box itself (R183): this boot's whole journal, the kernel ring, and
+    # the previous boot's last lines, which is where a panic's words are.
+    "system": {"what": "the system journal of this boot, every unit",
+               "argv": ["journalctl", "--system", "--no-pager", "-n", "{lines}"]},
+    "kernel": {"what": "the kernel ring of this boot",
+               "argv": ["journalctl", "-k", "--no-pager", "-n", "{lines}"]},
+    "crash": {"what": "the previous boot's last lines: what the box said before it went",
+              "argv": ["journalctl", "-b", "-1", "--no-pager", "-n", "{lines}"]},
 }
 LOG_LINES_MAX = 2000
 # The deployed nginx container's name on a node, or "" where the nginx tab has
