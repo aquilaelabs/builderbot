@@ -54,7 +54,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'drawTabPick', 'tabPickShow', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab',
   'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'nodeGpu', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'profileLogs', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeSessNetRow', 'nodeSyncRow', 'nodeHostRow', 'nodeDoorRow', 'openUnenroll', 'nodeProjects', 'nodeProjectsSection', 'nodeProjectRemove', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'groupNodeOptions', 'openRelocate', 'rlSay', 'closeRelocate', 'rlSubmit', 'myProjectNames', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmOwnerLine', 'dmMoveLine', 'dmGroupsHtml', 'dmOtherRowsHtml', 'dmTestLine', 'dmBuilt', 'jobWhy', 'shortWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'nodeContainerNetRow', 'nodeHostRootRow', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'nodeGpu', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'profileLogs', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeSessNetRow', 'nodeSyncRow', 'nodeHostRow', 'nodeDoorRow', 'openUnenroll', 'nodeProjects', 'nodeProjectsSection', 'nodeProjectRemove', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'groupNodeOptions', 'openRelocate', 'rlSay', 'closeRelocate', 'rlSubmit', 'myProjectNames', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmOwnerLine', 'dmMoveLine', 'dmGroupsHtml', 'dmOtherRowsHtml', 'dmTestLine', 'dmBuilt', 'jobWhy', 'shortWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
   'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionRows', 'liveRefresh',
@@ -78,8 +78,8 @@ const SURFACE = [
   'postTrash', 'projectRow', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneButton', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'wirePhoneTab',
-  'openStorageTab', 'loadStorage', 'storageFilesystems', 'storageStores', 'storageProjects', 'storageSection', 'renderStorageInto', 'wireStorageTab',
-  'openNginxTab', 'loadNginx', 'nginxAct', 'nginxRouteRow', 'nginxHosts', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxSection', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
+  'openStorageTab', 'loadStorage', 'storageFilesystems', 'storageStores', 'storageProjects', 'storageBody', 'storagePick', 'renderStorageInto', 'wireStorageTab',
+  'openNginxTab', 'loadNginx', 'nginxAct', 'nginxRouteRow', 'nginxHosts', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxBody', 'nginxPick', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
   // guides are top-level consts, which are not window properties.
   'abShow', 'abLoadLog', 'abDrawLog', 'openAbout', 'closeAbout', 'welcomeOnce',
@@ -93,7 +93,7 @@ const SURFACE = [
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
-  'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnDrawSigning', 'rnFillColor', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnLoadSigning', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnLoadModelNow', 'rnSavePeople', 'rnSaveSigning', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
+  'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnDrawSigning', 'rnFillColor', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnLoadSigning', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnLoadModelNow', 'rnLabelDefault', 'rnSavePeople', 'rnSaveSigning', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
