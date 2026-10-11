@@ -1428,7 +1428,9 @@ def claude_row(n):
     install, update and remove is claudecode's, which ends the node's Claude
     sessions first, since the binary is swapped under nothing."""
     se = (n.get("reported") or {}).get("session") or {}
-    if not claudecode or n.get("kind") != "agent" or not se.get("up"):
+    # A hosting-only node runs no session, so nothing there runs Claude
+    # Code: no row, whatever its census says (the operator, 11 Oct).
+    if not claudecode or n.get("kind") != "agent" or not se.get("up") or (n.get("config") or {}).get("host_only"):
         return None
     inst = claudecode.installed(n)
     cur = claudecode.latest()

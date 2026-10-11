@@ -86,12 +86,12 @@ const DRIVERS = {
   storage: {
     // A section per node, or the empty band on a box with none (R169).
     open: () => page.evaluate(() => openStorageTab()),
-    readyWhen: '.storagetab .sect, .storagetab .empty',
+    readyWhen: '.storagetab [data-stnode], .storagetab .empty',
   },
   nginx: {
     // A section per node, or the empty band on a box with none (R171).
     open: () => page.evaluate(() => openNginxTab()),
-    readyWhen: '.nginxtab .sect, .nginxtab .empty',
+    readyWhen: '.nginxtab [data-ngnode], .nginxtab .empty',
   },
   users: {
     // There is always at least one row: the owner, seeded on the first boot,
@@ -193,7 +193,14 @@ async function measure(kind){
       stacks.get(key).push(Math.round(t.getBoundingClientRect().width));
     }
     const ragged = [...stacks.values()].filter(ws => ws.length > 1 && new Set(ws).size > 1);
+    // The jump bar's chips sit in a row (the operator, 11 Oct): the notebook's
+    // Settings view stacked them one per line, since the dialog's field rule
+    // outranked the bar's own.
+    const bar = box.querySelector('.sectjump');
+    const tops = bar ? [...bar.querySelectorAll('a')].slice(0, 2).map(e => Math.round(e.getBoundingClientRect().top)) : [];
+    const jump = bar && bar.offsetHeight ? { dir: getComputedStyle(bar).flexDirection, stacked: tops.length === 2 && tops[0] !== tops[1] } : null;
     return {
+      jump,
       ragged, stacks: [...stacks.values()].filter(ws => ws.length > 1).length,
       // flush and nbhost are the same treatment in the sheet, and the notebook
       // wears the second for its own reasons; both mean "fills the pane".
@@ -247,6 +254,7 @@ for (const kind of kinds){
      `[${kind}] every stack of meters has tracks of one width (${m.stacks || 0} stack${m.stacks === 1 ? '' : 's'}${
        m.ragged?.length ? `; ragged: ${m.ragged.map(w => w.join('/')).join('; ')}` : ''})`);
   if (m.err) continue;
+  if (m.jump) ok(m.jump.dir === 'row' && !m.jump.stacked, `[${kind}] its jump bar's chips sit in a row (${m.jump.dir}${m.jump.stacked ? ', stacked' : ''})`);
   ok(m.flush, `[${kind}] fills its pane flush, like every document`);
   ok(m.maxw === '1080px',
      `[${kind}] caps at the document width (got ${m.maxw})`);
@@ -1457,6 +1465,15 @@ for (const [name, open] of Object.entries(DIALOGS)) {
      `[dialog ${name}] its lines in .field bands, no h4, buttons in a .foot${
        d.err ? ` (${d.err})` : d.loose.length ? `: loose ${d.loose.join(', ')}` : d.h4 ? `: ${d.h4} h4` : !d.foot ? ': no foot' : ''}`);
   ok(!d.nested, `[dialog ${name}] scrolls in one place${d.nested ? `: ${d.nested}` : ''}`);
+  // The jump bar's chips sit in a row (the operator, 11 Oct): the dialog's
+  // field rule stacks a band's children, and the bar is a band.
+  const jump = await page.evaluate(() => {
+    const bar = [...document.querySelectorAll('.modal')].find(x => !x.hidden)?.querySelector('.sectjump');
+    if (!bar || !bar.offsetHeight) return null;
+    const a = [...bar.querySelectorAll('a')].slice(0, 2).map(e => Math.round(e.getBoundingClientRect().top));
+    return { dir: getComputedStyle(bar).flexDirection, stacked: a.length === 2 && a[0] !== a[1] };
+  });
+  if (jump) ok(jump.dir === 'row' && !jump.stacked, `[dialog ${name}] its jump bar's chips sit in a row (${jump.dir}${jump.stacked ? ', stacked' : ''})`);
   // One rhythm down a form. The sandbox VM dialog measured 0, 0, 10, 10, 0
   // between its fields, because a .prefrow carried a gap and the band's own
   // stacked children carried none, so one form read as three depending on
@@ -1472,7 +1489,8 @@ for (const [name, open] of Object.entries(DIALOGS)) {
     // Within ONE band, never across two: the gap between bands is their
     // padding twice over and is the band's business, not the form's.
     const odd = [];
-    for (const parent of box.querySelectorAll('.field, .field .prefrow')) {
+    // The jump bar's chips wrap at their own gap, which is not the form's.
+    for (const parent of box.querySelectorAll('.field:not(.sectjump), .field .prefrow')) {
       const rows = [...parent.children].filter(e => e.offsetHeight);
       for (let i = 1; i < rows.length; i++) {
         const a = rows[i - 1].getBoundingClientRect(), b = rows[i].getBoundingClientRect();

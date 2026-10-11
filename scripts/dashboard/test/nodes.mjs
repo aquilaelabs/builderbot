@@ -1184,6 +1184,12 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const hi = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
     ok(hi.host_only === true && hi.bundle === '' && (hi.session_tokens || []).length === 0,
        `its hello says so, hands it no bb bundle and no session token (${JSON.stringify([hi.host_only, hi.bundle])})`);
+    // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
+    // its row, no row on its Toolchains tab.
+    await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:claude"]'), ROW, { timeout: 10000 }).catch(() => {});
+    const tcHost = await napi('/api/toolchains?node=' + minted.id);
+    ok(!(await page.$(`${ROW} details[data-sect="nodes:claude"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
+       `a hosting-only node's row has no Claude Code section, and its Toolchains tab no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
     const codes = {};
     for (const v of ['sync', 'claude', 'sessions', 'runner-token', 'signing-key'])
       codes[v] = (await agent(v, { action: 'projects' })).status;

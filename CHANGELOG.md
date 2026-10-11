@@ -265,6 +265,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- A hosting-only node's row has no Claude Code section and its Toolchains tab no Claude Code row: nothing there runs a session.
+- The notebook's Settings view lays its jump bar's chips in a row again; the dialog's field rule had stacked them one per line.
 - The provisioner's closing summary no longer runs sudo bb-sandbox: a command quoted in backticks inside its text ran, and every enroll ended by opening the mounts menu.
 - A new node enrolls again, and an updated one starts after a reboot: the agent's file (a zip since 9 Oct) carries a python3 first line, so the provisioner's enroll and the service run it as a program instead of failing with Exec format error.
 - Controller settings' Public hostname line says connected only when the name really reaches this controller: the controller asks the name itself once a minute and, when the tunnel's rule sends the agent's API somewhere else, says so and where it should point.

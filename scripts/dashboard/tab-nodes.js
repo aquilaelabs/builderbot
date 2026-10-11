@@ -1286,7 +1286,7 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
-        ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
+        ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
       </div>
