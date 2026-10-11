@@ -32,27 +32,29 @@ const MODELS = [["", "Claude's default"], ["opus", "Opus"], ["sonnet", "Sonnet"]
                 ["haiku", "Haiku"], ["fable", "Fable"]];
 const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
                  ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
-// What Claude's default here actually IS, read from the last transcript
-// when the dialog opens: with nothing set the picker used to read "leave
-// as is", which says nothing, and choosing the model the session was
-// already on counted as a change and asked to restart it. The picker now
-// shows that model, and picking it is picking the default.
+// What the last session here answered on, read from the newest transcript
+// when the dialog opens, and said on the "Claude's default" option rather
+// than by selecting that model: the picker once showed the last model as if
+// it were set and saved "" when it was left or picked, so a project read
+// Fable in its settings and launched on Opus (11 Oct). A model picked here
+// is now always the one saved, and Claude's default is always "".
 let rnModelNow = "";
-const rnModelPick = () => {
-  const v = $("rnModel").value;
-  return rnPrefWas.model === "" && v === rnModelNow ? "" : v;
-};
+const rnModelPick = () => $("rnModel").value;
+const rnModelName = v => (MODELS.find(([m]) => m === v) || [])[1] || v;
+function rnLabelDefault(){
+  const o = $("rnModel").querySelector('option[value=""]');
+  if (o) o.textContent = rnModelNow ? `Claude's default (last session: ${rnModelName(rnModelNow)})` : MODELS[0][1];
+}
 function rnLoadModelNow(name){
   rnModelNow = "";
+  rnLabelDefault();
   fetch(`/api/claude-now?project=${encodeURIComponent(name)}`)
     .then(r => r.json())
     .then(j => {
       if (rnFor !== name || !j.model) return;
       rnModelNow = j.model;
-      if (rnPrefWas.model === "" && MODELS.some(([v]) => v === j.model)){
-        $("rnModel").value = j.model;
-        rnDrawPrefs();
-      }
+      rnLabelDefault();
+      rnDrawPrefs();
     })
     .catch(() => {});
 }
@@ -458,9 +460,8 @@ function rnDrawPrefs(){
   const running = liveSessions().has(myClaude(rnFor));
   const changed = rnModelPick() !== rnPrefWas.model
                || $("rnEffort").value !== rnPrefWas.effort;
-  const dflt = rnPrefWas.model === "" && rnModelNow
-    ? ` ${(MODELS.find(([v]) => v === rnModelNow) || [])[1] || rnModelNow} is Claude's `
-      + `own default here.` : "";
+  const dflt = rnModelPick() === "" && rnModelNow
+    ? ` The last session here answered on ${rnModelName(rnModelNow)}; pick it to keep it.` : "";
   $("rnPrefHint").textContent = shut
     ? "Locked; this project is yours to run, so no session starts here."
     : running
@@ -1467,7 +1468,7 @@ function rnRevertSect(sect){
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGateVersion").value = w.version;
   } else if (sect === "yours"){
-    $("rnModel").value = w.model || rnModelNow; $("rnEffort").value = w.effort;
+    $("rnModel").value = w.model; $("rnEffort").value = w.effort;
     $("rnReply").value = w.reply; $("rnAsks").value = w.asks;
     $("rnGitName").value = w.git_name; $("rnGitEmail").value = w.git_email;
     rnDrawPrefs();

@@ -1924,11 +1924,13 @@ await page.click('#rnCancel');
   tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
   await refreshUntil(page, () => liveSessions().has(myClaude('alpha')),
                      { timeout: 20000 });
-  // With no model set, the dialog shows what Claude's default here actually
-  // is, read from the last transcript, and picking that model is picking the
-  // default: no change, so nothing is asked and nothing restarts. "Leave as
-  // is" said nothing, and choosing the model the session was already on
-  // used to count as a change (the operator's report, 14 Sep).
+  // With no model set, the dialog says which model the last session here
+  // answered on, on the "Claude's default" option and in the hint, and
+  // leaves the default selected: opening it changes nothing, so nothing is
+  // asked and nothing restarts (the operator's report, 14 Sep). Picking that
+  // model is a choice and is saved as one: the picker once showed the last
+  // model as if it were set and saved "", so a project read Fable in its
+  // settings and launched on Opus (the operator, 11 Oct).
   const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
   const tdir = `${DIR}/home/.claude/projects/${slug}`;
   mkdirSync(tdir, { recursive: true });
@@ -1937,12 +1939,18 @@ await page.click('#rnCancel');
     + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.waitForFunction(() => document.getElementById('rnModel').value === 'fable', null, { timeout: 8000 });
-  ok(/Fable is Claude's own default here/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
-     'with nothing set, the picker shows the model the last session ran on and the hint says it is the default');
+  await page.waitForFunction(() => /last session: Fable/.test(document.querySelector('#rnModel option[value=""]').textContent),
+                             null, { timeout: 8000 });
+  ok(await page.$eval('#rnModel', e => e.value) === ''
+     && /last session here answered on Fable/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+     'with nothing set, the default stays picked and says the model the last session ran on');
   const askedBefore = page.dialogs.length;
   ok(await page.$eval('.rnbar[data-rnbar="yours"] [data-rnsave]', b => b.disabled),
-     'with that model left where it was nothing is unsaved: its section\'s Save stays dead');
+     'with the default left where it was nothing is unsaved: its section\'s Save stays dead');
+  await page.selectOption('#rnModel', 'fable');
+  ok(!await page.$eval('.rnbar[data-rnbar="yours"] [data-rnsave]', b => b.disabled),
+     '...and picking that same model is a change, which its section\'s Save offers to keep');
+  await page.selectOption('#rnModel', '');
   await page.click('#rnCancel');
   await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
   ok(page.dialogs.length === askedBefore, '...and closing asks nothing');
