@@ -1450,6 +1450,12 @@ select:focus{outline-offset:-2px}
 .rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 /* Also reaches: an address per row, its nodes ticked beside it, and its bin. */
 #rnReachRows{display:flex;flex-direction:column;gap:6px}
+/* The Settings tab (tab-settings.js): sections of row bands, which carry
+   their own inset, so the body adds none; the setup steps in a list. */
+.settingstab .sect>.body{padding:0 0 var(--row-y);gap:0}
+.settingstab .sect>.body>.row{border-top:0}
+.settingstab .setsteps{margin:6px 0 0;padding-left:1.2em}
+.settingstab .setsteps li{margin:2px 0}
 /* The Storage tab (tab-storage.js): its sections hold field bands and rows,
    so the body adds no inset; the project rows carry their numbers in
    fixed columns, right-aligned, so the stack reads as a comparison. */

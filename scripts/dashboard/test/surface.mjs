@@ -88,7 +88,7 @@ const SURFACE = [
   // is not a window property, so usersList and friends are not listed here.
   'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersEditOpen', 'usersEditSave',
   'renderUsersInto', 'wireUsers', 'openRolesTab', 'loadRoles', 'rolesAct', 'rolesFrom', 'rolesPeopleBody', 'rolesCanDo', 'rolesPeopleDirty', 'rolesPeopleFrom', 'rolesPerson', 'rolesRedraw', 'rolesRoleBody', 'rolesRoleDirty', 'renderRolesInto', 'wireRoles', 'openProfileTab', 'loadProfile', 'renderProfileInto', 'wireProfile', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
-  'idleSection', 'wireIdleSection', 'pathsSection', 'wirePathsSection', 'settingsSections', 'tunnelStatus', 'wireSettingsSections', 'settingsLive', 'openDebugSettings',
+  'idleSection', 'wireIdleSection', 'pathsSection', 'wirePathsSection', 'settingsSections', 'withRevert', 'tunnelSteps', 'tunnelStatus', 'wireSettingsSections', 'settingsLive', 'openDebugSettings',
     'reportsSection', 'clearReports',
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',

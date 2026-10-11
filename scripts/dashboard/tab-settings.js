@@ -13,8 +13,11 @@
 
 "use strict";
 
+// Revert on a section puts its fields back to what is saved: the draft for
+// them dropped and the tab repainted, which the live key has to notice.
+let settingsRev = 0;
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.idle, state?.log_days, state?.paths]);
+  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.log_days, state?.paths, settingsRev]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one
@@ -40,33 +43,47 @@ function renderSettingsInto(i){
   const d = docSurface(i, "settings");
   if (!d) return;
   d.setBar(`<span class="dim">what this controller does; appearance is in the gear</span>`);
-  d.list.innerHTML = `
-    <div class="row stack2">
-      <div class="grow">${logSection()
-        || `<div class="sub">log settings arrive with the first poll…</div>`}</div>
-    </div>
-    ${reportsSection()}
-    <div class="row stack2">
-      <div class="grow">${idleSection()}</div>
-    </div>
-    ${pathsSection()}
-    ${settingsSections()}
-    <div class="row stack2" data-group="Reset">
+  // Sections, like every other tab's (the operator, 11 Oct): one fold per
+  // group, its status on the heading, a jump bar over them, and each with
+  // its own Apply and Revert. The groups' own markup is kept inside (the
+  // suites and the keepers address it), the heading taking the h4's place.
+  const idle = state?.idle?.minutes;
+  const paths = state?.paths?.paths || [];
+  const t = state?.settings?.tunnel;
+  const dbg = state?.settings?.settings?.debug_mode?.value;
+  const sect = (key, title, status, html, opts = {}) =>
+    docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
+  const groups = settingsSections();
+  d.list.innerHTML = `<div class="sectjump" data-sects></div>
+    ${sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logSection(), "logs")
+        || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`)}
+    ${reportsSection() ? sect("reports", "BuilderBot bug reports", "", reportsSection()) : ""}
+    ${sect("idle", "Claude sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
+           `<div class="row stack2" data-group="Claude sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
+    ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
+    ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
+    ${sect("reset", "Reset BuilderBot", "", `<div class="row stack2" data-group="Reset">
       <div class="grow">
-        <div class="name">Reset BuilderBot</div>
         <div class="sub">Start over at Create the owner. Everything but project files is moved aside, not deleted.</div>
         <div class="actbar"><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
         <div id="setResetBox"></div>
       </div>
-    </div>
-    <div class="row stack2">
+    </div>`)}
+    ${sect("nodes", "Nodes", "", `<div class="row stack2">
       <div class="grow">
-        <div class="name">Nodes</div>
         <div class="sub">The machines work runs on, each set up on its own row.</div>
         <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
       </div>
-    </div>`;
-  d.setFoot(`a change applies at once or at the next start: each section says which.`);
+    </div>`)}`;
+  d.setFoot(`a change applies at once or at the next start: each section says which. Revert puts a section's fields back to what is saved.`);
+  sectJump(d.list.querySelector("[data-sects]"));
+  wireSections(d.el);
+  d.el.querySelectorAll("[data-srevert]").forEach(b => b.onclick = () => {
+    const sec = b.closest("details.sect");
+    sec?.querySelectorAll("input, select").forEach(i => { if (i.id) delete settingsDraft[i.id]; });
+    settingsRev++;
+    drawPanes();
+  });
   wireLogSection(d.el);
   wireIdleSection(d.el);
   wirePathsSection(d.el);
@@ -84,6 +101,15 @@ function renderSettingsInto(i){
 // which the Diagnostics download under Logs carries. Counted on the press
 // rather than on the line: they arrive from sessions at any time, so a count
 // fetched when the tab opened would be stale by the time it was read.
+// A section's Revert beside its Apply: the first Apply button in the markup
+// gets one after it, wearing the section's key.
+function withRevert(html, key){
+  if (!html) return html;
+  const m = html.match(/<button[^>]*(id="(logApply|idleApply|pathsApply)"|class="setApply")[^>]*>Apply<\/button>/);
+  if (!m) return html;
+  return html.replace(m[0], `${m[0]}<button type="button" class="caution" data-srevert="${esc(key)}" title="put this section's fields back to what is saved">Revert</button>`);
+}
+
 function reportsSection(){
   // The debug grant's, and not drawn without it (the operator, 6 Oct).
   if (state?.can?.debug === false) return "";
@@ -124,14 +150,17 @@ const SETTING_GROUPS = [
   // a node off the LAN dials, the tunnel's token, and an API token that
   // writes the hostname's record and the tunnel's rules rather than having
   // them clicked. The two tokens are secrets: never shown back.
-  {title: "Public hostname", status: tunnelStatus, fields: [
+  {key: "tunnel", title: "Public hostname", status: tunnelStatus, intro: tunnelSteps,
+   heading: s => !s?.tunnel ? "" : s.tunnel.connected ? "connected" : s.tunnel.configured ? (s.tunnel.running ? "starting" : "stopped") : "off",
+   headingCls: s => s?.tunnel?.connected ? "ok" : "",
+   fields: [
     {key: "tunnel_host", label: "Hostname", type: "text", placeholder: "bb.example.com",
      hint: "The name a node off your network dials the controller at, published by a tunnel from home. Enroll node fills it in."},
     {key: "tunnel_token", label: "Tunnel token", type: "secret",
      hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
     {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
      hint: "With Zone DNS Edit and Account Cloudflare Tunnel Edit: the hostname's record and the tunnel's two rules (the agent's API to the controller, everything else 404) are written on Apply rather than clicked."}]},
-  {title: "Debugging", fields: [
+  {key: "debug", title: "Debugging", heading: s => s?.settings?.debug_mode?.value ? "on" : "off", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
      hint: "Shows the Debug settings button here, and lets a project's settings grant its "
          + "sessions nodes' logs and the controller's diagnostics. Turning it on grants nothing by itself."}],
@@ -148,6 +177,19 @@ const SETTING_GROUPS = [
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
      hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
 ];
+
+// How the public hostname is set up, in the section itself (the operator,
+// 11 Oct): the steps in order, with the controller's own port in them.
+function tunnelSteps(s){
+  const port = s?.tunnel?.port || 7680;
+  return `<div class="sub">A name a node off your network dials to reach this controller, carried by a tunnel the controller runs itself. Nothing on your router changes, and the node never learns your address.</div>
+    <ol class="setsteps dim">
+      <li>In Cloudflare Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), named for this controller. Copy the long <code>eyJ…</code> token from its install command into Tunnel token below. Do not run that command: the controller runs the tunnel.</li>
+      <li>Pick the hostname, on a domain in your Cloudflare account (<code>bb.example.com</code>), and type it in Hostname.</li>
+      <li>Either paste an API token with Zone DNS Edit on that domain and Account Cloudflare Tunnel Edit, and Apply writes the hostname's record and the tunnel's rules; or set them yourself on the tunnel's Public Hostname page: path <code>api/v1/agent/.*</code> to HTTP <code>localhost:${esc(String(port))}</code> (the controller's own port, inside its container), and the bare hostname to HTTP status 404, so the name serves no page.</li>
+      <li>Apply. The line below says connected once the tunnel is up; Enroll node then fills the hostname in for a node reaching the controller through it.</li>
+    </ol>`;
+}
 
 // The tunnel's line on its group's action bar (R176): whether cloudflared
 // is here, running, registered, and at which name, as the server reads it.
@@ -239,7 +281,7 @@ function openDebugSettings(){
 
 function settingsSections(){
   const s = state?.settings;
-  if (!s) return `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
+  if (!s) return [{key: "wait", title: "Settings", status: "", html: `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`}];
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
   // The Debugging group is the debug grant's (roles.NAMED_ONLY): without it
   // the page does not show it at all (the operator, 6 Oct).
@@ -278,10 +320,11 @@ function settingsSections(){
             title="${debugOn ? "the settings kept behind debug mode"
                              : "turn Debug mode on and Apply first: these are its settings"}"
             >Debug settings</button></div>`;
-    return `<div class="row stack2" data-group="${esc(g.title)}">
+    return {key: g.key, title: g.title, status: g.heading ? g.heading(s) : "", cls: g.headingCls ? g.headingCls(s) : "",
+      html: `<div class="row stack2" data-group="${esc(g.title)}">
       <div class="grow">
-        <h4>${esc(g.title)}</h4>
         <div class="logset">
+          ${g.intro ? g.intro(s) : ""}
           ${g.fields.map(field).join("")}${fold}
           <div class="actbar">
             <span class="state">${g.status ? g.status(s) : "applies at once"}</span>
@@ -289,8 +332,8 @@ function settingsSections(){
           </div>
         </div>
       </div>
-    </div>`;
-  }).join("");
+    </div>`};
+  });
 }
 
 function wireSettingsSections(el){

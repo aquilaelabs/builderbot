@@ -250,6 +250,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings save a section at a time: each section has its own Save and Revert, and where a running session would only take a change when it starts, the section offers Save, keep it running and Save and end it at once. (fdc65ea)
 - The briefing says how a session sends any of its compose files to Docker, what a required variable means, that a hosting node named in its settings takes its containers, and that what stands in front of a container is the nginx tab, a person's. (0937b55)
 - A node's name is taken once: a second script with it is refused; a waiting row shows its id and what its script was made with, and offers Download it again or Discard; the script is named enroll-NAME-ID.sh. (6d600f9)
+- Controller settings is sections like every other tab, each with its own Apply and Revert and a jump bar over them; the Public hostname section carries its own setup steps. (281f4ba)
 
 ### Removed
 

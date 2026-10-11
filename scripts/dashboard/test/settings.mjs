@@ -83,8 +83,23 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Storage|Public hostname|Debugging|Reset',
-   `the tab's stored settings are the groups that survived the question "does this need to exist": where what grows is kept (the operator, 10 Oct), the home tunnel the controller runs itself (R176), and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Claude sessions|Storage|Public hostname|Debugging|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the home tunnel the controller runs itself (R176), debugging, and the reset (${groups.join(', ')})`);
+// Sections like every other tab's (the operator, 11 Oct): a fold each, a
+// jump bar over them, and Revert beside each Apply putting the section's
+// fields back to what is saved.
+{
+  const sects = await page.$$eval('.settingstab details.sect', ds => ds.map(d => d.querySelector('summary .t').textContent));
+  ok(sects.length >= 6 && await page.$('.settingstab .sectjump a') !== null,
+     `the tab is sections with a jump bar over them (${sects.join(', ')})`);
+  const was = await page.$eval('#idleMin', i => i.value);
+  await page.fill('#idleMin', '4321');
+  await page.click('.settingstab [data-group="Claude sessions"] [data-srevert]');
+  await page.waitForFunction(w => document.getElementById('idleMin')?.value === w, was, { timeout: 10000 });
+  ok(true, 'Revert on a section puts its field back to what is saved');
+  ok(await page.$eval('.settingstab [data-group="Public hostname"] .setsteps', ol => ol.querySelectorAll('li').length === 4 && /localhost:\d+/.test(ol.textContent)),
+     'the Public hostname section carries its own setup steps, with the controller\'s port in them');
+}
 
 // The home tunnel (R176): a hostname, two secrets never shown back, and the
 // controller running cloudflared itself (the harness's stub) from them, with

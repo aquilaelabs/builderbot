@@ -1094,6 +1094,7 @@ Layout of Controller settings on a desktop frame (12 columns by 8 rows), from th
   4. Footer (the band at the foot): when a change takes effect: at once, or at the next start, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Nothing here takes effect on the change: each section is a draft until its Apply. The color scheme is not here; it is in the gear, since a theme is looked at and not decided.
+  Sections like every other tab's (the operator, 11 Oct): a fold per group (Logs, Claude sessions, Storage on this controller, Public hostname, Debugging, Reset, Nodes), its status on the heading (the idle minutes, the number of paths, connected or off, on or off), a jump bar of chips over them, and each with its own Apply and Revert on its action bar; Revert puts that section's fields back to what is saved. The Public hostname section carries its own setup steps as a numbered list, the controller's port in them.
 
 ### the Users tab (Web app)
 

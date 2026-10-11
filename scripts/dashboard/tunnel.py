@@ -173,7 +173,7 @@ def status():
     registered, at which hostname, since when, its last lines."""
     token, host = _wanted()
     running = _proc is not None and _proc.poll() is None
-    return {"installed": installed(), "configured": bool(token), "host": host,
+    return {"installed": installed(), "configured": bool(token), "host": host, "port": port,
             "running": running, "connected": bool(running and _connected),
             "since": _since if running else 0,
             "tail": list(_tail)[-6:], "error": _error,
