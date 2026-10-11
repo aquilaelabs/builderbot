@@ -296,6 +296,20 @@ def set_cert(nid, cert, key, host=""):
     got = check_cert(cert, key)
     if got.get("error"):
         return got
+    # Another domain's pair pasted for the default while a default stands
+    # (the operator, 11 Oct: turinglens.com's pair went without a word when
+    # aquilaelabs.dev's was saved over it) goes under its own domain, beside
+    # the default, and the answer says so; a pair for the same names is a
+    # renewal and replaces the default as before.
+    placed = ""
+    if not host:
+        cur = (record(nid).get("cert") or {})
+        if cur.get("set") and _names_of(cur) != _names_of(got):
+            host = domain_of(got.get("names") or got.get("subject") or "")
+            placed = cur.get("subject") or "the default"
+            if not host:
+                return {"error": "that pair names no hostname, and the node's default is "
+                                 f"{placed}'s: pick what it is for under For, or take the default off first"}
     d = _cert_dir(nid, host)
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name, text in (("cert.pem", cert), ("key.pem", key)):
@@ -312,7 +326,22 @@ def set_cert(nid, cert, key, host=""):
         else:
             rec["cert"] = summary
         _save(st)
-    return {"ok": True, "cert": summary, "host": host}
+    return {"ok": True, "cert": summary, "host": host} | ({"placed": placed} if placed else {})
+
+
+def _names_of(summary):
+    """The DNS names a pair covers, as a set, for telling a renewal from
+    another domain's pair."""
+    return {n.strip().lower() for n in str(summary.get("names") or summary.get("subject") or "").split(",") if n.strip()}
+
+
+def domain_of(names):
+    """The domain a pair is for, from its names: the first, a wildcard's
+    star taken off (*.example.com is example.com's), lowercased."""
+    first = str(names or "").split(",")[0].strip().lower()
+    if first.startswith("*."):
+        first = first[2:]
+    return first if HOST_RE.match(first) else ""
 
 
 def drop_cert(nid, host=""):

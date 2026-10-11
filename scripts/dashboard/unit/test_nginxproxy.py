@@ -97,6 +97,27 @@ class Certificate(unittest.TestCase):
         self.assertFalse(os.path.exists(key))
         self.assertNotIn("cert", npx.record("n1"))
 
+    def test_another_domains_pair_goes_beside_the_default_not_over_it(self):
+        """A pair for other names pasted for the default while one stands
+        goes under its own domain and says so; the same names replace it,
+        a renewal (B657: turinglens.com's default went without a word)."""
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
+                        "-subj", "/CN=*.aquilae.test", "-addext", "subjectAltName=DNS:*.aquilae.test,DNS:aquilae.test",
+                        "-keyout", f"{self.tmp}/k2.pem", "-out", f"{self.tmp}/c2.pem"],
+                       check=True, capture_output=True)
+        cert2, key2 = open(f"{self.tmp}/c2.pem").read(), open(f"{self.tmp}/k2.pem").read()
+        self.assertTrue(npx.set_cert("n1", self.cert, self.key)["ok"])
+        r = npx.set_cert("n1", cert2, key2)
+        self.assertEqual((r["host"], r["placed"]), ("aquilae.test", "www.example.com"), r)
+        rec = npx.record("n1")
+        self.assertEqual(rec["cert"]["subject"], "www.example.com", "the default stands")
+        self.assertTrue(rec["certs"]["aquilae.test"]["set"], "the other domain's pair is beside it")
+        self.assertEqual(npx.cert_for(rec, "a.aquilae.test"), "aquilae.test")
+        again = npx.set_cert("n1", self.cert, self.key)
+        self.assertNotIn("placed", again, "the same names are a renewal of the default")
+        self.assertEqual(npx.domain_of("*.example.com, example.com"), "example.com")
+        npx.drop_cert("n1"); npx.drop_cert("n1", host="aquilae.test")
+
     def test_a_domains_certificate_covers_its_subdomains(self):
         """One pair per domain (the operator, 11 Oct): saved under
         example.com it serves a.example.com and b.example.com, and another

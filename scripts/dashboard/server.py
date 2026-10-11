@@ -7175,12 +7175,17 @@ class Handler(BaseHTTPRequestHandler):
             r = nginxproxy.save_routes(nid, req.get("routes"))
             # The certificate pasted is the node's default, or one
             # hostname's own when cert_for names it (R175).
+            placed = {}
             if not r.get("error") and isinstance(req.get("cert"), str) and req.get("cert").strip():
                 r = nginxproxy.set_cert(nid, req.get("cert"), req.get("key"), field(req, "cert_for"))
+                # Where the pair went, for the tab to say when it was not
+                # where the picker read (B657).
+                if r.get("placed"):
+                    placed = {"placed": r["placed"], "host": r.get("host", "")}
             if not r.get("error") and req.get("drop_cert") is True:
                 r = nginxproxy.drop_cert(nid, field(req, "cert_for"))
             if not r.get("error"):
-                r = nginxproxy.apply(nid, containers, devactions, devapp)
+                r = nginxproxy.apply(nid, containers, devactions, devapp) | placed
         elif act == "remove":
             r = nginxproxy.remove(nid, devactions, devapp)
         else:

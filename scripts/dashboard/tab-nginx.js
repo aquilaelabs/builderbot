@@ -247,6 +247,10 @@ function wireNginxTab(root){
     const j = await nginxAct({action: "save", node: nid, routes: d.routes, cert_for: d.certFor,
                               ...(d.cert.trim() ? {cert: d.cert, key: d.key} : {}), drop_cert: d.drop});
     if (!j.error) delete nginxDraft[nid];
+    // Another domain's pair pasted for the default went under its own
+    // domain instead, beside the default (B657): said, since the picker
+    // still read "the node's default".
+    if (j.placed) notify(`saved under ${j.host}, beside the default (${j.placed}): a pair for other names is not a replacement`);
     nginxRedraw();
   };
   bar.querySelector("[data-ngrevert]").onclick = () => { delete nginxDraft[nid]; nginxRedraw(); };

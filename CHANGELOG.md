@@ -437,6 +437,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb logs --node NAME --nginx finds the container: the nginx tab's compose names it nginx-NODE, as the Docker tab shows it; a node deployed before takes the name at its next Save (B653) (e278190)
 - On a phone the Storage tab's By project table shows each project's folders with their names beside the numbers, and says none where a folder is empty; at a desk it is a table under a head row (B655) (ea72d42)
 - The node agent no longer says hello every hundred seconds: the session network keeper read the containers' entry on its stored status as a change every step (B647). Agent 0.7.169 (d535d32)
+- A certificate pasted on the nginx tab for the node's default while another domain's default stands goes under its own domain beside it and the tab says so; only a pair for the same names replaces the default (B657) (1559204)
 
 ### Security
 
