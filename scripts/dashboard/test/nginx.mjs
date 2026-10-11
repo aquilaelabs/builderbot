@@ -87,7 +87,7 @@ await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.dep
 const rec = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-sandbox'];
 const written = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
 ok(rec?.main?.source === 'file' && rec.main.node === sandbox.node && rec.main.for === 'System'
-   && /network_mode: host/.test(written.compose || '') && /www\.example\.com/.test(written.compose || '')
+   && /network_mode: host/.test(written.compose || '') && /container_name: nginx-sandbox/.test(written.compose || '') && /www\.example\.com/.test(written.compose || '')
    && /proxy_pass http:\/\/127\.0\.0\.1:8080/.test(written.compose || ''),
    `Deploy writes nginx-sandbox on the node as System's, BuilderBot's own (R180), its compose carrying the config inline (${JSON.stringify(rec?.main).slice(0, 80)})`);
 // System is the deployment's to set and nobody's to pick: the owner verb

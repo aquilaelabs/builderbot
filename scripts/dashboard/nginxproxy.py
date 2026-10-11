@@ -196,6 +196,9 @@ def compose_text(nid, rec):
            "services:",
            "  nginx:",
            f"    image: {IMAGE}",
+           # Named for the node, as the Docker tab names it, so docker logs
+           # finds it under that name (B653: compose's nginx-NODE-nginx-1 did not).
+           f"    container_name: {container_name(nid)}",
            "    restart: unless-stopped",
            "    network_mode: host",
            "    configs:",
