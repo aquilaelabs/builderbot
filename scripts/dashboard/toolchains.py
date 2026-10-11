@@ -1773,15 +1773,18 @@ def verb(action, req, principal):
             known = known | {DRIVER, TOOLKIT}
         # Claude Code is its own job (claudecode.py): an install or an update
         # runs the installer as the session account and ends the node's
-        # Claude sessions first; a removal takes the copy off (R145). Alone,
-        # never in a batch with the store's recipes.
+        # Claude sessions first; a removal takes the copy off (R145). Ticked
+        # with the store's recipes, it is queued beside their job rather
+        # than refused (the operator, 11 Oct: "why does claude have to be on
+        # its own"); the node runs the two one after the other.
         want = [str(x) for x in (req.get("names") or [])]
+        claude_r = None
         if CLAUDE in want and action in ("install", "remove") and claudecode:
-            if len(want) > 1:
-                return {"error": "Claude Code installs on its own: untick the others, or press Install "
-                                 "selected again for them after"}, 400
-            r = claudecode.update(principal, nid) if action == "install" else claudecode.remove(principal, nid)
-            return r, (400 if r.get("error") else 200)
+            claude_r = claudecode.update(principal, nid) if action == "install" else claudecode.remove(principal, nid)
+            rest = [x for x in want if x != CLAUDE]
+            if not rest or claude_r.get("error"):
+                return claude_r, (400 if claude_r.get("error") else 200)
+            req = dict(req, names=rest)
         # A press of Check for updates asks Claude Code's latest too, in the
         # same answer, like the store's recipes (R145).
         claude_said = claudecode.check() if action == "check" and claudecode else None
@@ -1803,6 +1806,9 @@ def verb(action, req, principal):
         r = node_job(principal, nid, action, names, driver=field(req, "driver"))
         if claude_said is not None:
             r = r | {"claude": {"version": claude_said.get("version") or "", "error": claude_said.get("error") or ""}}
+        if claude_r is not None:
+            # Both jobs queued: the recipes' and Claude Code's, said together.
+            r = r | {"claude_job": claude_r.get("job") or "", "note": "Claude Code is its own job beside this one"}
         return r, (400 if r.get("error") else 200)
     if action == "abort":
         return {"ok": abort_job()}, 200

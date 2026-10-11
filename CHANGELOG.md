@@ -402,6 +402,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A compose file the Artifacts tab says compose cannot read now says what compose itself said is wrong with it. (ebc91a8)
 - A compose file that requires a variable its env does not have yet is no longer called broken on the Artifacts tab: it says which variables it needs and is judged with them stood in. (fdc65ea)
 - The Artifacts tab offers Send for a compose file named for its service (admin.compose.yml), the container named for the service. (e97f661)
+- Install selected on the Toolchains tab takes Claude Code together with other toolchains: its own job is queued beside theirs rather than the press refused. (0c8bfe3)
 
 ### Security
 
