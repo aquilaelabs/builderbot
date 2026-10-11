@@ -393,6 +393,16 @@ def update_container(name, compose_text, env_text):
             "note": "rebuild it to bring the change up"}
 
 
+# A private key inline in a compose file (the nginx tab's tls_key configs)
+# is for the node, never for a text box: the editor's copy shows a line in
+# its place (B656). Matched on the config's name and its content block.
+_KEY_BLOCK = re.compile(r"^(  tls_key[^\n]*:\n    content: \|\n)(?:      [^\n]*\n)+", re.M)
+
+
+def redact_keys(compose):
+    return _KEY_BLOCK.sub(r"\g<1>      (the private key: kept on the controller, never shown)\n", compose or "")
+
+
 def read_container(name):
     """What was written, for the editor to open on."""
     try:
@@ -400,7 +410,7 @@ def read_container(name):
             encoding="utf-8", errors="replace")
     except OSError:
         compose = ""
-    return {"compose": compose, "env": devapp.read_env(name, devapp.MAIN)}
+    return {"compose": redact_keys(compose), "env": devapp.read_env(name, devapp.MAIN)}
 
 
 def listed_owner(c):
@@ -570,6 +580,13 @@ def tab_verb(act, name, req, seen):
     if act == "save":
         if name not in overview_names():
             return {"error": f"no container {name}"}, 400
+        # Not one of BuilderBot's own (System's, the nginx tab's today): its
+        # file is written from that tab, and the editor's copy has the
+        # private key redacted (read_container), so saving that copy would
+        # write the redaction over the key (B656). The tab's own Save goes
+        # through update_container directly.
+        if devapp.owner_of(name, devapp.MAIN) == devapp.SYSTEM:
+            return {"error": f"{name} is BuilderBot's own, written from the nginx tab: change it there"}, 403
         return _answer(update_container(name, req.get("compose") or "", req.get("env") or ""))
     if act != "create":
         return {"error": f"unknown action: {act}"}, 400

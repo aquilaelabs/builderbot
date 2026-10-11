@@ -110,6 +110,22 @@ const two = await api('/api/nginx', { action: 'save', node: sandbox.node,
 const again = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
 ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.0\.1:8788; \}/.test(again.compose || ''),
    `Save on a deployed nginx rewrites its compose file and rebuilds (${JSON.stringify(two).slice(0, 80)})`);
+// The private key goes to the node inside that file and never into a text
+// box (B656): the Docker tab's copy carries a line in its place, and saving
+// that copy back is refused, since the file is the nginx tab's to write.
+{
+  const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
+  // The routes as saved above, two of them: a save carries the whole list.
+  const kept = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes;
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, cert_for: 'www.example.com', cert, key });
+  const shown = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
+  ok(!/PRIVATE KEY/.test(shown.compose || '') && /tls_key_www_example_com:\n    content: \|\n      \(the private key: kept on the controller, never shown\)/.test(shown.compose || '')
+     && /BEGIN CERTIFICATE/.test(shown.compose || ''),
+     `the Docker tab's copy of nginx's compose carries the certificate and a line in place of the key`);
+  const back = await api('/api/container', { action: 'save', name: 'nginx-sandbox', compose: shown.compose, env: '' });
+  ok(/written from the nginx tab/.test(back.error || ''), `...and saving that copy back is refused (${(back.error || 'saved').slice(0, 60)})`);
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, cert_for: 'www.example.com', drop_cert: true });
+}
 
 // Remove: the container goes, the routes stay for a redeploy.
 await page.click(`${sect} [data-ngremove]`);
