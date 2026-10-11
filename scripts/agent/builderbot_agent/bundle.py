@@ -28,9 +28,20 @@ def sources(src_dir):
     return out
 
 
+# A shebang before the zip, as zipapp writes one: Python finds a zip by its
+# end, so the line costs nothing, and the file runs as a program again. The
+# provisioner runs it as "$AGENT enroll" and the unit as "$AGENT run", both
+# written when the agent was one script, and a zip with no first line made
+# both "Exec format error": a new node could not enroll (the operator,
+# 11 Oct), and a node that took the zip would not have started after a
+# reboot, the agent's own restarts going through sys.executable.
+SHEBANG = b"#!/usr/bin/env python3\n"
+
+
 def build(src_dir):
     """The zip's bytes, from the entry and the package in src_dir."""
     buf = io.BytesIO()
+    buf.write(SHEBANG)
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
         for arc, path in sources(src_dir):
             info = zipfile.ZipInfo(arc, date_time=(1980, 1, 1, 0, 0, 0))
