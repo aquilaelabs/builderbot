@@ -8,7 +8,6 @@ at the prompt proves the parse without a machine to take apart."""
 import os
 import re
 import shutil
-import stat
 import subprocess
 import tempfile
 import unittest

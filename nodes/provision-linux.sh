@@ -2601,7 +2601,15 @@ cmd_gpu_container() {
 }
 
 case "${1-}" in
-    "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
+    # The menu only when asked for by name, and only at a terminal (the
+    # operator, 11 Oct): a bare bb-sandbox reached from a run of the enroll
+    # script opened it on a VPS's console, where its keys did not work and
+    # the run could not go on. The enroll script and the Nodes tab are the
+    # way to configure a node; this is the by-hand fallback.
+    menu)        [ -t 0 ] && [ -t 1 ] || die "the menu needs a terminal: run sudo bb-sandbox menu from a shell"
+                 if have whiptail; then menu_whiptail; else menu_plain; fi ;;
+    "")          sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+                 printf '\nCommands: list, check, settings, add-nfs, add-share, remove, appdata, readonly, uninstall; menu for the interactive one.\n' ;;
     uninstall)   shift; cmd_uninstall "$@" ;;
     gpu)         cmd_gpu ;;
     gpu-display) cmd_gpu_display ;;
@@ -3032,7 +3040,7 @@ Two accounts, and the split is deliberate:
 
 This script makes no administrator account. Whatever already has root here
 (your own account, a cloud image's ubuntu or ec2-user, or root) runs
-`sudo bb-sandbox` to change what this machine mounts.
+`sudo bb-sandbox menu` to change what this machine mounts (or the verbs below).
 
 Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
 that group is root on this machine to anyone who wants it. This VM exists to be

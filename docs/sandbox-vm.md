@@ -123,7 +123,7 @@ its own.
 changed after the day it was built:
 
 ```bash
-sudo bb-sandbox                      # a menu, whiptail where the distro has it
+sudo bb-sandbox menu                 # a menu, whiptail where the distro has it (a bare bb-sandbox prints help)
 sudo bb-sandbox add-nfs 192.168.1.10:/mnt/user/media:/auxiliary
 sudo bb-sandbox add-share workspace:/workspace:ro
 sudo bb-sandbox appdata /devdata     # which mount holds container appdata
