@@ -911,6 +911,13 @@ print(json.dumps({
                          {'name': 'beta-db-1', 'compose': 'beta', 'ips': ['172.20.0.3'], 'bridges': ['br-bbbbbbbbbbbb'], 'ports': [5432]},
                          {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9'], 'bridges': ['br-cccccccccccc'], 'ports': [9000]}],
                         {'alpha': {'owner': 'alpha', 'to': ['alpha', 'beta']}, 'beta': {'owner': 'beta', 'to': ['beta']}}),
+  # ...and BuilderBot's own (R180): the map's 'all' gives a System-owned
+  # compose project every bridge and every published port here, the
+  # stranger's included, which the controller never named.
+  'ctrsys': m.ctrnet_reach([{'name': 'alpha-app-1', 'compose': 'alpha', 'ips': ['172.18.0.2'], 'bridges': ['br-aaaaaaaaaaaa'], 'ports': [8080]},
+                            {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9'], 'bridges': ['br-cccccccccccc'], 'ports': [9000]},
+                            {'name': 'monitor-1', 'compose': 'monitor', 'ips': ['172.22.0.2'], 'bridges': ['br-dddddddddddd'], 'ports': [3000]}],
+                           {'alpha': {'owner': 'alpha', 'to': ['alpha']}, 'monitor': {'owner': 'System', 'to': ['alpha', 'monitor'], 'all': True}}),
   'ctrfill': m.ctrnet_fill(['br-aaaaaaaaaaaa'], [('br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa')], [('br-aaaaaaaaaaaa', 8080)], [('192.168.1.15', 7680)], ['192.168.1.1']),
   'ctrtable': m.ctrnet_table(),
   'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
@@ -927,6 +934,10 @@ print(json.dumps({
          `a session's resolvers are the node's upstream ones, IPv4 and off the loopback, and none when the node names only its loopback (${JSON.stringify(sn.ns)})`);
       ok(/\nSESSION_NET=on\nSESSION_NET_CIDR=10\.231\.0\.0\/16\n$/.test(sn.on) && !/SESSION_NET/.test(sn.off),
          '...the layout file says so only when it is on, and an older bb-session reads the file it always read');
+      ok(sn.ctrsys[1].some(p => p[0] === 'br-dddddddddddd' && p[1] === 'br-cccccccccccc')
+         && sn.ctrsys[2].some(p => p[0] === 'br-dddddddddddd' && p[1] === 9000)
+         && !sn.ctrsys[1].some(p => p[0] === 'br-aaaaaaaaaaaa' && p[1] === 'br-dddddddddddd'),
+         `a System-owned compose project reaches every bridge and port here, the stranger's included, and nobody reaches it back (${JSON.stringify(sn.ctrsys[1])})`);
       ok(JSON.stringify(sn.ctr[0]) === JSON.stringify(['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb', 'br-cccccccccccc'])
          && JSON.stringify(sn.ctr[1]) === JSON.stringify([['br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa'], ['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb'], ['br-bbbbbbbbbbbb', 'br-bbbbbbbbbbbb'], ['br-cccccccccccc', 'br-cccccccccccc']])
          && JSON.stringify(sn.ctr[2]) === JSON.stringify([['br-aaaaaaaaaaaa', 5432], ['br-aaaaaaaaaaaa', 8080], ['br-bbbbbbbbbbbb', 5432], ['br-cccccccccccc', 9000]]),

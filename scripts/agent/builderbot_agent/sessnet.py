@@ -497,6 +497,10 @@ def ctrnet_reach(containers, ctr):
     pairs, ports = set(), set()
     for comp, e in by.items():
         to = {comp} | {str(x) for x in ((ctr or {}).get(comp) or {}).get("to") or []}
+        # BuilderBot's own (R180, the controller's `all`): every compose
+        # project here, the ones the controller never heard of included.
+        if ((ctr or {}).get(comp) or {}).get("all"):
+            to |= set(by)
         for b in e["bridges"]:
             for other in to:
                 for b2 in by.get(other, {}).get("bridges", ()):

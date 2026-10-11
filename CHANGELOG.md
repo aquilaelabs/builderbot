@@ -117,6 +117,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Enroll script on a node's row makes a new script for that node, to run again on the same machine and nowhere else; it carries no secret, and the node keeps its id. (5542fba)
 - A Storage tab on the Tools card: what every node's disks hold, each filesystem as a meter, the stores and Docker's share, and each project's folders largest first, projects you cannot see counted as one line; Measure now walks a node's disks at once. Its own area, Storage. (6d600f9)
 - bb logs --node NAME --nginx reads the node's nginx log, a fourth machine log stream under the project's Debugging grant beside the agent's journal, the runner's and the terminal server's (R182) (a9dbd2b)
+- A container BuilderBot deploys itself, the nginx tab's today, is System's: an owner no picker sets, shown as its own group on the Docker tab, and given every container on its node by the containers' network map (R180). Agent 0.7.167 reads the map's all (f85be0e)
+- bb logs --node NAME --system, --kernel and --crash read this boot's journal, the kernel ring and the previous boot's last lines under the project's Debugging grant (R183) (f85be0e)
 
 ### Changed
 

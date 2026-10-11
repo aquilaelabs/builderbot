@@ -290,7 +290,7 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
     # On its project's node and nowhere else (devapp.on_project_node); one
     # for no project lives on the node it was made on, which the dialog
     # names and a request that did not gets from the block it runs in.
-    if for_project:
+    if for_project and for_project != devapp.SYSTEM:
         why, node = devapp.on_project_node(for_project, node)
         if why:
             return {"error": why}
@@ -426,6 +426,9 @@ def set_container_owner(name, owner):
         return {"error": f"{c.get('name')} is part of {c.get('project')}: its "
                          "project is set on that row"}
     owner = str(owner or "").strip()[:100]
+    if owner == devapp.SYSTEM:
+        return {"error": f"{devapp.SYSTEM} is BuilderBot's own: the deployment that writes a "
+                         "container sets it, and no picker does"}
     node = devapp._node_here()
     if owner:
         # Only to a project that works on this node: given to one elsewhere

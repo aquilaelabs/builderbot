@@ -369,7 +369,8 @@ def deploy(nid, containers, devactions, devapp):
     if devapp.is_file_source(name):
         return {"error": f"{name} is already on the Docker tab"}
     rec = record(nid)
-    r = containers.create_container(name, compose_text(nid, rec), "", node=nid)
+    # BuilderBot's own (R180): System's, which no picker sets.
+    r = containers.create_container(name, compose_text(nid, rec), "", node=nid, for_project=devapp.SYSTEM)
     if r.get("error"):
         return r
     b = devactions.rebuild(name, devapp.MAIN, gate=False)
@@ -378,12 +379,24 @@ def deploy(nid, containers, devactions, devapp):
     return {"ok": True, "name": name, "job": b.get("job")}
 
 
+def claim(devapp, name):
+    """One deployed before System existed (R180) is System's from its next
+    Save: it was no project's, which is what the deployment used to write."""
+    with devapp._lock:
+        d = devapp._load()
+        rec = (d.get(name) or {}).get(devapp.MAIN)
+        if rec is not None and rec.get("source") == "file" and not rec.get("for"):
+            rec["for"] = devapp.SYSTEM
+            devapp.write_json(devapp.FILE, d)
+
+
 def apply(nid, containers, devactions, devapp):
     """A deployed nginx given its new compose file and rebuilt, so what was
     saved is what runs; nothing to do where it is not deployed yet."""
     name = container_name(nid)
     if not devapp.is_file_source(name):
         return {"ok": True, "deployed": False}
+    claim(devapp, name)
     r = containers.update_container(name, compose_text(nid, record(nid)), "")
     if r.get("error"):
         return r

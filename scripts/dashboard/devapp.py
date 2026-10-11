@@ -90,6 +90,12 @@ RUN_DENIED = ("running this project's containers is the operator's: rebuilding, 
               "one are handed over in the project's settings, Claude may: Run its container")
 
 MAIN = "main"
+# The owner of a container BuilderBot deploys itself (R180): the nginx tab's
+# container is the one today. Set by the deployment that writes it and by
+# nothing else, not a person's picker and not a session, and given every
+# bridge and every published port on its node by the containers' network
+# map, since a proxy or a monitor that is nobody's has to see everybody's.
+SYSTEM = "System"
 
 
 def _slug(s):
@@ -2832,6 +2838,8 @@ label_of = None
 
 
 def owner_label(owner):
+    if owner == SYSTEM:
+        return SYSTEM
     return (label_of(owner) if label_of and owner else owner) or ""
 
 
@@ -2839,7 +2847,7 @@ def owner_gone(owner):
     """True when a container's project is no project any more: deleted to
     the trash, its records kept under its name, so a restore gives every one
     of them back (the operator, 8 Oct)."""
-    return bool(owner) and not (WORKSPACE / owner).is_dir()
+    return bool(owner) and owner != SYSTEM and not (WORKSPACE / owner).is_dir()
 
 
 def move_instance(project, instance, to):
@@ -3032,10 +3040,16 @@ def container_net_own(node_id):
     out = {}
     for owner, comps in owned.items():
         to = set(comps)
-        for r in (reads_of(owner) if reads_of else []) or []:
+        if owner == SYSTEM:
+            # BuilderBot's own (R180): every compose project here, the ones
+            # named for an older agent and `all` for one that reads it,
+            # which covers a container nobody here knows of.
+            for other in owned.values():
+                to |= other
+        for r in (reads_of(owner) if reads_of and owner != SYSTEM else []) or []:
             to |= owned.get(r, set())
         for c in comps:
-            out[c] = {"owner": owner, "to": sorted(to)}
+            out[c] = {"owner": owner, "to": sorted(to)} | ({"all": True} if owner == SYSTEM else {})
     return dict(sorted(out.items()))
 
 

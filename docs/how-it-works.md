@@ -3280,7 +3280,13 @@ project to the compose projects it may reach) and the switch (config
 the session switch elsewhere); a prefs change or the switch asks for a
 hello, so a container reaches a newly read project within a poll. Nothing
 is marked: a missing table leaves Docker's own rules, and the row says not
-in force rather than a container being cut off.
+in force rather than a container being cut off. A container BuilderBot
+deploys itself is **System**'s (R180, the operator, 11 Oct): the nginx
+tab's container today, set by that deployment and by no picker, a person's
+or a session's, and given every bridge and every published port on its node
+by the map (`all`), since a proxy or a monitor that is nobody's has to see
+everybody's. nginx needs none of it yet, being on the host network; the
+owner is for the day a deployment of BuilderBot's sits on a bridge.
 
 **Also reaches**, under What a session sees in a project's settings, opens
 the rest by hand (the operator, 7 Oct): a machine its sessions may still

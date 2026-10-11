@@ -621,6 +621,11 @@ const dmOwnDraft = {};
 function dmOwnerLine(r, key){
   if (!mayDocker()) return "";
   const saved = r.owner || "";
+  // System's is the deployment's to set (R180): said, with nothing to pick.
+  if (saved === "System")
+    return `<div class="sub dmowner"><label>Project${
+      helpIcon("BuilderBot deployed this itself, so it is System's: no project's Claude sees it, "
+        + "and the network lets it reach every container on this node.")}</label> System</div>`;
   const pick = dmOwnDraft[key] ?? saved;
   // A project since deleted is still what the row says until it is changed.
   const names = myProjectNames(saved);
@@ -1544,9 +1549,13 @@ function dmGroupsHtml(ins, cs, job, blind){
   // the trash, or they are moved or given to another project (8 Oct).
   const gone = o => [...ins, ...cs].some(r => r.owner === o && r.owner_gone);
   const gonesName = o => [...ins, ...cs].find(r => r.owner === o)?.owner_label || o;
+  // System is BuilderBot's own (R180): what it deploys itself, the nginx
+  // container today, set by that deployment and by no picker.
   return owners.map(o => gone(o)
       ? head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
-      : head(projLabel(o), "", colorTone(projectColor(o))) + group(o)).join("")
+      : o === "System"
+        ? head("System", "BuilderBot's own deployments; no Claude session sees these", null) + group(o)
+        : head(projLabel(o), "", colorTone(projectColor(o))) + group(o)).join("")
     + (loose ? head("No project", "no Claude session sees these", null) + group("") : "");
 }
 
