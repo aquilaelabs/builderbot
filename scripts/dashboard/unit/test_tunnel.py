@@ -119,3 +119,48 @@ class Tunnel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RouteCheck(unittest.TestCase):
+    """Registered is not routed (the operator, 11 Oct): the name is asked,
+    and only this controller's own answer reads as reaching it."""
+    def answer(self, code, ctype, body):
+        import email.message
+        import urllib.error
+
+        def fake(req, timeout=15):
+            self.asked = req.full_url
+            h = email.message.Message()
+            if ctype:
+                h["Content-Type"] = ctype
+            if code >= 400:
+                raise urllib.error.HTTPError(req.full_url, code, "x", h, io.BytesIO(body))
+
+            class R(io.BytesIO):
+                status, headers = code, h
+
+                def __enter__(self_):
+                    return self_
+
+                def __exit__(self_, *a):
+                    return False
+            return R(body)
+        was = tunnel.urlopen
+        tunnel.urlopen = fake
+        self.addCleanup(setattr, tunnel, "urlopen", was)
+
+    def test_this_controllers_answer_reaches_it(self):
+        self.answer(405, "application/json", b'{"error": "POST"}')
+        self.assertEqual(tunnel.route_check("bb.example.com"), (True, ""))
+        self.assertEqual(self.asked, "https://bb.example.com/api/v1/agent/route-check")
+
+    def test_an_empty_200_is_somebody_else(self):
+        self.answer(200, "", b"")
+        ok, said = tunnel.route_check("bb.example.com")
+        self.assertFalse(ok)
+        self.assertIn("answers 200 on the agent's API with nothing", said)
+        self.assertIn("HTTP localhost:", said)
+
+    def test_a_page_is_somebody_else_too(self):
+        self.answer(404, "text/html", b"<html>not found</html>")
+        self.assertFalse(tunnel.route_check("bb.example.com")[0])

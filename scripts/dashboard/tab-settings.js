@@ -200,7 +200,12 @@ function tunnelStatus(s){
   if (!t.installed) return "cloudflared is not in this image: the tunnel cannot run from here";
   if (!t.configured) return "off: paste a tunnel token and Apply to run the home tunnel here";
   if (!t.running) return "starting";
-  return t.connected ? `connected: ${t.host || "the tunnel"} reaches this controller` : "running, not registered yet";
+  if (!t.connected) return "running, not registered yet";
+  // Registered is not routed (the operator, 11 Oct): the server asks the
+  // name itself, and says so when the answer is somebody else's.
+  if (t.route?.ok === false) return `connected, but ${t.route.said}`;
+  if (t.route?.ok === true) return `connected: ${t.host || "the tunnel"} reaches this controller`;
+  return `connected; checking that ${t.host || "the name"} reaches this controller`;
 }
 
 // The reset's confirmation, the way a project's purge asks: the word typed

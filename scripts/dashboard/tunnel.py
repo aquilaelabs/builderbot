@@ -164,6 +164,52 @@ def _read(p):
                 _start_locked(token)
 
 
+# ---- does the name reach this controller? -------------------------------------
+# Registered is cloudflared's word, not the route's: a tunnel whose rule for
+# /api/v1/agent/ pointed at a fixed status answered 200 with nothing, the
+# tab said "reaches this controller", and a node enrolled with an empty
+# agent (the operator, 11 Oct). So the name is asked, off the request's
+# thread and at most once a minute: an agent path that is not one answers
+# 405 with this server's JSON, and anything else is somebody else.
+ROUTE_EVERY = 60
+_route = {"at": 0, "ok": None, "said": "", "host": ""}
+
+
+def route_check(host):
+    """(ok, said) for https://HOST/api/v1/agent/route-check: ok when the
+    answer is this controller's (JSON with an error in it), with what was
+    seen otherwise."""
+    req = urllib.request.Request(f"https://{host}/api/v1/agent/route-check", method="GET",
+                                 headers={"User-Agent": "builderbot-route-check"})
+    try:
+        with urlopen(req, timeout=15) as r:
+            code, ctype, body = r.status, r.headers.get("Content-Type", ""), r.read(400)
+    except urllib.error.HTTPError as e:
+        code, ctype, body = e.code, e.headers.get("Content-Type", ""), e.read(400)
+    except (OSError, ValueError) as e:
+        return False, f"{host} did not answer from here: {e}"[:200]
+    if "json" in ctype and b'"error"' in body:
+        return True, ""
+    return False, (f"{host} answers {code} on the agent's API with "
+                   f"{'nothing' if not body else 'something else'}: the tunnel's rule for "
+                   f"/api/v1/agent/ does not go to this controller (it should be HTTP localhost:{port})")
+
+
+def _route_refresh(host):
+    ok, said = route_check(host)
+    _route.update(at=int(time.time()), ok=ok, said=said, host=host)
+
+
+def route(host):
+    """The last answer for the name, refreshed in the background when it
+    is older than a minute or for another name."""
+    now = int(time.time())
+    if host and (_route["host"] != host or now - _route["at"] >= ROUTE_EVERY):
+        _route["at"] = now          # one probe in flight, not one per poll
+        threading.Thread(target=_route_refresh, args=(host,), name="tunnel-route", daemon=True).start()
+    return {"ok": _route["ok"] if _route["host"] == host else None, "said": _route["said"] if _route["host"] == host else ""}
+
+
 def _redact(line):
     return re.sub(r"eyJ[A-Za-z0-9_=-]{20,}", "eyJ…", line)
 
@@ -173,7 +219,9 @@ def status():
     registered, at which hostname, since when, its last lines."""
     token, host = _wanted()
     running = _proc is not None and _proc.poll() is None
-    return {"installed": installed(), "configured": bool(token), "host": host, "port": port,
+    reach = route(host) if running and _connected and host else {"ok": None, "said": ""}
+    return {"route": reach,
+            "installed": installed(), "configured": bool(token), "host": host, "port": port,
             "running": running, "connected": bool(running and _connected),
             "since": _since if running else 0,
             "tail": list(_tail)[-6:], "error": _error,
