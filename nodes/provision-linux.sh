@@ -2770,6 +2770,7 @@ if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ] && [ -z "$door_up" ]; then
 fi
 if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ] && [ -n "$door_up" ]; then
     say "port 22: closed to the internet (the door is the way in)"
+    printf '   a connection already open on it, this one included, stays up; a new one comes through the door\n'
     # shellcheck disable=SC2046
     command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
     install -d -m 0755 /etc/builderbot
@@ -2782,6 +2783,7 @@ table inet builderbot_door {
         type filter hook input priority -10; policy accept;
         tcp dport 22 iifname "lo" accept
         tcp dport 22 ip saddr 100.64.0.0/10 accept
+        tcp dport 22 ct state established,related accept
         tcp dport 22 drop
     }
 }

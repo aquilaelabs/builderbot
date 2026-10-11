@@ -265,6 +265,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- Closing port 22 behind a door no longer cuts the SSH session the enroll script is being run from: the rule keeps connections already open and refuses new ones, and the script says so.
 - A container removed from the Docker tab while its rebuild was still running no longer comes back as a bare row when the build lands: the result finds no record and writes none, and the runner's own rebuild stops after the build with the reason on the job (B633).
 - A page on the Design view keeps its layout per frame: put on the phone frame and back on the desktop one, its blocks are where they were instead of squeezed into six columns, and Save keeps the other frame's layout with the page (B348)
 - The test harness sweeps what a run ended by its process group left behind, its copy of the tree, its state dir and its private tmux server, on the next start (B347)
