@@ -161,31 +161,50 @@ def _set(project, instance, **fields):
 # the old one removed, and the data directory moved. Nothing in it spells
 # the plan's {cdir} placeholder (B659).
 RENAME_PY = r"""
-import os, shutil, subprocess, sys
+import os, subprocess, sys
 old, new, data_old, data_new, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
-names = subprocess.run(["docker", "volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + old],
-                       check=True, capture_output=True, text=True).stdout.split()
-have = set(subprocess.run(["docker", "volume", "ls", "-q"], check=True, capture_output=True, text=True).stdout.split())
-for v in sorted(names):
-    key = v[len(old) + 1:] if v.startswith(old + "_") else v
-    target = f"{new}_{key}" if v.startswith(old + "_") else v
-    if target == v:
-        continue
-    if target in have:
-        sys.exit(f"a volume called {target} is already on this node: remove it first, or pick another name")
-    print(f"carrying the volume {v} to {target}", flush=True)
-    subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + new,
-                    "--label", "com.docker.compose.volume=" + key, target], check=True, capture_output=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{target}:/w", helper,
-                    "sh", "-c", "cp -a /v/. /w/"], check=True)
-    subprocess.run(["docker", "volume", "rm", v], check=True, capture_output=True)
-if data_old and data_new and os.path.isdir(data_old):
-    if os.path.exists(data_new) and os.listdir(data_new):
-        sys.exit(f"{data_new} is already there with files in it: move it away first")
-    print(f"moving the data directory to {data_new}", flush=True)
-    if os.path.isdir(data_new):
-        os.rmdir(data_new)
-    shutil.move(data_old, data_new)
+# The data directory first, and as root inside the helper: the appdata root
+# is root's, so the jobs account can neither make nor rename a directory in
+# it (aquilaeLabs, 11 Oct: the volume had moved and the directory could
+# not, leaving the record on the old name). A rename in place, so it is
+# instant and is put back if a volume below fails.
+moved = False
+def dmove(a, b):
+    root = os.path.dirname(a)
+    subprocess.run(["docker", "run", "--rm", "-v", root + ":/r", helper, "sh", "-c",
+                    'if [ -e "/r/$2" ]; then rmdir "/r/$2" || exit 3; fi; mv "/r/$1" "/r/$2"',
+                    "sh", os.path.basename(a), os.path.basename(b)], check=True)
+if data_old and data_new and data_old != data_new and os.path.isdir(data_old):
+    if os.path.dirname(data_old) != os.path.dirname(data_new):
+        sys.exit("the data directory would leave its root: " + data_old + " to " + data_new)
+    print("moving the data directory to " + data_new, flush=True)
+    try:
+        dmove(data_old, data_new)
+    except subprocess.CalledProcessError:
+        sys.exit(data_new + " is already there with files in it: move it away first, or pick another name")
+    moved = True
+try:
+    names = subprocess.run(["docker", "volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + old],
+                           check=True, capture_output=True, text=True).stdout.split()
+    have = set(subprocess.run(["docker", "volume", "ls", "-q"], check=True, capture_output=True, text=True).stdout.split())
+    for v in sorted(names):
+        key = v[len(old) + 1:] if v.startswith(old + "_") else v
+        target = f"{new}_{key}" if v.startswith(old + "_") else v
+        if target == v:
+            continue
+        if target in have:
+            raise SystemExit(f"a volume called {target} is already on this node: remove it first, or pick another name")
+        print(f"carrying the volume {v} to {target}", flush=True)
+        subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + new,
+                        "--label", "com.docker.compose.volume=" + key, target], check=True, capture_output=True)
+        subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{target}:/w", helper,
+                        "sh", "-c", "cp -a /v/. /w/"], check=True)
+        subprocess.run(["docker", "volume", "rm", v], check=True, capture_output=True)
+except BaseException:
+    if moved:
+        print("putting the data directory back at " + data_old, flush=True)
+        dmove(data_new, data_old)
+    raise
 print("renamed", flush=True)
 """
 

@@ -120,5 +120,69 @@ class Rename(unittest.TestCase):
         self.assertEqual(devapp._pname("aquilaeLabs", "main"), "aquilaelabs")
 
 
+class RenameScript(unittest.TestCase):
+    """RENAME_PY run for real against a stand-in docker: the data directory
+    moves first, as the helper (root on a node), and goes back if carrying a
+    volume fails, so a failed rename leaves the container as it was
+    (aquilaeLabs, 11 Oct: the volume moved, the directory could not)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        (self.tmp / "bin").mkdir()
+        self.log = self.tmp / "docker.log"
+        stub = self.tmp / "bin" / "docker"
+        stub.write_text("""#!/bin/sh
+echo "$*" >> "$LOG"
+if [ "$1 $2" = "volume ls" ]; then
+  case "$*" in *filter*) printf '%s\\n' $VOLS ;; *) printf '%s\\n' $VOLS ;; esac; exit 0
+fi
+if [ "$1 $2" = "volume create" ]; then exit 0; fi
+if [ "$1 $2" = "volume rm" ]; then exit 0; fi
+if [ "$1" = run ]; then
+  for a in "$@"; do case "$a" in *:/r) root="${a%:/r}" ;; *:/v:ro) [ -n "$FAILVOL" ] && exit 1 ;; esac; done
+  [ -n "$root" ] || exit 0
+  shift; while [ "$1" != sh ]; do shift; done; shift; shift
+  cmd="$1"; shift
+  sh -c "$(printf '%s' "$cmd" | sed "s#/r/#$root/#g")" "$@"; exit $?
+fi
+exit 0
+""")
+        stub.chmod(0o755)
+        self.root = self.tmp / "appdata"
+        (self.root / "aquilaelabs").mkdir(parents=True)
+        (self.root / "aquilaelabs" / "site.db").write_text("x")
+
+    def run_script(self, **env):
+        import subprocess
+        return subprocess.run([sys.executable, "-c", relocate.RENAME_PY, "aquilaelabs", "aquilaelabs-dev",
+                               str(self.root / "aquilaelabs"), str(self.root / "aquilaelabs-dev"), "busybox"],
+                              env={**os.environ, "PATH": f"{self.tmp}/bin:" + os.environ["PATH"], "LOG": str(self.log),
+                                   "VOLS": "aquilaelabs_db_data", **env}, capture_output=True, text=True)
+
+    def test_the_directory_moves_first_and_the_volumes_after(self):
+        r = self.run_script()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.root / "aquilaelabs-dev" / "site.db").is_file())
+        self.assertFalse((self.root / "aquilaelabs").exists())
+        said = self.log.read_text()
+        self.assertLess(said.index(":/r"), said.index("volume create"), "the directory before any volume")
+
+    def test_a_volume_that_fails_puts_the_directory_back(self):
+        r = self.run_script(FAILVOL="1")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("putting the data directory back", r.stdout)
+        self.assertTrue((self.root / "aquilaelabs" / "site.db").is_file(), "where it was")
+        self.assertFalse((self.root / "aquilaelabs-dev").exists())
+
+    def test_a_target_with_files_is_refused_before_anything_moves(self):
+        (self.root / "aquilaelabs-dev").mkdir()
+        (self.root / "aquilaelabs-dev" / "other").write_text("y")
+        r = self.run_script()
+        self.assertIn("already there with files in it", r.stderr + r.stdout)
+        self.assertNotIn("volume create", self.log.read_text())
+        self.assertTrue((self.root / "aquilaelabs" / "site.db").is_file())
+
+
 if __name__ == "__main__":
     unittest.main()
