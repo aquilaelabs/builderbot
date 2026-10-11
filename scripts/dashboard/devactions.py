@@ -550,19 +550,23 @@ def _compose_done(job, state):
         devapp._gate_env(project, instance)
         with devapp._lock:
             d = devapp._load()
-            devapp._rec(d, project, instance)["await_env"] = True
-            devapp.write_json(devapp.FILE, d)
+            row = _kept(d, project, instance)
+            if row is not None:
+                row["await_env"] = True
+                devapp.write_json(devapp.FILE, d)
         _clear_marker(project, instance)
         devapp._bump()
         return
     if action in ("up", "rebuild"):
         with devapp._lock:
             d = devapp._load()
-            row = devapp._rec(d, project, instance)
-            row.pop("await_env", None)
-            if not row.get("rev") or row.get("daemon") != devapp.daemon_id():
-                _stamp(row, project, instance)
-            devapp.write_json(devapp.FILE, d)
+            # A record Remove forgot meanwhile is not made again (B633).
+            row = _kept(d, project, instance)
+            if row is not None:
+                row.pop("await_env", None)
+                if not row.get("rev") or row.get("daemon") != devapp.daemon_id():
+                    _stamp(row, project, instance)
+                devapp.write_json(devapp.FILE, d)
     if action == "remove":
         _remove_records(project, instance)
     _clear_marker(project, instance)
@@ -584,11 +588,25 @@ def _stamp(row, project, instance):
                daemon=devapp.daemon_id(), daemon_uid=devapp._uid())
 
 
+def _kept(d, project, instance):
+    """The instance's record if it is still there, None once Remove forgot
+    it: what a result that lands after the removal writes to (B633), where
+    devapp._rec would make the row again."""
+    return (d.get(project) or {}).get(instance)
+
+
 def _record_build(project, instance):
     with devapp._lock:
         d = devapp._load()
-        _stamp(devapp._rec(d, project, instance), project, instance)
+        rec = _kept(d, project, instance)
+        # An instance removed while its rebuild was still running has no
+        # record to stamp: making one here brought a Removed row back with
+        # only rev, at and daemon on it (B633, 11 Oct). False says so.
+        if rec is None:
+            return False
+        _stamp(rec, project, instance)
         devapp.write_json(devapp.FILE, d)
+    return True
 
 
 def _submit(project, instance, action, extra=None, check=None):
@@ -997,16 +1015,18 @@ def _job_up(project, instance, run):
         return {"state": "failed", "error": "up failed:\n" + r["out"][-400:]}
     with devapp._lock:
         d = devapp._load()
-        row = devapp._rec(d, project, instance)
-        row.pop("await_env", None)
-        # An implicit build is still a build, so the row stops claiming the
-        # project was never built while a container from it is running. Also
-        # when the record belongs to a daemon we no longer talk to: state()
-        # reads that as never-built-here, and without the second test the row
-        # would go on saying so with the instance up in front of it.
-        if not row.get("rev") or row.get("daemon") != devapp.daemon_id():
-            _stamp(row, project, instance)
-        devapp.write_json(devapp.FILE, d)
+        # ...unless Remove forgot the record while this ran (B633).
+        row = _kept(d, project, instance)
+        if row is not None:
+            row.pop("await_env", None)
+            # An implicit build is still a build, so the row stops claiming the
+            # project was never built while a container from it is running. Also
+            # when the record belongs to a daemon we no longer talk to: state()
+            # reads that as never-built-here, and without the second test the row
+            # would go on saying so with the instance up in front of it.
+            if not row.get("rev") or row.get("daemon") != devapp.daemon_id():
+                _stamp(row, project, instance)
+            devapp.write_json(devapp.FILE, d)
     devapp._bump()
     return {"state": "succeeded"}
 
@@ -1178,10 +1198,10 @@ def _job_rebuild(project, instance, run):
             # The reason carries the output's last words: the row shows the
             # last line of it, and the whole log is the Jobs tab's.
             return {"state": "failed", "error": "build failed:\n" + r["out"][-400:]}
-        with devapp._lock:
-            d = devapp._load()
-            _stamp(devapp._rec(d, project, instance), project, instance)
-            devapp.write_json(devapp.FILE, d)
+        if not _record_build(project, instance):
+            # Removed from the Docker tab while it was building (B633): the
+            # remove took it down, and nothing of it is started again.
+            return {"state": "failed", "error": "removed from the Docker tab while it was building: the image is built, nothing started"}
         run.step("stopping")
         devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
                     sink=run.line, hold=run.hold)

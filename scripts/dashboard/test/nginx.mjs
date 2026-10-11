@@ -8,6 +8,12 @@
 import { URL, launch, newPage, ok, done, ready, DIR } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+// Poll fn until it answers something other than null, or give up.
+const until = async (fn, ms = 15000, step = 200) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end){ const v = await fn(); if (v !== null && v !== undefined) return v; await new Promise(r => setTimeout(r, step)); }
+  return null;
+};
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -99,14 +105,24 @@ await page.click(`${sect} [data-ngremove]`);
 // A node read as quiet queues the down and keeps the row until it has
 // run (B597), which under a whole gate is a while: the record's going is
 // waited for, not read at once.
-let after = null;
+let after = null, gone = false, queued = false;
 for (let i = 0; i < 60; i++){
   after = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
-  if (!after.deployed && !('nginx-sandbox' in JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8')))) break;
+  gone = !('nginx-sandbox' in JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8')));
+  // On a node read as quiet the down is queued and the row kept until it has
+  // run (B597): that job in the queue is the remove having happened here.
+  queued = ((await api('/api/v1/jobs?active=1')).jobs || []).some(j => j.type === 'compose' && j.project === 'nginx-sandbox' && j.spec?.action === 'remove');
+  if (!after.deployed && (gone || queued)) break;
   await new Promise(r => setTimeout(r, 1000));
 }
-ok(!after.deployed && after.routes.length === 2 && !('nginx-sandbox' in JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))),
-   `Remove takes the container off the Docker tab and keeps the routes here (${JSON.stringify([after.deployed, after.routes.length])})`);
+ok(!after.deployed && after.routes.length === 2 && (gone || queued),
+   `Remove takes the container off the Docker tab, or queues its down on a quiet node, and keeps the routes here (${JSON.stringify([after.deployed, after.routes.length, gone, queued])})`);
+// The Save's rebuild (two.job) may land after the Remove forgot the row:
+// its result must not stamp a record back into being (B633).
+await until(async () => ['succeeded', 'failed', 'canceled'].includes((await api(`/api/v1/jobs?id=${two.job}`)).state) ? true : null, 60000, 500);
+const ghost = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-sandbox'];
+ok(!ghost || !!(await api('/api/v1/jobs?active=1')).jobs?.some(j => j.project === 'nginx-sandbox'),
+   `...and the rebuild landing afterwards does not bring the row back as a ghost (${JSON.stringify(ghost || null)})`);
 
 // The Enroll dialog's tick: a node enrolled with it gets nginx on its first
 // hello, with the routes saved for it beforehand.
