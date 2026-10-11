@@ -871,9 +871,15 @@ async function openEditContainer(name){
   $("cEnvHint").hidden = true;
   $("cTitle").textContent = "Edit " + name;
   $("cName").value = name;
-  $("cName").disabled = true;
-  $("cNameHint").textContent =
-    "The name cannot change: remove it and create it again under another.";
+  // The name changes only while it is down (the operator, 11 Oct): it is
+  // the compose project, the data directory and the volumes' prefix, and
+  // the node carries those under the new name before the next Up.
+  const row = (dockerList?.instances || []).find(d => d.project === name && d.instance === "main");
+  const down = !!row && !row.running;
+  $("cName").disabled = !down;
+  $("cNameHint").textContent = down
+    ? "Change the name while it is down: its volumes and data directory follow it on the node, then Build it again."
+    : "The name changes only while it is down: Down it, then Edit again.";
   $("cNodeField").hidden = true;   // where it runs is not an edit either
   $("cUnderField").hidden = true;  // its project is changed on its row
   $("cYml").value = $("cEnv").value = "";
@@ -1097,6 +1103,8 @@ async function cSubmit(){
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({action: editing ? "save" : "create",
                             name: editing || $("cName").value,
+                            ...(editing && $("cName").value.trim() && $("cName").value.trim() !== editing
+                                ? {rename: $("cName").value.trim()} : {}),
                             node: editing ? "" : ($("cNodeField").hidden
                               ? (dockerNode || "") : $("cNode").value),
                             owner: editing ? "" : $("cUnder").value,
@@ -1112,6 +1120,11 @@ async function cSubmit(){
     $("cmodal").hidden = true;
     if (!editing){
       notify(`${j.name} is in the manager: press Build to bring it up`);
+      dockerList = null; dockerRev++; loadDocker();
+      return;
+    }
+    if (j.job && j.name && j.name !== editing){
+      notify(`renaming ${editing} to ${j.name}: its row says each step, then Build it`);
       dockerList = null; dockerRev++; loadDocker();
       return;
     }

@@ -494,6 +494,9 @@ def compose_done(job, state):
         # A relocation's own jobs (relocate.py) are its to follow on from.
         if sp.get("relocate"):
             return relocate.done(job, state)
+        # ...and a rename's (relocate.rename_job): the records follow the data.
+        if sp.get("rename"):
+            return relocate.rename_done(job, state)
         said = _compose_done(job, state)
     # ...and the rebuild that ends one: the last half of a shipped one, or
     # the only one; a ship's first half that failed ends it too.

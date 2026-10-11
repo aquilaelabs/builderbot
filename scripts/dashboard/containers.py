@@ -403,6 +403,38 @@ def redact_keys(compose):
     return _KEY_BLOCK.sub(r"\g<1>      (the private key: kept on the controller, never shown)\n", compose or "")
 
 
+def rename_container(name, new):
+    """A written container under a new name, while it is down (the
+    operator, 11 Oct: the name is editable in the Edit dialog once the
+    container is down). The name is its compose project, its data
+    directory and its volumes' prefix, so the node carries those under a
+    job (relocate.rename_job) and the records follow when it has."""
+    import relocate
+    if not devapp.is_file_source(name):
+        return {"error": f"{name} is not a container written here: a project's own is named for the project"}
+    slug = devapp._slug(new) or ""
+    if not slug:
+        return {"error": "a name needs a letter or digit in it"}
+    if slug == name:
+        return {"ok": True, "same": True}
+    why = name_free(slug)
+    if why:
+        return {"error": why}
+    if devapp.owner_of(name, devapp.MAIN) == devapp.SYSTEM:
+        return {"error": f"{name} is BuilderBot's own, named for its node"}
+    import devactions
+    if devactions._active_job(name, devapp.MAIN):
+        return {"error": "a job is running on it: wait for it, or Stop it, then rename it"}
+    if devapp._read_rec(name, devapp.MAIN).get("renaming"):
+        return {"error": "it is already being renamed"}
+    with devapp.on_node(devapp._instance_node(name, devapp.MAIN)):
+        up = [c for c in devapp.containers().get("containers") or [] if c.get("project") == name]
+    if up:
+        return {"error": f"{name} is up ({len(up)} container{'s' if len(up) != 1 else ''}): take it down first, "
+                         "since the name is its compose project and its volumes' prefix"}
+    return relocate.rename_job(name, slug)
+
+
 def read_container(name):
     """What was written, for the editor to open on."""
     try:
@@ -601,7 +633,13 @@ def tab_verb(act, name, req, seen):
         # through update_container directly.
         if devapp.owner_of(name, devapp.MAIN) == devapp.SYSTEM:
             return {"error": f"{name} is BuilderBot's own, written from the nginx tab: change it there"}, 403
-        return _answer(update_container(name, req.get("compose") or "", req.get("env") or ""))
+        r = update_container(name, req.get("compose") or "", req.get("env") or "")
+        # ...and a new name with it, while it is down (rename_container):
+        # the file is saved first, so what was typed is kept either way.
+        new = field(req, "rename")
+        if not r.get("error") and new and devapp._slug(new) != name:
+            r = rename_container(name, new) | ({"saved": True} if not r.get("error") else {})
+        return _answer(r)
     if act != "create":
         return {"error": f"unknown action: {act}"}, 400
     # A name that is also a project would collide in the store, which is

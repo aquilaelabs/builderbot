@@ -2597,6 +2597,23 @@ await page.waitForFunction(() => document.getElementById('cmodal').hidden, null,
 ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
+// Its name is editable while it is down (the operator, 11 Oct): the Edit
+// dialog's Name field is live for a container with nothing running, and
+// the hint says what follows it; a running one keeps the name locked.
+{
+  await page.evaluate(() => openEditContainer('radarr'));
+  await page.waitForSelector('#cmodal:not([hidden])');
+  const live = await page.evaluate(() => ({ off: document.getElementById('cName').disabled,
+                                            hint: document.getElementById('cNameHint').textContent }));
+  ok(!live.off && /while it is down/.test(live.hint),
+     `Edit on a container that is down offers its name to change (${live.hint.slice(0, 60)})`);
+  await page.click('#cCancel').catch(() => page.evaluate(() => { document.getElementById('cmodal').hidden = true; }));
+  await page.waitForFunction(() => document.getElementById('cmodal').hidden, null, { timeout: 10000 });
+  const saved = await page.evaluate(async () => (await (await fetch('/api/container', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'save', name: 'radarr', rename: 'radarr', compose: 'services:\n  app:\n    image: lscr.io/x:latest\n', env: '' }) })).json()));
+  ok(!saved.error && !saved.job, `a Save with the name as it was renames nothing (${JSON.stringify(saved).slice(0, 60)})`);
+}
 // ---- a row on a phone (R68 step 5) ---------------------------------------
 // What a row carries is on the row at every width, never behind a fold (the
 // operator, 8 Oct: too much was hidden; the Project picker was not found).
@@ -2693,8 +2710,10 @@ await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
 await page.waitForSelector('#cmodal:not([hidden])');
 await page.waitForFunction(() => /services:/.test(document.getElementById('cYml').value),
                            { timeout: 10000 });
-ok(await page.$eval('#cName', e => e.disabled && e.value === 'radarr'),
-   'editing opens on the container, and its name is not a field any more');
+// Its name stays a field while it is down (the operator, 11 Oct: a rename
+// is the Edit dialog's, with the container down); it reads the name as is.
+ok(await page.$eval('#cName', e => !e.disabled && e.value === 'radarr'),
+   'editing opens on the container, its name in the field as it is');
 await page.fill('#cYml', 'services:\n  app:\n    image: alpine:latest\n');
 await page.click('#cGo');
 await page.waitForFunction(() => document.getElementById('cmodal').hidden,

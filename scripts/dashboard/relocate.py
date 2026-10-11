@@ -22,6 +22,7 @@ The data travels through the controller's images store, the way a shipped
 image does, and lives there from the first job's upload to the second job's
 end. Both nodes must be agent nodes: a plan is what carries the steps.
 """
+import posixpath
 import os
 import threading
 
@@ -151,6 +152,104 @@ def _set(project, instance, **fields):
             else:
                 rec[k] = v
         devapp.write_json(devapp.FILE, d)
+    devapp._bump()
+
+# Run on the node when a written container is renamed while down (the
+# operator, 11 Oct: the name is editable in the Edit dialog once the
+# container is down): each volume of the old compose project made again
+# under the new name with compose's labels and filled through the helper,
+# the old one removed, and the data directory moved. Nothing in it spells
+# the plan's {cdir} placeholder (B659).
+RENAME_PY = r"""
+import os, shutil, subprocess, sys
+old, new, data_old, data_new, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+names = subprocess.run(["docker", "volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + old],
+                       check=True, capture_output=True, text=True).stdout.split()
+have = set(subprocess.run(["docker", "volume", "ls", "-q"], check=True, capture_output=True, text=True).stdout.split())
+for v in sorted(names):
+    key = v[len(old) + 1:] if v.startswith(old + "_") else v
+    target = f"{new}_{key}" if v.startswith(old + "_") else v
+    if target == v:
+        continue
+    if target in have:
+        sys.exit(f"a volume called {target} is already on this node: remove it first, or pick another name")
+    print(f"carrying the volume {v} to {target}", flush=True)
+    subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + new,
+                    "--label", "com.docker.compose.volume=" + key, target], check=True, capture_output=True)
+    subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{target}:/w", helper,
+                    "sh", "-c", "cp -a /v/. /w/"], check=True)
+    subprocess.run(["docker", "volume", "rm", v], check=True, capture_output=True)
+if data_old and data_new and os.path.isdir(data_old):
+    if os.path.exists(data_new) and os.listdir(data_new):
+        sys.exit(f"{data_new} is already there with files in it: move it away first")
+    print(f"moving the data directory to {data_new}", flush=True)
+    if os.path.isdir(data_new):
+        os.rmdir(data_new)
+    shutil.move(data_old, data_new)
+print("renamed", flush=True)
+"""
+
+
+def rename_job(name, new):
+    """A written container renamed while down: its volumes carried to the
+    new prefix and its data directory moved on its node, by one job; the
+    records follow in rename_done. {"ok", "job"} or {"error"}."""
+    if devapp.queue is None:
+        return {"error": "no job queue is configured here"}
+    nid = devapp._instance_node(name, devapp.MAIN)
+    n = _node_row(nid)
+    if not n or n.get("kind") != "agent" or n.get("state") != "online":
+        return {"error": "the node it is on is not an agent node that is online, and only one of those can carry its data"}
+    with devapp.on_node(nid):
+        data_old = devapp.dev_data_dir(name, devapp.MAIN, make=False) or ""
+        data_new = (posixpath.join(devapp.appdata_root(), new) if data_old else "")
+    step = {"name": "renaming", "argv": ["python3", "-c", RENAME_PY, name, new, data_old, data_new, HELPER],
+            "timeout": 3600}
+    spec = {"project": name, "instance": devapp.MAIN, "action": "rename", "name": name, "files": {},
+            "dirs": [], "gate": False, "rename": {"to": new}, "plan": [step]}
+    _set(name, devapp.MAIN, renaming=new)
+    r = devapp.queue.job_add("operator", {"node": nid}, "compose", spec, name)
+    if r.get("error"):
+        _set(name, devapp.MAIN, renaming=None)
+        return r
+    devapp._bump()
+    return {"ok": True, "started": True, "job": r["job"], "name": new}
+
+
+def rename_done(job, state):
+    """compose_done's turn for a rename's job: the records, the compose
+    directory and the env follow the data under the new name; a failure
+    leaves everything as it was and says what the job last wrote."""
+    sp = (job or {}).get("spec") or {}
+    old = sp.get("project") or ""
+    new = str((sp.get("rename") or {}).get("to") or "")
+    if not old or not new:
+        return ""
+    if state != "succeeded":
+        _set(old, devapp.MAIN, renaming=None)
+        said = _last_said(job)
+        return "renaming it failed" + (f": {said}" if said else "")
+    _rename_records(old, new)
+    return ""
+
+
+def _rename_records(old, new):
+    """The written container's record under its new key, its compose file's
+    directory and its env file renamed with it; the data and the volumes
+    were carried by the node."""
+    with devapp._lock:
+        d = devapp._load()
+        if old in d and new not in d:
+            d[new] = d.pop(old)
+            (d[new].get(devapp.MAIN) or {}).pop("renaming", None)
+            devapp.write_json(devapp.FILE, d)
+    for src, dst in ((devapp.containers_dir(old), devapp.containers_dir(new)),
+                     (devapp.env_path(old, devapp.MAIN), devapp.env_path(new, devapp.MAIN))):
+        try:
+            if src.exists() and not dst.exists():
+                src.rename(dst)
+        except OSError as e:
+            print(f"[relocate] renaming {src} to {dst}: {e}", flush=True)
     devapp._bump()
 
 
