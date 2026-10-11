@@ -100,8 +100,8 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
   ok(s.includes('artifacts:files:open') && s.every(x => x.endsWith(':open')),
      `the files are their own section, and every section is open when the view shows (${s.join(' ')})`);
 }
-// ...and on a phone every one is open too (the operator, 8 Oct: too much
-// was hidden in folds).
+// ...and on a phone one is open at a time, as on every folded surface
+// (R184, the operator, 11 Oct): the files, the rest shut and a tap away.
 {
   const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await phone.goto(URL);
@@ -112,8 +112,8 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
   await phone.waitForTimeout(500);
   const p = await phone.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
     .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
-  ok(p.length && p.every(x => x.endsWith(':open')),
-     `...on a phone too, every one open (the operator, 8 Oct) (${p.join(' ')})`);
+  ok(p.length > 1 && p.filter(x => x.endsWith(':open')).length === 1,
+     `...on a phone, one open at a time (R184) (${p.join(' ')})`);
   await phone.close();
 }
 
@@ -354,9 +354,9 @@ page.errors = [];
 // the reason: the phone is driven from a node, and this project has none.
 // The install and the push themselves, and the signature clash said in
 // words, are phone.mjs's, where a fixture node holds the phone.
-ok(await page.$eval('[data-artinstall]', b => b.disabled && /Phone tab/.test(b.title)),
+ok(await page.$eval('[data-artinstall]', b => b.disabled && /Phone tab/.test(saidOf(b))),
    'with no phone on the project\'s node, Install is ghosted and says where to connect one');
-ok(await page.$eval('[data-artpush]', b => b.disabled && /Phone tab/.test(b.title)),
+ok(await page.$eval('[data-artpush]', b => b.disabled && /Phone tab/.test(saidOf(b))),
    'Push is there for the extension, ghosted for the same reason');
 const pushed = await page.evaluate(async () => {
   const r = await fetch('/api/artifacts', { method: 'POST',

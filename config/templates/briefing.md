@@ -52,9 +52,9 @@ project's containers, those of the projects its project reads, the
 controller, DNS, the node's 80 and 443 and the internet, and not another
 project's container by the node's address. A container answers at its node's address, which
 `bb devapp status` prints beside "answers at" for the dev instance, and
-on a hosting-only node a published port binds to 127.0.0.1 unless the
-compose names an address, so it is the node's nginx that answers for it, and
-`bb devapp ls` with each container's ports.
+`bb devapp ls` with each container's ports. On a hosting-only node a
+published port binds to the loopback address unless the compose names one,
+so it is the node's nginx that answers for it.
 
 Of the node's files a session has its own project, its home, the toolchains
 and its own logs and artifacts, and the system's own directories. A share or
