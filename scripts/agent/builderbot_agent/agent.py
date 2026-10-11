@@ -257,12 +257,17 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                                              "ctr": sn.get("ctr") if isinstance(sn.get("ctr"), dict) else {}}
                 save_state(self.state)
             # Published ports bound to 127.0.0.1 by default (R190): the
-            # controller's switch, kept in node.json and applied when it
-            # moves; an older controller says nothing and nothing changes.
+            # controller's switch, kept in node.json, and applied on every
+            # hello rather than only when it moves: apply_ports_local writes
+            # and restarts docker only when daemon.json differs, and an agent
+            # that learned a second key (B666) met a switch already on and
+            # never wrote it (draconis, 11 Oct). An older controller says
+            # nothing and nothing changes.
             pl = r.get("ports_local")
-            if isinstance(pl, bool) and pl != self.state.get("ports_local"):
-                self.state["ports_local"] = pl
-                save_state(self.state)
+            if isinstance(pl, bool):
+                if pl != self.state.get("ports_local"):
+                    self.state["ports_local"] = pl
+                    save_state(self.state)
                 self.apply_ports_local(pl)
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones
