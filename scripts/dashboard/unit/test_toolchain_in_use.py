@@ -46,6 +46,20 @@ class InUse(unittest.TestCase):
         self.assertIn("jdk is in use by sleep", said)
         self.assertIn("Shebang-DevBoard's session", said)
 
+    def test_an_install_over_a_recipe_with_no_in_place_update_removes_first(self):
+        """R193 (the operator, 11 Oct): a tarball or installer recipe that is
+        there already is removed and then installed by the one job; one
+        that updates in place, one not installed and a versioned Android
+        package are the one verb."""
+        s = self.store
+        self.assertEqual(agent.tc_verbs(s, "jdk", {"source": {"kind": "tarball"}}, "install"), ["remove", "install"])
+        self.assertEqual(agent.tc_verbs(s, "jdk", {"source": {"kind": "tarball"}}, "remove"), ["remove"])
+        self.assertEqual(agent.tc_verbs(s, "node", {"source": {"kind": "tarball"}}, "install"), ["install"], "not there yet")
+        self.assertEqual(agent.tc_verbs(s, "android:emulator", {"source": {"package": "emulator"}, "updatable": True}, "install"),
+                         ["install"], "updates in place")
+        self.assertEqual(agent.tc_verbs(s, "android:platforms", {"source": {"package": "platforms", "versioned": True}}, "install"),
+                         ["install"], "a new level installs beside the old")
+
     def test_nothing_running_from_it_is_free(self):
         self.assertEqual(agent.tc_users(os.path.join(self.store, "android", "emulator")), [])
 

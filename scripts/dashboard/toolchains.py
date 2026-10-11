@@ -583,6 +583,17 @@ def _tc_worker():
             # which refuses with a sentence about the one they did.
             verb = ("update" if _tc_path(probe) and row.get("updatable")
                     else "install")
+            # ...and one installed whose recipe cannot update in place is
+            # removed first (R193), where install alone dies with "already
+            # installed": a remove that fails leaves the old one as it was.
+            if verb == "install" and _tc_path(probe) and not row.get("updatable"):
+                r = run([BB, "toolchains", "remove", name], timeout=1800, register=_hold_child)
+                if r["code"] != 0:
+                    with _tc_lock:
+                        _tc_job["errors"][name] = " · ".join(
+                            _job_tail(r["out"], keep=4) + [f"remove before the install failed (exit {r['code']})"])[-400:]
+                        _tc_job["failed"].append(name)
+                    continue
         with _tc_lock:
             # Whatever it said last time is about a state that no longer holds;
             # this run is the new answer.

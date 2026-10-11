@@ -591,16 +591,17 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
   const fl = rows.find(r => r.name === 'flutter');
   ok(fl && !/no update in place/.test(fl.title),
      'while one that CAN update in place is not marked that way');
-  // ...and when a newer version is out, its row says what updates it rather
-  // than "tick it", which its locked box cannot (the operator, 6 Oct, JDK 21).
-  const line = await page.evaluate(() => {
+  // ...and when a newer version is out, its box is live and the row says
+  // the install removes the old one first (R193, the operator, 11 Oct; before
+  // that the locked box told them to uninstall it by hand, 6 Oct, JDK 21).
+  const out = await page.evaluate(() => {
     const d = document.createElement('div');
     d.innerHTML = tcRow({ name: 'go', label: 'Go', installed: true, updatable: false, state: 'update', about: '' },
                         false, null, true);
-    return d.querySelector('.sub.upd')?.textContent || '';
+    return { line: d.querySelector('.sub.upd')?.textContent || '', dead: !!d.querySelector('input')?.disabled };
   });
-  ok(/uninstall it with the bin, then tick it/.test(line),
-     `a locked row with an update out says how to get it, on the row (${line})`);
+  ok(!out.dead && /tick it and press Install selected; it is removed and installed again/.test(out.line),
+     `a tarball recipe with an update out can be ticked, and the row says the install removes the old one first (${out.line})`);
   // ...and the catalog is where that is decided, not a list in the server.
   const seen = await page.evaluate(() => (toolchains.items || [])
     .filter(i => i.updatable).map(i => i.name).sort());

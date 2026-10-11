@@ -196,7 +196,9 @@ function tcRow(p, busy, job, managed){
   // still say a newer version exists (it asks upstream, not the recipe) and
   // before this the row let you tick it and then died on `bb toolchains update`'s
   // usage line, naming five toolchains you had not asked about (bug #43).
-  const noUpgrade = !mine && p.installed && !p.updatable;
+  // ...unless a check found a newer version: then the box is live, and the
+  // job removes the old one and installs the new (R193, the operator, 11 Oct).
+  const noUpgrade = !mine && p.installed && !p.updatable && p.state !== "update";
   // Three versions can be on a row and only ever two at once: what is
   // installed, what an update would move it to, and, on a row that has never
   // been installed: what Install would fetch. Only the middle one is yellow,
@@ -215,9 +217,8 @@ function tcRow(p, busy, job, managed){
   // is locked as installed, and "tick it" was an instruction it could not
   // follow (the operator, 6 Oct, on JDK 21).
   const upd = p.state === "update"
-    ? `<span class="sub upd">${noUpgrade
-        ? "update available: uninstall it with the bin, then tick it and press Install selected"
-        : "update available: tick it and press Install selected"}</span>`
+    ? `<span class="sub upd">update available: tick it and press Install selected${
+        p.updatable ? "" : "; it is removed and installed again"}</span>`
     : "";
   // What went wrong, on the row it went wrong on. This is what the scrolling
   // log at the foot of the tab was for, minus the ninety-nine lines of
@@ -240,7 +241,7 @@ function tcRow(p, busy, job, managed){
     <input type="checkbox" value="${esc(p.name)}"${
       busy || p.wrong_platform || noUpgrade ? " disabled" : ""}${
       p.wrong_platform ? ` title="this recipe is packaged for ${esc(p.wrong_platform)}: installing it here would fetch binaries that cannot run"`
-      : noUpgrade ? ` checked disabled title="installed; no update in place: remove it first for a newer version"`
+      : noUpgrade ? ` checked disabled title="installed; no update in place: a newer version, once a check finds one, is installed in its place"`
       : upToDate ? ` checked disabled title="installed and up to date"`
                : tcTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">

@@ -14,7 +14,7 @@ from . import storage
 from .base import DRIVER, SANDBOX_BIN, TOOLKIT
 from .stores import tc_root
 from .backends import pkg_backend
-from .toolchains import held_recipes, read_catalog, sdk_env, sysdeps_missing, tc_dir, tc_users, tc_users_said
+from .toolchains import held_recipes, read_catalog, sdk_env, sysdeps_missing, tc_dir, tc_users, tc_users_said, tc_verbs
 from .gpu import DRIVER_PKG, _gpu_card
 
 
@@ -306,15 +306,20 @@ class WorkMixin:
             if action == "install" and not self._system_deps(job, name, into):
                 bad += 1
                 continue
-            job.say(f"== bb toolchains {action} {name}\n")
-            st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
-                                            "toolchains", action, name],
-                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
-                                   "env": sdk_env(self.state)})
-            if st_ != "succeeded":
-                bad += 1
-                if st_ == "canceled":
-                    return st_, code
+            # One verb, or a remove and then the install for a recipe that
+            # cannot update in place (tc_verbs, R193): the remove that fails
+            # ends this name there, with the old one still installed.
+            for verb in tc_verbs(store, name, cat.get(name), action):
+                job.say(f"== bb toolchains {verb} {name}\n")
+                st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                                "toolchains", verb, name],
+                                       "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                       "env": sdk_env(self.state)})
+                if st_ != "succeeded":
+                    bad += 1
+                    if st_ == "canceled":
+                        return st_, code
+                    break
         # The machine's own two, in the order each needs: the toolkit hands
         # the driver's libraries to a container, so it goes on after the
         # driver and comes off before it.

@@ -122,6 +122,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A certificate saved on the nginx tab for a domain covers its subdomains' routes: one wildcard or origin pair under example.com serves a.example.com and b.example.com, another domain's pair its own, and a hostname's own still wins; the For picker offers each route's parent domains (16c0aee)
 - On a hosting-only node a container's published ports bind to 127.0.0.1 unless its compose names an address, so only the node's nginx and tunnel reach them: a switch on the node's row, on by default there, applied by the agent through docker's daemon.json (R190). Agent 0.7.170 (66793af)
 - A container written on the Docker tab can be renamed from its Edit dialog while it is down: the node carries its volumes and data directory under the new name, then its record, compose file and env follow, and Build brings it up under it (the operator, 11 Oct) (87839c5)
+- A node's nginx keeps up to date like the toolchains: the registry is read weekly (or by Check now), a node is pinned to the newest line's digest when deployed or updated, and one behind says so on the nginx tab, its Docker row and the bell, each with Update (67f9d7d)
 
 ### Changed
 
@@ -266,6 +267,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The nginx tab has no default certificate: a node's pairs are a list keyed by the domain their names say, each route picks the pair it serves 443 with (its domain's when it picks none, or 80 only), and an unrouted name gets no handshake at all; a default from before is read in (R188) (c601071)
 - A container BuilderBot did not start is given to a project only under a name nothing else of that project's answers to: not an instance's compose name, not a stranger already the project's on another node; it is renamed first, so a session's ask by name means one thing (66793af)
 - A failed compose step's row says what failed and the last telling line the step wrote (No such image: mariadb:11), with the whole output in the log, where it carried the output's last 400 characters flattened to one line (B658) (f1e10bd)
+- A toolchain whose recipe cannot update in place (jdk, go, node, ffmpeg, zig, android-tools, rust) updates from the Toolchains tab like the rest: with a newer version found its box is live, and Install selected removes the old one and installs the new in one job, still refused under a running build (67f9d7d)
 
 ### Removed
 

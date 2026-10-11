@@ -35,6 +35,21 @@ def tc_dir(store, name, entry, action):
     return d if os.path.isdir(d) else ""
 
 
+def tc_verbs(store, name, entry, action):
+    """The bb toolchains verbs a job runs for one name, in order. An install
+    of a toolchain that is there already and whose recipe cannot update in
+    place (the tarball and installer recipes, jdk, go, node, ffmpeg, zig,
+    android-tools, rust) is a remove and then the install (R193, the
+    operator, 11 Oct: "have it uninstall and reinstall automatically"),
+    where bb toolchains install alone dies with "already installed";
+    everything else is the one verb."""
+    src = (entry or {}).get("source") or {}
+    if (action == "install" and not (entry or {}).get("updatable") and not src.get("versioned")
+            and tc_dir(store, name, entry, action)):
+        return ["remove", "install"]
+    return [action]
+
+
 def tc_users(path, limit=8):
     """The processes using anything under `path`: as their program, a
     library or a jar they have open, or the directory they run in. Each as
