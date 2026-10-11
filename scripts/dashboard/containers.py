@@ -403,36 +403,49 @@ def redact_keys(compose):
     return _KEY_BLOCK.sub(r"\g<1>      (the private key: kept on the controller, never shown)\n", compose or "")
 
 
-def rename_container(name, new):
-    """A written container under a new name, while it is down (the
-    operator, 11 Oct: the name is editable in the Edit dialog once the
-    container is down). The name is its compose project, its data
-    directory and its volumes' prefix, so the node carries those under a
-    job (relocate.rename_job) and the records follow when it has."""
+def rename_container(name, new, instance=None):
+    """A container under a new name, while it is down (the operator, 11
+    Oct: the name is editable in the Edit dialog once the container is
+    down, and a project's container is named whatever its owner wants, not
+    after the project). `name` is a written container's, or with `instance`
+    the project a project's container is made from. The name is its compose
+    project, its data directory and its volumes' prefix, so the node
+    carries those under a job (relocate.rename_job) and the records follow
+    when it has."""
     import relocate
-    if not devapp.is_file_source(name):
-        return {"error": f"{name} is not a container written here: a project's own is named for the project"}
+    project, inst = (name, devapp.MAIN) if instance is None else (name, instance)
+    if instance is None and not devapp.is_file_source(name):
+        return {"error": f"{name} is not a container written here"}
+    if inst not in (devapp._load().get(project) or {}):
+        return {"error": f"{project} has no container {inst}"}
+    old = devapp._pname(project, inst)
     slug = devapp._slug(new) or ""
     if not slug:
         return {"error": "a name needs a letter or digit in it"}
-    if slug == name:
+    if slug == old:
         return {"ok": True, "same": True}
-    why = name_free(slug)
+    # Free: no written container's key, and no other instance answering to it.
+    if slug in devapp._load() and slug != project:
+        why = name_free(slug)
+    else:
+        why = next((f"{slug} is already {p}'s container on the Docker tab: pick another name"
+                    for p, insts in devapp._load().items() for i in insts
+                    if (p, i) != (project, inst) and devapp._pname(p, i) == slug), "")
     if why:
         return {"error": why}
-    if devapp.owner_of(name, devapp.MAIN) == devapp.SYSTEM:
-        return {"error": f"{name} is BuilderBot's own, named for its node"}
+    if devapp.owner_of(project, inst) == devapp.SYSTEM:
+        return {"error": f"{old} is BuilderBot's own, named for its node"}
     import devactions
-    if devactions._active_job(name, devapp.MAIN):
+    if devactions._active_job(project, inst):
         return {"error": "a job is running on it: wait for it, or Stop it, then rename it"}
-    if devapp._read_rec(name, devapp.MAIN).get("renaming"):
+    if devapp._read_rec(project, inst).get("renaming"):
         return {"error": "it is already being renamed"}
-    with devapp.on_node(devapp._instance_node(name, devapp.MAIN)):
-        up = [c for c in devapp.containers().get("containers") or [] if c.get("project") == name]
+    with devapp.on_node(devapp._instance_node(project, inst)):
+        up = [c for c in devapp.containers().get("containers") or [] if c.get("project") == old]
     if up:
-        return {"error": f"{name} is up ({len(up)} container{'s' if len(up) != 1 else ''}): take it down first, "
+        return {"error": f"{old} is up ({len(up)} container{'s' if len(up) != 1 else ''}): take it down first, "
                          "since the name is its compose project and its volumes' prefix"}
-    return relocate.rename_job(name, slug)
+    return relocate.rename_job(project, slug, instance)
 
 
 def read_container(name):
@@ -681,14 +694,20 @@ def manager_view(nid, seen):
     got = devapp.overview(nid or None)
     # A copy or move under way, or why the last one did not happen
     # (relocate.py): the row's line while the jobs pass it between nodes.
+    import imagecheck
     import nginxproxy
     import relocate
+    got["images_at"] = imagecheck.last_at()
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
         # A node's nginx behind the newest line says so on its row, with
         # Update (R192); "" for every other row.
         if i.get("owner") == devapp.SYSTEM:
             i["nginx_to"] = nginxproxy.behind_named(i.get("project", ""))
+        # ...and any other's registry images behind what the registry serves
+        # (imagecheck, R195): the row says which, with Update.
+        else:
+            i["images_behind"] = [b["image"] for b in imagecheck.of(i.get("name", "")).get("behind") or []]
     if seen is not None:
         got["instances"] = [i for i in got.get("instances") or []
                             if i.get("owner") in seen]

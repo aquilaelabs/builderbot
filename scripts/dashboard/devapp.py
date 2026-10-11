@@ -1027,6 +1027,9 @@ def forget_available():
 # `info` joins them for one reason: it is where the daemon's own labels are,
 # and a label is how this container tells a VM the provisioner made from any
 # other machine that happens to answer Docker. Also a read.
+# An image reference as compose writes one: registry, path and tag, no
+# spaces and nothing a shell or docker would read as a flag.
+_IMAGE_REF = re.compile(r"[a-z0-9][a-z0-9._/:-]{0,250}")
 _BARE_OK = {"version", "ps", "info"}
 # Acting on a container by name: the three verbs a person reaches for on a
 # list, and the log they open it to read (R68 steps 1 and 2). Held apart from
@@ -1128,6 +1131,11 @@ def _guard(argv):
     # by this guard until B476, so the switch never read or set anything.
     if verb == "inspect":
         if argv[2:4] == ["--format", BOOT_FORMAT] and argv[4:] and all(_CTR_NAME.match(a) for a in argv[4:]):
+            return ""
+        # ...and an image's pulled digests, for the registry check
+        # (imagecheck.py, R195): one image reference, in its one shape.
+        if argv[2:6] == ["--type", "image", "--format", "{{json .RepoDigests}}"] and len(argv) == 7 \
+                and _IMAGE_REF.fullmatch(argv[6]):
             return ""
         return "a `docker inspect` this module did not build"
     if verb == "update":
@@ -1651,8 +1659,30 @@ def pname(project, instance=MAIN):
     return _pname(project, instance)
 
 
+# A project's container named by hand (the operator, 11 Oct: a project's
+# container is named whatever its owner wants, not after the project): the
+# record's `name`, read through a table kept per store write, since _pname
+# is on the poll path and is asked in loops over every instance.
+_named = {"at": None, "map": {}}
+
+
+def _names():
+    try:
+        at = FILE.stat().st_mtime_ns
+    except (OSError, AttributeError, TypeError):
+        at = None
+    if at is None or at != _named["at"]:
+        _named["map"] = {(p, i): str(r["name"]) for p, insts in _load().items()
+                         for i, r in insts.items() if r.get("name") and r.get("source") != "file"}
+        _named["at"] = at
+    return _named["map"]
+
+
 def _pname(project, instance=MAIN):
     """The compose project name: the prefix, then what the thing is called.
+
+    A project's container renamed in the Edit dialog carries the name it was
+    given on its record (`name`), and that wins over both rules below.
 
     The PROJECT used to be in here as well, as <project>-<instance>,
     which for a project called MediaReducer-Dev with an instance named after
@@ -1664,6 +1694,9 @@ def _pname(project, instance=MAIN):
     typed a name for it: `main` is implied rather than chosen, and
     `alpha-main` was saying the same thing twice too.
     """
+    own = _names().get((project, instance))
+    if own:
+        return own
     inst = _slug(instance) or MAIN
     return _slug(project) if inst == MAIN else inst
 

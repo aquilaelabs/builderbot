@@ -54,10 +54,11 @@ class Rename(unittest.TestCase):
         self.assertEqual(r["name"], "plex-box")
         job = self.q.jobs[r["job"]]
         spec = job["spec"]
-        self.assertEqual(spec["rename"], {"to": "plex-box"})
+        self.assertEqual(spec["rename"], {"to": "plex-box", "own": False})
         step = spec["plan"][0]
         self.assertEqual(step["argv"][3:], ["radarr", "plex-box", "/d/radarr", "/d/plex-box", relocate.HELPER])
-        self.assertEqual(devapp._read_rec("radarr", "main").get("renaming"), "plex-box", "the row says it is renaming")
+        self.assertEqual(devapp._read_rec("radarr", "main").get("renaming"), "plex-box")
+        self.assertIn("renaming it to plex-box", relocate.view("radarr", "main")["line"], "the row says it is renaming")
         self.assertIn("already being renamed", containers.rename_container("radarr", "other")["error"])
         self.assertEqual(relocate.rename_done(job, "succeeded"), "")
         d = devapp._load()
@@ -85,7 +86,38 @@ class Rename(unittest.TestCase):
         self.assertIn("already exists", containers.rename_container("radarr", "plex")["error"])
         self.assertTrue(containers.rename_container("radarr", "radarr").get("same"), "the same name is nothing to do")
         write_json(devapp.FILE, devapp._load() | {"alpha": {"main": {"node": "n1"}}})
-        self.assertIn("not a container written here", containers.rename_container("alpha", "beta")["error"])
+        self.assertIn("not a container written here", containers.rename_container("alpha", "beta")["error"],
+                      "a project's container is renamed with its instance named")
+
+    def test_a_projects_container_takes_a_name_of_its_own(self):
+        """The operator, 11 Oct: a project's container is named whatever its
+        owner wants, not after the project. The record carries the name, the
+        instance keeps its key (its worktree, jobs and bb devapp --instance
+        stay), and the node carries the volumes and data under the new one."""
+        write_json(devapp.FILE, devapp._load() | {"aquilaeLabs": {"main": {"node": "n1", "compose": "site/compose.yml"},
+                                                                   "staging": {"node": "n1"}}})
+        devapp.write_env("aquilaeLabs", "PORT=8080\n", "main")
+        self.assertEqual(devapp._pname("aquilaeLabs", "main"), "aquilaelabs", "named for the project until named")
+        self.assertIn("is already aquilaeLabs's container", containers.rename_container("aquilaeLabs", "staging", "main")["error"],
+                      "not a name another container answers to")
+        self.assertIn("radarr already exists", containers.rename_container("aquilaeLabs", "radarr", "main")["error"])
+        r = containers.rename_container("aquilaeLabs", "Turing Site", "main")
+        self.assertTrue(r.get("ok"), r)
+        job = self.q.jobs[r["job"]]
+        self.assertEqual(job["spec"]["rename"], {"to": "turing-site", "own": True})
+        self.assertEqual(job["spec"]["plan"][0]["argv"][3:7], ["aquilaelabs", "turing-site", "/d/aquilaeLabs", "/d/turing-site"])
+        self.assertEqual(relocate.rename_done(job, "succeeded"), "")
+        rec = devapp._read_rec("aquilaeLabs", "main")
+        self.assertEqual((rec.get("name"), rec.get("compose"), "renaming" in rec), ("turing-site", "site/compose.yml", False))
+        self.assertEqual(devapp._pname("aquilaeLabs", "main"), "turing-site", "the compose name is its own now")
+        self.assertEqual(devapp.row_named("turing-site"), ("aquilaeLabs", "main"), "bb devapp --container finds it by it")
+        self.assertEqual(devapp.read_env("aquilaeLabs", "main"), "PORT=8080\n", "its env followed the name")
+        self.assertEqual(devapp._pname("aquilaeLabs", "staging"), "staging", "the project's other container is untouched")
+        # Named back to the project's own default: no name kept.
+        r = containers.rename_container("aquilaeLabs", "aquilaeLabs", "main")
+        relocate.rename_done(self.q.jobs[r["job"]], "succeeded")
+        self.assertNotIn("name", devapp._read_rec("aquilaeLabs", "main"))
+        self.assertEqual(devapp._pname("aquilaeLabs", "main"), "aquilaelabs")
 
 
 if __name__ == "__main__":

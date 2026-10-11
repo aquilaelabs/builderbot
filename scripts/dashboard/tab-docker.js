@@ -734,6 +734,10 @@ async function dmAction(project, instance, act, btn){
     dockerRev++; drawPanes(); loadDocker();
     return;
   }
+  if (act === "update"){
+    const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
+    if (!confirm(`Update ${d?.name || project}?\n\nThe newer ${(d?.images_behind || []).join(", ")} is pulled and it starts again on it, so it is down for a moment.`)) return;
+  }
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
   if (act === "remove" && !confirm(
       `Remove ${project}/${instance}?\n\n`
@@ -878,6 +882,14 @@ async function loadWire(d){
 // A starting point rather than an empty box. Somebody opening this is about
 let cEditing = null;              // the container being edited, or null for new
 
+// While the container runs, the dialog is for reading (the operator, 11 Oct):
+// Save ghosted and both boxes read-only, still scrollable and selectable.
+// Down it to change anything here.
+function cLock(running){
+  $("cYml").readOnly = $("cEnv").readOnly = running;
+  $("cGo").disabled = running;
+}
+
 async function openEditContainer(name){
   cEditing = name;
   $("cTabForm").hidden = false;
@@ -888,16 +900,25 @@ async function openEditContainer(name){
   // the compose project, the data directory and the volumes' prefix, and
   // the node carries those under the new name before the next Up.
   const row = (dockerList?.instances || []).find(d => d.project === name && d.instance === "main");
-  const down = !!row && !row.running;
-  $("cName").disabled = !down;
-  $("cNameHint").textContent = down
+  // Not known to be running is down for the dialog: opened while the list
+  // reloads, it found no row and locked itself; the server still refuses a
+  // rename of one that is up.
+  const down = !row?.running;
+  // BuilderBot's own (System) is managed: for reading, whatever its state
+  // (the operator, 11 Oct).
+  const managed = row?.owner === "System";
+  $("cName").disabled = !down || managed;
+  $("cNameHint").textContent = managed
+    ? "BuilderBot manages this one: its name, compose file and env are written where it was deployed from (the nginx tab)."
+    : down
     ? "Change the name while it is down: its volumes and data directory follow it on the node, then Build it again."
-    : "The name changes only while it is down: Down it, then Edit again.";
+    : "It is running, so this is for reading: Down it to change its name, compose file or env.";
   $("cNodeField").hidden = true;   // where it runs is not an edit either
   $("cUnderField").hidden = true;  // its project is changed on its row
   $("cYml").value = $("cEnv").value = "";
   $("cErrWrap").hidden = true;
-  $("cGo").disabled = false; $("cGo").textContent = "Save";
+  $("cGo").textContent = "Save";
+  cLock(!down || managed);
   cSeg("yml");
   $("cmodal").hidden = false;
   try{
@@ -918,16 +939,25 @@ async function openEditInstance(project, instance){
   const key = {project, instance};
   cEditing = key;
   $("cTitle").textContent = "Edit " + projLabel(project) + (instance === "main" ? "" : ` (${instance})`);
-  $("cName").value = projLabel(project);
-  $("cName").disabled = true;
-  $("cNameHint").textContent = `The compose file is ${projLabel(project)}'s own, in its folder: `
-    + "saving it is an uncommitted change there, which the Git view shows. The env is this container's.";
+  // Its own name, whatever its owner calls it (the operator, 11 Oct: not
+  // tied to the project, since a project sends several), changed while it
+  // is down like a written container's.
+  const row = (dockerList?.instances || []).find(d => d.project === project && d.instance === instance);
+  const running = !!row?.running;
+  key.name = row?.name || "";
+  $("cName").value = key.name;
+  $("cName").disabled = running || !key.name;
+  $("cNameHint").textContent = running
+    ? "It is running, so this is for reading: Down it to change its name, compose file or env."
+    : `Its name is its own: its volumes and data directory follow a new one on the node. The compose file is ${projLabel(project)}'s, in its folder: `
+      + "saving it is an uncommitted change there, which the Git view shows. The env is this container's.";
   $("cNodeField").hidden = true;
   $("cUnderField").hidden = true;
   $("cTabForm").hidden = true;
   $("cYml").value = $("cEnv").value = "";
   $("cErrWrap").hidden = true;
-  $("cGo").disabled = false; $("cGo").textContent = "Save";
+  $("cGo").textContent = "Save";
+  cLock(running);
   cSeg("yml");
   $("cmodal").hidden = false;
   try{
@@ -962,8 +992,13 @@ async function cSaveInstance(key){
     if (c.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("yml"); return fail(c.error); }
     const e = env !== key.was?.env ? await send({action: "env-set", text: env}) : {};
     if (e.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("env"); return fail(e.error); }
+    // ...and the name last, since the node carries the data under it.
+    const typed = $("cName").value.trim();
+    const n = typed && key.name && dockerSlug(typed) !== key.name ? await send({action: "rename", name: typed}) : {};
+    if (n.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; return fail(n.error); }
     $("cmodal").hidden = true;
-    notify(c.ok || e.ok ? "saved: rebuild it to bring the change up" : "nothing changed");
+    notify(n.job ? `renaming ${key.name} to ${n.name}: its row says when it is done`
+           : c.ok || e.ok ? "saved: rebuild it to bring the change up" : "nothing changed");
     dockerList = null; dockerRev++; loadDocker();
   }catch(err){ $("cGo").disabled = false; $("cGo").textContent = "Save"; fail("could not save: " + err); }
 }
@@ -1013,6 +1048,7 @@ function cUnderPicked(){
 }
 
 function openNewContainer(){
+  cLock(false);
   cEditing = null;
   $("cTabForm").hidden = false;
   $("cEnvHint").hidden = true;
@@ -1308,6 +1344,7 @@ function dmRowsHtml(ins, job, blind){
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
           : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
+        ${(d.images_behind || []).length ? `<div class="sub warn dmimages">a newer ${esc(d.images_behind.join(", "))} is out: Update pulls it and starts it again</div>` : ""}
         </div>
       </div>
       <div class="actbar dmacts">
@@ -1324,6 +1361,8 @@ function dmRowsHtml(ins, job, blind){
         <button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
           title="${d.source === "file" ? "edit this container's compose file and env"
                   : "edit the project's compose file and this container's env"}">Edit</button>
+        ${(d.images_behind || []).length && !busy ? `<button type="button" data-dm="update"
+          title="pull the newer images and start it again: docker compose pull, then up -d">Update</button>` : ""}
         ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
           title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx tab's record and rebuild with it">Update nginx</button>` : ""}
         `}
@@ -1731,7 +1770,12 @@ function renderDockerInto(i){
       // Adding at the top, in the add band every view adds with, where a
       // phone finds it without scrolling past every container (R119 step 5).
       mayDocker() ? `<div class="field"><div class="addbar" data-add="container">
-        <button type="button" id="bDockerNew">New container</button></div></div>` : ""}`;
+        <button type="button" id="bDockerNew">New container</button></div></div>` : ""}${
+      // Registry images against what their registries serve now (R195):
+      // weekly by itself, or now; a row that is behind says so with Update.
+      mayDocker() && !blind ? `<div class="field"><div class="actbar dmimgbar"><span class="state">${
+        dockerList?.images_at ? `registry images checked ${esc(ago(dockerList.images_at))}` : "registry images not checked yet"}</span>
+        <span class="sp"></span><button type="button" id="bDockerCheck">Check for updates</button></div></div>` : ""}`;
   // What a session is waiting on, above everything else: somebody is blocked
   // on these, and this is the tab whose dial sent them here. The bell carries
   // them too, the way root asks sit on the Nodes tab and in the bell.
@@ -1771,6 +1815,17 @@ function renderDockerInto(i){
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  const ck = el.querySelector("#bDockerCheck");
+  if (ck) ck.onclick = async () => {
+    busy(ck, "Checking");
+    try{
+      const j = await (await postJSON("/api/images", {action: "check", node: dockerList?.node || dockerNode || ""})).json();
+      if (j.error) notify(j.error, true);
+      else notify(j.behind ? `${j.behind} container${j.behind === 1 ? " has" : "s have"} a newer image: Update on ${j.behind === 1 ? "its row" : "their rows"}`
+                           : `checked ${j.checked}: every registry image is current`);
+    }catch(e){ notify("could not check: " + e, true); }
+    dockerRev++; loadDocker();
+  };
   const pk = el.querySelector("#dmNode");
   if (pk) pk.onchange = () => {
     dockerNode = pk.value;

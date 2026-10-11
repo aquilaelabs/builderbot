@@ -190,27 +190,31 @@ print("renamed", flush=True)
 """
 
 
-def rename_job(name, new):
-    """A written container renamed while down: its volumes carried to the
-    new prefix and its data directory moved on its node, by one job; the
-    records follow in rename_done. {"ok", "job"} or {"error"}."""
+def rename_job(name, new, instance=None):
+    """A container renamed while down: its volumes carried to the new
+    prefix and its data directory moved on its node, by one job; the
+    records follow in rename_done. `name` is a written container's, or with
+    `instance` the project a project's container is made from.
+    {"ok", "job"} or {"error"}."""
     if devapp.queue is None:
         return {"error": "no job queue is configured here"}
-    nid = devapp._instance_node(name, devapp.MAIN)
+    inst = devapp.MAIN if instance is None else instance
+    old = devapp._pname(name, inst)
+    nid = devapp._instance_node(name, inst)
     n = _node_row(nid)
     if not n or n.get("kind") != "agent" or n.get("state") != "online":
         return {"error": "the node it is on is not an agent node that is online, and only one of those can carry its data"}
     with devapp.on_node(nid):
-        data_old = devapp.dev_data_dir(name, devapp.MAIN, make=False) or ""
+        data_old = devapp.dev_data_dir(name, inst, make=False) or ""
         data_new = (posixpath.join(devapp.appdata_root(), new) if data_old else "")
-    step = {"name": "renaming", "argv": ["python3", "-c", RENAME_PY, name, new, data_old, data_new, HELPER],
+    step = {"name": "renaming", "argv": ["python3", "-c", RENAME_PY, old, new, data_old, data_new, HELPER],
             "timeout": 3600}
-    spec = {"project": name, "instance": devapp.MAIN, "action": "rename", "name": name, "files": {},
-            "dirs": [], "gate": False, "rename": {"to": new}, "plan": [step]}
-    _set(name, devapp.MAIN, renaming=new)
+    spec = {"project": name, "instance": inst, "action": "rename", "name": old, "files": {},
+            "dirs": [], "gate": False, "rename": {"to": new, "own": instance is not None}, "plan": [step]}
+    _set(name, inst, renaming=new)
     r = devapp.queue.job_add("operator", {"node": nid}, "compose", spec, name)
     if r.get("error"):
-        _set(name, devapp.MAIN, renaming=None)
+        _set(name, inst, renaming=None)
         return r
     devapp._bump()
     return {"ok": True, "started": True, "job": r["job"], "name": new}
@@ -222,15 +226,47 @@ def rename_done(job, state):
     leaves everything as it was and says what the job last wrote."""
     sp = (job or {}).get("spec") or {}
     old = sp.get("project") or ""
-    new = str((sp.get("rename") or {}).get("to") or "")
+    inst = sp.get("instance") or devapp.MAIN
+    rn = sp.get("rename") or {}
+    new = str(rn.get("to") or "")
     if not old or not new:
         return ""
     if state != "succeeded":
-        _set(old, devapp.MAIN, renaming=None)
+        _set(old, inst, renaming=None)
         said = _last_said(job)
         return "renaming it failed" + (f": {said}" if said else "")
-    _rename_records(old, new)
+    if rn.get("own"):
+        _name_instance(old, inst, new)
+    else:
+        _rename_records(old, new)
     return ""
+
+
+def _name_instance(project, instance, new):
+    """A project's container given its own name: the record carries it
+    (devapp._pname reads it), and its env file follows; the instance keeps
+    its key, so its worktree, its jobs and bb devapp --instance are where
+    they were. A name that is the project's own default again is no name."""
+    src = devapp.env_path(project, instance)
+    with devapp._lock:
+        d = devapp._load()
+        rec = (d.get(project) or {}).get(instance)
+        if rec is None:
+            return
+        rec.pop("renaming", None)
+        default = devapp._slug(project) if instance == devapp.MAIN else devapp._slug(instance)
+        if new == default:
+            rec.pop("name", None)
+        else:
+            rec["name"] = new
+        devapp.write_json(devapp.FILE, d)
+    dst = devapp.env_path(project, instance)
+    try:
+        if src != dst and src.exists() and not dst.exists():
+            src.rename(dst)
+    except OSError as e:
+        print(f"[relocate] renaming {src} to {dst}: {e}", flush=True)
+    devapp._bump()
 
 
 def _rename_records(old, new):
@@ -553,6 +589,8 @@ def view(project, instance):
         step = {"out": "packing its data", "in": "unpacking its data",
                 "build": "building and starting"}.get(plan.get("stage"), "")
         return {"busy": True, "line": f"{verb} to {where}: {step}" if step else f"{verb} to {where}"}
+    if rec.get("renaming"):
+        return {"busy": True, "line": f"renaming it to {rec['renaming']}: the node carries its volumes and data"}
     if rec.get("relocate_why"):
         return {"busy": False, "line": f"the last copy or move did not happen: {rec['relocate_why']}"}
     return None

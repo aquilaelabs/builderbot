@@ -1142,7 +1142,9 @@ def _attention(who):
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
             + ([] if users.may(who, "docker-write")
-               else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid))))
+               else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid))
+               # ...and a container whose registry image moved (imagecheck, R195).
+               + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
@@ -2595,6 +2597,7 @@ devapp.label_of = registry.label
 import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
 import nginxproxy                                                # noqa: E402
+import imagecheck                                                # noqa: E402
 import tunnel                                                    # noqa: E402
 import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
@@ -2786,6 +2789,7 @@ containers.net_nudge = net_nudge
 containers.project_hosts = lambda p: prefs.get(p).get("hosts") or []
 # One nginx per node, from the nginx tab (R171): its records here, the
 # container through containers.py, and the node's own view of its ports.
+imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
                      node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                      taken_ports=devapp.taken_ports)
@@ -3661,6 +3665,7 @@ POST_ROUTES = (
     ("prefix", "/api/layout", "_layout"),
     ("exact", "/api/bell", "_bell"),
     ("exact", "/api/nginx", "_nginx"),
+    ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
     ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
@@ -7211,6 +7216,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"unknown action: {act}"}, 400)
         return self._result(r)
 
+    def _images(self, req):
+        """Check for updates on the Docker tab (imagecheck.py, R195): every
+        container's registry images on one node, or all, asked now. A
+        person's, under docker-write, since what it leads to is an Update."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "checking for image updates is a person's"}, 403)
+        if self._refused("docker-write"):
+            return
+        if field(req, "action") != "check":
+            return self._json({"error": "unknown action"}, 400)
+        nid = field(req, "node")
+        if nid and not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        return self._result(imagecheck.check(nid or None))
+
     def _bell(self, req):
         """Put a bell note away for this account, or bring every one back
         (bellseen.py). The account's own, so no grant; a session has no bell."""
@@ -7607,6 +7627,8 @@ def main():
     tunnel.apply()            # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
+    if imagecheck.AUTOCHECK:          # every container's registry images, weekly (R195)
+        threading.Thread(target=imagecheck.check_loop, name="image-check", daemon=True).start()
     if nginxproxy.AUTOCHECK:          # the nginx image against the registry, weekly (R192)
         threading.Thread(target=nginxproxy.check_loop, name="nginx-check", daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()

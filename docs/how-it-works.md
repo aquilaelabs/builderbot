@@ -3301,6 +3301,23 @@ digest, so Dismiss holds until the registry moves the line again. One
 deployed before any check had read the registry is unpinned, and behind
 whatever is newest until its first Update.
 
+Every other container's registry images keep up to date the same way (R195,
+the operator, 11 Oct). A service that runs an image by tag, with no `build:`
+(mariadb, a linuxserver image, ghcr.io/aquilaelabs/builderbot:latest), is
+compared once a week, and on Check for updates on the Docker tab: the digest
+its node pulled (`docker inspect`'s RepoDigests) against what the
+registry serves for that tag now, over the registry's v2 API with an
+anonymous token (imagecheck.py). One that differs says so on its row with
+Update, which pulls (`compose pull --ignore-buildable`) and starts it again;
+the bell carries one note per node. What is built from code is not asked:
+Rebuild is what moves that, and it is ghosted until the code has moved. An
+image pinned by digest (nginx's) is its own tab's, an image never pulled is
+pulled by Up, and a private one says the registry would not answer. A
+project's container is named whatever its owner wants: Send to Docker
+offers the project's name and the compose file's folder or variant, and the
+Edit dialog renames it while it is down, its record carrying the name while
+the instance keeps its key.
+
 **Also reaches**, under What a session sees in a project's settings, opens
 the rest by hand (the operator, 7 Oct): a machine its sessions may still
 reach, by its address, or one service on it, as `address:port`, without

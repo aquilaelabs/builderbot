@@ -1048,6 +1048,13 @@ fi
 # share). Answers yes by default; run.testfail is the suite saying the marker
 # is NOT over there: a clean exit 1 with nothing said, as `test -d` does.
 if [ "$1" = run ] && [ -f "$ST/run.testfail" ]; then exit 1; fi
+# What a node pulled of an image (imagecheck.py, R195): its RepoDigests from
+# a file the suite leaves, named for the image; none is an image never pulled.
+if [ "$1" = inspect ] && [ "$2" = --type ] && [ "$3" = image ]; then
+  f="$ST/repodigests/$(printf %s "${*: -1}" | tr '/:' '__')"
+  [ -f "$f" ] && { cat "$f"; exit 0; }
+  echo "Error: No such image: ${*: -1}"; exit 1
+fi
 case "$1" in
   # A daemon that is not there at all: the VM powered off, or an address that
   # is not a sandbox VM. availability is what the page gates every Docker
@@ -1389,6 +1396,7 @@ start_server() {
     BB_ARCHIVE_SPOOL="$S/spool" \
     BB_CLAUDE_LATEST_URL="file://$S/claude-latest" BB_CLAUDE_CHECK_DELAY=3600 \
     BB_NGINX_TAGS_URL="file://$S/nginx-tags.json" BB_NGINX_CHECK_DELAY=3600 \
+    BB_IMAGE_DIGESTS_FILE="$S/image-digests.json" BB_IMAGE_CHECK_DELAY=3600 \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
     BB_CLOUDFLARED="$DASH/test/cloudflared-stub.sh" \

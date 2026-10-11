@@ -92,6 +92,12 @@ def filter_rows(uid, rows):
             if not tools:
                 continue
             r["tools"] = tools
+        elif r.get("kind") == "image":
+            # To the digests it would move to (R195): put away until one moves.
+            r["key"] = f"image:{r['id']}@{r.get('digest') or ''}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
         elif r.get("kind") == "nginx":
             # To the digest it would move to (R192): put away until the
             # registry moves the line again.

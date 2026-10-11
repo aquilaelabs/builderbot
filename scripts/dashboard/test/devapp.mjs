@@ -343,6 +343,23 @@ await openEdit();
 ok(await page.$eval('#cYml', e => e.value) === readFileSync(`${D}/docker-compose.yml`, 'utf8')
    && await page.$eval('#cTabForm', e => e.hidden),
    'Edit opens on the project\'s own compose file, beside its env, with no form for an image');
+// Its name is its own, not the project's (the operator, 11 Oct): live in
+// the dialog while it is down, opening on what the row calls it, and the
+// boxes and Save live with it.
+ok(await page.evaluate(() => {
+     const n = document.getElementById('cName'), row = (dockerList?.instances || []).find(d => d.instance === 'main' && d.source !== 'file' && !d.running);
+     return !n.disabled && !!row && n.value === row.name && !document.getElementById('cGo').disabled
+       && !document.getElementById('cEnv').readOnly && /Its name is its own/.test(document.getElementById('cNameHint').textContent);
+   }), 'a project\'s container that is down offers its own name to change, with its boxes and Save live');
+// ...and one that runs is for reading: Save ghosted, both boxes read-only
+// and still scrollable (the operator, 11 Oct).
+ok(await page.evaluate(() => {
+     cLock(true);
+     const ok = document.getElementById('cGo').disabled && document.getElementById('cYml').readOnly
+       && document.getElementById('cEnv').readOnly && getComputedStyle(document.getElementById('cEnv')).overflowY !== 'hidden';
+     cLock(false);
+     return ok;
+   }), '...while one that runs ghosts Save and makes both boxes read-only, still scrollable');
 await page.click('#cTabEnv');
 ok(/missing against \.env\.example: PORT/.test(await page.$eval('#cEnvHint', e => e.textContent)),
    'the env tab says which keys the example declares and this does not');
@@ -2607,6 +2624,47 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'save', name: 'radarr', rename: 'radarr', compose: 'services:\n  app:\n    image: lscr.io/x:latest\n', env: '' }) })).json()));
   ok(!saved.error && !saved.job, `a Save with the name as it was renames nothing (${JSON.stringify(saved).slice(0, 60)})`);
+}
+// ---- a registry image that moved (R195) ---------------------------------
+// The operator, 11 Oct: Update on any container whose image comes from a
+// registry, not nginx alone. radarr runs one (no build): the node has pulled
+// it at one digest, the registry (BB_IMAGE_DIGESTS_FILE) serves another, so
+// Check for updates finds it behind, the row says which with Update, the
+// bell carries a note of its own, and Update pulls and starts it again.
+{
+  const img = 'lscr.io/linuxserver/radarr:latest';
+  writeFileSync(`${DIR}/dockerstate/radarr.config`, JSON.stringify({ services: { app: { image: img } } }));
+  mkdirSync(`${DIR}/dockerstate/repodigests`, { recursive: true });
+  writeFileSync(`${DIR}/dockerstate/repodigests/${img.replace(/[/:]/g, '_')}`, JSON.stringify([`lscr.io/linuxserver/radarr@sha256:${'a'.repeat(64)}`]));
+  writeFileSync(`${DIR}/image-digests.json`, JSON.stringify({ [img]: `sha256:${'b'.repeat(64)}` }));
+  await page.waitForSelector('#bDockerCheck', { timeout: 15000 });
+  ok(await page.$eval('.dmimgbar .state', e => /not checked yet|checked/.test(e.textContent)),
+     'the Docker tab says when its registry images were last checked, beside Check for updates');
+  await page.click('#bDockerCheck');
+  await page.waitForSelector('.dmtab .row[data-inst="radarr|main"] .dmimages', { timeout: 20000 });
+  ok(await page.$eval('.dmtab .row[data-inst="radarr|main"]', r => /a newer lscr\.io\/linuxserver\/radarr:latest is out/.test(r.querySelector('.dmimages').textContent)
+       && !!r.querySelector('[data-dm="update"]')),
+     'Check for updates finds a registry image the registry has moved: the row says which, with Update');
+  ok(!(await page.$('.dmtab .row[data-inst^="ep.silon|"] [data-dm="update"]')),
+     '...and a container built from code is not offered it: Rebuild is what moves that');
+  await page.evaluate(() => refresh());
+  await page.click('#bBell');
+  await page.waitForSelector('#bellPanel [data-bdocker]', { timeout: 15000 });
+  ok(await page.$eval('#bellPanel', e => /container update/.test(e.textContent) && /radarr \(lscr\.io\/linuxserver\/radarr:latest\)/.test(e.textContent)
+       && !!e.querySelector('[data-bdismiss^="image:"]')),
+     'the bell carries a container-update note of its own, with Dismiss');
+  await page.click('#bBell');
+  const before = dockerLog().length;
+  await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="update"]');
+  await page.waitForFunction(() => !document.querySelector('.dmtab .row[data-inst="radarr|main"] .dmimages'), null, { timeout: 30000 });
+  const said = dockerLog().slice(before);
+  ok(/compose .*pull --ignore-buildable/.test(said) && /compose .* up -d/.test(said),
+     `Update pulls the registry images and starts it again, and the row stops saying it is behind (${said.split('\n').filter(l => /pull|up -d/.test(l)).length} lines)`);
+  rmSync(`${DIR}/dockerstate/radarr.config`, { force: true });
+  // Down again: Update started it, and the checks below edit it as it was, down.
+  rmSync(`${DIR}/dockerstate/radarr.up`, { force: true });
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => (dockerList?.instances || []).some(d => d.project === 'radarr' && !d.running), null, { timeout: 20000 });
 }
 // ---- a row on a phone (R68 step 5) ---------------------------------------
 // What a row carries is on the row at every width, never behind a fold (the

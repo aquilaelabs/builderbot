@@ -175,6 +175,21 @@ ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.
      `the Docker tab's copy of nginx's compose carries the certificate and a line in place of the key`);
   const back = await api('/api/container', { action: 'save', name: 'nginx-sandbox', compose: shown.compose, env: '' });
   ok(/written from the nginx tab/.test(back.error || ''), `...and saving that copy back is refused (${(back.error || 'saved').slice(0, 60)})`);
+  // It is managed (the operator, 11 Oct): its env and its name are refused
+  // as its compose is, and the Edit dialog is for reading whatever its state.
+  const envSet = await api('/api/devapp', { project: 'nginx-sandbox', instance: 'main', action: 'env-set', text: 'X=1\n' });
+  const renamed = await api('/api/devapp', { project: 'nginx-sandbox', instance: 'main', action: 'rename', name: 'proxy' });
+  ok(/managed/.test(envSet.error || '') && /managed/.test(renamed.error || ''),
+     `...and so are its env and its name (${(envSet.error || 'saved').slice(0, 50)})`);
+  await page.evaluate(() => openDocker());
+  await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"]', { timeout: 20000 });
+  await page.evaluate(() => openEditContainer('nginx-sandbox'));
+  await page.waitForSelector('#cmodal:not([hidden])');
+  ok(await page.evaluate(() => document.getElementById('cName').disabled && document.getElementById('cGo').disabled
+       && document.getElementById('cEnv').readOnly && document.getElementById('cYml').readOnly
+       && /BuilderBot manages this one/.test(document.getElementById('cNameHint').textContent)),
+     '...and its Edit dialog is for reading: name, compose file and env locked, Save ghosted');
+  await page.evaluate(() => { document.getElementById('cmodal').hidden = true; openNginxTab(); });
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, drop_cert: 'www.example.com' });
 }
 

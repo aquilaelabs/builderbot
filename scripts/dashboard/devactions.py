@@ -248,10 +248,15 @@ def _plan(project, instance, action, extra=None):
         test = [{"name": "testing", "argv": argv, "timeout": 3600, "env": ienv}]
     # Stopped and started again in place, its containers kept: what copying
     # or moving an instance's data does around reading it (relocate.py).
+    # Update (R195): the registry images pulled again, then up, so what moved
+    # upstream is what runs; nothing is built. --ignore-buildable leaves the
+    # services built from code to Rebuild.
+    pull = {"name": "pulling", "argv": base + ["pull", "--ignore-buildable"], "timeout": 1800, "env": ienv}
     stop = {"name": "stopping", "argv": base + ["stop"], "timeout": 180, "env": ienv}
     start = {"name": "starting", "argv": base + ["start"], "timeout": 300, "env": ienv}
     return {"up": [up], "down": [down], "remove": [down],
-            "rebuild": rebuild, "test": test, "stop": [stop], "start": [start]}.get(action) or []
+            "rebuild": rebuild, "test": test, "stop": [stop], "start": [start],
+            "update": [pull, up]}.get(action) or []
 
 
 # ---- an image shipped to a node that does not hold the project (R166) ------------
@@ -502,6 +507,11 @@ def compose_done(job, state):
     # the only one; a ship's first half that failed ends it too.
     if sp.get("action") == "rebuild" and not (sp.get("ship") == "build" and state == "succeeded"):
         relocate.built(sp.get("project", ""), sp.get("instance") or devapp.MAIN, state == "succeeded")
+    # ...and an update that pulled what was behind: nothing is, until the
+    # next check says so (R195).
+    if sp.get("action") == "update" and state == "succeeded":
+        import imagecheck
+        imagecheck.forget(devapp._pname(sp.get("project", ""), sp.get("instance") or devapp.MAIN))
     return said
 
 
@@ -1068,6 +1078,13 @@ def down(project, instance=devapp.MAIN):
     return _submit(project, instance, "down")
 
 
+@devapp._on_instance
+def update(project, instance=devapp.MAIN):
+    """Update on a row whose registry images moved (imagecheck, R195): pull
+    them again and up, nothing built."""
+    return _submit(project, instance, "update")
+
+
 _ARG = re.compile(r"[A-Za-z0-9._/:=@%+,-]{1,200}")
 
 
@@ -1152,6 +1169,18 @@ def project_dir_inside(sv, project):
     return ""
 
 
+def _job_update(project, instance, run):
+    """Update where the controller runs the job itself: pull, then up."""
+    run.step("pulling")
+    r = devapp._run(devapp._compose(project, instance, "pull", "--ignore-buildable"), timeout=1800,
+                    sink=run.line, hold=run.hold)
+    if run.canceled:
+        return {"state": "canceled", "error": "stopped before it started again"}
+    if r["code"] != 0:
+        return {"state": "failed", "error": ("could not pull its images:\n" + r["out"])[-500:]}
+    return _job_up(project, instance, run)
+
+
 def _job_down(project, instance, run):
     run.step("stopping")
     r = devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
@@ -1200,7 +1229,7 @@ def run_compose_job(job, run):
     sp = job.get("spec") or {}
     project, instance = sp.get("project", ""), sp.get("instance") or devapp.MAIN
     fn = {"up": _job_up, "down": _job_down, "rebuild": _job_rebuild,
-          "remove": _job_remove}.get(sp.get("action"))
+          "remove": _job_remove, "update": _job_update}.get(sp.get("action"))
     if fn is None:
         return {"state": "failed", "error": f"unknown compose action {sp.get('action')!r}"}
     with devapp.on_node(job.get("node") or devapp._instance_node(project, instance)):
@@ -1387,10 +1416,17 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
     # shown, not a bare yes. A compose file that gains a mount between
     # the row rendering and the button being pressed does not inherit the
     # acknowledgement of the one before it.
+    # BuilderBot's own (System, R180) is managed: its name, compose file and
+    # env are written by the surface that deployed it, never edited here
+    # (the operator, 11 Oct).
+    if action in ("env-set", "compose-set", "rename") and devapp.owner_of(project, instance) == devapp.SYSTEM:
+        return {"error": f"{devapp._pname(project, instance)} is BuilderBot's own and managed: change it where it was deployed from"}, 400
     if action == "up":
         r = up(project, instance, f(req, "ack"))
     elif action == "down":
         r = down(project, instance)
+    elif action == "update":
+        r = update(project, instance)
     elif action == "test":
         r = test(project, instance, test_cmd,
                  [str(a) for a in (req.get("args") or [])][:32])
@@ -1415,6 +1451,11 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         return {"text": cf.read_text(encoding="utf-8", errors="replace"), "file": cf.name}, 200
     elif action == "compose-set":
         r = set_compose(project, instance, req.get("text"))
+    elif action == "rename":
+        # A project's container named whatever its owner wants, while it is
+        # down (the operator, 11 Oct): the Edit dialog's Name field.
+        import containers
+        r = containers.rename_container(project, f(req, "name"), instance)
     elif action == "route":
         # How the instance is reached (docs/nodes.md §7): lan or funnel,
         # on which published port.
@@ -1482,7 +1523,7 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
     # What the others sharing this project would want to know before they
     # press the same button, naming the instance the server resolved. Reads
     # and the env editor are not news, so they are not on this list.
-    if action in ("up", "down", "rebuild", "remove", "abort"):
+    if action in ("up", "down", "rebuild", "update", "remove", "abort"):
         say(project, users.uid_of(me),
             f"{principal[len('user:'):]} ran {action} on "
             f"{project}" + (f" ({instance})" if instance != devapp.MAIN else ""))

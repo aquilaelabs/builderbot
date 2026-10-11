@@ -80,6 +80,17 @@ function attRow(a){
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
           <a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`;
   }
+  // A container whose registry image moved (R195): one note per node, to
+  // the Docker tab on that node, where Update is on each row.
+  if (a.kind === "image"){
+    const n = a.containers.length;
+    return `<div class="bnote att">
+      <div class="bt">${n} container update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
+      <div class="bsum">${a.containers.map(c => `${esc(c.name)} (${c.images.map(esc).join(", ")})`).join(", ")}</div>
+      <div class="bfoot"><span>on its Docker tab</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bdocker="${esc(a.id)}">Docker tab</a></span></div></div>`;
+  }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
   if (a.kind === "nginx"){
@@ -316,6 +327,13 @@ function drawBell(){
     e.preventDefault();
     toggleBell(false);
     openToolchainsOn(a.dataset.btc);
+  });
+  // ...and a container update to the Docker tab on that node.
+  panel.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    if (a.dataset.bdocker) dockerNode = a.dataset.bdocker;
+    openDocker();
   });
   // ...and an nginx update to the nginx tab on that node.
   panel.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {
