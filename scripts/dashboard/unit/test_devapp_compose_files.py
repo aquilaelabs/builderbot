@@ -30,7 +30,8 @@ class ComposeFiles(unittest.TestCase):
         p = ws / "Clanker-Detector"
         for rel in ("docker-compose.yml", "docker-compose.prod.yml", "docker-compose.override.yml",
                     "site/compose.yaml", "api/v2/compose.yml", "node_modules/x/compose.yml",
-                    "a/b/c/d/compose.yml", ".hidden/compose.yml", "notes.yml"):
+                    "a/b/c/d/compose.yml", ".hidden/compose.yml", "notes.yml",
+                    "deploy/containers/admin.compose.yml", "deploy/containers/admin.env.example"):
             (p / rel).parent.mkdir(parents=True, exist_ok=True)
             (p / rel).write_text("services: {}\n")
         (p / "site" / ".env.example").write_text("SITE=1\n")
@@ -46,7 +47,7 @@ class ComposeFiles(unittest.TestCase):
     def test_every_compose_file_is_found_the_roots_own_first(self):
         self.assertEqual(devapp.compose_files("Clanker-Detector"),
                          ["docker-compose.yml", "docker-compose.prod.yml", "api/v2/compose.yml",
-                          "site/compose.yaml"])
+                          "deploy/containers/admin.compose.yml", "site/compose.yaml"])
 
     def test_an_override_a_link_a_skipped_folder_and_too_deep_are_not(self):
         got = devapp.compose_files("Clanker-Detector")
@@ -81,6 +82,8 @@ class ComposeFiles(unittest.TestCase):
         self.assertEqual(devapp.send_name("Clanker-Detector"), "turing-lens")
         self.assertEqual(devapp.send_name("Clanker-Detector", "site/compose.yaml"), "turing-lens-site")
         self.assertEqual(devapp.send_name("Clanker-Detector", "docker-compose.prod.yml"), "turing-lens-prod")
+        self.assertEqual(devapp.send_name("Clanker-Detector", "deploy/containers/admin.compose.yml"), "turing-lens-admin",
+                         "a file named for its service is named by that alone")
         devapp.create_instance("Clanker-Detector", "turing-lens-site", compose="site/compose.yaml")
         self.assertEqual(devapp.send_name("Clanker-Detector", "site/compose.yaml"), "turing-lens-site-2")
 

@@ -399,6 +399,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app no longer offers to install the build it is already running when it is behind the dashboard; it says a newer one has to be built and signed first. (b06bf68)
 - A compose file the Artifacts tab says compose cannot read now says what compose itself said is wrong with it. (ebc91a8)
 - A compose file that requires a variable its env does not have yet is no longer called broken on the Artifacts tab: it says which variables it needs and is judged with them stood in. (fdc65ea)
+- The Artifacts tab offers Send for a compose file named for its service (admin.compose.yml), the container named for the service. (e97f661)
 
 ### Security
 

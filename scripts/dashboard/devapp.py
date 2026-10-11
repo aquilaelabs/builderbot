@@ -1524,7 +1524,10 @@ def project_has_compose(project):
 # operator, 10 Oct): a repo with a site in site/ and an api in api/, or a
 # docker-compose.prod.yml beside the main one. An override file is left out:
 # compose merges it onto the file beside it, and alone it is half a file.
-COMPOSE_RE = re.compile(r"(docker-)?compose(\.[A-Za-z0-9_-]+)?\.ya?ml")
+# compose.yml, docker-compose.yml, a variant after (compose.prod.yml) or a
+# name before (admin.compose.yml: one file per service, as Turing Lens
+# keeps them under deploy/containers/, 11 Oct).
+COMPOSE_RE = re.compile(r"(?:(?P<pre>[A-Za-z0-9_-]+)\.)?(docker-)?compose(?P<var>\.[A-Za-z0-9_-]+)?\.ya?ml")
 COMPOSE_SKIP = {".git", "node_modules", ".gradle", "__pycache__", ".venv", "venv",
                 ".next", ".cache", ".bb-map", "dist", "build", "vendor", ".worktrees"}
 COMPOSE_DEPTH = 3
@@ -3094,9 +3097,14 @@ def send_name(project, compose=""):
     rel = str(compose or "")
     sub = posixpath.dirname(rel)
     m = COMPOSE_RE.fullmatch(posixpath.basename(rel)) if rel else None
-    tail = [_slug(sub.replace("/", "-"))] if sub else []
-    if m and m.group(2):
-        tail.append(_slug(m.group(2)[1:]))
+    # A file named for its service (admin.compose.yml) is named by that
+    # alone; one named by its folder or variant, by those.
+    if m and m.group("pre"):
+        tail = [_slug(m.group("pre"))]
+    else:
+        tail = [_slug(sub.replace("/", "-"))] if sub else []
+        if m and m.group("var"):
+            tail.append(_slug(m.group("var")[1:]))
     base = "-".join([base] + [t for t in tail if t])
     d = _load()
     if not _taken(project, instance_key(project, base), d):
