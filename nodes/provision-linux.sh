@@ -3058,7 +3058,7 @@ Two accounts, and the split is deliberate:
 
 This script makes no administrator account. Whatever already has root here
 (your own account, a cloud image's ubuntu or ec2-user, or root) runs
-`sudo bb-sandbox menu` to change what this machine mounts (or the verbs below).
+sudo bb-sandbox menu to change what this machine mounts (or the verbs below).
 
 Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
 that group is root on this machine to anyone who wants it. This VM exists to be

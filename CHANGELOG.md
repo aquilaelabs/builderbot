@@ -265,6 +265,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- The provisioner's closing summary no longer runs sudo bb-sandbox: a command quoted in backticks inside its text ran, and every enroll ended by opening the mounts menu.
 - A new node enrolls again, and an updated one starts after a reboot: the agent's file (a zip since 9 Oct) carries a python3 first line, so the provisioner's enroll and the service run it as a program instead of failing with Exec format error.
 - Controller settings' Public hostname line says connected only when the name really reaches this controller: the controller asks the name itself once a minute and, when the tunnel's rule sends the agent's API somewhere else, says so and where it should point.
 - The enroll script stops when the controller's address answers 200 with nothing BuilderBot would send (a public hostname whose rule points elsewhere), before the door and port 22, saying where the rule should point; it no longer installs an empty agent and reports the node enrolled.

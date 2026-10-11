@@ -68,5 +68,26 @@ class Uninstall(unittest.TestCase):
         self.assertIn("Type uninstall to go on", r.stdout)
 
 
+class Heredocs(unittest.TestCase):
+    """A backtick in an unquoted heredoc is a command, not markup: the
+    provisioner's closing words held `sudo bb-sandbox`, and every run ended
+    by opening the menu on whatever terminal it had (B636, 11 Oct)."""
+    def test_no_backtick_runs_from_text(self):
+        with open(os.environ.get("BB_TEST_PROVISIONER") or PROVISIONER, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        inside, found = None, []
+        for i, line in enumerate(lines, 1):
+            if inside:
+                if line.strip() == inside:
+                    inside = None
+                elif "`" in line:
+                    found.append(f"{i}: {line}")
+                continue
+            m = re.search(r"<<-?\s*([A-Za-z_]+)\s*$", line)
+            if m and "'" not in line.split("<<", 1)[1]:
+                inside = m.group(1)
+        self.assertEqual(found, [])
+
+
 if __name__ == "__main__":
     unittest.main()
