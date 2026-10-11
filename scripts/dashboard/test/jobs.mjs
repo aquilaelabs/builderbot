@@ -168,6 +168,22 @@ await ready(page);
   await page.waitForSelector(`.jobstab .jbrow[data-job="${logRow.id}"] .jblog`, { timeout: 10000 });
   const log = await page.$eval(`.jobstab .jbrow[data-job="${logRow.id}"] .jblog`, e => e.textContent);
   ok(/placed on local|hi from local/.test(log), `Log unfolds what the job wrote (${log.trim().slice(0, 40)})`);
+  // ...and on a FAILED row too: the job's own error sentence was read as a
+  // failed request and its log kept out, so every failed job read "(this
+  // job wrote nothing)" (B658, the operator, 11 Oct).
+  let failRow = null;
+  for (const id of ids){
+    const b = await page.$(`.jobstab .jbrow[data-job="${id}"][data-state="failed"] [data-jb="log"]`);
+    if (b){ failRow = { id, b }; break; }
+  }
+  ok(failRow, `a failed job this file queued is on the tab with a log to unfold`);
+  if (failRow){
+    await failRow.b.click();
+    await page.waitForFunction(id => /about to fail/.test(document.querySelector(`.jobstab .jbrow[data-job="${id}"] .jblog`)?.textContent || ''),
+                               failRow.id, { timeout: 10000 }).catch(() => {});
+    const flog = await page.$eval(`.jobstab .jbrow[data-job="${failRow.id}"] .jblog`, e => e.textContent);
+    ok(/about to fail/.test(flog), `Log unfolds what a failed job wrote, not "(this job wrote nothing)" (${flog.trim().slice(0, 40)})`);
+  }
 
   // a running job from the tab: Cancel on the row
   const q = await exec({ id: 'local',

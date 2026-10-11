@@ -36,7 +36,11 @@ async function loadJobs(){
     // job's tail moves on the same revision that moves its row.
     await Promise.all([...jobsOpen].map(async id => {
       const r = await (await fetch(`/api/v1/jobs?id=${encodeURIComponent(id)}`)).json();
-      if (!r.error) jobsLogs[id] = r.log || "";
+      // A job answers with its own fields, `error` among them for one that
+      // failed; a refused request has no id. Reading a failed job's error
+      // as the request's kept its log out, so every failed job read "(this
+      // job wrote nothing)" (B658, the operator, 11 Oct).
+      if (r.id) jobsLogs[id] = r.log || "";
     }));
   }catch(e){
     jobsErr = String(e);

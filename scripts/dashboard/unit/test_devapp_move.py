@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import devactions  # noqa: E402
 import devapp  # noqa: E402
 import relocate  # noqa: E402
 
@@ -31,6 +32,17 @@ class Scripts(unittest.TestCase):
             self.assertNotIn("{cdir}", text)
             self.assertNotIn("cdir", text, "not even as a name, so an edit cannot bring it back")
         self.assertIn("left by an earlier try", relocate.UNPACK_PY, "an empty volume from a failed try is filled")
+
+    def test_a_failed_step_says_its_last_telling_line(self):
+        """A compose step's row carries the last line that says something
+        (B658: the whole tail, newlines flattened, read as a wall)."""
+        out = (" Network x_default Creating \n Network x_default Created \n Container x-db-1 Creating \n"
+               " service:db:1 Error response from daemon: No such image: mariadb:11 \n Container x-web-1 Creating \n"
+               "Error response from daemon: No such image: mariadb:11\n")
+        self.assertEqual(devactions.last_line(out), "Error response from daemon: No such image: mariadb:11")
+        self.assertEqual(devactions.last_line("$ docker compose up\n Container x Creating \n"), "Container x Creating",
+                         "with nothing telling, the last line there is")
+        self.assertEqual(devactions.last_line(""), "")
 
     def test_a_failed_stage_carries_the_last_line_written(self):
         class Q:

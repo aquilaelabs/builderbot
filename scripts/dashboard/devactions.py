@@ -463,6 +463,17 @@ def _plan_spec(project, instance, action, extra=None):
             "plan": _plan(project, instance, action, extra)}
 
 
+def last_line(text):
+    """The last line of a job's output that says something: not a command
+    echo, not compose's progress lines ("Container x Creating"), not a
+    traceback's indented frames; 200 characters at most."""
+    skip = ("$ ", "    ", "Traceback")
+    lines = [ln.strip() for ln in str(text or "").splitlines()]
+    said = [ln for ln in lines if ln and not ln.startswith(skip)
+            and not re.search(r"\b(Creating|Created|Starting|Started|Stopping|Stopped|Removing|Removed|Building|Built|Pulling|Pulled)\s*$", ln)]
+    return (said or [ln for ln in lines if ln] or [""])[-1][:200]
+
+
 def compose_done(job, state):
     """The records for an action the AGENT ran. Same bookkeeping the
     controller's own runner does, applied from the result: the node
@@ -546,10 +557,12 @@ def _compose_done(job, state):
                 "loading": "loading the image failed", "stopping": "stopping it failed",
                 "starting": "up failed", "testing": "the tests failed",
                 "preparing": "a bind directory could not be made on the node"}.get(step, "")
-        # The head stays whole and only the tail is cut: sliced from the end
-        # as one string, a long tail took the head with it and the row
-        # stopped saying what had failed.
-        return (head + ":\n" + tail[-400:]) if head and tail else head
+        # The row says what failed and the last line the step wrote, which
+        # is where compose and docker put the reason ("No such image:
+        # mariadb:11"); the whole tail was the row's before, newlines and
+        # all, and read as a wall (the operator, 11 Oct). The log is the
+        # Jobs tab's.
+        return (head + ": " + last_line(tail)) if head and last_line(tail) else head
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
     # Up to the operator. The row below would clear the flag, so this returns.

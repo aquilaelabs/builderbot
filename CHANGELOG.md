@@ -264,6 +264,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a phone one section is open at a time on every folded surface, the controller Settings tab and the document tabs as the notebook's views: opening one shuts the others, and a desk keeps several open (R184) (1c86974)
 - The nginx tab has no default certificate: a node's pairs are a list keyed by the domain their names say, each route picks the pair it serves 443 with (its domain's when it picks none, or 80 only), and an unrouted name gets no handshake at all; a default from before is read in (R188) (c601071)
 - A container BuilderBot did not start is given to a project only under a name nothing else of that project's answers to: not an instance's compose name, not a stranger already the project's on another node; it is renamed first, so a session's ask by name means one thing (66793af)
+- A failed compose step's row says what failed and the last telling line the step wrote (No such image: mariadb:11), with the whole output in the log, where it carried the output's last 400 characters flattened to one line (B658) (f1e10bd)
 
 ### Removed
 
@@ -443,6 +444,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A certificate pasted on the nginx tab for the node's default while another domain's default stands goes under its own domain beside it and the tab says so; only a pair for the same names replaces the default (B657) (1559204)
 - Copy or move of a container to another node unpacks its data again (the unpack script spelt the plan's {cdir} placeholder, so the helper mounted the wrong directory); an empty volume a failed try left is filled, and a failed stage's row says what the job last wrote (B659, B658) (fd5ce05)
 - A container moved or sent to another node pulls the images its compose does not build (--pull missing in place of never): the shipped tar carries the built ones alone, and a service on a registry image met 'No such image' there (B660) (896da85)
+- The Jobs tab shows a failed job's log: its own error sentence was read as a failed request and the log left out, so every failed job read '(this job wrote nothing)' (B658) (f1e10bd)
 
 ### Security
 
