@@ -38,6 +38,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.hello_at = 0
         self.hello_said = False           # a hello has been answered once this process
         self.census_asked = False         # a hello asked for again has its census on the way
+        self.census_stale = False         # ...and was asked for once more meanwhile
         self.controller_digest = ""
         self.warned_caps = False
         # The session half (roadmap #24): the two ttyd processes, the bundle
@@ -131,6 +132,16 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             self.census_thread = None
             self.census_next = None
             self.census_asked = True
+        if self.census_thread is not None and not self.census_thread.is_alive() \
+                and getattr(self, "census_stale", False):
+            # Asked for again while this one was on its way: what it found is
+            # from before the change the ask was about, so it is let go and a
+            # fresh one taken before the hello (B647's second half: the
+            # toolchain census a refusal asked for came back without the
+            # toolchain that had just been installed).
+            self.census_stale = False
+            self.census_thread = None
+            self.census_next = None
         if self.census_thread is None:
             self.census_next = None
 
@@ -297,6 +308,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         was saying hello every hundred seconds with nothing in its log to
         say which of the dozen askers it was (B647)."""
         log(f"hello again: {why}")
+        if getattr(self, "census_asked", False):
+            self.census_stale = True         # the one on its way predates this ask
         self.hello_at = 0
 
     def running(self):

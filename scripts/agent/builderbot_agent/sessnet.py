@@ -681,8 +681,12 @@ class SessionNet:
         # at the main loop's next turn instead, or the row would show the
         # answer from before the switch for ten minutes. The count of
         # sessions is not a change worth a hello.
-        was_s = {k: v for k, v in SESSNET_STATUS.items() if k != "sessions"}
+        # Compared on this report's own keys: the stored copy also carries
+        # the containers' entry (ctr, R178), and against that the two were
+        # never equal, so every step of this thread asked for a hello and
+        # the node said hello every hundred seconds (B647).
         now_s = {k: v for k, v in now_is.items() if k != "sessions"}
+        was_s = {k: SESSNET_STATUS.get(k) for k in now_s}
         if now_s != was_s:
             hello_again(self.agent, "the session network's state moved: "
                                    + ", ".join(f"{k} {was_s.get(k)!r} -> {v!r}" for k, v in now_s.items() if was_s.get(k) != v)[:300])

@@ -648,15 +648,33 @@ fresh, turns = None, 0
 while fresh is None and turns < 100:
     time.sleep(0.05); turns += 1
     fresh = a.hello_step()
+# ...and one asked for again while that census is on its way lets it go
+# and takes a fresh one before the hello: the toolchain census a refusal
+# asked for came back without the toolchain just installed (B647).
+taken = []
+def counted():
+    time.sleep(0.3)
+    taken.append(len(taken))
+    return {'census': len(taken)}
+a.census_take = counted
+a.hello_said, a.hello_at, a.census_asked = True, 0, False
+a.hello_step()                      # the first asked census on its way
+a.hello_again('a second ask')
+twice, turns = None, 0
+while twice is None and turns < 100:
+    time.sleep(0.05); turns += 1
+    twice = a.hello_step()
 # ...while the first hello of a process is said on the loop, at once.
 a.hello_said, a.hello_at = False, 0
 first_of_process = a.hello_step()
-print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'fresh': fresh, 'first_of_process': first_of_process, 'dropped': a.census_next is None and a.census_thread is None}))
+print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'fresh': fresh, 'twice': twice, 'taken': len(taken), 'first_of_process': first_of_process, 'dropped': a.census_next is None and a.census_thread is None}))
 `], { encoding: 'utf8' }).trim();
       const r = JSON.parse(said);
-      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 3
+      ok(r.twice && r.taken === 2 && r.twice[1].taken && r.twice[1].taken.census === 2,
+         `a hello asked for again while its census is on its way lets that one go and takes a fresh one before saying hello (${r.taken} taken, said with ${JSON.stringify(r.twice && r.twice[1].taken)})`);
+      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 4
          && r.said[0] && r.said[0].slow && r.now === null && r.fresh && r.said[1] && r.said[1].slow
-         && r.first_of_process && r.said[2] === null && r.dropped,
+         && r.first_of_process && r.said[3] === null && r.dropped,
          `the loop's hello waits for a census taken beside it and says hello with it; one asked for again lets a pending census go and takes its own beside the loop; the process's first is said at once (${said})`);
     }
     // B167: the distribution's own root ttyd is switched off by the agent on
@@ -1007,19 +1025,26 @@ cannot = {'conf_on': sn.conf_on, 'ready': os.path.exists(ready), 'status': dict(
 m.sessnet_can = lambda: (True, ''); sn.can_at = 0
 sn.step()
 can = {'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS), 'nft': [r for r in ran if r[0] == m.NFT_BIN]}
+# A step with nothing moved asks for no hello, with the containers' entry
+# (ctr) on the stored status beside the session's own keys (B647).
+a.hello_at = 1
+sn.step()
+still = a.hello_at
 a.state['session_net'] = {'on': False, 'own': {}}
 sn.step()
 off1 = {'conf_on': sn.conf_on, 'up': sn.up, 'ready': os.path.exists(ready)}
 sn.empty_since -= 60
 sn.step()
 off2 = {'up': sn.up, 'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS)}
-print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'refreshed': a.refreshed}))
+print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'refreshed': a.refreshed, 'still': still, 'ctr': 'ctr' in m.SESSNET_STATUS}))
 `], { encoding: 'utf8' }).trim().split('\n').pop());
       ok(st.cannot.conf_on === true && /SESSION_NET=on/.test(st.cannot.conf) && st.cannot.ready === false
          && st.cannot.status.active === false && /root/.test(st.cannot.status.why),
          `wanted and not possible is closed: the layout file says on so bb-session refuses, the ready mark is gone, and the row hears why (${JSON.stringify(st.cannot.status)})`);
       ok(st.can.ready === true && st.can.status.active === true && st.can.nft.length >= 2,
          `wanted and possible makes the table and the sets, and writes the mark last (${st.can.nft.length} nft calls)`);
+      ok(st.still === 1 && st.ctr === true,
+         `a step with nothing moved asks for no hello, the containers' entry on the stored status notwithstanding (B647: clock ${st.still}, ctr ${st.ctr})`);
       ok(st.off1.conf_on === false && st.off1.up === true && st.off2.up === false && st.off2.ready === false
          && st.refreshed === 1,
          'off takes the layout file off at once and the table down only after a half-minute with no session, since one may still be making its link');
