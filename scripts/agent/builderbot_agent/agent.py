@@ -225,7 +225,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             sn = r.get("session_net")
             if isinstance(sn, dict) and sn != self.state.get("session_net"):
                 self.state["session_net"] = {"on": bool(sn.get("on")),
-                                             "own": sn.get("own") if isinstance(sn.get("own"), dict) else {}}
+                                             "own": sn.get("own") if isinstance(sn.get("own"), dict) else {},
+                                             # ...and the containers' (R178): whether each project's
+                                             # are kept to their own network here, and the map.
+                                             "ctr_on": bool(sn.get("ctr_on")),
+                                             "ctr": sn.get("ctr") if isinstance(sn.get("ctr"), dict) else {}}
                 save_state(self.state)
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones

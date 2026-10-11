@@ -2620,8 +2620,13 @@ try:
     projects.first_version = lambda name, value, env: version.init(name, value, by="operator", env=env)
     # Each session kept to its own project's network (R79): the setting is
     # the node's, what each project owns there is devapp's.
-    nodes.session_net_for = lambda nid: ({"on": True, "own": devapp.session_net_own(nid)}
-                                         if nodes.session_net_on(nid) else {"on": False, "own": {}})
+    # ...and the containers' (R178): whether each project's are kept apart
+    # here, and what each compose project may reach, whatever the sessions'
+    # switch says.
+    nodes.session_net_for = lambda nid: (({"on": True, "own": devapp.session_net_own(nid)}
+                                          if nodes.session_net_on(nid) else {"on": False, "own": {}})
+                                         | {"ctr_on": nodes.container_net_on(nid),
+                                            "ctr": devapp.container_net_own(nid) if nodes.container_net_on(nid) else {}})
     NODES_OK = ""
     # The job logs are the only copy of what a node's job wrote and had no
     # retention at all until R17 step 1. Swept once here for whatever ended

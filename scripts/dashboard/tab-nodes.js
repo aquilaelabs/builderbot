@@ -552,7 +552,7 @@ function nodeSessionsSection(n){
   const list = n.reported?.sessions || [];
   let status, cls, body;
   if (n.config?.host_only){
-    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeToolsLine(n), {cls: "ok"});
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodeToolsLine(n), {cls: "ok"});
   }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
@@ -580,6 +580,7 @@ function nodeSessionsSection(n){
       ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}</div>` : ""}
       ${nodeSyncRow(n)}
       ${nodeSessNetRow(n)}
+      ${nodeContainerNetRow(n)}
       ${nodeTurnsRow(n)}`;
   }
   // ...and the node's phone and CI runner, which are tabs of their own
@@ -641,6 +642,34 @@ function nodeHostRootRow(n){
     ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}
     <div class="actbar"><span class="state"></span><span class="sp"></span>
       <button type="button" data-nd="root-asks-host"${c.draft.rootAsks === rootOn ? " disabled" : ""}>Save</button></div>
+  </div>`;
+}
+
+// Each project's containers kept to their own network on this node (R178,
+// the operator, 11 Oct): a container reaches its own project's containers,
+// those of the projects it reads, the controller, DNS, the node's 80 and
+// 443 and the internet, and nothing else on the node. On by default for a
+// hosting-only node, which is the one two web-facing projects share. A
+// draft until its Save, like the switches beside it.
+function nodeContainerNetRow(n){
+  const c = nodeDraft(n);
+  const on = "container_net" in (n.config || {}) ? !!n.config.container_net : !!n.config?.host_only;
+  if (c.draft.ctrNet === undefined || c.draft.ctrFrom !== on){
+    c.draft.ctrNet = on; c.draft.ctrFrom = on;
+  }
+  const ct = n.reported?.session_net?.ctr;
+  const line = !on ? ""
+    : !ct ? `<div class="sub warn">Update the agent: this one cannot keep a project's containers to their own network.</div>`
+    : !ct.can ? `<div class="sub bad">Not in force: ${esc(ct.why || "this node cannot do it")}.</div>`
+    : ct.error ? `<div class="sub bad">Not in force: ${esc(ct.error)}.</div>`
+    : ct.active ? `<div class="sub">In force on ${ct.bridges} compose network${ct.bridges === 1 ? "" : "s"}: a container reaches its own project's containers, the ones its project reads, and the internet; not another project's by this node's address.</div>`
+    : `<div class="sub dim">Setting it up.</div>`;
+  return `<div class="field">
+    <label class="ndcap"><input type="checkbox" data-k="ctrnet" ${c.draft.ctrNet ? "checked" : ""}>
+      keep each project's containers to their own network (a container reaches another project's only where its project reads it)</label>
+    ${line}
+    <div class="actbar"><span class="state"></span><span class="sp"></span>
+      <button type="button" data-nd="ctr-net-save"${c.draft.ctrNet === on ? " disabled" : ""}>Save</button></div>
   </div>`;
 }
 
@@ -1819,6 +1848,17 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (n) openUnenroll(n);
         return;
       }
+      if (act === "ctr-net-save"){
+        const sw = b.closest(".field")?.querySelector('[data-k="ctrnet"]');
+        if (!sw) return;
+        busy(b, "Saving");
+        const k = await nodeAct({action: "container-net", id, on: sw.checked});
+        if (k.error) notify(k.error, true);
+        else notify(sw.checked ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello");
+        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.ctrNet = undefined;
+        await loadNodes();
+        return;
+      }
       if (act === "root-asks-host"){
         const ra = b.closest(".field")?.querySelector('[data-k="rootasks"]');
         if (!ra) return;
@@ -2074,6 +2114,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const sw = box.querySelector('[data-k="sessnet"]');
     if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
     const ra = box.querySelector('[data-k="rootasks"]');
+    const cn = box.querySelector('[data-k="ctrnet"]');
+    if (cn) cn.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.ctrNet = cn.checked;
+                                  const sb = cn.closest(".field")?.querySelector('[data-nd="ctr-net-save"]'); if (sb) sb.disabled = false; };
     if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked;
                                   // A hosting-only row's own Save wakes with the tick (nodeHostRootRow).
                                   const sb = ra.closest(".field")?.querySelector('[data-nd="root-asks-host"]'); if (sb) sb.disabled = false; };

@@ -1209,6 +1209,18 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(/root/.test(off.error || '') && !off.ok, `...and off, the ask is refused and told so (${off.error})`);
     await napi('/api/v1/nodes', { action: 'root-asks', id: minted.id, on: true });
     await napi('/api/prefs', { project: 'gamma', hosts: [] });
+    // Each project's containers kept to their own network (R178): on by
+    // default for a hosting-only node, said to the agent by the hello, and
+    // off from the row's switch.
+    const hc = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(hc.session_net?.ctr_on === true && typeof hc.session_net?.ctr === 'object'
+       && await page.$eval(`${ROW} [data-k="ctrnet"]`, c => c.checked),
+       `a hosting-only node keeps each project's containers to their own network by default: the hello says so and the row's switch is on (${JSON.stringify(hc.session_net)})`);
+    const cnOff = await napi('/api/v1/nodes', { action: 'container-net', id: minted.id, on: false });
+    const hc2 = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(cnOff.ok && hc2.session_net?.ctr_on === false && !Object.keys(hc2.session_net?.ctr || {}).length,
+       '...and switched off, the next hello says so and carries no map');
+    await napi('/api/v1/nodes', { action: 'container-net', id: minted.id, on: true });
     const codes = {};
     for (const v of ['sync', 'claude', 'sessions', 'runner-token', 'signing-key'])
       codes[v] = (await agent(v, { action: 'projects' })).status;

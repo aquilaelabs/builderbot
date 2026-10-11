@@ -6,6 +6,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Added
 
+- Each project's containers on a node can be kept to their own network (R178): a container reaches its own project's containers, those of the projects its project reads, the controller, DNS, the node's 80 and 443 and the internet, and no longer another project's container by the node's address or the node's own ports. A switch on the node's row, on by default for a hosting-only node; the row says when it is in force.
 - A session asks for a root command on one of the nodes its project hosts containers on: bb root run --node NAME, allowed or denied by a person as ever, and refused where that node's root-asks switch is off; the switch is on a hosting-only node's row too.
 - bb transcripts lists the account's own conversations with Claude on the project and bb transcripts show ID prints one; with bb -p NAME a session reads the account's conversations on a project its own reads, whose files are in its view read-only, and never another account's
 - A theme and a page on the Design view carry rules of their own, for what holds for that theme or that page alone; a session meets one named under its holder (nostromo/hull), bb design show THEME prints a theme with its rules, and the file and the prompts carry them under the theme or the page

@@ -893,6 +893,16 @@ print(json.dumps({
   'fill': m.sessnet_fill([('192.168.1.15', 7680)], ['192.168.1.1'], pairs, peers, hosts),
   'peers': peers, 'hosts': hosts,
   'table': m.sessnet_table(), 'live': live,
+  # Each project's containers kept to their own network (R178): the bridge
+  # pairs and the (bridge, host port) pairs from the containers' bridges and
+  # the controller's map; a compose project the map does not name keeps to
+  # its own bridge.
+  'ctr': m.ctrnet_reach([{'name': 'alpha-app-1', 'compose': 'alpha', 'ips': ['172.18.0.2'], 'bridges': ['br-aaaaaaaaaaaa'], 'ports': [8080]},
+                         {'name': 'beta-db-1', 'compose': 'beta', 'ips': ['172.20.0.3'], 'bridges': ['br-bbbbbbbbbbbb'], 'ports': [5432]},
+                         {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9'], 'bridges': ['br-cccccccccccc'], 'ports': [9000]}],
+                        {'alpha': {'owner': 'alpha', 'to': ['alpha', 'beta']}, 'beta': {'owner': 'beta', 'to': ['beta']}}),
+  'ctrfill': m.ctrnet_fill(['br-aaaaaaaaaaaa'], [('br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa')], [('br-aaaaaaaaaaaa', 8080)], [('192.168.1.15', 7680)], ['192.168.1.1']),
+  'ctrtable': m.ctrnet_table(),
   'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
   # What the node's own network already has in the range: a LAN, a VPN or a
   # VM bridge in 10.231.x.x, from ip -j; a session's own link does not count.
@@ -907,6 +917,13 @@ print(json.dumps({
          `a session's resolvers are the node's upstream ones, IPv4 and off the loopback, and none when the node names only its loopback (${JSON.stringify(sn.ns)})`);
       ok(/\nSESSION_NET=on\nSESSION_NET_CIDR=10\.231\.0\.0\/16\n$/.test(sn.on) && !/SESSION_NET/.test(sn.off),
          '...the layout file says so only when it is on, and an older bb-session reads the file it always read');
+      ok(JSON.stringify(sn.ctr[0]) === JSON.stringify(['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb', 'br-cccccccccccc'])
+         && JSON.stringify(sn.ctr[1]) === JSON.stringify([['br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa'], ['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb'], ['br-bbbbbbbbbbbb', 'br-bbbbbbbbbbbb'], ['br-cccccccccccc', 'br-cccccccccccc']])
+         && JSON.stringify(sn.ctr[2]) === JSON.stringify([['br-aaaaaaaaaaaa', 5432], ['br-aaaaaaaaaaaa', 8080], ['br-bbbbbbbbbbbb', 5432], ['br-cccccccccccc', 9000]]),
+         `a project's containers reach their own bridge and ports and those of the projects it reads, a stranger its own alone (R178) (${JSON.stringify(sn.ctr)})`);
+      ok(/add element inet builderbot_ctrnet pairs \{ "br-aaaaaaaaaaaa" \. "br-aaaaaaaaaaaa" \}/.test(sn.ctrfill) && /ownports \{ "br-aaaaaaaaaaaa" \. 8080 \}/.test(sn.ctrfill)
+         && /typeof iifname \. oifname/.test(sn.ctrtable) && /tcp dport \{ 80, 443 \} accept/.test(sn.ctrtable) && /oifname @bridges drop/.test(sn.ctrtable),
+         '...the sets are written as nft reads them, and the table drops a bridge to another bridge and lets the node\'s 80 and 443 through');
       ok(JSON.stringify(sn.pairs) === JSON.stringify([['10.231.0.2', '172.18.0.2'], ['10.231.0.2', '172.19.0.5'], ['10.231.0.6', '172.20.0.3']]),
          `each session may reach its own project's containers, by compose project and by the name the operator gave, and no other (${JSON.stringify(sn.pairs)})`);
       ok(/^flush set inet builderbot_sessnet ctl\nflush set inet builderbot_sessnet dns\nflush set inet builderbot_sessnet own\n/.test(sn.fill)

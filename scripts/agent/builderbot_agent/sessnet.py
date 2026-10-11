@@ -338,9 +338,28 @@ def sessnet_containers():
             with contextlib.suppress(ValueError):
                 if isinstance(n, dict) and n.get("IPAddress"):
                     ips.add(str(ipaddress.IPv4Address(str(n["IPAddress"]))))
+        # The bridges it is on (R178): a compose network is a user-defined
+        # bridge whose interface is br- and the first twelve of its id; the
+        # default network's is docker0.
+        bridges = set()
+        for name, n in nets.items():
+            nid = str((n or {}).get("NetworkID") or "") if isinstance(n, dict) else ""
+            if name == "bridge":
+                bridges.add("docker0")
+            elif re.fullmatch(r"[0-9a-f]{12,64}", nid):
+                bridges.add("br-" + nid[:12])
+        # ...and the host ports it publishes, for the node's own ports a
+        # container may reach by the node's address (R178).
+        ports = set()
+        for binds in ((c.get("NetworkSettings") or {}).get("Ports") or {}).values():
+            for b in binds or []:
+                with contextlib.suppress(ValueError, TypeError):
+                    hp = int((b or {}).get("HostPort") or 0)
+                    if 0 < hp < 65536:
+                        ports.add(hp)
         out.append({"name": str(c.get("Name") or "").lstrip("/"),
                     "compose": str(labels.get("com.docker.compose.project") or ""),
-                    "ips": sorted(ips)})
+                    "ips": sorted(ips), "bridges": sorted(bridges), "ports": sorted(ports)})
     return out
 
 
@@ -400,6 +419,119 @@ def sessnet_ctl(url):
     except OSError:
         return []
     return sorted({(i[4][0], port) for i in infos})
+
+
+# ---- each project's containers kept to their own network (R178) ------------
+#
+# Measured on the dev pair (11 Oct): a container reaches another project's
+# container through the node's address (its published port, after Docker's
+# DNAT: forward from one bridge to the other), and the node's own ports
+# (sshd); its bridge address is already dropped by Docker's isolation. So a
+# second table judges those two paths for every compose bridge: forward from
+# a bridge passes to its own bridge, to the bridges of the projects its
+# owner reads, the controller, DNS and the internet, and is dropped to any
+# other bridge and rejected to the private ranges; into the node it passes
+# to the controller, DNS, 80 and 443 (nginx, the way in) and the node's
+# published ports of its own project and the projects it reads, and is
+# rejected otherwise. Nothing is marked: nothing of Docker's reads a mark on
+# this path, and a missing table leaves Docker's own rules, which is what
+# the row says (not in force), never a container cut off.
+
+CTRNET_TABLE = "builderbot_ctrnet"
+
+
+def ctrnet_table():
+    """The table, whole; the sets are filled by ctrnet_fill."""
+    return f"""table inet {CTRNET_TABLE} {{
+	set bridges {{ typeof iifname; }}
+	set pairs {{ typeof iifname . oifname; }}
+	set ownports {{ typeof iifname . tcp dport; }}
+	set ctl {{ type ipv4_addr . inet_service; }}
+	set dns {{ type ipv4_addr; }}
+	set local {{ type ipv4_addr; flags interval; elements = {{ {", ".join(SESSNET_LOCAL)} }}; }}
+	chain forward {{
+		type filter hook forward priority -10; policy accept;
+		iifname @bridges jump outbound
+	}}
+	chain outbound {{
+		ct state established,related accept
+		meta nfproto ipv6 drop
+		iifname . oifname @pairs accept
+		oifname @bridges drop
+		ip daddr . tcp dport @ctl accept
+		ct original ip daddr . ct original proto-dst @ctl accept
+		ip daddr @dns udp dport 53 accept
+		ip daddr @dns tcp dport 53 accept
+		ip daddr @local reject with icmpx type admin-prohibited
+		accept
+	}}
+	chain input {{
+		type filter hook input priority -10; policy accept;
+		iifname @bridges ct state established,related accept
+		iifname @bridges ip daddr . tcp dport @ctl accept
+		iifname @bridges ip daddr @dns udp dport 53 accept
+		iifname @bridges ip daddr @dns tcp dport 53 accept
+		iifname @bridges tcp dport {{ 80, 443 }} accept
+		iifname @bridges iifname . tcp dport @ownports accept
+		iifname @bridges meta l4proto {{ tcp, udp }} reject with icmpx type admin-prohibited
+	}}
+}}
+"""
+
+
+def ctrnet_reach(containers, ctr):
+    """What the table's sets hold, from the containers here and the
+    controller's map {compose project: {owner, to: [compose projects]}}:
+    every compose bridge, the (from, to) bridge pairs a container may
+    cross (its own bridge among them), and the (bridge, host port) pairs
+    of the published ports it may reach by the node's address. A compose
+    project the controller does not name reaches its own bridge and ports
+    and nothing of the others'."""
+    by = {}
+    for c in containers:
+        if c.get("compose"):
+            e = by.setdefault(c["compose"], {"bridges": set(), "ports": set()})
+            e["bridges"].update(c.get("bridges") or [])
+            e["ports"].update(c.get("ports") or [])
+    bridges = sorted({b for e in by.values() for b in e["bridges"]})
+    pairs, ports = set(), set()
+    for comp, e in by.items():
+        to = {comp} | {str(x) for x in ((ctr or {}).get(comp) or {}).get("to") or []}
+        for b in e["bridges"]:
+            for other in to:
+                for b2 in by.get(other, {}).get("bridges", ()):
+                    pairs.add((b, b2))
+                for hp in by.get(other, {}).get("ports", ()):
+                    ports.add((b, hp))
+    return bridges, sorted(pairs), sorted(ports)
+
+
+def ctrnet_fill(bridges, pairs, ports, ctl, dns):
+    """The sets, replaced in one transaction."""
+    t = f"inet {CTRNET_TABLE}"
+    out = [f"flush set {t} bridges", f"flush set {t} pairs", f"flush set {t} ownports",
+           f"flush set {t} ctl", f"flush set {t} dns"]
+    q = '"%s"'.__mod__
+    if bridges:
+        out.append(f"add element {t} bridges {{ {', '.join(q(b) for b in bridges)} }}")
+    if pairs:
+        out.append(f"add element {t} pairs {{ {', '.join(q(a) + ' . ' + q(b) for a, b in pairs)} }}")
+    if ports:
+        out.append(f"add element {t} ownports {{ {', '.join(q(b) + ' . ' + str(p) for b, p in ports)} }}")
+    if ctl:
+        out.append(f"add element {t} ctl {{ {', '.join(f'{a} . {p}' for a, p in ctl)} }}")
+    if dns:
+        out.append(f"add element {t} dns {{ {', '.join(dns)} }}")
+    return "\n".join(out) + "\n"
+
+
+def ctrnet_can():
+    """Whether this node can keep its containers apart: nft and Docker here."""
+    if not _have(NFT_BIN):
+        return False, "nftables is not installed on this node"
+    if not shutil.which(DOCKER_BIN):
+        return False, "Docker is not on this node"
+    return True, ""
 
 
 # The three rules in Docker's DOCKER-USER that let a session's traffic past
@@ -482,6 +614,11 @@ class SessionNet:
         # network; the ready mark decides whether that session starts.
         self.conf_on = self.wanted()
         self.said = ""
+        # The containers' table (R178): up, what its sets last held, and
+        # what was last said about it.
+        self.ctr_up = False
+        self.ctr_filled = None
+        self.ctr_said = ""
 
     def start(self):
         threading.Thread(target=self.run, name="sessnet", daemon=True).start()
@@ -545,6 +682,68 @@ class SessionNet:
         # Updated, never cleared: the census copies it from another thread,
         # and every key is written every time, so a copy is always whole.
         SESSNET_STATUS.update(now_is)
+        self.step_ctr(now)
+
+    # -- each project's containers kept to their own network (R178) ----------
+    def ctr_wanted(self):
+        return bool((self.agent.state.get("session_net") or {}).get("ctr_on"))
+
+    def step_ctr(self, now):
+        """The containers' table: up and filled while the controller wants
+        it and this node can, down otherwise; what the census says of it."""
+        want = self.ctr_wanted()
+        can, why = ctrnet_can() if want else (False, "")
+        error = ""
+        if want and can:
+            error = self.keep_ctr(now)
+        elif self.ctr_up:
+            self.down_ctr()
+        elif want:
+            error = why
+        if error != self.ctr_said:
+            self.ctr_said = error
+            log(f"container network: {error}" if error else "container network: each project's containers reach their own and the projects it reads, and nothing else on this node")
+        was = SESSNET_STATUS.get("ctr") or {}
+        now_is = {"wanted": want, "can": can if want else True, "why": why, "active": want and can and self.ctr_up and not error,
+                  "error": error if error != why else "", "bridges": len(self.ctr_bridges) if hasattr(self, "ctr_bridges") else 0}
+        if {k: v for k, v in now_is.items() if k != "bridges"} != {k: v for k, v in was.items() if k != "bridges"}:
+            self.agent.hello_at = 0
+        SESSNET_STATUS["ctr"] = now_is
+
+    def keep_ctr(self, now):
+        if not self.ctr_up:
+            p = subprocess.run([NFT_BIN, "-f", "-"], input=f"table inet {CTRNET_TABLE}\n"
+                               f"delete table inet {CTRNET_TABLE}\n" + ctrnet_table(),
+                               capture_output=True, text=True, timeout=30, check=False)
+            if p.returncode:
+                return f"nft refused the containers' table: {(p.stderr or p.stdout).strip()[:200]}"
+            self.ctr_up, self.ctr_filled = True, None
+        elif subprocess.run([NFT_BIN, "list", "table", "inet", CTRNET_TABLE], capture_output=True,
+                            timeout=15, check=False).returncode:
+            self.ctr_up = False
+            return "the containers' table was gone and is being put back"
+        if now - self.containers_at > 10:
+            self.containers, self.containers_at = sessnet_containers(), now
+        if now - self.ctl_at > 60:
+            self.ctl_at = now
+            self.ctl = sessnet_ctl(self.agent.state.get("controller") or "") or self.ctl
+        ns, _ = sessnet_resolvers()
+        ctr = (self.agent.state.get("session_net") or {}).get("ctr") or {}
+        bridges, pairs, ports = ctrnet_reach(self.containers, ctr)
+        self.ctr_bridges = bridges
+        fill = ctrnet_fill(bridges, pairs, ports, self.ctl, ns)
+        if fill != self.ctr_filled:
+            p = subprocess.run([NFT_BIN, "-f", "-"], input=fill, capture_output=True, text=True,
+                               timeout=30, check=False)
+            if p.returncode:
+                return f"nft refused the containers' sets: {(p.stderr or p.stdout).strip()[:200]}"
+            self.ctr_filled = fill
+        return ""
+
+    def down_ctr(self):
+        subprocess.run([NFT_BIN, "delete", "table", "inet", CTRNET_TABLE], capture_output=True,
+                       timeout=30, check=False)
+        self.ctr_up, self.ctr_filled, self.ctr_bridges = False, None, []
 
     def keep(self, sessions, now):
         """The table and what it needs, then the sets as they are now."""

@@ -1167,6 +1167,13 @@ def _census(c):
                               "wanted": bool(sn.get("wanted")), "active": bool(sn.get("active")),
                               "sessions": int(sn.get("sessions") or 0) if str(sn.get("sessions") or 0).isdigit() else 0,
                               "error": str(sn.get("error") or "")[:300]}
+        # ...and the containers' table (R178), the same words.
+        ct = sn.get("ctr")
+        if isinstance(ct, dict) and ct:
+            out["session_net"]["ctr"] = {"wanted": bool(ct.get("wanted")), "can": bool(ct.get("can")),
+                                         "why": str(ct.get("why") or "")[:200], "active": bool(ct.get("active")),
+                                         "error": str(ct.get("error") or "")[:300],
+                                         "bridges": int(ct.get("bridges") or 0) if str(ct.get("bridges") or 0).isdigit() else 0}
     # Which held recipes need system packages the machine lacks (roadmap
     # R51): the family and, per recipe, the package names, both bounded.
     sd = c.get("sysdeps") if isinstance(c.get("sysdeps"), dict) else {}
@@ -1583,6 +1590,36 @@ def root_refused(n):
     return ""
 
 
+def container_net_on(node_id):
+    """Whether each project's containers on this node are kept to their own
+    network (R178): the config says, and a hosting-only node has it unless
+    switched off, since that is the node two web-facing projects share."""
+    n = node(node_id) or {}
+    conf = n.get("config") or {}
+    if "container_net" in conf:
+        return bool(conf.get("container_net"))
+    return bool(host_only(n))
+
+
+def node_container_net(principal, node_id, on):
+    """The switch (R178), an administrator's like the rest of the config
+    plane; the next hello carries it to the agent."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node keeps its containers apart"}
+    conf = dict(n.get("config") or {})
+    conf["container_net"] = bool(on)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-container-net", {"on": bool(on)})
+    _bump()
+    # The next hello carries it: asked for now rather than at the agent's
+    # next ten-minute turn.
+    ask_hello(node_id)
+    return {"ok": True, "on": bool(on)}
+
+
 def session_net_on(node_id):
     """Whether that is set on a node."""
     return bool(((node(node_id) or {}).get("config") or {}).get("session_net"))
@@ -1593,7 +1630,9 @@ def session_net_nudge():
     so what the controller says each project owns there reaches it within a
     poll: after a container changes hands, or an instance comes or goes."""
     for n in node_list():
-        if n.get("kind") == "agent" and ((n.get("config") or {}).get("session_net")):
+        # ...and one keeping its containers apart (R178), whose map moves
+        # with the same changes.
+        if n.get("kind") == "agent" and (((n.get("config") or {}).get("session_net")) or container_net_on(n["id"])):
             ask_hello(n["id"])
 
 
@@ -4373,6 +4412,9 @@ def verb(principal, req):
     def update_agent():
         return node_update_agent(principal, nid)
 
+    def container_net():
+        return node_container_net(principal, nid, req.get("on") is True)
+
     def cache_clear():
         # Drop a node's build caches, one project's or all (docs/nodes.md
         # §6): a job the agent runs, so it is logged and audited like
@@ -4429,7 +4471,7 @@ def verb(principal, req):
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net,
-             "root-asks": root_asks, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "root-asks": root_asks, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "discard": lambda: node_discard(principal, nid),

@@ -46,7 +46,11 @@ project's other nodes by their published ports: nothing else on the
 machine or the LAN answers, by design, so a connection refused to another
 address is the firewall, not a fault. The session has a network of its own:
 `localhost` and the address `hostname -I` prints are the session's, and no
-container answers there. A container answers at its node's address, which
+container answers there. A container is kept the same way where its node's
+row says so (on by default on a hosting-only node): it reaches its own
+project's containers, those of the projects its project reads, the
+controller, DNS, the node's 80 and 443 and the internet, and not another
+project's container by the node's address. A container answers at its node's address, which
 `bb devapp status` prints beside "answers at" for the dev instance, and
 `bb devapp ls` with each container's ports.
 

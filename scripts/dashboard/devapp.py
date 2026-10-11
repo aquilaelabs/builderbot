@@ -3014,6 +3014,31 @@ def session_net_own(node_id):
     return {p: {k: sorted(v) for k, v in o.items()} for p, o in sorted(out.items())}
 
 
+def container_net_own(node_id):
+    """What each compose project on `node_id` may reach of the others (R178):
+    {compose project: {owner, to: [compose projects]}}, the owner's own and
+    those of the projects it reads (prefs.reads). The agent turns it into
+    bridge pairs; a compose project not named here reaches its own and no
+    other. A container the operator gave a project is named by its name,
+    which is its compose project when it was started by compose."""
+    owned = {}
+    for project, insts in _load().items():
+        for inst, rec in insts.items():
+            owner = owner_of(project, inst, rec)
+            if owner and _instance_node(project, inst) == node_id:
+                owned.setdefault(owner, set()).add(_pname(project, inst))
+    for name, owner in (_owners().get(node_id) or {}).items():
+        owned.setdefault(owner, set()).add(name)
+    out = {}
+    for owner, comps in owned.items():
+        to = set(comps)
+        for r in (reads_of(owner) if reads_of else []) or []:
+            to |= owned.get(r, set())
+        for c in comps:
+            out[c] = {"owner": owner, "to": sorted(to)}
+    return dict(sorted(out.items()))
+
+
 def row_named(name):
     """(project, instance) of the instance or written container the Docker
     tab lists as `name`, or None. How a session names one that is not its
