@@ -92,6 +92,7 @@ users = None
 leasing = None        # phonelease, set by server.py: a phone lent to a project (R113)
 project_names = None
 project_node = None
+project_hosts = None  # a project -> the nodes it hosts containers on (prefs.hosts), set by server.py
 dial = None
 on_project_node = None
 run_denied = ""
@@ -923,7 +924,7 @@ def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker="",
         r.update(extra or {})
         _reqs.append(r)
         del _reqs[:-MAX_REQS]
-    return {"ok": True, "id": r["id"], "to": to_name}
+    return {"ok": True, "id": r["id"], "to": to_name, "node": node_name or nid}
 
 
 def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
@@ -1632,12 +1633,29 @@ def verb(action, req, who, fresh):
                               target["name"] if target else "", proj,
                               for_project=under, asker_name=asker_name)
         elif field(req, "kind") == "root":
-            r = ask_root(field(req, "why"), req.get("cmd"), pnid if pn else "",
-                         pn["name"] if pn else "", proj,
-                         bool(((pn or {}).get("reported") or {}).get("sandbox")),
+            # On the project's node, or on one of the nodes the project
+            # hosts its containers on when the ask names it (the operator,
+            # 11 Oct): a hosting-only node runs no session, so a session
+            # reaches root there only by name, and the node's own root-asks
+            # switch decides, as it does for the project's node.
+            rn = pn
+            rname = field(req, "node")
+            if rname and nodes is not None:
+                rn = nodes.node(rname) or next(
+                    (n for n in nodes.node_list() if n.get("name") == rname), None)
+                if not rn:
+                    return {"error": f"no node called {rname}"}, 400
+                hosts = list(project_hosts(proj) or []) if project_hosts is not None and proj else []
+                if rn["id"] != pnid and rn["id"] not in hosts:
+                    return {"error": f"{rn['name']} is not {proj or 'this project'}'s: root is asked for on the "
+                                     f"project's node or on a node it hosts its containers on (its settings' "
+                                     f"Hosts its containers on)"}, 400
+            r = ask_root(field(req, "why"), req.get("cmd"), rn["id"] if rn else "",
+                         rn["name"] if rn else "", proj,
+                         bool(((rn or {}).get("reported") or {}).get("sandbox")),
                          asker_uid=asker_uid, asker_name=asker_name,
                          asker_admin=users.is_admin(acct),
-                         locked=(nodes.node_locked(pn) or nodes.root_refused(pn)) if pn else "")
+                         locked=(nodes.node_locked(rn) or nodes.root_refused(rn)) if rn else "")
         else:
             r = ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
                     pn["name"] if pn else "", proj, asker=asker_name, asker_uid=str(asker_uid or ""))

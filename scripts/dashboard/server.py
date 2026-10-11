@@ -2699,6 +2699,7 @@ phone.remover = devactions.remove_instance
 phone.users = users
 phone.project_names = lambda who: {p["name"] for p in project_list(who)}
 phone.project_node = lambda p: prefs.get(p)["node"]
+phone.project_hosts = lambda p: prefs.get(p).get("hosts") or []
 phone.dial = lambda p: prefs.get(p)["devbuild"]
 phone.on_project_node = devapp.on_project_node
 # A phone lent to a project (R113): its sessions drive the project's own app.

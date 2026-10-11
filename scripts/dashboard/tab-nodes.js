@@ -552,7 +552,7 @@ function nodeSessionsSection(n){
   const list = n.reported?.sessions || [];
   let status, cls, body;
   if (n.config?.host_only){
-    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls: "ok"});
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeToolsLine(n), {cls: "ok"});
   }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
@@ -624,6 +624,26 @@ function nodeClaudeSection(n){
 // Whether each session here reaches only its own project's containers, the
 // controller and the internet (R79): the node's setting, and what its agent
 // says about it underneath, a reason in red when it is on and not in force.
+// Root asks on a hosting-only node (the operator, 11 Oct): no session runs
+// here, but a session of a project that hosts its containers here may ask
+// for a root command by name (bb root run --node NAME), and this switch
+// decides, as the Sessions section's does on a node that runs them. A
+// draft until its Save, like that one.
+function nodeHostRootRow(n){
+  const c = nodeDraft(n);
+  const rootOn = !n.config?.no_root;
+  if (c.draft.rootAsks === undefined || c.draft.rootFrom !== rootOn){
+    c.draft.rootAsks = rootOn; c.draft.rootFrom = rootOn;
+  }
+  return `<div class="field">
+    <label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
+      let a session of a project that hosts containers here ask for a root command (bb root run --node ${esc(n.name)}), which a person then allows or denies</label>
+    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}
+    <div class="actbar"><span class="state"></span><span class="sp"></span>
+      <button type="button" data-nd="root-asks-host"${c.draft.rootAsks === rootOn ? " disabled" : ""}>Save</button></div>
+  </div>`;
+}
+
 function nodeSessNetRow(n){
   const on = !!n.config?.session_net;
   // A draft until the section's Save is pressed (the rule apply-not-onchange,
@@ -1799,6 +1819,17 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (n) openUnenroll(n);
         return;
       }
+      if (act === "root-asks-host"){
+        const ra = b.closest(".field")?.querySelector('[data-k="rootasks"]');
+        if (!ra) return;
+        busy(b, "Saving");
+        const k = await nodeAct({action: "root-asks", id, on: ra.checked});
+        if (k.error) notify(k.error, true);
+        else notify(ra.checked ? "a session of a project hosting here may ask for a root command" : "root asks are off here");
+        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.rootAsks = undefined;
+        await loadNodes();
+        return;
+      }
       if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
@@ -2043,7 +2074,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const sw = box.querySelector('[data-k="sessnet"]');
     if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
     const ra = box.querySelector('[data-k="rootasks"]');
-    if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked; };
+    if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked;
+                                  // A hosting-only row's own Save wakes with the tick (nodeHostRootRow).
+                                  const sb = ra.closest(".field")?.querySelector('[data-nd="root-asks-host"]'); if (sb) sb.disabled = false; };
     // The GPU section's two switches (R102): drafts until its Apply.
     const ge = box.querySelector('[data-k="gpuemu"]');
     if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };

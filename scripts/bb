@@ -417,8 +417,10 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    Dockerfile is a compose with a build context on the projects
                    share. Never a user's to approve
 bb root            what root commands are waiting on an administrator
-bb root run --why "..." -- CMD...
-                   ask for ONE command as root on this project's node: an
+bb root run --why "..." [--node NAME] -- CMD...
+                   ask for ONE command as root on this project's node (or, with --node
+                   NAME, on a node it hosts containers on; the row's root-asks switch
+                   decides): an
                    administrator allows or denies it on the Nodes tab or the
                    bell, and the node runs that command and nothing else. Not
                    sudo: a second command is a second question. A node's
@@ -2642,7 +2644,7 @@ cmd_phone() {
 # the node, Deny says no) applied to root. Not sudo: there is no second
 # command without a second question, and nothing here pretends.
 cmd_root() {
-    local sub="${1:-status}" why="" auth
+    local sub="${1:-status}" why="" node="" auth
     auth="$(bb_auth_or_die)"
     shift || true
     case "$sub" in
@@ -2650,16 +2652,20 @@ cmd_root() {
             BB_PHONE_AUTH="$auth" python3 "$BB_LIB/root-verbs.py" status
             ;;
         run)
+            # --node NAME: one of the nodes the project hosts its containers
+            # on (the operator, 11 Oct), since a hosting-only node runs no
+            # session and is reached only by name; without it, this node.
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --node) [ $# -ge 2 ] || die "--node needs the node's name after it"; node="$2"; shift 2 ;;
                     --) shift; break ;;
-                    *) die "usage: bb root run --why \"what this is for\" -- command..." ;;
+                    *) die "usage: bb root run --why \"what this is for\" [--node NAME] -- command..." ;;
                 esac
             done
             [ -n "$why" ] || die "bb root run needs --why \"what this is for\""
             [ $# -gt 0 ] || die "nothing to run; put the command after --"
-            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
+            BB_PHONE_WHY="$why" BB_PHONE_NODE="$node" BB_PHONE_AUTH="$auth" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
                 python3 "$BB_LIB/root-verbs.py" run "$@"
             ;;

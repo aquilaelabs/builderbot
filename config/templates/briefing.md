@@ -254,7 +254,10 @@ ask it there, and before acting on a guess that would change the work.
 Some things wait on a person through a verb, and the ask is the same shape
 everywhere: say why, ask for the smallest thing that does the job, and the
 answer comes back through the same verb. `bb root run --why "..." -- CMD` for one
-command as root on this node; `bb phone run` for a phone connected here;
+command as root on this node, or `--node NAME` for one of the nodes this
+project hosts its containers on (a hosting-only node runs no session, so it
+is reached by name, and its own root-asks switch decides); `bb phone run` for
+a phone connected here;
 `bb container new --why "..." --name NAME --compose FILE` for a container
 that does not exist yet. A node can have root asks turned off, and the ask
 then says so. Every one of the project's dials (Claude may: add to the

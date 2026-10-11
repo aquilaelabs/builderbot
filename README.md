@@ -473,8 +473,10 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    Dockerfile is a compose with a build context on the projects
                    share. Never a user's to approve
 bb root            what root commands are waiting on an administrator
-bb root run --why "..." -- CMD...
-                   ask for ONE command as root on this project's node: an
+bb root run --why "..." [--node NAME] -- CMD...
+                   ask for ONE command as root on this project's node (or, with --node
+                   NAME, on a node it hosts containers on; the row's root-asks switch
+                   decides): an
                    administrator allows or denies it on the Nodes tab or the
                    bell, and the node runs that command and nothing else. Not
                    sudo: a second command is a second question. A node's

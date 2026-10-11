@@ -1190,6 +1190,25 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const tcHost = await napi('/api/toolchains?node=' + minted.id);
     ok(!(await page.$(`${ROW} details[data-sect="nodes:claude"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
        `a hosting-only node's row has no Claude Code section, and its Toolchains tab no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
+    // A root command on it, by name, for a project that hosts containers
+    // there (the operator, 11 Oct): refused for a project that does not,
+    // asked for one that does, and refused where the row's switch is off.
+    const rootAsk = () => napi('/api/phone', { action: 'ask', kind: 'root', why: 'look', cmd: ['true'], project: 'gamma', node: 'shed' });
+    const notMine = await rootAsk();
+    await napi('/api/prefs', { project: 'gamma', hosts: [minted.id] });
+    const asked = await rootAsk();
+    if (asked.id) await napi('/api/phone', { action: 'deny', id: asked.id });
+    ok(/shed is not gamma's/.test(notMine.error || '') && asked.ok && asked.node === 'shed',
+       `bb root run --node shed is refused until gamma hosts containers there, then asked for shed (${notMine.error} / ${JSON.stringify(asked)})`);
+    ok(await page.$eval(`${ROW} [data-k="rootasks"]`, c => c.checked && /bb root run --node shed/.test(c.closest('label').textContent)),
+       'the hosting-only row carries the root-asks switch, on, naming the verb');
+    await page.click(`${ROW} [data-k="rootasks"]`);
+    await page.click(`${ROW} [data-nd="root-asks-host"]`);
+    await page.waitForFunction(sel => document.querySelector(sel + ' [data-k="rootasks"]')?.checked === false, ROW, { timeout: 10000 });
+    const off = await rootAsk();
+    ok(/root/.test(off.error || '') && !off.ok, `...and off, the ask is refused and told so (${off.error})`);
+    await napi('/api/v1/nodes', { action: 'root-asks', id: minted.id, on: true });
+    await napi('/api/prefs', { project: 'gamma', hosts: [] });
     const codes = {};
     for (const v of ['sync', 'claude', 'sessions', 'runner-token', 'signing-key'])
       codes[v] = (await agent(v, { action: 'projects' })).status;
