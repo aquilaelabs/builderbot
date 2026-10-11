@@ -121,6 +121,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb logs --node NAME --system, --kernel and --crash read this boot's journal, the kernel ring and the previous boot's last lines under the project's Debugging grant (R183) (f85be0e)
 - A certificate saved on the nginx tab for a domain covers its subdomains' routes: one wildcard or origin pair under example.com serves a.example.com and b.example.com, another domain's pair its own, and a hostname's own still wins; the For picker offers each route's parent domains (16c0aee)
 - On a hosting-only node a container's published ports bind to 127.0.0.1 unless its compose names an address, so only the node's nginx and tunnel reach them: a switch on the node's row, on by default there, applied by the agent through docker's daemon.json (R190). Agent 0.7.170 (66793af)
+- A container written on the Docker tab can be renamed from its Edit dialog while it is down: the node carries its volumes and data directory under the new name, then its record, compose file and env follow, and Build brings it up under it (the operator, 11 Oct) (87839c5)
 
 ### Changed
 
@@ -445,6 +446,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Copy or move of a container to another node unpacks its data again (the unpack script spelt the plan's {cdir} placeholder, so the helper mounted the wrong directory); an empty volume a failed try left is filled, and a failed stage's row says what the job last wrote (B659, B658) (fd5ce05)
 - A container moved or sent to another node pulls the images its compose does not build (--pull missing in place of never): the shipped tar carries the built ones alone, and a service on a registry image met 'No such image' there (B660) (896da85)
 - The Jobs tab shows a failed job's log: its own error sentence was read as a failed request and the log left out, so every failed job read '(this job wrote nothing)' (B658) (f1e10bd)
+- A hosting-only node is given no docker address on the controller: a compose file is checked here with the compose plugin and its data directory is the agent's to make, where an nginx Save on a VPS waited out two 30s ssh timeouts and held the server (R85) (87839c5)
 
 ### Security
 

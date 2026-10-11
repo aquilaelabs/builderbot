@@ -2752,7 +2752,14 @@ profiletab.configure(users=users,
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
-                 node_addr=nodes.ssh_addr_of if not NODES_OK else None,
+                 # A hosting-only node has no docker address here: the controller
+                 # holds no key to a VPS, and every `docker compose config` and
+                 # data-directory mkdir addressed at it waited out a 30s ssh
+                 # timeout, twice per nginx Save on draconis, holding the server
+                 # with it (R85 step 1, the operator, 11 Oct). With no address
+                 # the config check runs the compose plugin here, which parses
+                 # without a daemon, and the directory is the agent's to make.
+                 node_addr=(lambda nid: "" if nodes.host_only(nid) else nodes.ssh_addr_of(nid)) if not NODES_OK else None,
                  queue=nodes if not NODES_OK else None,
                  runner=jobs if not NODES_OK else None,
                  project_node=lambda p: prefs.get(p)["node"],

@@ -171,6 +171,7 @@ function nginxBody(n){
     <div class="field">
       ${lbl("ngCertFor", "Known as")}
       <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="the domain its names say, unless you name one" autocomplete="off" spellcheck="false">
+      <div class="hint">Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), which is what its routes resolve to; type a name only to file it under another. The same name again is a renewal.</div>
     </div>
     ${clash}
     <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
