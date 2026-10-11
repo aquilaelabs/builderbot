@@ -44,6 +44,9 @@ class Fake:
     def __init__(self, state):
         self.state, self.ctl, self.hello_at = state, Ctl(), 1
 
+    def hello_again(self, why):
+        self.hello_at = 0
+
     def as_user(self, env, user):
         return {}
 

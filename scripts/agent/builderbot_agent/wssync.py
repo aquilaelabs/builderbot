@@ -34,7 +34,7 @@ import tarfile
 import threading
 import time
 import urllib.parse
-from .base import SHARE, log
+from .base import hello_again, SHARE, log
 
 # What is not synced, the same set as the controller's (wssync.SKIP_DIRS
 # there; the unit tier holds the two equal).
@@ -456,7 +456,7 @@ class WorkspaceSync:
             os.replace(self.cleaned_path() + ".new", self.cleaned_path())
         log(f"sync: /workspace cleaned up, {freed // (1024 * 1024)} MB freed" if not err
             else f"sync: /workspace not cleaned up whole ({freed // (1024 * 1024)} MB freed): {err}")
-        self.agent.hello_at = 0
+        hello_again(self.agent, "/workspace was cleaned up")
 
     def one(self, p):
         top = os.path.join(self.root, p.name)

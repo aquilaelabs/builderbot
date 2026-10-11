@@ -229,6 +229,16 @@ def log(msg):
     print(f"[builderbot-agent] {msg}", file=sys.stderr, flush=True)
 
 
+def hello_again(agent, why):
+    """Ask the agent for a fresh hello with its reason in the journal
+    (Agent.hello_again); a stand-in driven in a test has only the clock."""
+    fn = getattr(agent, "hello_again", None)
+    if fn:
+        fn(why)
+    else:
+        agent.hello_at = 0
+
+
 def own_path():
     """The file a node runs and a self-update writes over: the zip the
     controller shipped (this package inside it), or from a checkout the

@@ -292,6 +292,13 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     self._rehello = False
         return st, r
 
+    def hello_again(self, why):
+        """Ask the loop for a fresh hello, saying why in the journal: a node
+        was saying hello every hundred seconds with nothing in its log to
+        say which of the dozen askers it was (B647)."""
+        log(f"hello again: {why}")
+        self.hello_at = 0
+
     def running(self):
         with self.lock:
             return len(self.jobs)
@@ -461,19 +468,18 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # operator is about to make reasons about this machine as it
                 # is rather than as it was. Logged, so a controller asking
                 # every minute is on the box's own record (B644).
-                log("the controller asked for a fresh census")
-                self.hello_at = 0
+                self.hello_again("the controller asked for a fresh census")
                 continue
             if st == 200 and r.get("id"):
                 self.take(r)
                 continue
             if st == 401:
                 log(f"refused: {r.get('error')}; re-enroll with a new token")
-                self.hello_at = 0
+                self.hello_again("the work poll was refused")
                 time.sleep(300)
                 continue
             log(f"work: {st} {r.get('error', '')}; retrying in {delay}s")
-            self.hello_at = 0                 # say hello again on the way back
+            self.hello_again(f"the work poll failed ({st})")
             time.sleep(delay)
             delay = min(delay * 2, 60)
 

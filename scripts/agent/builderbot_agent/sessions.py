@@ -663,7 +663,7 @@ class SessionsMixin:
                         gone.append(path)
             job.say(("removed " + ", ".join(gone)) if gone else "Claude Code was not installed here")
             job.say("\n")
-            self.hello_at = 0
+            self.hello_again("Claude Code was removed")
             return "succeeded", 0
         env["PATH"] = ":".join([os.path.join(home, ".local", "bin"), env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"])
         env.setdefault("LANG", "C.UTF-8")
@@ -729,7 +729,7 @@ class SessionsMixin:
         # ...and the controller hears it now: the version it compares rides
         # the census, which rides hello, so without this the bell kept
         # saying an update was out for up to ten minutes after it landed (B249).
-        self.hello_at = 0
+        self.hello_again("Claude Code was updated")
         return "succeeded", 0
 
     def published_now(self):

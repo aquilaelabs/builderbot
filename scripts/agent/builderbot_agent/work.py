@@ -264,7 +264,7 @@ class WorkMixin:
             if _gpu_card() and os.access(SANDBOX_BIN, os.X_OK):
                 self.refresh_sandbox_tool(job)
                 self._sh(job, [SANDBOX_BIN, "gpu-driver", "refresh"], timeout=300)
-                self.hello_at = 0
+                self.hello_again("the GPU driver check refreshed apt")
             # What is newer upstream, asked from HERE rather than from the
             # controller, because the answer is about this store: the version
             # a recipe would fetch is the same everywhere, but what is

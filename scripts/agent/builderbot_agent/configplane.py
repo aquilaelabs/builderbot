@@ -84,7 +84,7 @@ class ConfigPlaneMixin:
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
             rc = self._sh(job, [SANDBOX_BIN, "gpu-off"], timeout=120)
-            self.hello_at = 0
+            self.hello_again("the GPU was switched off")
             return ("succeeded", 0) if rc == 0 else ("failed", rc)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
@@ -108,7 +108,7 @@ class ConfigPlaneMixin:
             code = self._sh(job, [sc, "enable" if on else "disable", "--now", "cloudflared"], timeout=120)
         else:
             code = self._sh(job, [TAILSCALE_BIN, "up", "--ssh"] if on else [TAILSCALE_BIN, "down"], timeout=120)
-        self.hello_at = 0
+        self.hello_again("the SSH door was opened or shut")
         if code != 0:
             return "failed", code
         job.say(f"the door is {'open' if on else 'shut'}: {kind}{' at ' + d['host'] if d.get('host') else ''}\n")
@@ -120,7 +120,7 @@ class ConfigPlaneMixin:
         a reboot has to follow; then a hello, so the row reads the display's
         state now rather than at the next census."""
         rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
-        self.hello_at = 0
+        self.hello_again("the GPU was set up")
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_power(self, job, what):

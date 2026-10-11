@@ -90,6 +90,9 @@ class Agent:
         self.ctl = Wire(nid)
         self.hello_at = 1
 
+    def hello_again(self, why):
+        self.hello_at = 0
+
     def session_account(self):
         return ""
 

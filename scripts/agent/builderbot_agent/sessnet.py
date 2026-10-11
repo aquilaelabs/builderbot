@@ -11,6 +11,7 @@ import threading
 import time
 import urllib.request
 from .base import (
+    hello_again,
     DOCKER_BIN,
     FIREWALL_CMD,
     IPTABLES_BIN,
@@ -680,9 +681,11 @@ class SessionNet:
         # at the main loop's next turn instead, or the row would show the
         # answer from before the switch for ten minutes. The count of
         # sessions is not a change worth a hello.
-        if {k: v for k, v in now_is.items() if k != "sessions"} != \
-                {k: v for k, v in SESSNET_STATUS.items() if k != "sessions"}:
-            self.agent.hello_at = 0
+        was_s = {k: v for k, v in SESSNET_STATUS.items() if k != "sessions"}
+        now_s = {k: v for k, v in now_is.items() if k != "sessions"}
+        if now_s != was_s:
+            hello_again(self.agent, "the session network's state moved: "
+                                   + ", ".join(f"{k} {was_s.get(k)!r} -> {v!r}" for k, v in now_s.items() if was_s.get(k) != v)[:300])
         # Updated, never cleared: the census copies it from another thread,
         # and every key is written every time, so a copy is always whole.
         SESSNET_STATUS.update(now_is)
@@ -710,8 +713,11 @@ class SessionNet:
         was = SESSNET_STATUS.get("ctr") or {}
         now_is = {"wanted": want, "can": can if want else True, "why": why, "active": want and can and self.ctr_up and not error,
                   "error": error if error != why else "", "bridges": len(self.ctr_bridges) if hasattr(self, "ctr_bridges") else 0}
-        if {k: v for k, v in now_is.items() if k != "bridges"} != {k: v for k, v in was.items() if k != "bridges"}:
-            self.agent.hello_at = 0
+        was_c = {k: v for k, v in was.items() if k != "bridges"}
+        now_c = {k: v for k, v in now_is.items() if k != "bridges"}
+        if now_c != was_c:
+            hello_again(self.agent, "the containers' network state moved: "
+                                   + ", ".join(f"{k} {was_c.get(k)!r} -> {v!r}" for k, v in now_c.items() if was_c.get(k) != v)[:300])
         SESSNET_STATUS["ctr"] = now_is
 
     def keep_ctr(self, now):
