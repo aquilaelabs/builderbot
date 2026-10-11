@@ -1463,8 +1463,13 @@ select:focus{outline-offset:-2px}
 /* The filesystems one under another, each the band's full width, so a
    long mount path is read whole and the tracks compare down the column. */
 .storagetab .ndmeters{display:flex;flex-direction:column;gap:6px}
-.storagetab .ndmeter .lbl{min-width:11em;overflow:hidden;text-overflow:ellipsis}
-.storagetab .ndmeter .val{width:11em}
+/* A path for a label and a pair of sizes for a value, wider than the Health
+   meters' columns: the grid's own columns, not a min-width on the label,
+   which pushed the value off the pane's edge (the operator, 11 Oct). */
+.storagetab .ndmeter{grid-template-columns:11em minmax(0,1fr) 9.5em}
+.storagetab .ndmeter .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.storagetab .ndmeter .val{white-space:normal;overflow-wrap:anywhere;text-align:right}
+@media (max-width:600px){.storagetab .ndmeter{grid-template-columns:6em minmax(0,1fr) 7.5em}}
 .storagetab .stproj .stcol{width:6.5em;text-align:right;font:var(--f-note);flex:0 0 auto}
 .storagetab .stproj .stcol b{font-weight:600}
 @media (max-width:600px){.storagetab .stproj .stcol{width:4.6em}}
