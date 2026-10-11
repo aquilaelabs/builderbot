@@ -1310,16 +1310,28 @@ non-event.
 ### Leaving a machine as it was: uninstall
 
 A node is somebody's machine before it is BuilderBot's, so taking BuilderBot
-off it is a verb of its own, in three places that do one thing: **Uninstall**
+off it is a verb of its own, in three places that do one thing: **Un-enroll**
 on the node's row (Advanced), `sudo bb-sandbox uninstall` on the machine, and
-`provision-linux.sh --remove`, which runs the machine's own bb-sandbox. What
+`provision-linux.sh --remove`, which runs the machine's own bb-sandbox. None
+of the three goes through from the row while a Claude session or a container
+runs on the node: end them first, and the refusal counts them. What always
 goes is what the provisioner put there for BuilderBot alone: the agent and
-its unit, the session-ports firewall rule, the `bb` and `builder` accounts
-with their homes (Claude Code, the runners' directories, caches), the mounts
-BuilderBot used (`/workspace` and whatever a store sits on, taken out of
-fstab), the stores on the machine's own disk, `/etc/builderbot`, the sandbox
-label in `daemon.json` (docker keeps running; it takes at its next restart)
-and bb-sandbox itself. What stays is shared with the rest of the machine:
+its unit, the sessions' firewall rules and their own networks (every piece
+of the isolation, R79), the `bb` and `builder` accounts with their homes
+(Claude Code, the runners' directories, caches), `/etc/builderbot` with the
+tunnel to the controller, the sandbox label in `daemon.json` (docker keeps
+running; it takes at its next restart) and bb-sandbox itself. Three rings
+are asked for, on the row's dialog as boxes and on the machine as flags:
+`--stores` takes the stores on the machine's own disk (the toolchains, the
+caches, the artifacts, a dev instance's data, the synced project copies,
+`/var/lib/builderbot`); `--configured` undoes what was set up from the
+dashboard after enrolling (the mounts BuilderBot used, `/workspace` and
+whatever a store sits on, taken out of fstab; the runners' units; the GPU
+display); `--doors`, ticked by default for a hosting node, shuts what it was
+given as a host (cloudflared and its token, Tailscale's login, the port 22
+rule, the nginx container written for it). Without them the machine keeps
+those and can be enrolled again, here or on another controller, from Enroll
+node. What stays is shared with the rest of the machine:
 docker and the packages the provisioner installed (nfs-common, python3,
 tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories, and
 everything on the shares, which other nodes may be using. The row's verb

@@ -37,7 +37,7 @@ const names = await page.$$eval('#rolesPick option', os => os.map(o => o.textCon
 ok(names.includes('owner (built in)') && names.includes('admin (built in)') && !names.some(n => /^user\b/.test(n)),
    `owner and admin are built in, and there is no user role (${names.join(', ')})`);
 await page.selectOption('#rolesPick', 'admin');
-ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 14
+ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 15
      && [...t.querySelectorAll('[data-rread]')].every(c => c.disabled)),
    '...a built-in one reads as every area, with nothing to change and no Save');
 

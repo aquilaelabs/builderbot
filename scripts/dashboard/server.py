@@ -1301,6 +1301,8 @@ def session_target(project, claude=False, node="", uid=""):
         why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
                "or enroll it again")
         passing = True          # its own sentence says the way on
+    elif n.get("state") == "disabled":
+        why = f"{name} is disabled on the Nodes tab: Enable it there, or pick another node in {project}'s settings"
     elif n.get("state") != "online":
         why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
     elif n.get("live") is False and _reconnecting(n):
@@ -5295,6 +5297,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": f"{', '.join(host)} hosts containers only: no project's code "
                                             "or sessions go there. Send a container to it from the "
                                             "Docker tab instead"}, 400)
+            # A disabled node is kept but not offered (the operator, 11 Oct).
+            off = [(nodes.node(n) or {}).get("name") or n for n in want
+                   if n and (nodes.node(n) or {}).get("state") == "disabled"]
+            if off:
+                return self._json({"error": f"{', '.join(off)} is disabled on the Nodes tab: Enable it there first"}, 400)
         # The hosting nodes its containers may also go to (prefs.hosts): a
         # node is shared, so naming one is for whoever may set the project's
         # node, and only a hosting-only node is one: a node that holds the

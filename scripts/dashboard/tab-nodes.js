@@ -237,7 +237,7 @@ function nodeTools(n){
 function nodeStatePill(n){
   if (n.state === "pending")
     return `<span class="pill note">waiting for enrollment</span>`;
-  const cls = {online: "ok", draining: "warn"}[n.state] || "";
+  const cls = {online: "ok", draining: "warn", disabled: "warn"}[n.state] || "";
   const live = n.kind !== "agent" ? ""
     : n.live ? ` <span class="pill ok ndlive">live</span>`
     : ` <span class="pill ndlive">quiet</span>`;
@@ -469,6 +469,53 @@ function nodeHostRow(n){
     : `<div class="sub dim">A node that only runs containers sent to it (a web-facing one) can be made
         hosting only: no code, no sessions, and nothing of it comes back but its own jobs.</div>
        <div><button type="button" data-nd="host-only" ${n.live ? "" : "disabled"}>Make it hosting only</button></div>`;
+}
+
+// Un-enroll (the operator, 11 Oct): the one way off. Where the machine can
+// be cleaned (its agent dialing in, provisioned by BuilderBot) the dialog
+// says what always goes (the agent, the session isolation, the accounts)
+// and offers three rings to tick: the stores on its disk, what was
+// configured from the dashboard after enrolling, and a hosting node's
+// doors and proxy, ticked for one. Anywhere else the node is removed here
+// only, and the dialog says BuilderBot's pieces stay on the machine.
+function openUnenroll(n){
+  const modal = document.getElementById("ndmodal"), body = document.getElementById("ndBody");
+  if (!modal || !body) return;
+  const clean = !!(n.live && n.reported?.sandbox);
+  const host = !!n.config?.host_only;
+  document.getElementById("ndTitle").textContent = `Un-enroll ${n.name}`;
+  body.innerHTML = clean ? `<div class="field">
+      <div class="hint">BuilderBot is uninstalled from the machine, then the node is removed here. To use it again, enroll it from Enroll node, here or on another controller.</div>
+      <div class="hint">Always: the agent and its unit, the sessions' firewall rules and networks, the <code>${esc(n.config?.user || "bb")}</code> and session accounts with their homes, and the tunnel to the controller. Docker, the packages and the shares' contents stay.</div>
+      <label class="ndcap"><input type="checkbox" id="ndUnStores"> Also delete the stores on its disk: the toolchains, the caches, the artifacts, dev instance data, and the synced project copies</label>
+      <label class="ndcap"><input type="checkbox" id="ndUnConf"> Also undo what was set up from the dashboard after enrolling: the mounts and their fstab lines, the runners, the GPU display</label>
+      <label class="ndcap"><input type="checkbox" id="ndUnDoors"${host ? " checked" : ""}> Also shut what it was given as a host: the SSH door with its token, the port 22 rule, and the nginx container</label>
+      <div class="hint">What the provisioner installed for the machine itself is never touched.</div>
+    </div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" class="danger" id="ndUnGo">Un-enroll</button>
+      <button type="button" id="ndUnCancel">Cancel</button></div>`
+  : `<div class="field">
+      <div class="hint bad">The machine cannot be cleaned from here: ${n.live ? "it was not provisioned by BuilderBot" : "its agent is not dialing in"}. The node is removed here and its tokens revoked; BuilderBot's pieces stay on the machine until <code>sudo bb-sandbox uninstall</code> is run there.</div>
+    </div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" class="danger" id="ndUnGo">Remove it here</button>
+      <button type="button" id="ndUnCancel">Cancel</button></div>`;
+  modal.hidden = false;
+  const shut = () => { modal.hidden = true; };
+  body.querySelector("#ndUnCancel").onclick = shut;
+  const go = body.querySelector("#ndUnGo");
+  go.onclick = async () => {
+    busy(go, "Un-enrolling");
+    const j = await nodeAct(clean
+      ? {action: "uninstall", id: n.id, stores: !!body.querySelector("#ndUnStores")?.checked,
+         configured: !!body.querySelector("#ndUnConf")?.checked, doors: !!body.querySelector("#ndUnDoors")?.checked}
+      : {action: "retire", id: n.id});
+    if (j.error){ notify(j.error, true); unbusy(go, clean ? "Un-enroll" : "Remove it here"); return; }
+    shut();
+    notify(clean ? `${n.name}: uninstalling; the row goes when the machine reports it done` : `${n.name} removed here`);
+    await loadNodes();
+  };
 }
 
 // The projects that have this node among theirs (the operator, 10 Oct): read
@@ -713,12 +760,15 @@ function nodeAdvancedSection(n, stale, inflight){
           : inflight("cache-clear") ? "already clearing"
           : "drop every project's build cache here; the next build refetches"}">${
         inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>
-      <button type="button" class="danger" data-nd="retire"
-        title="take it off every list; its history stays">Remove</button>
-      ${n.reported?.sandbox ? `<button type="button" class="danger" data-nd="uninstall"
-        ${inflight("uninstall") ? "disabled" : ""}
-        title="remove BuilderBot from the machine: the agent, its accounts, mounts and files; docker and the shares stay">${
-        inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
+      <button type="button" data-nd="${n.state === "disabled" ? "enable" : "disable"}"
+        title="${n.state === "disabled" ? "offer it to projects and hand it work again"
+          : "keep it enrolled and configured, but off every picker and handed no work or session until Enable"}">${
+        n.state === "disabled" ? "Enable" : "Disable"}</button>
+      <button type="button" class="danger" data-nd="unenroll" ${inflight("uninstall") ? "disabled" : ""}
+        title="${n.live && n.reported?.sandbox
+          ? "take BuilderBot off the machine (the agent, its accounts, mounts, runners and files; Docker and the shares stay) and remove the node here; enrolling it again, here or elsewhere, starts from Enroll node"
+          : "remove the node here; the machine cannot be cleaned from here (" + (n.live ? "not provisioned by BuilderBot" : "its agent is not dialing in") + "), so BuilderBot's pieces stay on it"}">${
+        inflight("uninstall") ? "Un-enrolling…" : "Un-enroll"}</button>
     </div>
     ${n.kind === "agent" ? `<div class="actbar">
       <span class="state${n.live && !installing ? "" : " bad"}">${!n.live
@@ -1734,6 +1784,21 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
+      if (act === "disable" || act === "enable"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (act === "disable" && !confirm(`Disable ${name}?\n\nIt stays enrolled and keeps its configuration, but no project can add it, `
+              + "no picker offers it, and it is handed no work or session until you press Enable.")) return;
+        busy(b, act === "disable" ? "Disabling" : "Enabling");
+        const j = await nodeAct({action: act, id});
+        if (j.error) notify(j.error, true);
+        await loadNodes();
+        return;
+      }
+      if (act === "unenroll"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (n) openUnenroll(n);
+        return;
+      }
       if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "

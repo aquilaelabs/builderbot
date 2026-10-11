@@ -38,6 +38,7 @@ async function loadStorage(){
 
 // MB as a person reads it: GB above ten, MB below, "?" for unmeasured.
 const sgb = mb => mb === null || mb === undefined ? "?"
+  : mb >= 10485760 ? (mb / 1048576).toFixed(1) + " TB"
   : mb >= 10240 ? (mb / 1024).toFixed(mb >= 102400 ? 0 : 1) + " GB" : Math.round(mb) + " MB";
 
 function storageFilesystems(n){

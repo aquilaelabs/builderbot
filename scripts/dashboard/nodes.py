@@ -627,8 +627,12 @@ def node_state(principal, node_id, state):
     """Drain and undrain, plus retire, which is what Remove means: rows
     are history and an id is never reused, so a removed node keeps its row
     and leaves every list (door 1)."""
-    if state not in ("online", "draining", "retired"):
-        return {"error": "state is online, draining or retired"}
+    # disabled (the operator, 11 Oct): enrolled and configured still, its
+    # agent dialing in, but off every picker, refused to a project's set,
+    # and handed no work or session until Enable; what Drain is for a
+    # reboot, this is for a machine kept but not offered.
+    if state not in ("online", "draining", "retired", "disabled"):
+        return {"error": "state is online, draining, disabled or retired"}
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
@@ -637,6 +641,10 @@ def node_state(principal, node_id, state):
                          "removed, only left with nothing to do"}
     if state == "online" and n["state"] == "pending":
         return {"error": "a pending node comes online by enrolling"}
+    if state == "disabled":
+        busy = node_in_use(n)
+        if busy:
+            return {"error": f"{n['name']} is in use: {busy} first"}
     _exec("UPDATE nodes SET state = ? WHERE id = ?", (state, node_id))
     if state == "retired":
         # A retired node's agent keeps dialing in until somebody stops the
@@ -2086,7 +2094,27 @@ def runner_labels_known():
     return sorted(out)
 
 
-def node_uninstall(principal, node_id):
+def node_in_use(n):
+    """Why a node cannot be disabled or un-enrolled now (the operator, 11
+    Oct): its Claude sessions and the containers running there, which the
+    person ends and brings down first. "" when it is quiet."""
+    rep = n.get("reported") or {}
+    # The sessions the card lists: an account's (u_<uid>~name), the way
+    # server._SESS_OWNER reads them. The node's tmux may hold others (the
+    # harness's own, somebody's shell), which are not BuilderBot's to end.
+    sessions = [s for s in (rep.get("sessions") or []) if isinstance(s, dict)
+                and re.match(r"^u_[0-9a-f]{8}~", str(s.get("name") or ""))]
+    containers = list((rep.get("published") or {}).keys())
+    bits = []
+    if sessions:
+        bits.append(f"{len(sessions)} session{'s' if len(sessions) != 1 else ''} running there (end them on the Sessions card)")
+    if containers:
+        bits.append(f"{len(containers)} container{'s' if len(containers) != 1 else ''} running there "
+                    f"({', '.join(str(c) for c in containers[:4])}{', …' if len(containers) > 4 else ''}; Down on the Docker tab)")
+    return " and ".join(bits)
+
+
+def node_uninstall(principal, node_id, rings=None):
     """Take BuilderBot off a node from its row: a system job the agent
     answers by deregistering its runners and starting bb-sandbox uninstall
     detached, after which nothing of BuilderBot's is left on the machine
@@ -2103,8 +2131,12 @@ def node_uninstall(principal, node_id):
                          "from here: on the machine, sudo bb-sandbox uninstall"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
+    busy = node_in_use(n)
+    if busy:
+        return {"error": f"{n['name']} is in use: {busy} first"}
+    rings = {k: bool((rings or {}).get(k)) for k in ("stores", "configured", "doors")}
     r = job_add(principal, {"node": node_id}, "system",
-                {"apply": "uninstall", "config": {}, "timeout": 900})
+                {"apply": "uninstall", "config": rings, "timeout": 900})
     if r.get("ok"):
         audit(principal, "node-uninstall", node_id, {"job": r["job"]})
     return r
@@ -4188,12 +4220,12 @@ def verb(principal, req):
         return node_update(principal, nid, req.get("fields") or {})
 
     def uninstall():
-        return node_uninstall(principal, nid)
+        return node_uninstall(principal, nid, {k: req.get(k) is True for k in ("stores", "configured", "doors")})
 
     def state():
         return node_state(principal, nid,
                           {"drain": "draining", "online": "online",
-                           "retire": "retired"}[act])
+                           "retire": "retired", "disable": "disabled", "enable": "online"}[act])
 
     def lock():
         # System changes locked to the node's own console: Apply
@@ -4401,6 +4433,7 @@ def verb(principal, req):
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "discard": lambda: node_discard(principal, nid),
+             "disable": state, "enable": state,
              "storage": lambda: node_storage_measure(principal, nid),
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,

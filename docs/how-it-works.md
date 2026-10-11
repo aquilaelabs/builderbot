@@ -1170,17 +1170,35 @@ with; a runner already installed keeps the label it registered with until
 it is reinstalled), the path
 mapping and the rarely pressed verbs: **Drain** (finish what is running,
 accept nothing new: what makes a node safe to reboot), **Clear cache**,
-**Revoke** and **Remove** (retire: off every list, row kept as history, and an
-id is never reused), and on a node provisioned as a sandbox **Uninstall**:
-its runners deregistered on their forges, then the agent and its unit, the
-`bb` and `builder` accounts with their homes, the mounts BuilderBot used, its
-stores on that disk, the firewall rule and bb-sandbox itself taken off the
-machine, and the row retired when it is done. Docker, the packages the
-provisioner installed, the empty mountpoints and everything on the shares
-stay, since the machine may be used for other things. The same removal is
-`sudo bb-sandbox uninstall` on the machine, or `provision-linux.sh --remove`;
-both say what will go and ask, and neither deregisters a runner, which only
-the row can do while the agent can still ask for the tokens. **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
+**Revoke**, **Disable** (the operator, 11 Oct: kept and configured, its agent
+dialing in, but off every picker, refused to a project's set and handed no
+work or session until **Enable**), and **Un-enroll**, which on a node
+provisioned as a sandbox that is dialing in uninstalls BuilderBot from the
+machine and then removes the node here (retire: off every list, row kept as
+history, and an id is never reused), and on any other removes the node here
+only, saying BuilderBot's pieces stay on the machine. Neither Disable nor
+Un-enroll goes through while a Claude session or a container is running on
+the node: the refusal counts them and says where to end them (the Sessions
+card, Down on the Docker tab). Un-enroll opens a dialog, since what goes is
+in rings (the operator, 11 Oct). Always: the runners deregistered on their
+forges, then the agent and its unit, the sessions' firewall rules and their
+own networks (nothing of the isolation outlives the agent), the `bb` and
+`builder` accounts with their homes, `/etc/builderbot` with the tunnel to
+the controller, and bb-sandbox itself. Three boxes to tick: the stores on
+the machine's own disk (toolchains, caches, artifacts, dev instance data, the
+synced project copies, `/var/lib/builderbot`); what was configured from the
+dashboard after enrolling (the mounts and their fstab lines, the runners'
+units, the GPU display); and, ticked for a hosting node, what it was given
+as a host (cloudflared with its token, Tailscale's login, the port 22 rule,
+the nginx container). Unticked, those stay, so the machine can be enrolled
+again, here or on another controller, with its stores and mounts as they
+were. What the provisioner installed for the machine itself (docker, the
+packages, the empty mountpoints, everything on the shares) is never touched.
+The row is retired when the job is done. The same removal is `sudo
+bb-sandbox uninstall [--stores] [--configured] [--doors]` on the machine, or
+`provision-linux.sh --remove`; both say what will go and ask, and neither
+deregisters a runner, which only the row can do while the agent can still
+ask for the tokens. **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
 runs `nodes/provision-linux.sh --controller URL --token bbe_…` and dials in. That is
 the only way in; there is no second enrollment, this container holds no key
 that logs in anywhere, and a node reached by token alone takes every kind of

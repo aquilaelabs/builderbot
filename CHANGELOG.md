@@ -251,6 +251,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The briefing says how a session sends any of its compose files to Docker, what a required variable means, that a hosting node named in its settings takes its containers, and that what stands in front of a container is the nginx tab, a person's. (0937b55)
 - A node's name is taken once: a second script with it is refused; a waiting row shows its id and what its script was made with, and offers Download it again or Discard; the script is named enroll-NAME-ID.sh. (6d600f9)
 - Controller settings is sections like every other tab, each with its own Apply and Revert and a jump bar over them; the Public hostname section carries its own setup steps. (281f4ba)
+- A node's row offers Disable (kept and configured, off every picker and handed no work until Enable) and Un-enroll (BuilderBot taken off the machine and the node removed here; enrolling again starts from Enroll node), in place of Remove and Uninstall. Neither goes through while a session or a container runs on the node. Un-enroll's dialog says what always goes (the agent, every piece of the session isolation, the accounts) and asks about three rings: the stores on the disk, what the dashboard configured after enrolling, and a hosting node's doors and proxy, as `bb-sandbox uninstall --stores --configured --doors` on the machine. (25a595a)
 
 ### Removed
 
@@ -264,6 +265,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- A container removed from the Docker tab while its rebuild was still running no longer comes back as a bare row when the build lands: the result finds no record and writes none, and the runner's own rebuild stops after the build with the reason on the job (B633).
 - A page on the Design view keeps its layout per frame: put on the phone frame and back on the desktop one, its blocks are where they were instead of squeezed into six columns, and Save keeps the other frame's layout with the page (B348)
 - The test harness sweeps what a run ended by its process group left behind, its copy of the tree, its state dir and its private tmux server, on the next start (B347)
 - devapp.mjs reads a one-shot's row as running whether or not the daemon's slow answer marked the list as last seen (B346)

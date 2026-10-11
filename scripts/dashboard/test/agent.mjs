@@ -3337,6 +3337,16 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
   // retires the row when the job succeeds. Runner deregistration was
   // exercised above; none is left here to deregister.
   {
+    // Refused while a session runs there (the operator, 11 Oct): the shell
+    // the block above killed in tmux is on the record until the agent's
+    // next heartbeat says it is gone, so that is waited for first.
+    const left = ((await api('/api/status')).sessions || []).filter(s => s.node === 'agentbox');
+    for (const s of left) await api('/api/session', { action: 'kill', session: s.name, node: minted.id });
+    // An account's sessions (u_<uid>~name) are the ones that hold it; the
+    // harness's own tmux sessions on the same server do not count.
+    const quiet = await until(async () =>
+      ((await api('/api/v1/nodes')).nodes.find(n => n.id === minted.id)?.reported?.sessions || []).some(s => /^u_[0-9a-f]{8}~/.test(s.name)) ? null : true, 45000, 500);
+    ok(quiet === true, `the node reports none of an account's sessions left before it is un-enrolled (ended first: ${left.map(s => s.name).join(', ') || 'none'})`);
     const r = await api('/api/v1/nodes', { action: 'uninstall', id: minted.id });
     ok(r.ok && /^j_/.test(r.job || ''), `Uninstall on a sandbox node queues a system job (${r.error || r.job})`);
     const fin = await until(async () => { const j = await api(`/api/v1/jobs?id=${r.job}`);

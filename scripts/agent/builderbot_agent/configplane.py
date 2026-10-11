@@ -73,7 +73,7 @@ class ConfigPlaneMixin:
         if what == "funnel":
             return self._apply_funnel(job, cfg)
         if what == "uninstall":
-            return self._apply_uninstall(job)
+            return self._apply_uninstall(job, cfg)
         if what in ("reboot", "poweroff"):
             return self._apply_power(job, what)
         if what == "gpu":
@@ -309,7 +309,7 @@ class ConfigPlaneMixin:
         if wrote:
             log(f"the session's view: {', '.join(wrote)} written from the bundle")
 
-    def _apply_uninstall(self, job):
+    def _apply_uninstall(self, job, cfg=None):
         """Take BuilderBot off this machine, from the Nodes tab. The runners
         first, deregistered on their forges with the tokens the controller
         mints while this agent can still ask; then `bb-sandbox uninstall`,
@@ -332,6 +332,12 @@ class ConfigPlaneMixin:
             if st != "succeeded":
                 job.say(f"the runner {slot} could not be deregistered (exit {code}); it stays listed on its forge\n")
         argv = [SANDBOX_BIN, "uninstall", "--yes"]
+        # The rings asked for (the operator, 11 Oct): the stores on the
+        # disk, what was configured from the dashboard, a hosting node's
+        # doors and proxy. Without them the machine keeps those.
+        for ring in ("stores", "configured", "doors"):
+            if (cfg or {}).get(ring):
+                argv.append("--" + ring)
         # Under a transient unit of its own where this agent is root on a
         # systemd machine, so the uninstall outlives the unit it removes;
         # anywhere else (the harness, a machine without systemd) a detached

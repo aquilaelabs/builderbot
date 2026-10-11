@@ -1897,11 +1897,31 @@ EOF
 # and everything on the shares, which other nodes may be using. Runners are
 # not deregistered on their forge here: the Nodes tab's Uninstall does that
 # first, while the agent can still ask the controller for the tokens.
+# What goes is in three rings (the operator, 11 Oct), the first always and
+# the other two asked for: --stores takes the stores on this disk (the
+# toolchains, the caches, the artifacts, a dev instance's data, the synced
+# project copies) and /var/lib/builderbot; --configured undoes what was set
+# up from the dashboard after enrolling (the mounts and their fstab lines,
+# the runners' units, the GPU display); --doors shuts what a hosting node
+# was given (cloudflared and its token, Tailscale's login, the port 22
+# rule, the nginx container written for it). Without them a node can be
+# enrolled again, here or on another controller, with its stores and its
+# mounts as they were.
 cmd_uninstall() {
-    local yes=0 a p u f mounts="" session_user=""
-    [ "${1-}" = "--yes" ] && yes=1
+    local yes=0 stores=0 configured=0 doors=0 a p u f mounts="" session_user="" store_dirs=""
+    for a in "$@"; do
+        case "$a" in
+            --yes) yes=1 ;;
+            --stores) stores=1 ;;
+            --configured) configured=1 ;;
+            --doors) doors=1 ;;
+            "") ;;
+            *) die "uninstall takes --yes, --stores, --configured and --doors" ;;
+        esac
+    done
     session_user="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("session_user", ""))' 2>/dev/null || true)"
     [ -n "$session_user" ] || session_user=builder
+    store_dirs="$(python3 -c 'import json; print(" ".join(sorted(set(str(v) for v in (json.load(open("/etc/builderbot/node.json")).get("stores") or {}).values() if str(v).startswith("/")))))' 2>/dev/null || true)"
     for p in $(ours); do
         case "$p" in
             /workspace) mounts="$mounts $p" ;;
@@ -1909,14 +1929,15 @@ cmd_uninstall() {
         esac
     done
     say "uninstall BuilderBot from this machine"
-    printf '   goes:  the agent and its unit, the session-ports firewall rule,\n'
-    printf '          the accounts %s and %s with their homes,\n' "$DOCKER_USER" "$session_user"
-    printf '          the mounts BuilderBot used (%s),\n' "${mounts:- none}"
-    printf '          /var/lib/builderbot on this disk, /etc/builderbot, and this tool\n'
+    printf '   goes:  the agent and its unit, the session firewall rules and the sessions'"'"' own networks,\n'
+    printf '          the accounts %s and %s with their homes, /etc/builderbot, and this tool\n' "$DOCKER_USER" "$session_user"
+    [ "$stores" = 1 ] && printf '   also:  the stores on this disk (%s), /workspace, /var/lib/builderbot\n' "${store_dirs:- none}"
+    [ "$configured" = 1 ] && printf '   also:  the mounts BuilderBot used (%s), the runners, the GPU display\n' "${mounts:- none}"
+    [ "$doors" = 1 ] && printf '   also:  cloudflared and its token, Tailscale'"'"'s login, the port 22 rule, the nginx container\n'
     printf '   stays: docker, nfs-common, python3, tmux, jq, curl, the empty mountpoints,\n'
-    printf '          and everything on the shares (other nodes may use them)\n'
+    printf '          everything on the shares (other nodes may use them)%s\n' "$([ "$stores" = 1 ] || printf ', the stores')"
     printf '   note:  a runner registered from here stays listed on its forge;\n'
-    printf '          the Nodes tab'"'"'s Uninstall deregisters it first, this cannot\n'
+    printf '          the Nodes tab'"'"'s Un-enroll deregisters it first, this cannot\n'
     if [ "$yes" != 1 ]; then
         printf '\nType uninstall to go on: '
         read -r a
@@ -1925,7 +1946,9 @@ cmd_uninstall() {
     say "stopping the agent and the session ports rule"
     # The GPU display's unit too (B394): left enabled, a machine BuilderBot
     # had left still started an Xorg on the card at every boot.
-    for u in builderbot-agent builderbot-session-ports builderbot-gpu-display builderbot-gpu-nodes; do
+    local units="builderbot-agent builderbot-session-ports"
+    [ "$configured" = 1 ] && units="$units builderbot-gpu-display builderbot-gpu-nodes"
+    for u in $units; do
         if have systemctl; then
             systemctl disable --now "$u" >/dev/null 2>&1 || true
             rm -f "/etc/systemd/system/$u.service"
@@ -1933,13 +1956,38 @@ cmd_uninstall() {
         if have rc-update; then rc-service "$u" stop >/dev/null 2>&1 || true; rc-update del "$u" default >/dev/null 2>&1 || true; rm -f "/etc/init.d/$u"; fi
         [ -d "/etc/sv/$u" ] && { rm -f "/var/service/$u"; rm -rf "/etc/sv/$u"; }
     done
-    for f in /var/lib/builderbot/runner/*/.service /var/lib/builderbot/runner/.service; do
-        [ -f "$f" ] || continue
-        u="$(cat "$f")"
-        have systemctl && { systemctl disable --now "$u" >/dev/null 2>&1 || true; rm -f "/etc/systemd/system/$u"; }
-    done
+    if [ "$configured" = 1 ]; then
+        for f in /var/lib/builderbot/runner/*/.service /var/lib/builderbot/runner/.service; do
+            [ -f "$f" ] || continue
+            u="$(cat "$f")"
+            have systemctl && { systemctl disable --now "$u" >/dev/null 2>&1 || true; rm -f "/etc/systemd/system/$u"; }
+        done
+    fi
     have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
+    # The sessions' firewall and their own networks (R79): every one of them,
+    # whatever ran here, so nothing of the isolation outlives the agent.
     have nft && nft delete table inet builderbot_session >/dev/null 2>&1 || true
+    have nft && nft delete table inet builderbot_sessnet >/dev/null 2>&1 || true
+    if have ip; then
+        for a in $(ip netns list 2>/dev/null | awk '/^bbsess/ {print $1}'); do ip netns delete "$a" >/dev/null 2>&1 || true; done
+        for a in $(ip -o link show 2>/dev/null | awk -F': ' '$2 ~ /^bbs/ {print $2}' | cut -d@ -f1); do ip link delete "$a" >/dev/null 2>&1 || true; done
+    fi
+    if [ "$doors" = 1 ]; then
+        say "shutting the doors and the proxy"
+        have systemctl && { systemctl disable --now cloudflared >/dev/null 2>&1 || true; rm -f /etc/systemd/system/cloudflared.service; }
+        rm -rf /etc/cloudflared
+        [ -x /usr/local/bin/cloudflared ] && rm -f /usr/local/bin/cloudflared
+        have tailscale && tailscale logout >/dev/null 2>&1 || true
+        have systemctl && { systemctl disable --now builderbot-door-22 >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-door-22.service; }
+        have nft && nft delete table inet builderbot_door >/dev/null 2>&1 || true
+        rm -f /etc/builderbot/door-22.nft
+        if have docker; then
+            for a in $(docker ps -aq --filter "label=com.docker.compose.project" --format '{{.ID}} {{.Label "com.docker.compose.project"}}' 2>/dev/null | awk '$2 ~ /^nginx-/ {print $1}'); do
+                docker rm -f "$a" >/dev/null 2>&1 || true
+            done
+        fi
+        have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
     if have firewall-cmd && systemctl is-active --quiet firewalld 2>/dev/null; then
         for a in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
             firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$a" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
@@ -1955,14 +2003,16 @@ cmd_uninstall() {
     for u in "$session_user" "$DOCKER_USER"; do
         id -u "$u" >/dev/null 2>&1 && pkill -KILL -u "$u" 2>/dev/null || true
     done
-    for p in $mounts; do
-        say "$p is no longer mounted"
-        umount -l "$p" 2>/dev/null || true
-        f="$(mktemp)"
-        awk -v p="$p" '$1 ~ /^#/ || $2 != p' /etc/fstab > "$f" || true
-        cat "$f" > /etc/fstab
-        rm -f "$f"
-    done
+    if [ "$configured" = 1 ]; then
+        for p in $mounts; do
+            say "$p is no longer mounted"
+            umount -l "$p" 2>/dev/null || true
+            f="$(mktemp)"
+            awk -v p="$p" '$1 ~ /^#/ || $2 != p' /etc/fstab > "$f" || true
+            cat "$f" > /etc/fstab
+            rm -f "$f"
+        done
+    fi
     have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
     if [ -f /etc/docker/daemon.json ] && have jq && grep -q 'builderbot.sandbox' /etc/docker/daemon.json; then
         f="$(mktemp)"
@@ -1985,8 +2035,20 @@ cmd_uninstall() {
     # The session account's sudo rule first: it is the one grant here that
     # reaches root, and it must not outlive the helper it names (R35).
     rm -f /etc/sudoers.d/builderbot-session /etc/bb-session.conf /usr/local/sbin/bb-session
-    rm -f /etc/X11/builderbot-gpu.conf /run/builderbot-gpu-display
-    rm -rf /var/lib/builderbot /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
+    [ "$configured" = 1 ] && rm -f /etc/X11/builderbot-gpu.conf /run/builderbot-gpu-display
+    if [ "$stores" = 1 ]; then
+        say "removing the stores on this disk"
+        for p in $store_dirs /workspace; do
+            [ -d "$p" ] || continue
+            # A mountpoint is a share's, never emptied from here.
+            mountpoint -q "$p" 2>/dev/null && continue
+            rm -rf "$p"
+        done
+        rm -rf /var/lib/builderbot
+    else
+        rm -rf /var/lib/builderbot/agent /var/lib/builderbot/runner
+    fi
+    rm -rf /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
     # ttyd only when the provisioner fetched it: a package's copy is the distribution's
     if [ -x /usr/local/bin/ttyd ]; then
         if ! { have dpkg && dpkg -S /usr/local/bin/ttyd >/dev/null 2>&1; } \
@@ -2001,7 +2063,7 @@ cmd_uninstall() {
         have systemctl && systemctl disable --now wg-quick@bb >/dev/null 2>&1 || true
         rm -f /etc/wireguard/bb.conf
     fi
-    say "BuilderBot is off this machine; docker, the packages, the empty mountpoints and the shares' contents are as they were"
+    say "BuilderBot is off this machine; docker, the packages, the empty mountpoints and the shares' contents are as they were$([ "$stores" = 1 ] || printf ', and so are the stores')"
     rm -f /usr/local/sbin/bb-sandbox
     exit 0
 }
@@ -2540,7 +2602,7 @@ cmd_gpu_container() {
 
 case "${1-}" in
     "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
-    uninstall)   shift; cmd_uninstall "${1-}" ;;
+    uninstall)   shift; cmd_uninstall "$@" ;;
     gpu)         cmd_gpu ;;
     gpu-display) cmd_gpu_display ;;
     gpu-off)     cmd_gpu_off ;;

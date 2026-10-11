@@ -172,7 +172,10 @@ function rnFillNode(){
     // where that list is from before the removal, by the project rows' (the
     // server marks a row whose node was removed).
     const removed = new Set((state?.projects || []).filter(p => p.node_removed).map(p => p.prefs?.node).filter(Boolean));
-    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && !removed.has(n.id));
+    // A disabled node is kept but not offered (the operator, 11 Oct), unless
+    // it is this project's already, which the row then says.
+    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired"
+      && (n.state !== "disabled" || n.id === rnPrefWas.node) && !removed.has(n.id));
     if (nodesList === null){
       const opened = rnFor;
       loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); rnBars(); } });
@@ -217,7 +220,7 @@ function rnFillHosts(){
   const box = $("rnHosts");
   if (!box) return;
   const was = new Set(rnPrefWas.hosts.split(",").filter(Boolean));
-  const hosts = (nodesList || []).filter(n => n.config?.host_only && n.state !== "retired");
+  const hosts = (nodesList || []).filter(n => n.config?.host_only && n.state !== "retired" && n.state !== "disabled");
   // A named node that is gone or no longer hosting-only stays, ticked, so
   // Save does not drop it without anybody seeing.
   const gone = [...was].filter(id => !hosts.some(n => n.id === id));
@@ -306,7 +309,7 @@ function rnFillNodesMore(){
   const was = new Set(rnPrefWas.nodes.split(",").filter(Boolean));
   const checked = new Set([...box.querySelectorAll("input:checked")].map(i => i.value));
   const first = !box.dataset.drawn;
-  const others = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.id !== primary);
+  const others = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && n.id !== primary);
   box.hidden = hint.hidden = label.hidden = rnMode === "git" || !primary || !others.length;
   box.innerHTML = others.map(n => lrow(n.id, n.name, `${n.kind}, ${n.state}${n.live === false ? ", quiet" : ""}`,
                                        first ? was.has(n.id) : checked.has(n.id))).join("");

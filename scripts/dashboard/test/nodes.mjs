@@ -1196,6 +1196,57 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(/hosts containers only, and a exec job/.test(ex.error || ''), `only container jobs go to it (${ex.error})`);
     const bind = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
     ok(/hosts containers only/.test(bind.error || ''), `and no project may list it (${bind.error})`);
+    // Disable (the operator, 11 Oct): kept and configured, off every picker
+    // and refused to a project's set until Enable; Un-enroll is the one
+    // way off, cleaning the machine where it can.
+    await page.click(`${ROW} [data-nd="host-off"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    // Neither while anything runs there (the operator, 11 Oct): a session
+    // or a container the heartbeat reports holds both off until it is gone.
+    const beatIn = s => fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, ...s }, running: [], wait: 0 }) });
+    await beatIn({ sessions: [{ name: 'u_0000abcd~claude-beta' }, { name: 'somebody-else' }], published: { 'beta-web': [8080] } });
+    const inUse = await napi('/api/v1/nodes', { action: 'disable', id: minted.id });
+    const inUseUn = await napi('/api/v1/nodes', { action: 'uninstall', id: minted.id });
+    ok(/in use: 1 session running there .* and 1 container running there \(beta-web/.test(inUse.error || '')
+       && /in use: 1 session/.test(inUseUn.error || ''),
+       `Disable and Un-enroll refuse while a session or a container runs there, naming them (${inUse.error})`);
+    await beatIn({ sessions: [], published: {} });
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="disable"]`);
+    await page.waitForSelector(`${ROW} [data-nd="enable"]`, { timeout: 10000 });
+    const dis = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
+    ok(page.dialogs.length === 1 && /Disable shed/.test(page.dialogs[0])
+       && /disabled/.test(await page.$eval(`${ROW} .name .pill`, e => e.textContent))
+       && /disabled on the Nodes tab/.test(dis.error || ''),
+       `Disable asks, marks the row disabled, and a project may not add it until Enable (${dis.error})`);
+    await page.evaluate(n => renameProject(n), 'gamma');
+    await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+    ok(!(await page.$$eval('#rnNode option', (os, id) => os.some(o => o.value === id), minted.id)),
+       '...and the project settings\' node picker does not offer it');
+    await page.click('#rnCancel');
+    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: b.title }));
+    ok(/Un-enroll/.test(unro.text) && /take BuilderBot off the machine/.test(unro.title) && !(await page.$(`${ROW} [data-nd="retire"]`)),
+       'Un-enroll is the one way off, cleaning the machine where it can; Remove and Uninstall are gone');
+    // Its dialog: what always goes, and the three rings to tick (the stores,
+    // what the dashboard configured, a host's doors), none ticked for a node
+    // that runs sessions.
+    await page.click(`${ROW} [data-nd="unenroll"]`);
+    await page.waitForSelector('#ndmodal:not([hidden]) #ndUnGo', { timeout: 10000 });
+    const dlg = await page.evaluate(() => ({ title: document.getElementById('ndTitle').textContent,
+      text: document.getElementById('ndBody').textContent,
+      ticks: [...document.querySelectorAll('#ndBody input[type=checkbox]')].map(c => c.checked) }));
+    ok(/Un-enroll shed/.test(dlg.title) && /Always: the agent/.test(dlg.text) && /sessions' firewall rules/.test(dlg.text)
+       && dlg.ticks.length === 3 && dlg.ticks.every(t => !t) && /never touched/.test(dlg.text),
+       `Un-enroll opens a dialog: the agent and the isolation always go, three rings to tick, none ticked (${JSON.stringify(dlg.ticks)})`);
+    await page.click('#ndBody #ndUnCancel');
+    await page.waitForFunction(() => document.getElementById('ndmodal').hidden, null, { timeout: 5000 });
+    await page.click(`${ROW} [data-nd="enable"]`);
+    await page.waitForSelector(`${ROW} [data-nd="disable"]`, { timeout: 10000 });
+    ok(/online/.test(await page.$eval(`${ROW} .name .pill`, e => e.textContent)), '...and Enable puts it back online');
+    await page.click(`${ROW} [data-nd="host-only"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-off"]`, { timeout: 10000 });
     // ...except as where its containers may also go (prefs.hosts, the
     // operator, 10 Oct), which only a hosting-only node may be.
     const hosted = await napi('/api/prefs', { project: 'gamma', hosts: [minted.id] });
@@ -2981,10 +3032,12 @@ ok(page.errors.length === 0,
   const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
   ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
      `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);
-  const r = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
+  const r = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id, stores: true, doors: true, configured: 'yes' });
   ok(r.ok && /^j_/.test(r.job || ''), `a sandbox node queues the uninstall as a system job (${r.error || r.job})`);
   const j = await napi(`/api/v1/jobs?id=${r.job}`);
-  ok(j.spec?.apply === 'uninstall' && j.node === shed.id, 'the job asks the agent for the uninstall');
+  ok(j.spec?.apply === 'uninstall' && j.node === shed.id
+     && JSON.stringify(j.spec.config) === JSON.stringify({ stores: true, configured: false, doors: true }),
+     `the job asks the agent for the uninstall, carrying the rings ticked and only a true tick (${JSON.stringify(j.spec?.config)})`);
   const again = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
   ok(/one at a time/.test(again.error || ''), '...and a second press waits for the first');
   // The fake agent takes the job and reports it done, the way the real one does.
