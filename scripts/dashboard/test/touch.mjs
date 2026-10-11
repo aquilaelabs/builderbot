@@ -100,7 +100,7 @@ ok(await page.evaluate(() => document.body.dataset.view) === 'dash',
 // fires; the page's does: a drag down from the top re-reads the dashboard,
 // and the header has no ↻ beside it any more (the operator, 2 Oct).
 {
-  ok(!(await page.$('header button[title="refresh now"], #hdr button[title="refresh now"]')),
+  ok(!(await page.$('header button[aria-label="refresh now"], #hdr button[aria-label="refresh now"]')),
      'the header carries no refresh button');
   // Counted at the pull itself: the poll calls refresh() on its own clock.
   const before = await page.evaluate(() => { window.__pulls = 0; const r = window.pullRefresh;

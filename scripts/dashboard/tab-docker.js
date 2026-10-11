@@ -71,11 +71,8 @@ function gateDocker(root, why){
   if (!why) return;
   (root || document).querySelectorAll(DOCKER_ACTS).forEach(b => {
     b.disabled = true;
-    // As `title`, and left for the surface to do what it does with one: the
-    // manager tab runs tipify() after this and turns it into a data-tip, the
-    // dev row does not and keeps the native tooltip its neighbors use. Which
-    // means the reason is worn the same way as every other explanation on
-    // whichever surface it lands, rather than in a third style of its own.
+    // Kept for a screen reader (untitle); what the page says is the
+    // tab's own line that the daemon is not answering.
     b.title = why;
   });
 }
@@ -1308,7 +1305,8 @@ function dmRowsHtml(ins, job, blind){
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${dmMoveLine(d)}${
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
           ? dmBootLine(d.name, !!d.boot) : ""}</div>
-        ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
+        ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
+          : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
         </div>
       </div>
@@ -1790,7 +1788,6 @@ function renderDockerInto(i){
   // is what a fold is for. Rendered the same way the artifact row renders it:
   // the container's side on the left, the daemon's on the right, and an arrow
   // saying which way a mount goes.
-  tipify(el);
   // The summary's own click, not the toggle: <details> opens instantly by
   // construction, so the flag has to be driven by slideDetails: the same
   // helper the notebook's folds already use, rather than watched afterwards.

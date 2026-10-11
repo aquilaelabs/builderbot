@@ -240,9 +240,9 @@ function nbTestsView({$, nb, project}){
           <span class="pill">${esc(t.suite)}</span>
           ${t.status && t.status !== "pass"
             ? `<span class="pill ${t.status === "fail" ? "bad" : "warn"}">${esc(t.status)}</span>` : ""}
-          ${t.suspect ? `<span class="pill warn" data-tip="takes exactly ${t.suspect}s:
+          ${t.suspect ? `<span class="pill warn" title="takes exactly ${t.suspect}s:
              probably a fixed wait, not ${t.suspect}s of work">${t.suspect}s wait?</span>`
-            : t.accepted ? `<span class="pill" data-tip="sits on ${t.sits_on}s, and that is the
+            : t.accepted ? `<span class="pill" title="sits on ${t.sits_on}s, and that is the
              work: ${esc(t.accepted)}">${t.sits_on}s, accepted</span>` : ""}
           ${t.after ? `<span class="tstafter">follows: ${esc(
              t.after.length > 120 ? t.after.slice(0, 118) + "…" : t.after)}</span>` : ""}
@@ -286,7 +286,7 @@ function nbTestsView({$, nb, project}){
         <textarea class="tstP" spellcheck="false"
           placeholder="the behavior that breaks if this goes red">${
             esc(draft ? draft.protects : t.protects)}</textarea>
-        <label>What it exercises<span class="help" data-tip="fixtures, stubs, what is real and what is faked" tabindex="0">?</span></label>
+        <label>What it exercises<span class="help" data-help="fixtures, stubs, what is real and what is faked" tabindex="0">?</span></label>
         <textarea class="tstN" spellcheck="false"
           placeholder="e.g. runs the real server; the database is faked">${
             esc(draft ? draft.notes : t.notes)}</textarea>
@@ -335,7 +335,6 @@ function nbTestsView({$, nb, project}){
     });
     // ...and the ones that came back open need their editor back with them.
     $("tstList").querySelectorAll(".tst[open]").forEach(fill);
-    tipify($("tstList"));
   }
 
   $("tstSuite").onchange = () => { nb.tstSuite = $("tstSuite").value; drawTests(); };

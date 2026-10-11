@@ -54,7 +54,10 @@ const $ = id => document.getElementById(id);
 // A field's label sits above it, and what the label cannot say rides a ?
 // beside it (docs/design-language.md, Controls). `id` may be "" for a
 // label that names a group rather than one control.
-const helpIcon = t => t ? `<span class="help" data-tip="${esc(t)}" aria-label="${esc(t)}" tabindex="0">?</span>` : "";
+// The words a title carried, now that untitle() keeps them for a screen
+// reader rather than a tooltip: what a control is described or named by.
+const saidOf = el => el ? (el.getAttribute("aria-description") || el.getAttribute("aria-label") || el.getAttribute("title") || "") : "";
+const helpIcon = t => t ? `<span class="help" data-help="${esc(t)}" aria-label="${esc(t)}" role="button" aria-expanded="false" tabindex="0">?</span>` : "";
 const lbl = (id, text, help) => `<label class="lbl"${id ? ` for="${esc(id)}"` : ""}>${esc(text)}${helpIcon(help)}</label>`;
 // One POST for everything the page sends: JSON in, the Response back, so
 // the caller reads r.ok and r.json() as it always did. Written once here

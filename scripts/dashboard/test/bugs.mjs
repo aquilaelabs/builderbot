@@ -524,7 +524,7 @@ if (closed){
   await openFold(page, `#bugList .bug[data-id="${closed}"]`);
   ok(await page.$eval(`#bugList .bug[data-id="${closed}"] .bSend`, b => b.disabled),
      'a closed bug cannot be sent from the row');
-  ok((await page.$eval(`#bugList .bug[data-id="${closed}"] .bSend`, b => b.title))
+  ok((await page.$eval(`#bugList .bug[data-id="${closed}"] .bSend`, b => saidOf(b)))
        .includes('reopen it first'),
      '...and the button says to reopen it rather than going quiet');
   const refused = await post({ action: 'send', project: 'alpha', id: Number(closed) });

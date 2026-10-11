@@ -808,7 +808,7 @@ ok(seenSects.size <= 1,
   const sshy = await page.$$eval('textarea', es => es.filter(e => {
     // Each attribute is split on its own, as Bitwarden does: whole, by
     // word, and by word with the spaces taken out ("public key" is publickey).
-    const said = [e.id, e.name, e.className, e.title, e.placeholder,
+    const said = [e.id, e.name, e.className, saidOf(e), e.placeholder,
                   e.getAttribute('aria-label'), ...[...(e.labels || [])].map(l => l.textContent)]
       .filter(Boolean).map(v => v.toLowerCase().replace(/-/g, ''));
     const words = new Set(said.flatMap(v => [v, ...v.split(/[^\p{L}\d]+/u),

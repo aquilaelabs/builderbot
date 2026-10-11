@@ -1,5 +1,5 @@
 // Tabs: what one is called and the address its terminal is reached at, the
-// kinds of tab there are, the tooltips, a menu somebody has open, opening,
+// kinds of tab there are, the titles kept for a screen reader, a menu somebody has open, opening,
 // focusing, hiding and pinning one, and a terminal in a window of its own
 // (R8).
 //
@@ -350,50 +350,54 @@ const identity = t => t.kind === "term" ? "tmux:" + sessionOf(t.arg)
                     : TABKINDS[t.kind] && !TABKINDS[t.kind].multi ? t.kind
                     : t.kind + ":" + t.arg;
 
-// Move `title` to `data-tip` inside a container, so markup that already
-// carries the words gets the faster tooltip without being rewritten. The
-// title is removed rather than left in place: keeping both shows the native
-// one a second later, on top of ours.
-function tipify(root){
-  root.querySelectorAll("[title]:not([data-tip])").forEach(el => {
-    const s = el.getAttribute("title");
-    if (!s) return;
-    el.setAttribute("data-tip", s);
-    el.removeAttribute("title");
-  });
+// No tooltips (the operator, 11 Oct: a hover box was clipped by the pane it
+// sat in, and a phone has no hover). The words a `title` carries are kept for
+// a screen reader and never drawn: an element with no text of its own (an
+// icon button, a swatch, a field) is named by them, and one with text is
+// described by them. One observer over the page does it to whatever any
+// draw writes, so no surface needs to remember to.
+function untitle(el){
+  const s = el.getAttribute("title");
+  el.removeAttribute("title");
+  if (!s) return;
+  const named = el.hasAttribute("aria-label") || el.hasAttribute("aria-labelledby") || el.labels?.length
+    || (el.textContent || "").trim();
+  el.setAttribute(named ? "aria-description" : "aria-label", s);
+}
+function untitleIn(root){
+  if (root.nodeType !== 1) return;
+  if (root.hasAttribute("title") && !(root instanceof SVGElement)) untitle(root);
+  root.querySelectorAll("[title]").forEach(el => { if (!(el instanceof SVGElement)) untitle(el); });
+}
+function untitleWatch(){
+  untitleIn(document.body);
+  new MutationObserver(ms => {
+    for (const m of ms){
+      if (m.type === "attributes"){ if (m.target.hasAttribute("title") && !(m.target instanceof SVGElement)) untitle(m.target); }
+      else m.addedNodes.forEach(untitleIn);
+    }
+  }).observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["title"]});
 }
 
-// A tooltip stops being wanted the moment its button is clicked: you have read
-// it, you have acted on it, and it is now a box sitting over the next thing you
-// want to press. CSS alone cannot say "since the last click": `:active` ends
-// with the release and `:hover` is still true, so the state lives here.
-//
-// Held as the tip's TEXT rather than the element, because a row repaints on the
-// poll and the button under a motionless pointer is a different node a second
-// later. The replacement fires `pointerover` (the hit-test target changed) with
-// the same words on it, which is how the flag survives the repaint and clears
-// the moment the pointer genuinely reaches a different control.
-let tipHushed = null;
-function tipOff(){
-  const html = document.documentElement;
-  addEventListener("pointerdown", e => {
-    // A tap is not a hover and never raised a tip in the first place: the
-    // whole rule is inside @media(hover:hover). Left unguarded, tapping on the
-    // phone half of a hybrid would set a flag that then suppressed the mouse's
-    // tips until something else cleared it.
-    if (e.pointerType === "touch") return;
-    const el = e.target.closest && e.target.closest("[data-tip]");
-    if (!el) return;
-    tipHushed = el.getAttribute("data-tip");
-    html.setAttribute("data-tipoff", "");
-  }, true);
-  addEventListener("pointerover", e => {
-    if (tipHushed === null) return;
-    const el = e.target.closest && e.target.closest("[data-tip]");
-    if (el && el.getAttribute("data-tip") === tipHushed) return;
-    tipHushed = null;
-    html.removeAttribute("data-tipoff");
-  }, true);
+// A ? and the line of words it opens under its label: the line goes after
+// the label (or the ?'s own parent where there is no label), and comes off
+// again on the second press.
+function helpToggle(h){
+  const words = h.dataset.help || h.getAttribute("aria-label") || "";
+  const at = h.closest("label, .lbl") || h.parentElement;
+  const next = at.nextElementSibling;
+  if (h.classList.contains("on") && next?.classList.contains("helptext")){
+    next.remove();
+    h.classList.remove("on");
+    h.setAttribute("aria-expanded", "false");
+    return;
+  }
+  const line = document.createElement("span");
+  line.className = "helptext";
+  line.textContent = words;
+  at.after(line);
+  h.classList.add("on");
+  h.setAttribute("aria-expanded", "true");
 }
 
 // ---- a menu somebody has open ---------------------------------------------

@@ -1284,7 +1284,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(!(await page.$$eval('#rnNode option', (os, id) => os.some(o => o.value === id), minted.id)),
        '...and the project settings\' node picker does not offer it');
     await page.click('#rnCancel');
-    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: b.title }));
+    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: saidOf(b) }));
     ok(/Un-enroll/.test(unro.text) && /take BuilderBot off the machine/.test(unro.title) && !(await page.$(`${ROW} [data-nd="retire"]`)),
        'Un-enroll is the one way off, cleaning the machine where it can; Remove and Uninstall are gone');
     // Its dialog: what always goes, and the three rings to tick (the stores,
@@ -1451,7 +1451,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   // disabled whenever a node was picked, and a node is the only thing this
   // tab ever shows, so it could never be pressed: dead furniture with a
   // tooltip explaining why it would stay that way.
-  ok(await page.$eval('.tctab [data-tc="check"]', b => !b.disabled && /upstream/.test(b.title || '')),
+  ok(await page.$eval('.tctab [data-tc="check"]', b => !b.disabled && /upstream/.test(saidOf(b))),
      'Check for updates can be pressed on a node, and says what it does');
 
   // ---- system packages a held recipe needs (roadmap R51) ------------------
@@ -1714,13 +1714,10 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) });
     const emuApi = async () => (await fetch(base + '/api/emulator?node=' + minted.id, { headers: H })).json();
     // The Tools card ghosts the button until some node has sdkmanager and
-    // the emulator, and says why on it.
+    // the emulator, and says why in the line under its buttons.
     await page.evaluate(() => refresh());
     await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === true,
                                null, { timeout: 15000 });
-    ok(/command-line tools and the emulator/.test(
-         await page.$eval('#bEmulator', b => b.dataset.tip || '')),
-       'the Emulator button is ghosted while no node has sdkmanager and the emulator, saying so');
     ok(await page.$eval('#toolsWhy', w => !w.hidden && /^Emulator: .*command-line tools and the emulator/.test(w.textContent)),
        '...and says so on the card too, in a line a phone can read (R119 step 6)');
     // No sdkmanager here yet: the tab says what is missing, and the server
@@ -1916,7 +1913,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
        '...and Apply network with it');
     await page.evaluate(() => loadNodes());
     await page.waitForFunction(sel => /locked to its own console/.test(
-      document.querySelector(sel + ' [data-napply="storage"]')?.title || ''), ROW, { timeout: 10000 });
+      saidOf(document.querySelector(sel + ' [data-napply="storage"]'))), ROW, { timeout: 10000 });
     ok(await page.$eval(ROW + ' [data-napply="storage"]', b => b.disabled)
        && await page.$eval(ROW + ' [data-napply="network"]', b => b.disabled)
        && await page.$eval(ROW + ' [data-nd="unlock"]', b => /Unlock/.test(b.textContent)),
@@ -2988,7 +2985,7 @@ ok(page.errors.length === 0,
       package: 'nvidia-driver-595', pkg_version: '595.91.07-0ubuntu1', candidate: '595.91.07-0ubuntu1' } });
     await page.evaluate(() => loadToolchains());
     await page.waitForFunction(() => /installed, and running the card/.test(document.querySelector('.doc .tctab .tcdrv')?.textContent || ''), null, { timeout: 20000 });
-    const inst = await page.$eval('.doc .tctab .tcdrv', e => ({ dead: e.querySelector('#tcDrvSel').disabled, why: e.querySelector('#tcDrvSel').title,
+    const inst = await page.$eval('.doc .tctab .tcdrv', e => ({ dead: e.querySelector('#tcDrvSel').disabled, why: saidOf(e.querySelector('#tcDrvSel')),
       val: e.querySelector('#tcDrvSel').value, tick: [e.querySelector('#tcDrvTick').checked, e.querySelector('#tcDrvTick').disabled], rm: !!e.querySelector('[data-tcdrvrm]') }));
     ok(inst.dead && /remove it first to install another version/.test(inst.why) && inst.val === 'nvidia-driver-595' && inst.tick[0] && inst.tick[1] && inst.rm,
        `installed, its pulldown is ghosted on the installed branch and says to remove it first, with Remove beside it (${inst.val}; ${inst.why})`);

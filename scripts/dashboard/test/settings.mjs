@@ -164,7 +164,7 @@ ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
 // way the node row's Debug settings does: as a fold inside the group its
 // fields were saved by the group's Apply, so ticking one and pressing the
 // Apply in front of you saved a debug setting without a word about it.
-ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(b.title)),
+ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(saidOf(b))),
    'Debug settings is ghosted while debug mode is off, saying to turn it on first');
 ok(await page.$('.settingstab [data-set="offer_unvetted"]') === null
    && await page.$eval('#setdbgmodal', m => m.hidden),

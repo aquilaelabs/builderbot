@@ -346,8 +346,9 @@ is `<div class="field histbar">`.
 or three words and no more: a field that is filled in still says what it
 is, which a placeholder cannot. Where there is something the label cannot
 say (a password's rules, what blank means, what a rename costs) it rides
-the `?` beside it: `helpIcon(text)`, a circle with a tooltip that opens on
-hover and on a tap, so a phone reads it too. Most fields need none: "Your
+the `?` beside it: `helpIcon(text)`, a circle whose press opens its words as a
+line on the page under the label, and a second press folds them away, at
+every width. Most fields need none: "Your
 email" explains itself, and a `?` saying so is noise. Never a dash and a
 clause on the label, never a line of small print under the field. A
 checkbox keeps its sentence beside it. A placeholder, where there is one,
@@ -459,15 +460,15 @@ whose whole point is the width: a terminal, a log. `test/uniform.mjs`
 measures every control and control row on every tab against the surface
 holding it.
 
-**A dead control says why on its row, not only in its tooltip.** A ghosted
-button carries the whole reason with the fix as its tip, which is a tap on
-a phone as well as a hover; the first clause of that reason is also
-written in red under the row, where the row's other facts sit (who has a
-session here), because a phone shows nothing until it is tapped and a
-dead button with no visible reason is what somebody stares at. Three
-projects with no node read as broken after an update (23 Sep) with the
-reason sitting in a tooltip the whole time. `shortWhy()` cuts the clause;
-`cards.mjs` holds the no-node and out-of-window rows to it.
+**No tooltips** (the operator, 11 Oct). A hover box was clipped by the
+pane it sat in and a phone never had one. A dead control is ghosted and
+says nothing; a warning or an error is a line on the page, in `warn` or
+`bad`, where the row's other facts sit, whole (what is wrong and what to
+do), because a dead button with no visible reason is what somebody stares
+at (three projects with no node read as broken after an update, 23 Sep).
+A `title` written anyway is never drawn: `untitle()` keeps its words for a
+screen reader (`aria-label` on a control with no text, `aria-description`
+otherwise), and `saidOf(el)` reads them back for a suite.
 
 ### settings
 
@@ -602,7 +603,7 @@ own ground (`docIn`, contentIn's frames under a name of its own, so a
 document that already wears contentIn from its first paint still fades when
 it comes forward), a section or card folds over its height
 (`slideBody`, the section tween), a button or tab eases its color, a
-tooltip fades, a toast
+toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that

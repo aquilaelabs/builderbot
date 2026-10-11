@@ -157,7 +157,7 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   await page.waitForSelector('#rnSeesField:not([hidden])', { timeout: 10000 });
   const field = await page.$eval('#rnSees', e => ({ value: e.value, label: document.querySelector('label[for=rnSees]').firstChild.textContent,
-    help: document.querySelector('label[for=rnSees] .help')?.dataset.tip || '', hint: !!document.querySelector('#rnSeesField .hint') }));
+    help: document.querySelector('label[for=rnSees] .help')?.dataset.help || '', hint: !!document.querySelector('#rnSeesField .hint') }));
   ok(field.value === '/mnt/media, /srv/samples' && field.label === 'Also sees' && /share or a disk mounted on the node/.test(field.help) && !field.hint,
      `the project's settings carry the places in a field under the node, labeled above, its one sentence behind the ? (${JSON.stringify(field).slice(0, 140)})`);
   // ...and the GPU setting with the other Claude settings, a pulldown read

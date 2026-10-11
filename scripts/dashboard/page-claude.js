@@ -252,7 +252,7 @@ function placeResumeMenu(){
     if (claudeLiveOn(p.name, n))
       return `<button data-open="1" data-node="${esc(node)}" class="primary">Open tab</button>`
         + `<button data-end="${esc(n.id)}" class="danger">End session</button>`;
-    if (n.where !== "node") return `<div class="sub bad">${esc(shortWhy(n.why))}</div>`;
+    if (n.where !== "node") return `<div class="sub bad">${esc(n.why)}</div>`;
     if (!claudeSigned(n))
       return `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes tab, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`;
     return (p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")

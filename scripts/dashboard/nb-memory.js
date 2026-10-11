@@ -351,7 +351,7 @@ function nbMemoryView({$, nb}){
 
   function paintMemAdd(box){
     box.innerHTML = `<div class="memadd">
-    <label for="naTitle">Title<span class="help" data-tip="how it reads in the index" tabindex="0">?</span></label>
+    <label for="naTitle">Title<span class="help" data-help="how it reads in the index" tabindex="0">?</span></label>
     <input id="naTitle" maxlength="80" autocomplete="off" placeholder="No parsed progress">
     <div class="two">
       <div><label for="naName">File</label>
@@ -362,7 +362,7 @@ function nbMemoryView({$, nb}){
             `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></div>
     </div>
     <div class="hint" id="naWhat"></div>
-    <label for="naHook">Hook (required)<span class="help" data-tip="one line saying what this memory is about; the index lists it, and a memory needs one" tabindex="0">?</span></label>
+    <label for="naHook">Hook (required)<span class="help" data-help="one line saying what this memory is about; the index lists it, and a memory needs one" tabindex="0">?</span></label>
     <textarea id="naHook" class="proseline" rows="1" maxlength="240"
       placeholder="a word and an animated ellipsis, never a bar or a percentage"></textarea>
     <label for="naBody">The memory itself</label>

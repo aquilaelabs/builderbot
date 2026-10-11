@@ -770,7 +770,7 @@ function rnDrawFtp(){
     <label class="ndcap"><input type="checkbox" id="rnFtpEditor"${editor ? " checked" : ""}> Open them in an editor with BuilderBot for VS Code</label>
     ${editor ? `<div class="hint">Through this controller, as each person's own account: no share and no port of its own.</div>` : ""}
     ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Where it runs.</div>`}
-    <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-tip="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
+    <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-help="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
       <input id="rnFtpPort" type="number" min="1024" max="65526" step="1" inputmode="numeric" value="${esc(String(port))}" aria-label="the port its FTP server listens on">
       <span class="dim">and the ${v.span - 1} after it</span></div>
     ${status}

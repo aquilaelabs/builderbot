@@ -215,7 +215,7 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
      '...and the tab stays, blank, with Reattach, its frame torn down');
   ok(await page.evaluate(id => layoutNow().tabs.find(t => t.id === id).popped === true, id),
      '...and the layout carries the flag');
-  ok(await page.$eval(`.tab[data-id="${id}"] [data-pop]`, b => /reattach/.test(b.title)),
+  ok(await page.$eval(`.tab[data-id="${id}"] [data-pop]`, b => /reattach/.test(saidOf(b))),
      "...and the strip's button now says reattach");
   await page.click('#pane0 .slot.popped.on .reattach');
   ok(await page.evaluate(id => tabOf(id).popped === false && window.__pops[0].closed === true

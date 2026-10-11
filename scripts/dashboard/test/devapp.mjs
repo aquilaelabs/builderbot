@@ -94,7 +94,7 @@ async function dmClick(act){
       const r = document.querySelector(row), e = document.querySelector(sel);
       const list = Array.isArray(dockerList) ? dockerList : (dockerList?.instances || dockerList?.rows || []);
       const d = list.find(x => x.project === 'ep.silon') || {};
-      return { state: r?.querySelector('.state')?.textContent.trim(), title: e?.title,
+      return { state: r?.querySelector('.state')?.textContent.trim(), title: saidOf(e),
                running: d.running, exists: d.exists, missing_env: d.missing_env, job: d.job };
     }, [b, DM]);
     throw new Error(`B477: ${act} stayed disabled 45s: ${JSON.stringify(seen).slice(0, 400)}\n`
@@ -366,10 +366,7 @@ await page.waitForTimeout(1200);
 ok(!await page.$eval(`${DM} [data-dm="up"]`, b => b.disabled),
    'a filled env wakes Up: compose builds what is missing, so it would work');
 ok(/builds the image first, as compose does/.test(
-     // data-tip, not title: the manager's controls carry the page's own
-     // tooltip now, which is the same words moved off an attribute that waits
-     // a second before showing them.
-     await page.$eval(`${DM} [data-dm="up"]`, b => b.dataset.tip)),
+     await page.$eval(`${DM} [data-dm="up"]`, b => saidOf(b))),
    '...and Up says that is what it will do');
 
 // First build: build → down → up, and the argv trail proves the shape.
@@ -2106,7 +2103,7 @@ const dead = await page.evaluate(() => {
   const mk = document.getElementById('bDockerNew');
   return {
     newOff: mk?.disabled === true,
-    tip: mk?.dataset.tip || mk?.title || '',
+    tip: saidOf(mk),
     acts: q('.dmtab [data-dm="up"],.dmtab [data-dm="down"]').map(b => b.disabled),
     empty: document.querySelector('.dmtab .empty')?.textContent || '',
     refreshLive: document.getElementById('bDockerRe')?.disabled === false,
@@ -2118,9 +2115,6 @@ const dead = await page.evaluate(() => {
 });
 ok(dead.newOff && dead.acts.length > 0 && dead.acts.every(Boolean),
    'with no daemon, the controls that would drive one are disabled');
-// data-tip, not title: tipify() runs after the gate on this surface and turns
-// one into the other, which is the point: the reason is worn the way every
-// other explanation here is.
 ok(/no node with a daemon/.test(dead.tip),
    '...each carrying the reason rather than just refusing');
 ok(/no node with a daemon/.test(dead.empty),

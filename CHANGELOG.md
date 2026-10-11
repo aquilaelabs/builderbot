@@ -268,6 +268,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container BuilderBot did not start is given to a project only under a name nothing else of that project's answers to: not an instance's compose name, not a stranger already the project's on another node; it is renamed first, so a session's ask by name means one thing (66793af)
 - A failed compose step's row says what failed and the last telling line the step wrote (No such image: mariadb:11), with the whole output in the log, where it carried the output's last 400 characters flattened to one line (B658) (f1e10bd)
 - A toolchain whose recipe cannot update in place (jdk, go, node, ffmpeg, zig, android-tools, rust) updates from the Toolchains tab like the rest: with a newer version found its box is live, and Install selected removes the old one and installs the new in one job, still refused under a running build (67f9d7d)
+- No tooltips: a dead control is ghosted and says nothing, a warning or an error is a line on the page (a failing poll under the header, a container's missing env on its row, a session's whole reason on its project row), and a ? opens its words as a line under its label (7b2120b)
 
 ### Removed
 

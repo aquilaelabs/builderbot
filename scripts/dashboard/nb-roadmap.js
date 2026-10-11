@@ -322,7 +322,7 @@ function nbRoadmapView({$, nb}){
         // rather than disabled because a disabled button swallows the press
         // and the reason was only in its hover title, which a finger never
         // sees, and in the line under the whole list.
-        if (go.getAttribute("aria-disabled") === "true") return notify(go.title, true);
+        if (go.getAttribute("aria-disabled") === "true") return notify(saidOf(go), true);
         const r = (nb.roadmapItems || []).find(x2 => String(x2.id) === String(id));
         const steps = r?.steps || [];
         pickRoadmap(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));

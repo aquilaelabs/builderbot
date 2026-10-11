@@ -49,7 +49,7 @@ const redraw = () => page.evaluate(async () => { await refresh(); nodesRev++; dr
 await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'beta')?.session_node);
 ok(await page.evaluate(([a, b]) => !!claudeOn(a) && !claudeOn(b), [sandbox.id, box.id]),
    'signed in on one node is not signed in on another: each is asked about by itself');
-const btn = await page.$eval('#projects [data-c="beta"]', b => ({ dead: b.disabled, tip: b.title || b.dataset.tip || '' }));
+const btn = await page.$eval('#projects [data-c="beta"]', b => ({ dead: b.disabled, tip: saidOf(b) }));
 ok(!btn.dead && /not signed in on signbox/.test(btn.tip) && /Press for its sign-in/.test(btn.tip),
    `the Claude button of a project whose node has no sign-in stays live and says what a press offers (${btn.tip})`);
 await page.evaluate(id => { openNodesTab(); nodesPick = id; sectOpen['nodes:claude'] = false; nodesRev++; drawPanes(); }, sandbox.id);
@@ -117,7 +117,7 @@ ok(await page.$eval(`[data-signin="${box.id}"] [data-si="out"]`, b => !b.disable
    'signed in, the row names the Anthropic account this node reported and offers Sign out');
 ok(await page.evaluate(([a, b]) => claudeOn(a)?.email === 'tester@example.com' && claudeOn(b)?.email === 'me@example.invalid', [sandbox.id, box.id]),
    '...and another node\'s sign-in is its own: a different Anthropic account there is not this one\'s business');
-const tip = await page.$eval('#projects [data-c="beta"]', b => b.title || b.dataset.tip || '');
+const tip = await page.$eval('#projects [data-c="beta"]', b => saidOf(b));
 ok(!/not signed in/.test(tip) && await page.evaluate(id => claudeSigninFirst('beta', id), box.id) === false,
    `the project's Claude button goes to a session again (${tip.slice(0, 50)})`);
 

@@ -301,12 +301,12 @@ ok(await page.$$eval('.doc .tc .upd', us => us.length === 0),
 const pill = (name, n = 0) => page.$$eval('.doc .tc', (ls, [v, i]) => {
   const l = ls.find(x => x.querySelector('input').value === v);
   const ps = l ? l.querySelectorAll('.nm .pill') : [];
-  return ps[i] ? { text: ps[i].textContent, title: ps[i].title } : null;
+  return ps[i] ? { text: ps[i].textContent, title: saidOf(ps[i]) } : null;
 }, [name, n]);
 await page.waitForFunction(() => {
   const l = [...document.querySelectorAll('.doc .tc')]
     .find(x => x.querySelector('input').value === 'flutter');
-  return l && /measured/.test(l.querySelector('.nm .pill').title);
+  return l && /measured/.test(saidOf(l.querySelector('.nm .pill')));
 }, { timeout: 30000 });
 ok(/measured on disk/.test((await pill('flutter')).title),
    'an installed toolchain shows what it takes on disk, and says so');
@@ -582,7 +582,7 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
   const rows = await page.$$eval('.doc .tc', ls => ls.map(l => ({
     name: l.querySelector('input')?.value,
     disabled: !!l.querySelector('input')?.disabled,
-    title: l.querySelector('input')?.title || '',
+    title: saidOf(l.querySelector('input')),
   })));
   const go = rows.find(r => r.name === 'go');
   ok(go && go.disabled && /no update in place/.test(go.title),
