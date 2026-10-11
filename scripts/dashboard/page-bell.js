@@ -80,6 +80,16 @@ function attRow(a){
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
           <a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`;
   }
+  // A node's nginx behind the newest line (R192): its own note, to the
+  // nginx tab on that node, where Update is.
+  if (a.kind === "nginx"){
+    return `<div class="bnote att">
+      <div class="bt">nginx update on ${esc(a.node)}</div>
+      <div class="bsum">runs ${esc(a.from)} and ${esc(a.to)} is out</div>
+      <div class="bfoot"><span>on its nginx tab</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bnginx="${esc(a.id)}">nginx tab</a></span></div></div>`;
+  }
   return `<div class="bnote att${a.window ? " bad" : ""}">
     <div class="bt">${a.window ? `${esc(a.node)}'s agent is out of window` : `Agent update on ${esc(a.node)}`}</div>
     <div class="bsum">runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${a.window
@@ -306,6 +316,12 @@ function drawBell(){
     e.preventDefault();
     toggleBell(false);
     openToolchainsOn(a.dataset.btc);
+  });
+  // ...and an nginx update to the nginx tab on that node.
+  panel.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openNginxTab(a.dataset.bnginx);
   });
 }
 

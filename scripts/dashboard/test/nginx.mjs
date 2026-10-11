@@ -6,7 +6,7 @@
 // enrolls. The harness's sandbox node is the node, and its stub docker reads
 // the generated compose file the way a daemon would.
 import { URL, launch, newPage, ok, done, ready, DIR } from './lib.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 // Poll fn until it answers something other than null, or give up.
 const until = async (fn, ms = 15000, step = 200) => {
@@ -107,6 +107,54 @@ ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
 
+// The image (R192): the registry's tag list read by Check now (a file here,
+// BB_NGINX_TAGS_URL), the newest release line's alpine tag kept, and the
+// deployed nginx, unpinned since nothing had been read when it was written,
+// said to be behind it on the tab, on its Docker row and in the bell;
+// Update pins the digest into its compose file and rebuilds.
+ok(await page.$eval(`${sect} .ngimgbar .state`, e => /never checked/.test(e.textContent))
+   && !(await page.$(`${sect} [data-ngupdate]`))
+   && await page.$eval(`${sect} .ngimage`, e => /nginx:1\.27-alpine, not pinned/.test(e.textContent)),
+   'before any check the Image field says never checked and unpinned, with no Update');
+writeFileSync(`${DIR}/nginx-tags.json`, JSON.stringify({ results: [
+  { name: '1.27-alpine', digest: 'sha256:' + 'a'.repeat(64) },
+  { name: '1.29-alpine-slim', digest: 'sha256:' + 'c'.repeat(64) },
+  { name: '1.29-alpine', digest: 'sha256:' + 'b'.repeat(64) },
+  { name: 'stable-alpine', digest: 'sha256:' + 'd'.repeat(64) } ] }));
+await page.click(`${sect} [data-ngcheck]`);
+await page.waitForFunction(() => nginxLatest?.tag === '1.29-alpine', { timeout: 10000 });
+await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
+ok(await page.$eval(sect, s => /Update to 1\.29-alpine/.test(s.querySelector('[data-ngupdate]').textContent)
+     && /1\.29-alpine is out/.test(s.querySelector('.ngimgbar').previousElementSibling.textContent)
+     && /checked/.test(s.querySelector('.ngimgbar .state').textContent)),
+   'Check now reads the registry: the newest line is 1.29-alpine (not -slim or stable-), and the unpinned nginx is behind it, with Update');
+// The bell's own note for it, to the nginx tab on that node.
+await page.click('#bBell');
+await page.waitForSelector('#bellPanel [data-bnginx]', { timeout: 15000 });
+ok(await page.$eval('#bellPanel', e => /nginx update on sandbox/.test(e.textContent) && /1\.29-alpine/.test(e.textContent)
+     && e.querySelector('[data-bdismiss^="nginx:"]')),
+   'the bell carries an nginx note of its own kind, with Dismiss keyed to the digest');
+await page.click('#bBell');
+// ...and the Docker row says so with Update nginx.
+await page.evaluate(() => openDocker());
+await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
+ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)),
+   'the Docker tab\'s row of a node\'s nginx says the line is out, with Update nginx');
+await page.evaluate(() => openNginxTab());
+await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
+await page.click(`${sect} [data-ngupdate]`);   // its confirm is accepted by lib.mjs's dialog handler
+await page.waitForFunction(id => !(nginxList || []).find(n => n.node === id)?.behind, sandbox.node, { timeout: 20000 });
+const pinned = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
+ok(/image: nginx:1\.29-alpine@sha256:b{64}/.test(pinned.compose || '')
+   && await page.$eval(`${sect} .ngimage`, e => /nginx:1\.29-alpine \(b{12}\)/.test(e.textContent))
+   && !(await page.$(`${sect} [data-ngupdate]`)),
+   'Update pins the digest into the compose file and rebuilds, and the node is not behind any more');
+ok((await api('/api/nginx', { action: 'update', node: sandbox.node })).same === true, 'a second Update has nothing to move to and says so');
+// Its rebuild is a job of the instance, and a compose verb is refused while
+// one runs (_submit): the Save and the Remove below wait for quiet.
+const quiet = async () => until(async () => ((await api('/api/v1/jobs?active=1')).jobs || []).some(j => j.project === 'nginx-sandbox') ? null : true, 90000, 500);
+await quiet();
+
 // Save on a deployed one rewrites the file and rebuilds.
 const two = await api('/api/nginx', { action: 'save', node: sandbox.node,
   routes: [...row.routes, { host: 'www.example.com', path: '/relay', port: 8788, tls: false }] });
@@ -131,6 +179,7 @@ ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.
 }
 
 // Remove: the container goes, the routes stay for a redeploy.
+await quiet();
 await page.click(`${sect} [data-ngremove]`);
 // A node read as quiet queues the down and keeps the row until it has
 // run (B597), which under a whole gate is a while: the record's going is

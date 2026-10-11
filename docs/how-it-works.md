@@ -3288,6 +3288,19 @@ by the map (`all`), since a proxy or a monitor that is nobody's has to see
 everybody's. nginx needs none of it yet, being on the host network; the
 owner is for the day a deployment of BuilderBot's sits on a bridge.
 
+nginx keeps up to date like the toolchains and the agent (R192, the
+operator, 11 Oct). The controller reads the registry's tag list once a week
+(Check now on the nginx tab reads it at once) and keeps the newest release
+line's alpine tag with its digest; a node's nginx is pinned to a digest when
+it is deployed or updated, written into its compose file as
+`nginx:TAG@sha256:...`, so a Save rebuilds with exactly what it had and
+nothing moves under it. A deployed nginx behind the newest line says so on
+the nginx tab's node and on its Docker tab row, each with Update, which pins
+the new digest and rebuilds; the bell carries a note of its own kind, to the
+digest, so Dismiss holds until the registry moves the line again. One
+deployed before any check had read the registry is unpinned, and behind
+whatever is newest until its first Update.
+
 **Also reaches**, under What a session sees in a project's settings, opens
 the rest by hand (the operator, 7 Oct): a machine its sessions may still
 reach, by its address, or one service on it, as `address:port`, without

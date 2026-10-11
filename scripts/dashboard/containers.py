@@ -681,9 +681,14 @@ def manager_view(nid, seen):
     got = devapp.overview(nid or None)
     # A copy or move under way, or why the last one did not happen
     # (relocate.py): the row's line while the jobs pass it between nodes.
+    import nginxproxy
     import relocate
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
+        # A node's nginx behind the newest line says so on its row, with
+        # Update (R192); "" for every other row.
+        if i.get("owner") == devapp.SYSTEM:
+            i["nginx_to"] = nginxproxy.behind_named(i.get("project", ""))
     if seen is not None:
         got["instances"] = [i for i in got.get("instances") or []
                             if i.get("owner") in seen]

@@ -85,7 +85,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/chat` | prefix | `_chat` | Read a conversation, send into one, or mark one seen: chat.converse. |  |
 | POST | `/api/layout` | prefix | `_layout` | Store this account's open tabs: layout.save_tabs. |  |
 | POST | `/api/bell` | exact | `_bell` | Put a bell note away for this account, or bring every one back (bellseen.py). |  |
-| POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
+| POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove, check and update on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage tab: a node's disks walked at once (nodes.node_storage_measure). |  |
 | POST | `/api/cards` | prefix | `_cards` | Store the sidebar card arrangement: layout.save_card_order. |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |

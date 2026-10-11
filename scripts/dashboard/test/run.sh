@@ -1388,6 +1388,7 @@ start_server() {
     BB_COVERAGE_SUITE="${BB_COVERAGE_SUITE:-server}" \
     BB_ARCHIVE_SPOOL="$S/spool" \
     BB_CLAUDE_LATEST_URL="file://$S/claude-latest" BB_CLAUDE_CHECK_DELAY=3600 \
+    BB_NGINX_TAGS_URL="file://$S/nginx-tags.json" BB_NGINX_CHECK_DELAY=3600 \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
     BB_CLOUDFLARED="$DASH/test/cloudflared-stub.sh" \

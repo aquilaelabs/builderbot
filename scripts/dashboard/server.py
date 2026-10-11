@@ -1138,7 +1138,11 @@ def _attention(who):
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
     rows = (([] if users.may(who, "node") else nodes.attention(where))
             + [a for a in toolchains.attention(where)
-               if not users.may_node(who, "toolchains-write", a["id"])])
+               if not users.may_node(who, "toolchains-write", a["id"])]
+            # ...and a node's nginx behind the newest line (nginxproxy.attention,
+            # R192), for whoever may act on the Docker tab, which Update is.
+            + ([] if users.may(who, "docker-write")
+               else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid))))
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
@@ -7166,9 +7170,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(nginxproxy.view(devapp, devactions.state))
 
     def _nginx(self, req):
-        """Deploy, save, certificate, remove on one node's nginx
-        (nginxproxy.py): writing a compose file and building it on a node,
-        so docker-write like a written container, and never a session's."""
+        """Deploy, save, certificate, remove, check and update on one node's
+        nginx (nginxproxy.py): writing a compose file and building it on a
+        node, so docker-write like a written container, and never a
+        session's. Check reads the registry now; update pins the newest
+        line on the node and rebuilds (R192)."""
         if (self._who() or {}).get("session"):
             return self._json({"error": "a node's proxy is a person's"}, 403)
         if self._refused("docker-write"):
@@ -7196,6 +7202,11 @@ class Handler(BaseHTTPRequestHandler):
                 r = nginxproxy.apply(nid, containers, devactions, devapp) | saved
         elif act == "remove":
             r = nginxproxy.remove(nid, devactions, devapp)
+        elif act == "check":
+            lt = nginxproxy.check_image()
+            r = {"error": lt["error"]} if lt.get("error") else {"ok": True, "latest": lt}
+        elif act == "update":
+            r = nginxproxy.update(nid, containers, devactions, devapp)
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         return self._result(r)
@@ -7596,6 +7607,8 @@ def main():
     tunnel.apply()            # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
+    if nginxproxy.AUTOCHECK:          # the nginx image against the registry, weekly (R192)
+        threading.Thread(target=nginxproxy.check_loop, name="nginx-check", daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()
 
 

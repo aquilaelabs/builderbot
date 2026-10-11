@@ -187,5 +187,122 @@ class Certificate(unittest.TestCase):
         self.assertNotIn("certs/www.other.net", npx.compose_text("n1", npx.record("n1")))
 
 
+class FakeDevapp:
+    MAIN = "main"
+    SYSTEM = "System"
+    FILE = "devapps.json"
+
+    def __init__(self, deployed):
+        import threading
+        self.deployed = set(deployed)
+        self._lock = threading.Lock()
+        self.write_json = lambda path, d: None
+
+    def _load(self):
+        return {n: {"main": {"source": "file", "for": self.SYSTEM}} for n in self.deployed}
+
+    def is_file_source(self, name):
+        return name in self.deployed
+
+    def _read_rec(self, name, inst):
+        return {"node": {"nginx-vps": "n1", "nginx-box": "n2"}.get(name, "")}
+
+
+class FakeContainers:
+    def __init__(self):
+        self.written = {}
+
+    def update_container(self, name, text, env):
+        self.written[name] = text
+        return {"ok": True}
+
+
+class FakeDevactions:
+    def __init__(self):
+        self.rebuilt = []
+
+    def rebuild(self, name, inst, gate=False):
+        self.rebuilt.append(name)
+        return {"job": f"j-{len(self.rebuilt)}"}
+
+
+class Image(unittest.TestCase):
+    """The image kept up to date (R192): the registry's tag list read into
+    the newest release line's alpine tag and its digest, a node pinned to
+    it when deployed or updated, and behind until it is."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.nodes = [{"id": "n1", "name": "vps", "kind": "agent", "state": "online"},
+                      {"id": "n2", "name": "box", "kind": "agent", "state": "online"}]
+        npx.configure(state=self.tmp, write_json=write_json, node_list=lambda: self.nodes,
+                      node_name=lambda nid: {"n1": "vps", "n2": "box"}.get(nid, nid), taken_ports=lambda *a: [])
+        self.was = npx.TAGS_URL
+        self.addCleanup(setattr, npx, "TAGS_URL", self.was)
+        npx.TAGS_URL = f"file://{self.tmp}/tags.json"
+        self.tags({"1.27-alpine": "a", "1.29-alpine-slim": "c", "1.29-alpine": "b", "stable-alpine": "d", "1.28-alpine": "e"})
+
+    def tags(self, named):
+        write_json(f"{self.tmp}/tags.json",
+                   {"results": [{"name": n, "digest": "sha256:" + d * 64} for n, d in named.items()]})
+
+    def test_the_check_keeps_the_newest_line_and_a_node_is_behind_until_pinned(self):
+        self.assertEqual(npx.latest_image(), {}, "nothing before a check")
+        self.assertEqual(npx.image_ref({}), "nginx:1.27-alpine", "the line's tag alone, unpinned")
+        self.assertEqual(npx.behind({}), "", "nothing to be behind yet")
+        lt = npx.check_image()
+        self.assertEqual((lt["tag"], lt["digest"], lt["error"]), ("1.29-alpine", "sha256:" + "b" * 64, ""),
+                         "the newest X.Y-alpine, not -slim, stable- or an older line")
+        self.assertGreater(lt["at"], 0)
+        self.assertEqual(npx.behind(npx.record("n1")), "1.29-alpine", "unpinned is behind whatever is newest")
+        self.assertEqual(npx.pin_latest("n1"), {"tag": "1.29-alpine", "digest": "sha256:" + "b" * 64})
+        rec = npx.record("n1")
+        self.assertEqual(npx.image_ref(rec), "nginx:1.29-alpine@sha256:" + "b" * 64)
+        self.assertEqual(npx.behind(rec), "", "pinned to the newest: not behind")
+        self.assertIn("    image: nginx:1.29-alpine@sha256:" + "b" * 64, npx.compose_text("n1", rec),
+                      "the compose file pulls exactly that")
+        # The line moves: the node is behind again, to the new digest.
+        self.tags({"1.29-alpine": "f"})
+        npx.check_image()
+        self.assertEqual(npx.behind(npx.record("n1")), "1.29-alpine")
+        rows = npx.attention(lambda nid: nid == "n1")
+        self.assertEqual([(r["kind"], r["node"], r["id"], r["digest"]) for r in rows],
+                         [("nginx", "vps", "n1", "sha256:" + "f" * 64)], "the bell's row, for the deployed one alone")
+        self.assertIn("1.29-alpine (" + "b" * 12 + ")", rows[0]["from"])
+        self.assertIn("1.29-alpine (" + "f" * 12 + ")", rows[0]["to"])
+        self.assertEqual(npx.behind_named("nginx-box"), "1.29-alpine", "the Docker row's flag, by the container's name")
+        self.assertEqual(npx.behind_named("radarr"), "", "...and nothing for another row")
+        # A registry that does not answer keeps the last answer and says why.
+        npx.TAGS_URL = f"file://{self.tmp}/nope.json"
+        lt = npx.check_image()
+        self.assertIn("could not reach the registry", lt["error"])
+        self.assertEqual(lt["tag"], "1.29-alpine", "the last answer kept")
+        view = npx.view(FakeDevapp({"nginx-vps"}), lambda *a: {})
+        self.assertEqual(view["latest"]["tag"], "1.29-alpine")
+        self.assertEqual((view["nodes"][0]["image"]["ref"], view["nodes"][0]["behind"]),
+                         ("nginx:1.29-alpine@sha256:" + "b" * 64, "1.29-alpine"))
+
+    def test_update_pins_and_rebuilds_and_deploy_pins_a_new_one(self):
+        dv, ct, da = FakeDevapp({"nginx-vps"}), FakeContainers(), FakeDevactions()
+        self.assertIn("not deployed", npx.update("n2", ct, da, dv)["error"])
+        # No check yet: Update reads the registry itself.
+        r = npx.update("n1", ct, da, dv)
+        self.assertEqual((r["ok"], r["to"], r["job"]), (True, "1.29-alpine", "j-1"), r)
+        self.assertIn("image: nginx:1.29-alpine@sha256:" + "b" * 64, ct.written["nginx-vps"])
+        self.assertEqual(da.rebuilt, ["nginx-vps"])
+        r = npx.update("n1", ct, da, dv)
+        self.assertTrue(r.get("same") and "already runs" in r["note"], "nothing to move to is said, not rebuilt")
+        self.assertEqual(da.rebuilt, ["nginx-vps"])
+        # A new one is pinned to the newest line as it is written.
+        class Making(FakeContainers):
+            def create_container(self, name, text, env, node="", for_project=""):
+                self.written[name] = text
+                return {"ok": True}
+        mk = Making()
+        self.assertEqual(npx.deploy("n2", mk, da, FakeDevapp(set()))["job"], "j-2")
+        self.assertIn("image: nginx:1.29-alpine@sha256:" + "b" * 64, mk.written["nginx-box"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,9 @@
 // what else on the node holds 80 or 443. Deploy makes the container on a
 // node without one; Save writes the routes and certificate and rebuilds a
 // deployed one so the change is up; Remove takes it out of the manager.
+// The image (R192): what each node's nginx is pinned to, the newest line
+// the registry listed (checked weekly, or by Check now), and Update on a
+// node that is behind, which pins the new digest and rebuilds.
 //
 // Chrome from docSurface(); the hard rules are uniform.mjs's. Data from
 // /api/nginx, read when the tab opens and after every change; redrawn on
@@ -21,6 +24,7 @@ let nginxList = null;             // last answer, or null before the first
 let nginxErr = "";
 let nginxRev = 0;
 let nginxNode = "";               // the node the tab shows
+let nginxLatest = {};             // the registry's newest line, from the same answer
 // The routes being edited, per node, until Save or Revert; absent while a
 // node shows what is saved.
 const nginxDraft = {};
@@ -35,6 +39,7 @@ async function loadNginx(){
     const j = await (await fetch("/api/nginx")).json();
     nginxErr = j.error || "";
     nginxList = j.nodes || [];
+    nginxLatest = j.latest || {};
   }catch(e){
     nginxErr = String(e);
     nginxList = nginxList || [];
@@ -47,7 +52,9 @@ async function nginxAct(body){
   const j = await (await postJSON("/api/nginx", body)).json().catch(() => ({error: "no answer"}));
   if (j.error) notify(j.error, true);
   else if (j.note) notify(j.note, true);
-  else if (j.job) notify(`${body.action === "deploy" ? "deploying" : "rebuilding"} nginx: its row on the Docker tab has the build`);
+  else if (j.job) notify(`${body.action === "deploy" ? "deploying" : body.action === "update" ? `updating nginx to ${j.to}` : "rebuilding nginx"}${
+    body.action === "deploy" ? " nginx" : ""}: its row on the Docker tab has the build`);
+  else if (body.action === "check") notify(`the registry lists nginx:${j.latest?.tag || "?"}`);
   await loadNginx();
   return j;
 }
@@ -141,6 +148,22 @@ function nginxBody(n){
   const sub = n.deployed
     ? `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the Docker tab, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`
     : "Save keeps the routes; Deploy puts nginx on the node with them";
+  // The image it is pinned to, the newest line, and Update when behind
+  // (R192): its own action bar, since Check now and Update are two verbs.
+  const im = n.image || {}, lt = nginxLatest || {};
+  const pinned = `nginx:${im.tag || "?"}${im.digest ? ` (${im.digest.slice(7, 19)})` : ", not pinned to a digest yet"}`;
+  const news = n.behind
+    ? (n.deployed ? `nginx:${n.behind} is out: Update pins it and rebuilds` : `nginx:${n.behind} is out: Deploy puts it on the node`)
+    : lt.digest ? "the newest line the registry lists" : "no check has read the registry yet";
+  const checked = lt.at ? `checked ${ago(lt.at)}` : "never checked";
+  const image = `<div class="field">
+      ${lbl("", "Image")}
+      <div class="sub ngimage">${esc(pinned)}</div>
+      <div class="hint${n.behind && n.deployed ? " warn" : ""}">${esc(news)}. The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.</div>
+      <div class="actbar ngimgbar"><span class="state">${esc(checked)}${lt.error ? ` · ${esc(lt.error)}` : ""}</span><span class="sp"></span>
+        <button type="button" data-ngcheck>Check now</button>
+        ${n.deployed && n.behind ? `<button type="button" class="primary" data-ngupdate>Update to ${esc(n.behind)}</button>` : ""}</div>
+    </div>`;
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
   return `<div data-ngnode="${esc(n.node)}">
@@ -173,6 +196,7 @@ function nginxBody(n){
       <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="the domain its names say, unless you name one" autocomplete="off" spellcheck="false">
       <div class="hint">Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), which is what its routes resolve to; type a name only to file it under another. The same name again is a renewal.</div>
     </div>
+    ${image}
     ${clash}
     <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
       <span class="state"></span><span class="sp"></span>
@@ -285,6 +309,21 @@ function wireNginxTab(root){
     if (nginxReadDraft(sect, n) && !confirm(`Deploy nginx on ${n.name} with what is saved? Unsaved changes here are not in it: Save first to include them.`)) return;
     busy(e.target, "Deploying");
     await nginxAct({action: "deploy", node: nid});
+    nginxRedraw();
+  };
+  const chk = sect.querySelector("[data-ngcheck]");
+  if (chk) chk.onclick = async e => {
+    nginxReadDraft(sect, n);
+    busy(e.target, "Checking");
+    await nginxAct({action: "check", node: nid});
+    nginxRedraw();
+  };
+  const upd = sect.querySelector("[data-ngupdate]");
+  if (upd) upd.onclick = async e => {
+    if (!confirm(`Update nginx on ${n.name} to nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    nginxReadDraft(sect, n);
+    busy(e.target, "Updating");
+    await nginxAct({action: "update", node: nid});
     nginxRedraw();
   };
   const rm = bar.querySelector("[data-ngremove]");

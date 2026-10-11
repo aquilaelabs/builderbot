@@ -721,6 +721,22 @@ async function dmAction(project, instance, act, btn){
     dockerRev++; drawPanes(); loadDocker();
     return;
   }
+  // A node's nginx behind the newest line (R192): the nginx tab's verb,
+  // from the row it is about.
+  if (act === "nginx-update"){
+    const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
+    if (!confirm(`Update nginx on this node to nginx:${d?.nginx_to || "the newest line"}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    if (btn) busy(btn, "Updating");
+    try{
+      const j = await (await postJSON("/api/nginx", {action: "update", node: dockerList?.node || dockerNode})).json();
+      if (j.error) notify(j.error, true);
+      else if (j.note) notify(j.note, true);
+      else notify(`updating nginx to ${j.to}: this row has the build`);
+    }
+    catch(e){ notify("could not update it: " + e, true); }
+    dockerRev++; drawPanes(); loadDocker();
+    return;
+  }
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
   if (act === "remove" && !confirm(
       `Remove ${project}/${instance}?\n\n`
@@ -1293,6 +1309,7 @@ function dmRowsHtml(ins, job, blind){
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
           ? dmBootLine(d.name, !!d.boot) : ""}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
+        ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
         </div>
       </div>
       <div class="actbar dmacts">
@@ -1309,6 +1326,8 @@ function dmRowsHtml(ins, job, blind){
         <button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
           title="${d.source === "file" ? "edit this container's compose file and env"
                   : "edit the project's compose file and this container's env"}">Edit</button>
+        ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
+          title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx tab's record and rebuild with it">Update nginx</button>` : ""}
         `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
