@@ -97,6 +97,32 @@ class Certificate(unittest.TestCase):
         self.assertFalse(os.path.exists(key))
         self.assertNotIn("cert", npx.record("n1"))
 
+    def test_a_hostname_may_have_its_own_beside_the_default(self):
+        """One certificate per hostname (R175): a site on another domain
+        behind the same nginx gets its own, the rest use the default."""
+        npx.save_routes("n1", [{"host": "www.example.com", "path": "/", "port": 8080},
+                               {"host": "www.other.net", "path": "/", "port": 8081}])
+        self.assertIn("hostname like", npx.set_cert("n1", self.cert, self.key, host="bad host")["error"])
+        self.assertEqual(npx.set_cert("n1", self.cert, self.key, host="WWW.Other.net")["host"], "www.other.net")
+        rec = npx.record("n1")
+        self.assertTrue(rec["certs"]["www.other.net"]["set"] and "cert" not in rec)
+        conf = npx.nginx_conf(rec["routes"], False, rec)
+        self.assertIn("ssl_certificate /etc/nginx/certs/www.other.net/cert.pem;", conf)
+        self.assertNotIn("server_name www.example.com;\n    ssl_certificate", conf.replace("    listen 443 ssl;\n", ""))
+        self.assertEqual(conf.count("listen 443 ssl"), 1, "only the hostname with a certificate answers on 443")
+        npx.set_cert("n1", self.cert, self.key)
+        rec = npx.record("n1")
+        conf = npx.nginx_conf(rec["routes"], True, rec)
+        self.assertEqual(conf.count("listen 443 ssl"), 3, "the default covers the rest, and the catch-all")
+        self.assertIn("ssl_certificate /etc/nginx/certs/cert.pem;", conf)
+        text = npx.compose_text("n1", rec)
+        self.assertIn("target: /etc/nginx/certs/www.other.net/cert.pem", text)
+        self.assertIn("tls_cert_www_other_net:\n    content: |", text)
+        self.assertEqual(oct(os.stat(os.path.join(self.tmp, "nginx", "n1", "certs", "www.other.net", "key.pem")).st_mode & 0o777), "0o600")
+        npx.drop_cert("n1", host="www.other.net")
+        self.assertNotIn("www.other.net", npx.record("n1").get("certs") or {})
+        self.assertNotIn("certs/www.other.net", npx.compose_text("n1", npx.record("n1")))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7099,10 +7099,12 @@ class Handler(BaseHTTPRequestHandler):
             r = nginxproxy.deploy(nid, containers, devactions, devapp)
         elif act == "save":
             r = nginxproxy.save_routes(nid, req.get("routes"))
+            # The certificate pasted is the node's default, or one
+            # hostname's own when cert_for names it (R175).
             if not r.get("error") and isinstance(req.get("cert"), str) and req.get("cert").strip():
-                r = nginxproxy.set_cert(nid, req.get("cert"), req.get("key"))
+                r = nginxproxy.set_cert(nid, req.get("cert"), req.get("key"), field(req, "cert_for"))
             if not r.get("error") and req.get("drop_cert") is True:
-                r = nginxproxy.drop_cert(nid)
+                r = nginxproxy.drop_cert(nid, field(req, "cert_for"))
             if not r.get("error"):
                 r = nginxproxy.apply(nid, containers, devactions, devapp)
         elif act == "remove":

@@ -62,7 +62,25 @@ function nginxRouteRow(n, r, i){
 function nginxRedraw(){ nginxRev++; drawPanes(); }
 
 function nginxDraftOf(n){
-  return nginxDraft[n.node] || (nginxDraft[n.node] = {routes: (n.routes || []).map(r => ({...r})), cert: "", key: "", drop: false});
+  return nginxDraft[n.node] || (nginxDraft[n.node] = {routes: (n.routes || []).map(r => ({...r})), cert: "", key: "", drop: false, certFor: ""});
+}
+
+// The hostnames a certificate can be for: the routes' own, without *.
+function nginxHosts(n, d){
+  return [...new Set([...(d?.routes || n.routes || []).map(r => r.host), ...Object.keys(n.certs || {})])]
+    .filter(h => h && h !== "*").sort();
+}
+
+// Each certificate the node holds, one line: the default, then each
+// hostname's own, with its name and when it ends.
+function nginxCertLines(n){
+  const line = (label, c) => {
+    const when = c?.expires ? new Date(c.expires * 1000).toLocaleDateString() : "";
+    return `${esc(label)}: ${c?.set ? `${esc(c.subject || "")}${c.names ? ` (${esc(c.names)})` : ""}${when ? `, until ${esc(when)}` : ""}` : "none"}`;
+  };
+  const own = Object.entries(n.certs || {}).filter(([, c]) => c?.set).sort(([a], [b]) => a.localeCompare(b));
+  return [line("Default", n.cert), ...own.map(([h, c]) => line(h, c))].join("<br>")
+    + (!n.cert?.set && !own.length ? " (routes answer on 80 only)" : "");
 }
 
 function nginxSection(n){
@@ -83,13 +101,16 @@ function nginxSection(n){
         <button type="button" data-ngadd>Add route</button></div>
     </div>
     <div class="field">
-      <label>Certificate</label>
-      <div class="hint">${cert.set
-        ? `Set: ${esc(cert.subject || "")}${cert.names ? ` (${esc(cert.names)})` : ""}${when ? `, until ${esc(when)}` : ""}. Paste a new pair to replace it; the key is kept on the controller and never shown.`
-        : "None: routes answer on 80 only. For a site behind Cloudflare, paste a Cloudflare origin certificate and its key."}</div>
+      <label>Certificates</label>
+      <div class="hint">${nginxCertLines(n)}</div>
+      <div class="hint">One per hostname where a site needs its own (an origin certificate covers one domain), and the node's default for every hostname without one. Paste a pair for the one picked; a key is kept on the controller and never shown.</div>
+      <label class="pick wide">For <select data-ng="certfor" aria-label="which hostname the pasted certificate is for">
+        <option value=""${!d.certFor ? " selected" : ""}>the node's default (any hostname without its own)</option>
+        ${nginxHosts(n, d).map(h => `<option value="${esc(h)}"${d.certFor === h ? " selected" : ""}>${esc(h)}</option>`).join("")}
+      </select></label>
       <textarea data-ng="cert" rows="3" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----">${esc(d.cert)}</textarea>
       <textarea data-ng="key" rows="3" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
-      ${cert.set ? `<label class="ndcap"><input type="checkbox" data-ng="drop"${d.drop ? " checked" : ""}> take the certificate off</label>` : ""}
+      ${(d.certFor ? n.certs?.[d.certFor]?.set : cert.set) ? `<label class="ndcap"><input type="checkbox" data-ng="drop"${d.drop ? " checked" : ""}> take ${d.certFor ? esc(d.certFor) + "'s" : "the default"} certificate off</label>` : ""}
     </div>
     ${clash}
     <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
@@ -136,6 +157,7 @@ function nginxReadDraft(sect, n){
   d.cert = sect.querySelector('[data-ng="cert"]').value;
   d.key = sect.querySelector('[data-ng="key"]').value;
   d.drop = !!sect.querySelector('[data-ng="drop"]')?.checked;
+  d.certFor = sect.querySelector('[data-ng="certfor"]')?.value || "";
   const same = JSON.stringify(d.routes.map(r => ({...r, port: String(r.port)})))
     === JSON.stringify((n.routes || []).map(r => ({host: r.host, path: r.path, port: String(r.port), tls: r.tls !== false})));
   return !(same && !d.cert.trim() && !d.key.trim() && !d.drop);
@@ -157,7 +179,10 @@ function wireNginxTab(root){
       bar.querySelector("[data-ngrevert]").disabled = !dirty;
     };
     sect.addEventListener("input", sync);
-    sect.addEventListener("change", sync);
+    sect.addEventListener("change", e => {
+      if (e.target.matches?.('[data-ng="certfor"]')){ nginxReadDraft(sect, n); nginxRedraw(); return; }
+      sync();
+    });
     sect.querySelector("[data-ngadd]").onclick = () => {
       nginxReadDraft(sect, n);
       nginxDraftOf(n).routes.push({host: "", path: "/", port: "", tls: true});
@@ -172,7 +197,7 @@ function wireNginxTab(root){
       nginxReadDraft(sect, n);
       const d = nginxDraftOf(n);
       busy(e.target, "Saving");
-      const j = await nginxAct({action: "save", node: nid, routes: d.routes,
+      const j = await nginxAct({action: "save", node: nid, routes: d.routes, cert_for: d.certFor,
                                 ...(d.cert.trim() ? {cert: d.cert, key: d.key} : {}), drop_cert: d.drop});
       if (!j.error) delete nginxDraft[nid];
       nginxRedraw();

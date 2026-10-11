@@ -110,6 +110,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Enroll node offers a public hostname: the node dials a name a tunnel at home publishes (Cloudflare Tunnel, Tailscale Funnel, ngrok, frp) over HTTPS, nothing on the router changes, it never learns the home address, and it is hosting only; the dialog prints the rule, with cloudflared's config as the example. (6602fe2)
 - An nginx tab on the Tools card: one reverse proxy per node, BuilderBot's own, with its routes and certificate kept on the controller; Deploy, Save and Remove build it on the node, and Enroll node can put it on a new node as it enrolls. (c06d2c0)
 - Enroll node sets up a door in for SSH: cloudflared publishing port 22 at a hostname of its own, or Tailscale with ssh on the tailnet; the node's row switches it on and off and shows the ssh command, and the secret leaves the script once it has run. (1558011)
+- The nginx tab holds a certificate per hostname beside the node's default, so sites on several domains behind one node each get their own. (ab6e253)
 
 ### Changed
 

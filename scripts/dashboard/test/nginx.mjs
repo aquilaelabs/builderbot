@@ -7,6 +7,7 @@
 // the generated compose file the way a daemon would.
 import { URL, launch, newPage, ok, done, ready, DIR } from './lib.mjs';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -49,6 +50,25 @@ ok(/a port on the node/.test((await api('/api/nginx', { action: 'save', node: sa
    'a route with no port is refused by name');
 ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert: 'not a cert', key: 'nor a key' })).error || ''),
    '...and a certificate that is not one');
+
+// A certificate per hostname (R175): one made here with openssl, saved for
+// one of the routes' hostnames, listed beside the default, in the compose
+// file under that hostname's path.
+{
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=www.example.com',
+    '-addext', 'subjectAltName=DNS:www.example.com', '-keyout', `${DIR}/ngx-k.pem`, '-out', `${DIR}/ngx-c.pem`], { stdio: 'ignore' });
+  const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
+  const own = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert_for: 'www.example.com', cert, key });
+  const v = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
+  ok(own.ok && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com' && !v.cert?.set,
+     `a certificate saved for one hostname is that hostname's own, with the default still none (${JSON.stringify(v.certs)})`);
+  await page.evaluate(() => loadNginx());
+  await page.waitForFunction(id => /www\.example\.com: www\.example\.com/.test(document.querySelector(`.nginxtab details.sect[data-sect="nginx:${id}"]`)?.textContent || ''), sandbox.node, { timeout: 10000 });
+  ok(await page.$eval(sect, s => /Default: none/.test(s.textContent) && [...s.querySelectorAll('[data-ng="certfor"] option')].some(o => o.value === 'www.example.com')),
+     '...and the section lists it under the default and offers the hostname in the picker');
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert_for: 'www.example.com', drop_cert: true });
+  ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again');
+}
 
 // Deploy: the container is written from the routes and built on the node.
 await page.click(`${sect} [data-ngdeploy]`);

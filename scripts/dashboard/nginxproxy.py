@@ -64,8 +64,27 @@ def _save(d):
     write_json(_file(), d)
 
 
-def _cert_dir(nid):
-    return STATE / "nginx" / re.sub(r"[^A-Za-z0-9_-]", "_", str(nid))
+def _cert_dir(nid, host=""):
+    """Where a node's certificate lives: the default at the node's own
+    directory, a hostname's own under certs/<host> (R175)."""
+    d = STATE / "nginx" / re.sub(r"[^A-Za-z0-9_-]", "_", str(nid))
+    return d / "certs" / re.sub(r"[^a-z0-9.-]", "_", host.lower()) if host else d
+
+
+def _cert_slug(host):
+    """A hostname as a compose config name: letters, digits and _."""
+    return re.sub(r"[^a-z0-9]", "_", host.lower())
+
+
+def cert_paths(rec, host):
+    """(cert, key) paths inside the container for a server's hostname:
+    its own certificate where it has one (R175), else the node's default,
+    else none."""
+    if host and host != "*" and ((rec.get("certs") or {}).get(host) or {}).get("set"):
+        return f"/etc/nginx/certs/{host}/cert.pem", f"/etc/nginx/certs/{host}/key.pem"
+    if (rec.get("cert") or {}).get("set"):
+        return "/etc/nginx/certs/cert.pem", "/etc/nginx/certs/key.pem"
+    return "", ""
 
 
 def container_name(nid):
@@ -97,11 +116,13 @@ def clean_routes(routes):
     return out
 
 
-def nginx_conf(routes, has_cert):
+def nginx_conf(routes, has_cert, rec=None):
     """nginx's config from the routes: a server per hostname, each path to
-    its port on this machine, 443 with the certificate where there is one,
-    and any name not routed answered by closing the connection, so the box
-    serves nothing it was not told to."""
+    its port on this machine, 443 with the certificate where there is one
+    (the hostname's own, else the node's default: R175), and any name not
+    routed answered by closing the connection, so the box serves nothing it
+    was not told to. `has_cert` is the default's; `rec` carries the rest."""
+    rec = rec if rec is not None else ({"cert": {"set": True}} if has_cert else {})
     by_host = {}
     for r in routes:
         by_host.setdefault(r["host"], []).append(r)
@@ -127,20 +148,22 @@ def nginx_conf(routes, has_cert):
     any_host = "*" in by_host
     if not any_host:
         lines.append("  server { listen 80 default_server; server_name _; return 444; }")
-    if has_cert and not (any_host and any(r["tls"] for r in by_host["*"])):
+    dflt = cert_paths(rec, "*")
+    if dflt[0] and not (any_host and any(r["tls"] for r in by_host["*"])):
         lines.append("  server { listen 443 ssl default_server; server_name _; "
-                     "ssl_certificate /etc/nginx/certs/cert.pem; ssl_certificate_key /etc/nginx/certs/key.pem; return 444; }")
+                     f"ssl_certificate {dflt[0]}; ssl_certificate_key {dflt[1]}; return 444; }}")
     for host, rs in by_host.items():
         name = "_" if host == "*" else host
+        cert, key = cert_paths(rec, host)
         for listen in ("80", "443 ssl"):
-            if listen.startswith("443") and not (has_cert and any(r["tls"] for r in rs)):
+            if listen.startswith("443") and not (cert and any(r["tls"] for r in rs)):
                 continue
             lines.append("  server {")
             lines.append(f"    listen {listen}{' default_server' if host == '*' else ''};")
             lines.append(f"    server_name {name};")
             if listen.startswith("443"):
-                lines.append("    ssl_certificate /etc/nginx/certs/cert.pem;")
-                lines.append("    ssl_certificate_key /etc/nginx/certs/key.pem;")
+                lines.append(f"    ssl_certificate {cert};")
+                lines.append(f"    ssl_certificate_key {key};")
             # The longest path first, so /api wins over / for /api/x.
             for r in sorted(rs, key=lambda x: -len(x["path"])):
                 if listen.startswith("443") and not r["tls"]:
@@ -165,7 +188,10 @@ def compose_text(nid, rec):
     goes to the node."""
     routes = rec.get("routes") or []
     has_cert = bool((rec.get("cert") or {}).get("set"))
-    conf = nginx_conf(routes, has_cert)
+    # The hostnames' own certificates that a route uses (R175).
+    own = sorted(h for h, c in (rec.get("certs") or {}).items()
+                 if (c or {}).get("set") and any(r["host"] == h for r in routes))
+    conf = nginx_conf(routes, has_cert, rec)
     out = ["# Written by BuilderBot from the nginx tab (nginxproxy.py); Save there rewrites it.",
            "services:",
            "  nginx:",
@@ -178,6 +204,9 @@ def compose_text(nid, rec):
     if has_cert:
         out += ["      - source: tls_cert", "        target: /etc/nginx/certs/cert.pem",
                 "      - source: tls_key", "        target: /etc/nginx/certs/key.pem", "        mode: 0400"]
+    for h in own:
+        out += [f"      - source: tls_cert_{_cert_slug(h)}", f"        target: /etc/nginx/certs/{h}/cert.pem",
+                f"      - source: tls_key_{_cert_slug(h)}", f"        target: /etc/nginx/certs/{h}/key.pem", "        mode: 0400"]
     # compose reads $name in a config's content as its own variable and
     # empties it (nginx's $host became nothing on bb-dev-sandbox, 10 Oct):
     # a literal dollar is written $$ there.
@@ -186,13 +215,17 @@ def compose_text(nid, rec):
         cert, key = _read_cert(nid)
         out += ["  tls_cert:", "    content: |", _indent(cert, 6),
                 "  tls_key:", "    content: |", _indent(key, 6)]
+    for h in own:
+        cert, key = _read_cert(nid, h)
+        out += [f"  tls_cert_{_cert_slug(h)}:", "    content: |", _indent(cert, 6),
+                f"  tls_key_{_cert_slug(h)}:", "    content: |", _indent(key, 6)]
     return "\n".join(out) + "\n"
 
 
 # ---- the certificate ---------------------------------------------------------
 
-def _read_cert(nid):
-    d = _cert_dir(nid)
+def _read_cert(nid, host=""):
+    d = _cert_dir(nid, host)
     try:
         return (d / "cert.pem").read_text(), (d / "key.pem").read_text()
     except OSError:
@@ -232,33 +265,47 @@ def check_cert(cert, key):
     return {"subject": subject or alt or "(no name)", "names": alt, "expires": expires}
 
 
-def set_cert(nid, cert, key):
+def set_cert(nid, cert, key, host=""):
+    """The node's default certificate, or with `host` that hostname's own
+    (R175): checked, kept 0600, summarized in the record."""
+    host = str(host or "").strip().lower()
+    if host and not HOST_RE.match(host):
+        return {"error": f"a certificate is for a hostname like www.example.com, or the node's default: not {host}"}
     got = check_cert(cert, key)
     if got.get("error"):
         return got
-    d = _cert_dir(nid)
+    d = _cert_dir(nid, host)
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name, text in (("cert.pem", cert), ("key.pem", key)):
         p = d / name
         p.write_text(str(text).strip() + "\n")
         p.chmod(0o600)
+    summary = {"set": True, "subject": got["subject"], "names": got["names"],
+               "expires": got["expires"], "at": int(time.time())}
     with _lock:
         st = _load()
         rec = st.setdefault(str(nid), {})
-        rec["cert"] = {"set": True, "subject": got["subject"], "names": got["names"],
-                       "expires": got["expires"], "at": int(time.time())}
+        if host:
+            rec.setdefault("certs", {})[host] = summary
+        else:
+            rec["cert"] = summary
         _save(st)
-    return {"ok": True, "cert": rec["cert"]}
+    return {"ok": True, "cert": summary, "host": host}
 
 
-def drop_cert(nid):
-    d = _cert_dir(nid)
+def drop_cert(nid, host=""):
+    host = str(host or "").strip().lower()
+    d = _cert_dir(nid, host)
     for name in ("cert.pem", "key.pem"):
         with contextlib.suppress(OSError):
             (d / name).unlink()
     with _lock:
         st = _load()
-        (st.get(str(nid)) or {}).pop("cert", None)
+        rec = st.get(str(nid)) or {}
+        if host:
+            (rec.get("certs") or {}).pop(host, None)
+        else:
+            rec.pop("cert", None)
         _save(st)
     return {"ok": True}
 
@@ -284,6 +331,7 @@ def view(devapp, instance_state):
         row = {"node": nid, "name": n.get("name") or nid, "host_only": bool((n.get("config") or {}).get("host_only")),
                "container": name, "deployed": bool(deployed),
                "routes": rec.get("routes") or [], "cert": rec.get("cert") or {},
+               "certs": rec.get("certs") or {},
                "live": n.get("live"), "clash": []}
         if deployed:
             with contextlib.suppress(Exception):  # noqa: BLE001 (a row still draws without its state)

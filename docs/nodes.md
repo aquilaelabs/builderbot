@@ -1033,6 +1033,9 @@ the pieces stack:
    publishes on that node, with or without TLS) and its certificate (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back), and
+   A certificate is the node's default, for any hostname without its own,
+   or one hostname's own (R175), since an origin certificate covers one
+   zone and a node may serve sites on several; nginx picks by server name.
    Deploy writes a container from them through the written-container path
    (`containers.create_container`), its nginx config and certificate inline
    in the compose file as compose `configs`, so the node's compose job needs
