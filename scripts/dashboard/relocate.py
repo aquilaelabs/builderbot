@@ -37,7 +37,7 @@ HELPER = "busybox:1.36"
 PACK_PY = r"""
 import json, os, subprocess, sys, tarfile
 pname, out, data, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-cdir = os.path.dirname(out)
+work = os.path.dirname(out)
 names = subprocess.run(["docker", "volume", "ls", "-q", "--filter",
                         "label=com.docker.compose.project=" + pname],
                        check=True, capture_output=True, text=True).stdout.split()
@@ -45,38 +45,42 @@ vols, parts = [], []
 for i, v in enumerate(sorted(names)):
     part = f"vol-{i}.tgz"
     print(f"packing the volume {v}", flush=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{cdir}:/o", helper,
+    subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{work}:/o", helper,
                     "tar", "czf", "/o/" + part, "-C", "/v", "."], check=True)
     vols.append({"name": v, "part": part})
     parts.append(part)
 has_data = bool(data) and os.path.isdir(data)
 if has_data:
     print(f"packing the data directory {data}", flush=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v:ro", "-v", f"{cdir}:/o", helper,
+    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v:ro", "-v", f"{work}:/o", helper,
                     "tar", "czf", "/o/data.tgz", "-C", "/v", "."], check=True)
     parts.append("data.tgz")
-with open(os.path.join(cdir, "manifest.json"), "w") as f:
+with open(os.path.join(work, "manifest.json"), "w") as f:
     json.dump({"project": pname, "volumes": vols, "data": has_data}, f)
 with tarfile.open(out, "w") as t:
     for p in ["manifest.json", *parts]:
-        t.add(os.path.join(cdir, p), arcname=p)
+        t.add(os.path.join(work, p), arcname=p)
 for p in ["manifest.json", *parts]:
-    os.remove(os.path.join(cdir, p))
+    os.remove(os.path.join(work, p))
 print(f"packed {len(vols)} volume(s)" + (" and the data directory" if has_data else ""), flush=True)
 """
 
 # Run on the new node: the volumes made again under the new instance's name
 # (labeled as compose labels its own, so compose takes them as its), filled,
-# and the data directory filled. A volume already there is refused rather
-# than written over.
+# and the data directory filled. A volume already there with anything in
+# it is refused rather than written over; an empty one (what a try that
+# failed left behind) is filled. Neither script may spell the plan's {cdir}
+# placeholder in its text: the agent rewrites that wherever it stands in
+# argv, the python included, and the helper's mount pointed at the compose
+# directory while the tar had gone into in/ (B659).
 UNPACK_PY = r"""
 import json, os, subprocess, sys, tarfile
 pname, old, src, data, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
-cdir = os.path.join(os.path.dirname(src), "in")
-os.makedirs(cdir, exist_ok=True)
+work = os.path.join(os.path.dirname(src), "in")
+os.makedirs(work, exist_ok=True)
 with tarfile.open(src) as t:
-    t.extractall(cdir, filter="data")
-m = json.load(open(os.path.join(cdir, "manifest.json")))
+    t.extractall(work, filter="data")
+m = json.load(open(os.path.join(work, "manifest.json")))
 have = set(subprocess.run(["docker", "volume", "ls", "-q"], check=True,
                           capture_output=True, text=True).stdout.split())
 for v in m.get("volumes") or []:
@@ -84,19 +88,24 @@ for v in m.get("volumes") or []:
     key = name[len(old) + 1:] if name.startswith(old + "_") else name
     new = f"{pname}_{key}" if name.startswith(old + "_") else name
     if new in have:
-        sys.exit(f"a volume called {new} is already on this node: remove it first, or pick another name")
-    print(f"making the volume {new}", flush=True)
-    subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + pname,
-                    "--label", "com.docker.compose.volume=" + key, new], check=True, capture_output=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v", "-v", f"{cdir}:/i:ro", helper,
+        held = subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v:ro", helper, "sh", "-c", "ls -A /v | head -1"],
+                              check=True, capture_output=True, text=True).stdout.strip()
+        if held:
+            sys.exit(f"a volume called {new} is already on this node with files in it: remove it first, or pick another name")
+        print(f"filling the empty volume {new} left by an earlier try", flush=True)
+    else:
+        print(f"making the volume {new}", flush=True)
+        subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + pname,
+                        "--label", "com.docker.compose.volume=" + key, new], check=True, capture_output=True)
+    subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v", "-v", f"{work}:/i:ro", helper,
                     "tar", "xzf", "/i/" + v["part"], "-C", "/v"], check=True)
 if m.get("data"):
     if not data:
         sys.exit("the old node had a data directory and this one has no place for it")
     print(f"filling the data directory {data}", flush=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v", "-v", f"{cdir}:/i:ro", helper,
+    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v", "-v", f"{work}:/i:ro", helper,
                     "tar", "xzf", "/i/data.tgz", "-C", "/v"], check=True)
-subprocess.run(["rm", "-rf", cdir, src])
+subprocess.run(["rm", "-rf", work, src])
 print("unpacked", flush=True)
 """
 
@@ -300,6 +309,19 @@ def _undo(project, plan, why):
     _queue_on(project, dest, plan["old"], "start")
 
 
+def _last_said(job):
+    """The last line a failed job wrote, for the row to carry: 'the Jobs
+    tab has why' sent a person to a tab that then showed them nothing
+    (B658), and the why is usually the log's last line (a tar's refusal, a
+    volume already there)."""
+    try:
+        text = (devapp.queue.job((job or {}).get("id"), with_log=True) or {}).get("log") or ""
+    except Exception:            # noqa: BLE001 (a missing log is no reason to lose the row's sentence)
+        text = ""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.startswith(("$ ", "    ", "Traceback"))]
+    return lines[-1][:200] if lines else ""
+
+
 def done(job, state):
     """compose_done's turn for a relocation's job: the next one, or the way
     back. Returns the row's sentence for a failure, "" otherwise."""
@@ -312,8 +334,9 @@ def done(job, state):
     plan = {k: v for k, v in rel.items() if k not in ("stage", "out_job")}
     if stage == "out":
         if state != "succeeded" or not _data_file(project, plan["to"]).is_file():
+            said = _last_said(job)
             _undo(project, plan | {"stage": "out"}, "the data could not be packed on the old node")
-            return "packing its data on the old node failed: the Jobs tab has why"
+            return "packing its data on the old node failed" + (f": {said}" if said else "")
         r = _in_job(project, plan, job.get("id"))
         if r.get("error"):
             _undo(project, plan | {"stage": "out"}, r["error"])
@@ -322,8 +345,9 @@ def done(job, state):
     if stage == "in":
         _data_file(project, plan["to"]).unlink(missing_ok=True)
         if state != "succeeded":
+            said = _last_said(job)
             _undo(project, plan | {"stage": "in"}, "the data could not be unpacked on the new node")
-            return "unpacking its data on the new node failed: the Jobs tab has why"
+            return "unpacking its data on the new node failed" + (f": {said}" if said else "")
         if plan["mode"] == "move":
             _set(project, plan["to"], node=plan["new"], ship=True if plan["ship"] else None)
         _set(project, plan["to"], relocating=plan | {"stage": "build"})

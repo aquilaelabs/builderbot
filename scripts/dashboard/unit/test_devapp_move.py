@@ -12,10 +12,36 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import devapp  # noqa: E402
+import relocate  # noqa: E402
 
 
 def write_json(p, d, mode=0o644):
     Path(p).write_text(json.dumps(d))
+
+
+class Scripts(unittest.TestCase):
+    """The pack and unpack scripts ride the plan's argv, where the agent
+    rewrites the {cdir} placeholder wherever it stands: a variable of that
+    name in the python pointed the helper's mount at the compose directory
+    while the tar had gone into in/ (B659). And a failed stage's row says
+    what the job last wrote, not where to look (B658)."""
+
+    def test_the_scripts_never_spell_the_placeholder(self):
+        for text in (relocate.PACK_PY, relocate.UNPACK_PY):
+            self.assertNotIn("{cdir}", text)
+            self.assertNotIn("cdir", text, "not even as a name, so an edit cannot bring it back")
+        self.assertIn("left by an earlier try", relocate.UNPACK_PY, "an empty volume from a failed try is filled")
+
+    def test_a_failed_stage_carries_the_last_line_written(self):
+        class Q:
+            def job(self, jid, with_log=False):
+                return {"id": jid, "log": "compose\n$ python3 -c\n    code\nmaking the volume x\ntar: can't open '/i/vol-0.tgz': No such file or directory\nTraceback (most recent call last):\n    more\n"}
+        saved = devapp.queue
+        devapp.queue = Q()
+        try:
+            self.assertEqual(relocate._last_said({"id": "j_1"}), "tar: can't open '/i/vol-0.tgz': No such file or directory")
+        finally:
+            devapp.queue = saved
 
 
 class Move(unittest.TestCase):

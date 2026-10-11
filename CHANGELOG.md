@@ -439,6 +439,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a phone the Storage tab's By project table shows each project's folders with their names beside the numbers, and says none where a folder is empty; at a desk it is a table under a head row (B655) (ea72d42)
 - The node agent no longer says hello every hundred seconds: the session network keeper read the containers' entry on its stored status as a change every step (B647). Agent 0.7.169 (d535d32)
 - A certificate pasted on the nginx tab for the node's default while another domain's default stands goes under its own domain beside it and the tab says so; only a pair for the same names replaces the default (B657) (1559204)
+- Copy or move of a container to another node unpacks its data again (the unpack script spelt the plan's {cdir} placeholder, so the helper mounted the wrong directory); an empty volume a failed try left is filled, and a failed stage's row says what the job last wrote (B659, B658) (fd5ce05)
 
 ### Security
 
