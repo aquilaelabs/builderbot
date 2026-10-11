@@ -172,6 +172,9 @@ def _read(p):
 # thread and at most once a minute: an agent path that is not one answers
 # 405 with this server's JSON, and anything else is somebody else.
 ROUTE_EVERY = 60
+# Where the name is asked: https://HOST, or the harness's own server, which
+# stands in for a tunnel whose name nobody owns.
+ROUTE_BASE = os.environ.get("BB_TUNNEL_ROUTE_BASE", "")
 _route = {"at": 0, "ok": None, "said": "", "host": ""}
 
 
@@ -179,7 +182,7 @@ def route_check(host):
     """(ok, said) for https://HOST/api/v1/agent/route-check: ok when the
     answer is this controller's (JSON with an error in it), with what was
     seen otherwise."""
-    req = urllib.request.Request(f"https://{host}/api/v1/agent/route-check", method="GET",
+    req = urllib.request.Request(f"{ROUTE_BASE or 'https://' + host}/api/v1/agent/route-check", method="GET",
                                  headers={"User-Agent": "builderbot-route-check"})
     try:
         with urlopen(req, timeout=15) as r:
