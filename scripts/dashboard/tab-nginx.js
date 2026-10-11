@@ -83,10 +83,18 @@ function nginxDraftOf(n){
   return nginxDraft[n.node] || (nginxDraft[n.node] = {routes: (n.routes || []).map(r => ({...r})), cert: "", key: "", drop: false, certFor: ""});
 }
 
-// The hostnames a certificate can be for: the routes' own, without *.
+// The hostnames a certificate can be for: the routes' own, without *, and
+// each one's parent domains, since a pair saved under example.com covers
+// every a.example.com route (one wildcard pair per domain, the operator,
+// 11 Oct); the top label alone is nobody's.
 function nginxHosts(n, d){
-  return [...new Set([...(d?.routes || n.routes || []).map(r => r.host), ...Object.keys(n.certs || {})])]
-    .filter(h => h && h !== "*").sort();
+  const out = new Set(Object.keys(n.certs || {}));
+  for (const h of (d?.routes || n.routes || []).map(r => r.host)){
+    if (!h || h === "*") continue;
+    const parts = h.split(".");
+    for (let i = 0; i < parts.length - 1; i++) out.add(parts.slice(i).join("."));
+  }
+  return [...out].filter(h => h && h !== "*").sort();
 }
 
 // Each certificate the node holds, one line: the default, then each
@@ -130,7 +138,7 @@ function nginxBody(n){
     <div class="field">
       ${lbl("", "Certificates")}
       <div class="hint">${nginxCertLines(n)}</div>
-      <div class="hint">One per hostname where a site needs its own (an origin certificate covers one domain), and the node's default for every hostname without one. Paste a pair for the one picked; a key is kept on the controller and never shown.</div>
+      <div class="hint">One per hostname, or one per domain that its subdomains' routes share (a wildcard or an origin certificate for example.com covers a.example.com and b.example.com), and the node's default for every hostname without one. Paste a pair for the one picked; a key is kept on the controller and never shown.</div>
     </div>
     <div class="field">
       ${lbl("ngCertFor", "For")}

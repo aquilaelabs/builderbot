@@ -119,6 +119,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb logs --node NAME --nginx reads the node's nginx log, a fourth machine log stream under the project's Debugging grant beside the agent's journal, the runner's and the terminal server's (R182) (a9dbd2b)
 - A container BuilderBot deploys itself, the nginx tab's today, is System's: an owner no picker sets, shown as its own group on the Docker tab, and given every container on its node by the containers' network map (R180). Agent 0.7.167 reads the map's all (f85be0e)
 - bb logs --node NAME --system, --kernel and --crash read this boot's journal, the kernel ring and the previous boot's last lines under the project's Debugging grant (R183) (f85be0e)
+- A certificate saved on the nginx tab for a domain covers its subdomains' routes: one wildcard or origin pair under example.com serves a.example.com and b.example.com, another domain's pair its own, and a hostname's own still wins; the For picker offers each route's parent domains (16c0aee)
 
 ### Changed
 

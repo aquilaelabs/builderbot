@@ -76,12 +76,31 @@ def _cert_slug(host):
     return re.sub(r"[^a-z0-9]", "_", host.lower())
 
 
+def cert_for(rec, host):
+    """The hostname whose certificate a server's hostname uses, or "" for
+    the node's default: its own where it has one (R175), else the nearest
+    parent domain with one (the operator, 11 Oct: one wildcard pair saved
+    under example.com covers a.example.com and b.example.com, and another
+    domain's pair its own subdomains), so a pair is pasted once per domain
+    rather than once per hostname."""
+    certs = rec.get("certs") or {}
+    if not host or host == "*":
+        return ""
+    parts = host.split(".")
+    for i in range(len(parts) - 1):
+        cand = ".".join(parts[i:])
+        if (certs.get(cand) or {}).get("set"):
+            return cand
+    return ""
+
+
 def cert_paths(rec, host):
     """(cert, key) paths inside the container for a server's hostname:
-    its own certificate where it has one (R175), else the node's default,
-    else none."""
-    if host and host != "*" and ((rec.get("certs") or {}).get(host) or {}).get("set"):
-        return f"/etc/nginx/certs/{host}/cert.pem", f"/etc/nginx/certs/{host}/key.pem"
+    its own or its domain's certificate where there is one (cert_for),
+    else the node's default, else none."""
+    own = cert_for(rec, host)
+    if own:
+        return f"/etc/nginx/certs/{own}/cert.pem", f"/etc/nginx/certs/{own}/key.pem"
     if (rec.get("cert") or {}).get("set"):
         return "/etc/nginx/certs/cert.pem", "/etc/nginx/certs/key.pem"
     return "", ""
@@ -190,7 +209,7 @@ def compose_text(nid, rec):
     has_cert = bool((rec.get("cert") or {}).get("set"))
     # The hostnames' own certificates that a route uses (R175).
     own = sorted(h for h, c in (rec.get("certs") or {}).items()
-                 if (c or {}).get("set") and any(r["host"] == h for r in routes))
+                 if (c or {}).get("set") and any(cert_for(rec, r["host"]) == h for r in routes))
     conf = nginx_conf(routes, has_cert, rec)
     out = ["# Written by BuilderBot from the nginx tab (nginxproxy.py); Save there rewrites it.",
            "services:",

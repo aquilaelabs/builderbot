@@ -97,6 +97,28 @@ class Certificate(unittest.TestCase):
         self.assertFalse(os.path.exists(key))
         self.assertNotIn("cert", npx.record("n1"))
 
+    def test_a_domains_certificate_covers_its_subdomains(self):
+        """One pair per domain (the operator, 11 Oct): saved under
+        example.com it serves a.example.com and b.example.com, and another
+        domain's pair its own; a hostname's own still wins over its domain's."""
+        npx.save_routes("n1", [{"host": "a.example.com", "path": "/", "port": 8080},
+                               {"host": "b.example.com", "path": "/", "port": 8081},
+                               {"host": "www.other.net", "path": "/", "port": 8082}])
+        self.assertEqual(npx.set_cert("n1", self.cert, self.key, host="example.com")["host"], "example.com")
+        rec = npx.record("n1")
+        self.assertEqual(npx.cert_for(rec, "a.example.com"), "example.com")
+        self.assertEqual(npx.cert_for(rec, "www.other.net"), "", "another domain is not covered")
+        self.assertEqual(npx.cert_for(rec, "com"), "", "the top label is nobody's")
+        conf = npx.nginx_conf(rec["routes"], False, rec)
+        self.assertEqual(conf.count("ssl_certificate /etc/nginx/certs/example.com/cert.pem;"), 2,
+                         "both subdomains' servers use the domain's pair")
+        text = npx.compose_text("n1", rec)
+        self.assertIn("tls_cert_example_com:\n    content: |", text, "the pair rides the compose file once")
+        npx.set_cert("n1", self.cert, self.key, host="a.example.com")
+        self.assertEqual(npx.cert_for(npx.record("n1"), "a.example.com"), "a.example.com", "its own wins")
+        npx.drop_cert("n1", host="a.example.com")
+        npx.drop_cert("n1", host="example.com")
+
     def test_a_hostname_may_have_its_own_beside_the_default(self):
         """One certificate per hostname (R175): a site on another domain
         behind the same nginx gets its own, the rest use the default."""
