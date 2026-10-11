@@ -1,4 +1,5 @@
 """What every part of the agent shares: the constants naming the node's paths and tools, the log, and the small runners of a command."""
+import json
 import hashlib
 import os
 import re
@@ -237,6 +238,27 @@ def hello_again(agent, why):
         fn(why)
     else:
         agent.hello_at = 0
+
+
+def daemon_json_with_ip(text, on):
+    """/etc/docker/daemon.json as it should read with published ports bound
+    to 127.0.0.1 by default (`ip`, docker's own default bind address) or not
+    (R190): the file's other keys kept, a file that is not JSON left alone.
+    Returns the new text, or None when nothing has to change."""
+    try:
+        d = json.loads(text) if text.strip() else {}
+    except ValueError:
+        return None
+    if not isinstance(d, dict):
+        return None
+    want = "127.0.0.1" if on else None
+    if d.get("ip") == want or (want is None and "ip" not in d):
+        return None
+    if want is None:
+        d.pop("ip", None)
+    else:
+        d["ip"] = want
+    return json.dumps(d, indent=2) + "\n"
 
 
 def own_path():

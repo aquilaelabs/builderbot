@@ -1107,6 +1107,8 @@ def _census(c):
     tc = c.get("toolchains") if isinstance(c.get("toolchains"), dict) else {}
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}
+    # The address docker binds published ports to by default (R190).
+    out["docker_ip"] = str(c.get("docker_ip") or "")[:40]
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
@@ -1632,6 +1634,38 @@ def node_container_net(principal, node_id, on):
     _bump()
     # The next hello carries it: asked for now rather than at the agent's
     # next ten-minute turn.
+    ask_hello(node_id)
+    return {"ok": True, "on": bool(on)}
+
+
+def ports_local_on(node_id):
+    """Whether published ports on this node bind to 127.0.0.1 by default
+    (R190): the config says, and a hosting-only node has it unless switched
+    off, since that is the node reached over the internet, where a port
+    published on every address is open to the world and not only to its
+    nginx (the operator, 11 Oct). A compose that names an address
+    (0.0.0.0:PORT:80) publishes where it says, switch or no switch."""
+    n = node(node_id) or {}
+    conf = n.get("config") or {}
+    if "ports_local" in conf:
+        return bool(conf.get("ports_local"))
+    return bool(host_only(n))
+
+
+def node_ports_local(principal, node_id, on):
+    """The switch (R190), an administrator's like the rest of the config
+    plane; the next hello carries it to the agent, which writes docker's
+    daemon.json and restarts docker once."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node binds its published ports"}
+    conf = dict(n.get("config") or {})
+    conf["ports_local"] = bool(on)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-ports-local", {"on": bool(on)})
+    _bump()
     ask_hello(node_id)
     return {"ok": True, "on": bool(on)}
 
@@ -2693,6 +2727,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             # A hosting-only node is told so, and keeps no session half, no
             # synced copy and no bb of its own (host_only).
             "host_only": host_only(nid),
+            # Published ports bound to 127.0.0.1 by default there (R190).
+            "ports_local": ports_local_on(nid),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -4347,6 +4383,11 @@ def verb(principal, req):
         # containers (R79). An administrator's, like the rest.
         return node_session_net(principal, nid, req.get("on") is True)
 
+    def ports_local():
+        # Whether published ports on the node bind to 127.0.0.1 by default
+        # (R190). An administrator's, like the rest.
+        return node_ports_local(principal, nid, req.get("on") is True)
+
     def root_asks():
         # Whether a session on the node may ask for a root command at
         # all. An administrator's, like the rest.
@@ -4505,7 +4546,7 @@ def verb(principal, req):
              "reboot": power, "poweroff": power, "gpu-display": gpu_display,
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
-             "test-workers": test_workers, "session-net": session_net,
+             "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
              "root-asks": root_asks, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),

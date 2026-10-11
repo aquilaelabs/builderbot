@@ -552,7 +552,7 @@ function nodeSessionsSection(n){
   const list = n.reported?.sessions || [];
   let status, cls, body;
   if (n.config?.host_only){
-    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodeToolsLine(n), {cls: "ok"});
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeToolsLine(n), {cls: "ok"});
   }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
@@ -581,6 +581,7 @@ function nodeSessionsSection(n){
       ${nodeSyncRow(n)}
       ${nodeSessNetRow(n)}
       ${nodeContainerNetRow(n)}
+      ${nodePortsLocalRow(n)}
       ${nodeTurnsRow(n)}`;
   }
   // ...and the node's phone and CI runner, which are tabs of their own
@@ -670,6 +671,30 @@ function nodeContainerNetRow(n){
     ${line}
     <div class="actbar"><span class="state"></span><span class="sp"></span>
       <button type="button" data-nd="ctr-net-save"${c.draft.ctrNet === on ? " disabled" : ""}>Save</button></div>
+  </div>`;
+}
+
+// Published ports bound to 127.0.0.1 by default (R190): on for a hosting-only
+// node unless switched off, since there a port on every address is open to
+// the world and not only to its nginx. The census says what docker binds to.
+function nodePortsLocalRow(n){
+  const c = nodeDraft(n);
+  const on = "ports_local" in (n.config || {}) ? !!n.config.ports_local : !!n.config?.host_only;
+  if (c.draft.portsLocal === undefined || c.draft.portsFrom !== on){
+    c.draft.portsLocal = on; c.draft.portsFrom = on;
+  }
+  const ip = n.reported?.docker_ip;
+  const line = ip === undefined ? `<div class="sub warn">Update the agent: this one does not say what docker binds published ports to.</div>`
+    : on && ip === "127.0.0.1" ? `<div class="sub">In force: a published port binds to 127.0.0.1 unless its compose names an address, so only this node's nginx and its tunnel reach it.</div>`
+    : on ? `<div class="sub dim">Setting it up: the agent writes docker's daemon.json and restarts docker once.</div>`
+    : ip === "127.0.0.1" ? `<div class="sub dim">Off, and docker still binds to 127.0.0.1 until the agent puts it back.</div>`
+    : `<div class="sub">Off: a published port binds to every address of this node, the internet's included where the node is on it.</div>`;
+  return `<div class="field">
+    <label class="ndcap"><input type="checkbox" data-k="portslocal" ${c.draft.portsLocal ? "checked" : ""}>
+      published ports stay on this node (bound to 127.0.0.1; a compose naming 0.0.0.0:PORT publishes it anyway)</label>
+    ${line}
+    <div class="actbar"><span class="state"></span><span class="sp"></span>
+      <button type="button" data-nd="ports-local-save"${c.draft.portsLocal === on ? " disabled" : ""}>Save</button></div>
   </div>`;
 }
 
@@ -1859,6 +1884,18 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         await loadNodes();
         return;
       }
+      if (act === "ports-local-save"){
+        const sw = b.closest(".field")?.querySelector('[data-k="portslocal"]');
+        if (!sw) return;
+        busy(b, "Saving");
+        const k = await nodeAct({action: "ports-local", id, on: sw.checked});
+        if (k.error) notify(k.error, true);
+        else notify(sw.checked ? "published ports here bind to 127.0.0.1 from the next hello: the agent writes docker's daemon.json and restarts docker once"
+                               : "published ports here bind to every address from the next hello: docker restarts once");
+        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.portsLocal = undefined;
+        await loadNodes();
+        return;
+      }
       if (act === "root-asks-host"){
         const ra = b.closest(".field")?.querySelector('[data-k="rootasks"]');
         if (!ra) return;
@@ -2117,6 +2154,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const cn = box.querySelector('[data-k="ctrnet"]');
     if (cn) cn.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.ctrNet = cn.checked;
                                   const sb = cn.closest(".field")?.querySelector('[data-nd="ctr-net-save"]'); if (sb) sb.disabled = false; };
+    const pl = box.querySelector('[data-k="portslocal"]');
+    if (pl) pl.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.portsLocal = pl.checked;
+                                  const sb = pl.closest(".field")?.querySelector('[data-nd="ports-local-save"]'); if (sb) sb.disabled = false; };
     if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked;
                                   // A hosting-only row's own Save wakes with the tick (nodeHostRootRow).
                                   const sb = ra.closest(".field")?.querySelector('[data-nd="root-asks-host"]'); if (sb) sb.disabled = false; };

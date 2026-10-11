@@ -1221,6 +1221,17 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(cnOff.ok && hc2.session_net?.ctr_on === false && !Object.keys(hc2.session_net?.ctr || {}).length,
        '...and switched off, the next hello says so and carries no map');
     await napi('/api/v1/nodes', { action: 'container-net', id: minted.id, on: true });
+    // ...and its published ports bind to 127.0.0.1 by default (R190): the
+    // hello says so and the row's switch is on; switched off, the next
+    // hello says so; the census says what docker binds to.
+    ok(hc.ports_local === true && await page.$eval(`${ROW} [data-k="portslocal"]`, c => c.checked),
+       `a hosting-only node binds its published ports to 127.0.0.1 by default: the hello says so and the row's switch is on (${hc.ports_local})`);
+    const plOff = await napi('/api/v1/nodes', { action: 'ports-local', id: minted.id, on: false });
+    const hp = await (await agent('hello', { census: { ...CENSUS, docker_ip: '127.0.0.1' }, version: shipped.version, digest: shipped.digest })).json();
+    const rowNow = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(plOff.ok && hp.ports_local === false && rowNow?.reported?.docker_ip === '127.0.0.1',
+       `...and switched off, the next hello says so, and the census's bind address is on the record (${rowNow?.reported?.docker_ip})`);
+    await napi('/api/v1/nodes', { action: 'ports-local', id: minted.id, on: true });
     const codes = {};
     for (const v of ['sync', 'claude', 'sessions', 'runner-token', 'signing-key'])
       codes[v] = (await agent(v, { action: 'projects' })).status;

@@ -1061,6 +1061,13 @@ the pieces stack:
    (`ssl_reject_handshake`), and a default from before is read in as a
    listed pair under its domain. An origin certificate covers one zone and
    a node may serve sites on several; nginx picks by server name.
+   On a hosting-only node a container's published ports bind to
+   `127.0.0.1` by default (R190: docker's `ip` in `daemon.json`, written by
+   the agent when the switch on the node's row says so, on by default for
+   a hosting-only node, docker restarted once), so only the node's nginx
+   and its tunnel reach them and nothing is open to the internet by
+   accident; a port that must be public is published as `0.0.0.0:PORT:80`
+   in the compose on purpose.
    Deploy writes a container from them through the written-container path
    (`containers.create_container`), its nginx config and certificate inline
    in the compose file as compose `configs`, so the node's compose job needs

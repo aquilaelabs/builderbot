@@ -256,6 +256,14 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                                              "ctr_on": bool(sn.get("ctr_on")),
                                              "ctr": sn.get("ctr") if isinstance(sn.get("ctr"), dict) else {}}
                 save_state(self.state)
+            # Published ports bound to 127.0.0.1 by default (R190): the
+            # controller's switch, kept in node.json and applied when it
+            # moves; an older controller says nothing and nothing changes.
+            pl = r.get("ports_local")
+            if isinstance(pl, bool) and pl != self.state.get("ports_local"):
+                self.state["ports_local"] = pl
+                save_state(self.state)
+                self.apply_ports_local(pl)
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in

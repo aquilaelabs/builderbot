@@ -444,19 +444,22 @@ def work_tree(project, instance):
 ROUTE_MODES = ("lan", "funnel", "public")
 
 
-def _published(ports):
+def _published(ports, local=False):
     """The published TCP ports of an instance, from either shape the two
-    listings use: "7475->7474/tcp" strings, or {published, proto} dicts."""
-    out = []
+    listings use: "7475->7474/tcp" or "127.0.0.1:7475->7474/tcp" strings,
+    or {published, proto} dicts. With `local`, the ones bound to the
+    loopback alone (R190), which no address of the node's reaches."""
+    out, loop = [], []
     for p in ports or []:
         if isinstance(p, dict):
             if str(p.get("proto", "tcp")).lower() == "tcp" and str(p.get("published") or "").isdigit():
-                out.append(int(p["published"]))
+                (loop if str(p.get("host_ip") or "").startswith("127.") else out).append(int(p["published"]))
         elif isinstance(p, str) and "->" in p and p.endswith("/tcp"):
             head = p.split("->", 1)[0]
-            if head.isdigit():
-                out.append(int(head))
-    return sorted(set(out))
+            bind, _, num = head.rpartition(":")
+            if num.isdigit():
+                (loop if bind.startswith("127.") or bind == "localhost" else out).append(int(num))
+    return sorted(set(loop)) if local else sorted(set(out) | set(loop))
 
 
 def route_view(project, instance, ports, prefer=None):
@@ -480,10 +483,16 @@ def route_view(project, instance, ports, prefer=None):
                                 and (n.get("reported") or {}).get("sandbox"))
     if mode == "lan":
         host = queue.route_host(nid) if queue is not None and nid else ""
-        if host and port:
+        # A port bound to the loopback alone (R190) has no address of the
+        # node's to be reached at: the node's nginx is what answers for it.
+        if port in _published(ports, local=True) and port not in _published([p for p in ports or [] if not (
+                isinstance(p, str) and p.split("->", 1)[0].rpartition(":")[0].startswith("127."))]):
+            out["why"] = f"published on the node alone (127.0.0.1:{port}): its nginx answers for it"
+        elif host and port:
             out["url"] = f"http://{host}:{port}/"
             out["ready"] = port in pub
-        out["why"] = "" if out["url"] else ("no published port" if not port else "no node address")
+        if not out["url"] and not out["why"]:
+            out["why"] = "no published port" if not port else "no node address"
     elif mode == "funnel":
         ts = (((n or {}).get("reported") or {}).get("services") or {}).get("tailscale") or {}
         dns = ts.get("dns") or ""

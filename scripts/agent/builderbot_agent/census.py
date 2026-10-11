@@ -139,6 +139,15 @@ def machine_now():
     return ""
 
 
+def _docker_ip():
+    try:
+        with open("/etc/docker/daemon.json", encoding="utf-8") as f:
+            d = json.load(f)
+        return str(d.get("ip") or "") if isinstance(d, dict) else ""
+    except (OSError, ValueError):
+        return ""
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -171,6 +180,10 @@ def census(state):
         # value arrives by the route the work already takes.
         "docker_id": _run(["docker", "info", "--format", "{{.ID}}"], timeout=15)
         if shutil.which("docker") else "",
+        # The address published ports bind to by default (daemon.json's ip,
+        # R190): "127.0.0.1" where they stay on the node, "" where docker's
+        # own default (every address) holds.
+        "docker_ip": _docker_ip(),
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
         "gpu_driver": _gpu_driver(),

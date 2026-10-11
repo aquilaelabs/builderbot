@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 from .base import (
+    daemon_json_with_ip,
     DEFAULT_STORES,
     DIAL_BACK_S,
     NEEDRESTART_DIR,
@@ -88,6 +89,41 @@ class ConfigPlaneMixin:
             return ("succeeded", 0) if rc == 0 else ("failed", rc)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def apply_ports_local(self, on):
+        """Published ports bound to 127.0.0.1 by default on this node (R190,
+        the operator, 11 Oct: a port published on a public VPS was open to
+        the world, not only to its nginx): docker's `ip` in daemon.json, and
+        docker restarted once when the file changed (its containers come
+        back on their restart policy). Not root: said, and the census says
+        it is not in force. The hello carries the switch; the first hello
+        of a fresh hosting node applies it before anything runs there."""
+        path = "/etc/docker/daemon.json"
+        if os.geteuid() != 0 or not shutil.which("docker"):
+            log("published ports: this agent is not root here, or docker is not here, so the bind address is left as it is")
+            return
+        try:
+            text = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
+        except OSError as e:
+            log(f"published ports: {path} could not be read ({e})")
+            return
+        new = daemon_json_with_ip(text, on)
+        if new is None:
+            return
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path + ".new", "w", encoding="utf-8") as f:
+                f.write(new)
+            os.replace(path + ".new", path)
+        except OSError as e:
+            log(f"published ports: {path} could not be written ({e})")
+            return
+        log("published ports: bound to 127.0.0.1 by default from now; restarting docker" if on
+            else "published ports: bound to every address by default from now; restarting docker")
+        sc = shutil.which("systemctl")
+        if sc:
+            subprocess.run([sc, "restart", "docker"], capture_output=True, timeout=180, check=False)
+        self.hello_again("published ports' bind address changed")
 
     def _apply_door(self, job, cfg):
         """The door in for SSH on or off (R174): cloudflared's service

@@ -120,6 +120,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container BuilderBot deploys itself, the nginx tab's today, is System's: an owner no picker sets, shown as its own group on the Docker tab, and given every container on its node by the containers' network map (R180). Agent 0.7.167 reads the map's all (f85be0e)
 - bb logs --node NAME --system, --kernel and --crash read this boot's journal, the kernel ring and the previous boot's last lines under the project's Debugging grant (R183) (f85be0e)
 - A certificate saved on the nginx tab for a domain covers its subdomains' routes: one wildcard or origin pair under example.com serves a.example.com and b.example.com, another domain's pair its own, and a hostname's own still wins; the For picker offers each route's parent domains (16c0aee)
+- On a hosting-only node a container's published ports bind to 127.0.0.1 unless its compose names an address, so only the node's nginx and tunnel reach them: a switch on the node's row, on by default there, applied by the agent through docker's daemon.json (R190). Agent 0.7.170 (66793af)
 
 ### Changed
 
@@ -262,6 +263,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The node agent's journal says why it said hello again (the controller asked, the session network moved, a job changed the machine), for B647. Agent 0.7.168 (e278190)
 - On a phone one section is open at a time on every folded surface, the controller Settings tab and the document tabs as the notebook's views: opening one shuts the others, and a desk keeps several open (R184) (1c86974)
 - The nginx tab has no default certificate: a node's pairs are a list keyed by the domain their names say, each route picks the pair it serves 443 with (its domain's when it picks none, or 80 only), and an unrouted name gets no handshake at all; a default from before is read in (R188) (c601071)
+- A container BuilderBot did not start is given to a project only under a name nothing else of that project's answers to: not an instance's compose name, not a stranger already the project's on another node; it is renamed first, so a session's ask by name means one thing (66793af)
 
 ### Removed
 
