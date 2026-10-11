@@ -259,6 +259,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Controller settings is sections like every other tab, each with its own Apply and Revert and a jump bar over them; the Public hostname section carries its own setup steps. (281f4ba)
 - A node's row offers Disable (kept and configured, off every picker and handed no work until Enable) and Un-enroll (BuilderBot taken off the machine and the node removed here; enrolling again starts from Enroll node), in place of Remove and Uninstall. Neither goes through while a session or a container runs on the node. Un-enroll's dialog says what always goes (the agent, every piece of the session isolation, the accounts) and asks about three rings: the stores on the disk, what the dashboard configured after enrolling, and a hosting node's doors and proxy, as `bb-sandbox uninstall --stores --configured --doors` on the machine. (25a595a)
 - The node agent's journal says why it said hello again (the controller asked, the session network moved, a job changed the machine), for B647. Agent 0.7.168 (e278190)
+- On a phone one section is open at a time on every folded surface, the controller Settings tab and the document tabs as the notebook's views: opening one shuts the others, and a desk keeps several open (R184) (1c86974)
 
 ### Removed
 

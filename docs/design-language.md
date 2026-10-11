@@ -513,8 +513,11 @@ Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold
 
 A long surface is sections: `docSection(kind, id, title, status, body)`, one
 fold per concern with its status on the heading in `--f-sect`. Every section is open by
-default and several stand open, at every width (the operator, 8 Oct: too much was hidden
-in folds); a person may shut one, and it stays shut for the page's life. A surface of four
+default at a desk and several stand open there (the operator, 8 Oct: too much was hidden
+in folds); a person may shut one, and it stays shut for the page's life. On a phone one
+section is open at a time on every folded surface, as the notebook's views do: opening
+one shuts the others (the operator, 11 Oct), so the page is never a stack of open folds
+to scroll. A surface of four
 or more sections carries a jump bar (sectJump): their names in a line at the top, each
 scrolling to its own. A status is a word or a number, never a sentence. The sidebar's cards
 are the one arrangement that is stored, at a desk in the arrangement the server holds, and on
@@ -934,8 +937,8 @@ This page's own rules:
 Applies to: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover
 
 The phone and the desktop are both first-class. A surface is not done until
-it has been looked at at both widths: sections open on a desktop and shut on
-a phone, no control spans the screen at either, and a typed field is 16px
+it has been looked at at both widths: sections open on a desktop and one at a
+time on a phone, no control spans the screen at either, and a typed field is 16px
 on iOS alone, so Safari does not zoom.
 
 A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
