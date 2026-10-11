@@ -34,6 +34,23 @@ class SystemOwner(unittest.TestCase):
         self.assertEqual(sorted(m["alpha"]["to"]), ["alpha", "beta", "radarr"], "alpha reads beta, and nothing of System's")
         self.assertNotIn("all", m["alpha"])
 
+    def test_a_strangers_name_must_be_unique_for_the_project_it_is_given_to(self):
+        """A container BuilderBot did not start keeps the name docker gave it,
+        so giving it to a project is refused while that name is an instance's
+        compose name, or a stranger already the project's on another node
+        (the operator, 11 Oct)."""
+        containers._known_container = lambda name: {"name": name, "ours": False}
+        saved = {k: getattr(devapp, k) for k in ("row_named", "on_project_node", "node_name", "write_json")}
+        self.addCleanup(lambda: [setattr(devapp, k, v) for k, v in saved.items()])
+        devapp.on_project_node = lambda whose, node, ship=False: ("", node)
+        devapp.node_name = lambda nid: {"n1": "home", "n2": "vps"}.get(nid, nid)
+        devapp.write_json = lambda path, d: None
+        devapp.row_named = lambda name: ("alpha", "main") if name == "alpha" else None
+        self.assertIn("alpha's container", containers.set_container_owner("alpha", "beta")["error"])
+        devapp._owners = lambda: {"n2": {"radarr": "alpha"}, "n1": {}}
+        self.assertIn("already has a container called radarr on vps", containers.set_container_owner("radarr", "alpha")["error"])
+        self.assertTrue(containers.set_container_owner("sonarr", "alpha").get("ok"), "a name nobody else of alpha's has is given")
+
     def test_no_picker_sets_it(self):
         containers._known_container = lambda name: {"name": name, "ours": False}
         r = containers.set_container_owner("stranger", devapp.SYSTEM)

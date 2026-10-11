@@ -446,6 +446,20 @@ def set_container_owner(name, owner):
         why, own = devapp.on_project_node(owner, node)
         if why:
             return {"error": why}
+        # ...and under a name nothing else of the project's answers to (the
+        # operator, 11 Oct): a container's name is what a session asks for
+        # (bb devapp log NAME), and one that is some instance's compose
+        # name, or a stranger already given to this project on another
+        # node, would make that ask mean two things. Renamed first.
+        cname = c.get("name") or ""
+        row = devapp.row_named(cname)
+        if row:
+            return {"error": f"{cname} is the name of {devapp.owner_of(*row) or row[0]}'s container: "
+                             "rename this one before putting it under a project"}
+        for nid, held in devapp._owners().items():
+            if nid != node and held.get(cname) == owner:
+                return {"error": f"{owner} already has a container called {cname} on "
+                                 f"{devapp.node_name(nid)}: rename this one first, so a session's ask means one thing"}
     with devapp._lock:
         d = devapp._owners()
         held = d.setdefault(node, {})
