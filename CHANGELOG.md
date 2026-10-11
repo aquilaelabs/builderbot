@@ -456,6 +456,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A hosting-only node is given no docker address on the controller: a compose file is checked here with the compose plugin and its data directory is the agent's to make, where an nginx Save on a VPS waited out two 30s ssh timeouts and held the server (R85) (87839c5)
 - A hosting node's published ports really stay on it: the agent sets the bind address every compose network takes, not only the default bridge's, and a container still published on every address says so on its Docker row in red (7d31173)
 - The Docker tab asks the node every time, so a row stops reading 'as last seen' while anything runs there; the kept listing stands in only when the node does not answer (7d31173)
+- An agent update that learns more of the published-ports setting applies it on its own, without the switch being turned off and on (07c6c68)
 
 ### Security
 
