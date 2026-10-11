@@ -140,12 +140,19 @@ def machine_now():
 
 
 def _docker_ip():
+    """127.0.0.1 where published ports stay on the node: both docker's `ip`
+    (the default bridge) and the networks' default bind (every network
+    compose makes), else "" (R190)."""
     try:
         with open("/etc/docker/daemon.json", encoding="utf-8") as f:
             d = json.load(f)
-        return str(d.get("ip") or "") if isinstance(d, dict) else ""
     except (OSError, ValueError):
         return ""
+    if not isinstance(d, dict):
+        return ""
+    br = ((d.get("default-network-opts") or {}).get("bridge") or {}) if isinstance(d.get("default-network-opts"), dict) else {}
+    ip = str(d.get("ip") or "")
+    return ip if ip and br.get("com.docker.network.bridge.host_binding_ipv4") == ip else ""
 
 
 def census(state):

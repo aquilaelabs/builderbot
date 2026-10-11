@@ -15,15 +15,25 @@ class DaemonJson(unittest.TestCase):
         self.m = load()
 
     def test_the_ip_is_set_beside_what_is_there_and_taken_off_again(self):
+        import json
         f = self.m.base.daemon_json_with_ip
-        self.assertEqual(f("", True), '{\n  "ip": "127.0.0.1"\n}\n')
+        both = json.loads(f("", True))
+        self.assertEqual(both, {"ip": "127.0.0.1", "default-network-opts": {"bridge": {
+            "com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}},
+            "the default bridge's and every network compose makes (draconis, 11 Oct)")
         kept = f('{"labels": ["builderbot.sandbox=1"], "log-driver": "json-file"}', True)
         self.assertIn('"labels"', kept)
         self.assertIn('"ip": "127.0.0.1"', kept)
         self.assertIsNone(f(kept, True), "already so: nothing to write, no docker restart")
+        # A node R190's first agent wrote, with `ip` alone, gets the other.
+        self.assertIn("host_binding_ipv4", f('{"ip": "127.0.0.1"}', True))
         off = f(kept, False)
         self.assertNotIn('"ip"', off)
+        self.assertNotIn("default-network-opts", off)
         self.assertIn('"labels"', off)
+        mixed = f('{"default-network-opts": {"bridge": {"com.docker.network.bridge.mtu": "1400"}}}', True)
+        self.assertIn("mtu", mixed, "another bridge option is kept")
+        self.assertIn("mtu", f(mixed, False))
         self.assertIsNone(f("", False), "never set: nothing to take off")
         self.assertIsNone(f("not json {", True), "a file that is not JSON is left alone")
 
@@ -34,6 +44,12 @@ class RowAddress(unittest.TestCase):
         self.assertEqual(devapp._published(ports), [8380, 8381, 9000])
         self.assertEqual(devapp._published(ports, local=True), [8380])
         self.assertEqual(devapp._published([{"published": 80, "proto": "tcp", "host_ip": "127.0.0.1"}], local=True), [80])
+
+    def test_the_listing_keeps_a_loopback_address_and_names_the_open_ones(self):
+        raw = "0.0.0.0:8380->80/tcp, [::]:8380->80/tcp, 127.0.0.1:8381->8080/tcp"
+        self.assertEqual(devapp._ports(raw), ["8380->80/tcp", "127.0.0.1:8381->8080/tcp"],
+                         "one entry per port, the loopback one saying so")
+        self.assertEqual(devapp._published(devapp._ports(raw), local=True), [8381])
 
 
 if __name__ == "__main__":

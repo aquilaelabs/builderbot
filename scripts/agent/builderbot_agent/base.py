@@ -240,6 +240,10 @@ def hello_again(agent, why):
         agent.hello_at = 0
 
 
+# The bridge driver's option for a network's default bind address.
+HOST_BINDING = "com.docker.network.bridge.host_binding_ipv4"
+
+
 def daemon_json_with_ip(text, on):
     """/etc/docker/daemon.json as it should read with published ports bound
     to 127.0.0.1 by default (`ip`, docker's own default bind address) or not
@@ -251,13 +255,30 @@ def daemon_json_with_ip(text, on):
         return None
     if not isinstance(d, dict):
         return None
+    # Two keys: `ip` is the default bridge's, and every network compose makes
+    # is a user-defined one, which takes its bind address from
+    # default-network-opts instead (draconis, 11 Oct: with `ip` alone,
+    # aquilaeLabs's 8380 and 8381 answered from the internet).
     want = "127.0.0.1" if on else None
-    if d.get("ip") == want or (want is None and "ip" not in d):
-        return None
+    before = json.dumps(d, sort_keys=True)
+    opts = d.get("default-network-opts") if isinstance(d.get("default-network-opts"), dict) else {}
+    br = opts.get("bridge") if isinstance(opts.get("bridge"), dict) else {}
     if want is None:
         d.pop("ip", None)
+        br.pop(HOST_BINDING, None)
     else:
         d["ip"] = want
+        br[HOST_BINDING] = want
+    if br:
+        opts["bridge"] = br
+    else:
+        opts.pop("bridge", None)
+    if opts:
+        d["default-network-opts"] = opts
+    else:
+        d.pop("default-network-opts", None)
+    if json.dumps(d, sort_keys=True) == before:
+        return None
     return json.dumps(d, indent=2) + "\n"
 
 
