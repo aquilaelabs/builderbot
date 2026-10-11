@@ -1,11 +1,12 @@
-// The Storage tab (R169): what every node's disks hold, and whose. A
-// section per node: its filesystems as a meter stack, its stores and
-// Docker's share, then each project's folders on it (the synced copy, the
-// build cache, artifacts, a dev instance's data, emulators, the accounts'
-// build caches), largest first, with every project this account may not
-// see folded into one line. The numbers are the agent's hourly walk, said
-// with their age; Measure now asks for a fresh one, which the next hello
-// brings.
+// The Storage tab (R169): what a node's disks hold, and whose. One node at
+// a time, picked in the bar like Toolchains (the node-switcher rule; the
+// operator, 11 Oct): a state row saying when it was measured, its
+// filesystems as a meter stack, its stores and Docker's share, then each
+// project's folders on it (the synced copy, the build cache, artifacts, a
+// dev instance's data, emulators, the accounts' build caches), largest
+// first, with every project this account may not see folded into one
+// line. The numbers are the agent's hourly walk, said with their age;
+// Measure now asks for a fresh one, which the next hello brings.
 //
 // Chrome from docSurface(); the hard rules are uniform.mjs's. Data from
 // /api/storage, read when the tab opens and after Measure now; redrawn on
@@ -17,8 +18,10 @@ let storageList = null;          // last answer, or null before the first
 let storageErr = "";
 let storageRev = 0;
 let storageMay = false;          // whether this account may measure now
+let storageNode = "";            // the node the tab shows
 
-function openStorageTab(){
+function openStorageTab(node){
+  if (node) storageNode = node;
   openTab({kind: "storage", arg: "__storage", label: "Storage"});
 }
 
@@ -36,7 +39,21 @@ async function loadStorage(){
   if (tabs.some(t => t.kind === "storage")) drawPanes();
 }
 
-// MB as a person reads it: GB above ten, MB below, "?" for unmeasured.
+// The node the tab opens on: the one it showed last (remembered in this
+// browser), else the first in the answer, else nothing.
+function storagePick(){
+  const have = storageList || [];
+  let want = storageNode;
+  if (!have.some(n => n.node === want)){
+    try{ want = localStorage.getItem("bb.stnode") || ""; }catch(e){ want = ""; }
+  }
+  if (!have.some(n => n.node === want)) want = have[0]?.node || "";
+  storageNode = want;
+  return have.find(n => n.node === want) || null;
+}
+
+// MB as a person reads it: TB above ten million, GB above ten thousand,
+// MB below, "?" for unmeasured.
 const sgb = mb => mb === null || mb === undefined ? "?"
   : mb >= 10485760 ? (mb / 1048576).toFixed(1) + " TB"
   : mb >= 10240 ? (mb / 1024).toFixed(mb >= 102400 ? 0 : 1) + " GB" : Math.round(mb) + " MB";
@@ -85,21 +102,27 @@ function storageProjects(n, where){
     </div>`).join("");
 }
 
-function storageSection(n, where){
-  const status = !n.measured ? "not measured yet"
+// What the tab says about one node: the state row, then its disks.
+function storageBody(n, where){
+  const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
-  const body = `
-    <div class="field"><label>Filesystems</label>${storageFilesystems(n)}</div>
-    <div class="field"><label>Stores</label></div>${storageStores(n)}
-    <div class="field"><label>By project</label>
+  const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
+  return `<div data-stnode="${esc(n.node)}">
+    <div class="row toolstate">
+      <div class="grow"><div class="name">Storage on ${esc(n.name)} ${pill}</div>
+        <div class="sub">${n.measured ? `${n.took_s ? `the walk took ${n.took_s}s; ` : ""}walked again every hour` : "the agent walks its disks an hour after it starts, then every hour"}</div></div>
+    </div>
+    <div class="field">${lbl("", "Filesystems")}${storageFilesystems(n)}</div>
+    <div class="field">${lbl("", "Stores")}</div>${storageStores(n)}
+    <div class="field">${lbl("", "By project")}
       <div class="hint">What each project's folders hold on ${esc(n.name)}: its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.</div></div>
     ${storageProjects(n, where)}
     ${n.slow?.length ? `<div class="field"><div class="hint warn">Not measured in time: ${esc(n.slow.join(", "))}. A slow share; the next walk tries again.</div></div>` : ""}
     <div class="field"><div class="actbar">
-      <span class="state">${n.measured ? `${status}${n.took_s ? `, the walk took ${n.took_s}s` : ""}; walked again every hour` : "the agent walks its disks an hour after it starts, then every hour"}</span><span class="sp"></span>
+      <span class="state"></span><span class="sp"></span>
       ${storageMay ? `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>` : ""}
-    </div></div>`;
-  return docSection("storage", n.node, n.name, status, body, {cls: n.measured ? "" : "warn"});
+    </div></div>
+  </div>`;
 }
 
 function renderStorageInto(i){
@@ -115,10 +138,11 @@ function renderStorageInto(i){
     return;
   }
   const where = ["workspace", "cache", "artifacts", "appdata", "emulator", "builds"];
-  d.setBar(`<span class="dim">${storageList.length} node${storageList.length === 1 ? "" : "s"}</span>
+  const n = storagePick();
+  const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
+  d.setBar(`${nodePick("stNodeSel", pnodes, storageNode)}
     <span class="sp"></span><button type="button" id="stReload" title="read the nodes again">Reload</button>`);
-  d.list.innerHTML = storageList.length
-    ? `<div class="sectjump" data-sects></div>` + storageList.map(n => storageSection(n, where)).join("")
+  d.list.innerHTML = n ? storageBody(n, where)
     : `<div class="empty">no node to measure yet: enroll one on the Nodes tab</div>`;
   d.setFoot(`The agent walks each node's disks once an hour at the lowest priority. A project you cannot see is counted under other projects.`);
   wireStorageTab(d.el);
@@ -127,8 +151,10 @@ function renderStorageInto(i){
 function wireStorageTab(root){
   const rl = root.querySelector("#stReload");
   if (rl) rl.onclick = () => { busy(rl, "Reading"); loadStorage(); };
-  if (root.querySelector("[data-sects]")) sectJump(root.querySelector("[data-sects]"));
-  wireSections(root);
+  const psel = root.querySelector("#stNodeSel");
+  if (psel) psel.onchange = () => { storageNode = psel.value;
+                                    try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }
+                                    storageRev++; drawPanes(); };
   root.querySelectorAll("[data-stmeasure]").forEach(b => b.onclick = async () => {
     busy(b, "Asking");
     const j = await (await postJSON("/api/storage", {action: "measure", node: b.dataset.stmeasure})).json().catch(() => ({error: "no answer"}));

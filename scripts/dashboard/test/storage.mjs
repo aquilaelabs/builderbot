@@ -33,12 +33,17 @@ ok(en.ok, `a node enrolled with a walk of its disks in its census (${en.error ||
 
 ok(await page.$eval('#bStorage', b => !b.hidden && /Storage/.test(b.textContent)), 'the Tools card offers Storage');
 await page.click('#bStorage');
-await page.waitForSelector('.storagetab details.sect', { timeout: 15000 });
+await page.waitForSelector('.storagetab [data-stnode]', { timeout: 15000 });
 const row = await page.evaluate(() => (storageList || []).find(n => n.name === 'diskbox'));
 ok(row && row.measured && row.projects.map(p => p.name).join() === 'alpha,beta' && row.projects[0].total === 6400 && !row.other,
    `the tab lists the node with its projects largest first, every one named for an administrator (${JSON.stringify(row?.projects)})`);
-const sect = `.storagetab details.sect[data-sect="storage:${minted.id}"]`;
-const drawn = await page.$eval(sect, s => ({ status: s.querySelector('summary .sst')?.textContent,
+// One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
+ok(await page.$eval('.storagetab .docbarrow label.pick select#stNodeSel', s => [...s.options].some(o => o.textContent === 'diskbox')),
+   'the bar picks the node, as Toolchains does');
+await page.selectOption('.storagetab #stNodeSel', minted.id);
+const sect = `.storagetab [data-stnode="${minted.id}"]`;
+await page.waitForSelector(sect, { timeout: 10000 });
+const drawn = await page.$eval(sect, s => ({ status: s.querySelector('.toolstate .pill')?.textContent,
   meters: [...s.querySelectorAll('.ndmeter .lbl')].map(l => l.textContent),
   vals: [...s.querySelectorAll('.ndmeter .val')].map(v => v.textContent),
   stores: /cache store/.test(s.textContent) && /Docker/.test(s.textContent) && /reclaimable/.test(s.textContent),
@@ -46,7 +51,7 @@ const drawn = await page.$eval(sect, s => ({ status: s.querySelector('summary .s
   measure: !!s.querySelector('[data-stmeasure]') }));
 ok(/measured 10 min ago/.test(drawn.status) && drawn.meters.join() === '/,/mnt/share' && /93\.8 GB \/ 125 GB/.test(drawn.vals[0])
    && drawn.stores && drawn.proj.join('|') === 'alpha|beta' && drawn.measure,
-   `...its section: each filesystem a meter, the stores and Docker's share, the projects in rows, Measure now (${JSON.stringify(drawn)})`);
+   `...the node: each filesystem a meter, the stores and Docker's share, the projects in rows, Measure now (${JSON.stringify(drawn)})`);
 // The meters are one stack: every track the same width, the values one column.
 const stack = await page.$$eval(`${sect} .ndmeter .track`, ts => new Set(ts.map(t => Math.round(t.getBoundingClientRect().width))).size);
 ok(stack === 1, 'every meter in the stack has the same track width');

@@ -6,6 +6,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Added
 
+- A session asks for a root command on one of the nodes its project hosts containers on: bb root run --node NAME, allowed or denied by a person as ever, and refused where that node's root-asks switch is off; the switch is on a hosting-only node's row too.
 - bb transcripts lists the account's own conversations with Claude on the project and bb transcripts show ID prints one; with bb -p NAME a session reads the account's conversations on a project its own reads, whose files are in its view read-only, and never another account's
 - A theme and a page on the Design view carry rules of their own, for what holds for that theme or that page alone; a session meets one named under its holder (nostromo/hull), bb design show THEME prints a theme with its rules, and the file and the prompts carry them under the theme or the page
 - A project's briefing says when its notebook holds a design, what is in it and to read it before building, and on a tree with no code yet that the design, the rules and the roadmap are the specification, so a project designed before its first line is built to the design
@@ -117,6 +118,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Changed
 
+- The nginx and Storage tabs show one node at a time, picked in the bar as Toolchains and the Emulator pick theirs, with a state row first; the nginx tab's certificate and key are two full-width boxes under their labels, each with the hostname picker above them.
 - The companion app's note that Claude is waiting on you names the project first and follows the project's During a test run setting: at once where a new ask interrupts a run, and when the tests finish where it waits for them; bb test now tells the dashboard when a run starts and ends
 - bb tests preflight picks its suites by the covered run when there is one: the function each changed line falls in and the suites that reached it (bb map affected), so a change to one handler in server.py runs that handler's suites rather than all 49; a whole run refreshes the covered run
 - The Design view has no prompt box and no Copy: a session reads the design piece by piece with bb design show, and the view only records it

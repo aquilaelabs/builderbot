@@ -591,8 +591,12 @@ def _stamp(row, project, instance):
 def _kept(d, project, instance):
     """The instance's record if it is still there, None once Remove forgot
     it: what a result that lands after the removal writes to (B633), where
-    devapp._rec would make the row again."""
-    return (d.get(project) or {}).get(instance)
+    devapp._rec would make the row again. A record left with nothing but a
+    marker is not one either: Remove took the rest."""
+    rec = (d.get(project) or {}).get(instance)
+    if rec is not None and not (set(rec) - {"building_since", "await_env"}):
+        return None
+    return rec
 
 
 def _record_build(project, instance):
@@ -662,11 +666,16 @@ def _submit(project, instance, action, extra=None, check=None):
                         else {"project": project, "instance": instance, "action": action})
                 if devapp.queue.job_release(r["job"], spec) and action == "rebuild":
                     # The started-marker: the row's "building since", cleared
-                    # when the build reaches an end.
+                    # when the build reaches an end. Only on a record still
+                    # there: a Remove racing this thread had the marker make
+                    # the record again, empty but for it, and the build then
+                    # stamped that into a ghost row (B633, the second way).
                     with devapp._lock:
                         d = devapp._load()
-                        devapp._rec(d, project, instance)["building_since"] = int(time.time())
-                        devapp.write_json(devapp.FILE, d)
+                        row = _kept(d, project, instance)
+                        if row is not None:
+                            row["building_since"] = int(time.time())
+                            devapp.write_json(devapp.FILE, d)
         except Exception as e:                                       # noqa: BLE001
             # A fault preparing is the job's failure, said on its row,
             # never a thread dying quietly with the job held forever.

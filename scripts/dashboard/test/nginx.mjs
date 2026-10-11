@@ -28,15 +28,20 @@ const api = async (path, body) => (await fetch(base + path, body === undefined
 // The button, on the Tools card for an account that reads the Nodes tab.
 ok(await page.$eval('#bNginx', b => !b.hidden && /nginx/.test(b.textContent)), 'the Tools card offers nginx');
 await page.click('#bNginx');
-await page.waitForSelector('.nginxtab details.sect', { timeout: 15000 });
+await page.waitForSelector('.nginxtab [data-ngnode]', { timeout: 15000 });
 const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name === 'sandbox'));
 ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !sandbox.cert.set,
    `the tab lists the sandbox node with no nginx on it yet (${JSON.stringify(sandbox && [sandbox.deployed, sandbox.routes])})`);
-const sect = `.nginxtab details.sect[data-sect="nginx:${sandbox.node}"]`;
-ok(await page.$eval(sect, s => s.open && /not deployed/.test(s.querySelector('summary').textContent)
+// One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
+ok(await page.$eval('.nginxtab .docbarrow label.pick select#ngNodeSel', s => [...s.options].some(o => o.textContent === 'sandbox')),
+   'the bar picks the node, as Toolchains does');
+await page.selectOption('.nginxtab #ngNodeSel', sandbox.node);
+const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
+await page.waitForSelector(sect, { timeout: 10000 });
+ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
      && s.querySelector('[data-ngdeploy]') && !s.querySelector('[data-ngremove]')
      && s.querySelector('[data-ngsave]').disabled),
-   '...its section open, saying so, with Deploy and a dead Save');
+   '...its state row says so, with Deploy and a dead Save');
 
 // A route typed: Save wakes, and Save keeps it (not deployed yet, so nothing
 // is built).
@@ -69,7 +74,7 @@ ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, rou
   ok(own.ok && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com' && !v.cert?.set,
      `a certificate saved for one hostname is that hostname's own, with the default still none (${JSON.stringify(v.certs)})`);
   await page.evaluate(() => loadNginx());
-  await page.waitForFunction(id => /www\.example\.com: www\.example\.com/.test(document.querySelector(`.nginxtab details.sect[data-sect="nginx:${id}"]`)?.textContent || ''), sandbox.node, { timeout: 10000 });
+  await page.waitForFunction(id => /www\.example\.com: www\.example\.com/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"]`)?.textContent || ''), sandbox.node, { timeout: 10000 });
   ok(await page.$eval(sect, s => /Default: none/.test(s.textContent) && [...s.querySelectorAll('[data-ng="certfor"] option')].some(o => o.value === 'www.example.com')),
      '...and the section lists it under the default and offers the hostname in the picker');
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert_for: 'www.example.com', drop_cert: true });
@@ -88,8 +93,9 @@ ok(rec?.main?.source === 'file' && rec.main.node === sandbox.node && !rec.main.f
 // The section is drawn after the answer lands, so its Remove is waited
 // for rather than read the moment the list moved.
 await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
-ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('summary').textContent) && s.querySelector('[data-ngremove]') && !s.querySelector('[data-ngdeploy]')),
-   '...and the section now says so, with Remove in place of Deploy');
+ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate .sub').textContent)
+     && s.querySelector('[data-ngremove]') && !s.querySelector('[data-ngdeploy]')),
+   '...and the state row now says so, with Remove in place of Deploy');
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
 

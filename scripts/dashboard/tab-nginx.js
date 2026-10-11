@@ -1,26 +1,30 @@
 // The nginx tab (R171, the operator, 10 Oct): one reverse proxy per node,
-// BuilderBot's own. A section per node: whether its nginx is deployed, the
-// routes (a hostname or path, to a port a container on that node
-// publishes, with or without TLS), the certificate (kept on the
-// controller, pushed inside the compose file; the key never comes back),
-// and what else on the node holds 80 or 443. Deploy makes the container on
-// a node without one; Save writes the routes and certificate and rebuilds a
+// BuilderBot's own. One node at a time, picked in the bar like Toolchains
+// (the node-switcher rule; the operator, 11 Oct: every tab about settings
+// on nodes picks one the same way): a state row saying whether its nginx
+// is deployed, the routes (a hostname or path, to a port a container on
+// that node publishes, with or without TLS), the certificates (kept on the
+// controller, pushed inside the compose file; a key never comes back), and
+// what else on the node holds 80 or 443. Deploy makes the container on a
+// node without one; Save writes the routes and certificate and rebuilds a
 // deployed one so the change is up; Remove takes it out of the manager.
 //
 // Chrome from docSurface(); the hard rules are uniform.mjs's. Data from
 // /api/nginx, read when the tab opens and after every change; redrawn on
-// the nodes revision too, since a node coming or going moves the sections.
+// the nodes revision too, since a node coming or going moves the list.
 
 "use strict";
 
 let nginxList = null;             // last answer, or null before the first
 let nginxErr = "";
 let nginxRev = 0;
+let nginxNode = "";               // the node the tab shows
 // The routes being edited, per node, until Save or Revert; absent while a
-// node's section shows what is saved.
+// node shows what is saved.
 const nginxDraft = {};
 
-function openNginxTab(){
+function openNginxTab(node){
+  if (node) nginxNode = node;
   openTab({kind: "nginx", arg: "__nginx", label: "nginx"});
 }
 
@@ -44,6 +48,20 @@ async function nginxAct(body){
   else if (j.job) notify(`${body.action === "deploy" ? "deploying" : "rebuilding"} nginx: its row on the Docker tab has the build`);
   await loadNginx();
   return j;
+}
+
+// The node the tab opens on: the one it showed last (remembered in this
+// browser), else the first in the answer, else nothing. Re-asked on every
+// draw, so a node retired under the tab is not shown as if it were there.
+function nginxPick(){
+  const have = nginxList || [];
+  let want = nginxNode;
+  if (!have.some(n => n.node === want)){
+    try{ want = localStorage.getItem("bb.ngnode") || ""; }catch(e){ want = ""; }
+  }
+  if (!have.some(n => n.node === want)) want = have[0]?.node || "";
+  nginxNode = want;
+  return have.find(n => n.node === want) || null;
 }
 
 // A route as a row of fields: hostname, path, port, TLS, and Remove.
@@ -83,44 +101,62 @@ function nginxCertLines(n){
     + (!n.cert?.set && !own.length ? " (routes answer on 80 only)" : "");
 }
 
-function nginxSection(n){
+// What the tab says about one node: the state row, the routes, the
+// certificates, the clash if any, and the action bar.
+function nginxBody(n){
   const d = nginxDraftOf(n);
   const cert = n.cert || {};
-  const when = cert.expires ? new Date(cert.expires * 1000).toLocaleDateString() : "";
-  const status = !n.deployed ? "not deployed"
-    : n.state?.running === false ? "deployed, down"
-    : `${(n.routes || []).length} route${(n.routes || []).length === 1 ? "" : "s"}`;
+  const count = (n.routes || []).length;
+  const pill = !n.deployed ? `<span class="pill">not deployed</span>`
+    : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
+    : `<span class="pill ok">deployed</span>`;
+  const sub = n.deployed
+    ? `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the Docker tab, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`
+    : "Save keeps the routes; Deploy puts nginx on the node with them";
   const clash = (n.clash || []).length
-    ? `<div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div>` : "";
-  const body = `
+    ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
+  return `<div data-ngnode="${esc(n.node)}">
+    <div class="row toolstate">
+      <div class="grow"><div class="name">nginx on ${esc(n.name)} ${pill}</div>
+        <div class="sub">${sub}</div></div>
+    </div>
     <div class="field">
-      <label>Routes</label>
+      ${lbl("", "Routes")}
       <div class="hint">Each hostname or path goes to a port a container publishes on ${esc(n.name)}; nginx runs on the host network and reaches it at 127.0.0.1. A name nothing routes is answered by closing the connection.</div>
       <div class="ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
-      <div class="actbar"><span class="state"></span><span class="sp"></span>
+      <div class="actbar"><span class="state">${count ? "" : "no route yet"}</span><span class="sp"></span>
         <button type="button" data-ngadd>Add route</button></div>
     </div>
     <div class="field">
-      <label>Certificates</label>
+      ${lbl("", "Certificates")}
       <div class="hint">${nginxCertLines(n)}</div>
       <div class="hint">One per hostname where a site needs its own (an origin certificate covers one domain), and the node's default for every hostname without one. Paste a pair for the one picked; a key is kept on the controller and never shown.</div>
-      <label class="pick wide">For <select data-ng="certfor" aria-label="which hostname the pasted certificate is for">
+    </div>
+    <div class="field">
+      ${lbl("ngCertFor", "For")}
+      <select id="ngCertFor" data-ng="certfor" aria-label="which hostname the pasted certificate is for">
         <option value=""${!d.certFor ? " selected" : ""}>the node's default (any hostname without its own)</option>
         ${nginxHosts(n, d).map(h => `<option value="${esc(h)}"${d.certFor === h ? " selected" : ""}>${esc(h)}</option>`).join("")}
-      </select></label>
-      <textarea data-ng="cert" rows="3" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----">${esc(d.cert)}</textarea>
-      <textarea data-ng="key" rows="3" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
+      </select>
+    </div>
+    <div class="field">
+      ${lbl("ngCert", "Certificate")}
+      <textarea id="ngCert" data-ng="cert" rows="4" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----">${esc(d.cert)}</textarea>
+    </div>
+    <div class="field">
+      ${lbl("ngKey", "Private key")}
+      <textarea id="ngKey" data-ng="key" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
       ${(d.certFor ? n.certs?.[d.certFor]?.set : cert.set) ? `<label class="ndcap"><input type="checkbox" data-ng="drop"${d.drop ? " checked" : ""}> take ${d.certFor ? esc(d.certFor) + "'s" : "the default"} certificate off</label>` : ""}
     </div>
     ${clash}
     <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
-      <span class="state">${n.deployed ? `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the Docker tab${n.host_only ? "; a hosting-only node" : ""}` : "Save keeps the routes; Deploy puts nginx on the node with them"}</span><span class="sp"></span>
+      <span class="state"></span><span class="sp"></span>
       <button type="button" data-ngsave disabled>Save</button>
       <button type="button" class="caution" data-ngrevert disabled>Revert</button>
       ${n.deployed ? `<button type="button" class="danger" data-ngremove>Remove</button>`
                    : `<button type="button" class="primary" data-ngdeploy>Deploy</button>`}
-    </div></div>`;
-  return docSection("nginx", n.node, n.name, status, body, {cls: n.clash?.length ? "bad" : ""});
+    </div></div>
+  </div>`;
 }
 
 function renderNginxInto(i){
@@ -135,17 +171,17 @@ function renderNginxInto(i){
     d.list.innerHTML = `<div class="hint bad">${esc(nginxErr)}</div>`;
     return;
   }
-  const on = nginxList.filter(n => n.deployed).length;
-  d.setBar(`<span class="dim">${nginxList.length} node${nginxList.length === 1 ? "" : "s"}, nginx on ${on}</span>
+  const n = nginxPick();
+  const pnodes = nginxList.map(x => ({id: x.node, name: x.name, live: x.live}));
+  d.setBar(`${nodePick("ngNodeSel", pnodes, nginxNode)}
     <span class="sp"></span><button type="button" id="ngReload" title="read the nodes again">Reload</button>`);
-  d.list.innerHTML = nginxList.length
-    ? `<div class="sectjump" data-sects></div>` + nginxList.map(nginxSection).join("")
+  d.list.innerHTML = n ? nginxBody(n)
     : `<div class="empty">no node to put nginx on yet: enroll one on the Nodes tab</div>`;
-  d.setFoot(`One nginx per node, written from here: edit its routes and certificate here, never its file. Deploy and Save build it on the node; its build is on the Docker tab.`);
+  d.setFoot(`One nginx per node, written from here: edit its routes and certificates here, never its file. Deploy and Save build it on the node; its build is on the Docker tab.`);
   wireNginxTab(d.el);
 }
 
-// What one section's fields say now, into its draft, and whether that
+// What the node's fields say now, into its draft, and whether that
 // differs from what is saved.
 function nginxReadDraft(sect, n){
   const d = nginxDraftOf(n);
@@ -166,57 +202,59 @@ function nginxReadDraft(sect, n){
 function wireNginxTab(root){
   const rl = root.querySelector("#ngReload");
   if (rl) rl.onclick = () => { busy(rl, "Reading"); loadNginx(); };
-  if (root.querySelector("[data-sects]")) sectJump(root.querySelector("[data-sects]"));
-  wireSections(root);
-  root.querySelectorAll("details.sect[data-sect^='nginx:']").forEach(sect => {
-    const nid = sect.dataset.sect.slice("nginx:".length);
-    const n = nginxList.find(x => x.node === nid);
-    if (!n) return;
-    const bar = sect.querySelector(".ngbar");
-    const sync = () => {
-      const dirty = nginxReadDraft(sect, n);
-      bar.querySelector("[data-ngsave]").disabled = !dirty;
-      bar.querySelector("[data-ngrevert]").disabled = !dirty;
-    };
-    sect.addEventListener("input", sync);
-    sect.addEventListener("change", e => {
-      if (e.target.matches?.('[data-ng="certfor"]')){ nginxReadDraft(sect, n); nginxRedraw(); return; }
-      sync();
-    });
-    sect.querySelector("[data-ngadd]").onclick = () => {
-      nginxReadDraft(sect, n);
-      nginxDraftOf(n).routes.push({host: "", path: "/", port: "", tls: true});
-      nginxRedraw();
-    };
-    sect.querySelectorAll("[data-ngrm]").forEach(b => b.onclick = () => {
-      nginxReadDraft(sect, n);
-      nginxDraftOf(n).routes.splice(+b.closest(".ngroute").dataset.i, 1);
-      nginxRedraw();
-    });
-    bar.querySelector("[data-ngsave]").onclick = async e => {
-      nginxReadDraft(sect, n);
-      const d = nginxDraftOf(n);
-      busy(e.target, "Saving");
-      const j = await nginxAct({action: "save", node: nid, routes: d.routes, cert_for: d.certFor,
-                                ...(d.cert.trim() ? {cert: d.cert, key: d.key} : {}), drop_cert: d.drop});
-      if (!j.error) delete nginxDraft[nid];
-      nginxRedraw();
-    };
-    bar.querySelector("[data-ngrevert]").onclick = () => { delete nginxDraft[nid]; nginxRedraw(); };
-    const dep = bar.querySelector("[data-ngdeploy]");
-    if (dep) dep.onclick = async e => {
-      if (nginxReadDraft(sect, n) && !confirm(`Deploy nginx on ${n.name} with what is saved? Unsaved changes here are not in it: Save first to include them.`)) return;
-      busy(e.target, "Deploying");
-      await nginxAct({action: "deploy", node: nid});
-      nginxRedraw();
-    };
-    const rm = bar.querySelector("[data-ngremove]");
-    if (rm) rm.onclick = async e => {
-      if (!confirm(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Docker tab; the routes and certificate stay here for a redeploy.`)) return;
-      busy(e.target, "Removing");
-      await nginxAct({action: "remove", node: nid});
-      nginxRedraw();
-    };
+  const psel = root.querySelector("#ngNodeSel");
+  if (psel) psel.onchange = () => { nginxNode = psel.value;
+                                    try{ localStorage.setItem("bb.ngnode", nginxNode); }catch(e){ /* private */ }
+                                    nginxRedraw(); };
+  const sect = root.querySelector("[data-ngnode]");
+  if (!sect) return;
+  const nid = sect.dataset.ngnode;
+  const n = nginxList.find(x => x.node === nid);
+  if (!n) return;
+  const bar = sect.querySelector(".ngbar");
+  const sync = () => {
+    const dirty = nginxReadDraft(sect, n);
+    bar.querySelector("[data-ngsave]").disabled = !dirty;
+    bar.querySelector("[data-ngrevert]").disabled = !dirty;
+  };
+  sect.addEventListener("input", sync);
+  sect.addEventListener("change", e => {
+    if (e.target.matches?.('[data-ng="certfor"]')){ nginxReadDraft(sect, n); nginxRedraw(); return; }
     sync();
   });
+  sect.querySelector("[data-ngadd]").onclick = () => {
+    nginxReadDraft(sect, n);
+    nginxDraftOf(n).routes.push({host: "", path: "/", port: "", tls: true});
+    nginxRedraw();
+  };
+  sect.querySelectorAll("[data-ngrm]").forEach(b => b.onclick = () => {
+    nginxReadDraft(sect, n);
+    nginxDraftOf(n).routes.splice(+b.closest(".ngroute").dataset.i, 1);
+    nginxRedraw();
+  });
+  bar.querySelector("[data-ngsave]").onclick = async e => {
+    nginxReadDraft(sect, n);
+    const d = nginxDraftOf(n);
+    busy(e.target, "Saving");
+    const j = await nginxAct({action: "save", node: nid, routes: d.routes, cert_for: d.certFor,
+                              ...(d.cert.trim() ? {cert: d.cert, key: d.key} : {}), drop_cert: d.drop});
+    if (!j.error) delete nginxDraft[nid];
+    nginxRedraw();
+  };
+  bar.querySelector("[data-ngrevert]").onclick = () => { delete nginxDraft[nid]; nginxRedraw(); };
+  const dep = bar.querySelector("[data-ngdeploy]");
+  if (dep) dep.onclick = async e => {
+    if (nginxReadDraft(sect, n) && !confirm(`Deploy nginx on ${n.name} with what is saved? Unsaved changes here are not in it: Save first to include them.`)) return;
+    busy(e.target, "Deploying");
+    await nginxAct({action: "deploy", node: nid});
+    nginxRedraw();
+  };
+  const rm = bar.querySelector("[data-ngremove]");
+  if (rm) rm.onclick = async e => {
+    if (!confirm(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Docker tab; the routes and certificate stay here for a redeploy.`)) return;
+    busy(e.target, "Removing");
+    await nginxAct({action: "remove", node: nid});
+    nginxRedraw();
+  };
+  sync();
 }
