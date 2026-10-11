@@ -27,10 +27,41 @@ jobs:
   build:
     runs-on: [self-hosted, bb-sandbox]
     timeout-minutes: 40
+    # bash with pipefail (the default `bash -e` has it too, said here because
+    # every step below pipes into tee, and a tee's success must not be the
+    # step's).
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1, pinned by commit (B274)
         with:
           fetch-depth: 0   # bb version counts commits
+
+      - name: Open a log this container can read afterwards
+        # As dashboard.yml and lint.yml keep theirs, for `bb ci-log`: the
+        # runner keeps no step output on disk, and a failed build of the app
+        # on 11 Oct (run 38155552427) could be read nowhere but on GitHub,
+        # which a session has no token for (B665).
+        run: |
+          set -o pipefail
+          dir="${BB_CI_LOG_DIR:-}"
+          if [ -z "$dir" ]; then
+            if [ -w /config ]; then dir=/config/ci-logs; else dir="$HOME/ci-logs"; fi
+          fi
+          dir="$dir/${GITHUB_REPOSITORY##*/}"
+          mkdir -p "$dir"
+          log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+          echo "CI_LOG=$log" >> "$GITHUB_ENV"
+          echo "CI_LOG_DIR=$dir" >> "$GITHUB_ENV"
+          {
+            echo "# ${GITHUB_WORKFLOW} on ${GITHUB_REPOSITORY}"
+            echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
+            echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
+            echo "commit: ${GITHUB_SHA}"
+            echo "opened: $(date -Is)"
+            echo
+          } > "$log"
 
       # One identity for the app and the thing it talks to. The APK's name,
       # its versionName and its versionCode all come from `bb version` here
@@ -71,6 +102,9 @@ jobs:
           BB_APP_KEY_ALIAS: ${{ secrets.BB_APP_KEY_ALIAS }}
           BB_APP_KEY_PASSWORD: ${{ secrets.BB_APP_KEY_PASSWORD }}
         run: |
+          set -o pipefail
+          exec > >(tee -a "$CI_LOG") 2>&1
+          echo "== Build the APK"
           if [ -n "$BB_APP_KEYSTORE_B64" ] && [ -n "$BB_APP_KEYSTORE_PASSWORD" ] && [ -n "$BB_APP_KEY_ALIAS" ]; then
             ks="$RUNNER_TEMP/bb-app.keystore"
             printf '%s' "$BB_APP_KEYSTORE_B64" | base64 -d > "$ks"
@@ -89,12 +123,16 @@ jobs:
       - name: Name it by the repository's version
         id: name
         run: |
+          exec > >(tee -a "$CI_LOG") 2>&1
+          echo "== Name it by the repository's version"
           echo "file=builderbot-app-${{ steps.v.outputs.file }}.apk" >> "$GITHUB_OUTPUT"
           cp "android/${{ steps.build.outputs.apk }}" \
              "builderbot-app-${{ steps.v.outputs.file }}.apk"
 
       - name: Land it in BuilderBot's dist/ where the share is mounted
         run: |
+          exec > >(tee -a "$CI_LOG") 2>&1
+          echo "== Land it in BuilderBot's dist/"
           if [ -d /workspace/BuilderBot ]; then
             mkdir -p /workspace/BuilderBot/dist
             cp "${{ steps.name.outputs.file }}" /workspace/BuilderBot/dist/
@@ -108,3 +146,13 @@ jobs:
           name: ${{ steps.name.outputs.file }}
           path: ${{ steps.name.outputs.file }}
           if-no-files-found: error
+
+      - name: Close the log
+        if: always()
+        # Written whatever happened: "it failed and said nothing" is the case
+        # this exists for. The last twenty runs are kept.
+        run: |
+          [ -n "${CI_LOG:-}" ] || exit 0
+          printf '\nresult: %s\nclosed: %s\n' "${{ job.status }}" "$(date -Is)" >> "$CI_LOG"
+          find "$CI_LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
+            | sort -rn | tail -n +21 | cut -d' ' -f2- | xargs -r rm -f

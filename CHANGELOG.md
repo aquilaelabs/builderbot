@@ -124,6 +124,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container written on the Docker tab can be renamed from its Edit dialog while it is down: the node carries its volumes and data directory under the new name, then its record, compose file and env follow, and Build brings it up under it (the operator, 11 Oct) (87839c5)
 - A node's nginx keeps up to date like the toolchains: the registry is read weekly (or by Check now), a node is pinned to the newest line's digest when deployed or updated, and one behind says so on the nginx tab, its Docker row and the bell, each with Update (67f9d7d)
 - Every container's registry images are checked weekly against their registries (Check for updates on the Docker tab asks now): one behind says so on its row with Update, which pulls and starts it again, and the bell carries a note per node; what is built from code keeps Rebuild (e015d8a)
+- The bell flashes red twice when something new goes wrong, then settles to its red dot (7d31173)
 
 ### Changed
 
@@ -271,6 +272,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A toolchain whose recipe cannot update in place (jdk, go, node, ffmpeg, zig, android-tools, rust) updates from the Toolchains tab like the rest: with a newer version found its box is live, and Install selected removes the old one and installs the new in one job, still refused under a running build (67f9d7d)
 - No tooltips: a dead control is ghosted and says nothing, a warning or an error is a line on the page (a failing poll under the header, a container's missing env on its row, a session's whole reason on its project row), and a ? opens its words as a line under its label (7b2120b)
 - A project's container is named whatever you want: Send to Docker offers a name per compose file, and the Edit dialog renames it while it is down; while it runs, Edit is for reading, with Save ghosted and both boxes read-only (e015d8a)
+- A copy or move that did not happen is a note in the bell, with Dismiss, instead of a line on the container's row for ever; it goes once the container builds or starts again (7d31173)
 
 ### Removed
 
@@ -452,6 +454,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container moved or sent to another node pulls the images its compose does not build (--pull missing in place of never): the shipped tar carries the built ones alone, and a service on a registry image met 'No such image' there (B660) (896da85)
 - The Jobs tab shows a failed job's log: its own error sentence was read as a failed request and the log left out, so every failed job read '(this job wrote nothing)' (B658) (f1e10bd)
 - A hosting-only node is given no docker address on the controller: a compose file is checked here with the compose plugin and its data directory is the agent's to make, where an nginx Save on a VPS waited out two 30s ssh timeouts and held the server (R85) (87839c5)
+- A hosting node's published ports really stay on it: the agent sets the bind address every compose network takes, not only the default bridge's, and a container still published on every address says so on its Docker row in red (7d31173)
+- The Docker tab asks the node every time, so a row stops reading 'as last seen' while anything runs there; the kept listing stands in only when the node does not answer (7d31173)
 
 ### Security
 
