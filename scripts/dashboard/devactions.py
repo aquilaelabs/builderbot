@@ -591,12 +591,12 @@ def _stamp(row, project, instance):
 def _kept(d, project, instance):
     """The instance's record if it is still there, None once Remove forgot
     it: what a result that lands after the removal writes to (B633), where
-    devapp._rec would make the row again. A record left with nothing but a
-    marker is not one either: Remove took the rest."""
-    rec = (d.get(project) or {}).get(instance)
-    if rec is not None and not (set(rec) - {"building_since", "await_env"}):
-        return None
-    return rec
+    devapp._rec would make the row again. Only whether it is there: a
+    record new made with nothing set is empty, and reading one with nothing
+    but a marker as a ghost (B633's second way, closed since every marker
+    goes through here too) left a first build unstamped, the row saying
+    Build over a running container (B646)."""
+    return (d.get(project) or {}).get(instance)
 
 
 def _record_build(project, instance):
