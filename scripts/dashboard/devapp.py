@@ -762,15 +762,17 @@ def _agent_read(n, argv, timeout):
     memo = getattr(_scope, "reads", None)
     if memo is not None and key in memo:
         return dict(memo[key])
-    if queue.job_running(n["id"]) > 0:
-        # The node is busy, and a listing kept from before its job began is
-        # handed back at once, marked as such: the manager draws it in the
-        # ghosted state and asks again on the next revision. This used to
-        # sleep up to four seconds first, hoping the job would end, from a
-        # time when a busy node could not take a read at all. It can now: a
-        # short exec goes on the light lane whatever else is running (see
-        # nodes.job_next), so the wait bought nothing and cost every draw
-        # during a build four seconds. With nothing kept, the read runs.
+    # Asked every time, busy or not (the operator, 11 Oct: the tab read
+    # "down, as last seen" whenever anything ran on the node, which on a
+    # shared node is most of the time, and through every change made from
+    # it, since the change is itself a job). A short exec goes on the light
+    # lane whatever else is running (nodes.job_next), so a busy node answers
+    # it; what was kept stands in, marked stale, only when the node did not
+    # answer at all.
+    _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
+    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
+                       forget=True)
+    if r.get("error"):
         with _reads_lock:
             hit = _last_reads.get(key)
         if hit is not None:
@@ -778,10 +780,6 @@ def _agent_read(n, argv, timeout):
             if memo is not None:
                 memo[key] = out
             return out
-    _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
-    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
-                       forget=True)
-    if r.get("error"):
         out = {"code": 1, "out": r["error"]}
     else:
         out = {"code": int(r.get("code") or 0), "out": r.get("out") or ""}
@@ -1387,6 +1385,10 @@ def containers():
             "state": (c.get("State") or "").lower(),
             "status": c.get("Status", ""),
             "ports": _ports(c.get("Ports", "")),
+            # ...and the ports published on every address, for a node whose
+            # ports are meant to stay on it (R190).
+            "open": sorted(set(_published(_ports(c.get("Ports", ""))))
+                           - set(_published(_ports(c.get("Ports", "")), local=True))),
             "project": proj,
             "service": labels.get(SERVICE_LABEL, ""),
             "ours": proj in mine,
@@ -1519,8 +1521,11 @@ def _ports(raw):
         if "->" not in bit:
             continue
         host, _, rest = bit.partition("->")
-        port = host.rsplit(":", 1)[-1]
-        entry = f"{port}->{rest}"
+        bind, _, port = host.rpartition(":")
+        # Bound to the loopback, it says so (R190): that is the port only the
+        # node's own nginx reaches, and the row has to tell it from one
+        # published on every address.
+        entry = f"127.0.0.1:{port}->{rest}" if bind.startswith("127.") else f"{port}->{rest}"
         if entry not in seen:
             seen.append(entry)
     return seen
@@ -2540,6 +2545,7 @@ def _overview_here(picked):
                 # compose file: what is published is what the daemon says it
                 # published, and a stopped instance publishes nothing.
                 "ports": sorted({p for c in mine for p in c["ports"]}),
+                "open_ports": sorted({p for c in mine for p in c.get("open") or []}),
                 # The same rule state() uses: a build belongs to the daemon
                 # it happened on, and a record from another names nothing here.
                 "built_rev": rec.get("rev", "") if same_daemon else "",

@@ -1144,7 +1144,9 @@ def _attention(who):
             + ([] if users.may(who, "docker-write")
                else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid))
                # ...and a container whose registry image moved (imagecheck, R195).
-               + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
+               + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)
+               # ...and a copy or move that did not happen (relocate.py).
+               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
@@ -2598,6 +2600,7 @@ import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
 import nginxproxy                                                # noqa: E402
 import imagecheck                                                # noqa: E402
+import relocate                                                  # noqa: E402
 import tunnel                                                    # noqa: E402
 import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
@@ -2787,6 +2790,7 @@ containers.users = users
 containers.ask_rebuild = phone.ask_rebuild
 containers.net_nudge = net_nudge
 containers.project_hosts = lambda p: prefs.get(p).get("hosts") or []
+containers.ports_local = nodes.ports_local_on
 # One nginx per node, from the nginx tab (R171): its records here, the
 # container through containers.py, and the node's own view of its ports.
 imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)

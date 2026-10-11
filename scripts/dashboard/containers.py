@@ -43,6 +43,8 @@ net_nudge = None
 # The hosting nodes a project names (prefs.hosts), handed in by the server: a
 # session reads its project's containers there too (B649).
 project_hosts = None
+# Whether a node's published ports are meant to stay on it (nodes.ports_local_on, R190).
+ports_local = None
 
 
 def _targets(name):
@@ -698,6 +700,9 @@ def manager_view(nid, seen):
     import nginxproxy
     import relocate
     got["images_at"] = imagecheck.last_at()
+    # A node whose ports stay on it: a row still publishing on every address
+    # (made before the node said so) says so, with what puts it right.
+    got["ports_local"] = bool(ports_local and got.get("node") and ports_local(got["node"]))
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
         # A node's nginx behind the newest line says so on its row, with

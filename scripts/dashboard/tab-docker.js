@@ -1344,6 +1344,9 @@ function dmRowsHtml(ins, job, blind){
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
           : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
+        ${dockerList?.ports_local && (d.open_ports || []).length ? `<div class="sub bad dmopen">${esc(d.open_ports.join(", "))} ${
+          d.open_ports.length === 1 ? "is" : "are"} published on every address of this node, so the internet reaches ${
+          d.open_ports.length === 1 ? "it" : "them"} past nginx: Down and Up binds ${d.open_ports.length === 1 ? "it" : "them"} to 127.0.0.1</div>` : ""}
         ${(d.images_behind || []).length ? `<div class="sub warn dmimages">a newer ${esc(d.images_behind.join(", "))} is out: Update pulls it and starts it again</div>` : ""}
         </div>
       </div>

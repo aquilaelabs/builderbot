@@ -2177,11 +2177,10 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         (await api(`/api/v1/jobs?id=${long.job}`)).state) ? true : null, 20000);
     }
     // The Docker manager's listing, the same way. Its `docker ps` is a read
-    // on the node; while the node was on a job it slept up to four seconds
-    // hoping the job would end, then gave back whatever it had. The light
-    // lane takes a short read beside a build now, so a first look runs at
-    // once, and a later look during the same job is the kept listing, marked
-    // stale, in no time at all.
+    // on the node, and the light lane takes it beside a build, so a look
+    // during a job is asked of the node and comes back fresh: it used to be
+    // the kept listing, marked stale, which on a shared node was most of the
+    // time and through every change made from the tab (B664, 11 Oct).
     {
       await api('/api/prefs', { project: 'ep.silon', node: minted.id });
       const first = await api(`/api/docker?node=${minted.id}`);
@@ -2191,8 +2190,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const again = await api(`/api/docker?node=${minted.id}`);
       const took = Date.now() - t0;
       const still = (await api(`/api/v1/jobs?id=${long.job}`)).state;
-      ok(!first.error && !again.error && again.stale === true && took < 2000 && still === 'running',
-         `the Docker manager's listing during a job is the kept one, at once and marked stale (${took}ms, stale ${
+      ok(!first.error && !again.error && !again.stale && took < 9000 && still === 'running',
+         `the Docker manager's listing during a job is asked of the node, fresh and not marked stale (${took}ms, stale ${
            again.stale}, first ${first.error || 'ok'}, the job ${still})`);
       await api('/api/v1/jobs', { action: 'cancel', id: long.job });
       await until(async () => ['succeeded', 'failed', 'canceled'].includes(
