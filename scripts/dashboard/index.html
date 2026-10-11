@@ -1470,9 +1470,19 @@ select:focus{outline-offset:-2px}
 .storagetab .ndmeter .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .storagetab .ndmeter .val{white-space:normal;overflow-wrap:anywhere;text-align:right}
 @media (max-width:600px){.storagetab .ndmeter{grid-template-columns:6em minmax(0,1fr) 7.5em}}
+/* By project is a table: a row per project at a desk, its cells in columns
+   under the head row; on a phone the cells stack under the name, each with
+   its column's word (data-k) beside its number, and the head row goes. A
+   column of bare numbers under a name said nothing (B655). */
+.storagetab .stproj{flex-direction:row;align-items:baseline;gap:8px;flex-wrap:nowrap}
 .storagetab .stproj .stcol{width:6.5em;text-align:right;font:var(--f-note);flex:0 0 auto}
 .storagetab .stproj .stcol b{font-weight:600}
-@media (max-width:600px){.storagetab .stproj .stcol{width:4.6em}}
+@media(max-width:900px){
+  .storagetab .stproj.sthead{display:none}
+  .storagetab .stproj{flex-direction:column;align-items:stretch;gap:2px}
+  .storagetab .stproj .stcol{width:auto;display:flex;justify-content:space-between;gap:12px;padding-left:12px}
+  .storagetab .stproj .stcol::before{content:attr(data-k);color:var(--dim);text-align:left}
+}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
 .nginxtab .sect>.body{padding:0 0 var(--row-y);gap:0}

@@ -258,6 +258,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's name is taken once: a second script with it is refused; a waiting row shows its id and what its script was made with, and offers Download it again or Discard; the script is named enroll-NAME-ID.sh. (6d600f9)
 - Controller settings is sections like every other tab, each with its own Apply and Revert and a jump bar over them; the Public hostname section carries its own setup steps. (281f4ba)
 - A node's row offers Disable (kept and configured, off every picker and handed no work until Enable) and Un-enroll (BuilderBot taken off the machine and the node removed here; enrolling again starts from Enroll node), in place of Remove and Uninstall. Neither goes through while a session or a container runs on the node. Un-enroll's dialog says what always goes (the agent, every piece of the session isolation, the accounts) and asks about three rings: the stores on the disk, what the dashboard configured after enrolling, and a hosting node's doors and proxy, as `bb-sandbox uninstall --stores --configured --doors` on the machine. (25a595a)
+- The node agent's journal says why it said hello again (the controller asked, the session network moved, a job changed the machine), for B647. Agent 0.7.168 (e278190)
 
 ### Removed
 
@@ -431,6 +432,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The node agent takes a hello asked for again with its census beside the loop, so a nudge every minute no longer stops it taking jobs; the Docker and nginx tabs' docker ps jobs were waiting their 25s out (B644). Agent 0.7.166 (babe946)
 - A container shipped to a hosting node fetches its image even when the agent's first log post has not yet marked the job running; the first send to a public node was answered 403 (B648) (74ebb61)
 - A session reads and runs its project's containers on every node the project names, its hosting nodes included; one on a node taken off the project stays the project's and is the operator's from the Docker tab (B649) (5d5c097)
+- bb logs --node NAME --nginx finds the container: the nginx tab's compose names it nginx-NODE, as the Docker tab shows it; a node deployed before takes the name at its next Save (B653) (e278190)
+- On a phone the Storage tab's By project table shows each project's folders with their names beside the numbers, and says none where a folder is empty; at a desk it is a table under a head row (B655) (ea72d42)
 
 ### Security
 
