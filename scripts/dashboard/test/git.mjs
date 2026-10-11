@@ -112,7 +112,9 @@ ok(new RegExp(`${st.files.length} changes not committed`).test(await page.$eval(
    'the head row says the branch, the uncommitted count and the branches');
 ok(await page.$eval(`${NB}`, e => e.querySelectorAll('.gfile').length) === st.files.length,
    'Changes lists each uncommitted file as a fold');
-await page.click(`${NB} .gfile[data-path="a.txt"] summary`);
+// Opened, not clicked: every fold opens by default (9fd9ab9), and a click
+// on one the view had already opened shut it, the diff with it (B566).
+await openFold(page, `${NB} .gfile[data-path="a.txt"]`);
 await page.waitForSelector(`${NB} .gfile[data-path="a.txt"] pre.diff`, { timeout: 10000 });
 ok(await page.$eval(`${NB} .gfile[data-path="a.txt"] pre.diff`, e => /three/.test(e.textContent)
      && !!e.querySelector('.d-add')),
@@ -651,7 +653,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // Work not yet in main is a row you open: its commits and diff against
   // main, read here rather than on a pull request page.
   await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:branches"]');   // one section open at a time
-  await page.click('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] summary');
+  await openFold(page, '.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]');   // as a.txt's (B566)
   await page.waitForSelector('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] pre.diff', { timeout: 10000 });
   const opened = await page.$eval('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]', d => ({
     commit: /Old work/.test(d.querySelector('.gcmpc')?.textContent || ''),

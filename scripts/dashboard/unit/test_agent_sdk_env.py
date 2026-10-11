@@ -3,17 +3,14 @@ directory, set only when it exists, or `=VALUE`, set as given (B548: the
 playwright toolchain says PLAYWRIGHT_SKIP_BROWSER_GC=1, so a project's own
 Playwright installing into the shared store adds its browsers without
 sweeping the store's own)."""
-import importlib.util
 import json
 import os
 import tempfile
 import unittest
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_env", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent_env")
 agent.log = lambda *a, **k: None
 
 

@@ -1053,9 +1053,12 @@ lives in its body. The cards:
   a project has a permanent id and a directory that is never handed out again,
   and everything (the notebook, the containers, the sessions, Claude's own
   transcripts and memories) is keyed by the directory, so a rename moves
-  nothing and needs nothing closed first. Two live projects are never shown
-  under one name: a second gets Name (2), whether it was created, cloned or
-  put back from the trash. A name ever used gives a new project the next free
+  nothing and needs nothing closed first. A name follows GitHub's rules for a
+  repository's: letters, digits, `-`, `_` and `.` only, each run of anything
+  else one `-`, so "Turing Lens" is shown as Turing-Lens, and the dialogs say
+  so as it is typed. Two live projects are never shown under one name: a
+  second gets Name-2, whether it was created, cloned or put back from the
+  trash. A name ever used gives a new project the next free
   directory (Name-2), so it never inherits an old project's notebook or
   containers, and a project put back from the trash always fits where it was.
   Only BuilderBot makes a project (create, clone, or start from an imported
@@ -1167,17 +1170,35 @@ with; a runner already installed keeps the label it registered with until
 it is reinstalled), the path
 mapping and the rarely pressed verbs: **Drain** (finish what is running,
 accept nothing new: what makes a node safe to reboot), **Clear cache**,
-**Revoke** and **Remove** (retire: off every list, row kept as history, and an
-id is never reused), and on a node provisioned as a sandbox **Uninstall**:
-its runners deregistered on their forges, then the agent and its unit, the
-`bb` and `builder` accounts with their homes, the mounts BuilderBot used, its
-stores on that disk, the firewall rule and bb-sandbox itself taken off the
-machine, and the row retired when it is done. Docker, the packages the
-provisioner installed, the empty mountpoints and everything on the shares
-stay, since the machine may be used for other things. The same removal is
-`sudo bb-sandbox uninstall` on the machine, or `provision-linux.sh --remove`;
-both say what will go and ask, and neither deregisters a runner, which only
-the row can do while the agent can still ask for the tokens. **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
+**Revoke**, **Disable** (the operator, 11 Oct: kept and configured, its agent
+dialing in, but off every picker, refused to a project's set and handed no
+work or session until **Enable**), and **Un-enroll**, which on a node
+provisioned as a sandbox that is dialing in uninstalls BuilderBot from the
+machine and then removes the node here (retire: off every list, row kept as
+history, and an id is never reused), and on any other removes the node here
+only, saying BuilderBot's pieces stay on the machine. Neither Disable nor
+Un-enroll goes through while a Claude session or a container is running on
+the node: the refusal counts them and says where to end them (the Sessions
+card, Down on the Docker tab). Un-enroll opens a dialog, since what goes is
+in rings (the operator, 11 Oct). Always: the runners deregistered on their
+forges, then the agent and its unit, the sessions' firewall rules and their
+own networks (nothing of the isolation outlives the agent), the `bb` and
+`builder` accounts with their homes, `/etc/builderbot` with the tunnel to
+the controller, and bb-sandbox itself. Three boxes to tick: the stores on
+the machine's own disk (toolchains, caches, artifacts, dev instance data, the
+synced project copies, `/var/lib/builderbot`); what was configured from the
+dashboard after enrolling (the mounts and their fstab lines, the runners'
+units, the GPU display); and, ticked for a hosting node, what it was given
+as a host (cloudflared with its token, Tailscale's login, the port 22 rule,
+the nginx container). Unticked, those stay, so the machine can be enrolled
+again, here or on another controller, with its stores and mounts as they
+were. What the provisioner installed for the machine itself (docker, the
+packages, the empty mountpoints, everything on the shares) is never touched.
+The row is retired when the job is done. The same removal is `sudo
+bb-sandbox uninstall [--stores] [--configured] [--doors]` on the machine, or
+`provision-linux.sh --remove`; both say what will go and ask, and neither
+deregisters a runner, which only the row can do while the agent can still
+ask for the tokens. **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
 runs `nodes/provision-linux.sh --controller URL --token bbe_…` and dials in. That is
 the only way in; there is no second enrollment, this container holds no key
 that logs in anywhere, and a node reached by token alone takes every kind of
@@ -1203,13 +1224,14 @@ projects on one VM share it. **Its Claude sessions too** (roadmap #24,
 docs/nodes.md §19): a node provisioned with a session account keeps two
 ttyds up beside the agent, running bb-tty from the bb the controller ships,
 so a session on a project bound to it works *on* that machine, with its
-toolchains, on the projects share it mounts at `/workspace` (one more row in
-the node's mounts on this tab). The row's census says whether that half is
-up (`session`: ports, account, whether `/workspace` is mounted, which Claude
-the account has); `bb roadmap`, `bb bug`, `bb version` and the other verbs
+toolchains, in the copy of the project its agent keeps at `/workspace` in
+step with this container's (a synced copy, the one way a node holds its
+projects: nothing mounts the projects share on a node). The row's census
+says whether that half is up (`session`: ports, account, which Claude the
+account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
 whose state is this container's are relayed back here over the API with the
 session's own token. The terminal proxy sends a bound project's session to
-that node when its row says the half is up and `/workspace` is mounted, and
+that node when its row says the half is up and the project's copy is there, and
 refuses with the reason (on the row's button and in the terminal) when
 the node cannot take one, rather than starting it on the wrong machine. A
 project with **no** node has no Claude session at all: this container carries
@@ -1604,7 +1626,19 @@ tab, and **Users**. The Settings tab is what the
 **controller** owns and can apply live. The session-log policy lives there,
 and the idle rule for Claude sessions: end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
-so the rule holds while this container is down, and the tab says
+so the rule holds while this container is down; its **Storage** section,
+where each kind of thing that grows (project snapshots, job snapshots, the
+git relay's repositories, the Git view's working area, the logs) is kept,
+moved to a new empty path on Apply and switched once all of it is there,
+while the records, the database, the signing keys and the git credentials
+stay in the state directory (`paths.py`); its **Public hostname** group,
+where the controller runs the home tunnel itself (R176, `tunnel.py`): the
+hostname a node off the LAN dials, the tunnel's token from Zero Trust
+(a secret, said to be set and never shown back), and an optional Cloudflare
+API token with which the hostname's record and the tunnel's two rules (the
+agent's API to the controller, everything else 404) are written on Apply
+rather than clicked; the group's line says whether cloudflared is in the
+image, running and registered; and the tab says
 plainly what still comes from the environment and why (the placement rule and
 the unhardwiring are docs/nodes.md §13 and §11). One switch in its
 Debugging dialog, *Offer dev features* (Debug mode on, then Debug settings),
@@ -3144,7 +3178,7 @@ into the wrong tree by mistake, which is the common failure, and Bash is not
 under it.
 
 **The hard boundary is the session's view (roadmap R35).** Every session on a
-node runs as one account and the projects share is mounted whole, so file
+node runs as one account and the node holds every project bound to it, so file
 permissions cannot keep projects apart. On a Linux node provisioned as a
 sandbox, a project's Claude session and its project shells start inside a
 mount, PID and IPC namespace built by `nodes/bb-session`, a root helper that
@@ -3228,6 +3262,25 @@ address would hide from everything on the machine. When setting it up fails,
 no session starts on that node until it works or the switch is turned off.
 A container in Docker's host network mode is not reachable from an isolated
 session, since it has no address of its own to allow.
+
+**Each project's containers on their own network (R178, the operator, 11
+Oct)** is the same idea for the containers themselves, for a node two
+web-facing projects share. Docker already keeps compose networks apart,
+but a container reached another project's container by the node's address
+(its published port, after Docker's DNAT) and the node's own ports, measured
+on the dev pair. The agent's keeper runs a second table,
+`builderbot_ctrnet`: forward from a compose bridge passes to its own
+bridge, the bridges of the projects its owner reads, the controller, DNS
+and the internet, and is dropped to any other bridge and rejected to the
+private ranges; into the node it passes to the controller, DNS, 80 and 443
+(nginx, the way in) and the published ports of its own project and the ones
+it reads. The hello carries the map (`devapp.container_net_own`, compose
+project to the compose projects it may reach) and the switch (config
+`container_net`, on by default for a hosting-only node, on the row beside
+the session switch elsewhere); a prefs change or the switch asks for a
+hello, so a container reaches a newly read project within a poll. Nothing
+is marked: a missing table leaves Docker's own rules, and the row says not
+in force rather than a container being cut off.
 
 **Also reaches**, under What a session sees in a project's settings, opens
 the rest by hand (the operator, 7 Oct): a machine its sessions may still
@@ -3774,7 +3827,7 @@ roles, set on the **Roles** tab and nowhere else (R152, the operator, 7 Oct).
 A role is a **scope** (**Global**, which holds everywhere and is the only one
 that reaches the machinery, or **the user's projects**) and, per area,
 **Read** and **Write**: Projects, Project settings, Releases and versions, Git
-authentication, File access (FTP), Containers and Terminal on a project;
+authentication, File access, Containers and Terminal on a project;
 Nodes, Toolchains, Jobs, New projects, CI runner, Accounts and roles and
 Controller beside them. A Global role may name the nodes it holds on (**On
 these nodes**, none ticked being every node) for Nodes, Toolchains, Jobs and
@@ -3842,10 +3895,11 @@ Each account works as itself:
   pairing key, the AVDs and the build caches are not duplicated per person
 - **its transcripts and memories in one place whichever machine ran the
   session**: the home's `~/.claude/projects` is a link to the account's own
-  directory on the projects share (`/workspace/.claude/<uid>/projects`),
-  made on this container and on every node alike, so a conversation held on
-  a node is offered here to resume and its memories show on the notebook's
-  Memory tab. A home that already held transcripts has them copied across
+  directory at `/workspace/.claude/<uid>/projects`, made on this container
+  and on every node alike (a node keeps that directory itself and its agent
+  mirrors it here), so a
+  conversation held on a node is offered here to resume and its memories
+  show on the notebook's Memory tab. A home that already held transcripts has them copied across
   once, the original kept beside the link as `projects.moved-<date>` for
   you to delete. The login itself stays in the home, per machine
 - **its own terminals.** A shell session is named for the account, so two
@@ -4095,8 +4149,9 @@ from Apple's own downloads (Xcode itself is Apple's to serve and needs an
 Apple ID once). The agent's package manager there is Homebrew, its service
 launchd; the Nodes tab offers no Storage or Network, because a Mac's mounts
 and address are its owner's, and asks for no root. Sessions on the Mac
-itself need the projects share at `/workspace`, which on macOS is one line
-in `/etc/synthetic.conf` and an SMB mount, and are not set up by the script.
+itself need a `/workspace` the agent can keep a synced copy in, which on
+macOS is one line in `/etc/synthetic.conf`, and are not set up by the
+script.
 
 Untested on a real Mac yet: the script and the agent's macOS path are
 written against Apple's documentation and the agent's own tests, and the

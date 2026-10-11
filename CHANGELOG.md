@@ -6,6 +6,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Added
 
+- Each project's containers on a node can be kept to their own network (R178): a container reaches its own project's containers, those of the projects its project reads, the controller, DNS, the node's 80 and 443 and the internet, and no longer another project's container by the node's address or the node's own ports. A switch on the node's row, on by default for a hosting-only node; the row says when it is in force.
+- A session asks for a root command on one of the nodes its project hosts containers on: bb root run --node NAME, allowed or denied by a person as ever, and refused where that node's root-asks switch is off; the switch is on a hosting-only node's row too.
 - bb transcripts lists the account's own conversations with Claude on the project and bb transcripts show ID prints one; with bb -p NAME a session reads the account's conversations on a project its own reads, whose files are in its view read-only, and never another account's
 - A theme and a page on the Design view carry rules of their own, for what holds for that theme or that page alone; a session meets one named under its holder (nostromo/hull), bb design show THEME prints a theme with its rules, and the file and the prompts carry them under the theme or the page
 - A project's briefing says when its notebook holds a design, what is in it and to read it before building, and on a tree with no code yet that the design, the rules and the roadmap are the specification, so a project designed before its first line is built to the design
@@ -91,9 +93,33 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Making projects is a role's New projects area, and a Global role may hold Nodes, Toolchains, Jobs and New projects on named nodes only, so an account can be let make projects on one node (d518855)
 - A session is told on its next prompt when Reads, Also sees, Model or Effort changed since it started, and that a new session takes them (867e794)
 - A project's own container can be moved to another project (Built from, Move, on the Docker tab), keeping its name, env and data; a deleted project's containers show as 'X (deleted)' until it is restored or they are moved (1b99a9a)
+- BuilderBot for VS Code: sign in as yourself, open a project as a folder with no share mounted, see a Claude session's changes as it saves them, search its files, and work in its terminal; a project's File access settings gain a switch for it, and it can do nothing your account cannot (239d386)
+- bb map checks itself against babel, python's own parser and hand-checked examples in the other languages on every test run, and rebuilds every stored index by itself whenever the way it reads code changes (239d386)
+- Enroll node asks its questions and hands over one script that provisions and enrolls the machine. Through WireGuard it carries your router's config, routed to the controller alone, and the dialog gives the router's one-way rules. (76d587f)
+- A node can hold its projects as a copy kept in step through the controller instead of mounting the share: saves go both ways in a couple of seconds, two nodes on one project stay in step, and a file changed in two places keeps both versions with the bell saying so. (4e7d51d)
+- A node holding synced copies also gets, read-only, the projects its projects read, so a session sees them at /workspace/NAME as it did on the share. (e1f20c3)
+- A node on the projects share moves to a synced copy with one press, Move to a synced copy in its Sessions section: its sessions end, the share is unmounted from /workspace and each project is copied down (045a959)
+- bb transcripts fetch ID copies one of your conversations into this machine's folder for it (b996a95)
+- A node can stop syncing its projects: Stop syncing holds its sessions while what is left there goes up, then Clean up /workspace removes the copies and says what it freed; Move to a synced copy brings it back (4263d0d)
+- Controller settings has a Storage section: where project snapshots, job snapshots, the git relay, the Git view's working area and the logs are kept can be changed, and what is there is moved across (b639f1a)
+- Send to Docker can put a project's container on any node, one the project is not on included: its image is built on the project's own node and shipped there, so the codebase never reaches that machine, and the project's sessions can still rebuild it (b639f1a)
+- Each project's tree is snapshotted once a day on the controller and kept for the days its settings say (14 unless changed); the whole tree or one file can be restored from its settings, and a restore can itself be undone (b639f1a)
+- Every compose file in a project gets its own row and Send on the Artifacts tab, in subfolders and variants too (an override is left out); a container is built from its file in that file's folder, and its Docker tab row names the file. bb devapp new --compose FILE does the same (b7e6a24)
+- Copy or move on a Docker tab row takes a container to another node with its volumes and data, its env editable on the way; a move takes the old one down only once the new one is up, and goes back if it does not come up (5e57004)
+- A node can be made hosting only, on its row or when it is enrolled: it runs the containers sent to it, no project's code, sessions or bb go there, and its agent may ask the controller for its own jobs and nothing else (13e9f47)
+- A node's row on the Nodes tab has a Projects section: the projects that have the node, its primary marked, with Remove on the ones you are on, which takes the node out of that project's settings after asking (4f20c0a)
+- Hosts its containers on, in a project's Where it runs: hosting-only nodes the project's sessions may make, rebuild and remove containers on, built at home and shipped (bb devapp new --node). (fdc65ea)
+- Enroll node offers a public hostname: the node dials a name a tunnel at home publishes (Cloudflare Tunnel, Tailscale Funnel, ngrok, frp) over HTTPS, nothing on the router changes, it never learns the home address, and it is hosting only; the dialog prints the rule, with cloudflared's config as the example. (6602fe2)
+- An nginx tab on the Tools card: one reverse proxy per node, BuilderBot's own, with its routes and certificate kept on the controller; Deploy, Save and Remove build it on the node, and Enroll node can put it on a new node as it enrolls. (c06d2c0)
+- Enroll node sets up a door in for SSH: cloudflared publishing port 22 at a hostname of its own, or Tailscale with ssh on the tailnet; the node's row switches it on and off and shows the ssh command, and the secret leaves the script once it has run. (1558011)
+- The nginx tab holds a certificate per hostname beside the node's default, so sites on several domains behind one node each get their own. (ab6e253)
+- The controller can run the home tunnel itself: the Settings tab's Public hostname group takes the hostname, the tunnel's token and an optional Cloudflare API token that writes the hostname's record and the tunnel's rules; the image carries cloudflared, and Enroll node fills the hostname in. (03818ad)
+- Enroll script on a node's row makes a new script for that node, to run again on the same machine and nowhere else; it carries no secret, and the node keeps its id. (5542fba)
+- A Storage tab on the Tools card: what every node's disks hold, each filesystem as a meter, the stores and Docker's share, and each project's folders largest first, projects you cannot see counted as one line; Measure now walks a node's disks at once. Its own area, Storage. (6d600f9)
 
 ### Changed
 
+- The nginx and Storage tabs show one node at a time, picked in the bar as Toolchains and the Emulator pick theirs, with a state row first; the nginx tab's certificate and key are two full-width boxes under their labels, each with the hostname picker above them.
 - The companion app's note that Claude is waiting on you names the project first and follows the project's During a test run setting: at once where a new ask interrupts a run, and when the tests finish where it waits for them; bb test now tells the dashboard when a run starts and ends
 - bb tests preflight picks its suites by the covered run when there is one: the function each changed line falls in and the suites that reached it (bb map affected), so a change to one handler in server.py runs that handler's suites rather than all 49; a whole run refreshes the covered run
 - The Design view has no prompt box and no Copy: a session reads the design piece by piece with bb design show, and the view only records it
@@ -210,6 +236,25 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Roles are simpler: a role on a project is given on the project, and holding one there is being on it; Everywhere roles are the account's; the Roles tab says what a person can do as you tick, invitations name the role they offer, and existing assignments were moved over unchanged (32d5b47)
 - A Docker container's row shows its project, where it is built from, its ports and its settings at every width; on a phone they were behind a Details fold (a70950b)
 - Every section starts open, on a phone too, and a long surface (project settings among them) has a line of section names at the top to jump to each; nothing shuts one section when another opens (3b1cbf8)
+- A project's name follows GitHub's rules for a repository's name: 'Turing Lens' is shown as Turing-Lens, a second of one name is Name-2, older names are brought to the rule once, and the dialogs show the name as it is typed (6754fcb)
+- A phone's connect port is typed beside its IP address (or found by the companion app on the phone itself): the node no longer scans the phone's ports, and a connect that gives no usable phone says so (a56d61f)
+- On the Docker tab a project's instance has Edit in place of Env: its compose file and its env in one dialog, the compose file checked by compose before it is saved into the project's tree (06d7f60)
+- The node agent is split into a package of its parts, shipped to nodes as one file as before: a node updates across the change with Update agent, nothing to do on the machine. (a9188eb)
+- The bell's update note for a node's toolchains is one row per node, naming every toolchain its last check found behind with both versions, Claude Code among them, and its link opens that node's Toolchains tab, where each is updated. The companion app reads the same row (API 9). (f0a845b)
+- The enroll script keeps itself once the node has enrolled, with the WireGuard config taken out of it, so it can be changed and run again; the dialog takes the WireGuard config as a file or pasted into a box. (9f6ece9)
+- A node's first copy of a synced project is one download instead of a request a file, and the node notices its own saves as they happen instead of rereading its tree every second. (fb23932)
+- On a node holding synced copies, bb git, bb version, bb changelog, bb sign and attaching files to a release first wait for the node's saves to reach the controller, and for the controller's changes to come back. (6908ecd)
+- Adding a node to a project, or changing what a project reads, starts the synced node's first copy at once instead of up to half a minute later (b996a95)
+- The Artifacts tab's docker rows no longer follow the containers made from them: no running or down, no build progress, no Open link. They say what the compose file will do, and Send makes a new container each time under the name you give it; the Docker tab is where containers are watched and run (b7e6a24)
+- Send to Docker offers a name from what the project is called now, so a renamed project no longer offers its old folder's name, with the file's folder or variant after it (turing-lens-site) (b7e6a24)
+- The node pickers on Send and Copy or move list the project's own nodes first, where its development and Claude sessions happen, and the rest after, where its image is shipped (5e57004)
+- Send, Copy or move and a container's Project and Built from offer only projects on your own list, administrators and the owner included, and the server refuses any other (5e57004)
+- The bell's drawer is grouped as Waiting on you, Needs attention and Recent. An update on a node is a short row, versions folded, with Dismiss: that version stays away for your account on every device until a newer one is out (3f597ad)
+- A project's settings save a section at a time: each section has its own Save and Revert, and where a running session would only take a change when it starts, the section offers Save, keep it running and Save and end it at once. (fdc65ea)
+- The briefing says how a session sends any of its compose files to Docker, what a required variable means, that a hosting node named in its settings takes its containers, and that what stands in front of a container is the nginx tab, a person's. (0937b55)
+- A node's name is taken once: a second script with it is refused; a waiting row shows its id and what its script was made with, and offers Download it again or Discard; the script is named enroll-NAME-ID.sh. (6d600f9)
+- Controller settings is sections like every other tab, each with its own Apply and Revert and a jump bar over them; the Public hostname section carries its own setup steps. (281f4ba)
+- A node's row offers Disable (kept and configured, off every picker and handed no work until Enable) and Un-enroll (BuilderBot taken off the machine and the node removed here; enrolling again starts from Enroll node), in place of Remove and Uninstall. Neither goes through while a session or a container runs on the node. Un-enroll's dialog says what always goes (the agent, every piece of the session isolation, the accounts) and asks about three rings: the stores on the disk, what the dashboard configured after enrolling, and a hosting node's doors and proxy, as `bb-sandbox uninstall --stores --configured --doors` on the machine. (25a595a)
 
 ### Removed
 
@@ -219,9 +264,20 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The debug switch that let two accounts share one Claude login is gone, with the refusal it stood down: the Users tab still says when two accounts are on one login. (c8bb395)
 - The debug option Update Claude Code before a session starts is gone: a node's Claude Code updates when Update is pressed on the Toolchains tab, and nothing else (457ab4b)
 - A BuilderBot bug report is now a log in the diagnostics that a person reads and clears: bb report file, bb report close and a session's bb report listing are gone, since only an install that hosts BuilderBot's own project could answer one (075362f)
+- Nodes no longer mount the projects share in any form: every node holds its projects as a synced copy, a /workspace mount is refused on the Storage section and by bb-sandbox, and the enroll dialog no longer asks (279c51d)
 
 ### Fixed
 
+- A hosting-only node's row has no Claude Code section and its Toolchains tab no Claude Code row: nothing there runs a session.
+- The notebook's Settings view lays its jump bar's chips in a row again; the dialog's field rule had stacked them one per line.
+- The provisioner's closing summary no longer runs sudo bb-sandbox: a command quoted in backticks inside its text ran, and every enroll ended by opening the mounts menu.
+- A new node enrolls again, and an updated one starts after a reboot: the agent's file (a zip since 9 Oct) carries a python3 first line, so the provisioner's enroll and the service run it as a program instead of failing with Exec format error.
+- Controller settings' Public hostname line says connected only when the name really reaches this controller: the controller asks the name itself once a minute and, when the tunnel's rule sends the agent's API somewhere else, says so and where it should point.
+- The enroll script stops when the controller's address answers 200 with nothing BuilderBot would send (a public hostname whose rule points elsewhere), before the door and port 22, saying where the rule should point; it no longer installs an empty agent and reports the node enrolled.
+- bb-sandbox with no verb prints its help instead of opening the menu, which could open in the middle of an enroll on a console where it could not be worked; the menu is `sudo bb-sandbox menu`, at a terminal only.
+- An enroll script with an SSH door runs again after its first run (the repair) instead of stopping at once on the door secret it had already taken out of itself.
+- Closing port 22 behind a door no longer cuts the SSH session the enroll script is being run from: the rule keeps connections already open and refuses new ones, and the script says so.
+- A container removed from the Docker tab while its rebuild was still running no longer comes back as a bare row when the build lands: the result finds no record and writes none, and the runner's own rebuild stops after the build with the reason on the job (B633).
 - A page on the Design view keeps its layout per frame: put on the phone frame and back on the desktop one, its blocks are where they were instead of squeezed into six columns, and Save keeps the other frame's layout with the page (B348)
 - The test harness sweeps what a run ended by its process group left behind, its copy of the tree, its state dir and its private tmux server, on the next start (B347)
 - devapp.mjs reads a one-shot's row as running whether or not the daemon's slow answer marked the list as last seen (B346)
@@ -350,6 +406,22 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The build-folder links BuilderBot puts in a Gradle project are kept out of git through the repository's own exclude file (942bcac)
 - bb -p names a project the session does not read and says where Reads are set; bb bug add -h prints help; a bug whose repro uses bb files in the project's own tracker; a python toolchain (uv and Python 3.12 with pip and venv) (8e7cd14)
 - A capture or build keeps dist/ out of git in a project whose .gitignore does not name it, through the clone's own .git/info/exclude (5049d8a)
+- A Claude session already running is no longer ended when its node's report says Claude Code is not installed; that reading still keeps a new session from starting. (e030d4b)
+- BuilderBot for VS Code: Search Project Files opens the match you pick instead of showing an error. (e030d4b)
+- bb map no longer lists a parameter's default value (why = () => "") as a function of its own. (f3abb92)
+- builderbot-agent --help starts with its first words again. (a9188eb)
+- A node holding its projects as a synced copy saves its Claude conversations again and can resume one started anywhere: each node keeps its own copy, mirrored with the controller's, and a long conversation comes down when it is resumed there (b996a95)
+- A build cut short by a BuilderBot restart is said on the container's Docker tab row, which only the Artifacts tab used to say (b7e6a24)
+- A bug report whose title runs past 300 characters is refused with where the rest goes, rather than cut short and the rest lost (90921e0)
+- On a synced node a second person's sessions get their own worktree again, synced both ways with the controller, instead of falling back to the owner's tree (bcb4648)
+- On a synced node git's index no longer goes back to before a commit: the controller's own git status stops rewriting it, and a node's index wins over the controller's (40ee8ec)
+- Removing a container while its node read as not answering for a moment no longer forgets the row and leaves the container running: the removal waits in the node's queue and happens when it answers (7a3c716)
+- The companion app no longer offers to install the build it is already running when it is behind the dashboard; it says a newer one has to be built and signed first. (b06bf68)
+- A compose file the Artifacts tab says compose cannot read now says what compose itself said is wrong with it. (ebc91a8)
+- A compose file that requires a variable its env does not have yet is no longer called broken on the Artifacts tab: it says which variables it needs and is judged with them stood in. (fdc65ea)
+- The Artifacts tab offers Send for a compose file named for its service (admin.compose.yml), the container named for the service. (e97f661)
+- Install selected on the Toolchains tab takes Claude Code together with other toolchains: its own job is queued beside theirs rather than the press refused. (0c8bfe3)
+- The enroll script stops when the controller does not answer, demands a real answer from a public hostname, and closes port 22 for a door only after the node has enrolled and the door is up. (215c5b9)
 
 ### Security
 

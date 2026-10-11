@@ -450,7 +450,7 @@ function pFillNode(){
     const gen = pGen;
     loadNodes().then(() => { if (gen === pGen && !$("pmodal").hidden) pFillNode(); });
   }
-  const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
+  const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.state !== "disabled");
   const shown = PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
   wrap.hidden = !shown;
   if (!shown){ sel.innerHTML = ""; return; }
@@ -483,27 +483,25 @@ const pSwitch = m => { if (pMode === m) return;
 // pressing anything, and the two agreeing is checked by a test rather than
 // hoped for. If they ever disagree the server wins, and the row that appears
 // carries the name it actually made.
-const projName = (raw) => (raw || "").trim()
-  .replace(/[^A-Za-z0-9._-]/g, "-")
-  .replace(/-{2,}/g, "-")
-  .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
-
 function pNameShow(){
-  const raw = $("pName").value.trim().replace(/\s+/g, " ");
+  const raw = $("pName").value.trim();
   // Cloning with the field left empty takes the repository's name, so a
-  // second copy is checked against THAT, not against an empty string.
-  const eff = raw || (pMode === "clone" ? repoOfUrl($("pUrl").value) : "");
+  // second copy is checked against THAT, not against an empty string. The
+  // name shown follows GitHub's rule (ghName, registry.clean_name).
+  const typed = raw || (pMode === "clone" ? repoOfUrl($("pUrl").value) : "");
+  const eff = ghName(typed);
   // Since R154 a name in use is no refusal: the new project gets a
-  // directory of its own and is shown as Name (2) beside the first.
+  // directory of its own and is shown as Name-2 beside the first.
   const shown = new Set((state?.projects || []).map(p => String(p.label || p.name).toLowerCase()));
   let as = eff, n = 2;
-  while (as && shown.has(as.toLowerCase())) as = `${eff} (${n++})`;
-  const empty = !!raw && !projName(raw);
+  while (as && shown.has(as.toLowerCase())) as = `${eff}-${n++}`;
+  const empty = !!raw && !eff;
   $("pName").classList.toggle("bad", empty);
   $("pNamePreview").classList.toggle("bad", empty);
-  $("pNamePreview").hidden = !empty && as === eff;
+  $("pNamePreview").hidden = !empty && as === typed;
   $("pNamePreview").textContent = empty ? "A name needs at least one letter or digit in it"
-    : `${eff} is already a project's name, so this one is shown as ${as}`;
+    : as !== eff ? `${eff} is already a project's name, so this one is shown as ${as}`
+    : `Shown as ${as}: names follow GitHub's rule, letters, digits, - _ and . only`;
 }
 
 // The repository's own name out of a clone URL: the same rule the server

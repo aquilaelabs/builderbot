@@ -237,7 +237,7 @@ function nodeTools(n){
 function nodeStatePill(n){
   if (n.state === "pending")
     return `<span class="pill note">waiting for enrollment</span>`;
-  const cls = {online: "ok", draining: "warn"}[n.state] || "";
+  const cls = {online: "ok", draining: "warn", disabled: "warn"}[n.state] || "";
   const live = n.kind !== "agent" ? ""
     : n.live ? ` <span class="pill ok ndlive">live</span>`
     : ` <span class="pill ndlive">quiet</span>`;
@@ -397,10 +397,163 @@ function nodeRunnerSection(n, c){
 // session there gets, and which are open right now. The reasons a project
 // cannot be sent here are the proxy's (server.session_target), repeated in
 // the same words so the row and the refusal agree.
+// A node holds its projects as a copy kept in step through the controller
+// (R162), the one way it holds them (R163): each project's state, and the
+// presses that take it off its copy and back (R164).
+function nodeSyncRow(n){
+  if (n.kind !== "agent") return "";
+  const rows = Object.entries(n.reported?.sync || {});
+  const one = ([p, v]) => `<code>${esc(p)}</code> ${v.error ? `<span class="bad">${esc(v.error)}</span>`
+    : !v.ready ? `copying${v.copying ? ` (${v.copying} to go)` : ""}`
+    : v.pending ? `${v.pending} change${v.pending === 1 ? "" : "s"} going up` : "in step"}`;
+  const conf = n.config || {}, live = n.live ? "" : "disabled";
+  // Off its synced copy (R164): no projects and no sessions here, the
+  // copies removed or on their way out, and one press back.
+  if ((conf.workspace || "sync") !== "sync"){
+    const c = n.reported?.sync_clean || {};
+    const done = conf.clean && c.token === conf.clean;
+    return `<div class="sub">This node holds no projects, so no session starts here${
+      !conf.clean ? "." : !done ? "; its copies are being removed." : c.error
+        ? `; its copies could not all be removed: <span class="bad">${esc(c.error)}</span>`
+        : `; its copies were removed, ${esc(gb(Math.round((c.freed || 0) / 1048576)))} freed.`}</div>
+    <div><button type="button" data-nd="to-sync" ${live} ${conf.clean && !done ? "disabled" : ""}>Move to a synced copy</button></div>`;
+  }
+  // Leaving it: sessions held while what is left goes up, then Clean up.
+  if (conf.leaving){
+    const d = n.reported?.sync_drain;
+    const left = d ? [d.files ? `${d.files} file change${d.files === 1 ? "" : "s"}` : "",
+                      d.claude ? `${d.claude} conversation file${d.claude === 1 ? "" : "s"}` : ""].filter(Boolean) : [];
+    const drained = d && d.walked && !left.length;
+    return `<div class="sub">Leaving its synced copy: no session starts here, and ${
+      !d ? "the node has not said yet what is left to send up"
+      : left.length ? `${left.join(" and ")} still to go up to the controller`
+      : !d.walked ? "the node is looking at every file once more" : "everything here has reached the controller"}.</div>
+    <div><button type="button" data-nd="sync-clean" ${live} ${drained ? "" : "disabled"}>Clean up /workspace</button>
+      <button type="button" data-nd="sync-resume" ${live}>Keep syncing</button></div>`;
+  }
+  return `<div class="sub">Projects here are a copy kept in step through the controller${
+    rows.length ? `: ${rows.map(one).join(", ")}` : "; none is bound to this node yet"}.</div>
+    <div><button type="button" data-nd="sync-stop" ${live}>Stop syncing</button></div>`;
+}
+
+// Hosting only (the operator, 10 Oct): a node that runs containers sent to
+// it and nothing else, so nothing of it comes back to the controller. Said in
+// the Sessions section, since what it takes away is sessions and code.
+// The door in for SSH (R174): what the machine reports, or what the enroll
+// script set up while it has not reported yet; the switch is a system job,
+// and the line says the ssh command to use.
+function nodeDoorRow(n){
+  if (n.kind !== "agent") return "";
+  const d = n.reported?.door || n.config?.door;
+  if (!d?.kind) return "";
+  const known = !!n.reported?.door;
+  const cmd = d.kind === "cloudflared"
+    ? `ssh -o ProxyCommand="cloudflared access ssh --hostname ${esc(d.host || "HOST")}" ${esc(n.config?.user || "bb")}@${esc(d.host || "HOST")}`
+    : `ssh ${esc(n.config?.user || "bb")}@${esc(d.host || n.name)}`;
+  const state = !known ? "not reported yet" : !d.installed ? "not installed" : d.active ? "open" : "shut";
+  return `<div class="field nddoor">
+      <div class="actbar"><span class="state">SSH door: ${esc(d.kind)}, ${esc(state)}${
+        d.kind === "cloudflared" ? " (Cloudflare Access decides who reaches it)" : " (the tailnet's ACLs decide who reaches it)"}</span><span class="sp"></span>
+        ${known && d.installed ? `<button type="button" data-nd="door" data-on="${d.active ? "0" : "1"}" ${n.live ? "" : "disabled"}>${d.active ? "Shut it" : "Open it"}</button>` : ""}</div>
+      ${known && d.installed && d.active ? `<pre class="ndcmd">${cmd}</pre>` : ""}
+    </div>`;
+}
+
+function nodeHostRow(n){
+  if (n.kind !== "agent") return "";
+  return n.config?.host_only
+    ? `<div class="sub">It hosts containers only: no project lists it, no session or synced copy runs here,
+        and its agent may ask the controller for nothing but its own jobs, an image shipped to it
+        and a container's data in a copy or a move.</div>
+       <div><button type="button" data-nd="host-off">Let projects use it again</button></div>`
+    : `<div class="sub dim">A node that only runs containers sent to it (a web-facing one) can be made
+        hosting only: no code, no sessions, and nothing of it comes back but its own jobs.</div>
+       <div><button type="button" data-nd="host-only" ${n.live ? "" : "disabled"}>Make it hosting only</button></div>`;
+}
+
+// Un-enroll (the operator, 11 Oct): the one way off. Where the machine can
+// be cleaned (its agent dialing in, provisioned by BuilderBot) the dialog
+// says what always goes (the agent, the session isolation, the accounts)
+// and offers three rings to tick: the stores on its disk, what was
+// configured from the dashboard after enrolling, and a hosting node's
+// doors and proxy, ticked for one. Anywhere else the node is removed here
+// only, and the dialog says BuilderBot's pieces stay on the machine.
+function openUnenroll(n){
+  const modal = document.getElementById("ndmodal"), body = document.getElementById("ndBody");
+  if (!modal || !body) return;
+  const clean = !!(n.live && n.reported?.sandbox);
+  const host = !!n.config?.host_only;
+  document.getElementById("ndTitle").textContent = `Un-enroll ${n.name}`;
+  body.innerHTML = clean ? `<div class="field">
+      <div class="hint">BuilderBot is uninstalled from the machine, then the node is removed here. To use it again, enroll it from Enroll node, here or on another controller.</div>
+      <div class="hint">Always: the agent and its unit, the sessions' firewall rules and networks, the <code>${esc(n.config?.user || "bb")}</code> and session accounts with their homes, and the tunnel to the controller. Docker, the packages and the shares' contents stay.</div>
+      <label class="ndcap"><input type="checkbox" id="ndUnStores"> Also delete the stores on its disk: the toolchains, the caches, the artifacts, dev instance data, and the synced project copies</label>
+      <label class="ndcap"><input type="checkbox" id="ndUnConf"> Also undo what was set up from the dashboard after enrolling: the mounts and their fstab lines, the runners, the GPU display</label>
+      <label class="ndcap"><input type="checkbox" id="ndUnDoors"${host ? " checked" : ""}> Also shut what it was given as a host: the SSH door with its token, the port 22 rule, and the nginx container</label>
+      <div class="hint">What the provisioner installed for the machine itself is never touched.</div>
+    </div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" class="danger" id="ndUnGo">Un-enroll</button>
+      <button type="button" id="ndUnCancel">Cancel</button></div>`
+  : `<div class="field">
+      <div class="hint bad">The machine cannot be cleaned from here: ${n.live ? "it was not provisioned by BuilderBot" : "its agent is not dialing in"}. The node is removed here and its tokens revoked; BuilderBot's pieces stay on the machine until <code>sudo bb-sandbox uninstall</code> is run there.</div>
+    </div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" class="danger" id="ndUnGo">Remove it here</button>
+      <button type="button" id="ndUnCancel">Cancel</button></div>`;
+  modal.hidden = false;
+  const shut = () => { modal.hidden = true; };
+  body.querySelector("#ndUnCancel").onclick = shut;
+  const go = body.querySelector("#ndUnGo");
+  go.onclick = async () => {
+    busy(go, "Un-enrolling");
+    const j = await nodeAct(clean
+      ? {action: "uninstall", id: n.id, stores: !!body.querySelector("#ndUnStores")?.checked,
+         configured: !!body.querySelector("#ndUnConf")?.checked, doors: !!body.querySelector("#ndUnDoors")?.checked}
+      : {action: "retire", id: n.id});
+    if (j.error){ notify(j.error, true); unbusy(go, clean ? "Un-enroll" : "Remove it here"); return; }
+    shut();
+    notify(clean ? `${n.name}: uninstalling; the row goes when the machine reports it done` : `${n.name} removed here`);
+    await loadNodes();
+  };
+}
+
+// The projects that have this node among theirs (the operator, 10 Oct): read
+// off the projects this account is shown, primary first in each, with Remove
+// on the ones the account is on. Remove is the project's settings saved
+// without the node, so the same gates hold (the node grant, a read-only
+// project) and the server names the refusal; a project the account is not on
+// says so rather than offering it, the accident guard the pickers keep too.
+function nodeProjects(id){
+  return (state?.projects || []).filter(p => (p.prefs?.nodes || []).includes(id) || p.prefs?.node === id)
+    .sort((a, b) => projLabel(a.name).localeCompare(projLabel(b.name), undefined, {sensitivity: "base"}));
+}
+function nodeProjectsSection(n){
+  const list = nodeProjects(n.id);
+  const rows = list.map(p => {
+    const set = p.prefs?.nodes || [];
+    const primary = p.prefs?.node === n.id;
+    const rest = set.filter(x => x !== n.id);
+    const then = !rest.length ? "it is then on no node, so nothing builds or runs a session until one is picked"
+      : primary ? `${esc((nodesList || []).find(x => x.id === rest[0])?.name || rest[0])} becomes its primary` : "";
+    return `<div class="row ndproj">
+      <div class="grow"><div class="name">${esc(projLabel(p.name))}${primary ? ` <span class="dim">· primary</span>` : ""}</div>
+        ${p.mine ? (then ? `<div class="sub dim">Removing it: ${then}.</div>` : "")
+          : `<div class="sub dim">Not one of your projects: add yourself to it to change its nodes.</div>`}</div>
+      ${p.mine ? `<button type="button" data-ndproj="${esc(p.name)}">Remove</button>` : ""}
+    </div>`;
+  }).join("");
+  const body = rows || `<div class="empty">No project you can see has this node. A project's settings add one.</div>`;
+  return docSection("nodes", "projects", "Projects", list.length ? `${list.length}` : "none", body);
+}
+
 function nodeSessionsSection(n){
   const se = n.reported?.session;
   const list = n.reported?.sessions || [];
   let status, cls, body;
+  if (n.config?.host_only){
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodeToolsLine(n), {cls: "ok"});
+  }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
     body = `<div class="sub">Update the agent: this one is too old to run sessions.</div>`;
@@ -410,13 +563,6 @@ function nodeSessionsSection(n){
       No Claude session can start here until it is up.</div>`;
   } else {
     const gaps = [];
-    const wsErr = (n.reported?.mounts || []).find(m => m.path === "/workspace")?.error || "";
-    if (!se.workspace && wsErr) gaps.push(`the projects share is not mounted at /workspace: ${wsErr}${
-      /access denied/i.test(wsErr) ? ": the host's NFS export names another address; change the rule there" : ""}`);
-    else if (!se.workspace) gaps.push(se.up_s != null && se.up_s >= 0 && se.up_s < 600
-      ? `the projects share is not mounted yet: the machine booted ${se.up_s} seconds ago. Check again in a minute`
-      : "the projects share is not mounted at /workspace: add it under Storage");
-    else if (se.writable === false) gaps.push("the projects share is read-only: untick read-only under Storage and press Apply storage");
     if (!se.boot) gaps.push("the agent reports no boot id: Update agent");
     // Whether a session here is kept to its own project (R35): said on the
     // status itself when it is not, since a folded section shows nothing else.
@@ -432,14 +578,16 @@ function nodeSessionsSection(n){
         : iso.sessions ? `<div class="sub">Each session sees only its own project.</div>`
         : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
       ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}</div>` : ""}
+      ${nodeSyncRow(n)}
       ${nodeSessNetRow(n)}
+      ${nodeContainerNetRow(n)}
       ${nodeTurnsRow(n)}`;
   }
   // ...and the node's phone and CI runner, which are tabs of their own
   // (R121): a line at the foot of this section opens them. It was a band
   // between sections, which read as part of Sessions yet stayed when Sessions
   // folded, and sat without the section's inset (the operator, 7 Oct).
-  return docSection("nodes", "sessions", "Sessions", status, body + nodeToolsLine(n), {cls});
+  return docSection("nodes", "sessions", "Sessions", status, body + nodeHostRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls});
 }
 
 // Claude Code on this node: this account's sign-in here (a login is one
@@ -477,6 +625,54 @@ function nodeClaudeSection(n){
 // Whether each session here reaches only its own project's containers, the
 // controller and the internet (R79): the node's setting, and what its agent
 // says about it underneath, a reason in red when it is on and not in force.
+// Root asks on a hosting-only node (the operator, 11 Oct): no session runs
+// here, but a session of a project that hosts its containers here may ask
+// for a root command by name (bb root run --node NAME), and this switch
+// decides, as the Sessions section's does on a node that runs them. A
+// draft until its Save, like that one.
+function nodeHostRootRow(n){
+  const c = nodeDraft(n);
+  const rootOn = !n.config?.no_root;
+  if (c.draft.rootAsks === undefined || c.draft.rootFrom !== rootOn){
+    c.draft.rootAsks = rootOn; c.draft.rootFrom = rootOn;
+  }
+  return `<div class="field">
+    <label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
+      let a session of a project that hosts containers here ask for a root command (bb root run --node ${esc(n.name)}), which a person then allows or denies</label>
+    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}
+    <div class="actbar"><span class="state"></span><span class="sp"></span>
+      <button type="button" data-nd="root-asks-host"${c.draft.rootAsks === rootOn ? " disabled" : ""}>Save</button></div>
+  </div>`;
+}
+
+// Each project's containers kept to their own network on this node (R178,
+// the operator, 11 Oct): a container reaches its own project's containers,
+// those of the projects it reads, the controller, DNS, the node's 80 and
+// 443 and the internet, and nothing else on the node. On by default for a
+// hosting-only node, which is the one two web-facing projects share. A
+// draft until its Save, like the switches beside it.
+function nodeContainerNetRow(n){
+  const c = nodeDraft(n);
+  const on = "container_net" in (n.config || {}) ? !!n.config.container_net : !!n.config?.host_only;
+  if (c.draft.ctrNet === undefined || c.draft.ctrFrom !== on){
+    c.draft.ctrNet = on; c.draft.ctrFrom = on;
+  }
+  const ct = n.reported?.session_net?.ctr;
+  const line = !on ? ""
+    : !ct ? `<div class="sub warn">Update the agent: this one cannot keep a project's containers to their own network.</div>`
+    : !ct.can ? `<div class="sub bad">Not in force: ${esc(ct.why || "this node cannot do it")}.</div>`
+    : ct.error ? `<div class="sub bad">Not in force: ${esc(ct.error)}.</div>`
+    : ct.active ? `<div class="sub">In force on ${ct.bridges} compose network${ct.bridges === 1 ? "" : "s"}: a container reaches its own project's containers, the ones its project reads, and the internet; not another project's by this node's address.</div>`
+    : `<div class="sub dim">Setting it up.</div>`;
+  return `<div class="field">
+    <label class="ndcap"><input type="checkbox" data-k="ctrnet" ${c.draft.ctrNet ? "checked" : ""}>
+      keep each project's containers to their own network (a container reaches another project's only where its project reads it)</label>
+    ${line}
+    <div class="actbar"><span class="state"></span><span class="sp"></span>
+      <button type="button" data-nd="ctr-net-save"${c.draft.ctrNet === on ? " disabled" : ""}>Save</button></div>
+  </div>`;
+}
+
 function nodeSessNetRow(n){
   const on = !!n.config?.session_net;
   // A draft until the section's Save is pressed (the rule apply-not-onchange,
@@ -552,9 +748,9 @@ function nodeTurnsRow(n){
 
 // The node's path mapping (docs/nodes.md §11): what this container's paths
 // are called on that machine, because its daemon resolves a compose file's
-// bind sources over there. Nearly always the identity now that the projects
-// share is mounted at /workspace on both sides: path parity is a rule, not
-// a setting, so it lives under Advanced with the actions that are rarely
+// bind sources over there. Nearly always the identity, since a node holds
+// its projects at /workspace as the controller does: path parity is a rule,
+// not a setting, so it lives under Advanced with the actions that are rarely
 // pressed, and says why it is there. Still read by devapp.host_map for
 // every node addressed, so it is not gone.
 function nodeAdvancedSection(n, stale, inflight){
@@ -582,7 +778,7 @@ function nodeAdvancedSection(n, stale, inflight){
         maxlength="60" aria-label="node name"></div>
       <button type="button" data-nd="rename" title="a runner already installed keeps its old label until reinstalled">Rename</button>
     </div>
-    <div class="sub">Only needed when the projects share is not at <code>/workspace</code> on the node.</div>
+    <div class="sub">Only needed when a path a compose file names is somewhere else on the node.</div>
     <div class="ndpaths actbar">
       <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated")}
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
@@ -613,12 +809,15 @@ function nodeAdvancedSection(n, stale, inflight){
           : inflight("cache-clear") ? "already clearing"
           : "drop every project's build cache here; the next build refetches"}">${
         inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>
-      <button type="button" class="danger" data-nd="retire"
-        title="take it off every list; its history stays">Remove</button>
-      ${n.reported?.sandbox ? `<button type="button" class="danger" data-nd="uninstall"
-        ${inflight("uninstall") ? "disabled" : ""}
-        title="remove BuilderBot from the machine: the agent, its accounts, mounts and files; docker and the shares stay">${
-        inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
+      <button type="button" data-nd="${n.state === "disabled" ? "enable" : "disable"}"
+        title="${n.state === "disabled" ? "offer it to projects and hand it work again"
+          : "keep it enrolled and configured, but off every picker and handed no work or session until Enable"}">${
+        n.state === "disabled" ? "Enable" : "Disable"}</button>
+      <button type="button" class="danger" data-nd="unenroll" ${inflight("uninstall") ? "disabled" : ""}
+        title="${n.live && n.reported?.sandbox
+          ? "take BuilderBot off the machine (the agent, its accounts, mounts, runners and files; Docker and the shares stay) and remove the node here; enrolling it again, here or elsewhere, starts from Enroll node"
+          : "remove the node here; the machine cannot be cleaned from here (" + (n.live ? "not provisioned by BuilderBot" : "its agent is not dialing in") + "), so BuilderBot's pieces stay on it"}">${
+        inflight("uninstall") ? "Un-enrolling…" : "Un-enroll"}</button>
     </div>
     ${n.kind === "agent" ? `<div class="actbar">
       <span class="state${n.live && !installing ? "" : " bad"}">${!n.live
@@ -1074,6 +1273,23 @@ function renderNodesInto(i){
             esc(nodesAgent.version)}</span>` : ""}${
           n.config?.user ? ` · jobs run as ${esc(n.config.user)}` : ""}` : "";
     const pending = n.state === "pending";
+    // A waiting row says what its script was made with (the operator, 11
+    // Oct), and offers the script again: a new one, since a token is good
+    // once and never kept, so the old script stops working.
+    const picks = c => [`jobs run as ${esc(c.user || "bb")}`,
+      c.host_only ? "hosting only" : "runs sessions",
+      c.tunnel?.kind === "public" ? `reaches the controller at https://${esc(c.tunnel.host || "?")}`
+        : c.tunnel?.kind === "wireguard" ? `reaches the controller through WireGuard as ${esc(c.tunnel.addr || "?")}`
+        : "reaches the controller on this network",
+      c.door?.kind ? `SSH door: ${esc(c.door.kind)}${c.door.host ? ` at ${esc(c.door.host)}` : ""}` : "",
+      c.nginx ? "nginx once enrolled" : ""].filter(Boolean).join(" · ");
+    const pendingBar = n.kind === "agent" && pending ? `
+        <div class="sub ndpicks">Made with: ${picks(n.config || {})}.</div>
+        <div class="actbar ndpending">
+          <span class="lead dim">Waiting for enroll-${esc(n.name)}-${esc(n.id)}.sh to run on the machine. Download it again makes a new one with a new token (the old script stops working); Discard takes the row off.</span>
+          <button type="button" data-nd="reenroll" title="a new enroll script for this row, with a new token">Download it again</button>
+          <button type="button" class="danger" data-nd="discard" title="take this waiting row off: nothing has enrolled with it">Discard</button>
+        </div>` : "";
     const agentBar = n.kind === "agent" && !pending ? `
         <div class="actbar ndagent">
           <span class="lead dim${updating ? " note"
@@ -1088,6 +1304,7 @@ function renderNodesInto(i){
               : `Update the agent to ${esc(nodesAgent.version)} once its running jobs finish`}">${
             updating ? "Updating…" : "Update agent"}</button>` : ""}
           <button type="button" data-nd="test" title="check that this node answers">Test</button>
+          <button type="button" data-nd="reenroll" title="a new enroll script for this node, to run again on the same machine">Enroll script</button>
         </div>
         <div class="sub ndtest" hidden></div>` : "";
     const health = docSection("nodes", "health", "Health",
@@ -1106,17 +1323,19 @@ function renderNodesInto(i){
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
-          <span class="dim">· ${esc(n.kind)}</span></div>
+          <span class="dim">· ${esc(n.kind)}</span>
+          <code class="dim ndid" title="this node's id: the one in its enroll script's name">${esc(n.id)}</code></div>
         <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
         ${keepLine(n)}
         ${state?.can?.admin === false ? `<div class="sub warn ndreadonly">An administrator changes a node's settings. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
-        ${agentBar}
+        ${agentBar}${pendingBar}
       </div>
       <div class="ndsections">
         ${health}
+        ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
-        ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
+        ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
       </div>
@@ -1205,10 +1424,36 @@ function nodesReadOnly(root){
   });
 }
 
+// Remove a project from this node: its settings saved with the node out of
+// its set, the primary moving to the next of the set as the dialog's own
+// save does. What ends with it is said before the press.
+async function nodeProjectRemove(b, name, id){
+  const p = (state?.projects || []).find(x => x.name === name);
+  if (!p || !id) return;
+  const nname = (nodesList || []).find(x => x.id === id)?.name || "this node";
+  const rest = (p.prefs?.nodes || []).filter(x => x !== id);
+  const node = p.prefs?.node === id ? (rest[0] || "") : (p.prefs?.node || "");
+  const inIt = c => { const m = /^\/workspace\/(?:\.worktrees\/)?([^/]+)/.exec(c || ""); return m && m[1] === name; };
+  const here = (state?.sessions || []).filter(x => x.node_id === id && inIt(x.cwd));
+  if (!confirm(`Remove ${projLabel(name)} from ${nname}?\n\n`
+        + (rest.length ? "" : "It is then on no node: nothing builds, tests or opens a session for it until one is picked. ")
+        + (here.length ? `Its ${here.length} session${here.length === 1 ? "" : "s"} open there keep running until closed. ` : "")
+        + "Its containers there keep running, and the Docker tab still reaches them.")) return;
+  busy(b, "Removing");
+  const j = await (await postJSON("/api/prefs", {project: name, node, nodes: rest}))
+    .json().catch(() => ({error: "no answer"}));
+  if (j.error) notify(j.error, true);
+  else notify(`${projLabel(name)} no longer uses ${nname}`);
+  await refresh();
+  nodesRev++; drawPanes();
+}
+
 function wireNodesTab(root){
   wireSignin(root);
   root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
   root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
+  root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () =>
+    nodeProjectRemove(b, b.dataset.ndproj, b.closest("[data-node]")?.dataset.node || ""));
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
@@ -1230,8 +1475,15 @@ function wireNodesTab(root){
   // The box narrows for the question and widens for the answer: one field
   // does not want 760px, and a shell line that wraps lies about what runs.
   const boxWidth = wide => modal.querySelector(".box").classList.toggle("wide", wide);
-  const mintForm = () => {
-    document.getElementById("ndTitle").textContent = "Enroll a node";
+  // The questions, and one script as the answer (R161): the provisioner
+  // with the answers, the token and (behind WireGuard) the tunnel inside,
+  // built on the press and kept nowhere but the file the browser saves.
+  // "Just a token" is the old way: the commands to paste, a Mac's included.
+  // `again` is a node already here (R177): the form opens on its answers,
+  // its name fixed, its secrets left out (the node keeps them), and the
+  // script it makes carries that node's id and runs on its machine alone.
+  const mintForm = (was = {}, again = null) => {
+    document.getElementById("ndTitle").textContent = again ? `Enroll ${again.name} again` : "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
         <div class="prefrow">
@@ -1242,40 +1494,184 @@ function wireNodesTab(root){
             <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
               value="bb"></div>
         </div>
-        <div class="hint">The token is good once, for a day.</div>
+        <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
+        <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
+        <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
+        <div class="setrow col">${lbl("ndEnDoor", "SSH door",
+          "a way in for ssh, switched on and off from the node's row. cloudflared publishes the machine's port 22 at a hostname of its own, with a tunnel token from Zero Trust; Tailscale joins the machine to your tailnet with an auth key and answers ssh there, with no public name")}
+          <select id="ndEnDoor">
+            <option value="">none</option>
+            <option value="cloudflared">cloudflared: port 22 at a hostname</option>
+            <option value="tailscale">Tailscale: ssh on the tailnet</option>
+          </select></div>
+        <div class="setrow col" id="ndEnDoorHostRow" hidden>${lbl("ndEnDoorHost", "The door's hostname",
+          "a public hostname of its own on the tunnel (not the controller's), set in Zero Trust to go to ssh://localhost:22")}
+          <input id="ndEnDoorHost" autocomplete="off" spellcheck="false" placeholder="ssh-vps.example.com"></div>
+        <div class="setrow col" id="ndEnDoorSecretRow" hidden>${lbl("ndEnDoorSecret", "The door's secret",
+          "cloudflared's tunnel token, or a Tailscale auth key. It rides in the script until the script has run, then leaves it; the node keeps it")}
+          <input id="ndEnDoorSecret" type="password" autocomplete="off" spellcheck="false"></div>
+        <label class="ndcap" id="ndEnDoorCloseRow" hidden><input type="checkbox" id="ndEnDoorClose"> Close port 22 to the internet once the door is up</label>
+        <div class="hint" id="ndEnDoorHint" hidden>Who gets to the door is the tunnel's own say (Cloudflare Access, or the tailnet's ACLs); the machine's keys decide after that. Leave port 22 open until you have come in through the door once.</div>
+        <label class="ndcap"><input type="checkbox" id="ndEnNginx"> Put nginx on it once it is enrolled</label>
+        <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx tab holds for it (set them there first or after).</div>
       </div>
+      <div class="field">
+        <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
+          "how the machine dials in. Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel. Through a public hostname, a tunnel at home (Cloudflare Tunnel, Tailscale Funnel, ngrok, frp) publishes the controller at a name and the machine dials that: nothing on your router changes and it never learns your address")}
+          <select id="ndEnReach">
+            <option value="lan">on this network</option>
+            <option value="wireguard">WireGuard</option>
+            <option value="public">a public hostname (a tunnel from home)</option>
+          </select></div>
+        <div class="setrow col">${lbl("ndEnCtl", "Controller's address",
+          "the URL the machine dials. Behind WireGuard, the controller's address on your network, which the tunnel routes to. Through a public hostname, the name the tunnel publishes, as https://bb.example.com")}
+          <input id="ndEnCtl" autocomplete="off" spellcheck="false" value="${esc(location.origin)}"></div>
+        <div class="hint" id="ndEnCfHint" hidden>Hosting only, and no sessions: the controller cannot reach back through the tunnel. The machine verifies the hostname's public certificate and never sees your home address.</div>
+        <div class="setrow col" id="ndEnWgRow" hidden>${lbl("ndEnWgText", "WireGuard config",
+            "the .conf your router made for this machine: choose the file, or paste what is in it. Only the controller's address is routed through it on the machine")}
+          <input type="file" id="ndEnWg" accept=".conf,text/plain" aria-label="choose the WireGuard config file">
+          <textarea id="ndEnWgText" rows="7" spellcheck="false" autocomplete="off"
+            placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.6.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = home.example.net:51820"></textarea></div>
+      </div>
+      <div class="field"><div class="hint">${again
+        ? "A new script for this node: run it again on the same machine, as root, to set it up afresh or change what it reaches the controller through. It carries no secret (the node keeps its WireGuard config and its door's); a secret pasted here replaces the node's. It refuses to run on another machine, and so does the controller."
+        : "The script carries a token good once, for a day, and runs as root on a Linux machine."}</div></div>
       <div class="foot">
-        <button type="button" class="primary" id="ndEnGo">Mint a token</button>
+        <button type="button" class="primary" id="ndEnGo">Make the script</button>
+        <button type="button" id="ndEnTok">Just a token</button>
         <button type="button" id="ndEnCancel">Cancel</button>
       </div>`;
+    const $b = sel => body.querySelector(sel);
+    if (again){
+      const c = again.config || {};
+      was = {"#ndEnName": again.name, "#ndEnUser": c.user || "bb",
+             "#ndEnSess": !c.host_only, "#ndEnHost": !!c.host_only, "#ndEnNginx": !!c.nginx,
+             "#ndEnReach": c.tunnel?.kind === "public" ? "public" : c.tunnel?.kind === "wireguard" ? "wireguard" : "lan",
+             "#ndEnCtl": c.tunnel?.kind === "public" && c.tunnel.host ? `https://${c.tunnel.host}` : location.origin,
+             "#ndEnDoor": c.door?.kind || "", "#ndEnDoorHost": c.door?.host || "", ...was};
+    }
+    for (const [k, v] of Object.entries(was)) if ($b(k) && v !== undefined)
+      $b(k)[typeof v === "boolean" ? "checked" : "value"] = v;
+    if (again) $b("#ndEnName").disabled = true;
+    const reach = $b("#ndEnReach");
+    // Hosting only takes sessions with it: the box is to run containers.
+    // Through a public hostname it is so by construction (R170): the
+    // switch is ticked and held, and the address field asks for the name.
+    const host = $b("#ndEnHost"), sess = $b("#ndEnSess");
+    const showHost = () => {
+      const cf = reach.value === "public";
+      if (cf) host.checked = true;
+      host.disabled = cf;
+      $b("#ndEnHostHint").hidden = !host.checked;
+      $b("#ndEnCfHint").hidden = !cf;
+      sess.disabled = host.checked;
+      if (host.checked) sess.checked = false;
+    };
+    const ngx = $b("#ndEnNginx");
+    ngx.onchange = () => { $b("#ndEnNginxHint").hidden = !ngx.checked; };
+    const door = $b("#ndEnDoor");
+    const showDoor = () => {
+      $b("#ndEnDoorHostRow").hidden = door.value !== "cloudflared";
+      $b("#ndEnDoorSecretRow").hidden = $b("#ndEnDoorCloseRow").hidden = $b("#ndEnDoorHint").hidden = !door.value;
+    };
+    door.onchange = showDoor;
+    showDoor();
+    const showWg = () => {
+      $b("#ndEnWgRow").hidden = reach.value !== "wireguard";
+      const ctl = $b("#ndEnCtl");
+      if (reach.value === "public" && /^https?:\/\/(\d+\.|localhost|\[)/.test(ctl.value)) ctl.value = "https://";
+      else if (reach.value !== "public" && ctl.value === "https://") ctl.value = location.origin;
+      // The hostname the controller's own tunnel publishes (R176), filled
+      // in where the settings have one and nothing has been typed yet.
+      const own = state?.settings?.settings?.tunnel_host?.value;
+      if (reach.value === "public" && own && ctl.value === "https://") ctl.value = `https://${own}`;
+      showHost();
+    };
+    reach.onchange = showWg;
+    host.onchange = showHost;
+    showWg();
+    // A file chosen lands in the box, which is what is sent: one place to
+    // read it, change it, or paste it instead.
+    $b("#ndEnWg").onchange = async e => {
+      const f = e.target.files?.[0];
+      if (f) $b("#ndEnWgText").value = await f.text();
+    };
     // No focus, like every other dialog here: on a phone it would raise the
     // keyboard over the box it just opened.
-    body.querySelector("#ndEnCancel").onclick = shut;
-    const go = body.querySelector("#ndEnGo");
-    go.onclick = () => pressing(go, async () => {
-      busy(go, "Minting");
-      const name = body.querySelector("#ndEnName").value;
+    $b("#ndEnCancel").onclick = shut;
+    const answers = () => ({name: $b("#ndEnName").value,
       // The account rides along, so the row says the right one before the
       // machine exists and the command below carries it. The record follows
-      // whatever the agent reports at enrollment either way; this is what
-      // stops the two disagreeing in between, and what stops somebody
-      // having to remember the flag.
-      const user = body.querySelector("#ndEnUser").value.trim() || "bb";
-      const r = await nodeAct({action: "enroll", name, user});
-      // nodeAct has said why; the form comes back holding what was typed,
-      // since a redraw to its defaults lost the name and the account on
-      // every refusal (B331's shape: an account read as bb after joe).
-      if (r.error){ mintForm(); body.querySelector("#ndEnName").value = name;
-                    body.querySelector("#ndEnUser").value = user; unbusy(go, "Mint a token"); return; }
+      // whatever the agent reports at enrollment either way.
+      user: $b("#ndEnUser").value.trim() || "bb"});
+    // What was typed comes back after a refusal: a redraw to its defaults
+    // lost the name and the account on every one (B331's shape).
+    const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnNginx": ngx.checked,
+      "#ndEnDoor": door.value, "#ndEnDoorHost": $b("#ndEnDoorHost").value, "#ndEnDoorClose": $b("#ndEnDoorClose").checked,
+      "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
+      "#ndEnWgText": $b("#ndEnWgText").value});
+    const go = $b("#ndEnGo");
+    go.onclick = () => pressing(go, async () => {
+      const kept = keep();
+      const conf = $b("#ndEnWgText").value;
+      if (reach.value === "wireguard" && !conf.trim() && !again){
+        notify("choose the WireGuard config your router made for this machine, or paste it in", true); return;
+      }
+      busy(go, "Making");
+      const r = await nodeAct({action: "enroll", script: true, ...answers(), ...(again ? {node: again.id} : {}),
+        sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
+        host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
+        door: door.value, door_host: $b("#ndEnDoorHost").value.trim(),
+        door_secret: $b("#ndEnDoorSecret").value.trim(), door_close22: $b("#ndEnDoorClose").checked,
+        controller: $b("#ndEnCtl").value.trim(),
+        wg_conf: reach.value === "wireguard" ? conf : ""});
+      if (r.error){ mintForm(kept, again); return; }
+      mintScript(r);
+      nodesRev++; drawPanes();              // the pending row joins the picker
+    });
+    const tok = $b("#ndEnTok");
+    tok.onclick = () => pressing(tok, async () => {
+      const kept = keep(), a = answers();
+      busy(tok, "Minting");
+      const r = await nodeAct({action: "enroll", ...a, host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
+                               ...(again ? {node: again.id} : {})});
+      if (r.error){ mintForm(kept, again); return; }
       // The URL the node should dial: this page's origin, which is the only
       // address the browser knows the controller by. A proxy in front is the
       // operator's to substitute.
-      mintToken({name: name || "node", token: r.token, url: location.origin, user});
-      nodesRev++; drawPanes();              // the pending row joins the picker
+      mintToken({name: a.name || "node", token: r.token, url: location.origin, user: a.user});
+      nodesRev++; drawPanes();
     });
-    body.querySelector("#ndEnName").onkeydown = e => {
+    $b("#ndEnName").onkeydown = e => {
       if (e.key === "Enter"){ e.preventDefault(); go.click(); }
     };
+  };
+  // The script, saved the moment it arrives and again from the button: it
+  // lives in this dialog and nowhere else, so closing it is the end of it.
+  const mintScript = (r) => {
+    document.getElementById("ndTitle").textContent = `${r.filename}: run it on the machine`;
+    boxWidth(true);
+    const url = URL.createObjectURL(new Blob([r.script], {type: "text/x-shellscript"}));
+    body.innerHTML = `<div class="field ndtoken">
+        <div class="hint">Copy it to the machine and run it once, as root. It ${
+          r.reach === "wireguard" ? `brings the tunnel up as ${esc(r.tunnel_addr)}, checks the controller answers through it, `
+          : r.reach === "public" ? "checks the controller answers at its hostname, " : ""}provisions the machine and enrolls it; the row goes live when it is done.</div>
+        <pre class="ndcmd">sudo bash ${esc(r.filename)}</pre>
+        <div class="hint">It holds a token good once, until ${esc(new Date(r.expires * 1000).toLocaleString())}${
+          r.reach === "wireguard" ? ", and the machine's WireGuard private key until it has run: once the node has enrolled it takes the WireGuard config out of itself and keeps the rest, to change and run again" : ""}.</div>
+      </div>${r.home ? `
+      <div class="field ndtoken">
+        <label class="lbl">${r.reach === "public" ? "At home, on the tunnel" : "On your router"}</label>
+        <pre class="ndcmd" id="ndHome">${esc(r.home)}</pre>
+      </div>` : ""}
+      <div class="foot"><span class="sp"></span>
+        <button type="button" class="primary" id="ndScriptGet">Download ${esc(r.filename)}</button>
+        <button type="button" id="ndTokDone">Done</button></div>`;
+    const save = () => Object.assign(document.createElement("a"), {href: url, download: r.filename}).click();
+    body.querySelector("#ndScriptGet").onclick = save;
+    save();
+    body.querySelector("#ndTokDone").onclick = () => { URL.revokeObjectURL(url); shut(); };
   };
   const mintToken = (m) => {
     document.getElementById("ndTitle").textContent = `${m.name}: enroll it with one of these`;
@@ -1437,6 +1833,43 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
+      if (act === "disable" || act === "enable"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (act === "disable" && !confirm(`Disable ${name}?\n\nIt stays enrolled and keeps its configuration, but no project can add it, `
+              + "no picker offers it, and it is handed no work or session until you press Enable.")) return;
+        busy(b, act === "disable" ? "Disabling" : "Enabling");
+        const j = await nodeAct({action: act, id});
+        if (j.error) notify(j.error, true);
+        await loadNodes();
+        return;
+      }
+      if (act === "unenroll"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (n) openUnenroll(n);
+        return;
+      }
+      if (act === "ctr-net-save"){
+        const sw = b.closest(".field")?.querySelector('[data-k="ctrnet"]');
+        if (!sw) return;
+        busy(b, "Saving");
+        const k = await nodeAct({action: "container-net", id, on: sw.checked});
+        if (k.error) notify(k.error, true);
+        else notify(sw.checked ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello");
+        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.ctrNet = undefined;
+        await loadNodes();
+        return;
+      }
+      if (act === "root-asks-host"){
+        const ra = b.closest(".field")?.querySelector('[data-k="rootasks"]');
+        if (!ra) return;
+        busy(b, "Saving");
+        const k = await nodeAct({action: "root-asks", id, on: ra.checked});
+        if (k.error) notify(k.error, true);
+        else notify(ra.checked ? "a session of a project hosting here may ask for a root command" : "root asks are off here");
+        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.rootAsks = undefined;
+        await loadNodes();
+        return;
+      }
       if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
@@ -1481,6 +1914,40 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                       + "This installs the NVIDIA driver and a headless X server on the card, which "
                       + "takes minutes, and the driver takes the card only after a reboot: the row "
                       + "says when to press Reboot.")) return;
+      // Leaving the synced copy (R164) ends the sessions, as a reboot does;
+      // cleaning up removes the copies, which only the drain allows.
+      if (act === "sync-stop"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        const here = (state?.sessions || []).filter(x => x.node_id === id);
+        if (!confirm(`Stop syncing ${name}?\n\n`
+              + (here.length ? `This ends the ${here.length} session${here.length === 1 ? "" : "s"} open there; transcripts are kept. ` : "")
+              + "No session starts there while it sends up what is left; then Clean up /workspace removes its copies.")) return;
+      }
+      if (act === "sync-clean"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Remove the project copies on ${name}?\n\n`
+              + "Everything there has reached the controller. The node then holds no projects until it moves to a synced copy again.")) return;
+      }
+      if (act === "host-only"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Make ${name} hosting only?\n\nIt keeps running the containers sent to it. `
+              + "No project may list it, no session or synced copy runs there, and its agent may ask "
+              + "the controller for nothing but its own jobs. A project that lists it now has to be "
+              + "moved off it first.")) return;
+      }
+      if (act === "discard"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (!confirm(`Discard ${n?.name || "this row"}?\n\nNothing has enrolled with its script, so the row goes outright and the script it was made for stops working.`)) return;
+      }
+      if (act === "reenroll"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (n){ modal.hidden = false; mintForm({}, n); }
+        return;
+      }
+      if (act === "door" && b.dataset.on === "0"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
@@ -1489,8 +1956,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
-               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
-               paths: "Saving", "check-paths": "Checking",
+               retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
+               paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
+               "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
@@ -1611,7 +2079,13 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         now.classList.toggle("warn", !j.on);
         return;
       }
-      await nodeAct({action: act, id});
+      if (act === "to-sync"){
+        const j = await nodeAct({action: "to-sync", id});
+        if (j.ok && !j.error) notify("Moved: each project is copied down now");
+        return;
+      }
+      // The door's press says which way (R174); every other verb is its name.
+      await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {})});
     }));
     wireNodeConf(box, id);
     const pi = box.querySelector('.ndpaths [data-k="paths"]');
@@ -1640,7 +2114,12 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const sw = box.querySelector('[data-k="sessnet"]');
     if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
     const ra = box.querySelector('[data-k="rootasks"]');
-    if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked; };
+    const cn = box.querySelector('[data-k="ctrnet"]');
+    if (cn) cn.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.ctrNet = cn.checked;
+                                  const sb = cn.closest(".field")?.querySelector('[data-nd="ctr-net-save"]'); if (sb) sb.disabled = false; };
+    if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked;
+                                  // A hosting-only row's own Save wakes with the tick (nodeHostRootRow).
+                                  const sb = ra.closest(".field")?.querySelector('[data-nd="root-asks-host"]'); if (sb) sb.disabled = false; };
     // The GPU section's two switches (R102): drafts until its Apply.
     const ge = box.querySelector('[data-k="gpuemu"]');
     if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };

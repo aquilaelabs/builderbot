@@ -21,6 +21,8 @@ import plugins
 import runners
 import signing
 import toolchains
+import wssync
+import claudesync
 import workspace
 from fields import field
 
@@ -150,6 +152,106 @@ def artifact(auth, q, stream, length):
 
 # ---- the node's own verbs, behind its token ---------------------------------------
 
+# ---- a node's projects as a synced copy (R162, wssync.py) -------------------------
+
+def sync_file(auth, q):
+    """One file of a synced project, for the node's copy."""
+    if (no := _node_only(auth)):
+        return no
+    path, no = wssync.file_path(auth["node"], q.get("project", [""])[0], q.get("path", [""])[0])
+    if no:
+        return no
+    return {"path": path, "ctype": "application/octet-stream", "headers": {}}, 200
+
+
+def sync_tar(auth, q):
+    """A synced project whole, as a tar stream, for a node's first copy."""
+    if (no := _node_only(auth)):
+        return no
+    write, no = wssync.tar_writer(auth["node"], q.get("project", [""])[0])
+    if no:
+        return no
+    return {"stream": write, "ctype": "application/x-tar", "headers": {}}, 200
+
+
+def sync_put(auth, q, stream, length):
+    """One file the node changed, raw in the body."""
+    if (no := _node_only(auth)):
+        return no
+    return wssync.put(auth["node"], q.get("project", [""])[0], q, stream, length)
+
+
+# ---- a synced node's Claude conversations (B613, claudesync.py) -----------------
+
+def claude_file(auth, q):
+    """One of an account's transcript files, for a synced node's copy."""
+    if (no := _node_only(auth)):
+        return no
+    path, no = claudesync.file_path(auth["node"], q.get("uid", [""])[0], q.get("path", [""])[0])
+    if no:
+        return no
+    return {"path": path, "ctype": "application/octet-stream", "headers": {}}, 200
+
+
+def claude_put(auth, q, stream, length):
+    """One transcript file the node wrote: whole, its new tail, or gone."""
+    if (no := _node_only(auth)):
+        return no
+    return claudesync.put(auth["node"], q, stream, length)
+
+
+# ---- an image shipped between two nodes (R166, devactions.py) -------------------
+
+def devimage_put(auth, q, stream, length):
+    """The build node's saved image, raw in the body, for its shipping job."""
+    if (no := _node_only(auth)):
+        return no
+    import devactions
+    return devactions.image_put(auth["node"], q, stream, length)
+
+
+def devdata_put(auth, q, stream, length):
+    """A copied or moved instance's packed data, from its old node's job."""
+    if (no := _node_only(auth)):
+        return no
+    import relocate
+    return relocate.data_put(auth["node"], q, stream, length)
+
+
+def devdata_file(auth, q):
+    """That data, for the new node's unpacking job."""
+    if (no := _node_only(auth)):
+        return no
+    import relocate
+    path, no = relocate.data_path(auth["node"], q)
+    if no:
+        return no
+    return {"path": path, "ctype": "application/x-tar", "headers": {}}, 200
+
+
+def devimage_file(auth, q):
+    """That image, for the instance node's loading job."""
+    if (no := _node_only(auth)):
+        return no
+    import devactions
+    path, no = devactions.image_path(auth["node"], q)
+    if no:
+        return no
+    return {"path": path, "ctype": "application/x-tar", "headers": {}}, 200
+
+
+def _sync(nid, req):
+    act = field(req, "action")
+    project = field(req, "project")
+    if act == "projects":
+        return wssync.projects(nid), 200
+    if act == "state":
+        return wssync.state(nid, project)
+    if act == "since":
+        return wssync.since(nid, project, req.get("rev"))
+    return {"error": f"no such sync action: {act}"}, 400
+
+
 def verb(name, auth, req, addr):
     """Enrollment with an enroll token, and a node's own verbs with its
     token: its runner's token, hello, its sessions, a job's log and its
@@ -166,6 +268,12 @@ def verb(name, auth, req, addr):
         return {"error": "an enrollment token enrolls, and "
                          "nothing else"}, 403
     nid = auth["node"]
+    if name == "sync":
+        return _sync(nid, req)
+    if name == "claude":
+        # What the controller has of the transcripts of the projects this
+        # node holds, for its mirror to compare (B613).
+        return claudesync.listing(nid), 200
     if name == "runner-token":
         # A registration or removal token for the node's runner, minted
         # now from the root-only stash and never stored: the PAT stays

@@ -5,6 +5,7 @@ import importlib.util
 import os
 import re
 import unittest
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,7 +19,7 @@ def load(name, path):
 
 
 session = load("bb_session", os.path.join(HERE, "..", "..", "..", "nodes", "bb-session"))
-agent = load("bb_agent", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
+agent = agentpkg.load("bb_agent")
 
 
 class Cuda(unittest.TestCase):

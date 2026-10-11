@@ -37,7 +37,7 @@ bb: BuilderBot helper
 
 bb -p NAME VERB    any verb, about another project this one reads (its
                    settings name them): bb -p NAME roadmap, bb -p NAME map find X
-bb status          tool versions, runner registration, mounted projects
+bb status          tool versions, runner registration, the projects here
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    manifest.json and Windows VERSIONINFO), --msi, --pep440,
@@ -127,7 +127,7 @@ bb changelog edit N "..."  reword one of them: a change that tweaks something
 bb changelog merge N M "..."   one line for several, carrying all their commits
 bb changelog split N     back into one line per commit it carries
 bb changelog rm N        drop one that stopped being true
-bb projects        mounted project dirs and their branches
+bb projects        the project dirs here and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
                    run on. Nothing is copied anywhere: each node is signed in
@@ -214,7 +214,7 @@ bb devapp rebuild [--why "..."]
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
                    interpolate them; its other options are the compose file's own
-bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
+bb devapp new [NAME] [--branch REF] [--compose FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
                    own compose file on its node, then built and started, and this
@@ -222,7 +222,11 @@ bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
                    while it has none, then another beside it named for the project
                    with -2, -3 and on; a second needs ports of its own, so give it
                    an env that sets them with --env. --branch builds it
-                   from that branch. On ask, one request carries all of it and
+                   from that branch; --compose names another of its compose
+                   files (site/compose.yml), the root's own by default. --node
+                   puts it on a hosting node the project's settings name under
+                   Hosts its containers on: built on the project's own node and
+                   shipped there. On ask, one request carries all of it and
                    Allow makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;
@@ -363,6 +367,9 @@ bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile tab lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
                    command Claude ran and what it answered
+bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
+                   for it: how a node holding its projects as a synced copy
+                   resumes a conversation it does not have (bb-tty runs it)
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -410,8 +417,10 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    Dockerfile is a compose with a build context on the projects
                    share. Never a user's to approve
 bb root            what root commands are waiting on an administrator
-bb root run --why "..." -- CMD...
-                   ask for ONE command as root on this project's node: an
+bb root run --why "..." [--node NAME] -- CMD...
+                   ask for ONE command as root on this project's node (or, with --node
+                   NAME, on a node it hosts containers on; the row's root-asks switch
+                   decides): an
                    administrator allows or denies it on the Nodes tab or the
                    bell, and the node runs that command and nothing else. Not
                    sudo: a second command is a second question. A node's
@@ -652,7 +661,7 @@ cmd_projects() {
             printf '  %-40s (not a git repo)\n' "$(basename "$d")"
         fi
     done
-    [ "$found" -eq 1 ] || echo "  none mounted"
+    [ "$found" -eq 1 ] || echo "  none here"
 }
 
 
@@ -2159,9 +2168,9 @@ cmd_wiki() {
 
 cmd_transcripts() {
     local verb="${1:-list}" auth proj
-    case "$verb" in list|show) ;; -h|--help)
-        echo "bb transcripts [list | show ID [--tz ZONE]]: your own conversations with Claude on this project, from the controller"; return 0 ;;
-        *) die "bb transcripts [list | show ID [--tz ZONE]]" ;; esac
+    case "$verb" in list|show|fetch) ;; -h|--help)
+        echo "bb transcripts [list | show ID [--tz ZONE] | fetch ID [--into DIR]]: your own conversations with Claude on this project, from the controller"; return 0 ;;
+        *) die "bb transcripts [list | show ID [--tz ZONE] | fetch ID [--into DIR]]" ;; esac
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
     BB_TRANSCRIPTS_AUTH="$auth" BB_TRANSCRIPTS_PROJECT="$proj" python3 "$BB_LIB/transcripts-verbs.py" "$@"
@@ -2635,7 +2644,7 @@ cmd_phone() {
 # the node, Deny says no) applied to root. Not sudo: there is no second
 # command without a second question, and nothing here pretends.
 cmd_root() {
-    local sub="${1:-status}" why="" auth
+    local sub="${1:-status}" why="" node="" auth
     auth="$(bb_auth_or_die)"
     shift || true
     case "$sub" in
@@ -2643,16 +2652,20 @@ cmd_root() {
             BB_PHONE_AUTH="$auth" python3 "$BB_LIB/root-verbs.py" status
             ;;
         run)
+            # --node NAME: one of the nodes the project hosts its containers
+            # on (the operator, 11 Oct), since a hosting-only node runs no
+            # session and is reached only by name; without it, this node.
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --node) [ $# -ge 2 ] || die "--node needs the node's name after it"; node="$2"; shift 2 ;;
                     --) shift; break ;;
-                    *) die "usage: bb root run --why \"what this is for\" -- command..." ;;
+                    *) die "usage: bb root run --why \"what this is for\" [--node NAME] -- command..." ;;
                 esac
             done
             [ -n "$why" ] || die "bb root run needs --why \"what this is for\""
             [ $# -gt 0 ] || die "nothing to run; put the command after --"
-            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
+            BB_PHONE_WHY="$why" BB_PHONE_NODE="$node" BB_PHONE_AUTH="$auth" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
                 python3 "$BB_LIB/root-verbs.py" run "$@"
             ;;
@@ -2830,8 +2843,8 @@ EOT
             # for the verdict. Under the same setting as rebuild (Claude may:
             # Run its container): on `ask` one request carries it all and
             # Allow makes and builds it.
-            local why="" file="" ref="" tmp="" rc=0
-            local usage="usage: bb devapp new [NAME] [--branch REF] [--env FILE|-] [--why \"...\"]"
+            local why="" file="" ref="" compose="" host="" tmp="" rc=0
+            local usage="usage: bb devapp new [NAME] [--branch REF] [--compose FILE] [--node NODE] [--env FILE|-] [--why \"...\"]"
             shift || true
             if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
                 [ -z "$inst" ] || die "name it once: bb devapp new NAME, or --instance NAME"
@@ -2841,6 +2854,8 @@ EOT
                 case "$1" in
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
                     --branch) [ $# -ge 2 ] || die "$usage"; ref="$2"; shift 2 ;;
+                    --compose) [ $# -ge 2 ] || die "$usage"; compose="$2"; shift 2 ;;
+                    --node) [ $# -ge 2 ] || die "--node needs the hosting node's name after it"; host="$2"; shift 2 ;;
                     --env) [ $# -ge 2 ] || die "$usage"; file="$2"; shift 2 ;;
                     *) die "$usage" ;;
                 esac
@@ -2848,7 +2863,7 @@ EOT
             if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
             [ -z "$file" ] || [ -f "$file" ] || die "no such file: $file"
             BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" BB_DEV_REF="$ref" \
-            BB_DEV_FILE="$file" python3 "$BB_LIB/devapp-verbs.py" new || rc=$?
+            BB_DEV_COMPOSE="$compose" BB_DEV_HOST="$host" BB_DEV_FILE="$file" python3 "$BB_LIB/devapp-verbs.py" new || rc=$?
             [ -z "$tmp" ] || rm -f "$tmp"
             return "$rc"
             ;;
@@ -2901,7 +2916,7 @@ EOT
             BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" \
                 python3 "$BB_LIB/devapp-verbs.py" ctl
             ;;
-        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [NAME] [--branch REF] [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
+        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [NAME] [--branch REF] [--compose FILE] [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
     esac
 }
 
@@ -3118,9 +3133,10 @@ bb_controller_stamp() {
 # The notebook, the settings and the registry live on the controller, and a
 # node keeps no /config. So on a node the verbs that read them are RELAYED:
 # the same words go to the controller's /api/v1/bb with the session's token,
-# the controller runs its own bb in this project's tree (the projects share is
-# mounted at /workspace on both sides, so a path here is a path there), and
-# what it printed comes back. One implementation of every verb, kept where
+# the controller runs its own bb in this project's tree (the original of the
+# node's synced copy, at /workspace on both sides, so a path here is a path
+# there; relay.py waits for the two to agree), and what it printed comes
+# back. One implementation of every verb, kept where
 # the state is; the token decides which project it may be about.
 #
 # What is NOT relayed is what belongs to the machine the session is on:
@@ -3129,35 +3145,6 @@ bb_controller_stamp() {
 # One list, lib/relay-verbs, read here and by the server: a verb added to
 # one side only was either refused on arrival or never sent.
 BB_RELAY_VERBS=" $(tr -s '[:space:]' ' ' < "$(dirname "$(readlink -f "$0")")/lib/relay-verbs") "
-
-# revalidate_tree: open the files a relayed verb may have written, so this
-# machine sees them.
-#
-# The projects share is NFS, and a relayed verb runs on the CONTROLLER: the
-# write lands on the server while this node keeps serving cached attributes
-# for the file until its attribute cache expires. git decides a file is
-# unchanged from (mtime, size), so inside that window `git status` says clean
-# and `git add -A` stages the OLD blob, with no error. It shipped: a01cbeb
-# committed this repo's CLAUDE.md at the previous compatibility window an hour
-# after the file had been rewritten and verified (B90).
-#
-# `git update-index --really-refresh` does NOT fix it: measured 6 times out
-# of 6, it re-stats and gets the same cached answer. Opening the file does:
-# NFS close-to-open consistency revalidates a file's attributes with the
-# server on open, which is the guarantee this leans on, and it cleared the
-# window 6 times out of 6.
-#
-# So: read them. It is the whole list of files any bb verb writes into a
-# project tree (its notes, its changelog and its version, at the root and one
-# level down for a component) and they are small enough that doing it after
-# every relayed verb costs nothing and forgets nothing.
-revalidate_tree() {
-    local f
-    for f in CLAUDE.md CHANGELOG.md VERSION */CLAUDE.md */CHANGELOG.md */VERSION; do
-        [ -f "$f" ] && cat -- "$f" >/dev/null 2>&1
-    done
-    return 0
-}
 
 # bb_project: the project a verb acts on: BB_PROJECT, which is the session's
 # own or what `bb -p NAME` named, else the working directory's when it is
@@ -3176,7 +3163,6 @@ bb_relay() {
     [ -n "$proj" ] || proj="${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-}}}"
     BB_RELAY_PROJECT="$proj" BB_AUTH_HEADER="$auth" python3 "$BB_LIB/relay.py" "" "$@"
     rc=$?
-    revalidate_tree
     return $rc
 }
 
@@ -3204,18 +3190,6 @@ EOF
 
 # run_here ROLE [GLOB...] -- CMD...: `bb run` on the node the session is on:
 # the command in this tree, and each output glob's matches into dist/.
-# A build or test failure that reads as the projects share's (B439): the
-# first matching line, with `print`, else just whether there is one. NFS
-# keeps a deleted file that is still open as .nfsXXXX, so the directory
-# around it will not go; a handle goes stale; a lock is not granted.
-share_flake() {
-    local hit
-    hit="$(grep -m1 -E -i 'Unable to delete (directory|file)|Failed to delete|Could not delete|Directory not empty|DirectoryNotEmptyException|Stale file handle|Device or resource busy|\.nfs[0-9a-f]{8,}|Timeout waiting to lock|Could not create (parent )?directory' "$1" 2>/dev/null | head -c 200)"
-    [ -n "$hit" ] || return 1
-    [ "${2:-}" = print ] && printf '%s' "$hit"
-    return 0
-}
-
 run_here() {
     local role="$1" outs=() g f
     shift
@@ -3238,28 +3212,8 @@ run_here() {
     # that does not answer costs one note's timing, never the run.
     local rid=""
     [ "$role" = test ] && rid="$(tests_going begin "$shown")"
-    # Run once more, said out loud, when a failure reads as the projects
-    # share's and not the code's (B439): a tree on NFS now and then refuses a
-    # build's delete or lock, and the same command passes at once after.
-    # The output is kept while it streams, so the reason is read from what
-    # the build said rather than guessed at; a second failure stands.
-    local code=0 said
-    said="$(mktemp)"
-    "$@" 2>&1 | tee "$said" || code=$?
-    if [ "$code" -ne 0 ] && share_flake "$said"; then
-        warn "$role failed on what reads as the projects share, not the code ($(share_flake "$said" print)): running it once more"
-        # A .nfs file is one the Gradle daemon still holds open: a rerun in
-        # the same daemon fails the same way until it is stopped (B439,
-        # report #73), and this project's Gradle home is its own to stop.
-        if grep -q '\.nfs[0-9a-f]\{8,\}' "$said" && [ -x ./gradlew ]; then
-            ./gradlew --stop >/dev/null 2>&1 || true
-            log "$role: stopped this project's Gradle daemon, which held the file"
-        fi
-        code=0
-        "$@" 2>&1 | tee "$said" || code=$?
-        [ "$code" -eq 0 ] && log "$role: passed on the second run; the first failed on the share (B439)"
-    fi
-    rm -f "$said"
+    local code=0
+    "$@" || code=$?
     [ "$role" = test ] && tests_going end "$rid" >/dev/null
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
         mkdir -p dist
@@ -3302,8 +3256,8 @@ run_here() {
 # bb git VERB [ARGS...]: git's network half, run where the credential is.
 #
 # Rule 2 of docs/nodes.md §20: PATs and deploy keys are set up on the
-# controller and nowhere else. A session on a node edits the same tree (the
-# projects share, mounted by both machines) but has no key and no token, so
+# controller and nowhere else. A session on a node edits the same tree (its
+# synced copy of the controller's) but has no key and no token, so
 # its push, fetch, pull and ls-remote are relayed to the controller; the
 # dispatch below sends the verb whole, and the controller runs THIS function
 # in the same directory with the keys it already shields. Plain `git push`
@@ -5341,7 +5295,7 @@ if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
         status|node|gpu|toolchains|emu|phone|tidy|doctor|lint|drift|build|test|run)
             die "bb -p: bb ${1} answers for this machine and this project, not for $BB_PROJECT" ;;
         map)
-            [ -d "$BB_TREE" ] || die "$BB_PROJECT's tree is not in this session's view: a project added to the reads is mounted when a session starts, so start a new one (its notebook answers already)" ;;
+            [ -d "$BB_TREE" ] || die "$BB_PROJECT's tree is not in this session's view: a project added to the reads comes into a session's view when it starts, so start a new one (its notebook answers already)" ;;
     esac
 fi
 

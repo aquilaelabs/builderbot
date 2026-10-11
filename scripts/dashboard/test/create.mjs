@@ -100,14 +100,17 @@ ok(await page.$eval('#pName', el => el.value) === 'radarr-4k',
 await page.fill('#pUrl', '');
 await page.click('#pLocal');
 ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local keeps the name field');
-// The name typed is the one shown (R154); the preview speaks only when it
-// will be shown otherwise.
+// The name typed is the one shown (R154), by GitHub's rule for a
+// repository's name (the operator, 9 Oct): the preview says when that
+// changes it, and is quiet when it does not.
 await page.fill('#pName', 'My New App');
-ok(await page.$eval('#pNamePreview', el => el.hidden),
-   'a name with spaces is a name as typed, nothing to preview');
+ok(await page.$eval('#pNamePreview', el => !el.hidden && /Shown as My-New-App/.test(el.textContent)),
+   'a name with spaces is shown as GitHub would spell it, and the preview says so');
+await page.fill('#pName', 'My-New-App');
+ok(await page.$eval('#pNamePreview', el => el.hidden), '...and one already by the rule has nothing to preview');
 await page.fill('#pName', 'beta');
-ok(await page.$eval('#pNamePreview', el => !el.hidden && /shown as beta \(2\)/.test(el.textContent)),
-   '...and one already in use says the new one is shown as Name (2)');
+ok(await page.$eval('#pNamePreview', el => !el.hidden && /shown as beta-2\b/.test(el.textContent)),
+   '...and one already in use says the new one is shown as Name-2');
 await page.fill('#pName', 'plain');
 ok(await page.$eval('#pNamePreview', el => el.hidden),
    '...and stays quiet when there is nothing to say');
@@ -360,14 +363,14 @@ with zipfile.ZipFile('${fx}/slip.zip', 'w') as z:
 // A rename is the name shown (R154): the directory, and everything keyed by
 // it, stays where it is, so nothing has to follow it and nothing is lost.
 const rn = await postJson({ name: 'pinme', to: 'Pinned Again' }, '/api/rename');
-ok(rn.status === 200 && rn.body.name === 'pinme' && rn.body.label === 'Pinned Again',
-   `renaming answers with the directory and the name it is shown under now (${JSON.stringify(rn.body).slice(0, 120)})`);
+ok(rn.status === 200 && rn.body.name === 'pinme' && rn.body.label === 'Pinned-Again',
+   `renaming answers with the directory and the name it is shown under now, spelled as GitHub would (${JSON.stringify(rn.body).slice(0, 120)})`);
 ok(existsSync(`${DIR}/ws/pinme/.git`) && !existsSync(`${DIR}/ws/Pinned Again`),
    '...the directory did not move');
 ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('pinme'),
    '...so what is keyed by it is still its own');
 await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
-  .some(n => n.textContent.startsWith('Pinned Again')), { timeout: 15000 });
+  .some(n => n.textContent.startsWith('Pinned-Again')), { timeout: 15000 });
 ok(true, '...and the row is shown under the new name');
 // The refusals: another project's name (any case), a project that is not
 // there, the name it already has, and one with nothing in it.
@@ -376,7 +379,7 @@ ok(onto.status === 400 && /already a project's name/.test(onto.body.error || '')
    `renaming onto a name another project is shown under is refused (${onto.body.error})`);
 ok(await post({ name: 'nosuchproject', to: 'whatever' }, '/api/rename') === 400,
    'renaming something that is not a project is refused');
-ok(await post({ name: 'pinme', to: 'Pinned Again' }, '/api/rename') === 400,
+ok(await post({ name: 'pinme', to: 'Pinned-Again' }, '/api/rename') === 400,
    'renaming to the name it already has is refused');
 ok(await post({ name: 'pinme', to: '   ' }, '/api/rename') === 400 || true,
    'a name of spaces is no rename');
@@ -396,7 +399,7 @@ for (const url of ['ext::sh -c id', 'file:///etc', 'https://github.com/owner-onl
   ok(await post({ mode: 'clone', url }) === 400, `clone refused: ${url}`);
 ok(!existsSync(`${DIR}/ws/repo`), 'a refused clone leaves no directory behind');
 // A name in use is no refusal since R154: the new project gets a directory
-// nothing has had (the sanitized name, numbered) and is shown as Name (2).
+// nothing has had (the sanitized name, numbered) and is shown as Name-2.
 // Every one of these sanitizes to `alpha`, which exists.
 for (const name of ['alpha', '../alpha', 'alpha!', '.alpha', '_alpha'])
 {
@@ -504,8 +507,8 @@ await page.click('#pClone');
 await page.fill('#pUrl', 'https://github.com/owner/alpha.git');
 await page.fill('#pName', '');
 ok(!await page.$eval('#pName', el => el.classList.contains('bad'))
-   && await page.$eval('#pNamePreview', el => !el.hidden && /alpha \(2\)/.test(el.textContent)),
-   'an empty name whose repository is in use already says the copy is shown as alpha (2), and is no refusal');
+   && await page.$eval('#pNamePreview', el => !el.hidden && /alpha-2\b/.test(el.textContent)),
+   'an empty name whose repository is in use already says the copy is shown as alpha-2, and is no refusal');
 await page.fill('#pName', 'alpha-two');
 ok(await page.$eval('#pNamePreview', el => el.hidden),
    '...and quiet the moment the name is free');
@@ -1168,6 +1171,8 @@ writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
 // icon rule missed this button (an `.ic`) and its SVG got the browser
 // default (fill:black, stroke:none), which draws nothing at all, because
 // every path in it is an open stroke.
+// (laid out first: measured mid-draw it read no stroke, no fill and 0px, B602)
+await page.waitForFunction(() => document.querySelector('#bTrash svg')?.getBoundingClientRect().width > 0, { timeout: 15000 });
 const binInk = await page.$eval('#bTrash svg', e => {
   const c = getComputedStyle(e);
   return { stroke: c.stroke, fill: c.fill, w: e.getBoundingClientRect().width };

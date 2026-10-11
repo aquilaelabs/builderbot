@@ -132,7 +132,7 @@ def _clean(rec):
     except (TypeError, ValueError):
         port = 0
     acc = rec.get("access") if isinstance(rec.get("access"), dict) else {}
-    return {"on": bool(rec.get("on")), "port": port,
+    return {"on": bool(rec.get("on")), "port": port, "editor": bool(rec.get("editor")),
             "access": {str(k): v for k, v in acc.items() if v in ACCESS}}
 
 
@@ -177,6 +177,10 @@ def save(project, req, by):
         rec = _clean(d.get(project))
         if "on" in req:
             rec["on"] = bool(req.get("on"))
+        # The editor's door (R159): the same people and access, through the
+        # controller's Files API rather than an FTPS server on the node.
+        if "editor" in req:
+            rec["editor"] = bool(req.get("editor"))
         if "port" in req:
             try:
                 rec["port"] = int(req.get("port") or 0)
@@ -218,7 +222,8 @@ def save(project, req, by):
                     rec["access"].pop(uid, None)
         d[project] = rec
         write_json(FILE, d, mode=0o600)
-    audit(by, "ftp", project, {"on": rec["on"], "port": rec["port"], "access": rec["access"]})
+    audit(by, "ftp", project, {"on": rec["on"], "port": rec["port"], "editor": rec["editor"],
+                               "access": rec["access"]})
     if node and ask_hello:
         ask_hello(node)
     return view(project, True), 200
@@ -273,7 +278,8 @@ def view(project, may_set):
         why = (_too_old(node_agent(node) or "") if node_agent else "") or missing_why(node)
         if why:
             st = {"up": False, "why": why}
-    return {"missing": missing_why(node),"on": rec["on"], "port": rec["port"] or free_port(project, node),
+    return {"missing": missing_why(node), "on": rec["on"], "editor": rec["editor"],
+            "port": rec["port"] or free_port(project, node),
             "node": node, "people": people, "status": st, "may_set": bool(may_set), "span": SPAN}
 
 
@@ -309,6 +315,27 @@ def login(node, project, name, password, addr):
         _failed(addr)
         audit(f"ftp:{addr}", "ftp-login-failed", project, {"name": str(name or "")[:60]})
         return denied
+    access, why = access_for(u, project, "ftp")
+    if not access:
+        audit(u["name"], "ftp-login-refused", project, {"addr": addr, "why": why})
+        return {"access": "", "why": why}
+    audit(u["name"], "ftp-login", project, {"addr": addr, "access": access})
+    return {"access": access}
+
+
+def access_for(u, project, door):
+    """(access, why): what this account may do with `project`'s files
+    through `door`, "ftp" (the node's FTPS server) or "editor" (the Files
+    API the VS Code extension uses, R159). "r" or "rw", or "" with the
+    sentence why not. The one answer both doors give, asked afresh on every
+    login and every request, so access taken away holds from the next one.
+    A session is never a person and has the tree already: none."""
+    rec = get(project)
+    if not u or u.get("session"):
+        return "", "This account has no file access to this project."
+    if not rec["on" if door == "ftp" else "editor"]:
+        return "", ("File access over FTPS is off for this project." if door == "ftp" else
+                    "Opening this project in an editor is off in its settings (File access).")
     access = rec["access"].get(users.uid_of(u), "")
     # Taken off the project since: its access went with it.
     if access and not users.may_see(u, project):
@@ -317,12 +344,9 @@ def login(node, project, name, password, addr):
     # (f)): a role without File access refuses even the project's owner.
     lvl = users.roles.level_of(u, "files", project, users.may_work)
     if access and not lvl:
-        audit(u["name"], "ftp-login-refused", project, {"addr": addr, "why": "roles"})
-        return {"access": "", "why": "Your roles give no file access to this project."}
+        return "", "Your roles give no file access to this project."
     if access == "rw" and lvl == "read":
         access = "r"
     if not access:
-        audit(u["name"], "ftp-login-refused", project, {"addr": addr})
-        return {"access": "", "why": "This account has no file access to this project."}
-    audit(u["name"], "ftp-login", project, {"addr": addr, "access": access})
-    return {"access": access}
+        return "", "This account has no file access to this project."
+    return access, ""

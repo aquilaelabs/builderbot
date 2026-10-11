@@ -5,8 +5,8 @@ this container's /config, and a node keeps none of it. So a session over
 there does not carry copies of the modules that read them: it sends the
 words (`roadmap add "..."`, `bug show 3`, `version --file`) with its own
 token, and this runs the same bb it would have run here, in the same tree
-(the projects share is mounted at /workspace on both sides, which is what
-makes `cwd` meaningful), and hands back what it printed. One implementation
+(the original of the node's synced copy, at /workspace on both sides, which
+is what makes `cwd` meaningful), and hands back what it printed. One implementation
 of every verb.
 
 WHAT THE TOKEN DECIDES. A session token stands for one project with user

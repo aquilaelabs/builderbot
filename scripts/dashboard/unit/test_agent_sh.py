@@ -2,17 +2,14 @@
 step first and its output as it comes. It ran the command to the end with
 nothing posted, so the NVIDIA rows on the Toolchains tab never said
 installing and the job sat at assigned for as long as apt took (30 Sep)."""
-import importlib.util
 import os
 import threading
 import time
 import unittest
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent")
 
 
 class FakeJob:

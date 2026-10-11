@@ -27,6 +27,7 @@ scripts/
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/preflight.sh               `bb tests preflight`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
+  lib/syncwait.py                a session's bb on a synced node waits for its copy to be in step with the controller's (R163)
   lib/codemap.py                 the code map bb map answers from: an index over the tree, rebuilt when a source is newer (R75)
   lib/trace-verbs.py             bb dashboard trace: what the server was asked over a window, by endpoint and asker
   lib/sdkmeta.py                 reads config/toolchains.json for bb: fields, argv, versions
@@ -96,7 +97,7 @@ scripts/
                                  all pure declarations, served by name from the page's own script tags (R77)
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Toolchains, Emulator, Phone, Settings, Users, Profile, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Emulator, Phone, Settings, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs and the strip, the panes, the sidebar, the polls, the bell and the rest
     static/                      the favicon set and the SVG marks the page draws
@@ -109,10 +110,13 @@ scripts/
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
     roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
     prefs.py                     which model and effort a project's Claude session runs on
-    settings.py                  controller settings, the things that used to be environment variables
+    settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
+    storage.py                   the Storage tab's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
+    tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     toolchains.py                everything behind the Toolchains tab: catalog, sizes, the job worker
     emulator.py                  everything behind the Emulator tab: a node's Android system images
+    enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
@@ -126,7 +130,12 @@ scripts/
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
-    ftp.py                       a project's file access over FTP: on, the port, each account's access, and the login a node relays (R151)
+    ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
+    wssync.py                    a node's projects as a synced copy: the index, state, since, get and put for its agent, and conflicts (R162)
+    snapshots.py                 each project's tree as it was each day, stored once by content, pruned to the project's days, and restored whole or a file at a time (R165)
+    paths.py                     where the controller keeps what grows (snapshots, the git relay, logs), as the Settings tab's Storage section sets it, and the move between two
+    claudesync.py                a synced node's Claude conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
+    files.py                     a project's files for a person's editor (R159): stat, list, read, write, rename, delete, search and changes, inside the project and never .git
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
@@ -147,7 +156,9 @@ scripts/
     busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
+    relocate.py                  copying or moving a dev instance to another node, its volumes and data directory with it: three jobs, packed on the old node, unpacked on the new, then its rebuild
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
+    nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
@@ -177,16 +188,48 @@ scripts/
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     share.py                     a part's share of what a session is sent: the rules, the roadmap and the bugs say less per row before they leave one out
     layout.py                    what the page keeps here: each account's tab strip and panes, and the sidebar's cards
+    bellseen.py                  what each account has dismissed from its bell: an update to one version, until a newer one is out
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in and sign-out on one node, as jobs there
     test/                        its Playwright suite: `bb dashboard test`, isolated
-    unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight
-  agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
-  agent/ruff.toml                the linter's settings for it, pinned to the python a Rocky node carries
+    unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight (agentpkg.py loads the node agent for it)
+  agent/builderbot-agent.py      the node agent's entry: runs the package beside it, and is the __main__.py of the zip a node runs
+  agent/builderbot_agent/        the node agent, stdlib only, shipped to nodes by the dashboard as one zip
+    __init__.py                  what the agent is and how it runs, and AGENT_VERSION
+    base.py                      the constants naming the node's paths and tools, the log, own_path and own_digest
+    bundle.py                    the zip a node runs, built the same on the controller and the node, so the digests agree
+    controller.py                the connection to the controller, verified by pin
+    stores.py                    the node's stores, a store's path rules, and node.json
+    storage.py                   what the disks hold, by filesystem, store and project: an hourly walk on its own thread, for the Storage tab (R169)
+    backends.py                  the machine's package manager and network configuration backends
+    toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
+    gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
+    sessnet.py                   each session kept to its own project's network (R79)
+    runners.py                   the CI runners: their slots and state, and Agent's runner verbs
+    census.py                    the census and the sample every hello carries
+    jobs.py                      Job: one piece of the controller's work, on its own thread
+    ftp.py                       the file-access servers a project's settings open
+    wssync.py                    keeps a node's synced copy of its projects in step with the controller's (R162)
+    claudesync.py                keeps a synced node's Claude conversations and memories in step with the controller's (B613)
+    sessions.py                  the session half (#24): ttyds, tokens, firewall and upkeep, as Agent's methods
+    workspace.py                 a job's source on disk, its artifacts, and the bundle of bb
+    work.py                      compose, toolchains, signing, images and system packages, as Agent's methods
+    configplane.py               the configuration plane: the node's system, storage and network, as root
+    agent.py                     Agent: hello, the loop and self-update, made of the parts above
+    cli.py                       enroll, run, status, sample
+    coverage.py                  function coverage under bb tests coverage only
+  agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
+  package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
+  extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
+  lib/client.js                  the controller as the extension speaks to it: sign-in through /login, the Files API, /term
+  lib/ws.js                      a websocket client in Node's own modules, for the terminal
+  lib/ttyd.js                    ttyd's protocol over the /term relay: the dashboard's own terminal, from VS Code
+  README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
@@ -206,6 +249,7 @@ tools/agent-version.sh           the lint check that the agent's version moved w
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
+tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/ratchet.txt                those ceilings, one per file
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
                                  version, with the None checks off, since a module's configure() fills what it declares as None

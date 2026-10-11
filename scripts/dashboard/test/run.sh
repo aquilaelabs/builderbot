@@ -132,18 +132,33 @@ sweep_leftovers() {
         [ -d "$d" ] || continue
         p="$(cat "$d/.bb-run-pid" 2>/dev/null || true)"
         if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then
-            # ...and the tmux server that ran inside it, by its socket.
-            [ -d "$d/tmux" ] && for sock in "$d"/tmux/*; do
+            # ...and the tmux server that ran inside it, by its socket, which
+            # tmux keeps a level down (tmux/tmux-UID/default): the glob one
+            # level up matched a directory and left every server running (B608).
+            [ -d "$d/tmux" ] && for sock in "$d"/tmux/*/*; do
                 [ -S "$sock" ] && tmux -S "$sock" kill-server 2>/dev/null || true
             done
+            # ...and its ssh-agent, by the pid it wrote, once that pid is
+            # still an ssh-agent on this run's socket (B608).
+            p="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$d/agent.env" 2>/dev/null || true)"
+            if [ -n "$p" ] && tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -qF "ssh-agent -a $d/"; then
+                kill "$p" 2>/dev/null || true
+            fi
             rm -rf "$d"
         fi
     done
 }
 [ -n "${BB_TEST_WORKER:-}" ] || sweep_leftovers
-# BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this.
-if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
-   && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
+# Every run is from a copy of the tree, wherever the tree is. A run in place
+# serves the page's scripts from disk on every load while its server keeps
+# the python it started with, so an edit made during the run (a session
+# carrying on while the suite runs) gave a run of neither version, and a
+# verdict about nothing. On NFS the copy also spares the suite's own waits
+# (B124), and a covered run rewrites the files it runs (B616). Since every
+# node holds its projects on its own disk (R163) nothing else made a copy.
+# BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this, and
+# then nothing under the dashboard is edited until it ends.
+if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ]; then
     _src="$(cd "$HERE/../../.." && pwd)"
     _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
     echo $$ > "$_dst/.bb-run-pid"
@@ -160,7 +175,7 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
         --exclude=./android/app/build --exclude=./android/build -X "$_skip" . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
     rm -f "$_skip"
-    printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
+    printf '[dashboard-test] running from %s, a copy, so an edit to the tree meanwhile does not reach this run\n' "$_dst" >&2
     BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
 fi
 DASH="$(dirname "$HERE")"
@@ -173,7 +188,7 @@ DASH="$(dirname "$HERE")"
 # Once: a worker runs from the copy its parent already instrumented, and a
 # counter counted twice is a function that ran twice.
 if [ -n "${BB_COVERAGE:-}" ] && [ -z "${BB_TEST_WORKER:-}" ]; then
-    [ -n "${BB_TEST_COPY:-}" ] || { printf '[dashboard-test] ERROR: coverage instruments the run copy and there is none here (BB_TEST_INPLACE)\n' >&2; exit 1; }
+    [ -n "${BB_TEST_COPY:-}" ] || { printf '[dashboard-test] ERROR: coverage instruments the run copy, and BB_TEST_INPLACE runs without one\n' >&2; exit 1; }
     python3 "$DASH/../lib/codemap.py" instrument "$DASH" >&2 || exit 1
 fi
 # shellcheck source=/dev/null
@@ -657,6 +672,11 @@ cleanup() {
     case "$(tmux display-message -p '#{socket_path}' 2>/dev/null)" in
         "$S"/*) tmux kill-server 2>/dev/null || true ;;
     esac
+    # ...and by its socket under this run's own directory, which needs no
+    # client to answer display-message first (B608).
+    for sock in "$S"/tmux/*/*; do
+        [ -S "$sock" ] && tmux -S "$sock" kill-server 2>/dev/null || true
+    done
     # BB_TEST_KEEP=1 leaves the scratch dir behind: the server log, the stub
     # agent's log and the state dir are the only account of what a failure
     # inside them looked like, and they used to go with the run that made it.
@@ -1370,6 +1390,8 @@ start_server() {
     BB_CLAUDE_LATEST_URL="file://$S/claude-latest" BB_CLAUDE_CHECK_DELAY=3600 \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
+    BB_CLOUDFLARED="$DASH/test/cloudflared-stub.sh" \
+    BB_TUNNEL_ROUTE_BASE="http://127.0.0.1:$PORT" \
     python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &
   echo $! > "$PIDF" )
 pid="$(cat "$PIDF")"

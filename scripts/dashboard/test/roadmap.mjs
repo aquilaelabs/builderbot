@@ -912,9 +912,23 @@ execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
   }
   ok(off, 'the stand-in session has echo off, read from its tty, before the send');
 }
+// ...and the pane quiet: under a whole run's load a line sent earlier still
+// had its shell's "command not found" on the way, which repeats the line, and
+// it landed after the server's one-second settle and counted as this send's
+// echo (B609). Two captures a second apart, the same, before the send.
+{
+  const cap = () => execFileSync('tmux', ['capture-pane', '-p', '-t', 'claude-alpha'], { encoding: 'utf8' });
+  let prev = cap();
+  for (let i = 0; i < 15; i++){
+    await new Promise(r => setTimeout(r, 1000));
+    const now = cap();
+    if (now === prev) break;
+    prev = now;
+  }
+}
 const quiet = await post({ action: 'send', project: 'alpha', id: Number(mine.id) });
 ok(quiet.status === 200 && quiet.body.typed && !quiet.body.sent,
-   'a session that does not echo gets the line typed but not submitted');
+   `a session that does not echo gets the line typed but not submitted (${quiet.status} ${JSON.stringify(quiet.body).slice(0, 120)})`);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'C-u']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty echo']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);

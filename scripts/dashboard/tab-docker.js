@@ -182,6 +182,9 @@ async function loadDocker(){
 // containers this is; what it is built from is settled by the project, which
 // is why there is nothing else to fill in here.
 let dnFor = null;
+// ...and which of its compose files, "" for the root's own (the Artifacts
+// tab's row it was pressed on).
+let dnCompose = "";
 
 // Where a sent container goes: one of the nodes of the project it will
 // belong to (the one under Project, its own by default), the primary picked,
@@ -204,11 +207,23 @@ function dnNodeSay(){
     $("dnGo").disabled = true;
     return;
   }
+  // Every node is offered (R166): the project's own build and run it there;
+  // any other gets the image built on the project's node and shipped, so the
+  // codebase never reaches it. Said on the option and under the field.
   fillNodeSelect($("dnNode"), field, set[0],
-                 () => { if (dnFor === project && !$("dnmodal").hidden) dnNodeSay(); }, set);
-  say.textContent = set.length > 1
-    ? `One of ${whose}'s nodes, its primary unless picked; an instance stays where it was made.`
-    : `${whose}'s node, ${esc(row?.node_name || "")}: where its sessions can reach it.`;
+                 () => { if (dnFor === project && !$("dnmodal").hidden) dnNodeSay(); });
+  field.hidden = false;
+  groupNodeOptions($("dnNode"), set, whose);
+  const says = () => {
+    const ship = !set.includes($("dnNode").value);
+    say.textContent = ship
+      ? `Not one of ${whose}'s nodes: the image is built on ${whose}'s node and shipped there, so the codebase never goes to it; binds into the project's tree are refused, and ${whose}'s sessions can rebuild it.`
+      : set.length > 1
+        ? `One of ${whose}'s nodes, its primary unless picked; an instance stays where it was made.`
+        : `${whose}'s node, ${esc(row?.node_name || "")}: where its sessions can reach it.`;
+  };
+  $("dnNode").onchange = says;
+  says();
   say.classList.remove("bad");
   $("dnGo").disabled = false;
 }
@@ -218,16 +233,18 @@ function dnNodeSay(){
 // beside it, so pressing Send again makes another container rather than a
 // refusal naming the first (the operator, 26 Sep). `have` is how many it
 // has already, whose ports a second one must not take.
-function openSendToDocker(project, sendAs, have){
+function openSendToDocker(project, sendAs, have, compose){
   dnFor = project;
+  dnCompose = compose || "";
   $("dnTitle").textContent = "New container from " + projLabel(project);
   $("dnName").value = sendAs || project;
   $("dnErrWrap").hidden = true;
   $("dnPreview").hidden = true;
   $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+  const from = dnCompose ? `${dnCompose} in ${projLabel(project)}` : `${projLabel(project)}'s codebase`;
   $("dnHint").textContent = have
-    ? `Built from ${projLabel(project)}'s codebase, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
-    : `Built from ${projLabel(project)}'s codebase. Its own name makes its own container; another name makes a second one.`;
+    ? `Built from ${from}, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
+    : `Built from ${from}. Its own name makes its own container; another name makes a second one.`;
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);
@@ -244,7 +261,7 @@ function openSendToDocker(project, sendAs, have){
   // example: a blank Environment box on a project with nothing to fill in is
   // a question with no answer.
   fetch("/api/devapp", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({project, action:"starter"})})
+    body: JSON.stringify({project, action:"starter", compose: dnCompose})})
     .then(r => r.json()).then(j => {
       if (dnFor !== project || !(j.text || "").trim()) return;
       $("dnEnv").value = j.text;
@@ -277,7 +294,7 @@ function fillNodeSelect(sel, wrap, prefer, again, allow){
   // Every node when nothing narrows: a node does everything for the
   // projects bound to it (docs/nodes.md §13).
   const dnodes = (nodesList || []).filter(n =>
-    n.kind !== "local" && n.state !== "retired" && (!allow || allow.includes(n.id)));
+    n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && (!allow || allow.includes(n.id)));
   // ...and drawn again when they land: loadNodes repaints only a Nodes tab,
   // so a draw here during a node-list reload lost the picker until something
   // else moved dockerRev (B69's nodes.mjs sibling).
@@ -296,6 +313,116 @@ function fillNodeSelect(sel, wrap, prefer, again, allow){
     return `<option value="${esc(n.id)}"${n.id === want ? " selected" : ""}>${
       esc(n.name)}: ${esc(n.state)}${nums}</option>`;
   }).join("");
+}
+
+// The project's own nodes first and named as such, the rest after them
+// (the operator, 10 Oct): a container may go to any node, and only the
+// project's own carry its codebase, its development and its Claude
+// sessions; on any other its image is shipped. Regroups the options
+// fillNodeSelect drew, keeping the one picked.
+function groupNodeOptions(sel, own, whose, skip){
+  const picked = sel.value;
+  const opts = [...sel.options].filter(o => o.value !== skip);
+  const mk = (label, list) => {
+    if (!list.length) return null;
+    const g = document.createElement("optgroup");
+    g.label = label;
+    list.forEach(o => g.append(o));
+    return g;
+  };
+  const a = mk(`${projLabel(whose)}'s nodes: development and Claude sessions`, opts.filter(o => own.includes(o.value)));
+  const b = mk("Other nodes: its image shipped, no codebase or sessions there", opts.filter(o => !own.includes(o.value)));
+  sel.innerHTML = "";
+  [a, b].forEach(g => g && sel.append(g));
+  if ([...sel.options].some(o => o.value === picked)) sel.value = picked;
+}
+
+// ---- copy or move a container to another node ------------------------------
+// Its data with it (relocate.py): a copy beside it under a new name, or the
+// same container moved. Send to Docker is the fresh one. Its env is shown on
+// the way, to change what the new node needs.
+let rlFor = null;
+
+function openRelocate(project, instance){
+  const d = (dockerList?.instances || []).find(x => x.project === project && x.instance === instance) || {};
+  const here = dockerList?.node || dockerNode || "";
+  const whose = d.owner || project;
+  rlFor = {project, instance, here, whose, name: d.name || instance};
+  $("rlTitle").textContent = `Copy or move ${d.name || instance}`;
+  $("rlName").value = `${d.name || instance}-copy`;
+  $("rlErrWrap").hidden = true;
+  $("rlGo").disabled = false;
+  document.querySelector('input[name="rlMode"][value="copy"]').checked = true;
+  const own = (state?.projects?.find(p => p.name === whose)?.prefs?.nodes || []).filter(Boolean);
+  const fill = () => {
+    fillNodeSelect($("rlNode"), $("rlNodeField"), own.find(n => n !== here) || "",
+                   () => { if (rlFor && !$("rlmodal").hidden) fill(); });
+    $("rlNodeField").hidden = false;
+    groupNodeOptions($("rlNode"), own, whose, here);
+    rlSay();
+  };
+  fill();
+  $("rlEnv").value = "";
+  $("rlEnvHint").textContent = "reading its env…";
+  $("rlmodal").hidden = false;
+  fetch("/api/devapp", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({project, instance, action: "env-get"})})
+    .then(r => r.json()).then(j => {
+      if (!rlFor || rlFor.instance !== instance) return;
+      $("rlEnv").value = j.text || "";
+      rlFor.envWas = j.text || "";
+      rlFor.seeded = !!j.seeded;
+      $("rlEnvHint").textContent = j.seeded
+        ? "It has no env of its own: this is its project's .env.example, written as its env only if you change it."
+        : "Its env as it is now: change what the new node needs (a port, an address) before it starts there.";
+    }).catch(() => { $("rlEnvHint").textContent = "its env could not be read: what is written here becomes it"; });
+}
+
+function rlSay(){
+  if (!rlFor) return;
+  const move = document.querySelector('input[name="rlMode"]:checked')?.value === "move";
+  $("rlNameField").hidden = move;
+  $("rlGo").textContent = move ? "Move" : "Copy";
+  const where = $("rlNode").selectedOptions[0]?.textContent.split(":")[0] || "the node picked";
+  $("rlModeHint").textContent = move
+    ? `It stops, its volumes and data directory go with it, and it is built and started on ${where}. `
+      + "Once it is up there its containers here come down; this node keeps a copy of its volumes until you remove them. "
+      + "If it does not come up there, it starts here again."
+    : `It stops for as long as its data takes to copy, then starts again here; the copy is built and started on ${where} with that data.`;
+  const own = (state?.projects?.find(p => p.name === rlFor.whose)?.prefs?.nodes || []);
+  const node = $("rlNode").value;
+  $("rlNodeHint").textContent = !node ? "There is no other node to send it to."
+    : own.includes(node)
+      ? `One of ${projLabel(rlFor.whose)}'s nodes: built and run there, where its sessions can work on it.`
+      : `Not one of ${projLabel(rlFor.whose)}'s nodes: its image is built on ${projLabel(rlFor.whose)}'s node and shipped, `
+        + "so its codebase never goes there, and no development or Claude session happens there.";
+  $("rlGo").disabled = !node;
+}
+
+function closeRelocate(){ $("rlmodal").hidden = true; rlFor = null; }
+
+async function rlSubmit(){
+  if (!rlFor || $("rlGo").disabled) return;
+  const fail = m => ($("rlErr").textContent = m, $("rlErrWrap").hidden = false);
+  const mode = document.querySelector('input[name="rlMode"]:checked')?.value || "copy";
+  const name = $("rlName").value.trim();
+  if (mode === "copy" && !name) return fail("the copy needs a name");
+  const {project, instance} = rlFor;
+  $("rlGo").disabled = true;
+  $("rlGo").textContent = mode === "move" ? "Moving…" : "Copying…";
+  try{
+    const j = await (await fetch("/api/devapp", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({project, instance, action: "relocate", mode, node: $("rlNode").value, name,
+                            // Its env as it stands goes with it anyway; sent
+                            // only when there is something of the person's in it.
+                            ...(rlFor.envWas === undefined || (rlFor.seeded && $("rlEnv").value === rlFor.envWas)
+                                ? {} : {text: $("rlEnv").value})})})).json();
+    if (j.error){ $("rlGo").disabled = false; rlSay(); return fail(j.error); }
+    closeRelocate();
+    notify(mode === "move" ? `moving ${j.name}: its row says each step` : `copying it as ${j.name}: its row says each step`);
+    dockerList = null; dockerRev++;
+    loadDocker();
+  }catch(e){ $("rlGo").disabled = false; rlSay(); fail(String(e)); }
 }
 
 function dnShow(){
@@ -323,7 +450,10 @@ async function dnSubmit(){
       body: JSON.stringify({project, action:"new", instance:name,
                             owner: $("dnUnder").value,
                             node: $("dnNodeField").hidden ? "" : $("dnNode").value,
+                            ship: !$("dnNodeField").hidden && !!$("dnNode").value
+                              && !((state?.projects?.find(p => p.name === ($("dnUnder").value || project))?.prefs?.nodes) || []).includes($("dnNode").value),
                             ref: $("dnRefField").hidden ? "" : $("dnRef").value,
+                            compose: dnCompose,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
     const j = await r.json();
     if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
@@ -492,11 +622,9 @@ function dmOwnerLine(r, key){
   if (!mayDocker()) return "";
   const saved = r.owner || "";
   const pick = dmOwnDraft[key] ?? saved;
-  const names = (state?.projects || []).map(p => p.name);
   // A project since deleted is still what the row says until it is changed.
-  if (saved && !names.includes(saved)) names.push(saved);
+  const names = myProjectNames(saved);
   const shown = n => n === saved && r.owner_gone ? `${r.owner_label || n} (deleted)` : projLabel(n);
-  names.sort((a, b) => projLabel(a).localeCompare(projLabel(b), undefined, {sensitivity: "base"}));
   const id = "dmo-" + key;
   return `<div class="sub dmowner"><label for="${esc(id)}">Project${
       helpIcon("Its project's Claude sessions can see it and, as that project's "
@@ -518,11 +646,9 @@ const dmMoveDraft = {};
 function dmMoveLine(d){
   if (!mayDocker() || d.source === "file") return "";
   const key = `${d.project}|${d.instance}`, pick = dmMoveDraft[key] ?? d.project;
-  const names = (state?.projects || []).map(p => p.name)
-    .sort((a, b) => projLabel(a).localeCompare(projLabel(b), undefined, {sensitivity: "base"}));
   // Built from a project since deleted: it is still that one's until moved.
-  const gone = !names.includes(d.project);
-  if (gone) names.unshift(d.project);
+  const gone = !(state?.projects || []).some(p => p.name === d.project);
+  const names = myProjectNames(d.project);
   const id = "dmm-" + key;
   return `<div class="sub dmowner"><label for="${esc(id)}">Built from${
       helpIcon("The project whose compose file and tree it is built from. Move puts it "
@@ -571,7 +697,12 @@ function dockerJob(){
 async function dmAction(project, instance, act, btn){
   if (act === "env"){ openDevEnv(project, instance); return; }
 
-  if (act === "edit"){ openEditContainer(project); return; }
+  if (act === "edit"){
+    // Which kind, off the button the row drew: the list it came from may be
+    // reloading, and a written container opened as a project's came up empty.
+    if (btn?.dataset.src === "file") openEditContainer(project); else openEditInstance(project, instance);
+    return;
+  }
   // Abort asks nothing: the confirmation for a destructive verb is worth its
   // interruption, and stopping a build you are watching is not destructive:
   // what is already built is kept, and pressing it again is the only way to
@@ -731,6 +862,8 @@ let cEditing = null;              // the container being edited, or null for new
 
 async function openEditContainer(name){
   cEditing = name;
+  $("cTabForm").hidden = false;
+  $("cEnvHint").hidden = true;
   $("cTitle").textContent = "Edit " + name;
   $("cName").value = name;
   $("cName").disabled = true;
@@ -753,10 +886,80 @@ async function openEditContainer(name){
              $("cErrWrap").hidden = false; }
 }
 
+// A project's instance in the same dialog (the operator, 9 Oct: one Edit for
+// the compose file and the env): the compose file is the project's own, in
+// its tree, so saving it is an uncommitted change there; the env is the
+// instance's. No form tab: the form writes a container from an image.
+async function openEditInstance(project, instance){
+  const key = {project, instance};
+  cEditing = key;
+  $("cTitle").textContent = "Edit " + projLabel(project) + (instance === "main" ? "" : ` (${instance})`);
+  $("cName").value = projLabel(project);
+  $("cName").disabled = true;
+  $("cNameHint").textContent = `The compose file is ${projLabel(project)}'s own, in its folder: `
+    + "saving it is an uncommitted change there, which the Git view shows. The env is this container's.";
+  $("cNodeField").hidden = true;
+  $("cUnderField").hidden = true;
+  $("cTabForm").hidden = true;
+  $("cYml").value = $("cEnv").value = "";
+  $("cErrWrap").hidden = true;
+  $("cGo").disabled = false; $("cGo").textContent = "Save";
+  cSeg("yml");
+  $("cmodal").hidden = false;
+  try{
+    const [c, e] = await Promise.all([
+      postJSON("/api/devapp", {project, instance, action: "compose-get"}).then(r => r.json()),
+      postJSON("/api/devapp", {project, instance, action: "env-get"}).then(r => r.json())]);
+    if (cEditing !== key) return;           // reopened on another one meanwhile
+    if (c.error || e.error) throw new Error(c.error || e.error);
+    $("cYml").value = c.text || "";
+    $("cEnv").value = e.text || "";
+    // ...and what the Env button's dialog said: a box opened on the example
+    // is a draft, and which keys the example declares that are not set.
+    $("cEnvHint").textContent = (e.seeded ? "started from .env.example; nothing saved yet. " : "")
+      + ((e.missing || []).length ? "missing against .env.example: " + e.missing.join(", ")
+                                  : "everything .env.example declares is set");
+    $("cEnvHint").hidden = false;
+    // A seeded env is unsaved, so it is sent on Save even untouched.
+    key.was = {compose: c.text || "", env: e.seeded ? null : (e.text || "")};
+  }catch(err){ $("cErr").textContent = "could not read it: " + (err.message || err);
+               $("cErrWrap").hidden = false; }
+}
+
+async function cSaveInstance(key){
+  const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
+  const {project, instance} = key, compose = $("cYml").value, env = $("cEnv").value;
+  $("cGo").disabled = true; $("cGo").textContent = "Saving…";
+  const send = body => postJSON("/api/devapp", {project, instance, ...body}).then(r => r.json());
+  try{
+    // The compose file first: compose reads it before it is kept, and a file
+    // it refuses stops here with its words, before the env is touched.
+    const c = compose !== key.was?.compose ? await send({action: "compose-set", text: compose}) : {};
+    if (c.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("yml"); return fail(c.error); }
+    const e = env !== key.was?.env ? await send({action: "env-set", text: env}) : {};
+    if (e.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("env"); return fail(e.error); }
+    $("cmodal").hidden = true;
+    notify(c.ok || e.ok ? "saved: rebuild it to bring the change up" : "nothing changed");
+    dockerList = null; dockerRev++; loadDocker();
+  }catch(err){ $("cGo").disabled = false; $("cGo").textContent = "Save"; fail("could not save: " + err); }
+}
+
 // Which project a new container belongs to: every project this account
 // sees, no project first.
+// The projects a container may be put under, sent from or moved to: the ones
+// on this account's own list, for an administrator and the owner as for a
+// user (the operator, 10 Oct). An administrator could add any project to
+// their list first; offering the rest here is how a container lands under
+// the wrong one by accident. `keep` is a row's current project, shown
+// whatever it is so the picker does not misstate where the row is.
+function myProjectNames(keep){
+  const names = (state?.projects || []).filter(p => p.mine).map(p => p.name);
+  if (keep && !names.includes(keep)) names.push(keep);
+  return names.sort((a, b) => projLabel(a).localeCompare(projLabel(b), undefined, {sensitivity: "base"}));
+}
+
 function fillUnderSelect(sel, picked){
-  const names = (state?.projects || []).map(p => p.name).sort((a, b) => projLabel(a).localeCompare(projLabel(b)));
+  const names = myProjectNames(picked);
   sel.innerHTML = `<option value="">no project</option>` + names.map(n =>
     `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(projLabel(n))}</option>`).join("");
 }
@@ -787,6 +990,8 @@ function cUnderPicked(){
 
 function openNewContainer(){
   cEditing = null;
+  $("cTabForm").hidden = false;
+  $("cEnvHint").hidden = true;
   $("cName").disabled = false;
   $("cName").value = "";
   fillUnderSelect($("cUnder"), "");
@@ -877,6 +1082,7 @@ function cSlide(which){
 const cSwitch = w => { if (cTab === w) return; cSeg(w); cSlide(w); };
 
 async function cSubmit(){
+  if (cEditing && typeof cEditing === "object") return cSaveInstance(cEditing);
   const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
   const editing = cEditing, verb = editing ? "Save" : "Create";
   if (!$("cName").value.trim()) return fail("a name is needed");
@@ -970,6 +1176,9 @@ function dmState(d, job, mine, busy, blind){
   // account of what went wrong was in the tail below it, and an abort, which
   // ends a job on purpose, said nothing at all.
   if (mine && job.error) return esc(jobWhy(job.error));
+  if (d.interrupted && !d.running)
+    return `a build was interrupted: BuilderBot restarted while it was running${
+      d.built_rev ? `; still on ${esc(d.built_rev)}` : ", and nothing was built"}`;
   if (d.running) return `running · ${d.containers} container(s)`;
   if (d.exists) return "stopped: its containers are still there";
   if (d.built_rev) return `${dmBuilt(d)}, not running`;
@@ -983,7 +1192,11 @@ async function dmLogs(name, node = dockerNode){
   const modal = $("dlmodal"), body = $("dlBody");
   if (!modal || !body) return;
   $("dlTitle").textContent = `Log: ${name}`;
-  body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>`;
+  // Its foot from the first frame: a log read on a busy node takes seconds,
+  // and a dialog with no Close meanwhile is one you cannot leave (B498).
+  body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>
+    <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
+  body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
   modal.hidden = false;
   try{
     // The node the list came from: a project's notebook lists its own
@@ -1053,6 +1266,9 @@ function dmRowsHtml(ins, job, blind){
           `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
             esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
+        ${d.compose_path ? `<div class="sub dim dmfrom">made from <code>${esc(d.compose_path)}</code></div>` : ""}
+        ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : "bad"} dmreloc">${esc(d.relocating.line)}${
+          d.relocating.busy ? '<span class="dots"></span>' : ""}</div>` : ""}
         ${d.astray ? `<div class="sub bad">on this node, but ${esc(projLabel(d.owner || d.project))} works on ${
           esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${dmMoveLine(d)}${
@@ -1072,11 +1288,9 @@ function dmRowsHtml(ins, job, blind){
               : "Start it: docker compose up -d"}">Up</button>
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
           title="Stop it and remove its containers: docker compose down">Down</button>
-        ${d.source === "file"
-          ? `<button type="button" data-dm="edit"
-               title="edit this container's compose file and env">Edit</button>`
-          : `<button type="button" data-dm="env"
-               title="this container's env file">Env</button>`}
+        <button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
+          title="${d.source === "file" ? "edit this container's compose file and env"
+                  : "edit the project's compose file and this container's env"}">Edit</button>
         `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
@@ -1099,6 +1313,8 @@ function dmRowsHtml(ins, job, blind){
                 ? "run it again: the last attempt did not finish"
                 : "the last build is current; this builds it again anyway"}">${
           d.built_rev ? "Rebuild" : "Build"}</button>
+        ${!mayDocker() ? "" : `<button type="button" data-dmrel ${busy || d.relocating?.busy ? "disabled" : ""}
+            title="to another node, its data with it: a copy beside it, or this one moved">Copy or move…</button>`}
         ${!mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
             busy ? "disabled" : ""}
             title="take it down and drop it from this list; its env and data stay for a remake">Remove</button>`}
@@ -1128,6 +1344,10 @@ function dmWireRows(el, list = dockerList){
   el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);
+  });
+  el.querySelectorAll("[data-dmrel]").forEach(btn => btn.onclick = () => {
+    const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
+    openRelocate(project, instance);
   });
   // Whose Rebuild it is. Written at once, like the row's other controls, and
   // the answer redraws every row of that project; it is the project's
@@ -1565,4 +1785,4 @@ function renderDockerInto(i){
 // The new-project dialog that followed this list is tab-projects.js now; its fields and its submit are wired further down.
 const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],'
                   + '[data-dm="rebuild"],'
-                  + '#devSend,#bDockerNew';
+                  + '[data-devsend],#bDockerNew';

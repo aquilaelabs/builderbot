@@ -10,7 +10,8 @@ controller starts, then on the toolchains' clock (weekly, and when a node
 starts) and on a press of Check for updates on a node's Toolchains tab,
 where Claude Code is a row like any toolchain (R145): installed there on
 purpose, never by the provisioner, and required for a session. A node
-behind is a row in the bell and says so on that row.
+behind says so on that row, and in the bell's toolchain update row for the
+node (toolchains.attention), which opens that tab.
 
 UPDATING IS A PERSON'S, NEVER A SESSION'S. Install on the Toolchains tab is an
 administrator's action (the node handler refuses anybody else, a session's
@@ -157,24 +158,16 @@ def payload():
             "checking": cur["checking"], "nodes": rows()}
 
 
-def attention(project_nodes):
-    """Bell rows: every live agent node whose Claude Code is behind and not
-    already updating, with the projects that run sessions there."""
-    out = []
-    for n in nodes.node_list() if nodes else []:
-        if n.get("kind") != "agent" or not n.get("live") or not behind(n) or updating(n["id"]):
-            continue
-        out.append({"kind": "claude", "node": n["name"], "id": n["id"],
-                    "from": installed(n), "to": latest()["version"],
-                    "projects": sorted(p for p, nid in project_nodes.items() if nid == n["id"])})
-    return out
-
-
-def holds():
+def holds(reap=False):
     """{node id: why} while no session can start on a node's Claude Code:
     while it is being updated (the project rows start them again after),
     and where it is not installed at all, which the node's Toolchains tab
-    does on purpose (R145: the provisioner no longer installs it)."""
+    does on purpose (R145: the provisioner no longer installs it).
+
+    reap: only the holds that end a session already running, for the
+    sweep. Not installed is not one: a running session shows it was there,
+    so the reading is stale or wrong, and the sweep ended the harness's
+    sessions every second on it (B540); remove() ends them itself."""
     out = {}
     for n in nodes.node_list() if nodes else []:
         if n.get("kind") != "agent":
@@ -182,7 +175,7 @@ def holds():
         if updating(n["id"]):
             out[n["id"]] = (f"Claude Code is updating on {n['name']}: its Claude sessions were ended for "
                             "it, and start again from the project rows when it is done")
-        elif missing(n):
+        elif missing(n) and not reap:
             out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Toolchains tab installs it")
     return out
 

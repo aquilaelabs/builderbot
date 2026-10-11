@@ -26,6 +26,7 @@ readable from the command line, and a tab for them can come later if they turn
 out to be worth looking at.
 """
 import json
+import os
 import subprocess
 import threading
 import time
@@ -53,8 +54,12 @@ def _file():
 
 def _git(cwd, *args):
     try:
+        # GIT_OPTIONAL_LOCKS=0: a status here is a read, and without it git
+        # refreshes the index and writes it, which on a synced project is a
+        # change the node's own next index then conflicted with (B617).
         r = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True,
-                           text=True, timeout=20, check=False)
+                           text=True, timeout=20, check=False,
+                           env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
     except (OSError, subprocess.SubprocessError):
         return []
     if r.returncode != 0:

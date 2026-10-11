@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog, openSection } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog, sectSave, openSection } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -1048,6 +1048,344 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
      `Apply storage asks first when it would unmount something the node has (${page.dialogs[0]?.slice(0, 60)})`);
   for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
     await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
+  // A node holds its projects as a synced copy (R162), the one way it
+  // holds them (R163): no /workspace mount may be configured, the row says
+  // what each copy is doing, and the node can be taken off it and put back
+  // (R164).
+  {
+    const hello = census => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) });
+    await hello({ ...CENSUS, session: { up: true, port: 7700, user: 'bb-s', workspace: true, boot: '1' },
+                  mounts: [...CENSUS.mounts, { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs',
+                                               ro: false, mounted: true, real: 'nas:/mnt/user/projects' }] });
+    // What only the heartbeat carries (its sessions, a synced copy's state)
+    // outlives the next hello, which replaces the rest of the record.
+    const ws = { ...CENSUS, session: { up: true, port: 7700, user: 'bb-s', workspace: true, boot: '1' },
+                 mounts: [...CENSUS.mounts, { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs',
+                                              ro: false, mounted: true, real: 'nas:/mnt/user/projects' }] };
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+        sessions: [{ name: `${JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid}~claude-beta` }],
+        sync: { beta: { ready: true, rev: 3 } } }, running: [], wait: 0 }) });
+    await hello(ws);
+    const kept = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).reported;
+    ok(kept.sessions?.length === 1 && kept.sync?.beta?.ready === true,
+       `a hello keeps what the heartbeat said: its sessions and its synced copy's state (${JSON.stringify([kept.sessions?.length, kept.sync])})`);
+    const share = await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: { mounts: [
+      { path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs' },
+      { path: '/workspace', source: 'nas:/mnt/user/projects', type: 'nfs' }] } });
+    ok(/\/workspace holds this node's synced copy/.test(share.error || ''),
+       `a mount at /workspace is refused: the node's synced copy is there (${share.error})`);
+    const fresh = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(fresh.config.workspace === 'sync', `a node enrolled holds its projects as a synced copy (${fresh.config.workspace})`);
+    await page.evaluate(() => loadNodes());
+    await page.waitForSelector(`${ROW} [data-nd="sync-stop"]`, { timeout: 10000 });
+    ok(/a copy kept in step/.test(await page.$eval(ROW, r => r.textContent)),
+       '...and the row says its projects are a synced copy');
+    const again = await napi('/api/v1/nodes', { action: 'to-sync', id: minted.id });
+    ok(/already/.test(again.error || ''), `Move to a synced copy is refused in words while it holds one (${again.error})`);
+    // ...and off it again (R164): Stop syncing holds sessions while what is
+    // left goes up, Clean up is offered once the node says nothing is, and
+    // from off one press moves it to a synced copy again.
+    const beat = extra => fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync: {}, ...extra },
+                             running: [], wait: 0 }) });
+    const asks = async () => (await fetch(base + '/api/v1/agent/sync', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'projects' }) })).json();
+    const conf = async () => (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config;
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="sync-stop"]`);
+    await page.waitForSelector(`${ROW} [data-nd="sync-clean"]`, { timeout: 10000 });
+    ok(page.dialogs.length === 1 && /Stop syncing[\s\S]*No session starts there/.test(page.dialogs[0]),
+       `Stop syncing asks first, saying sessions are held (${page.dialogs[0]?.slice(0, 60)})`);
+    ok((await conf()).leaving === true && (await asks()).leaving === true && (await asks()).mode === 'sync',
+       '...marks the node leaving, and the agent hears it still in sync mode, so it keeps sending');
+    await beat({ sync_drain: { files: 2, claude: 1, walked: true } });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => /2 file changes and 1 conversation file still to go up/.test(
+      document.querySelector(sel)?.textContent || ''), ROW, { timeout: 10000 });
+    ok(await page.$eval(`${ROW} [data-nd="sync-clean"]`, b => b.disabled),
+       '...and Clean up stays dead while the node has changes and conversations to send up, said on the row');
+    const early = await napi('/api/v1/nodes', { action: 'sync-clean', id: minted.id });
+    ok(/still has 2 file changes and 1 conversation file/.test(early.error || ''),
+       `...and asked anyway it is refused in the same words (${early.error})`);
+    await beat({ sync_drain: { files: 0, claude: 0, walked: true } });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => !document.querySelector(sel + ' [data-nd="sync-clean"]')?.disabled,
+                               ROW, { timeout: 10000 });
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="sync-clean"]`);
+    await page.waitForFunction(sel => /holds no projects/.test(document.querySelector(sel)?.textContent || ''),
+                               ROW, { timeout: 10000 });
+    const off = await conf(), told = await asks();
+    ok(page.dialogs.length === 1 && /Remove the project copies/.test(page.dialogs[0])
+       && off.workspace === 'off' && off.clean && told.mode === 'off' && told.clean === off.clean,
+       `once everything is up, Clean up asks, marks the node off and hands the agent its clean-up by a token (${JSON.stringify([off.workspace, told.mode, !!told.clean])})`);
+    ok(await page.$eval(`${ROW} [data-nd="to-sync"]`, b => b.disabled),
+       '...and Move to a synced copy waits while the copies are being removed');
+    await beat({ sync_clean: { token: off.clean, freed: 5 * 1048576, error: '' } });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(sel => /copies were removed, 5MB freed/.test(document.querySelector(sel)?.textContent || ''),
+                               ROW, { timeout: 10000 });
+    ok(true, '...and the row says when they are gone and what that freed');
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="to-sync"]`);
+    await page.waitForSelector(`${ROW} [data-nd="sync-stop"]`, { timeout: 10000 });
+    const back = await conf();
+    ok(back.workspace === 'sync' && !back.clean && !back.leaving,
+       `from off, Move to a synced copy holds the projects again (${JSON.stringify(back)})`);
+    for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
+      await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync: {} },
+                             running: [], wait: 0 }) });
+    await hello(CENSUS);
+  }
+  // Hosting only (the operator, 10 Oct): a node that runs containers sent to
+  // it and nothing else, so nothing of it comes back to the controller.
+  {
+    const H = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const agent = (verb, body) => fetch(base + '/api/v1/agent/' + verb,
+      { method: 'POST', headers: H, body: JSON.stringify(body || {}) });
+    await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
+    const held = await napi('/api/v1/nodes', { action: 'host-only', id: minted.id });
+    ok(/gamma lists this node/.test(held.error || ''),
+       `a node a project lists cannot be made hosting only until it is moved off (${held.error})`);
+    // ...which the node's own Projects section does (the operator, 10 Oct):
+    // the projects that have it, each with Remove, asked first.
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    const projBtn = `${ROW} .ndproj [data-ndproj="gamma"]`;
+    await page.waitForSelector(projBtn, { timeout: 10000 });
+    ok(/primary/.test(await page.textContent(`${ROW} .ndproj`)) &&
+       /on no node/.test(await page.textContent(`${ROW} .ndproj`)),
+       'the node\'s Projects section lists gamma as its primary, and says it would then be on no node');
+    page.dialogs.length = 0;
+    await page.click(projBtn);
+    await page.waitForFunction(() => !(state.projects.find(p => p.name === 'gamma')?.prefs?.nodes || []).length,
+                               null, { timeout: 10000 });
+    ok(page.dialogs.length === 1 && /Remove gamma from[\s\S]*on no node/.test(page.dialogs[0]),
+       `Remove asks first, naming what it leaves (${page.dialogs[0]?.slice(0, 60)})`);
+    // The section is drawn after the poll that brings the change, so its
+    // going is waited for rather than read the moment the state moves.
+    await page.waitForSelector(projBtn, { state: 'detached', timeout: 10000 }).catch(() => {});
+    ok(!(await page.$(projBtn)), '...and gamma is gone from the node\'s Projects section');
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="host-only"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-off"]`, { timeout: 10000 });
+    ok(page.dialogs.length === 1 && /hosting only[\s\S]*nothing but its own jobs/.test(page.dialogs[0]),
+       `Make it hosting only asks first, saying what it keeps and what it stops (${page.dialogs[0]?.slice(0, 50)})`);
+    const hi = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(hi.host_only === true && hi.bundle === '' && (hi.session_tokens || []).length === 0,
+       `its hello says so, hands it no bb bundle and no session token (${JSON.stringify([hi.host_only, hi.bundle])})`);
+    // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
+    // its row, no row on its Toolchains tab.
+    await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:claude"]'), ROW, { timeout: 10000 }).catch(() => {});
+    const tcHost = await napi('/api/toolchains?node=' + minted.id);
+    ok(!(await page.$(`${ROW} details[data-sect="nodes:claude"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
+       `a hosting-only node's row has no Claude Code section, and its Toolchains tab no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
+    // A root command on it, by name, for a project that hosts containers
+    // there (the operator, 11 Oct): refused for a project that does not,
+    // asked for one that does, and refused where the row's switch is off.
+    const rootAsk = () => napi('/api/phone', { action: 'ask', kind: 'root', why: 'look', cmd: ['true'], project: 'gamma', node: 'shed' });
+    const notMine = await rootAsk();
+    await napi('/api/prefs', { project: 'gamma', hosts: [minted.id] });
+    const asked = await rootAsk();
+    if (asked.id) await napi('/api/phone', { action: 'deny', id: asked.id });
+    ok(/shed is not gamma's/.test(notMine.error || '') && asked.ok && asked.node === 'shed',
+       `bb root run --node shed is refused until gamma hosts containers there, then asked for shed (${notMine.error} / ${JSON.stringify(asked)})`);
+    ok(await page.$eval(`${ROW} [data-k="rootasks"]`, c => c.checked && /bb root run --node shed/.test(c.closest('label').textContent)),
+       'the hosting-only row carries the root-asks switch, on, naming the verb');
+    await page.click(`${ROW} [data-k="rootasks"]`);
+    await page.click(`${ROW} [data-nd="root-asks-host"]`);
+    await page.waitForFunction(sel => document.querySelector(sel + ' [data-k="rootasks"]')?.checked === false, ROW, { timeout: 10000 });
+    const off = await rootAsk();
+    ok(/root/.test(off.error || '') && !off.ok, `...and off, the ask is refused and told so (${off.error})`);
+    await napi('/api/v1/nodes', { action: 'root-asks', id: minted.id, on: true });
+    await napi('/api/prefs', { project: 'gamma', hosts: [] });
+    // Each project's containers kept to their own network (R178): on by
+    // default for a hosting-only node, said to the agent by the hello, and
+    // off from the row's switch.
+    const hc = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(hc.session_net?.ctr_on === true && typeof hc.session_net?.ctr === 'object'
+       && await page.$eval(`${ROW} [data-k="ctrnet"]`, c => c.checked),
+       `a hosting-only node keeps each project's containers to their own network by default: the hello says so and the row's switch is on (${JSON.stringify(hc.session_net)})`);
+    const cnOff = await napi('/api/v1/nodes', { action: 'container-net', id: minted.id, on: false });
+    const hc2 = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(cnOff.ok && hc2.session_net?.ctr_on === false && !Object.keys(hc2.session_net?.ctr || {}).length,
+       '...and switched off, the next hello says so and carries no map');
+    await napi('/api/v1/nodes', { action: 'container-net', id: minted.id, on: true });
+    const codes = {};
+    for (const v of ['sync', 'claude', 'sessions', 'runner-token', 'signing-key'])
+      codes[v] = (await agent(v, { action: 'projects' })).status;
+    codes.bundle = (await fetch(base + '/api/v1/agent/download?what=bundle', { headers: H })).status;
+    codes.source = (await fetch(base + '/api/v1/agent/source?digest=x', { headers: H })).status;
+    codes.agent = (await fetch(base + '/api/v1/agent/download', { headers: H })).status;
+    ok(Object.entries(codes).every(([k, c]) => k === 'agent' ? c === 200 : c === 403),
+       `everything but its own jobs is refused at the door, its own update still served (${JSON.stringify(codes)})`);
+    const ex = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['true'] });
+    ok(/hosts containers only, and a exec job/.test(ex.error || ''), `only container jobs go to it (${ex.error})`);
+    const bind = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
+    ok(/hosts containers only/.test(bind.error || ''), `and no project may list it (${bind.error})`);
+    // Disable (the operator, 11 Oct): kept and configured, off every picker
+    // and refused to a project's set until Enable; Un-enroll is the one
+    // way off, cleaning the machine where it can.
+    await page.click(`${ROW} [data-nd="host-off"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    // Neither while anything runs there (the operator, 11 Oct): a session
+    // or a container the heartbeat reports holds both off until it is gone.
+    const beatIn = s => fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, ...s }, running: [], wait: 0 }) });
+    await beatIn({ sessions: [{ name: 'u_0000abcd~claude-beta' }, { name: 'somebody-else' }], published: { 'beta-web': [8080] } });
+    const inUse = await napi('/api/v1/nodes', { action: 'disable', id: minted.id });
+    const inUseUn = await napi('/api/v1/nodes', { action: 'uninstall', id: minted.id });
+    ok(/in use: 1 session running there .* and 1 container running there \(beta-web/.test(inUse.error || '')
+       && /in use: 1 session/.test(inUseUn.error || ''),
+       `Disable and Un-enroll refuse while a session or a container runs there, naming them (${inUse.error})`);
+    await beatIn({ sessions: [], published: {} });
+    page.dialogs.length = 0;
+    await page.click(`${ROW} [data-nd="disable"]`);
+    await page.waitForSelector(`${ROW} [data-nd="enable"]`, { timeout: 10000 });
+    const dis = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
+    ok(page.dialogs.length === 1 && /Disable shed/.test(page.dialogs[0])
+       && /disabled/.test(await page.$eval(`${ROW} .name .pill`, e => e.textContent))
+       && /disabled on the Nodes tab/.test(dis.error || ''),
+       `Disable asks, marks the row disabled, and a project may not add it until Enable (${dis.error})`);
+    await page.evaluate(n => renameProject(n), 'gamma');
+    await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+    ok(!(await page.$$eval('#rnNode option', (os, id) => os.some(o => o.value === id), minted.id)),
+       '...and the project settings\' node picker does not offer it');
+    await page.click('#rnCancel');
+    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: b.title }));
+    ok(/Un-enroll/.test(unro.text) && /take BuilderBot off the machine/.test(unro.title) && !(await page.$(`${ROW} [data-nd="retire"]`)),
+       'Un-enroll is the one way off, cleaning the machine where it can; Remove and Uninstall are gone');
+    // Its dialog: what always goes, and the three rings to tick (the stores,
+    // what the dashboard configured, a host's doors), none ticked for a node
+    // that runs sessions.
+    await page.click(`${ROW} [data-nd="unenroll"]`);
+    await page.waitForSelector('#ndmodal:not([hidden]) #ndUnGo', { timeout: 10000 });
+    const dlg = await page.evaluate(() => ({ title: document.getElementById('ndTitle').textContent,
+      text: document.getElementById('ndBody').textContent,
+      ticks: [...document.querySelectorAll('#ndBody input[type=checkbox]')].map(c => c.checked) }));
+    ok(/Un-enroll shed/.test(dlg.title) && /Always: the agent/.test(dlg.text) && /sessions' firewall rules/.test(dlg.text)
+       && dlg.ticks.length === 3 && dlg.ticks.every(t => !t) && /never touched/.test(dlg.text),
+       `Un-enroll opens a dialog: the agent and the isolation always go, three rings to tick, none ticked (${JSON.stringify(dlg.ticks)})`);
+    await page.click('#ndBody #ndUnCancel');
+    await page.waitForFunction(() => document.getElementById('ndmodal').hidden, null, { timeout: 5000 });
+    await page.click(`${ROW} [data-nd="enable"]`);
+    await page.waitForSelector(`${ROW} [data-nd="disable"]`, { timeout: 10000 });
+    ok(/online/.test(await page.$eval(`${ROW} .name .pill`, e => e.textContent)), '...and Enable puts it back online');
+    await page.click(`${ROW} [data-nd="host-only"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-off"]`, { timeout: 10000 });
+    // ...except as where its containers may also go (prefs.hosts, the
+    // operator, 10 Oct), which only a hosting-only node may be.
+    const hosted = await napi('/api/prefs', { project: 'gamma', hosts: [minted.id] });
+    // The poll answers from what it last read, so asked until it has it.
+    const gammaHosts = want => page.evaluate(async want => {
+      for (let i = 0; i < 40; i++){
+        await refresh();
+        const h = state.projects.find(p => p.name === 'gamma')?.prefs?.hosts || [];
+        if (h.join() === want) return h;
+        await new Promise(r => setTimeout(r, 250));
+      }
+      return state.projects.find(p => p.name === 'gamma')?.prefs?.hosts || [];
+    }, want);
+    const hostsNow = await gammaHosts(minted.id);
+    ok(!hosted.error && hostsNow.join() === minted.id,
+       `...but a project may name it under Hosts its containers on (${hosted.error || hostsNow.join()})`);
+    await page.evaluate(n => renameProject(n), 'gamma');
+    await page.waitForSelector('#rnHosts:not([hidden]) input:checked', { timeout: 10000 });
+    ok(await page.$eval('#rnHostsLabel', e => e.textContent) === 'Hosts its containers on'
+       && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
+       '...shown ticked in the project\'s Where it runs, nothing unsaved');
+    await page.click('#rnHosts input:checked');
+    const unErr = await sectSave(page, 'runs');
+    const left = (await gammaHosts('')).length;
+    ok(!unErr && left === 0, `...and unticked there and saved, it is taken off (${unErr || left})`);
+    await page.click('#rnCancel');
+    await napi('/api/prefs', { project: 'gamma', hosts: [] });
+    await page.click(`${ROW} [data-nd="host-off"]`);
+    await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
+    ok((await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json()).host_only === false,
+       '...and Let projects use it again undoes it');
+    const notHost = await napi('/api/prefs', { project: 'gamma', hosts: [minted.id] });
+    ok(/is not a hosting-only node/.test(notHost.error || ''),
+       `...after which no project may name it as a hosting node (${notHost.error})`);
+    // ...and a box enrolled for it (a cloud VPS) is hosting only from the
+    // start, before its first hello.
+    const vps = await napi('/api/v1/nodes', { action: 'enroll', name: 'vps-host', host_only: true });
+    const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === vps.id);
+    ok(vps.ok && rec?.config?.host_only === true, `a node enrolled as hosting only is so from the start (${vps.error || 'ok'})`);
+    await napi('/api/v1/nodes', { action: 'retire', id: vps.id });
+    // The row's switch, on the sandbox fixture node once it reports a door.
+    const hello = census => agent('hello', { census, version: shipped.version, digest: shipped.digest });
+    await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: true } });
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    await page.waitForSelector(`${ROW} .nddoor [data-nd="door"]`, { timeout: 10000 });
+    const doorRow = await page.$eval(`${ROW} .nddoor`, e => ({ text: e.textContent, on: e.querySelector('[data-nd="door"]').dataset.on,
+      cmd: e.querySelector('.ndcmd')?.textContent || '' }));
+    ok(/SSH door: cloudflared, open/.test(doorRow.text) && doorRow.on === '0' && /Shut it/.test(doorRow.text)
+       && /cloudflared access ssh --hostname ssh-shed\.example\.com/.test(doorRow.cmd),
+       `a node reporting its door open shows Shut it and the ssh command (${doorRow.cmd.slice(0, 90)})`);
+    page.dialogs.length = 0;
+    await page.click(`${ROW} .nddoor [data-nd="door"]`);
+    const doorJob = await (async () => { for (let i = 0; i < 40; i++){
+      const js = (await napi('/api/v1/jobs?active=1')).jobs || [];
+      const j = js.find(x => x.type === 'system' && x.spec?.apply === 'door');
+      if (j) return j;
+      await sleep(250);
+    } return null; })();
+    ok(page.dialogs.length === 1 && /Shut the SSH door/.test(page.dialogs[0]) && doorJob && doorJob.spec.config.on === false,
+       `Shut it asks, then queues the door system job with on: false (${JSON.stringify(doorJob?.spec)})`);
+    if (doorJob) await napi('/api/v1/jobs', { action: 'cancel', id: doorJob.id });
+    await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: false } });
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    await page.waitForFunction(sel => /SSH door: cloudflared, shut/.test(document.querySelector(sel + ' .nddoor')?.textContent || ''), ROW, { timeout: 10000 });
+    ok(await page.$eval(`${ROW} .nddoor`, e => /Open it/.test(e.textContent) && !e.querySelector('.ndcmd')),
+       '...and reported shut, the row offers Open it and no command');
+    await hello(CENSUS);
+    // Enroll script on the row (R177): a new script for this node, bound
+    // to the machine it reported, with no secret in it; run on another
+    // machine the controller refuses it, on the same it enrolls again
+    // under the same id, and the old agent's token is dead.
+    const MACHINE = 'c'.repeat(32);
+    await hello({ ...CENSUS, machine: MACHINE });
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    await page.waitForSelector(`${ROW} [data-nd="reenroll"]`, { timeout: 10000 });
+    await page.click(`${ROW} [data-nd="reenroll"]`);
+    await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+    const again = await page.evaluate(() => ({ title: document.getElementById('ndTitle').textContent,
+      name: $('ndEnName').value, fixed: $('ndEnName').disabled, user: $('ndEnUser').value }));
+    ok(/Enroll shed again/.test(again.title) && again.name === 'shed' && again.fixed && again.user === 'bb',
+       `Enroll script opens the dialog on the node's own answers, its name fixed (${JSON.stringify(again)})`);
+    const [dl4] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+    const script4 = readFileSync(await dl4.path(), 'utf8');
+    const run4 = script4.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
+    const tok4 = (run4.match(/--token '(bbe_[^']+)'/) || [])[1];
+    ok(new RegExp(`--machine '${MACHINE}'`).test(run4) && !/DOORSECRET|WGCONF/.test(script4) && tok4,
+       `...and the script is bound to the machine the node reported, with no secret in it (${run4.replace(/bbe_[^']+/, 'bbe_…').slice(0, 120)})`);
+    await page.click('#ndBody #ndTokDone');
+    const rowsNow = (await napi('/api/v1/nodes')).nodes.filter(n => n.name === 'shed');
+    ok(rowsNow.length === 1 && rowsNow[0].id === minted.id && rowsNow[0].state === 'online',
+       'no second row: the node keeps its id and stays online while the script waits to run');
+    const enrollWith = (token, census) => fetch(base + '/api/v1/agent/enroll', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest, user: 'bb' }) }).then(r => r.json());
+    const other = await enrollWith(tok4, { ...CENSUS, machine: 'd'.repeat(32) });
+    ok(/another machine/.test(other.error || ''), `run on another machine, the controller refuses it (${other.error})`);
+    const same = await enrollWith(tok4, { ...CENSUS, machine: MACHINE });
+    ok(same.ok && same.node_id === minted.id, `on the same machine it enrolls again under the same id (${same.error || same.node_id})`);
+    const oldTok = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(/revoked|token/i.test(oldTok.error || ''), `...and the old agent's token is dead (${oldTok.error})`);
+    en.token = same.token;
+  }
   // The fold is held to the document rules the same as any tab surface
   // (uniform.mjs cannot see it: that suite has no sandbox node to open one
   // on): every control wears the field skin, and at phone width nothing
@@ -1209,6 +1547,10 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
          (nodeRow.match(/\d+ sessions? open[^:]*/) || ['none'])[0]})`);
     ok(!rows.some(t => /Flutter/.test(t) && /reopen/.test(t)),
        '...and says nothing on a row no job has put there since they started');
+    // Gone again: a hello no longer clears what a heartbeat said.
+    await fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, sessions: [] }, running: 0, wait: 0 }) });
   }
   // ---- one store, two machines (roadmap #18) ------------------------------
   // The controller reaches the toolchain store through Unraid's FUSE layer and a
@@ -1616,11 +1958,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.waitForFunction(id => (state?.attention || []).some(a => a.id === id && !a.window),
                              minted.id, { timeout: 30000 });
   await page.click('#bBell');
-  await page.waitForSelector('#bellPanel .bnote.ask', { timeout: 10000 });
+  await page.waitForSelector('#bellPanel .bnote.att', { timeout: 10000 });
   const bellText = await page.$eval('#bellPanel', e => e.textContent.replace(/\s+/g, ' '));
-  ok(/agent update available/i.test(bellText) && /runs agent 3 and this controller ships/.test(bellText)
+  ok(/Needs attention/i.test(bellText) && /agent update on/i.test(bellText) && /runs agent 3 and this controller ships/.test(bellText)
      && await page.$('#bellPanel [data-bnode]') !== null,
-     `the bell pins "agent update available" for the node, with a way to the Nodes tab (${bellText.slice(0, 160)})`);
+     `the bell lists "Agent update on" the node under Needs attention, with a way to the Nodes tab (${bellText.slice(0, 160)})`);
   ok(await page.$eval('#bBell .dot', d => d.classList.contains('warn')),
      '...in amber: an update waiting is not work stopped');
   // Its link goes to THIS node, whichever the tab was on, with Update agent
@@ -1726,10 +2068,12 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
                                      && a.projects.includes('alpha')),
                              minted.id, { timeout: 30000 });
   await page.click('#bBell');
-  await page.waitForSelector('#bellPanel .bnote.ask.bad', { timeout: 10000 });
-  ok(await page.$eval('#bellPanel .bnote.ask.bad', e => /agent out of window/i.test(e.textContent)
-                                                        && /alpha cannot build, test or use the emulator/.test(e.textContent)),
-     'an agent from another window is a red pinned alert naming the projects it stops');
+  await page.waitForSelector('#bellPanel .bnote.att.bad', { timeout: 10000 });
+  ok(await page.$eval('#bellPanel .bnote.att.bad', e => /agent is out of window/i.test(e.textContent)
+                                                        && /projects? cannot build, test or use the emulator/.test(e.textContent)
+                                                        && /alpha/.test(e.querySelector('.bdetail')?.textContent || '')
+                                                        && !e.querySelector('[data-bdismiss]')),
+     'an agent from another window is a red alert counting the projects it stops, naming them under its fold, and it cannot be dismissed');
   ok(await page.$eval('#bBell .dot', d => d.classList.contains('bad')), '...and the dot is red');
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
@@ -1751,43 +2095,28 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
                              minted.id, { timeout: 30000 });
   ok(true, 'an agent brought current takes its alert out of the bell by itself');
 
-  // ---- a node that just came up is waited for, not unbound -------------------
-  // The agent starts before the network mounts land, so its first census
-  // after a boot says /workspace is missing. With the uptime beside it the
-  // gate says "came up N seconds ago, not mounted yet" and no more; the
-  // same census from a machine up for hours is a missing mount, with the
-  // fix and the way out.
+  // ---- a project's copy not there yet is waited for -----------------------------
+  // A node holds its projects as a synced copy (R163): until its agent says
+  // a project's copy is ready, the button waits with the reason, and once it
+  // is, the session starts there. No mount is asked for, whatever the census
+  // says of /workspace.
   const sessionCensus = se => fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ census: { ...CENSUS, session: se }, version: shipped.version, digest: shipped.digest }) });
+  const syncBeat = sync => fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync }, running: [], wait: 0 }) });
   const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: false, writable: false, boot: '12.5', up_s: 40 };
   await napi('/api/prefs', { project: 'alpha', node: minted.id });
   await sessionCensus(SE);
+  await syncBeat({ alpha: { ready: false, rev: 0, copying: 12 } });
   let why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
-  ok(/came up 40 seconds ago/.test(why) && /not mounted the projects share/.test(why) && !/Unbind/.test(why),
-     `a node up for a minute with no /workspace is "not mounted yet", and nobody is told to unbind it (${why.slice(0, 70)})`);
-  // A mount the server refused is neither: the agent tried it and kept
-  // what the server said, and the fix is the export rule on the host,
-  // which is what actually happened when the sandbox moved to an address
-  // the rule did not name.
-  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
-    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ census: { ...CENSUS, session: SE, mounts: [...CENSUS.mounts,
-      { path: '/workspace', source: 'nas:/mnt/user/development/projects', type: 'nfs', ro: false, mounted: false, real: '',
-        error: 'access denied by server while mounting nas:/mnt/user/development/projects' }] },
-      version: shipped.version, digest: shipped.digest }) });
-  why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
-  ok(/access denied by server/.test(why) && /NFS export names another address/.test(why) && !/came up/.test(why),
-     `a mount the server refused says what the server said and points at the export rule, boot or no boot (${why.slice(0, 60)})`);
-  await sessionCensus({ ...SE, up_s: 5000 });
-  why = (await napi('/api/status')).projects.find(p => p.name === 'alpha')?.session_why || '';
-  ok(/does not mount the projects share/.test(why) && /add the mount/.test(why)
-     && /nowhere else/.test(why),
-     `...the same census from a machine up for hours is a missing mount, with the fix and the fact that there is nowhere else (${why.slice(0, 60)})`);
-  await sessionCensus({ ...SE, up_s: 5000, workspace: true, writable: true });
+  ok(/alpha is being copied to shed \(12 files to go\)/.test(why) && !/mount/.test(why) && !/Unbind/.test(why),
+     `a project whose copy is not there yet waits for it, says how much is left, and asks for no mount (${why.slice(0, 70)})`);
+  await syncBeat({ alpha: { ready: true, rev: 3 } });
   const row = (await napi('/api/status')).projects.find(p => p.name === 'alpha');
   ok(row?.session_at === 'shed' && row?.session_why === '',
-     'and once the share is mounted the button is live there');
+     'and once the copy is there the button is live there');
   // A mount that is there and answers Stale file handle (roadmap R41): every
   // list of mounts calls it fine and every read fails, and remounting on the
   // node does not help when the export was re-created under it on the host.
@@ -1966,7 +2295,7 @@ await page.fill('#ndBody #ndEnUser', 'joe');
   ok(held.user === 'joe' && held.name === 'joesbox',
      `the enroll dialog holds the name and the account typed into it (${JSON.stringify(held)})`);
 }
-await page.click('#ndBody #ndEnGo');
+await page.click('#ndBody #ndEnTok');
 await page.waitForSelector('#ndBody .ndtoken', { timeout: 15000 });
 ok(await page.$eval('#ndBody .ndtoken', el => /--user joe/.test(el.textContent)),
    '...and the provision command it prints carries a account that is not the default');
@@ -1998,6 +2327,167 @@ await page.evaluate(async () => {
   const n = nodesList.find(x => x.name === 'joesbox');
   if (n) await nodeAct({ action: 'retire', id: n.id });
 });
+
+// Enroll node asks its questions and answers with one script (R161): the
+// provisioner, the answers and the token inside, and behind WireGuard the
+// router's config narrowed to the controller, with the router's one-way
+// rules on the dialog. A config that cannot be used is refused before a
+// pending row is made.
+{
+  const WG = ['[Interface]', 'PrivateKey = cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MDA=',
+    'Address = 10.6.0.5/32', 'DNS = 192.168.1.1', '', '[Peer]',
+    'PublicKey = cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHViMDA=', 'AllowedIPs = 0.0.0.0/0',
+    'Endpoint = home.example.net:51820', ''].join('\n');
+  const rows = async () => (await page.evaluate(async () => { await loadNodes(); return nodesList.length; }));
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  ok(await page.$eval('#ndBody #ndEnWgRow', r => r.hidden) && await page.$eval('#ndBody #ndEnCtl', i => i.value) === new globalThis.URL(URL).origin,
+     'Enroll node asks how the machine reaches the controller, at this page\'s address, with no config to choose on the LAN');
+  await page.fill('#ndBody #ndEnName', 'cloudbox');
+  await page.selectOption('#ndBody #ndEnReach', 'wireguard');
+  ok(!await page.$eval('#ndBody #ndEnWgRow', r => r.hidden), '...and asks for the router\'s config once WireGuard is picked');
+  // A name, not an address: nothing resolves names through the tunnel.
+  const before = await rows();
+  await page.fill('#ndBody #ndEnCtl', 'http://builderbot.lan:7680');
+  await page.setInputFiles('#ndBody #ndEnWg', { name: 'cloudbox.conf', mimeType: 'text/plain', buffer: Buffer.from(WG) });
+  await page.waitForFunction(w => document.querySelector('#ndBody #ndEnWgText')?.value === w, WG, { timeout: 5000 });
+  ok(true, 'a chosen config file lands in the box beside it, to read or change before it is sent');
+  await page.click('#ndBody #ndEnGo');
+  await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
+    && document.querySelector('#ndBody #ndEnName')?.value === 'cloudbox', null, { timeout: 15000 });
+  ok(await rows() === before && await page.$eval('#ndBody #ndEnReach', s => s.value) === 'wireguard'
+     && await page.$eval('#ndBody #ndEnCtl', i => i.value) === 'http://builderbot.lan:7680',
+     'a controller named rather than addressed is refused, no pending row made, and the answers are still there');
+  await page.fill('#ndBody #ndEnCtl', 'http://192.168.1.16:7680');
+  // Pasted this time, into the box the refusal kept filled.
+  ok(await page.$eval('#ndBody #ndEnWgText', t => t.value) === WG, '...and a refusal keeps it there');
+  await page.fill('#ndBody #ndEnWgText', WG);
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const file = dl.suggestedFilename();
+  const script = readFileSync(await dl.path(), 'utf8');
+  const part = tag => { const m = script.match(new RegExp(`<<'${tag}'\\n([\\s\\S]*?)\\n${tag}\\n`));
+                        return m ? Buffer.from(m[1].replace(/\n/g, ''), 'base64').toString('utf8') : ''; };
+  const prov = readFileSync(`${REPO}/nodes/provision-linux.sh`, 'utf8');
+  ok(/^enroll-cloudbox-n_[0-9a-f]+\.sh$/.test(file) && script.startsWith('#!/usr/bin/env bash') && part('PROVISIONER') === prov,
+     `Make the script saves ${file}, named with the row's id, the provisioner this controller ships inside it`);
+  const conf = part('WGCONF');
+  ok(/AllowedIPs = 192\.168\.1\.16\/32/.test(conf) && !/0\.0\.0\.0\/0|DNS/.test(conf) && /PersistentKeepalive = 25/.test(conf),
+     `...with the router's config routing the controller alone (${conf.split('\n').filter(l => /Allowed|Keep/.test(l)).join('; ')})`);
+  const run = script.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
+  ok(/--controller 'http:\/\/192\.168\.1\.16:7680' --token 'bbe_[^']+'/.test(run) && /--wg-conf "\$dir\/bb\.conf"/.test(run),
+     `...and runs it with the controller, the token and the tunnel (${run.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
+  const home = await page.$eval('#ndBody #ndHome', e => e.textContent);
+  ok(/ip saddr 10\.6\.0\.5 ip daddr 192\.168\.1\.16 tcp dport 7680 accept/.test(home) && /ip saddr 10\.6\.0\.5 drop/.test(home),
+     'the dialog gives the router\'s half: the node may open the controller\'s port and nothing else');
+  const row = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'cloudbox'); });
+  ok(row?.state === 'pending' && row.config?.tunnel?.addr === '10.6.0.5',
+     `...and the pending row knows its tunnel address before the machine exists (${JSON.stringify(row?.config)})`);
+  await page.click('#ndBody #ndTokDone');
+  if (row) await page.evaluate(id => nodeAct({ action: 'retire', id }), row.id);
+  // Through a public hostname (R170): the dialog holds Hosting only on,
+  // asks for the name, refuses an address, and the script runs the
+  // provisioner with --reach public; the home end is the tunnel's rule
+  // (cloudflared's config as the example), and the controller answers that
+  // hostname on the agent's API alone.
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  await page.fill('#ndBody #ndEnName', 'vpsbox');
+  await page.selectOption('#ndBody #ndEnReach', 'public');
+  const cf = await page.evaluate(() => ({ host: $('ndEnHost').checked, held: $('ndEnHost').disabled,
+    sess: $('ndEnSess').checked, ctl: $('ndEnCtl').value, hint: !$('ndEnCfHint').hidden, wg: $('ndEnWgRow').hidden }));
+  ok(cf.host && cf.held && !cf.sess && cf.ctl === 'https://' && cf.hint && cf.wg,
+     `a public hostname holds Hosting only on, takes sessions off, and asks for the name (${JSON.stringify(cf)})`);
+  await page.fill('#ndBody #ndEnCtl', 'https://192.168.1.16');
+  await page.click('#ndBody #ndEnGo');
+  await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
+                                   && document.querySelector('#ndBody #ndEnName'), null, { timeout: 10000 });
+  ok(await page.$eval('#ndBody #ndEnReach', s => s.value) === 'public' && await page.$eval('#ndBody #ndEnName', e => e.value) === 'vpsbox',
+     'an address instead of the hostname is refused, with the answers kept');
+  await page.fill('#ndBody #ndEnCtl', 'https://bb.example.com');
+  const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const script2 = readFileSync(await dl2.path(), 'utf8');
+  const run2 = script2.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
+  ok(/--controller 'https:\/\/bb\.example\.com'/.test(run2) && /--reach public/.test(run2) && /--session-user none/.test(run2)
+     && !/WGCONF/.test(script2),
+     `...and the script runs the provisioner with --reach public, no tunnel inside (${run2.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
+  const home2 = await page.$eval('#ndBody #ndHome', e => e.textContent);
+  ok(/hostname: bb\.example\.com/.test(home2) && /path: \^\/api\/v1\/agent\//.test(home2) && /http_status:404/.test(home2)
+     && /tunnel/.test(await page.$eval('#ndBody .ndtoken .lbl', e => e.textContent)),
+     'the dialog gives the tunnel\'s rule, with cloudflared\'s config as the example: the agent\'s API forwarded, everything else 404');
+  const row2 = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'vpsbox'); });
+  ok(row2?.state === 'pending' && row2.config?.tunnel?.host === 'bb.example.com' && row2.config?.host_only === true,
+     `...and the pending row is hosting only with its hostname (${JSON.stringify(row2?.config)})`);
+  // One name, one node (the operator, 11 Oct): the same name again is
+  // refused rather than a second waiting row; the row shows what its
+  // script was made with, its id, and offers the script again or Discard.
+  const napi = async (path, body) => (await fetch(URL.replace(/\/$/, '') + path, body === undefined
+    ? { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } }
+    : { method: 'POST', headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body) })).json();
+  const dup = await napi('/api/v1/nodes', { action: 'enroll', script: true, name: 'vpsbox', user: 'bb', reach: 'lan', controller: 'http://192.168.1.16:7680' });
+  ok(/already a node called vpsbox/.test(dup.error || '') && /Discard/.test(dup.error || ''),
+     `a second script with a waiting row's name is refused, pointing at the row (${dup.error})`);
+  await page.click('#ndBody #ndTokDone');
+  const ROW2 = `.nodestab .ndrow[data-node="${row2.id}"]`;
+  // The tab shows one node at a time: the waiting row picked.
+  await page.evaluate(async id => { await loadNodes(); openNodesTab(id); }, row2.id);
+  await page.waitForSelector(`${ROW2} .ndpending`, { timeout: 10000 });
+  const pend = await page.$eval(ROW2, r => ({ id: r.querySelector('.ndid')?.textContent, picks: r.querySelector('.ndpicks')?.textContent,
+    again: !!r.querySelector('[data-nd="reenroll"]'), discard: !!r.querySelector('[data-nd="discard"]') }));
+  ok(pend.id === row2.id && /hosting only/.test(pend.picks) && /https:\/\/bb\.example\.com/.test(pend.picks) && pend.again && pend.discard,
+     `the waiting row shows its id, what its script was made with, Download it again and Discard (${pend.picks})`);
+  await page.click(`${ROW2} [data-nd="reenroll"]`);
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  const [dl5] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  ok(dl5.suggestedFilename() === `enroll-vpsbox-${row2.id}.sh`
+     && (await napi('/api/v1/nodes')).nodes.filter(n => n.name === 'vpsbox').length === 1,
+     `Download it again makes a new script for the same row, named with its id (${dl5.suggestedFilename()})`);
+  await page.click('#ndBody #ndTokDone');
+  page.dialogs.length = 0;
+  await page.click(`${ROW2} [data-nd="discard"]`);
+  await page.waitForFunction(id => !(nodesList || []).some(n => n.id === id), row2.id, { timeout: 10000 });
+  ok(page.dialogs.length === 1 && /Discard vpsbox/.test(page.dialogs[0])
+     && !(await napi('/api/v1/nodes', undefined)).nodes.some(n => n.id === row2.id),
+     'Discard asks, then takes the waiting row off outright');
+  await page.evaluate(async () => { await loadNodes(); openNodesTab((nodesList || []).find(n => n.name === 'shed')?.id); });
+  // The controller's half: that hostname reaches the agent's API and nothing
+  // else, by the Host header and by an edge's own headers.
+  const gate = await page.evaluate(async () => {
+    const h = async (path, headers) => (await fetch(path, { headers })).status;
+    return { page: await h('/api/status', { 'X-BB-Host': 'x' }), tunnel: await h('/api/status', { 'Cf-Ray': 'abc' }),
+             agent: await h('/api/v1/agent/hello', { 'Cf-Ray': 'abc' }) };
+  });
+  ok(gate.page === 200 && gate.tunnel === 403 && gate.agent !== 403,
+     `...and a request wearing a tunnel edge's headers reaches the agent's API alone (${JSON.stringify(gate)})`);
+  if (await page.$eval('#ndmodal', m => !m.hidden).catch(() => false)) await page.click('#ndBody #ndTokDone').catch(() => {});
+  // A door in for SSH (R174): the dialog's recipe, its hostname and secret;
+  // the script carries the secret in a block and runs the provisioner with
+  // the door's flags; the pending row knows the door; and once the node
+  // reports it, the row's switch queues the system job.
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnDoor', { timeout: 10000 });
+  await page.fill('#ndBody #ndEnName', 'doorbox');
+  await page.selectOption('#ndBody #ndEnDoor', 'cloudflared');
+  const dv = await page.evaluate(() => ({ host: !$('ndEnDoorHostRow').hidden, secret: !$('ndEnDoorSecretRow').hidden,
+    close: !$('ndEnDoorCloseRow').hidden, hint: !$('ndEnDoorHint').hidden }));
+  ok(dv.host && dv.secret && dv.close && dv.hint, `picking cloudflared asks for its hostname and secret, and offers closing port 22 (${JSON.stringify(dv)})`);
+  await page.fill('#ndBody #ndEnDoorHost', 'ssh-doorbox.example.com');
+  await page.fill('#ndBody #ndEnDoorSecret', 'eyJ.door.token');
+  const [dl3] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const script3 = readFileSync(await dl3.path(), 'utf8');
+  const run3 = script3.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
+  const part3 = (sc, tag) => { const m = sc.match(new RegExp(`<<'${tag}'\\n([\\s\\S]*?)\\n${tag}\\n`));
+                               return m ? Buffer.from(m[1].replace(/\n/g, ''), 'base64').toString('utf8') : ''; };
+  const secret3 = part3(script3, 'DOORSECRET');
+  ok(/--door 'cloudflared' --door-host 'ssh-doorbox\.example\.com'/.test(run3) && /--door-secret "\$dir\/door-secret"/.test(run3)
+     && !/--door-close22/.test(run3) && secret3 === 'eyJ.door.token',
+     `the script carries the door's secret in its own block and the provisioner's flags (${run3.replace(/bbe_[^']+/, 'bbe_…').slice(0, 160)})`);
+  const row3 = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'doorbox'); });
+  ok(row3?.config?.door?.kind === 'cloudflared' && row3.config.door.host === 'ssh-doorbox.example.com',
+     `...and the pending row knows the door (${JSON.stringify(row3?.config?.door)})`);
+  await page.click('#ndBody #ndTokDone');
+  if (row3) await page.evaluate(id => nodeAct({ action: 'retire', id }), row3.id);
+}
 
 // What is offered (roadmap R54, step 6): with unvetted features off the
 // generator knows one hypervisor, the one every sandbox here was made on,
@@ -2579,10 +3069,12 @@ ok(page.errors.length === 0,
   const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
   ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
      `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);
-  const r = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
+  const r = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id, stores: true, doors: true, configured: 'yes' });
   ok(r.ok && /^j_/.test(r.job || ''), `a sandbox node queues the uninstall as a system job (${r.error || r.job})`);
   const j = await napi(`/api/v1/jobs?id=${r.job}`);
-  ok(j.spec?.apply === 'uninstall' && j.node === shed.id, 'the job asks the agent for the uninstall');
+  ok(j.spec?.apply === 'uninstall' && j.node === shed.id
+     && JSON.stringify(j.spec.config) === JSON.stringify({ stores: true, configured: false, doors: true }),
+     `the job asks the agent for the uninstall, carrying the rings ticked and only a true tick (${JSON.stringify(j.spec?.config)})`);
   const again = await napi('/api/v1/nodes', { action: 'uninstall', id: shed.id });
   ok(/one at a time/.test(again.error || ''), '...and a second press waits for the first');
   // The fake agent takes the job and reports it done, the way the real one does.
@@ -2633,13 +3125,57 @@ ok(page.errors.length === 0,
   // Check for updates asks its latest with the rest, in the same answer.
   const chk = await napi('/api/toolchains', { action: 'check', node: en.id });
   ok(chk.claude?.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.claude?.version || chk.claude?.error || chk.error})`);
-  // The node's own toolchain check it queued beside is not this block's: gone,
-  // so the tab is not busy with it and the agent is handed the update next.
-  if (chk.job) await napi('/api/v1/jobs', { action: 'cancel', id: chk.job });
+  // The node's own toolchain check it queued beside: the fake agent takes it
+  // and answers the way bb toolchains versions does, Go behind, so the tab
+  // is not busy with it and the agent is handed the update next.
+  const tcRowOf = st => (st.attention || []).find(a => a.kind === 'toolchain' && a.id === en.id);
+  const claudeIn = st => (tcRowOf(st)?.tools || []).find(t => t.name === 'claude-code');
+  if (chk.job) {
+    const AH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const w = await fetch(base + '/api/v1/agent/work', { method: 'POST', headers: AH,
+      body: JSON.stringify({ running: [], wait: 0 }) });
+    const got = w.status === 200 ? await w.json() : {};
+    if ((got.job?.id || got.id) === chk.job) {
+      await napi('/api/v1/agent/log', { job: chk.job, chunks: [
+        { seq: 1, chunk: 'go\t1.27.0\t1.28.0\tupdate\nnode\t22.1.0\t22.1.0\tcurrent\n' }] }, AH);
+      await napi('/api/v1/agent/result', { job: chk.job, state: 'succeeded', exit: 0 }, AH);
+    } else await napi('/api/v1/jobs', { action: 'cancel', id: chk.job });
+  }
   const st = await napi('/api/status');
-  const row = (st.attention || []).find(a => a.kind === 'claude' && a.id === en.id);
-  ok(!!row && row.from === '1.0.0' && row.to === '1.2.0',
+  const row = tcRowOf(st);
+  const cl = claudeIn(st), goRow = (row?.tools || []).find(t => t.name === 'go');
+  ok(cl?.from === '1.0.0' && cl.to === '1.2.0' && cl.label === 'Claude Code',
      `a node behind is a bell row naming both versions (${JSON.stringify(row || st.attention)})`);
+  ok(goRow?.from === '1.27.0' && goRow.to === '1.28.0' && row.tools.length === 2
+     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'toolchain').length === 1,
+     `...the same row as a store toolchain's update, one per node, Claude Code first (${JSON.stringify(row?.tools)})`);
+  // The row's link opens the node's Toolchains tab, where each is updated
+  // (the operator, 9 Oct), from whichever node that tab was on.
+  await page.waitForFunction(id => (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id), en.id, { timeout: 15000 });
+  await page.evaluate(() => { tcNode = 'local'; });
+  await page.click('#bBell');
+  await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 10000 });
+  const tcBell = await page.$eval(`#bellPanel [data-btc="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
+  ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
+     && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),
+     `the bell says it in a line, every toolchain behind on the node in one row, the versions under its fold (${tcBell.slice(0, 160)})`);
+  // Dismiss puts that version away for this account (bellseen.py, R144),
+  // with the drawer left open; Show again brings it back.
+  await page.click(`#bellPanel [data-bdismiss]`);
+  await page.waitForFunction(id => !(state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id)
+                                   && state.bell_hidden === 2, en.id, { timeout: 15000 });
+  await page.waitForSelector('#bellRestore', { timeout: 10000 });
+  ok(!(await page.$eval('#bellPanel', e => e.hidden)) && /2 updates dismissed/.test(await page.textContent('#bellPanel')),
+     'Dismiss puts both updates away, leaves the drawer open, and says how many are put away');
+  await page.click('#bellRestore');
+  await page.waitForFunction(id => state.bell_hidden === 0 && (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id),
+                             en.id, { timeout: 15000 });
+  await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 15000 });
+  ok(true, '...and Show again brings them back');
+  await page.click(`#bellPanel [data-btc="${en.id}"]`);
+  await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: 15000 });
+  await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });
+  ok(true, '...and its link opens the Toolchains tab on that node, Claude Code\'s row there');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());
@@ -2713,8 +3249,8 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
     ok(r.ok && r.held_while_ending.length === 1 && r.held_while_ending[0] === true && r.after === false,
        `the hold is up from the press, while the node's sessions are being ended, and is the job's alone once it is queued (${said})`);
   }
-  ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
-     '...and the bell row is gone while the update is queued');
+  ok(!claudeIn(await napi('/api/status')),
+     '...and Claude Code leaves the bell row while the update is queued');
   const again = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
   ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
   // The fake agent takes the job and finishes it the way the real one does,
@@ -2739,7 +3275,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
     const cc = (await napi('/api/status')).claude_code?.nodes?.[en.id] || {};
     ok(cc.installed === '1.2.0' && cc.behind === false,
        `...and the row says the version the job installed before the next hello (${cc.installed}, behind ${cc.behind})`);
-    ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
+    ok(!claudeIn(await napi('/api/status')),
        '...so the bell does not keep saying an update is out');
   }
   // Behind again, by the node's own word: a session asked for there starts

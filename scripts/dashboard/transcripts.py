@@ -123,6 +123,12 @@ def _find(uid, project, sid):
     return None
 
 
+def raw(uid, project, sid):
+    """The transcript file itself, for a synced node resuming it (B613):
+    its path, or None."""
+    return _find(uid, project, sid)
+
+
 def zone(name):
     """The zone a download's stamps are written in: the browser's, which
     the link carries, since that is the zone the dashboard beside it shows

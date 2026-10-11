@@ -48,6 +48,7 @@ exclude file, never the project's .gitignore, which is the project's to write.
 """
 import ast
 import bisect
+import hashlib
 import json
 import os
 import re
@@ -71,9 +72,15 @@ SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchp
 # is the word that opens a function (`fun`, `func`, `fn`, `function`) or
 # none at all (Java, C#, Dart, C, where `name(...) {` after a type is the
 # definition), which is what the scanner already spots for a JS method.
-# A scanner's version: a file indexed by an older one is scanned again
-# though it has not changed, so a fix to a scanner reaches every file.
-SCANNER = {"py": 3, "c": 4, "js": 4, "html": 5, "sh": 2}
+# The scanners' version: a file indexed by other ones is scanned again
+# though it has not changed, so a fix to a scanner reaches every file. It
+# is this file's own fingerprint, never a number bumped by hand: a scanner
+# changed without a bump left indexes answering from the old reading (the
+# operator, 8 Oct), and any edit here costs one rebuild of a few seconds.
+try:
+    SCANNER = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:12]
+except OSError:                  # (run from somewhere it cannot read itself)
+    SCANNER = "unknown"
 EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
         ".jsx": "js", ".html": "html", ".sh": "sh", ".bash": "sh",
         ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
@@ -195,15 +202,24 @@ class Sink:
 
 
 SECTION_HEAD = re.compile(r"^\s*(?://|#)\s*----\s*(.*?)\s*-{3,}\s*$")
+SECTION_RULE = re.compile(r"^(?://|#)\s*-{20,}\s*$")
+SECTION_TITLE = re.compile(r"^(?://|#)\s+(\S.*?)\s*$")
 
 
 def scan_sections(text, sink):
     """The `// ---- name ----` (or `# ----`) headers a file is written in:
     the units a person reads it by, and the units a cleanup moves."""
-    for i, line in enumerate(text.split("\n"), 1):
+    lines = text.split("\n")
+    for i, line in enumerate(lines, 1):
         m = SECTION_HEAD.match(line)
         if m and m.group(1):
             sink.sections.append({"name": m.group(1), "line": i})
+        elif SECTION_RULE.match(line) and i < len(lines):
+            # the agent's form: a bare rule, then `# the name` under it (it
+            # read as one section in 7,500 lines)
+            t = SECTION_TITLE.match(lines[i])
+            if t and not SECTION_RULE.match(lines[i]):
+                sink.sections.append({"name": t.group(1), "line": i})
 
 
 def scan_python(text, sink):
@@ -360,6 +376,9 @@ TS_OBJ_KEY_ARROW = re.compile(r"(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s
                               + TS_ARROW_PARAMS + r"\s*\Z", re.M)
 METHOD_PREFIX = re.compile(r"(?:(?<![\w$])(?:static|async|get|set|public|private|protected|"
                            r"readonly|override)\s*|[#*]\s*)+$")
+# Keywords that are a method's name where a method stands (`delete(uri) {`),
+# but not the control words, since `} catch (e) {` stands there too.
+METHOD_KEYWORDS = {"delete", "new", "import", "export", "default"}
 STATEMENT_WORDS = {"const", "let", "var", "function", "return", "if", "for", "while", "class",
                    "export", "import", "throw", "try", "switch"}
 
@@ -379,6 +398,7 @@ class JSScanner:
         self.jsx = jsx
         self.fn_generic = 0      # inside `fun <T, R : Comparable<R>>`
         self.class_ctx = False   # a template's ${} inside a className
+        self.shadow = {}         # id(def) -> names its parameters and locals take
         self.before_fn = ""      # what stood before `function`: `(` makes it an expression
         self.pre_async = ""
         self.params = TS_ARROW_PARAMS if ts else ARROW_PARAMS
@@ -401,6 +421,9 @@ class JSScanner:
         self.prev_ident = ""
         self.last_kw = ""
         self.parens = 0
+        # the paren depth at each open brace: an arrow assigned in parens
+        # opened since is a parameter's default, not a definition
+        self.brace_parens = []
         self.paren_at_pending = 0
         self.maybe_method = None
         self.receiver = False
@@ -409,6 +432,13 @@ class JSScanner:
         self.tok_line = line0    # the line of the last token read
         self.blank = None        # a list to collect (start, end) of every string,
                                  # template, regex and comment, for code_only()
+
+    def add_def(self, name, line, kind, parent):
+        # a definition is what its name means from here on, not a local
+        # that shadows it: `const rowFor = () =>` is the function rowFor
+        for k in self.shadow.values():
+            k.discard(name)
+        return self.sink.add_def(name, line, kind, parent)
 
     def enclosing(self):
         # an open `x => expr` holds what is called in its expression, unless
@@ -592,7 +622,9 @@ class JSScanner:
             # names, relative to this one, so a suite that loads it reaches it
             rel = os.path.normpath(os.path.join(os.path.dirname(self.sink.path), body))
             if not rel.startswith(".."):
-                self.sink.add_draw(rel, "file", line, fn)
+                # an "import", matched only against a changed file itself: two
+                # files importing the solver are not each other's suites'
+                self.sink.add_draw(rel, "import", line, fn)
         for what, kind in strings_draw(body):
             self.sink.add_draw(what, kind, line, fn)
         if cls and re.fullmatch(r"[\w\s-]*", body):
@@ -678,8 +710,29 @@ class JSScanner:
         # A use by name that is not a call and not a property: passed,
         # assigned, listed. What tells dead code from a handler somebody
         # hands to onclick without calling it.
-        if nxt != "(" and not after_dot and word not in self.kw \
-                and self.last_kw not in ("function", "class") and not word[0].isdigit():
+        # A parameter or a local that takes a function's name is not that
+        # function handed on: `fun f(reach: Float)` and its uses named reach
+        # five times (B590). Its declaration shadows the name for the rest
+        # of the function it is declared in.
+        in_params = self.pending is not None and self.parens > getattr(self, "paren_at_pending", 0)
+        if not after_dot and nxt != "(" and word not in self.kw and (
+                (in_params and nxt in ":,)=" and self.last_sig in ("(", ",", "val", "var"))
+                or self.last_sig in ("val", "var", "let", "const")):
+            owner = self.pending if in_params else (self.stack[-1][2] if self.stack else None)
+            if owner is not None:
+                self.shadow.setdefault(id(owner), set()).add(word)
+            if not in_params:
+                # counted as before, so unused still reads `const f = () =>`
+                # as the one use it subtracts, but marked: who-calls does not
+                # list a declaration as the function handed on
+                self.sink.add_ref(word, self.line, self.enclosing())
+                self.sink.passed[-1]["decl"] = True
+        elif not after_dot and nxt == "=" and self.parens and self.last_sig in ("(", ",") \
+                and self.s[self.i + len(word):].lstrip(" \t")[1:2] != "=":
+            pass                     # Kotlin's named argument, add(reach = 0.6f): a name, not a use
+        elif nxt != "(" and not after_dot and word not in self.kw \
+                and self.last_kw not in ("function", "class") and not word[0].isdigit() \
+                and not any(word in self.shadow.get(id(d), ()) for _, _, d in self.stack if d is not None):
             self.sink.add_ref(word, self.line, self.enclosing())
         if self.last_kw == "function" and self.fn_generic:
             self.last_sig = word     # a type parameter: fun <T> name
@@ -735,13 +788,17 @@ class JSScanner:
             parent = self.stack[-1][0]
         else:
             parent = self.enclosing() if self.stack else ""
-        d = self.sink.add_def(name, self.line, kind, "" if parent == self.top else parent)
+        d = self.add_def(name, self.line, kind, "" if parent == self.top else parent)
         self.pending = d
         self.pending_depth = self.depth
         self.pending_anon = self.pending_async = False
         self.pending_close = None
+        self.pending_open = False    # its own ( reached
+        self.pending_angles = 0      # inside <...> before it: Map<String, Any?>.long(
 
     def punct(self, c):
+        if self.pending is not None and not getattr(self, "pending_open", True) and c in "<>":
+            self.pending_angles = max(0, getattr(self, "pending_angles", 0) + (1 if c == "<" else -1))
         if self.last_kw == "function" and c == "<" and (self.fn_generic or self.last_sig in self.fn_words):
             self.fn_generic += 1
             self.last_sig = "<"
@@ -791,7 +848,19 @@ class JSScanner:
                 # the ( of a definition's own parameter list, not a call
                 self.maybe_method = None
                 self.pending["recv"] = False
+                self.pending_open = True
                 self.paren_at_pending = self.parens
+                self.parens += 1
+                self.last_sig = "("
+                return
+            if prev in METHOD_KEYWORDS and self.shape_methods and self.last_kw != "function" \
+                    and not getattr(self, "ident_after_dot", False):
+                # `async delete(uri) {` in a class: a keyword is a method's name
+                # where a method stands, and is never a call by itself
+                w = s[max(0, self.i - 240):self.i]
+                code = self.code_before(self.i - (len(w) - len(w.rstrip())) - len(prev))
+                self.maybe_method = (prev, self.line, self.parens) \
+                    if code.endswith(("{", ",", ";", "}")) or not code else None
                 self.parens += 1
                 self.last_sig = "("
                 return
@@ -828,15 +897,19 @@ class JSScanner:
                 # in the body is not read as the function's (B545).
                 # `x.animate = function(` is named for what it is assigned to,
                 # as an arrow is; one handed straight to a call stays anonymous
-                head = s[max(0, self.i - 200):self.i - len(prev)]
+                # (the text before the keyword, whatever space stands between it
+                # and its paren: `Module._load = function (req)`)
+                w = s[max(0, self.i - 240):self.i]
+                kw_at = self.i - (len(w) - len(w.rstrip())) - len(prev)
+                head = s[max(0, kw_at - 200):kw_at]
                 named = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?$", head) \
                     if prev in self.fn_words else None
                 if named and named.group(1) not in self.kw:
-                    self.pending = self.sink.add_def(named.group(1), self.line, "function",
+                    self.pending = self.add_def(named.group(1), self.line, "function",
                                                      self.enclosing_or_blank())
                     self.pending["prop"] = named.start(1) > 0 and head[named.start(1) - 1] == "."
                 else:
-                    self.pending = self.sink.add_def("(anonymous)", self.line, "function", "")
+                    self.pending = self.add_def("(anonymous)", self.line, "function", "")
                 self.pending_depth = self.depth
                 self.pending_anon = True
                 self.pending_async = prev == "async"
@@ -863,6 +936,7 @@ class JSScanner:
             # TypeScript's `function f(): { a: T } {`: the first brace after
             # the colon is the return type's, the next one is the body
             self.depth += 1
+            self.brace_parens.append((self.parens, self.in_parens() and self.opens_pattern()))
             self.last_sig = "{"
             return
         if c == "{":
@@ -886,7 +960,7 @@ class JSScanner:
                 # that was `NAME = ... =>`; else it stays with the enclosing
                 name = self.arrow_name()
                 if name:
-                    d = self.sink.add_def(name, self.line, "arrow", self.enclosing_or_blank())
+                    d = self.add_def(name, self.line, "arrow", self.enclosing_or_blank())
                     d["at"] = self.base + self.i + 1
                     d["prop"] = getattr(self, "_prop", False)
                     self.stack.append((name, self.depth, d))
@@ -899,7 +973,7 @@ class JSScanner:
                 # its own `)` just closed: in `if (a(b, c(d))){` the `)` before
                 # the brace is the if's, and c is a call
                 name, line, _ = self.maybe_method
-                d = self.sink.add_def(name, line, "method", self.enclosing_or_blank())
+                d = self.add_def(name, line, "method", self.enclosing_or_blank())
                 d["at"] = self.base + self.i + 1
                 self.stack.append((name, self.depth, d))
                 # the call recorded for `name(` was the header, not a call
@@ -912,10 +986,13 @@ class JSScanner:
                 # destructured `constructor({ now } = {})`, leaves it be)
                 self.maybe_method = None
             self.depth += 1
+            self.brace_parens.append((self.parens, self.in_parens() and self.opens_pattern()))
             self.last_sig = "{"
             return
         if c == "}":
             self.depth -= 1
+            if self.brace_parens:
+                self.brace_parens.pop()
             if self.pending is not None and self.pending_depth > self.depth:
                 # an interface's `fun f(x: Int)` with no body ends with its scope
                 self.pending = None
@@ -946,6 +1023,8 @@ class JSScanner:
                     self.pending_async = self.pending_anon = False
                 m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?" + self.params + r"\s*$",
                               s[max(0, self.i - 200):self.i])
+                if m and self.is_default(s[max(0, self.i - 200):self.i], m.start(1)):
+                    m = None
                 # (the window's first line is cut short unless it is the file's)
                 w = s[max(0, self.i - 200):self.i]
                 key = None if m else self.obj_key.search(w if self.i <= 200 else w[w.find("\n") + 1:])
@@ -955,7 +1034,7 @@ class JSScanner:
                     anon["expr"] = True
                     self.exprs.append((anon, self.depth, self.nest(), len(self.stack)))
                 if m and m.group(1) not in self.kw and self.last_kw != "function":
-                    d = self.sink.add_def(m.group(1), self.line, "arrow", self.enclosing_or_blank())
+                    d = self.add_def(m.group(1), self.line, "arrow", self.enclosing_or_blank())
                     d["expr"] = True
                     self.exprs.append((d, self.depth, self.nest(), len(self.stack)))
                     # A property (`nb.clashResume = () =>`): the object's to
@@ -964,7 +1043,7 @@ class JSScanner:
                 elif key and self.last_kw != "function":
                     # `render: (el, t) => renderProfileInto(el)` in a table:
                     # its calls are its own, not the top level's
-                    d = self.sink.add_def(key.group(1), self.line, "arrow", self.enclosing_or_blank())
+                    d = self.add_def(key.group(1), self.line, "arrow", self.enclosing_or_blank())
                     d.update(expr=True, prop=True)
                     self.exprs.append((d, self.depth, self.nest(), len(self.stack)))
             self.i += 1
@@ -984,7 +1063,8 @@ class JSScanner:
             if self.pending is not None and self.pending_depth == self.depth \
                     and (c == ";" or self.parens <= getattr(self, "paren_at_pending", 0)) \
                     and not (self.ts and self.brackets) \
-                    and not (c == "," and getattr(self, "pending_close", None) is not None):
+                    and not (c == "," and getattr(self, "pending_close", None) is not None) \
+                    and not (c == "," and getattr(self, "pending_angles", 0)):
                 # (not the comma of a TypeScript tuple, `): [number, number] {`,
                 # nor one in a return type after the parameters closed,
                 # Kotlin's `): Pair<Uri, String>? {`)
@@ -998,12 +1078,35 @@ class JSScanner:
         # (an anonymous body at the top pushes the top's name: no parent)
         return st[-1][0] if st and st[-1][0] != self.top else ""
 
+    def is_default(self, head, start):
+        # A parameter's default, inside parens opened since the innermost
+        # brace and right after `(`, `,` or `{`: `function nodePick(id, why
+        # = () => "")` gave the map a function `why`, with the next
+        # section's comment for what it says. `forEach(b => b.onclick = ()
+        # => go())` is a handler, and stays one.
+        if not self.in_parens() and not (self.brace_parens and self.brace_parens[-1][1]):
+            # (nor in a brace opened in parens: `f({ now = () => 0 } = {})`)
+            return False
+        return bool(re.search(r"[(,{]\s*$", head[:start]))
+
+    def opens_pattern(self):
+        # a brace right after `(` or `,` is a destructured parameter; one
+        # after `=>` or `)` is a body, `evaluate(() => { x = () => 0 })`
+        return bool(re.search(r"[(,]\s*$", self.s[max(0, self.i - 80):self.i]))
+
+    def in_parens(self):
+        # inside parens opened since the innermost brace
+        return self.parens > (self.brace_parens[-1][0] if self.brace_parens else 0)
+
     def arrow_name(self):
         # `const NAME = (...) =>` or `NAME = async x =>` : the identifier
         # before the `=` that precedes the arrow's parameters, on this line
         # or the one before.
         head = self.s[max(0, self.i - 200):self.i]
         m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?" + self.params + r"\s*=>\s*$", head)
+        if m and self.is_default(head, m.start(1)):
+            self._prop = False
+            return ""
         # A property (`nb.clashResume = () =>`) is the object's to call:
         # kept as a definition for the attribution of what it draws, marked
         # so `unused` does not name it as never called (B271).
@@ -1604,7 +1707,7 @@ def build(root, prior=None):
             continue
         old = kept.get(rel)
         if old and old.get("mtime") == mtime and old.get("lang") == lang and "defs" in old \
-                and old.get("scan", 1) == SCANNER.get(lang, 1):
+                and old.get("scan") == SCANNER:
             files[rel] = old
             continue
         try:
@@ -1620,7 +1723,7 @@ def build(root, prior=None):
             {"py": scan_python, "js": scan_js, "html": scan_html, "sh": scan_sh, "c": scan_c}[lang](text, sink)
         except Exception as e:      # a scanner must never take the map down
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
-        files[rel] = {"mtime": mtime, "lang": lang, "scan": SCANNER.get(lang, 1),
+        files[rel] = {"mtime": mtime, "lang": lang, "scan": SCANNER,
                       "defs": sink.defs, "calls": sink.calls,
                       "draws": sink.draws, "routes": sink.routes, "refs": sink.refs,
                       "sections": sink.sections, "passed": []}
@@ -1816,7 +1919,7 @@ def load(root, force=False):
     # not changed, and build() rescans just those.
     if set(now) != set(have) or any(now[k] != have[k].get("mtime") or "defs" not in have[k]
                                     or have[k].get("lang") != langs[k]
-                                    or have[k].get("scan", 1) != SCANNER.get(langs[k], 1) for k in now):
+                                    or have[k].get("scan") != SCANNER for k in now):
         return build(root, prior)
     return flat(prior)
 
@@ -2023,7 +2126,7 @@ def q_who_calls(idx, name, root):
     # ...and the places it is handed over without a call: to a draw, an
     # onclick, a list. Not a call, and the reason a function nothing calls
     # is not dead; who-calls used to say "nothing calls" and leave it there.
-    passed = [] if qual else [p for p in idx.get("passed", []) if p["name"] == name]
+    passed = [] if qual else [p for p in idx.get("passed", []) if p["name"] == name and not p.get("decl")]
     if not rows and not passed:
         return [f"nothing calls {name}" + (f" on {qual}" if qual else "") + ", and nothing passes it by name",
                 GREP_FIRST.format(f"grep -rn {name}")]
@@ -2135,9 +2238,12 @@ def suites_for(idx, paths):
     # `remove()` or `load()` defined in a module matched every suite's DOM
     # and its own helpers; a unit test calls one qualified, below.
     js = {f for f in files if idx["files"].get(f, {}).get("lang") in ("js", "html")}
+    # ...and only a top-level one: a suite reaches the page's globals, and a
+    # local `const done = () =>` inside a draw, or a table's `open:` arrow,
+    # matched every suite that calls its own library's done() (9 Oct).
     names = {d["name"] for d in idx["defs"] if d["file"] in js and not d["name"].startswith("(")
-             and len(d["name"]) > 3}
-    things = {(d["what"], d["kind"]) for d in idx["draws"] if d["file"] in files}
+             and len(d["name"]) > 3 and not d.get("parent") and not d.get("prop")}
+    things = {(d["what"], d["kind"]) for d in idx["draws"] if d["file"] in files and d["kind"] != "import"}
     # A python change: the paths its functions answer, through the handlers
     # that call them (up to three hops of callers, within the python).
     py = {f for f in files if idx["files"].get(f, {}).get("lang") == "py"}
@@ -2165,7 +2271,7 @@ def suites_for(idx, paths):
     for f in files:
         if is_test(f):
             hits.setdefault(f, set()).add("changed itself")
-    mark = {"class": ".", "id": "#", "path": "", "file": ""}
+    mark = {"class": ".", "id": "#", "path": "", "file": "", "import": ""}
     paths = {w for w, k in things if k == "path"}
     for d in idx["draws"]:
         if not is_test(d["file"]):
@@ -2175,9 +2281,15 @@ def suites_for(idx, paths):
         elif d["kind"] == "path" and any(d["what"].startswith(p_ + "/") or d["what"].startswith(p_ + "?")
                                          for p_ in paths):
             hits.setdefault(d["file"], set()).add(d["what"])
-        elif d["kind"] == "file" and any(f == d["what"] or f.endswith("/" + d["what"])
-                                         or os.path.splitext(f)[0] == d["what"] for f in files):
+        elif d["kind"] in ("file", "import") and any(f == d["what"] or f.endswith("/" + d["what"])
+                                                     or os.path.splitext(f)[0] == d["what"] for f in files):
             hits.setdefault(d["file"], set()).add(d["what"])
+        elif d["kind"] == "file" and "/" in d["what"].strip("/") \
+                and any(f.startswith(d["what"].strip("/") + "/") for f in files):
+            # a directory named whole reaches what is in it: agent.mjs names
+            # scripts/agent/builderbot_agent, the package it loads and runs,
+            # and its modules each read as reached by no suite (9 Oct)
+            hits.setdefault(d["file"], set()).add(d["what"] + "/")
     for c in idx["calls"]:
         if is_test(c["file"]) and not c["qual"] and c["name"] in names:
             hits.setdefault(c["file"], set()).add(c["name"] + "()")
@@ -2244,9 +2356,12 @@ def q_unused(idx, path=None):
         # browser, which the map cannot see; its name says what it is. And
         # a property of an object (nb.clashResume = ...) is called as the
         # object's, which the map does not follow either (B271).
-        # ...and a constructor, which `new` calls by its class's name.
+        # ...and a constructor, which `new` calls by its class's name...
+        # ...nor a method, which is called through its object as well, often by
+        # a framework the tree only hands it to: VS Code calls a file system's
+        # createDirectory, and nothing here does (8 Oct).
         if (n.startswith("on") and n[2:3].islower()) or d.get("prop") or d.get("named_expr") \
-                or n == "constructor":
+                or n == "constructor" or d["kind"] == "method":
             continue
         if called.get(n, 0) == 0 and refs.get(n, 0) - own.get(n, 0) <= 0:
             rows.append(d)

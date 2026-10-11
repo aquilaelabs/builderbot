@@ -411,7 +411,19 @@ def revisions():
     return {p: len(h.get(p) or []) + int(n.get(p) or 0) for p in set(h) | set(n)}
 
 
+def _too_long(title):
+    """Why a title is refused for its length, or "". Refused rather than cut:
+    cutting it lost whatever followed, often the half that said why (B621)."""
+    n = len(" ".join(str(title or "").split()))
+    if n > MAX_SHORT:
+        return (f"a title is one line of at most {MAX_SHORT} characters (this one is {n}): "
+                "say what goes wrong there, and put the rest in the repro or a note")
+    return ""
+
+
 def add(project, title, by="you", severity="medium", **fields):
+    if _too_long(title):
+        return {"error": _too_long(title)}
     title = _clean(title, MAX_SHORT).replace("\n", " ")
     if not title:
         return {"error": "a bug needs a title: one line, what goes wrong"}
@@ -577,6 +589,8 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     """
     def change(bug):
         if "title" in fields:
+            if _too_long(fields["title"]):
+                return {"error": _too_long(fields["title"])}
             t = _clean(fields["title"], MAX_SHORT).replace("\n", " ")
             if not t:
                 return {"error": "a bug needs a title"}

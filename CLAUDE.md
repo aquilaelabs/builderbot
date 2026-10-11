@@ -73,8 +73,12 @@ by hand cost four commands and still could not see the failed builds.
   errors collected) is the one to follow. `BB_TEST_TIMING=1` prefixes every
   result with the seconds since the last one; feed that output to `bb tests
   ingest` and the notebook's Tests tab keeps the numbers. The house rule
-  `tests` carries the discipline: one run at a time, no edits under the
-  dashboard during one, kill by pid. Why each clause is there: three suites
+  `tests` carries the discipline: one run at a time, every run from a copy
+  of the tree, kill by pid. Why each clause is there: the page loads its
+  scripts from disk on every reload while its server keeps the python it
+  started with, so a run in a tree edited meanwhile was a run of neither
+  version, and run.sh now copies the tree for every run rather than only on
+  NFS (B616, 10 Oct; BB_TEST_INPLACE=1 still runs in place); three suites
   side by side is bug 13's reproducer, which is what the lock is for; a
   lock a canceled CI job left is taken over on the next run, since the
   directory is world-writable and not sticky; `pkill -f` and `pgrep -f`
@@ -161,7 +165,7 @@ by hand cost four commands and still could not see the failed builds.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).
-  Use it where it is quicker than grep, and fix it whenever it answers wrong; `test/codemap.mjs` holds it to the tree. `find`
+  Use it where it is quicker than grep, and fix it whenever it answers wrong; `test/codemap.mjs` holds it to the tree, and `test/codemap-parsers.mjs` to babel, python's ast and hand-checked fixtures in the languages neither reads (R158). `find`
   and `who-calls` also hand over what a function says about itself, the
   comment directly above it or its docstring's first sentence: the notes
   live in the code, never in the map, and the map reads them out.
@@ -236,8 +240,8 @@ by hand cost four commands and still could not see the failed builds.
   - Two numbers move by machine and one by hand. `bb version` moves per
     commit; a file two builds may read carries a format it checks
     (`.bb-map/map3.json`, `.bb-map/coverage.json`) and a reader that meets
-    another rebuilds; and `AGENT_VERSION` in `scripts/agent/builderbot-agent.py`
-    moves by hand, so `bb lint` fails when that file changes against the
+    another rebuilds; and `AGENT_VERSION` in `scripts/agent/builderbot_agent/__init__.py`
+    moves by hand, so `bb lint` fails when the agent changes against the
     branch's base without its patch moving. A node compares the file and
     the row names the number, and when they disagreed three tabs said
     "runs 0.6.92 and ships 0.6.92" (B221).

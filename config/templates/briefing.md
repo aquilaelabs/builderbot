@@ -16,10 +16,12 @@ behind it, so read that before starting on one rather than working from
 the title.
 
 Three things here are not this machine's and survive it being rebuilt: this
-project, on the projects share at /workspace; the toolchains, on the
-toolchain store; and the notebook, the controller's. Everything else,
-including /tmp and your home, is this machine's own disk and nobody's
-backup. Uncommitted work is on the share, so a restart cannot eat it. /tmp
+project, whose original is the controller's (/workspace here is this
+node's copy of it, kept in step with the controller's within a second or
+two of a save); the toolchains, on the toolchain store; and the notebook,
+the controller's. Everything else, including /tmp and your home, is this
+machine's own disk and nobody's backup. Uncommitted work goes up to the
+controller as it is saved, so a restart cannot eat it. /tmp
 is made new each time the session is started, which an update of the
 controller does between two prompts; what Claude Code keeps there for the
 conversation (its scratchpad, its background commands' output) is kept
@@ -44,7 +46,11 @@ project's other nodes by their published ports: nothing else on the
 machine or the LAN answers, by design, so a connection refused to another
 address is the firewall, not a fault. The session has a network of its own:
 `localhost` and the address `hostname -I` prints are the session's, and no
-container answers there. A container answers at its node's address, which
+container answers there. A container is kept the same way where its node's
+row says so (on by default on a hosting-only node): it reaches its own
+project's containers, those of the projects its project reads, the
+controller, DNS, the node's 80 and 443 and the internet, and not another
+project's container by the node's address. A container answers at its node's address, which
 `bb devapp status` prints beside "answers at" for the dev instance, and
 `bb devapp ls` with each container's ports.
 
@@ -93,12 +99,13 @@ companion app's notes wait on it. Narrow a run with arguments, which follow
 the command (`bb test --tests 'FooTest'`); a task the command does not run
 (installing on the emulator, a single module) is `bb run -- ./gradlew ...`.
 
-Gradle builds on the node's own disk, not the projects share: BuilderBot
-points each module's build folder there and leaves a link at its usual
-place (`app/build`), so its outputs are read where they always were. That
-holds for builds that use the project's own Gradle home, the one
+Gradle builds outside the project tree, on the node's own disk, so its
+outputs are not copied up to the controller: BuilderBot points each
+module's build folder there and leaves a link at its usual place
+(`app/build`), so its outputs are read where they always were. That holds
+for builds that use the project's own Gradle home, the one
 `$GRADLE_USER_HOME` already names; point Gradle at another and its builds
-land on the share again.
+land in the tree again.
 
 A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the
@@ -156,7 +163,7 @@ tasks is done, run `bb tidy`: it ends this session's emulator (through
 `bb emu stop`, so its state is saved), anything else of its own on the
 NVIDIA card, its Gradle and Kotlin daemons, the headless browsers a test
 left behind and a server it put in the background and left listening (a
-dev server or a preview holds files on the projects share, which a later
+dev server or a preview holds files in the project tree, which a later
 `npm ci` then cannot clear), and clears its own files from /tmp, which in
 a session is memory; then it says what came back. It touches only this session's
 own, never Claude Code's own folder in /tmp, and nothing a running
@@ -251,7 +258,10 @@ ask it there, and before acting on a guess that would change the work.
 Some things wait on a person through a verb, and the ask is the same shape
 everywhere: say why, ask for the smallest thing that does the job, and the
 answer comes back through the same verb. `bb root run --why "..." -- CMD` for one
-command as root on this node; `bb phone run` for a phone connected here;
+command as root on this node, or `--node NAME` for one of the nodes this
+project hosts its containers on (a hosting-only node runs no session, so it
+is reached by name, and its own root-asks switch decides); `bb phone run` for
+a phone connected here;
 `bb container new --why "..." --name NAME --compose FILE` for a container
 that does not exist yet. A node can have root asks turned off, and the ask
 then says so. Every one of the project's dials (Claude may: add to the
@@ -529,26 +539,45 @@ names another, lives on one of the project's nodes, and either of those
 is always asked. It has no project tree behind it: compose resolves its
 relative paths, `build: .` included, against its own empty data
 directory, so one that builds from a path is refused. This project's own
-code goes into Docker from a compose file at the project's root
-(`docker-compose.yml` or `compose.yml`) with `bb devapp new`, which builds
-from this tree, and `bb devapp rebuild` after a change.
+code goes into Docker from one of its compose files with `bb devapp new`,
+which builds from this tree, and `bb devapp rebuild` after a change: the
+root's own (`docker-compose.yml` or `compose.yml`) unless `--compose FILE`
+names another, one in a folder (`site/compose.yml`) or one named for its
+service (`deploy/containers/admin.compose.yml`), each its own Send on the
+Artifacts tab. What stands in front of a container (a hostname, TLS, a
+reverse proxy) is the nginx tab, a person's: one nginx per node, its
+routes to the ports containers publish there, its certificates kept on
+the controller. Say in your reply which hostname should reach which port
+rather than writing a proxy container of your own; a session cannot read
+or change those routes yet.
 
-<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
+<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml compose.yaml */compose.yml */compose.yaml */*.compose.yml */*/compose.yml */*/*.compose.yml -->
 This project has a compose file, so it can have a container built from it:
 its dev instance, the place to prove a change. Up and Down are the
 operator's; under the same dial you may send the project to Docker and
 rebuild, change the env of and remove its containers. `bb devapp new [NAME]
-[--branch REF]` is the Artifacts tab's Send to Docker done from here: a
-container made from this project's compose file (its own while it has
-none, then another beside it, which needs ports of its own from `--env
-FILE`), built and started. That, not `bb container new`, is how this
-project's own code goes into Docker. `bb devapp` says what one was built
-from and whether it is running, then `bb devapp rebuild`, `bb devapp env
-set FILE` and `bb devapp remove`, which leaves its env and data for a
-remake. Its env is kept by BuilderBot, not as a file in the tree:
-`bb devapp env` prints it, and a compose line `env_file: .env` is pointed
-at it when the container runs, so a missing `.env` in the project is
-expected. A build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`
+[--branch REF] [--compose FILE] [--env FILE]` is the Artifacts tab's Send
+to Docker done from here: a container made from this project's compose
+file (its own while it has none, then another beside it, which needs
+ports of its own from `--env FILE`), built and started. That, not `bb
+container new`, is how this project's own code goes into Docker. `bb
+devapp` says what one was built from and whether it is running, then `bb
+devapp rebuild`, `bb devapp env set FILE` and `bb devapp remove`, which
+leaves its env and data for a remake; a remove on a node whose agent is
+quiet waits in its queue, and the row stays until it has run. Its env is
+kept by BuilderBot, not as a file in the tree: `bb devapp env` prints it,
+and a compose line `env_file: .env` is pointed at it when the container
+runs, so a missing `.env` in the project is expected. A compose file in a
+folder starts from its own folder's `.env.example`, never the root's, and
+a variable the file requires (`${NAME:?...}`) is a need the Artifacts tab
+names: set it in the env before the first build, or the build stops at the
+gate asking for it. A project may also name hosting-only nodes under
+Hosts its containers on in its settings: a node that holds no code and no
+session, where a container of this project is built on this node and
+shipped. `bb devapp new --node NODE` makes one there, and rebuild and
+remove reach it, under the same dial; sending a container to any other
+node, and copying or moving one with its data, is a person's on the
+Docker tab. A build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`
 in its environment (the commit it is built from, when, and the project's
 version), so a compose whose `build.args` interpolate them (`GIT_SHA:
 ${BB_BUILD_REV}`) stamps the image without reading `.git`; the rest of a

@@ -54,6 +54,13 @@ class JavaScript(unittest.TestCase):
         self.assertIn(("draw", 4, "render"), calls(s))
         self.assertIn(("load", 4, "open"), calls(s))
 
+    def test_a_keyword_method_and_a_spaced_function_expression(self):
+        s = scan("class A {\n  async delete(uri) {\n    go(uri);\n  }\n"
+                 "  m() { try { x(); } catch (e) { y(); } }\n}\nModule._load = function (req) {\n  return 1;\n};\n")
+        self.assertTrue({("delete", 2, 4), ("m", 5, 5), ("_load", 7, 9)} <= defs(s), defs(s))
+        self.assertNotIn("catch", {d["name"] for d in s.defs})
+        self.assertIn(("go", 3, "delete"), calls(s))
+
     def test_a_comment_above_a_method_does_not_hide_it(self):
         s = scan("const o = {\n  a: 1,\n  // says what shown does, at length\n  shown(){ go(); },\n};\n")
         self.assertIn(("shown", 4, 4), defs(s))
@@ -161,6 +168,113 @@ class Caution(unittest.TestCase):
         line = codemap.account_line({"measured": 0, "callers": 0, "file": 2, "by_name": ["a.py"]})
         self.assertIn("a.py no covered run has seen, so planned by the map's reading alone", line)
         self.assertEqual(codemap.account_line({"measured": 0, "callers": 0, "file": 0, "by_name": []}), "")
+
+
+class Shadowing(unittest.TestCase):
+    """A parameter, a local or a named argument that takes a function's name
+    is not that function passed by name (B590, report #95)."""
+
+    def test_parameters_locals_and_named_arguments_do_not_pass_the_function(self):
+        src = ("object G {\n    fun reach(s: FloatArray?): Float = 1f\n"
+               "    fun add(outcome: Int, reach: Float = -1f) {\n        if (reach >= 0f) { x(reach) }\n    }\n"
+               "    fun t() {\n        val reach = s[1]\n        y(reach)\n        add(1, reach = 0.6f)\n"
+               "    }\n    fun u() = list.map(::reach)\n}\n")
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "G.kt").write_text(src)
+            idx = codemap.build(d)
+            got = [line for line in codemap.q_who_calls(idx, "reach", d) if line.startswith("G.kt:")]
+            self.assertEqual(len(got), 1, got)          # only u's ::reach, the reference itself
+            self.assertIn(":11 ", got[0])
+
+    def test_a_const_arrow_is_still_the_function_its_name_says(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "a.js").write_text("function load(){\n  const rowFor = (x) => {\n    return x;\n  };\n"
+                                        "  return list.map(rowFor);\n}\nload();\n")
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_unused(idx), ["nothing on the page is unused by this measure"])
+
+
+class Fingerprint(unittest.TestCase):
+    def test_the_scanners_version_is_this_files_own_fingerprint(self):
+        import hashlib
+        self.assertEqual(codemap.SCANNER,
+                         hashlib.sha1(Path(codemap.__file__).read_bytes()).hexdigest()[:12])
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "a.py").write_text("def f():\n    pass\n")
+            idx = codemap.build(d)
+            self.assertEqual({e["scan"] for e in idx["files"].values()}, {codemap.SCANNER})
+
+
+class SecondPass(unittest.TestCase):
+    """The second pass over every read project (8 Oct)."""
+
+    def test_an_extension_on_a_generic_type_with_two_parameters(self):
+        s = scan("object R {\n    private fun Map<String, Any?>.long(k: String): Long? = when (val v = this[k]) {\n"
+                 "        else -> null\n    }\n}\n", "R.kt")
+        self.assertIn(("long", 2, 4), defs(s))
+        s = scan("function pair<A, B>(a: A, b: B): [A, B] {\n  return [a, b];\n}\n", "a.ts")
+        self.assertIn(("pair", 1, 3), defs(s))
+
+    def test_a_method_is_never_called_unused(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "fs.js").write_text("class FS {\n  createDirectory(u) {\n    return u;\n  }\n}\nregister(new FS());\n")
+            self.assertEqual(codemap.q_unused(codemap.build(d)), ["nothing on the page is unused by this measure"])
+
+    def test_two_files_importing_one_module_are_not_each_others_suites(self):
+        with tempfile.TemporaryDirectory() as d:
+            for f, t in {"src/solver.ts": "export function solve() {}\n",
+                         "src/App.tsx": "import { solve } from './solver';\nexport function App() { solve(); }\n",
+                         "src/solver.test.ts": "import { solve } from './solver';\nsolve();\n"}.items():
+                Path(d, f).parent.mkdir(parents=True, exist_ok=True)
+                Path(d, f).write_text(t)
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_suites(idx, ["src/App.tsx"]), ["no suite names anything these files define or draw"])
+            self.assertTrue(codemap.q_suites(idx, ["src/solver.ts"])[0].startswith("src/solver.test.ts"))
+
+
+class ThirdPass(unittest.TestCase):
+    """The third pass (9 Oct)."""
+
+    def test_a_suite_reaches_the_pages_globals_not_a_local_of_the_same_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "page.js").write_text("function draw(){\n  const done = () => 1;\n  done();\n}\n"
+                                          "function openTab(){}\n")
+            Path(d, "test").mkdir()
+            Path(d, "test/a.mjs").write_text("import { done } from './lib.mjs';\nopenTab();\ndone();\n")
+            Path(d, "test/b.mjs").write_text("import { done } from './lib.mjs';\ndone();\n")
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_suites(idx, ["page.js"]), ["test/a.mjs  (1: openTab())"])
+
+
+class FourthPass(unittest.TestCase):
+    """The fourth pass (9 Oct)."""
+
+    def test_a_parameters_default_is_not_a_definition(self):
+        s = scan('function pick(id, why = () => "") {\n  return why(id);\n}\n'
+                 "function mock({ token = 1, now = () => Date.now() } = {}) {}\n"
+                 "const f = (a, cb = async () => 0) => cb(a);\n", "a.js")
+        self.assertEqual({d[0] for d in defs(s)} - {"(anonymous)"}, {"pick", "mock", "f"})
+
+    def test_a_suite_naming_a_directory_reaches_the_files_in_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "scripts/inner").mkdir(parents=True)
+            Path(d, "scripts/inner/mod.py").write_text("def work():\n    return 1\n")
+            Path(d, "test").mkdir()
+            Path(d, "test/a.mjs").write_text("const P = 'scripts/inner';\n")
+            Path(d, "test/b.mjs").write_text("const Q = 'scripts/innerness';\n")
+            idx = codemap.build(d)
+            self.assertEqual(codemap.q_suites(idx, ["scripts/inner/mod.py"]), ["test/a.mjs  (1: scripts/inner/)"])
+
+    def test_a_section_under_a_bare_rule_is_read(self):
+        s = scan("# " + "-" * 40 + "\n# the connection\n\nX = 1\n# " + "-" * 40 + "\n# jobs\n", "a.py")
+        self.assertEqual([(x["name"], x["line"]) for x in s.sections], [("the connection", 1), ("jobs", 5)])
+
+    def test_a_handler_or_a_stand_in_inside_a_call_still_is(self):
+        s = scan("rows.forEach(b => b.onclick = () => go(b));\n"
+                 "page.evaluate(() => { draw = () => { boom(); }; });\n", "a.js")
+        names = {d[0] for d in defs(s)}
+        self.assertTrue({"onclick", "draw"} <= names, names)
+        self.assertIn(("go", 1, "onclick"), calls(s))
 
 
 class Shell(unittest.TestCase):

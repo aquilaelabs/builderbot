@@ -32,10 +32,10 @@ set -euo pipefail
 USER_NAME="bb"
 # The session account (roadmap #24), with the uid:gid the CONTROLLER writes
 # files as (Unraid's nobody:users, the container template's PUID:PGID
-# defaults), so a file a session saves on the projects share is owned exactly
-# as one saved from the controller is. A different uid here would leave the
-# share with files the rest of the array does not expect, which is the one
-# part of this that can spoil somebody's data. `none` makes no such account,
+# defaults), so a file a session saves in its synced copy goes up to the
+# controller owned exactly as one saved there is. A different uid here
+# would leave the controller's tree with files the rest of the array does
+# not expect, which is the one part of this that can spoil somebody's data. `none` makes no such account,
 # and then this node runs no sessions.
 SESSION_NAME="builder"
 SESSION_UID=99
@@ -55,6 +55,21 @@ STORE_APPDATA=/var/lib/builderbot/appdata
 REMOVE=0; YES=""
 declare -a SHARES=() NFS=()
 CHECK_ONLY=0
+# --wg-conf FILE: the node reaches the controller through WireGuard (R161),
+# with the config the Nodes tab's enroll script carries.
+WG_CONF=""
+# --reach public: the controller is a hostname a tunnel from home publishes
+# (R170); the agent verifies it by the system's CAs.
+REACH=""
+# --door cloudflared|tailscale: a door in for SSH (R174), switched on and
+# off from the node's row: cloudflared publishing port 22 at --door-host
+# with the tunnel token in --door-secret, or Tailscale joining a tailnet
+# with the auth key in it and answering ssh there. --door-close22 drops
+# public port 22 once the door is up.
+DOOR=""; DOOR_HOST=""; DOOR_SECRET=""; DOOR_CLOSE22=0
+# --machine HASH: the script was made for a node that enrolled from one
+# machine (R177), and runs on that one alone.
+MACHINE=""
 
 usage() {
     cat <<'EOF'
@@ -79,8 +94,7 @@ it, which is a paste rather than a questionnaire.
   --session-user NAME|none   the account a Claude SESSION works as on this
                        node (builder), made with --session-uid/--session-gid
                        (99:100, the controller's PUID:PGID, so files it saves
-                       on the projects share are owned as the controller's
-                       are). In kvm for the emulator, in NO docker group. The
+                       are owned as the controller's are). In kvm for the emulator, in NO docker group. The
                        agent runs ttyd for it and the dashboard's terminals
                        reach it; Claude Code is installed into its home.
                        `none` makes no such account, and no sessions run here.
@@ -118,11 +132,8 @@ it, which is a paste rather than a questionnaire.
                        at PATH. Requires one: on bare metal there is nothing
                        to pass a share in, so use --nfs instead. Repeatable.
                        PATH MUST match the path BuilderBot uses. `:ro` mounts
-                       it read-only: right for the projects share on a
-                       Docker-only sandbox, where nothing writes source code;
-                       WRONG on a node with a session account, whose Claude
-                       sessions edit that share and are refused until it is
-                       read-write. Leave it off a share containers keep their
+                       it read-only. Never /workspace: a node's projects are
+                       a synced copy there, not a share. Leave it off a share containers keep their
                        data on.
   --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
                        cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
@@ -138,6 +149,30 @@ it, which is a paste rather than a questionnaire.
                        opened for it. It runs jobs as the docker account
                        (--user, bb), never as root. Re-run with a fresh token to enroll again; a
                        re-run without either leaves the enrollment alone.
+  --wg-conf FILE       reach the controller through WireGuard: the config
+                       (from the Nodes tab's enroll script, which carries
+                       it) goes in as wg-quick@bb before anything else, the
+                       controller is checked through it, and the session
+                       ports listen on the tunnel's address alone.
+  --reach public       the controller is a hostname a tunnel publishes from
+                       home (https://bb.example.com; Cloudflare Tunnel,
+                       Tailscale Funnel or another): checked before
+                       enrolling, and verified by the system's CAs on every
+                       call rather than pinned. Such a node is hosting only,
+                       with no sessions.
+  --machine HASH       made for one machine (the Nodes tab's Enroll script
+                       on a node's row): runs there and nowhere else.
+  --door cloudflared   a door in for SSH, switched on and off from the
+  --door tailscale     node's row on the Nodes tab. cloudflared publishes
+                       this machine's port 22 at --door-host HOST (a
+                       public hostname set on the tunnel in Zero Trust,
+                       with the tunnel's token in --door-secret FILE);
+                       Tailscale joins the tailnet with the auth key in
+                       --door-secret FILE and answers ssh there (tailscale
+                       ssh), with no public name. --door-close22 drops
+                       port 22 from anywhere but the loopback afterwards:
+                       off unless asked, since the person running this is
+                       usually on that port.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -150,11 +185,12 @@ it, which is a paste rather than a questionnaire.
                        creates, fills and (for the cache) empties it.
 
 Path parity is not a style preference. A compose file's bind mounts are
-resolved by whatever runs the container, so if this VM calls the projects
-share /workspace exactly as BuilderBot does, a relative bind means the same
-directory on both sides and nothing has to translate between them. Mount it
-anywhere else and every project's compose file becomes wrong in a way that
-fails silently: docker creates the missing directory and mounts it empty.
+resolved by whatever runs the container, so a share this VM mounts at the
+path BuilderBot uses means the same directory on both sides and nothing has
+to translate between them. Mount it anywhere else and every compose file
+naming it becomes wrong in a way that fails silently: docker creates the
+missing directory and mounts it empty. The projects themselves are not a
+share: each node holds a synced copy at /workspace, as BuilderBot does.
 EOF
 }
 
@@ -196,6 +232,13 @@ while [ $# -gt 0 ]; do
         --nfs)   NFS+=("$2"); shift 2 ;;
         --controller) CONTROLLER="$2"; shift 2 ;;
         --token) TOKEN="$2"; shift 2 ;;
+        --wg-conf) WG_CONF="$2"; shift 2 ;;
+        --reach) REACH="$2"; shift 2 ;;
+        --door) DOOR="$2"; shift 2 ;;
+        --door-host) DOOR_HOST="$2"; shift 2 ;;
+        --door-secret) DOOR_SECRET="$2"; shift 2 ;;
+        --door-close22) DOOR_CLOSE22=1; shift ;;
+        --machine) MACHINE="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -219,6 +262,42 @@ done
 # apt later. Said now.
 if { [ -n "$CONTROLLER" ] && [ -z "$TOKEN" ]; } || { [ -z "$CONTROLLER" ] && [ -n "$TOKEN" ]; }; then
     echo "--controller and --token go together" >&2; exit 1
+fi
+if [ -n "$WG_CONF" ]; then
+    [ -n "$CONTROLLER" ] || { echo "--wg-conf is the tunnel an enrollment dials through: it goes with --controller and --token" >&2; exit 1; }
+    [ "${GUEST:-0}" != 1 ] || { echo "--wg-conf needs root to bring a tunnel up, and a guest node runs without it" >&2; exit 1; }
+    [ -r "$WG_CONF" ] || { echo "cannot read the WireGuard config ${WG_CONF}" >&2; exit 1; }
+fi
+if [ -n "$REACH" ]; then
+    [ "$REACH" = public ] || { echo "--reach takes public" >&2; exit 1; }
+    [ -z "$WG_CONF" ] || { echo "--reach public and --wg-conf are two ways to the controller: one or the other" >&2; exit 1; }
+    [ -n "$CONTROLLER" ] || { echo "--reach goes with --controller and --token" >&2; exit 1; }
+    case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
+fi
+if [ -n "$DOOR" ]; then
+    case "$DOOR" in cloudflared|tailscale) ;; *) echo "--door takes cloudflared or tailscale" >&2; exit 1 ;; esac
+    [ "${GUEST:-0}" != 1 ] || { echo "--door installs a service, which needs root, and a guest node runs without it" >&2; exit 1; }
+    [ "$DOOR" != cloudflared ] || [ -n "$DOOR_HOST" ] || { echo "--door cloudflared needs --door-host HOST, the public hostname set on the tunnel" >&2; exit 1; }
+fi
+# The machine this script was made for (R177): the same fingerprint the
+# agent reports, so a script copied to another box stops here, before it
+# changes anything there.
+machine_id() {
+    local v=""
+    for f in /etc/machine-id /sys/class/dmi/id/product_uuid; do
+        [ -r "$f" ] || continue
+        v="$(tr -d ' \n\r\t' < "$f" 2>/dev/null || true)"
+        [ -n "$v" ] && { printf '%s' "$v" | sha256sum | cut -c1-32; return 0; }
+    done
+    return 1
+}
+if [ -n "$MACHINE" ]; then
+    here="$(machine_id || true)"
+    if [ -z "$here" ]; then
+        echo "this script was made for one machine and this one has no machine id to compare: make a new script on the Nodes tab (Enroll node)" >&2; exit 1
+    elif [ "$here" != "$MACHINE" ]; then
+        echo "this script was made for another machine (the node that enrolled with it): it does nothing here. Enroll this machine with a script of its own from the Nodes tab" >&2; exit 1
+    fi
 fi
 case "$TOKEN" in
     ""|bbe_*) ;;
@@ -535,9 +614,7 @@ svc_active() {
 # written the way this init wants one: a unit, an OpenRC script under
 # supervise-daemon, or a runit directory. Rewritten on every run, then
 # enabled and (re)started. Ordered after the network mounts (remote-fs,
-# netmount): the agent's first census says whether /workspace is mounted,
-# and one taken before the share landed ghosted every Claude button bound
-# to the node for the ten minutes until the next.
+# netmount): a store on a share is there before the agent's first census.
 # svc_install NAME DESC CMD [EXTRA]: the service, whichever init this is.
 # EXTRA is extra [Service] lines for systemd, where a unit's settings decide
 # what a stop reaches; the other inits take the command and nothing else.
@@ -645,6 +722,8 @@ pkg_names() {
         reel:alpine)  echo "xvfb xdotool xdpyinfo" ;;
         reel:void)    echo "xorg-server-xvfb xdotool xdpyinfo" ;;
         reel:gentoo)  echo "x11-base/xorg-server x11-misc/xdotool x11-apps/xdpyinfo" ;;
+        wg:gentoo)    echo "net-vpn/wireguard-tools" ;;
+        wg:*)         echo "wireguard-tools" ;;
         nft:deb)      echo "nftables" ;;
         nft:gentoo)   echo "net-firewall/nftables" ;;
         nft:*)        echo "nftables" ;;
@@ -751,10 +830,14 @@ if command -v curl >/dev/null 2>&1; then
     if curl -fsI --max-time 10 https://download.docker.com/ >/dev/null 2>&1; then chk ok "internet: download.docker.com answers"
     else chk warn "download.docker.com does not answer: no package will download; an offline node needs its packages brought in by hand"; fi
     if [ -n "$CONTROLLER" ]; then
+        # A failure, not a warning (11 Oct): a run that went on past this
+        # closed port 22 for a door and then could not enroll, and the
+        # person came back in through the KVM. Nothing below is worth doing
+        # when the controller cannot be reached.
         if curl -fsk --max-time 10 -o /dev/null "${CONTROLLER%/}/api/v1/agent/download" 2>/dev/null \
            || curl -sk --max-time 10 -o /dev/null -w '%{http_code}' "${CONTROLLER%/}/" 2>/dev/null | grep -q '^[234]'; then
             chk ok "controller: ${CONTROLLER} answers"
-        else chk warn "controller ${CONTROLLER} does not answer from here: enrollment will fail; check the address and that the dashboard is up"; fi
+        else chk fail "controller ${CONTROLLER} does not answer from here, so enrollment would fail: check the address and that the dashboard is up"; fi
     fi
 else
     chk warn "no curl yet; it is installed below, and the network is untested until then"
@@ -802,6 +885,113 @@ if is_vm; then
     # shellcheck disable=SC2046
     pkg $(pkg_names guest) 2>/dev/null && svc_enable "$(pkg_names guestsvc)" >/dev/null 2>&1 \
         || warn "the qemu guest agent did not install, so Unraid will pull the plug instead of shutting this VM down"
+fi
+
+# --- the tunnel to the controller (R161) ------------------------------------
+# Before anything that has to reach the controller, and before an hour of
+# Docker: a tunnel that does not come up is said now. The config is the one
+# the person's router made, narrowed by the Nodes tab to route the
+# controller's address alone, so this machine's own traffic is untouched.
+# The home end (the router) is what keeps it one-way; nothing done here
+# could, since root here could undo it.
+WG_ADDR=""
+if [ -n "$WG_CONF" ]; then
+    say "tunnel: WireGuard to the controller"
+    [ "$INIT" = systemd ] || { warn "the tunnel is brought up by wg-quick@ under systemd, and this machine runs ${INIT:-no init this knows}"; exit 1; }
+    # shellcheck disable=SC2046
+    command -v wg-quick >/dev/null 2>&1 || pkg $(pkg_names wg) \
+        || { warn "wireguard-tools did not install, so there is no tunnel to enroll through"; exit 1; }
+    install -d -m 0700 /etc/wireguard
+    install -m 0600 "$WG_CONF" /etc/wireguard/bb.conf
+    WG_ADDR="$(awk -F= 'tolower($1) ~ /^ *address *$/ {gsub(/ /, "", $2); n = split($2, a, ","); for (i = 1; i <= n; i++) if (a[i] !~ /:/) { sub(/\/.*/, "", a[i]); print a[i]; exit }}' /etc/wireguard/bb.conf)"
+    systemctl enable wg-quick@bb >/dev/null 2>&1 || true
+    systemctl restart wg-quick@bb || { warn "wg-quick@bb did not start: journalctl -u wg-quick@bb says why"; exit 1; }
+    # Through the tunnel or not at all: any HTTP answer is the controller
+    # answering. A handshake can take a few seconds after the interface.
+    reached=""
+    for _ in $(seq 1 15); do
+        code="$(curl -s -o /dev/null -m 4 -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+        case "$code" in 000|"") sleep 2 ;; *) reached=1; break ;; esac
+    done
+    if [ -z "$reached" ]; then
+        warn "the tunnel is up (${WG_ADDR}) but ${CONTROLLER} does not answer through it. On the router: is this peer enabled, does it route the tunnel to the LAN, and is TCP to the controller's port allowed from ${WG_ADDR}? \`wg show bb\` says whether a handshake happened"
+        exit 1
+    fi
+    printf '   up as %s; %s answers through it\n' "$WG_ADDR" "$CONTROLLER"
+fi
+# Through a public hostname (R170): nothing to bring up here, since the
+# tunnel is at home; that the hostname answers, with a certificate the
+# system trusts, is checked now rather than after an hour of Docker.
+if [ "$REACH" = public ]; then
+    say "reach: ${CONTROLLER} through its public hostname"
+    # The agent's own download with the enrollment token, which is what
+    # the enrollment below will do: only a 200 means the way is open. A
+    # tunnel that answers something else is said by what it said (a 502
+    # was taken as an answer once, and the run went on to close port 22
+    # and fail to enroll, 11 Oct).
+    # The headers too: a 200 is the controller only when it carries the
+    # agent's digest. A hostname whose path rule pointed somewhere else
+    # answered 200 with nothing in it, the run installed an empty agent,
+    # and the enrollment "succeeded" without reaching home (11 Oct).
+    rhdr="$(mktemp)"
+    code="$(curl -s -o /dev/null -D "$rhdr" -m 15 -H "Authorization: Bearer ${TOKEN}" -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+    rdig="$(tr -d '\r' < "$rhdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
+    rm -f "$rhdr"
+    if [ "$code" = 200 ] && [ -z "$rdig" ]; then
+        warn "${CONTROLLER} answers 200 on the agent's API, but not as BuilderBot does (no X-Agent-Digest, nothing in the body): the hostname's rule for /api/v1/agent/ goes somewhere other than the controller. In Zero Trust its service is http://localhost:7680 when the controller runs the tunnel itself, or the controller's LAN address and port (http://ADDRESS:7680) when cloudflared runs elsewhere at home; curl -sI ${CONTROLLER%/}/api/v1/agent/nosuch should answer 404"
+        exit 1
+    fi
+    case "$code" in
+        200) ;;
+        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is the tunnel at home up (the Settings tab's Public hostname line says connected), and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
+        404) warn "${CONTROLLER} answers 404 on the agent's API: the tunnel at home does not forward /api/v1/agent/ to the controller yet (Apply on Controller settings with an API token writes the rule, or add the public hostname in Zero Trust)"; exit 1 ;;
+        502|530) warn "${CONTROLLER} answers ${code}: the tunnel at home is up but what it forwards to does not answer. The hostname's service must be http://localhost:7680 when the controller runs the tunnel itself (Controller settings), or the controller's LAN address and port when cloudflared runs elsewhere at home"; exit 1 ;;
+        401|403) warn "${CONTROLLER} refused the enrollment token (${code}): it was used already or has run out; make a new script on the Nodes tab"; exit 1 ;;
+        *) warn "${CONTROLLER} answers ${code} on the agent's API, not 200: enrollment would fail; curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
+    esac
+    printf '   %s answers\n' "$CONTROLLER"
+fi
+
+# --- a door in for SSH (R174) ------------------------------------------------
+# A tunnel client of the operator's choice, installed and started here, and
+# from then on the node's row switches it on and off (the agent's door
+# system job). The secret goes into the service's own files, root's, and
+# never into node.json; a re-run without the secret file leaves a door that
+# is already installed as it is.
+door_secret() { [ -n "$DOOR_SECRET" ] && [ -r "$DOOR_SECRET" ] && tr -d '\r\n' < "$DOOR_SECRET"; }
+if [ "$DOOR" = cloudflared ]; then
+    say "door: cloudflared, publishing port 22 at ${DOOR_HOST}"
+    [ "$INIT" = systemd ] || { warn "cloudflared's service is systemd's, and this machine runs ${INIT:-no init this knows}"; exit 1; }
+    if ! command -v cloudflared >/dev/null 2>&1 && [ ! -x /usr/local/bin/cloudflared ]; then
+        case "$(uname -m)" in x86_64) cfarch=amd64 ;; aarch64|arm64) cfarch=arm64 ;; armv7l) cfarch=arm ;; *) warn "no cloudflared build for $(uname -m)"; exit 1 ;; esac
+        # Cloudflare's own release, the latest: the client updates itself
+        # from there too, so pinning here would be the one copy left behind.
+        curl -fsSL -o /usr/local/bin/cloudflared.new "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${cfarch}" \
+            || { warn "could not download cloudflared from its release"; rm -f /usr/local/bin/cloudflared.new; exit 1; }
+        chmod 755 /usr/local/bin/cloudflared.new; mv -f /usr/local/bin/cloudflared.new /usr/local/bin/cloudflared
+    fi
+    cfbin="$(command -v cloudflared || echo /usr/local/bin/cloudflared)"
+    install -d -m 0700 /etc/cloudflared
+    if [ -n "$(door_secret)" ]; then
+        # The token in a root-only env file the unit reads, never on the
+        # unit's own command line, which any account here could read.
+        umask 077; printf 'TUNNEL_TOKEN=%s\n' "$(door_secret)" > /etc/cloudflared/env; umask 022
+    elif [ ! -s /etc/cloudflared/env ]; then
+        warn "no tunnel token: the door's secret left the enroll script once it ran; make a new script on the Nodes tab"; exit 1
+    fi
+    svc_install cloudflared "BuilderBot: the door in for SSH (cloudflared)" "${cfbin} --no-autoupdate tunnel run" "EnvironmentFile=/etc/cloudflared/env"
+    printf '   up; in Zero Trust the tunnel'"'"'s public hostname %s goes to ssh://localhost:22, and Cloudflare Access decides who reaches it\n' "$DOOR_HOST"
+elif [ "$DOOR" = tailscale ]; then
+    say "door: Tailscale, this machine on your tailnet with ssh"
+    if ! command -v tailscale >/dev/null 2>&1; then
+        curl -fsSL https://tailscale.com/install.sh | sh || { warn "Tailscale did not install"; exit 1; }
+    fi
+    if [ -n "$(door_secret)" ]; then
+        tailscale up --ssh --auth-key="$(door_secret)" || { warn "tailscale up did not join the tailnet: is the auth key still valid?"; exit 1; }
+    else
+        tailscale status >/dev/null 2>&1 || { warn "no auth key: the door's secret left the enroll script once it ran; make a new script on the Nodes tab"; exit 1; }
+    fi
+    printf '   up; ssh reaches this machine on the tailnet, and its ACLs decide who\n'
 fi
 
 say "docker"
@@ -987,8 +1177,8 @@ fi
 # a hole to plug, it is the whole point of the VM: it exists to be wrecked, and
 # BuilderBot needs the daemon to do its job. What the split buys is that the
 # machine's OWN configuration is not one command away from a session that
-# wandered: the fstab that decides whether /workspace is the projects share,
-# and read-only, needs root, which neither account here has.
+# wandered: the fstab that decides what this machine mounts, and read-only,
+# needs root, which neither account here has.
 #
 # NO ADMINISTRATOR ACCOUNT IS MADE, and none is needed: the agent runs as
 # root under systemd and drops to --user for every job, bb-sandbox refuses to
@@ -1002,8 +1192,8 @@ fi
 # --- the session account (roadmap #24) ------------------------------------
 # The second account, and the one the design turns on: a Claude session on
 # this node's projects runs HERE, as this account, in a tmux the agent's
-# ttyd starts, with this machine's toolchains and the projects share this
-# machine mounts. Not bb, on purpose: bb is in the docker group, which is
+# ttyd starts, with this machine's toolchains and its synced copy of the
+# projects. Not bb, on purpose: bb is in the docker group, which is
 # root on any machine running a daemon, and a session is exactly the thing
 # to keep away from that. So: no docker, no sudo, kvm
 # for the emulator, a home of its own for the Claude login and the
@@ -1027,7 +1217,7 @@ else
             # the share will be owned by whatever uid it got, and that is
             # worth a line at provision time rather than a surprise later.
             warn "uid ${SESSION_UID} is already $(getent passwd "$SESSION_UID" | cut -d: -f1) on this machine"
-            printf '   %s is made with the next free uid; files it saves on the projects share\n' "$SESSION_NAME"
+            printf '   %s is made with the next free uid; files it saves for the controller\n' "$SESSION_NAME"
             printf '   will be owned by that uid rather than the controller'"'"'s %s\n' "$SESSION_UID"
             useradd -m -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
         else
@@ -1186,9 +1376,9 @@ esac
 # kept in a list of our own: fstab is what the machine actually boots from, and
 # a second list would be a claim about it rather than a reading of it. Which
 # means the type list has to hold every type a share is really mounted with,
-# not only the two this tool writes: a /workspace mounted by hand with nfs4 is
+# not only the two this tool writes: a share mounted by hand with nfs4 is
 # invisible to a filter that knows only nfs, and `settings` then prints a
-# a path mapping with the projects share missing from it.
+# path mapping with it missing.
 ours() {
     awk '$1 !~ /^#/ && $3 ~ /^(virtiofs|9p|nfs|nfs4|cifs)$/ {print $2}' \
         /etc/fstab 2>/dev/null | sort -u
@@ -1349,13 +1539,13 @@ mount_one() {
 # --- commands -----------------------------------------------------------
 cmd_add_share() {
     local spec="${1:?usage: bb-sandbox add-share TAG:PATH[:ro]}" tag path opts=defaults
-    # `:ro` mounts it read-only. The projects share wants this: the daemon
-    # only ever RESOLVES bind sources there, so read-only costs nothing and a
-    # container that mounts its project tree cannot scribble on the source.
+    # `:ro` mounts it read-only: a share containers only read from.
     case "$spec" in *:ro) opts=defaults,ro; spec="${spec%:ro}" ;; esac
     tag="${spec%%:*}"; path="${spec#*:}"
     [ "$tag" != "$spec" ] || die "add-share wants TAG:PATH, got '$spec'"
     case "$path" in /*) ;; *) die "the mountpoint must be absolute, got '$path'" ;; esac
+    case "${path%/}" in /workspace|/workspace/*)
+        die "/workspace holds this node's synced copy of its projects; nothing is mounted there" ;; esac
     add_fstab "$tag $path virtiofs $opts,nofail 0 0" "$path" && mount_one "$path"
 }
 
@@ -1376,6 +1566,8 @@ cmd_add_nfs() {
     # the export and the mountpoint both come out as the export.
     case "$rest" in *:*) ;; *) die "add-nfs wants HOST:EXPORT:PATH; '$spec' has no mountpoint" ;; esac
     case "$path" in /*) ;; *) die "the mountpoint must be absolute, got '$path'" ;; esac
+    case "${path%/}" in /workspace|/workspace/*)
+        die "/workspace holds this node's synced copy of its projects; nothing is mounted there" ;; esac
     add_fstab "$host:$exp $path nfs $opts,nofail,_netdev 0 0" "$path" && mount_one "$path"
 }
 
@@ -1383,13 +1575,7 @@ cmd_add_nfs() {
 #
 # The :ro suffix on add-share/add-nfs decides it when a mount is made; this
 # decides it afterwards, which is what somebody actually has, and without it
-# the only way to make /workspace read-only was to retype its whole spec.
-#
-# /workspace is the one that wants it: the daemon over here only ever RESOLVES
-# bind sources in the projects share (nothing on this machine compiles or
-# edits anything), so read-only costs nothing and means a container that mounts
-# its project tree cannot write to your source. The data shares stay writable,
-# being what they are for.
+# the only way to make a share read-only was to retype its whole spec.
 cmd_readonly() {
     local path="${1:?usage: bb-sandbox readonly PATH [on|off]}" want="${2:-on}"
     local hit line src mp fstype opts dump pass o new_opts=""
@@ -1648,7 +1834,7 @@ menu_whiptail() {
             share    "add a virtiofs share" \
             remove   "take a mount out of fstab (refused if a store is in it)" \
             appdata  "choose which mount holds container appdata" \
-            readonly "make a mount read-only (right for /workspace)" \
+            readonly "make a mount read-only" \
             check    "verify every mount is really there" \
             settings "the path mapping for this machine's row" \
             quit     "" 3>&1 1>&2 2>&3)" || return 0
@@ -1656,12 +1842,12 @@ menu_whiptail() {
             list)  cmd_list; pause ;;
             nfs)   ask "HOST:EXPORT:PATH" "192.168.1.15:/mnt/user/media:/auxiliary" \
                        && cmd_add_nfs "$REPLY"; pause ;;
-            share) ask "TAG:PATH" "workspace:/workspace" \
+            share) ask "TAG:PATH" "" \
                        && cmd_add_share "$REPLY"; pause ;;
             remove) ask "which mountpoint" "" && cmd_remove "$REPLY"; pause ;;
             appdata) ask "which mountpoint holds container appdata" "${APPDATA:-/devdata}" \
                        && cmd_appdata "$REPLY"; pause ;;
-            readonly) ask "which mountpoint to make read-only" "/workspace" \
+            readonly) ask "which mountpoint to make read-only" "" \
                        && cmd_readonly "$REPLY" on; pause ;;
             check) cmd_check || true; pause ;;
             settings) cmd_settings; pause ;;
@@ -1701,7 +1887,7 @@ EOF
             3) ask "TAG:PATH" "" && cmd_add_share "$REPLY" ;;
             4) ask "which mountpoint" "" && cmd_remove "$REPLY" ;;
             5) ask "which mountpoint holds container appdata" "${APPDATA:-}" && cmd_appdata "$REPLY" ;;
-            6) ask "which mountpoint to make read-only" "/workspace" && cmd_readonly "$REPLY" on ;;
+            6) ask "which mountpoint to make read-only" "" && cmd_readonly "$REPLY" on ;;
             7) cmd_check || true ;;
             8) cmd_settings ;;
             q|Q) return 0 ;;
@@ -1714,18 +1900,39 @@ EOF
 # What goes is what provision-linux.sh put here for BuilderBot alone: the
 # agent and its unit, the session-ports rule, the two accounts and their
 # homes (Claude Code, the runners' directories, caches), the mounts
-# BuilderBot used (/workspace and whatever a store sits on), the stores on
+# BuilderBot used (whatever a store sits on, and a /workspace share left from
+# before every node held a synced copy), the stores on
 # this disk, this tool. What stays is shared with the rest of the machine:
 # docker and the packages the provisioner installed (nfs-common, python3,
 # tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories,
 # and everything on the shares, which other nodes may be using. Runners are
 # not deregistered on their forge here: the Nodes tab's Uninstall does that
 # first, while the agent can still ask the controller for the tokens.
+# What goes is in three rings (the operator, 11 Oct), the first always and
+# the other two asked for: --stores takes the stores on this disk (the
+# toolchains, the caches, the artifacts, a dev instance's data, the synced
+# project copies) and /var/lib/builderbot; --configured undoes what was set
+# up from the dashboard after enrolling (the mounts and their fstab lines,
+# the runners' units, the GPU display); --doors shuts what a hosting node
+# was given (cloudflared and its token, Tailscale's login, the port 22
+# rule, the nginx container written for it). Without them a node can be
+# enrolled again, here or on another controller, with its stores and its
+# mounts as they were.
 cmd_uninstall() {
-    local yes=0 a p u f mounts="" session_user=""
-    [ "${1-}" = "--yes" ] && yes=1
+    local yes=0 stores=0 configured=0 doors=0 a p u f mounts="" session_user="" store_dirs=""
+    for a in "$@"; do
+        case "$a" in
+            --yes) yes=1 ;;
+            --stores) stores=1 ;;
+            --configured) configured=1 ;;
+            --doors) doors=1 ;;
+            "") ;;
+            *) die "uninstall takes --yes, --stores, --configured and --doors" ;;
+        esac
+    done
     session_user="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("session_user", ""))' 2>/dev/null || true)"
     [ -n "$session_user" ] || session_user=builder
+    store_dirs="$(python3 -c 'import json; print(" ".join(sorted(set(str(v) for v in (json.load(open("/etc/builderbot/node.json")).get("stores") or {}).values() if str(v).startswith("/")))))' 2>/dev/null || true)"
     for p in $(ours); do
         case "$p" in
             /workspace) mounts="$mounts $p" ;;
@@ -1733,14 +1940,15 @@ cmd_uninstall() {
         esac
     done
     say "uninstall BuilderBot from this machine"
-    printf '   goes:  the agent and its unit, the session-ports firewall rule,\n'
-    printf '          the accounts %s and %s with their homes,\n' "$DOCKER_USER" "$session_user"
-    printf '          the mounts BuilderBot used (%s),\n' "${mounts:- none}"
-    printf '          /var/lib/builderbot on this disk, /etc/builderbot, and this tool\n'
+    printf '   goes:  the agent and its unit, the session firewall rules and the sessions'"'"' own networks,\n'
+    printf '          the accounts %s and %s with their homes, /etc/builderbot, and this tool\n' "$DOCKER_USER" "$session_user"
+    [ "$stores" = 1 ] && printf '   also:  the stores on this disk (%s), /workspace, /var/lib/builderbot\n' "${store_dirs:- none}"
+    [ "$configured" = 1 ] && printf '   also:  the mounts BuilderBot used (%s), the runners, the GPU display\n' "${mounts:- none}"
+    [ "$doors" = 1 ] && printf '   also:  cloudflared and its token, Tailscale'"'"'s login, the port 22 rule, the nginx container\n'
     printf '   stays: docker, nfs-common, python3, tmux, jq, curl, the empty mountpoints,\n'
-    printf '          and everything on the shares (other nodes may use them)\n'
+    printf '          everything on the shares (other nodes may use them)%s\n' "$([ "$stores" = 1 ] || printf ', the stores')"
     printf '   note:  a runner registered from here stays listed on its forge;\n'
-    printf '          the Nodes tab'"'"'s Uninstall deregisters it first, this cannot\n'
+    printf '          the Nodes tab'"'"'s Un-enroll deregisters it first, this cannot\n'
     if [ "$yes" != 1 ]; then
         printf '\nType uninstall to go on: '
         read -r a
@@ -1749,7 +1957,9 @@ cmd_uninstall() {
     say "stopping the agent and the session ports rule"
     # The GPU display's unit too (B394): left enabled, a machine BuilderBot
     # had left still started an Xorg on the card at every boot.
-    for u in builderbot-agent builderbot-session-ports builderbot-gpu-display builderbot-gpu-nodes; do
+    local units="builderbot-agent builderbot-session-ports"
+    [ "$configured" = 1 ] && units="$units builderbot-gpu-display builderbot-gpu-nodes"
+    for u in $units; do
         if have systemctl; then
             systemctl disable --now "$u" >/dev/null 2>&1 || true
             rm -f "/etc/systemd/system/$u.service"
@@ -1757,13 +1967,38 @@ cmd_uninstall() {
         if have rc-update; then rc-service "$u" stop >/dev/null 2>&1 || true; rc-update del "$u" default >/dev/null 2>&1 || true; rm -f "/etc/init.d/$u"; fi
         [ -d "/etc/sv/$u" ] && { rm -f "/var/service/$u"; rm -rf "/etc/sv/$u"; }
     done
-    for f in /var/lib/builderbot/runner/*/.service /var/lib/builderbot/runner/.service; do
-        [ -f "$f" ] || continue
-        u="$(cat "$f")"
-        have systemctl && { systemctl disable --now "$u" >/dev/null 2>&1 || true; rm -f "/etc/systemd/system/$u"; }
-    done
+    if [ "$configured" = 1 ]; then
+        for f in /var/lib/builderbot/runner/*/.service /var/lib/builderbot/runner/.service; do
+            [ -f "$f" ] || continue
+            u="$(cat "$f")"
+            have systemctl && { systemctl disable --now "$u" >/dev/null 2>&1 || true; rm -f "/etc/systemd/system/$u"; }
+        done
+    fi
     have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
+    # The sessions' firewall and their own networks (R79): every one of them,
+    # whatever ran here, so nothing of the isolation outlives the agent.
     have nft && nft delete table inet builderbot_session >/dev/null 2>&1 || true
+    have nft && nft delete table inet builderbot_sessnet >/dev/null 2>&1 || true
+    if have ip; then
+        for a in $(ip netns list 2>/dev/null | awk '/^bbsess/ {print $1}'); do ip netns delete "$a" >/dev/null 2>&1 || true; done
+        for a in $(ip -o link show 2>/dev/null | awk -F': ' '$2 ~ /^bbs/ {print $2}' | cut -d@ -f1); do ip link delete "$a" >/dev/null 2>&1 || true; done
+    fi
+    if [ "$doors" = 1 ]; then
+        say "shutting the doors and the proxy"
+        have systemctl && { systemctl disable --now cloudflared >/dev/null 2>&1 || true; rm -f /etc/systemd/system/cloudflared.service; }
+        rm -rf /etc/cloudflared
+        [ -x /usr/local/bin/cloudflared ] && rm -f /usr/local/bin/cloudflared
+        have tailscale && tailscale logout >/dev/null 2>&1 || true
+        have systemctl && { systemctl disable --now builderbot-door-22 >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-door-22.service; }
+        have nft && nft delete table inet builderbot_door >/dev/null 2>&1 || true
+        rm -f /etc/builderbot/door-22.nft
+        if have docker; then
+            for a in $(docker ps -aq --filter "label=com.docker.compose.project" --format '{{.ID}} {{.Label "com.docker.compose.project"}}' 2>/dev/null | awk '$2 ~ /^nginx-/ {print $1}'); do
+                docker rm -f "$a" >/dev/null 2>&1 || true
+            done
+        fi
+        have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
     if have firewall-cmd && systemctl is-active --quiet firewalld 2>/dev/null; then
         for a in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
             firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$a" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
@@ -1779,14 +2014,16 @@ cmd_uninstall() {
     for u in "$session_user" "$DOCKER_USER"; do
         id -u "$u" >/dev/null 2>&1 && pkill -KILL -u "$u" 2>/dev/null || true
     done
-    for p in $mounts; do
-        say "$p is no longer mounted"
-        umount -l "$p" 2>/dev/null || true
-        f="$(mktemp)"
-        awk -v p="$p" '$1 ~ /^#/ || $2 != p' /etc/fstab > "$f" || true
-        cat "$f" > /etc/fstab
-        rm -f "$f"
-    done
+    if [ "$configured" = 1 ]; then
+        for p in $mounts; do
+            say "$p is no longer mounted"
+            umount -l "$p" 2>/dev/null || true
+            f="$(mktemp)"
+            awk -v p="$p" '$1 ~ /^#/ || $2 != p' /etc/fstab > "$f" || true
+            cat "$f" > /etc/fstab
+            rm -f "$f"
+        done
+    fi
     have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
     if [ -f /etc/docker/daemon.json ] && have jq && grep -q 'builderbot.sandbox' /etc/docker/daemon.json; then
         f="$(mktemp)"
@@ -1809,8 +2046,20 @@ cmd_uninstall() {
     # The session account's sudo rule first: it is the one grant here that
     # reaches root, and it must not outlive the helper it names (R35).
     rm -f /etc/sudoers.d/builderbot-session /etc/bb-session.conf /usr/local/sbin/bb-session
-    rm -f /etc/X11/builderbot-gpu.conf /run/builderbot-gpu-display
-    rm -rf /var/lib/builderbot /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
+    [ "$configured" = 1 ] && rm -f /etc/X11/builderbot-gpu.conf /run/builderbot-gpu-display
+    if [ "$stores" = 1 ]; then
+        say "removing the stores on this disk"
+        for p in $store_dirs /workspace; do
+            [ -d "$p" ] || continue
+            # A mountpoint is a share's, never emptied from here.
+            mountpoint -q "$p" 2>/dev/null && continue
+            rm -rf "$p"
+        done
+        rm -rf /var/lib/builderbot
+    else
+        rm -rf /var/lib/builderbot/agent /var/lib/builderbot/runner
+    fi
+    rm -rf /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
     # ttyd only when the provisioner fetched it: a package's copy is the distribution's
     if [ -x /usr/local/bin/ttyd ]; then
         if ! { have dpkg && dpkg -S /usr/local/bin/ttyd >/dev/null 2>&1; } \
@@ -1818,7 +2067,14 @@ cmd_uninstall() {
             rm -f /usr/local/bin/ttyd
         fi
     fi
-    say "BuilderBot is off this machine; docker, the packages, the empty mountpoints and the shares' contents are as they were"
+    # The tunnel to the controller last (R161): an uninstall pressed on the
+    # Nodes tab arrived through it, and the job reports back through it.
+    if [ -f /etc/wireguard/bb.conf ]; then
+        say "taking down the WireGuard tunnel to the controller"
+        have systemctl && systemctl disable --now wg-quick@bb >/dev/null 2>&1 || true
+        rm -f /etc/wireguard/bb.conf
+    fi
+    say "BuilderBot is off this machine; docker, the packages, the empty mountpoints and the shares' contents are as they were$([ "$stores" = 1 ] || printf ', and so are the stores')"
     rm -f /usr/local/sbin/bb-sandbox
     exit 0
 }
@@ -2164,7 +2420,7 @@ cmd_gpu_driver() {
             if [ -n "$ver" ] && command -v nvidia-smi >/dev/null 2>&1; then
                 # Installed already: brought up to what apt has for its branch,
                 # through its metapackages (the driver's, and the kernel
-                # flavour's module one Ubuntu ships), which pull the rest.
+                # flavor's module one Ubuntu ships), which pull the rest.
                 # Not every NVIDIA package by name with --only-upgrade: that
                 # held the running kernel's prebuilt module, pinned to the old
                 # version with no newer build for that kernel, and refused a
@@ -2356,8 +2612,16 @@ cmd_gpu_container() {
 }
 
 case "${1-}" in
-    "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
-    uninstall)   shift; cmd_uninstall "${1-}" ;;
+    # The menu only when asked for by name, and only at a terminal (the
+    # operator, 11 Oct): a bare bb-sandbox reached from a run of the enroll
+    # script opened it on a VPS's console, where its keys did not work and
+    # the run could not go on. The enroll script and the Nodes tab are the
+    # way to configure a node; this is the by-hand fallback.
+    menu)        [ -t 0 ] && [ -t 1 ] || die "the menu needs a terminal: run sudo bb-sandbox menu from a shell"
+                 if have whiptail; then menu_whiptail; else menu_plain; fi ;;
+    "")          sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+                 printf '\nCommands: list, check, settings, add-nfs, add-share, remove, appdata, readonly, uninstall; menu for the interactive one.\n' ;;
+    uninstall)   shift; cmd_uninstall "$@" ;;
     gpu)         cmd_gpu ;;
     gpu-display) cmd_gpu_display ;;
     gpu-off)     cmd_gpu_off ;;
@@ -2405,8 +2669,8 @@ printf '   /usr/local/sbin/bb-sandbox: run it as root to add mounts later\n'
 
 say "shares"
 # Written to fstab rather than mounted once, because a sandbox that comes back
-# from a reboot without the projects share is a sandbox that builds the wrong
-# thing rather than failing. bb-sandbox does the writing, and keeps doing it
+# from a reboot without a share it builds from is a sandbox that builds the
+# wrong thing rather than failing. bb-sandbox does the writing, and keeps doing it
 # every time a share is added after today: one implementation, not a copy per
 # entry point.
 declare -a MOUNTED=()
@@ -2426,7 +2690,7 @@ for spec in "${NFS[@]:-}"; do
 done
 # SELinux stays enforcing on the RHEL family (nothing here needs it off),
 # but by default it stops a container from reading an NFS mount, which is
-# exactly what a dev instance's bind of the projects share is. One boolean,
+# exactly what a dev instance's bind of a share is. One boolean,
 # persistent, says containers may; the mounts themselves are unaffected.
 # Set whenever SELinux enforces, not only when --nfs was given on this
 # run: a share added later through the Nodes tab goes through bb-sandbox,
@@ -2490,14 +2754,85 @@ if [ -n "$CONTROLLER" ]; then
         warn "the agent that arrived does not match the digest the controller sent (${got} vs ${want})"
         rm -f "${AGENT}.new"; exit 1
     fi
+    # Nothing, or no digest to check it by, is not the controller's agent:
+    # an empty file ran as an empty script, said nothing, exited 0, and the
+    # node never enrolled (11 Oct).
+    if [ -z "$want" ] || [ ! -s "${AGENT}.new" ]; then
+        warn "what ${CONTROLLER} sent for the agent is not BuilderBot's ($(stat -c %s "${AGENT}.new" 2>/dev/null || echo 0) bytes, ${want:-no digest}): the address does not reach the controller's agent API"
+        rm -f "${AGENT}.new"; exit 1
+    fi
     chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
     svc_stop builderbot-agent
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
-        ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
+        ${SESSION_NAME:+--session-user "$SESSION_NAME"} ${REACH:+--reach "$REACH"} \
+        ${DOOR:+--door "$DOOR"} ${DOOR_HOST:+--door-host "$DOOR_HOST"} \
         --store "data=${STORE_DATA}" --store "toolchains=${STORE_TOOLCHAINS}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
         --store "appdata=${STORE_APPDATA}"
+    # The tunnel into the node's own record (R161): the agent binds the
+    # session ports to its address there, and reports it.
+    if [ -n "$WG_ADDR" ]; then
+        python3 - "$WG_ADDR" <<'PY'
+import json, sys
+p = "/etc/builderbot/node.json"
+d = json.load(open(p))
+d["tunnel"] = {"kind": "wireguard", "iface": "bb", "addr": sys.argv[1]}
+json.dump(d, open(p, "w"), indent=2)
+PY
+    fi
     svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
+# Public port 22 shut only now, with the node enrolled and the door's client
+# up: a run that closed it first and then could not enroll left the person
+# coming back in through the KVM (11 Oct). The loopback (cloudflared's
+# path) and a tailnet address are left alone; its own table, re-applied at
+# boot by a unit where this machine has systemd.
+door_up=""
+case "$DOOR" in
+    cloudflared) systemctl is-active --quiet cloudflared 2>/dev/null && door_up=1 ;;
+    tailscale)   tailscale status >/dev/null 2>&1 && door_up=1 ;;
+esac
+if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ] && [ -z "$door_up" ]; then
+    warn "port 22 stays open: the door (${DOOR}) is not up yet, and closing 22 without it would lock this machine"
+fi
+if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ] && [ -n "$door_up" ]; then
+    say "port 22: closed to the internet (the door is the way in)"
+    printf '   a connection already open on it, this one included, stays up; a new one comes through the door\n'
+    # shellcheck disable=SC2046
+    command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
+    install -d -m 0755 /etc/builderbot
+    cat > /etc/builderbot/door-22.nft <<'NFT'
+# Written by BuilderBot's provision-linux.sh: port 22 from the loopback and the tailnet only.
+table inet builderbot_door
+delete table inet builderbot_door
+table inet builderbot_door {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        tcp dport 22 iifname "lo" accept
+        tcp dport 22 ip saddr 100.64.0.0/10 accept
+        tcp dport 22 ct state established,related accept
+        tcp dport 22 drop
+    }
+}
+NFT
+    if nft -f /etc/builderbot/door-22.nft 2>/dev/null; then
+        if [ "$INIT" = systemd ]; then
+            cat > /etc/systemd/system/builderbot-door-22.service <<UNIT
+[Unit]
+Description=BuilderBot: port 22 reachable through the door only
+After=network-pre.target
+[Service]
+Type=oneshot
+ExecStart=$(command -v nft) -f /etc/builderbot/door-22.nft
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+            systemctl enable builderbot-door-22 >/dev/null 2>&1 || true
+        fi
+    else
+        warn "nft could not apply the port 22 rule, so port 22 stays as it was"
+    fi
+fi
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     # Enrolled on an earlier run. The agent does NOT keep itself current
     # (the dashboard's Update button queues that as a job, and nothing runs
@@ -2691,9 +3026,9 @@ EOF
 Sessions run here too, as ${SESSION_NAME}: the agent keeps a ttyd up on this
 machine's LAN address (port 7681, read-only twin on 7682) running bb-tty from
 the bb the controller ships, so a Claude session on a project bound to this
-node lives on this machine. It needs the projects share mounted at /workspace
-(add it on the Nodes tab, the way any mount is) and the account signed in
-to Claude once, from a shell here:
+node lives on this machine, in its synced copy of the project at
+/workspace, which the agent makes and keeps in step with the controller's.
+It needs the account signed in to Claude once, from a shell here:
 
   su - ${SESSION_NAME}              then: claude login
 
@@ -2723,14 +3058,13 @@ Two accounts, and the split is deliberate:
 
 This script makes no administrator account. Whatever already has root here
 (your own account, a cloud image's ubuntu or ec2-user, or root) runs
-`sudo bb-sandbox` to change what this machine mounts.
+sudo bb-sandbox menu to change what this machine mounts (or the verbs below).
 
 Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
 that group is root on this machine to anyone who wants it. This VM exists to be
 wrecked, so that is the arrangement and not a hole in it. What the split buys
-is that the machine's own configuration (the fstab deciding whether /workspace
-is the projects share, and read-only) is not one command away from a session
-that wandered.
+is that the machine's own configuration (the fstab deciding what it mounts,
+and read-only) is not one command away from a session that wandered.
 
   sudo bb-sandbox settings     the path mapping for this machine's row
   sudo bb-sandbox check        is every mount really there

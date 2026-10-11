@@ -1,17 +1,15 @@
 """bb node busy says what holds the card's memory, by kind (B532): an
 Android 37 phone filled the card while it booted, and a session could not
 tell an emulator from a PyTorch job."""
-import importlib.util
 import os
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("builderbot_agent_gpu", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent_gpu")
 
 SMI = """
 | Processes:                                                                              |

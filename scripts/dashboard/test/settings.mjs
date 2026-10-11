@@ -6,8 +6,8 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, saveDialog, openFold, URL, DIR, unfold } from './lib.mjs';
-import { readFileSync, existsSync } from 'node:fs';
+import { launch, newPage, ok, done, ready, saveDialog, sectSave, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -83,8 +83,77 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Debugging|Reset',
-   `the tab's stored settings are the one group that survived the question "does this need to exist", and the reset: nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Claude sessions|Storage|Public hostname|Debugging|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the home tunnel the controller runs itself (R176), debugging, and the reset (${groups.join(', ')})`);
+// Sections like every other tab's (the operator, 11 Oct): a fold each, a
+// jump bar over them, and Revert beside each Apply putting the section's
+// fields back to what is saved.
+{
+  const sects = await page.$$eval('.settingstab details.sect', ds => ds.map(d => d.querySelector('summary .t').textContent));
+  ok(sects.length >= 6 && await page.$('.settingstab .sectjump a') !== null,
+     `the tab is sections with a jump bar over them (${sects.join(', ')})`);
+  const was = await page.$eval('#idleMin', i => i.value);
+  await page.fill('#idleMin', '4321');
+  await page.click('.settingstab [data-group="Claude sessions"] [data-srevert]');
+  await page.waitForFunction(w => document.getElementById('idleMin')?.value === w, was, { timeout: 10000 });
+  ok(true, 'Revert on a section puts its field back to what is saved');
+  ok(await page.$eval('.settingstab [data-group="Public hostname"] .setsteps', ol => ol.querySelectorAll('li').length === 4 && /localhost:\d+/.test(ol.textContent)),
+     'the Public hostname section carries its own setup steps, with the controller\'s port in them');
+}
+
+// The home tunnel (R176): a hostname, two secrets never shown back, and the
+// controller running cloudflared itself (the harness's stub) from them, with
+// the group's line reading the process. The token is nowhere in the page.
+{
+  const G = '.settingstab [data-group="Public hostname"]';
+  const f = await page.$eval(G, g => ({ host: g.querySelector('[data-set="tunnel_host"]')?.type,
+    tok: g.querySelector('[data-set="tunnel_token"]')?.type, api: g.querySelector('[data-set="cf_api_token"]')?.type,
+    pills: [...g.querySelectorAll('.pill')].map(p => p.textContent), state: g.querySelector('.actbar .state').textContent }));
+  ok(f.host === 'text' && f.tok === 'password' && f.api === 'password' && f.pills.filter(p => p === 'not set').length === 2
+     && /off: paste a tunnel token/.test(f.state),
+     `the Public hostname group asks for the hostname and two secrets, typed blind, and says the tunnel is off (${JSON.stringify(f)})`);
+  const TOKEN = Buffer.from(JSON.stringify({ a: 'a'.repeat(32), t: '12345678-1234-1234-1234-123456789abc', s: 'x' })).toString('base64');
+  await page.fill(`${G} [data-set="tunnel_host"]`, 'not a host');
+  await page.click(`${G} .setApply`);
+  await page.waitForFunction(() => /hostname like/.test(document.getElementById('toast')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
+  ok(await page.evaluate(() => /hostname like/.test(document.getElementById('toast')?.textContent || '')),
+     'a hostname that is not one is refused by name');
+  await page.fill(`${G} [data-set="tunnel_host"]`, 'bb.example.com');
+  await page.fill(`${G} [data-set="tunnel_token"]`, TOKEN);
+  await page.click(`${G} .setApply`);
+  await page.waitForFunction(sel => /connected: bb\.example\.com/.test(document.querySelector(sel + ' .actbar .state')?.textContent || ''), G, { timeout: 20000 });
+  const after = await page.$eval(G, g => ({ pills: [...g.querySelectorAll('.pill')].map(p => p.textContent),
+    tok: g.querySelector('[data-set="tunnel_token"]').value, clear: !!g.querySelector('[data-clear="tunnel_token"]') }));
+  ok(after.pills.includes('set') && after.tok === '' && after.clear
+     && !(await page.evaluate(t => JSON.stringify(state.settings).includes(t), TOKEN)),
+     `Apply runs the tunnel and the line reads connected; the token is set, blank in its box and nowhere in the page (${JSON.stringify(after.pills)})`);
+  ok(/registered tunnel connection/i.test((await page.evaluate(() => state.settings.tunnel.tail.join('\n')))),
+     '...and the process\'s last lines are what the server read');
+  // Enroll node fills the hostname in for a node reaching the controller
+  // through it.
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab #ndEnroll', { timeout: 15000 });
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  await page.selectOption('#ndBody #ndEnReach', 'public');
+  ok(await page.$eval('#ndBody #ndEnCtl', e => e.value) === 'https://bb.example.com',
+     'Enroll node fills the controller\'s own public hostname in');
+  // Asked for by its own public hostname, the controller answers the
+  // agent's API and nothing else, whatever rule the tunnel carries
+  // (bb.neat.fish served its login through a wide rule, 11 Oct).
+  const viaHost = (path) => execFileSync('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: bb.example.com',
+    '-u', 'test:test', URL.replace(/\/$/, '') + path]).toString();
+  ok(viaHost('/api/status') === '403' && viaHost('/') === '403' && viaHost('/api/v1/agent/hello') !== '403',
+     `by its own hostname the controller refuses its pages and keeps the agent's API (${viaHost('/api/status')}, ${viaHost('/')})`);
+  await page.click('#ndBody #ndEnCancel');
+  await page.evaluate(() => openSettingsTab());
+  await page.waitForSelector(`${G} [data-clear="tunnel_token"]`, { timeout: 15000 });
+  await page.check(`${G} [data-clear="tunnel_token"]`);
+  await page.click(`${G} .setApply`);
+  await page.waitForFunction(sel => /off: paste a tunnel token/.test(document.querySelector(sel + ' .actbar .state')?.textContent || ''), G, { timeout: 20000 });
+  ok(true, '...and taking the token off stops the tunnel');
+  await post('/api/settings', { set: { tunnel_host: '' } });
+}
 // Debug mode grants nothing by itself: it puts the grant on a node's row.
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
@@ -306,8 +375,8 @@ ok(elsewhere.git_name === 'T. Person',
 
 // ---- a project's settings live in its notebook (R119 step 3) ---------------
 // The row's gear went, and the form is the notebook's Settings view: the
-// same form, moved there while the view is on screen, Revert rather than
-// Cancel, and back to the dialog when another view is picked.
+// same form, moved there while the view is on screen, each section saving
+// itself, and back to the dialog when another view is picked.
 {
   await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); });
   ok(!(await page.$('#projects [data-rn]')) && !(await page.$('.doc .projtab [data-rn]')),
@@ -315,12 +384,100 @@ ok(elsewhere.git_name === 'T. Person',
   await page.evaluate(() => openProjectSettings('alpha'));
   await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 15000 });
   const inView = await page.evaluate(() => ({ name: $('rnName').value, modal: $('rnmodal').hidden,
-    revert: $('rnCancel').textContent, shown: $('rnName').checkVisibility() }));
-  ok(inView.name === 'alpha' && inView.modal && inView.revert === 'Revert' && inView.shown,
-     `the notebook's Settings view holds the form, the dialog shut (${JSON.stringify(inView)})`);
+    close: $('rnCancel').hidden, shown: $('rnName').checkVisibility(),
+    bars: [...document.querySelectorAll('.nbsettings .rnbar')].filter(b => b.checkVisibility()).length }));
+  ok(inView.name === 'alpha' && inView.modal && inView.close && inView.shown && inView.bars >= 5,
+     `the notebook's Settings view holds the form, the dialog shut, each section with its own Save and Revert (${JSON.stringify(inView)})`);
+  // A section's Save writes that section alone, and what is typed in another
+  // stays typed (the operator, 10 Oct: one Save for eleven sections).
+  await page.fill('#rnBuildCmd', 'make one');
+  await page.selectOption('#rnGateRoadmap', 'deny');
+  const err = await sectSave(page, 'build');
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make one', { timeout: 20000 });
+  const after = await page.evaluate(() => ({ gate: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.roadmap || 'auto',
+    typed: $('rnGateRoadmap').value, claude: !document.querySelector('.rnbar[data-rnbar="claude"] [data-rnsave]').disabled,
+    build: document.querySelector('.rnbar[data-rnbar="build"] [data-rnsave]').disabled }));
+  ok(!err && after.gate === 'auto' && after.typed === 'deny' && after.claude && after.build,
+     `...Build and test's Save stores the build command and nothing of Claude may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
+  await page.click('.rnbar[data-rnbar="claude"] [data-rnrevert]');
+  ok(await page.evaluate(() => $('rnGateRoadmap').value === 'auto'
+       && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled
+       && $('rnBuildCmd').value === 'make one'),
+     '...and its Revert puts Claude may back alone');
+  await post('/api/prefs', { project: 'alpha', build: '' });
   await page.evaluate(() => getNotebook('alpha').view('roadmap'));
   ok(await page.evaluate(() => !!document.querySelector('#rnmodal > .box') && $('rnmodal').hidden),
      '...and picking another view puts the form back where the dialog keeps it');
+}
+
+// ---- a project's daily snapshots (R165) ------------------------------------------
+// In the project's settings: how many days are kept, and a Snapshots fold
+// listing each day with Restore; a restore of one file puts it back, and the
+// line it leaves names the snapshot taken first, which undoes it.
+{
+  await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); openProjectSettings('alpha'); });
+  await page.waitForSelector('#rnSnapDays', { state: 'attached', timeout: 15000 });
+  ok(await page.$eval('#rnSnapDays', i => i.value) === '14', 'a project keeps 14 days of snapshots unless set otherwise');
+  writeFileSync(`${DIR}/ws/alpha/snapped.txt`, 'as it was\n');
+  const took = await post('/api/snapshots', { project: 'alpha', action: 'take' });
+  ok(took.status === 200 && took.body.files > 0, `Take one now snapshots the tree (${took.body.files} files)`);
+  await page.evaluate(() => { openProjectSettings('alpha'); });
+  await openFold(page, 'details.sect[data-sect="rn:snapshots"]');
+  await page.waitForSelector('#rnSnapRows .rnsnap', { timeout: 15000 });
+  writeFileSync(`${DIR}/ws/alpha/snapped.txt`, 'tampered\n');
+  page.dialogs.length = 0;
+  await page.fill('#rnSnapRows .rnsnap [data-snapfile]', 'snapped.txt');
+  await page.click('#rnSnapRows .rnsnap [data-snapone]');
+  await page.waitForFunction(() => /restored: 1 written/.test(document.querySelector('#notify, .notify, .toast')?.textContent || '')
+                             || document.querySelectorAll('#rnSnapRows .rnsnap').length >= 2, null, { timeout: 15000 });
+  ok(readFileSync(`${DIR}/ws/alpha/snapped.txt`, 'utf8') === 'as it was\n' && page.dialogs.length === 1
+     && /Put snapped.txt back/.test(page.dialogs[0]),
+     'Restore file asks, then puts the file back as it was that day');
+  const kept = (await page.evaluate(async () => (await (await fetch('/api/snapshots?project=alpha')).json()).days));
+  ok(kept.some(d => /before-restore/.test(d.day)), '...having snapshotted the tree first, so the restore can be undone');
+  // From outside the page, which carries no sign-in: nothing is listed.
+  const anon = (await fetch(URL.replace(/\/$/, '') + '/api/snapshots?project=alpha')).status;
+  ok(anon === 401 || anon === 403, `...and nothing is listed to a caller who is not signed in (${anon})`);
+  rmSync(`${DIR}/ws/alpha/snapped.txt`, { force: true });
+}
+
+// ---- where the controller keeps what grows (paths.py, the operator, 10 Oct) ----
+// Each kind on its own line of the Storage section with the path in use;
+// Apply moves what is there to the new path and switches once it is all
+// there; a path in the projects or one with something in it is refused in
+// words; and the default comes back with what was moved.
+{
+  await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); openSettingsTab(); });
+  await page.waitForSelector('.settingstab [data-group="Storage"] input[data-path="gitview"]', { timeout: 15000 });
+  const names = await page.$$eval('.settingstab input[data-path]', l => l.map(i => i.dataset.path));
+  ok(['project-snapshots', 'job-snapshots', 'gitrelay', 'gitview', 'logs'].every(n => names.includes(n)),
+     `the Storage section lists each kind that grows (${names.join(', ')})`);
+  const before = await page.$eval('.settingstab input[data-path="gitview"]', i => i.value);
+  ok(before === `${DIR}/state/gitview`, `...each at its default in the state directory (${before})`);
+  const inWs = await post('/api/paths', { name: 'gitview', path: `${DIR}/ws/alpha/gv` });
+  ok(inWs.status === 400 && /inside the projects/.test(inWs.body.error || ''),
+     `a path in the projects is refused: nodes' writes land there (${inWs.body.error})`);
+  mkdirSync(`${DIR}/full`, { recursive: true });
+  writeFileSync(`${DIR}/full/x`, 'x');
+  const full = await post('/api/paths', { name: 'gitview', path: `${DIR}/full` });
+  ok(full.status === 400 && /not empty/.test(full.body.error || ''), `...and so is one with something in it (${full.body.error})`);
+  mkdirSync(`${DIR}/state/gitview/marker`, { recursive: true });
+  writeFileSync(`${DIR}/state/gitview/marker/f`, 'kept');
+  const to = `${DIR}/elsewhere/gitview`;
+  await page.fill('.settingstab input[data-path="gitview"]', to);
+  await page.click('#pathsApply');
+  await page.waitForFunction(t => (state?.paths?.paths || []).find(p => p.name === 'gitview' && p.path === t && !p.moving),
+                             to, { timeout: 20000 });
+  ok(existsSync(`${to}/marker/f`) && !existsSync(`${DIR}/state/gitview/marker`),
+     'Apply moves what is there to the new path and switches to it once it has all arrived');
+  await page.waitForFunction(() => /default: /.test(document.querySelector('.settingstab [data-group="Storage"]')?.textContent || ''),
+                             null, { timeout: 10000 });
+  ok(true, '...and the line says what the default was');
+  const back = await post('/api/paths', { name: 'gitview', path: '' });
+  await page.waitForFunction(d => (state?.paths?.paths || []).find(p => p.name === 'gitview' && p.path === d && !p.moving),
+                             `${DIR}/state/gitview`, { timeout: 20000 });
+  ok(back.status === 200 && existsSync(`${DIR}/state/gitview/marker/f`),
+     '...and an empty path puts it back at its default, with what is there');
 }
 
 await done(browser);

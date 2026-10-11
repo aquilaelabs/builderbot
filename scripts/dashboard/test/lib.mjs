@@ -385,19 +385,44 @@ export async function animatedDuring(page, act){
 export const SLOW = Number(process.env.BB_TEST_SLOW || 1) || 1;
 export const patience = ms => Math.round(ms * SLOW);
 
-// Save on a project's settings dialog, answering its question when it
-// asks one: with a session of this account's running on the project, a
-// change the session takes only at its start (the author, reads, the
-// model) makes the first press show the changes and two answers, and the
-// dialog stays open until one is pressed. Suites that save such a change
-// press Save through this; `end` picks Save and end it, the default keeps
-// the session running.
+// A project's settings save a section at a time (the operator, 10 Oct):
+// each section's bar has Save, or with a session of this account running and
+// a change it takes only at its start (the author, reads, the model) both
+// Save, keep it running and Save and end it at once. sectSave presses one
+// section's and waits for it to finish: "" when it saved, else what its bar
+// says went wrong. `end` picks Save and end it where the bar offers it.
+export async function sectSave(page, sect, { end = false, timeout = 15000 } = {}){
+  timeout = patience(timeout);
+  const bar = `.rnbar[data-rnbar="${sect}"]`;
+  const which = await page.$eval(bar, (b, end) => b.querySelector('[data-rnkeep]').hidden ? 'data-rnsave'
+                                                   : end ? 'data-rnend' : 'data-rnkeep', end);
+  await page.click(`${bar} [${which}]`);
+  await page.waitForFunction(sel => { const b = document.querySelector(sel);
+    return !b || (!b.dataset.busy && (b.querySelector('.state.bad') || [...b.querySelectorAll('button')].every(x => x.disabled))); },
+  bar, { timeout });
+  return page.$eval(bar, b => b.querySelector('.state.bad')?.textContent || '').catch(() => '');
+}
+
+// Every section holding a change saved in turn, then the dialog closed (a
+// notebook's Settings view has nothing to close). Stops at a section that
+// says no, leaving its bar's sentence on screen for the suite to read, and
+// returns it.
 export async function saveDialog(page, { end = false, timeout = 15000 } = {}){
-  await page.click('#rnGo');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden
-                                   || !document.getElementById('rnRestartAsk').hidden, null, { timeout });
-  if (await page.$eval('#rnmodal', e => !e.hidden)) await page.click(end ? '#rnGo' : '#rnKeep');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout });
+  for (let i = 0; i < 12; i++){
+    const sect = await page.evaluate(() => [...document.querySelectorAll('.rnbar')]
+      .find(b => !b.dataset.busy && [...b.querySelectorAll('button:not([data-rnrevert])')].some(x => !x.hidden && !x.disabled))
+      ?.dataset.rnbar || '');
+    if (!sect) break;
+    const err = await sectSave(page, sect, { end, timeout });
+    if (err) return err;
+    // A rename closes the form and draws it again under the new name.
+    if (await page.$eval('#rnmodal', e => e.hidden) && !(await page.$('.nbsettings .rnbar'))) break;
+  }
+  if (await page.$eval('#rnmodal', e => !e.hidden) && await page.$eval('#rnCancel', e => !e.hidden)){
+    await page.click('#rnCancel');
+    await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: patience(timeout) });
+  }
+  return '';
 }
 
 export async function refreshUntil(page, fn, { timeout = 60000, every = 1000 } = {}){

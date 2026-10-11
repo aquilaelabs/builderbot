@@ -1,5 +1,5 @@
 // Phase 3 of the controller design (docs/nodes.md): the agent, enrollment,
-// and the numbers. The REAL agent (scripts/agent/builderbot-agent.py) is run
+// and the numbers. The REAL agent (scripts/agent: the entry and its package) is run
 // here as a child process against the harness server, with its node.json
 // pointed into the scratch dir: enroll with a token the tab minted, dial in,
 // take an exec job, stream its log, report the result, and be cut off. Every
@@ -12,6 +12,12 @@ import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileS
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
+// The agent's own modules, in-process: a fresh copy of the package as one
+// object (unit/agentpkg.py), the way the single file was loaded by path.
+const LOAD_AGENT = `import sys; sys.path.insert(0, ${JSON.stringify(`${REPO}/scripts/dashboard/unit`)}); import agentpkg`;
+// What a node runs: the zip the controller ships (builderbot_agent/bundle.py).
+const agentZip = () => execFileSync('python3', ['-c', 'import sys; sys.path.insert(0, sys.argv[1]); '
+  + 'from builderbot_agent import bundle; sys.stdout.buffer.write(bundle.build(sys.argv[1]))', `${REPO}/scripts/agent`]);
 // Under bb tests coverage (R76) every python this file starts, the agent it
 // runs and the module it drives in-process alike, counts the agent's
 // functions into its own file: PID is each process's own, so a self-update's
@@ -19,7 +25,7 @@ const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
 if (process.env.BB_COVERAGE_DIR){
   process.env.BB_COVERAGE_OUT = `${process.env.BB_COVERAGE_DIR}/agent-PID.json`;
   process.env.BB_COVERAGE_SUITE = 'agent';
-  process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot-agent.py';   // the copy counts as the file
+  process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot_agent';   // the copy's modules count as the tree's
 }
 // The toolchain store is scoped by platform (roadmap R19): a machine's
 // toolchains live under <store>/<os>-<arch>, so every fixture written INTO a
@@ -66,8 +72,8 @@ ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(mint
 {
   const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download',
     { headers: { Authorization: 'Bearer ' + minted.token } });
-  const body = await r.text();
-  ok(r.status === 200 && body === readFileSync(AGENT, 'utf8')
+  const body = Buffer.from(await r.arrayBuffer());
+  ok(r.status === 200 && body.equals(agentZip())
      && /^sha256:[0-9a-f]{64}$/.test(r.headers.get('x-agent-digest')),
      'the enroll token downloads the agent the controller ships, digest in a header');
   const bad = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download',
@@ -315,18 +321,11 @@ const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
 const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 // The stub docker's own state, so the agent's compose reaches the same fake
 // daemon the controller's runner does; a real node needs nothing here.
-// The share the fixture node reports as mounted and writable. /workspace when
-// it is both; inside a session's view it is the view's read-only root, so the
-// mount holding the harness's own directory stands in, which is writable by
-// construction. What the tests assert is that the controller reads the
-// agent's answer, not which directory it was measured on.
-const SHARE = execFileSync('python3', ['-c', `
-import os, sys
-p = os.path.realpath(sys.argv[1])
-while not os.path.ismount(p):
-    p = os.path.dirname(p)
-ok = lambda d: os.path.ismount(d) and os.access(d, os.W_OK)
-print("/workspace" if ok("/workspace") else p)`, DIR], { encoding: 'utf8' }).trim();
+// The fixture node's /workspace: a directory of its own, where its agent
+// makes the synced copy of each project bound to it (R163), from this
+// harness's controller, as a real node does.
+const SHARE = `${DIR}/agentworkspace`;
+mkdirSync(SHARE, { recursive: true });
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_SHARE: SHARE,
   BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
@@ -388,8 +387,8 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     writeFileSync(NODE_JSON, JSON.stringify(without));
     execFileSync('python3', ['-c',
       'import importlib.util,sys\n' +
-      `spec=importlib.util.spec_from_file_location("a","${AGENT}")\n` +
-      'm=importlib.util.module_from_spec(spec);sys.modules["a"]=m;spec.loader.exec_module(m)\n' +
+      `${LOAD_AGENT}\n` +
+      'm=agentpkg.load()\n' +
       'st=m.load_state()\n' +
       'm.fill_default_stores(st)\n' +
       'm.save_state(st)\n'],
@@ -449,9 +448,10 @@ const agentOut = openSync(AGENT_LOG_FILE, 'a');
 // Run from a copy, not from the file the controller ships: the self-update
 // below moves the shipped file and has to find the running one behind it,
 // which is what every node sees on a controller update.
-const AGENT_RUN = `${DIR}/agent-run/builderbot-agent.py`;
+// The zip, as a node keeps it: one file, run with python3 like the script it was.
+const AGENT_RUN = `${DIR}/agent-run/builderbot-agent`;
 mkdirSync(`${DIR}/agent-run`, { recursive: true });
-copyFileSync(AGENT, AGENT_RUN);
+writeFileSync(AGENT_RUN, agentZip());
 const agent = spawn('python3', [AGENT_RUN, 'run'], { env: agentEnv, stdio: ['ignore', agentOut, agentOut] });
 const agentLog = () => { try { return readFileSync(AGENT_LOG_FILE, 'utf8'); } catch { return ''; } };
 try {
@@ -484,7 +484,7 @@ try {
        && sess?.user === execFileSync('id', ['-un'], { encoding: 'utf8' }).trim(),
        `...on the ports it bound and as the account sessions run as (${sess?.port}, ${sess?.user})`);
     ok(typeof sess?.workspace === 'boolean' && /^sha256:/.test(sess?.bundle || ''),
-       '...saying whether /workspace is mounted and which bb bundle bb-tty runs from');
+       '...saying whether /workspace is there and which bb bundle bb-tty runs from');
     // This node's two; the container node enrolled above started its own.
     const runs = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id);
     ok(runs.length === 2 && runs.some(r => r.argv.includes('--writable'))
@@ -563,8 +563,8 @@ try {
     {
       const tool = execFileSync('python3', ['-c', `
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 t = m.extract_sandbox_tool(open(${JSON.stringify(`${REPO}/nodes/provision-linux.sh`)}).read())
 print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
 `], { encoding: 'utf8' }).trim().split('\n');
@@ -580,8 +580,8 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.share_images = lambda *a, **k: None
 m.census = lambda state: {}
@@ -620,8 +620,8 @@ print(json.dumps({'moved': case('sha256:old', 'sha256:new'), 'same': case('sha25
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, time, threading
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 a = object.__new__(m.Agent)
 a.hello_at, a.census_thread, a.census_next = 1.0, None, None
@@ -655,8 +655,8 @@ print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'd
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, shutil, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.os.geteuid = lambda: 0
 m.shutil.which = lambda n: '/usr/bin/' + n
@@ -686,8 +686,8 @@ os.unlink(stamp)
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.os.geteuid = lambda: 0
 m.shutil.which = lambda n: '/usr/bin/' + n
@@ -724,8 +724,8 @@ print(json.dumps({'first': first, 'again': case('process'), 'guest': case('contr
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, stat, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 store = tempfile.mkdtemp()
 os.makedirs(os.path.join(store, '.bb', 'current', 'scripts'))
@@ -752,8 +752,8 @@ print(json.dumps(open(seen).read().splitlines() if os.path.exists(seen) else [])
     {
       const said = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 logged = []
 m.log = lambda msg, *a, **k: logged.append(msg)
 store = tempfile.mkdtemp()
@@ -785,8 +785,8 @@ print(json.dumps({"logged": logged, "report": a.keep_report()}))
       const bin = '/opt/fake/bb-session';
       const out = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, re
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 home = '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
 # A launcher line with the projects the session reads, one --reads each
@@ -837,8 +837,8 @@ print(json.dumps({
     {
       const sn = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 d = tempfile.mkdtemp()
 def f(name, text):
     p = os.path.join(d, name); open(p, 'w').write(text); return p
@@ -893,6 +893,16 @@ print(json.dumps({
   'fill': m.sessnet_fill([('192.168.1.15', 7680)], ['192.168.1.1'], pairs, peers, hosts),
   'peers': peers, 'hosts': hosts,
   'table': m.sessnet_table(), 'live': live,
+  # Each project's containers kept to their own network (R178): the bridge
+  # pairs and the (bridge, host port) pairs from the containers' bridges and
+  # the controller's map; a compose project the map does not name keeps to
+  # its own bridge.
+  'ctr': m.ctrnet_reach([{'name': 'alpha-app-1', 'compose': 'alpha', 'ips': ['172.18.0.2'], 'bridges': ['br-aaaaaaaaaaaa'], 'ports': [8080]},
+                         {'name': 'beta-db-1', 'compose': 'beta', 'ips': ['172.20.0.3'], 'bridges': ['br-bbbbbbbbbbbb'], 'ports': [5432]},
+                         {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9'], 'bridges': ['br-cccccccccccc'], 'ports': [9000]}],
+                        {'alpha': {'owner': 'alpha', 'to': ['alpha', 'beta']}, 'beta': {'owner': 'beta', 'to': ['beta']}}),
+  'ctrfill': m.ctrnet_fill(['br-aaaaaaaaaaaa'], [('br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa')], [('br-aaaaaaaaaaaa', 8080)], [('192.168.1.15', 7680)], ['192.168.1.1']),
+  'ctrtable': m.ctrnet_table(),
   'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
   # What the node's own network already has in the range: a LAN, a VPN or a
   # VM bridge in 10.231.x.x, from ip -j; a session's own link does not count.
@@ -907,6 +917,13 @@ print(json.dumps({
          `a session's resolvers are the node's upstream ones, IPv4 and off the loopback, and none when the node names only its loopback (${JSON.stringify(sn.ns)})`);
       ok(/\nSESSION_NET=on\nSESSION_NET_CIDR=10\.231\.0\.0\/16\n$/.test(sn.on) && !/SESSION_NET/.test(sn.off),
          '...the layout file says so only when it is on, and an older bb-session reads the file it always read');
+      ok(JSON.stringify(sn.ctr[0]) === JSON.stringify(['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb', 'br-cccccccccccc'])
+         && JSON.stringify(sn.ctr[1]) === JSON.stringify([['br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa'], ['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb'], ['br-bbbbbbbbbbbb', 'br-bbbbbbbbbbbb'], ['br-cccccccccccc', 'br-cccccccccccc']])
+         && JSON.stringify(sn.ctr[2]) === JSON.stringify([['br-aaaaaaaaaaaa', 5432], ['br-aaaaaaaaaaaa', 8080], ['br-bbbbbbbbbbbb', 5432], ['br-cccccccccccc', 9000]]),
+         `a project's containers reach their own bridge and ports and those of the projects it reads, a stranger its own alone (R178) (${JSON.stringify(sn.ctr)})`);
+      ok(/add element inet builderbot_ctrnet pairs \{ "br-aaaaaaaaaaaa" \. "br-aaaaaaaaaaaa" \}/.test(sn.ctrfill) && /ownports \{ "br-aaaaaaaaaaaa" \. 8080 \}/.test(sn.ctrfill)
+         && /typeof iifname \. oifname/.test(sn.ctrtable) && /tcp dport \{ 80, 443 \} accept/.test(sn.ctrtable) && /oifname @bridges drop/.test(sn.ctrtable),
+         '...the sets are written as nft reads them, and the table drops a bridge to another bridge and lets the node\'s 80 and 443 through');
       ok(JSON.stringify(sn.pairs) === JSON.stringify([['10.231.0.2', '172.18.0.2'], ['10.231.0.2', '172.19.0.5'], ['10.231.0.6', '172.20.0.3']]),
          `each session may reach its own project's containers, by compose project and by the name the operator gave, and no other (${JSON.stringify(sn.pairs)})`);
       ok(/^flush set inet builderbot_sessnet ctl\nflush set inet builderbot_sessnet dns\nflush set inet builderbot_sessnet own\n/.test(sn.fill)
@@ -942,8 +959,8 @@ print(json.dumps({
       // only after a half-minute grace.
       const st = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile, time
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.log = lambda *a, **k: None
 m.SESSNET_DIR = tempfile.mkdtemp()
 ran = []
@@ -995,8 +1012,8 @@ print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'ref
     // through a run: thirty-three deliveries is not something to wait for.
     const pruned = JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile, time
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 d = tempfile.mkdtemp(); now = time.time(); names = []
 for i in range(12):
     n = '%016x' % i
@@ -1668,7 +1685,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        `a store at /etc, at a bare /mnt, or under /usr is refused (${sys.error})`);
     const cfg = await api('/api/v1/nodes', { action: 'config', id: minted.id,
       config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
-                         { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
+                         { type: 'virtiofs', source: 'projects', path: '/srv/projects', ro: true }],
                 stores: { cache: `${DIR}/agentcache`, toolchains: `${DIR}/agenttoolchains`,
                           artifacts: `${DIR}/agentartifacts` },
                 network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
@@ -1686,10 +1703,10 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
     }, 30000);
     ok(fin && fin.state === 'succeeded' && /add-nfs nas:\/mnt\/user\/appdata:\/mnt\/appdata/.test(fin.log)
-       && /add-share projects:\/workspace:ro/.test(fin.log) && /cache store/.test(fin.log),
+       && /add-share projects:\/srv\/projects:ro/.test(fin.log) && /cache store/.test(fin.log),
        `the agent applies it through bb-sandbox and the stores, logging each step (${fin?.state})`);
     const stubState = JSON.parse(readFileSync(SANDBOX_STATE, 'utf8'));
-    ok(stubState.length === 2 && stubState.some(m => m.path === '/workspace' && m.ro),
+    ok(stubState.length === 2 && stubState.some(m => m.path === '/srv/projects' && m.ro),
        '...and the node now has both mounts, the read-only one read-only');
     const after = await until(async () => {
       const n = await nodeById(minted.id);
@@ -1925,7 +1942,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // Put it back, so what follows runs against the stores it expects.
       await api('/api/v1/nodes', { action: 'config', id: minted.id,
         config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
-                           { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
+                           { type: 'virtiofs', source: 'projects', path: '/srv/projects', ro: true }],
                   stores: { cache: `${DIR}/agentcache`, toolchains: `${DIR}/agenttoolchains`,
                             artifacts: `${DIR}/agentartifacts` },
                   network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
@@ -1980,12 +1997,19 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
 
     // ---- the terminal goes to the node (roadmap #24, phase 10b) --------------
     // alpha is bound to agentbox now, whose census says its session half is
-    // up and /workspace mounted (the stub reports what the agent measures;
-    // the harness runs in a container whose /workspace IS a mount). So the
-    // controller's /term proxy dials agentbox's ttyd (the stub above, which
-    // answers with the request line) with the account, its name and a
-    // session token stamped into the URL.
+    // up, and whose agent makes alpha's synced copy in its own /workspace
+    // (R163): once it says the copy is ready, the controller's /term proxy
+    // dials agentbox's ttyd (the stub above, which answers with the request
+    // line) with the account, its name and a session token stamped into
+    // the URL.
     {
+      const copied = await until(async () => {
+        const p = (await api('/api/status')).projects.find(x => x.name === 'alpha');
+        return p?.session_at === 'agentbox' && p?.session_why === '' ? p : null;
+      }, 60000);
+      ok(copied && existsSync(`${SHARE}/alpha`),
+         `the node's agent copies the project it is bound to into its own /workspace, and the button goes live once it has (${
+           copied ? 'ready' : ((await api('/api/status')).projects.find(x => x.name === 'alpha')?.session_why || '').slice(0, 80)})`);
       const term = async (arg, hdr = auth) => {
         const r = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent(arg),
                               { headers: hdr, redirect: 'manual' });
@@ -2044,32 +2068,31 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          && /enroll one on the Nodes tab/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);
-      // Bound to a node that cannot take one: the sandbox row reports its
-      // session half up on a READ-ONLY projects share, so the button is
-      // dead with the reason and the proxy says the same rather than
-      // starting a session that could not save a file.
+      // Bound to a node that cannot take one yet: the sandbox's session
+      // half is up but it reports no synced copy of the project (R163), so
+      // the button waits with the reason and the proxy says the same rather
+      // than starting a session on a tree that is not there.
       const sandbox = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
       await api('/api/prefs', { project: 'beta', node: sandbox.id });
       const beta = (await api('/api/status')).projects.find(p => p.name === 'beta');
-      ok(beta?.session_at === 'sandbox' && /read-only/.test(beta?.session_why || '')
-         && /bb-sandbox readonly \/workspace off/.test(beta?.session_why || ''),
-         `a project bound to a node that mounts the share read-only carries the reason and the fix on its row (${(beta?.session_why || '').slice(0, 60)})`);
+      ok(beta?.session_at === 'sandbox' && /beta is being copied to sandbox/.test(beta?.session_why || '')
+         && /the session starts once the copy is there/.test(beta?.session_why || ''),
+         `a project bound to a node that has no copy of it yet carries the reason on its row (${(beta?.session_why || '').slice(0, 60)})`);
       const refused = await term('claude:beta');
-      ok(refused.status === 503 && /sessions run on sandbox/.test(refused.body)
-         && /nowhere else/.test(refused.body),
-         '...and one bound to a node that cannot take it is refused with that node\'s reason');
+      ok(refused.status === 503 && /being copied to sandbox/.test(refused.body),
+         '...and one bound to a node that cannot take it yet is refused with that node\'s reason');
       // ...and there is no way to ask for it here. `here=1` was the dead
       // button's escape while this container could still run one; it cannot,
       // so the flag is gone and the same refusal answers whatever is asked.
       const here = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent('claude:beta') + '&here=1',
                                { headers: auth, redirect: 'manual' });
-      ok(here.status === 503 && /sessions run on sandbox/.test(await here.text()),
+      ok(here.status === 503 && /being copied to sandbox/.test(await here.text()),
          '...and asking for it on this container anyway changes nothing');
       // A shell follows the node for the same reason a session does (the
-      // tree is that machine's mount), so a node that cannot take one takes
+      // tree is that machine's copy), so a node that cannot take one takes
       // neither. That is unchanged; what R47 changed is the NO-node case.
       const shellRefused = await term('shell:beta');
-      ok(shellRefused.status === 503 && /sessions run on sandbox/.test(shellRefused.body),
+      ok(shellRefused.status === 503 && /being copied to sandbox/.test(shellRefused.body),
          '...and a shell on that project follows the node, so it is refused too');
       await api('/api/prefs', { project: 'beta', node: '' });
       const shellHere = await term('shell:beta');
@@ -2928,7 +2951,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     });
     const agent = CASES.map(mp => execFileSync('python3', ['-c',
       `import importlib.util as u, json, sys\n` +
-      `s = u.spec_from_file_location('a', sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)\n` +
+      `${LOAD_AGENT}\nm = agentpkg.load()\n` +
       `st = json.loads(sys.argv[3])\n` +
       `print(','.join(sorted(r for r, p in st.items() if m.mount_covering(p, [{'path': sys.argv[2]}]))))`,
       `${REPO}/scripts/agent/builderbot-agent.py`, mp, JSON.stringify(stores)],
@@ -2994,7 +3017,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     }, 60000);
     ok(back !== null, `...and dials in again on the shipped digest, live (${back?.agent?.digest?.slice(0, 19)})`);
     ok(/re-executing the new agent/.test(agentLog()), '...having re-executed itself in place, the same process');
-    ok(readFileSync(AGENT_RUN, 'utf8').includes('from here on the controller ships a newer agent'),
+    ok(readFileSync(AGENT_RUN, 'latin1').includes('from here on the controller ships a newer agent'),
        '...and the file it runs from is the shipped one now');
     const cur2 = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
     ok(cur2.ok && cur2.current === true, '...so it is current again and no job is queued');
@@ -3298,7 +3321,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     ok(await page.$('.nodestab #ndEnName') === null,
        'Enroll node opens a dialog rather than a panel at the foot of the tab');
     await page.fill('#ndEnName', 'second');
-    await page.click('#ndEnGo');
+    await page.click('#ndEnTok');
     await page.waitForSelector('#ndmodal .ndtoken', { timeout: 15000 });
     const shown = await page.$eval('#ndmodal .ndtoken', e => e.textContent);
     ok(/bbe_/.test(shown) && /provision-linux\.sh/.test(shown) && /provision-macos\.sh/.test(shown) && /--controller/.test(shown),
@@ -3331,6 +3354,16 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
   // retires the row when the job succeeds. Runner deregistration was
   // exercised above; none is left here to deregister.
   {
+    // Refused while a session runs there (the operator, 11 Oct): the shell
+    // the block above killed in tmux is on the record until the agent's
+    // next heartbeat says it is gone, so that is waited for first.
+    const left = ((await api('/api/status')).sessions || []).filter(s => s.node === 'agentbox');
+    for (const s of left) await api('/api/session', { action: 'kill', session: s.name, node: minted.id });
+    // An account's sessions (u_<uid>~name) are the ones that hold it; the
+    // harness's own tmux sessions on the same server do not count.
+    const quiet = await until(async () =>
+      ((await api('/api/v1/nodes')).nodes.find(n => n.id === minted.id)?.reported?.sessions || []).some(s => /^u_[0-9a-f]{8}~/.test(s.name)) ? null : true, 45000, 500);
+    ok(quiet === true, `the node reports none of an account's sessions left before it is un-enrolled (ended first: ${left.map(s => s.name).join(', ') || 'none'})`);
     const r = await api('/api/v1/nodes', { action: 'uninstall', id: minted.id });
     ok(r.ok && /^j_/.test(r.job || ''), `Uninstall on a sandbox node queues a system job (${r.error || r.job})`);
     const fin = await until(async () => { const j = await api(`/api/v1/jobs?id=${r.job}`);
@@ -3391,8 +3424,8 @@ os.environ['BUILDERBOT_NETPLAN_BIN'] = ${JSON.stringify(`${DIR}/bin/netplan`)}
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
 log = ${JSON.stringify(`${DIR}/netplan.log`)}
 applied_before = open(log).read().count('apply')
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 open(d + '/90-builderbot.yaml', 'w').write('network:\\n  version: 2\\n  ethernets:\\n    eth0:\\n      dhcp4: true\\n')
 a = m.Agent.__new__(m.Agent)
@@ -3427,8 +3460,8 @@ import importlib.util, json, os, sys, tempfile
 os.environ['BUILDERBOT_NETPLAN_BIN'] = '/nonexistent/netplan'
 os.environ['BUILDERBOT_NMCLI_BIN'] = ${JSON.stringify(`${DIR}/bin/nmcli`)}
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 a = m.Agent.__new__(m.Agent)
 a.state = {'stores': {}}
@@ -3516,8 +3549,8 @@ os.environ['BUILDERBOT_INTERFACES_FILE'] = ifs = os.path.join(tempfile.mkdtemp()
 os.environ['BUILDERBOT_IFUP_BIN'] = ${JSON.stringify(`${NB}/ifup`)}
 os.environ['BUILDERBOT_IFDOWN_BIN'] = ${JSON.stringify(`${NB}/ifdown`)}
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 fam = {}
 for k in ${JSON.stringify(Object.keys(SAMPLES))}:
@@ -3596,8 +3629,8 @@ os.environ['BUILDERBOT_WICKED_BIN'] = ${JSON.stringify(`${NB}/wicked`)}
 os.environ['BUILDERBOT_SYSCONFIG_NET_DIR'] = sc = tempfile.mkdtemp()
 os.environ['BUILDERBOT_DHCPCD_CONF'] = dc = os.path.join(tempfile.mkdtemp(), 'dhcpcd.conf')
 os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.DIAL_BACK_S = 1
 a = m.Agent.__new__(m.Agent); a.state = {'stores': {}}
 class J:
@@ -3655,8 +3688,8 @@ print(json.dumps({'w_backend': w_backend, 'r1': r1, 'w_files': w_files, 'r2': r2
   const out = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
 os.environ['BUILDERBOT_BREW_BIN'] = '/nonexistent/brew'
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 store = tempfile.mkdtemp()
 scope = m.tc_scope()
 for d in ('jdk/bin', 'android/system-images/android-30/google_apis/x86_64', 'android/platform-tools'):
@@ -3703,8 +3736,8 @@ open(nftf, 'w').write('table inet builderbot_session {\\n    chain input {\\n   
 os.environ['BUILDERBOT_SESSION_NFT'] = nftf
 os.environ['BUILDERBOT_NFT_BIN'] = ${JSON.stringify(`${NB}/nft`)}
 os.environ['BUILDERBOT_SESSION_BIND'] = ''
-spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 m.os.geteuid = lambda: 0
 a = m.Agent.__new__(m.Agent)
 a.state = {'controller': 'http://127.0.0.1:1', 'stores': {'toolchains': d}}
@@ -3741,7 +3774,10 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
 // does not think about the agent. That is the bump this is about, so the
 // check is here rather than in anybody's memory.
 {
-  const src = readFileSync(AGENT, 'utf8');
+  // the package's sources, the number in its __init__
+  const PKG = `${REPO}/scripts/agent/builderbot_agent`;
+  const src = readdirSync(PKG).filter(f => f.endsWith('.py')).sort()
+    .map(f => readFileSync(`${PKG}/${f}`, 'utf8')).join('\n');
   const av = /^AGENT_VERSION\s*=\s*"([^"]+)"/m.exec(src)?.[1] || '';
   const win = /^(\d+\.\d+)\./.exec(av)?.[1] || '';
   const proj = readFileSync(`${REPO}/VERSION`, 'utf8').trim();
@@ -3793,8 +3829,8 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
     stub('dpkg', installed); stub('apt-cache', carried);
     return JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json
-spec = importlib.util.spec_from_file_location("agent", ${JSON.stringify(`${REPO}/scripts/agent/builderbot-agent.py`)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+${LOAD_AGENT}
+m = agentpkg.load()
 cat = {"toolchains": [{"name": "r", "system": {"apt": ["libnew|libold", "libplain"]}}]}
 print(json.dumps(m.sysdeps_missing(cat, "r", "apt", [m.DPKG_BIN, "-s"])[0]))`],
       { encoding: 'utf8', env: { ...process.env, BUILDERBOT_DPKG_BIN: `${alt}/dpkg`,

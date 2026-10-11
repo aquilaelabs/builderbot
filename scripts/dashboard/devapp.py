@@ -1520,6 +1520,90 @@ def project_has_compose(project):
     return any((WORKSPACE / project / n).is_file() for n in COMPOSE_NAMES)
 
 
+# Every compose file a project has, not only the one at its root (the
+# operator, 10 Oct): a repo with a site in site/ and an api in api/, or a
+# docker-compose.prod.yml beside the main one. An override file is left out:
+# compose merges it onto the file beside it, and alone it is half a file.
+# compose.yml, docker-compose.yml, a variant after (compose.prod.yml) or a
+# name before (admin.compose.yml: one file per service, as Turing Lens
+# keeps them under deploy/containers/, 11 Oct).
+COMPOSE_RE = re.compile(r"(?:(?P<pre>[A-Za-z0-9_-]+)\.)?(docker-)?compose(?P<var>\.[A-Za-z0-9_-]+)?\.ya?ml")
+COMPOSE_SKIP = {".git", "node_modules", ".gradle", "__pycache__", ".venv", "venv",
+                ".next", ".cache", ".bb-map", "dist", "build", "vendor", ".worktrees"}
+COMPOSE_DEPTH = 3
+COMPOSE_MAX_FILES = 12
+# Which file the next lookup means, over the record's: the Artifacts tab
+# judges each file in turn this way (devactions.file_rows).
+_pick = threading.local()
+
+
+@contextlib.contextmanager
+def composing(rel):
+    """Within this, every lookup means `rel`, whatever the record says: a
+    file judged as what Send would make of it."""
+    was = getattr(_pick, "rel", None)
+    _pick.rel = rel
+    try:
+        yield
+    finally:
+        _pick.rel = was
+
+
+def compose_files(project):
+    """The project's compose files, relative to its root, the root's own
+    first: what the Artifacts tab offers to send, one row each. A symlink is
+    never one, file or directory (the audit of 26 Sep)."""
+    top = WORKSPACE / project
+    out = [n for n in COMPOSE_NAMES if (top / n).is_file() and not (top / n).is_symlink()][:1]
+    for d, dirs, files in os.walk(top):
+        rel = os.path.relpath(d, top)
+        depth = 0 if rel == "." else rel.count("/") + 1
+        dirs[:] = sorted(x for x in dirs if x not in COMPOSE_SKIP and not x.startswith(".")
+                         and not os.path.islink(os.path.join(d, x)) and depth < COMPOSE_DEPTH)
+        for f in sorted(files):
+            if not COMPOSE_RE.fullmatch(f) or ".override." in f:
+                continue
+            r = f if rel == "." else f"{rel}/{f}"
+            if r not in out and not os.path.islink(os.path.join(d, f)):
+                out.append(r)
+        if len(out) >= COMPOSE_MAX_FILES:
+            break
+    return out[:COMPOSE_MAX_FILES]
+
+
+def compose_rel(project, instance=MAIN):
+    """The compose file an instance is built from, relative to its project:
+    the one Send was pressed on, else the root's own."""
+    rel = getattr(_pick, "rel", None) or str(_read_rec(project, instance).get("compose") or "")
+    if rel:
+        return rel
+    return next((n for n in COMPOSE_NAMES if (WORKSPACE / project / n).is_file()), "")
+
+
+def compose_sub(project, instance=MAIN):
+    """The folder that file is in, "" for the root: compose resolves the
+    file's relative paths (build: ., ./data) against it, so it is the
+    project directory every compose call names."""
+    d = posixpath.dirname(compose_rel(project, instance))
+    return "" if d in ("", ".") else d
+
+
+def compose_ok(project, rel):
+    """"" when `rel` is one of the project's compose files, else why not."""
+    if rel and rel not in compose_files(project):
+        return f"{project} has no compose file {rel}"
+    return ""
+
+
+def example_file(project, instance=MAIN):
+    """The .env.example beside the instance's compose file: the root's for
+    the root's, a folder's own for one in a folder. Not the root's for a
+    folder's: compose reads a file's .env from its own folder, and the
+    root's example asked a one-service site in a folder for every key of
+    the project's own app (found sending R167's test container, 10 Oct)."""
+    return WORKSPACE / project / compose_sub(project, instance) / ".env.example"
+
+
 def compose_file(project, instance=MAIN):
     """The compose file behind an instance.
 
@@ -1534,11 +1618,15 @@ def compose_file(project, instance=MAIN):
         return f if f.is_file() and not f.is_symlink() else None
     # A real file, never a link: a compose file symlinked to a controller
     # file went into the job spec and onto the node (the audit of 26 Sep).
-    for n in COMPOSE_NAMES:
-        p = WORKSPACE / project / n
-        if p.is_file() and not p.is_symlink():
-            return p
-    return None
+    rel = compose_rel(project, instance)
+    if not rel or ".." in rel.split("/") or rel.startswith("/"):
+        return None
+    p = WORKSPACE / project / rel
+    try:
+        inside = p.resolve().is_relative_to((WORKSPACE / project).resolve())
+    except OSError:
+        return None
+    return p if inside and p.is_file() and not p.is_symlink() else None
 
 
 def pname(project, instance=MAIN):
@@ -1679,7 +1767,9 @@ def _compose(project, instance, *args):
         # changed, so a controller-run build quietly came from the project's
         # checkout while the row said it came from a branch.
         at = work_tree(project, instance)
-        pdir = str(at) if at is not None else str(WORKSPACE / project)
+        # ...and inside it, the folder the compose file is in.
+        sub = compose_sub(project, instance)
+        pdir = str((at if at is not None else WORKSPACE / project) / sub).rstrip("/")
     ep = env_path(project, instance)
     if ep.is_file() and cf is not None and cf.is_file():
         # The copy whose env_file lines name the instance's env, beside it,
@@ -1744,9 +1834,26 @@ def _pairs():
     return [(k, v) for k, v in got.items()]
 
 
+def _synced_here(path):
+    """Whether the node being addressed holds its projects as a synced copy
+    (R162), which every agent node does unless taken off it (R164), and
+    `path` is the projects root: its own /workspace holds the same trees at
+    the same paths, so a compose's binds mean on it what they mean here
+    (R163 step 4). A dev instance lives on its project's own nodes, which
+    always hold it."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    n = queue.node(nid) if (queue is not None and nid) else None
+    ws = str(WORKSPACE).rstrip("/") if WORKSPACE else ""
+    return bool(n and ws and path.rstrip("/") == ws and n.get("kind") == "agent"
+                and ((n.get("config") or {}).get("workspace") or "sync") == "sync")
+
+
 def _node_mounts_at(path):
     """Whether the node being addressed reports a mount at exactly this
-    path, from its census (nodes._census keeps `mounts`)."""
+    path, from its census (nodes._census keeps `mounts`), or holds a synced
+    copy there."""
+    if _synced_here(path):
+        return True
     nid = getattr(_node_ctx, "node", None) or _default_node()
     n = queue.node(nid) if (queue is not None and nid) else None
     for m in ((n or {}).get("reported") or {}).get("mounts") or []:
@@ -1772,11 +1879,10 @@ def host_map():
     roots, out, bad = _mount_roots(), {}, []
     root = None
     pairs = _pairs()
-    # The projects share at the same path on both machines is the ordinary
-    # arrangement (a sandbox VM mounts it at /workspace, as this container
-    # does), so where nobody has written a pair for it and the node reports
-    # the share mounted there, /workspace maps to itself. A written pair
-    # still wins, for the node whose owner put the share somewhere else.
+    # The projects at the same path on both machines is the ordinary
+    # arrangement (a node holds its synced copy at /workspace, as this
+    # container holds the original), so where nobody has written a pair for
+    # it, /workspace maps to itself. A written pair still wins.
     ws = str(WORKSPACE).rstrip("/") if WORKSPACE else ""
     if ws and not any(h.strip().rstrip("/") == ws for h, _ in pairs) and _node_mounts_at(ws):
         pairs.append((ws, ws))
@@ -1803,11 +1909,11 @@ def host_map():
             # the shipped default as misconfigured.
             #
             # An agent node is the other machine that really does have this
-            # path: the storage plane mounts the projects share at /workspace
-            # on every node it manages, so the identity is correct there for
-            # the same reason it is correct on the sandbox VM, and saying
-            # otherwise put a warning on every start once a second node was
-            # enrolled (B193). Its own census is the evidence, rather than the
+            # path: it holds its synced copy of the projects at /workspace
+            # (R163), so the identity is correct there for the same reason it
+            # is correct on the sandbox VM, and saying otherwise put a warning
+            # on every start once a second node was enrolled (B193). For any
+            # other path its own census is the evidence, rather than the
             # address or an assumption about what a node must look like: it
             # lists what is mounted where on that machine.
             #
@@ -2010,6 +2116,8 @@ def _daemon_mounts(path):
     rather than inferred from an address (B193). False for a node that has
     not reported, which fails the way the check always did: it says so.
     """
+    if _synced_here(path):
+        return True
     nid = getattr(_node_ctx, "node", None) or _default_node()
     n = queue.node(nid) if (queue is not None and nid) else None
     ms = ((n or {}).get("reported") or {}).get("mounts")
@@ -2172,7 +2280,7 @@ def starter(project, instance=MAIN):
     the stored file and Up stays honestly dead until the values are real.
     """
     try:
-        example = (WORKSPACE / project / ".env.example").read_text(
+        example = example_file(project, instance).read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return ""
@@ -2231,7 +2339,7 @@ def missing_env(project, instance=MAIN):
     never names stays required: the example says it matters, and this side
     cannot tell what reads it.""" 
     try:
-        example = (WORKSPACE / project / ".env.example").read_text(
+        example = example_file(project, instance).read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return []
@@ -2253,7 +2361,7 @@ def _gate_env(project, instance=MAIN):
     """
     old = read_env(project, instance)
     try:
-        example = (WORKSPACE / project / ".env.example").read_text(
+        example = example_file(project, instance).read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         example = ""
@@ -2395,7 +2503,14 @@ def _overview_here(picked):
                 # names a branch that may never have been built here.
                 "built_ref": rec.get("built_ref", "") if same_daemon else "",
                 "await_env": bool(rec.get("await_env")) if same_daemon else False,
+                # A build marker with no job behind it: BuilderBot restarted
+                # while it was building (the Artifacts row said so until it
+                # stopped following containers, 10 Oct).
+                "interrupted": bool(same_daemon and rec.get("building_since")
+                                    and not (job_view(project, inst) or {}).get("running")),
                 "compose": compose_file(project, inst) is not None,
+                # Which of the project's compose files, when not the root's.
+                "compose_path": str(rec.get("compose") or ""),
                 "source": "file" if filed else "project",
                 # A file read and one git call. risks/problems stay out:
                 # those are judgements to put in front of somebody about to
@@ -2532,18 +2647,23 @@ def nodes_of(whose):
     return [str(n) for n in got if n]
 
 
-def on_project_node(whose, node=""):
+def on_project_node(whose, node="", ship=False):
     """(why, node): the node a container for project `whose` goes to, or the
     reason it cannot go anywhere. One rule, said in one place: a container
     lives on one of its project's nodes (R79 makes any other unreachable
     from the project's sessions), so `node` may only be one of those, and
-    nothing means the primary."""
+    nothing means the primary. The exception is `ship` (R166): a container
+    sent on purpose to a node the project is not on, whose image is built on
+    one of the project's own nodes and shipped there, so the project's
+    source never reaches it; the project still needs a node to build on."""
     own = nodes_of(whose)
     if own is None:
         return "", str(node or "")
     if not own:
         return (f"{whose} has no node, so there is nowhere to make its container: "
                 "set its node in the project's settings first", "")
+    if ship and node:
+        return "", str(node)
     if node and str(node) not in own:
         return (f"{whose} works on {', '.join(node_name(n) for n in own)}, and a container "
                 "for it anywhere else is out of reach of its sessions", "")
@@ -2592,7 +2712,7 @@ def new_refusal(project, key):
     return _taken(project, key, _load())
 
 
-def create_instance(project, name, node="", owner=None):
+def create_instance(project, name, node="", owner=None, ship=False, compose=""):
     """Register a new instance of a project. Nothing is built or started.
 
     `owner` is the project it belongs to when the caller said (another one,
@@ -2609,7 +2729,7 @@ def create_instance(project, name, node="", owner=None):
     refused rather than silently becoming the first.
     """
     slug = instance_key(project, name)
-    why = new_refusal(project, slug)
+    why = new_refusal(project, slug) or compose_ok(project, compose)
     if why:
         return {"error": why}
     # A container lives on the node of the project it belongs to and nowhere
@@ -2620,8 +2740,10 @@ def create_instance(project, name, node="", owner=None):
     # given one first. A container for no project may go where it is asked.
     whose = project if owner is None else owner
     picked = str(node or "")
+    # Sent to a node the project is not on (R166): shipped, never built there.
+    ship = bool(ship and picked and whose and picked not in (nodes_of(whose) or []))
     if whose:
-        why, node = on_project_node(whose, node)
+        why, node = on_project_node(whose, node, ship=ship)
         if why:
             return {"error": why}
         # Named by the caller: bound to it. Not named: the record carries no
@@ -2638,6 +2760,13 @@ def create_instance(project, name, node="", owner=None):
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
+        if ship:
+            rec["ship"] = True
+        # The file Send was pressed on, when it is not the root's own: what
+        # every build of this container comes from from now on.
+        if compose and compose != next((n for n in COMPOSE_NAMES
+                                         if (WORKSPACE / project / n).is_file()), ""):
+            rec["compose"] = str(compose)
         # Stored the way owner_of reads it: nothing for the default.
         if owner is not None and owner != project:
             rec["for"] = str(owner)[:100]
@@ -2842,12 +2971,21 @@ def session_net_own(node_id):
             for port in pub.get(key) or []:
                 o["peers"].add((addr, int(port)))
 
+    # ...and every node holding a container the project owns, its own or
+    # one sent elsewhere on purpose (R166), so a session on the project's
+    # node reaches a container shipped to another.
+    held = {}
+    for p, insts in _load().items():
+        for i, rec in insts.items():
+            owner = owner_of(p, i, rec)
+            if owner:
+                held.setdefault(owner, set()).add(_instance_node(p, i))
     for project, nids in sets.items():
         if node_id not in (nids or []):
             continue
         o = out.setdefault(project, blank())
-        for other in nids:
-            if other != node_id:
+        for other in list(nids) + sorted(held.get(project, set()) - set(nids)):
+            if other and other != node_id:
                 reach(o, project, other)
         # ...and what its settings name besides (Also reaches, the operator,
         # 7 Oct): a whole machine, or one port on it.
@@ -2874,6 +3012,31 @@ def session_net_own(node_id):
                 if other != node_id:
                     reach(o, r, other)
     return {p: {k: sorted(v) for k, v in o.items()} for p, o in sorted(out.items())}
+
+
+def container_net_own(node_id):
+    """What each compose project on `node_id` may reach of the others (R178):
+    {compose project: {owner, to: [compose projects]}}, the owner's own and
+    those of the projects it reads (prefs.reads). The agent turns it into
+    bridge pairs; a compose project not named here reaches its own and no
+    other. A container the operator gave a project is named by its name,
+    which is its compose project when it was started by compose."""
+    owned = {}
+    for project, insts in _load().items():
+        for inst, rec in insts.items():
+            owner = owner_of(project, inst, rec)
+            if owner and _instance_node(project, inst) == node_id:
+                owned.setdefault(owner, set()).add(_pname(project, inst))
+    for name, owner in (_owners().get(node_id) or {}).items():
+        owned.setdefault(owner, set()).add(name)
+    out = {}
+    for owner, comps in owned.items():
+        to = set(comps)
+        for r in (reads_of(owner) if reads_of else []) or []:
+            to |= owned.get(r, set())
+        for c in comps:
+            out[c] = {"owner": owner, "to": sorted(to)}
+    return dict(sorted(out.items()))
 
 
 def row_named(name):
@@ -2940,18 +3103,39 @@ def only_instance(project):
     return have[0] if len(have) == 1 else MAIN
 
 
-def send_name(project):
-    """The name a new container of a project gets when nobody typed one: the
-    project's own while it has none, then <project>-2, -3 and on, the first
-    that no container here holds. Send to Docker opens on it and `bb devapp
-    new` takes it, so sending a project again makes another container beside
-    the first rather than a refusal naming the one it already has (the
-    operator, 26 Sep)."""
+# The name a project is shown under, which a rename changes and its folder
+# does not (R154): set by server.py to registry.label.
+label_of = lambda p: p   # noqa: E731
+
+
+def send_name(project, compose=""):
+    """The name a new container of a project gets when nobody typed one:
+    named for what the project is called now (a renamed Clanker-Detector
+    offers turing-lens, not its folder's name: the operator, 10 Oct), with
+    the folder or the variant of the compose file it is made from after it
+    (turing-lens-site, turing-lens-prod), so two files are not offered one
+    name. The project's own container while that is free, then -2, -3 and on,
+    the first no container here holds. Send to Docker opens on it and `bb
+    devapp new` takes it, so sending again makes another container beside
+    the first rather than a refusal (the operator, 26 Sep)."""
+    base = _slug(label_of(project)) or _slug(project) or "container"
+    rel = str(compose or "")
+    sub = posixpath.dirname(rel)
+    m = COMPOSE_RE.fullmatch(posixpath.basename(rel)) if rel else None
+    # A file named for its service (admin.compose.yml) is named by that
+    # alone; one named by its folder or variant, by those.
+    if m and m.group("pre"):
+        tail = [_slug(m.group("pre"))]
+    else:
+        tail = [_slug(sub.replace("/", "-"))] if sub else []
+        if m and m.group("var"):
+            tail.append(_slug(m.group("var")[1:]))
+    base = "-".join([base] + [t for t in tail if t])
     d = _load()
-    if not _taken(project, MAIN, d):
-        return project
-    base, n = _slug(project) or "container", 2
-    while _taken(project, f"{base}-{n}", d):
+    if not _taken(project, instance_key(project, base), d):
+        return project if instance_key(project, base) == MAIN else base
+    n = 2
+    while _taken(project, instance_key(project, f"{base}-{n}"), d):
         n += 1
     return f"{base}-{n}"
 
@@ -2983,7 +3167,36 @@ def _load():
             if isinstance(val, dict) and all(isinstance(v, dict) for v in val.values())}
 
 
-def _config(project, instance=MAIN):
+# The last _config failure on this thread, in compose's own words.
+_cfg_err = threading.local()
+
+
+def config_error():
+    """What compose said when the last _config on this thread failed, "" if
+    it did not or said nothing."""
+    return getattr(_cfg_err, "said", "")
+
+
+# A variable the file says it cannot start without: ${NAME:?why} or ${NAME?why}.
+_REQUIRED_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*):?\?")
+
+
+def insisted_vars(project, instance=MAIN):
+    """The variables the compose file insists on (${NAME:?...}), in order,
+    once each: what its env must set before compose will read it at all."""
+    cf = compose_file(project, instance)
+    try:
+        text = cf.read_text(encoding="utf-8") if cf is not None else ""
+    except OSError:
+        return []
+    out = []
+    for m in _REQUIRED_RE.finditer(text):
+        if m.group(1) not in out:
+            out.append(m.group(1))
+    return out[:32]
+
+
+def _config(project, instance=MAIN, env_extra=None):
     """The compose file as compose itself resolves it: variables substituted,
     relative paths made absolute against the project directory.
 
@@ -2998,8 +3211,14 @@ def _config(project, instance=MAIN):
     than making it cheap to ask carelessly: state() does that for one row, and
     overview() for the listing it draws.
     """
-    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30)
+    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30, env_extra=env_extra)
+    _cfg_err.said = ""
     if r["code"] != 0:
+        # What compose said, kept for the caller that shows it (the
+        # Artifacts tab's row): "cannot read it" without compose's own
+        # sentence left a session guessing which line was wrong.
+        lines = [x.strip() for x in str(r.get("out") or "").splitlines() if x.strip()]
+        _cfg_err.said = " ".join(lines[-3:])[:400]
         return None
     try:
         d = json.loads(r["out"])

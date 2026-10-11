@@ -17,6 +17,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/findings` | prefix | `_get_findings` | GET /api/findings: findings.view, scoped to the projects this account sees, and for a session to its own. |  |
 | GET | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile tab): read on GET, saved on POST, by profiletab.py. |  |
 | GET | `/api/transcripts` | prefix | `_get_transcripts` | GET /api/transcripts?project=NAME: the signed-in account's own conversations with Claude on that project, newest first (transcripts.mine). |  |
+| GET | `/api/snapshots` | prefix | `_get_snapshots` | GET /api/snapshots?project=NAME: the days kept of the project's tree (snapshots.py), newest first, and how many it keeps. | refused: admin |
 | GET | `/api/transcript` | prefix | `_get_transcript` | GET /api/transcript?project=NAME&id=SESSION: one of the signed-in account's own conversations with Claude on that project as a text file, every command and answer in it (transcripts.render); as JSON with as=json, which i |  |
 | GET | `/api/git` | prefix | `_get_git` | GET /api/git: the notebook's Git view (gitview.view), for a project this account may see. |  |
 | GET | `/api/project-sessions` | prefix | `_get_project_sessions` | GET /api/project-sessions?project=NAME: every account's sessions on the project, for its settings dialog. | refused: admin |
@@ -36,6 +37,8 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/emulator` | prefix | `_get_emulator` | GET /api/emulator?node=ID: that node's system images, what could be added, and the image job there. |  |
 | GET | `/api/roles` | prefix | `_get_roles` | GET /api/roles: the Roles tab (R152): the areas, every role, and each account with its Global roles, the roles it holds on each project and the projects it is on. |  |
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
+| GET | `/api/nginx` | prefix | `_get_nginx` | The nginx tab (nginxproxy.view): every node's nginx, for an account that may read the Nodes tab; never a session's. |  |
+| GET | `/api/storage` | prefix | `_get_storage` | The Storage tab (storage.view, R169): every node this account holds the Storage area on, what its disks hold, by project where the account sees the project and as one line otherwise. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |
@@ -81,6 +84,9 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/say` | prefix | `_say` | Type a message into a CLAUDE session and press Enter. |  |
 | POST | `/api/chat` | prefix | `_chat` | Read a conversation, send into one, or mark one seen: chat.converse. |  |
 | POST | `/api/layout` | prefix | `_layout` | Store this account's open tabs: layout.save_tabs. |  |
+| POST | `/api/bell` | exact | `_bell` | Put a bell note away for this account, or bring every one back (bellseen.py). |  |
+| POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
+| POST | `/api/storage` | exact | `_storage` | Measure now on the Storage tab: a node's disks walked at once (nodes.node_storage_measure). |  |
 | POST | `/api/cards` | prefix | `_cards` | Store the sidebar card arrangement: layout.save_card_order. |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |
 | POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: admin |
@@ -98,6 +104,8 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: admin |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: admin |
 | POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: admin |
+| POST | `/api/paths` | prefix | `_paths` | Where the controller keeps one kind of what grows (paths.py), and what is there moved across. | refused: admin |
+| POST | `/api/snapshots` | prefix | `_snapshots` | POST /api/snapshots: take one now, or restore the whole tree as of a day or one file of it (snapshots.restore, which snapshots the tree first so it can be undone). | refused: admin |
 | POST | `/api/settings` | prefix | `_settings_post` | POST /api/settings. | refused: admin, refused: debug |
 | POST | `/api/rules` | prefix | `_rules` | The operator's house rules for one project: the whole list, saved (rules.verb). | refused: rules |
 | POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: admin |
@@ -108,7 +116,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/design` | prefix | `_design` | POST /api/design: a Design section's Save of the language and the pages, and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/wiki` | exact | `_wiki` | POST /api/wiki: a page saved, removed or renamed, and the wiki pushed to or pulled from the forge's (wiki.verb), for an account that works on the project. |  |
 | POST | `/api/ci-watch` | exact | `_ci_watch` | POST /api/ci-watch: look at a project's CI now (ciwatch.look), for an account that sees the project; the answer is what it found. |  |
-| POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write |
+| POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write, refused: node |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |
 | POST | `/api/signing` | exact | `_signing` | A project's Android signing keys (signing.verb, R106). | refused: admin |
@@ -118,6 +126,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/nodelog` | prefix | `_nodelog` | A machine's own log, for a session that has been granted it. | refused: debug |
 | POST | `/api/diag` | exact | `_diag` | The controller's diagnostics (diag.py). |  |
 | POST | `/api/reports` | exact | `_reports` | Problems with BuilderBot itself, reported by any project's session (reports.py, bb report). |  |
+| POST | `/api/v1/files` | exact | `_files` | A project's files for a person's own editor (files.py, R159): the account this request proved, a project it sees, and the file access its settings give it through the editor's door, asked on this request (ftp.access_for) |  |
 | POST | `/api/phone` | prefix | `_phone` | Pair, connect, and push an extension, and the asking: a session's ask for adb, root or a container, and a person's answer. |  |
 | POST | `/api/findings` | prefix | `_findings_log` | The Analysis view's log. |  |
 | POST | `/api/tests` | prefix | `_tests` | The hand-written half of the registry: testreg.verb. |  |

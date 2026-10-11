@@ -1,17 +1,14 @@
 """The node agent's GPU name in its census (B391): only an nvidia-smi that
 answered is a name. Drives _gpu_name against a stand-in nvidia-smi on PATH."""
-import importlib.util
 import os
 import shutil
 import stat
 import tempfile
 import unittest
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent")
 
 
 class StandIn(unittest.TestCase):

@@ -93,7 +93,7 @@ Bare `bb` prints this list; `bb status` is the tool-version wall.
 ```
 bb -p NAME VERB    any verb, about another project this one reads (its
                    settings name them): bb -p NAME roadmap, bb -p NAME map find X
-bb status          tool versions, runner registration, mounted projects
+bb status          tool versions, runner registration, the projects here
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    manifest.json and Windows VERSIONINFO), --msi, --pep440,
@@ -183,7 +183,7 @@ bb changelog edit N "..."  reword one of them: a change that tweaks something
 bb changelog merge N M "..."   one line for several, carrying all their commits
 bb changelog split N     back into one line per commit it carries
 bb changelog rm N        drop one that stopped being true
-bb projects        mounted project dirs and their branches
+bb projects        the project dirs here and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
                    run on. Nothing is copied anywhere: each node is signed in
@@ -270,7 +270,7 @@ bb devapp rebuild [--why "..."]
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
                    interpolate them; its other options are the compose file's own
-bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
+bb devapp new [NAME] [--branch REF] [--compose FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
                    own compose file on its node, then built and started, and this
@@ -278,7 +278,11 @@ bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
                    while it has none, then another beside it named for the project
                    with -2, -3 and on; a second needs ports of its own, so give it
                    an env that sets them with --env. --branch builds it
-                   from that branch. On ask, one request carries all of it and
+                   from that branch; --compose names another of its compose
+                   files (site/compose.yml), the root's own by default. --node
+                   puts it on a hosting node the project's settings name under
+                   Hosts its containers on: built on the project's own node and
+                   shipped there. On ask, one request carries all of it and
                    Allow makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;
@@ -419,6 +423,9 @@ bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile tab lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
                    command Claude ran and what it answered
+bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
+                   for it: how a node holding its projects as a synced copy
+                   resumes a conversation it does not have (bb-tty runs it)
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -466,8 +473,10 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    Dockerfile is a compose with a build context on the projects
                    share. Never a user's to approve
 bb root            what root commands are waiting on an administrator
-bb root run --why "..." -- CMD...
-                   ask for ONE command as root on this project's node: an
+bb root run --why "..." [--node NAME] -- CMD...
+                   ask for ONE command as root on this project's node (or, with --node
+                   NAME, on a node it hosts containers on; the row's root-asks switch
+                   decides): an
                    administrator allows or denies it on the Nodes tab or the
                    bell, and the node runs that command and nothing else. Not
                    sudo: a second command is a second question. A node's

@@ -24,6 +24,7 @@ node, because a session can write this file, and the organization a runner
 token is minted for should not be a session's to change.
 """
 import os
+import re
 import shutil
 import sys
 import time
@@ -62,6 +63,14 @@ KEYS = {
     # implicitly granted ITSELF, because its own journal is as much system
     # level as any other machine's.
     "debug_mode": {"default": False, "kind": "bool", "applied": "now"},
+    # The home tunnel the controller runs itself (R176, tunnel.py): the
+    # public hostname a node off the LAN dials, the tunnel's token from
+    # Zero Trust, and an API token with which the hostname's record and the
+    # tunnel's rules are written rather than clicked. The two tokens are
+    # secrets: kept here, never shown back, only said to be set.
+    "tunnel_host": {"default": "", "kind": "text", "applied": "now"},
+    "tunnel_token": {"default": "", "kind": "secret", "applied": "now"},
+    "cf_api_token": {"default": "", "kind": "secret", "applied": "now"},
     # Off, Claude Code on a node stays on the version it has until Update is
     # pressed on the Nodes tab: the bell says when a newer one is out. On,
     # a session asked for on a node that is behind updates it first: the
@@ -89,10 +98,27 @@ def load():
         return {}
 
 
+HOST_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)+$")
+SECRET_MAX = 8000
+
+
 def _parse(key, raw):
-    """A switch's value out of a string or a JSON value, or None when it
-    cannot be read as one: an unreadable value is treated as unset rather
-    than as an error on every read."""
+    """A setting's value out of a string or a JSON value, by its kind, or
+    None when it cannot be read as one: an unreadable value is treated as
+    unset rather than as an error on every read. A switch is true or false;
+    a text is one line with the shape its key asks for (a hostname); a
+    secret is one line, empty meaning none."""
+    kind = KEYS.get(key, {}).get("kind", "bool")
+    if kind == "text":
+        if isinstance(raw, bool) or raw is None:
+            return None
+        v = str(raw).strip().lower()[:253]
+        return v if v == "" or HOST_RE.match(v) else None
+    if kind == "secret":
+        if isinstance(raw, bool) or raw is None:
+            return None
+        v = str(raw).strip()
+        return v if len(v) <= SECRET_MAX and "\n" not in v else None
     if isinstance(raw, bool):
         return raw
     s = str(raw).strip().lower()
@@ -101,6 +127,14 @@ def _parse(key, raw):
     if s in ("0", "false", "no", "off", ""):
         return False
     return None
+
+
+def secret(key):
+    """A secret's value, for the code that uses it; effective() never
+    carries it."""
+    d = load()
+    v = _parse(key, d.get(key, "")) if key in d else None
+    return v if isinstance(v, str) else ""
 
 
 def effective():
@@ -113,6 +147,9 @@ def effective():
             out[key] = {"value": _parse(key, d[key]), "source": "settings"}
         else:
             out[key] = {"value": spec["default"], "source": "default"}
+        # A secret is never shown back: the tab learns that one is set.
+        if spec["kind"] == "secret":
+            out[key] = {"value": "", "set": bool(out[key]["value"]), "source": out[key]["source"]}
     return out
 
 
@@ -132,7 +169,10 @@ def set_many(changes):
             return {"error": f"not a setting: {key}"}
         v = _parse(key, raw)
         if v is None:
-            return {"error": f"{key} takes true or false"}
+            kind = KEYS[key]["kind"]
+            return {"error": f"{key} takes true or false" if kind == "bool"
+                    else f"{key} is a hostname like bb.example.com" if kind == "text"
+                    else f"{key} is one line"}
         parsed[key] = v
     with _lock:
         d = load()

@@ -36,7 +36,6 @@ import time
 # because write_json is defined from it before any of those load.
 import statefile
 from names import PROJECT_NAME, claude_session, tmux_name   # noqa: F401 - re-exported to the modules
-import shutil
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -259,7 +258,9 @@ MAX_BODY = 64 * 1024
 # so a post could pass 64 kB, and one refused as too large was retried for
 # good, holding its job in the agent's count and refusing every update as
 # busy (B520: j_cdcb12b7, a phone screenshot, held from 4 to 6 Oct).
+# ...and a file saved from a person's editor (R159): files.MAX_READ as base64.
 MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024,
+                "/api/v1/files": 28 * 1024 * 1024,
                 "/api/v1/agent/log": 512 * 1024}
 
 # One field out of a request body, read the one way here and in every
@@ -291,6 +292,10 @@ _state_lock = threading.Lock()
 import layout                                                    # noqa: E402
 
 layout.configure(state=STATE, write_json=write_json, lock=_state_lock)
+# ...and what each account has put away from its bell: bellseen.py.
+import bellseen                                                  # noqa: E402
+
+bellseen.configure(state=STATE, write_json=write_json)
 
 
 
@@ -389,32 +394,33 @@ def window_cost(name):
     return {"window": nodes.agent_window(nodes.agent_file()["version"]), "projects": held}
 
 
-def node_holds():
+def node_holds(reap=False):
     """{node id: why} for every agent node no Claude session may start on
     right now: its agent is from another compatibility window than this
     controller ships, or its Claude Code is being updated (claudecode.py),
     which ends the sessions there first. The half of a project's hold that
     is its node's. Being merely behind is not here: inside a window an
     older agent takes a job and a session, and the Nodes tab's Update is a
-    courtesy rather than a gate."""
+    courtesy rather than a gate. reap: only what ends a running session
+    (claudecode.holds)."""
     out = {}
     if NODES_OK:
         return out
     for n in nodes.node_list():
         if n["kind"] == "agent" and nodes.agent_gap(n):
             out[n["id"]] = nodes.agent_stale(n)
-    out.update(claudecode.holds())
+    out.update(claudecode.holds(reap))
     return out
 
 
-def compat_holds():
+def compat_holds(reap=False):
     """{project: why} for every project no Claude session may run on right
     now, which since R63 step 3 means one thing: its node's agent is from
     another compatibility window. Per project on purpose, because another
     project's node being out of window is that project's problem and this
     one's button stays live."""
     out = {}
-    holds = node_holds()
+    holds = node_holds(reap)
     pp = prefs.all_projects()
     try:
         dirs = [d for d in WORKSPACE.iterdir() if d.is_dir()]
@@ -428,6 +434,10 @@ def compat_holds():
         if why:
             out[d.name] = why
     return out
+
+
+# When a hosting-only node's refused verb was last audited (Handler._agent).
+_host_refused_at = {}
 
 
 # How often the sweep below runs. Settable only so the suite need not wait
@@ -448,7 +458,7 @@ def compat_reap_once():
     start, which is the moment after a controller update, and on a timer
     after that for a window that moves under a running server (a bump
     landing on a `bb dashboard dev` restart, a node enrolled behind)."""
-    holds = compat_holds()
+    holds = compat_holds(reap=True)
     if not holds:
         return []
     wanted = {claude_session(p): why for p, why in holds.items()}
@@ -1118,6 +1128,22 @@ def gpu_for(project, node_id=""):
     return "on"
 
 
+def _attention(who):
+    """The bell's rows about nodes: an agent behind or from another window
+    (nodes.attention) for whoever manages nodes, and a node with a
+    toolchain behind what is out, Claude Code among them
+    (toolchains.attention), for whoever may install toolchains on it."""
+    if NODES_OK:
+        return [], 0
+    where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
+    rows = (([] if users.may(who, "node") else nodes.attention(where))
+            + [a for a in toolchains.attention(where)
+               if not users.may_node(who, "toolchains-write", a["id"])])
+    # ...less what this account has put away (bellseen.py, R144): an update
+    # to a version it dismissed, until a newer one is out.
+    return bellseen.filter_rows(users.uid_of(who), rows)
+
+
 def _claude_code_for(who, ps):
     """Claude Code per node against the latest known, for the Nodes tab's
     section: the registry's for whoever may manage nodes, and for anybody
@@ -1187,9 +1213,6 @@ def _arg_project(arg):
     return ""
 
 
-# A node that came up this recently and reports no /workspace is one whose
-# network mount has not landed yet, not one missing a mount.
-BOOT_GRACE_S = 600
 _hello_asked = {}
 
 
@@ -1203,7 +1226,7 @@ def _ask_hello(nid):
         nodes.ask_hello(nid)
 
 
-def session_target(project, claude=False, node=""):
+def session_target(project, claude=False, node="", uid=""):
     # `claude` is the question R47 added. A project's SHELL follows its node
     # (the tree is that machine's mount and its toolchains are what a build
     # there uses), and a project with NO node still gets a shell here, on the
@@ -1219,12 +1242,11 @@ def session_target(project, claude=False, node=""):
                                                               that cannot take one)
 
     A project bound to a node whose census says the session half is up and
-    the projects share is mounted gets its session THERE. One bound to a
-    node that is offline, runs no sessions or mounts no /workspace is
-    REFUSED rather than quietly started here: the tree is the same share
-    either way, but a session started on the wrong machine has the wrong
-    toolchains and its transcripts land in the wrong home, and switching
-    later splits a conversation across two boxes. The sentence says which
+    whose synced copy of the project is there gets its session THERE. One
+    bound to a node that is offline, runs no sessions or has no copy yet is
+    REFUSED rather than quietly started here: a session started on the
+    wrong machine has the wrong toolchains and its transcripts land in the
+    wrong home, and switching later splits a conversation across two boxes. The sentence says which
     of the three it was and what fixes it. A project with no node keeps its
     session here, as it always has.
 
@@ -1268,12 +1290,19 @@ def session_target(project, claude=False, node=""):
     rep = n.get("reported") or {}
     se = rep.get("session")
     passing = waiting = False
-    if n.get("state") == "retired":
+    if nodes.host_only(n):
+        # Made hosting-only after the project named it: no session goes
+        # there, whatever the settings still say.
+        why = (f"{name} hosts containers only, so no session runs there: pick another node in "
+               f"{project}'s settings")
+    elif n.get("state") == "retired":
         # Un-enrolled (the operator, 5 Oct): the fact first, for the row, and
         # what to do after it, for the tooltip.
         why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
                "or enroll it again")
         passing = True          # its own sentence says the way on
+    elif n.get("state") == "disabled":
+        why = f"{name} is disabled on the Nodes tab: Enable it there, or pick another node in {project}'s settings"
     elif n.get("state") != "online":
         why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
     elif n.get("live") is False and _reconnecting(n):
@@ -1302,40 +1331,31 @@ def session_target(project, claude=False, node=""):
                + (f": {se['why']}" if se.get("why") else
                   "; provision it with --session-user"))
         _ask_hello(nid)
-    elif not se.get("workspace"):
-        up = se.get("up_s")
-        # The server's own reason, when the agent tried the mount and kept
-        # what it said: a refused mount is not a missing one, and the fix
-        # is on the host, not on this row.
-        merr = next((str(m.get("error") or "") for m in (rep.get("mounts") or [])
-                     if isinstance(m, dict) and m.get("path") == "/workspace" and m.get("error")), "")
-        if merr and "access denied" in merr.lower():
-            why = (f"{project}'s sessions run on {name}, which cannot mount the projects share at "
-                   f"/workspace: {merr}. The host's NFS export names another address, and this "
-                   f"node is on {nodes.route_host(nid) or 'a new one'}. Change the rule on the "
-                   "host (Unraid: Shares → the share → NFS Security Settings) and the mount "
-                   "lands on its own")
-        elif merr:
-            why = (f"{project}'s sessions run on {name}, which cannot mount the projects share at "
-                   f"/workspace: {merr}. Its row on the Nodes tab has the mount")
-        elif isinstance(up, int) and 0 <= up < BOOT_GRACE_S:
-            why = (f"{project}'s sessions run on {name}, which came up {up} seconds ago and has "
-                   "not mounted the projects share at /workspace yet; a network mount lands a "
-                   "moment after boot, and the button is back when it does")
-            passing = waiting = True
-        else:
-            why = (f"{project}'s sessions run on {name}, which does not mount the projects "
-                   "share at /workspace; add the mount on its row on the Nodes tab")
-        _ask_hello(nid)
-    elif se.get("writable") is False:
-        # Read-only was the right way to mount the share for a Docker-only
-        # sandbox and is the wrong way for one that runs sessions: nothing
-        # could be saved, and the transcripts link cannot be made there.
-        why = (f"{project}'s sessions run on {name}, which mounts the projects share "
-               "read-only; a session there could not save a file. Untick read-only on "
-               "the /workspace mount on its row on the Nodes tab and apply, or `sudo "
-               "bb-sandbox readonly /workspace off` on the machine")
-        _ask_hello(nid)
+    elif (n.get("config") or {}).get("leaving") or ((n.get("config") or {}).get("workspace") or "sync") != "sync":
+        # Off its synced copy, or on the way off it (R164): nothing to open a
+        # session on, and its row on the Nodes tab is the way back.
+        why = (f"{project}'s sessions run on {name}, which "
+               + ("is leaving its synced copy: what is left there is going up to the controller"
+                  if (n.get("config") or {}).get("leaving") else "holds no projects now")
+               + ". Its row on the Nodes tab moves it to a synced copy again,"
+               " or bind the project to another node")
+    elif not ((rep.get("sync") or {}).get(project) or {}).get("ready"):
+        # A synced copy (R162) that is not there yet: a session started now
+        # would open an empty or half-copied tree.
+        got = (rep.get("sync") or {}).get(project) or {}
+        why = (f"{project} is being copied to {name}"
+               + (f" ({got['copying']} files to go)" if got.get("copying") else "")
+               + (f": {got['error']}" if got.get("error") else "")
+               + "; the session starts once the copy is there")
+        passing = waiting = True
+    elif uid and (wt := wssync.worktree_unit(project, uid)) \
+            and not ((rep.get("sync") or {}).get(wt) or {}).get("ready"):
+        # ...and this account's own worktree of it (B615): a session that
+        # opened before it arrived made none of its own there and worked in
+        # the owner's tree instead.
+        why = (f"your worktree of {project} is being copied to {name}; "
+               "the session starts once it is there")
+        passing = waiting = True
     elif not se.get("boot"):
         # Without the node's boot the page would stamp this container's into
         # the tab, and bb-tty there would refuse every reconnect as a stale
@@ -1767,7 +1787,7 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together: the app, the file, this.
-APP_API = 8
+APP_API = 9
 # How long the app's live connection is held before an empty answer (R125):
 # under the app's 60 s read timeout, and long enough to cost little.
 PHONE_WAIT_S = 45
@@ -2056,6 +2076,8 @@ def _diag_watch(project, uid):
 
 # The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
 DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
+# ...and the home tunnel's (R176), applied by tunnel.py when they change.
+TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 
 
 # The project's settings a session takes once, when it starts: the trees
@@ -2384,6 +2406,11 @@ gitview.configure(workspace=WORKSPACE,
                   audit=lambda *row: None if NODES_OK else db.audit(*row),
                   host_of=forges.host_label, ci_of=lambda n: ciwatch.read(n),
                   ci_fix=lambda n, where: ciwatch.fix(n, where))
+# Where what grows is kept, as the Settings tab sets it (paths.py): read at
+# use by every module below that keeps one of them, so a change applies to
+# the next write without a restart.
+import paths                                                     # noqa: E402
+paths.configure(state=STATE, workspace=WORKSPACE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -2563,6 +2590,9 @@ import devapp                                                    # noqa: E402
 devapp.label_of = registry.label
 import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
+import nginxproxy                                                # noqa: E402
+import tunnel                                                    # noqa: E402
+import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
@@ -2590,8 +2620,13 @@ try:
     projects.first_version = lambda name, value, env: version.init(name, value, by="operator", env=env)
     # Each session kept to its own project's network (R79): the setting is
     # the node's, what each project owns there is devapp's.
-    nodes.session_net_for = lambda nid: ({"on": True, "own": devapp.session_net_own(nid)}
-                                         if nodes.session_net_on(nid) else {"on": False, "own": {}})
+    # ...and the containers' (R178): whether each project's are kept apart
+    # here, and what each compose project may reach, whatever the sessions'
+    # switch says.
+    nodes.session_net_for = lambda nid: (({"on": True, "own": devapp.session_net_own(nid)}
+                                          if nodes.session_net_on(nid) else {"on": False, "own": {}})
+                                         | {"ctr_on": nodes.container_net_on(nid),
+                                            "ctr": devapp.container_net_own(nid) if nodes.container_net_on(nid) else {}})
     NODES_OK = ""
     # The job logs are the only copy of what a node's job wrote and had no
     # retention at all until R17 step 1. Swept once here for whatever ended
@@ -2650,6 +2685,8 @@ phone.container_maker = containers.create_container
 phone.container_free = containers.name_free
 phone.container_builds = containers.build_refusal
 phone.instance_maker = devactions.make_instance
+# What a renamed project is called now, for the name Send offers (R154).
+devapp.label_of = registry.label
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = containers.ctl_on
 # ---- what the page may type into a terminal -------------------------------------
@@ -2667,6 +2704,7 @@ phone.remover = devactions.remove_instance
 phone.users = users
 phone.project_names = lambda who: {p["name"] for p in project_list(who)}
 phone.project_node = lambda p: prefs.get(p)["node"]
+phone.project_hosts = lambda p: prefs.get(p).get("hosts") or []
 phone.dial = lambda p: prefs.get(p)["devbuild"]
 phone.on_project_node = devapp.on_project_node
 # A phone lent to a project (R113): its sessions drive the project's own app.
@@ -2734,6 +2772,18 @@ containers.dial = lambda p: prefs.get(p)["devbuild"]
 containers.users = users
 containers.ask_rebuild = phone.ask_rebuild
 containers.net_nudge = net_nudge
+# One nginx per node, from the nginx tab (R171): its records here, the
+# container through containers.py, and the node's own view of its ports.
+nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
+                     node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
+                     taken_ports=devapp.taken_ports)
+# ...and put on a node the moment it enrolls when the Enroll dialog asked
+# for it (config.nginx), so a box runs the script and nginx appears.
+# The home tunnel the controller runs itself (R176, tunnel.py): from the
+# settings, started at boot below when they say so.
+tunnel.configure(settings_mod=settings, dash_port=PORT)
+nodes.ON_ENROLL.append(lambda nid: nginxproxy.deploy(nid, containers, devactions, devapp)
+                       if ((nodes.node(nid) or {}).get("config") or {}).get("nginx") else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target; the module's docstring says
@@ -2889,6 +2939,8 @@ gitrelay.configure(state=STATE, workspace=WORKSPACE,
                    push_record=lambda p: projects.load_push().get(p),
                    token_helper=projects.token_helper, parse_url=forges.parse,
                    host_of=forges.host_of, git_env=projects._git_env)
+# The modules that keep something that grows read where from paths.py.
+workspace.paths = gitview.paths = logs.paths = gitrelay.paths = paths
 
 # ---- the bb relay -----------------------------------------------------------
 # A bb verb from a session on a node, run here (roadmap #24): which verbs
@@ -3081,6 +3133,36 @@ nodes.ftp_for = ftp.for_node
 import diag                                                      # noqa: E402
 
 import reports                                                   # noqa: E402
+import files                                                     # noqa: E402
+files.configure(workspace=WORKSPACE, audit=db.audit)
+# A node's projects as a synced copy (R162): the nodes in sync mode a
+# project is bound to, and VS Code's writes reaching them at once.
+import wssync                                                    # noqa: E402
+import claudesync                                                # noqa: E402
+
+
+def _sync_bound(project):
+    if NODES_OK:
+        return []
+    pr = prefs.get(project)
+    synced = nodes.sync_node_ids()
+    return [i for i in dict.fromkeys([pr.get("node") or "", *(pr.get("nodes") or [])]) if i and i in synced]
+
+
+wssync.configure(workspace=WORKSPACE, nodes_module=nodes, bound_nodes=_sync_bound,
+                 changed=files._poke, audit_fn=db.audit)
+wssync.configure_projects(lambda: list(prefs.all_projects()))
+wssync.configure_reads(lambda p: prefs.get(p).get("reads") or [])
+# Each project's daily snapshots (R165): what a node gone wrong through its
+# synced copy is undone from, kept for the days its settings say.
+import snapshots                                                 # noqa: E402
+snapshots.configure(workspace=WORKSPACE, days=lambda p: prefs.get(p)["snapshot_days"],
+                    names=lambda: [p for p in prefs.all_projects() if (WORKSPACE / p).is_dir()],
+                    audit_fn=lambda *row: None if NODES_OK else db.audit(*row))
+files.on_change = wssync.changed
+# A synced node writes the transcripts of the projects it holds and nothing
+# else: bound to it, never one it only reads (B613).
+claudesync.configure(workspace=WORKSPACE, held=lambda nid: wssync.bound_projects(nid))
 reports.configure(write_json=write_json, state=STATE, redact=diag.redact,
                   build=lambda: image_stamp().get("version") or image_stamp().get("rev") or "")
 # A report says which node its project builds on, and clearing them all is
@@ -3294,6 +3376,7 @@ def snapshot(who):
         p = by_name.get(top)
         s["git"] = bool(p and p["git_ok"])
         s["github"] = bool(p and p.get("github"))
+    attention, bell_hidden = _attention(who)
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
@@ -3308,15 +3391,16 @@ def snapshot(who):
         # A project this account sees whose main branch's newest CI run
         # failed (ciwatch.red, R117): a bell row while it is true.
         "ci_red": ciwatch.red([p["name"] for p in ps]),
+        # A file changed on two synced copies at once (R162, wssync.py): the
+        # copy kept beside it, listed until it is deleted.
+        "sync_conflicts": wssync.conflicts(lambda p: users.may_see(who, p)),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
-        "attention": ([] if NODES_OK or users.may(who, "node") else nodes.attention(
-            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})
-            # ...and a node whose Claude Code is behind what is out
-            # (claudecode.py): amber, with Update on the Nodes tab.
-            + claudecode.attention(
-            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})),
+        "attention": attention,
+        # How many of them this account has put away, for the drawer's
+        # "show them again".
+        "bell_hidden": bell_hidden,
         # Claude Code per node against the latest known, for the Nodes
         # tab's section.
         "claude_code": {} if NODES_OK else _claude_code_for(who, ps),
@@ -3370,7 +3454,9 @@ def snapshot(who):
         "mapping": mapping.payload(),
         "max_tabs": layout.max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
-        "settings": settings.payload(),
+        "settings": settings.payload() | {"tunnel": tunnel.status()},
+        # ...and where the controller keeps what grows, an administrator's.
+        "paths": {} if users.may(who, "admin") else paths.view(),
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
         # removed cannot leave a button that posts a name the server rejects.
@@ -3479,6 +3565,7 @@ GET_ROUTES = (
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/transcripts", "_get_transcripts"),
+    ("prefix", "/api/snapshots", "_get_snapshots"),
     ("prefix", "/api/transcript", "_get_transcript"),
     ("prefix", "/api/git", "_get_git"),
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
@@ -3498,6 +3585,8 @@ GET_ROUTES = (
     ("prefix", "/api/emulator", "_get_emulator"),
     ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
+    ("prefix", "/api/nginx", "_get_nginx"),
+    ("prefix", "/api/storage", "_get_storage"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/docker", "_get_docker"),
@@ -3556,6 +3645,9 @@ POST_ROUTES = (
     ("prefix", "/api/say", "_say"),
     ("prefix", "/api/chat", "_chat"),
     ("prefix", "/api/layout", "_layout"),
+    ("exact", "/api/bell", "_bell"),
+    ("exact", "/api/nginx", "_nginx"),
+    ("exact", "/api/storage", "_storage"),
     ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
@@ -3573,6 +3665,8 @@ POST_ROUTES = (
     ("prefix", "/api/emulator", "_emulator"),
     ("prefix", "/api/logs", "_logs"),
     ("prefix", "/api/idle", "_idle"),
+    ("prefix", "/api/paths", "_paths"),
+    ("prefix", "/api/snapshots", "_snapshots"),
     ("prefix", "/api/settings", "_settings_post"),
     ("prefix", "/api/rules", "_rules"),
     ("prefix", "/api/global-rules", "_global_rules"),
@@ -3593,6 +3687,7 @@ POST_ROUTES = (
     ("prefix", "/api/nodelog", "_nodelog"),
     ("exact", "/api/diag", "_diag"),
     ("exact", "/api/reports", "_reports"),
+    ("exact", "/api/v1/files", "_files"),
     ("prefix", "/api/phone", "_phone"),
     ("prefix", "/api/findings", "_findings_log"),
     ("prefix", "/api/tests", "_tests"),
@@ -3995,7 +4090,7 @@ class Handler(BaseHTTPRequestHandler):
             return mapping.held(project)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        t = session_target(project, claude=True, node=_arg_node(arg))
+        t = session_target(project, claude=True, node=_arg_node(arg), uid=uid)
         if t["where"] != "node":
             return ""
         # Claude Code on that node first (claudecode.py): an update running
@@ -4119,7 +4214,8 @@ class Handler(BaseHTTPRequestHandler):
         arg0 = _term_arg(rest0)
         target = session_target(_arg_project(arg0),
                                 claude=arg0.startswith("claude:"),
-                                node=_arg_node(arg0))
+                                node=_arg_node(arg0),
+                                uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
@@ -4302,10 +4398,33 @@ class Handler(BaseHTTPRequestHandler):
                 pass                                    # client already left
 
     def do_GET(self):
-        self._safely(self._get)
+        if not self._tunnel_refused():
+            self._safely(self._get)
 
     def do_POST(self):
-        self._safely(self._post)
+        if not self._tunnel_refused():
+            self._safely(self._post)
+
+    def _tunnel_refused(self):
+        """A node's tunnel address asks for the agent's API or nothing
+        (nodes.tunnel_refuses, R161): by the socket's own address, and
+        through a tunnel from home (R170) by the hostname the node was
+        enrolled at, or an edge's own headers, which only narrow their writer."""
+        if NODES_OK:
+            return False
+        host = self.headers.get("Host", "")
+        own = settings.get("tunnel_host") if not NODES_OK else ""
+        why = nodes.tunnel_refuses(self.client_address[0] if self.client_address else "",
+                                   self.path.partition("?")[0], host=host,
+                                   # Cloudflare's own mark; other tunnels are known by the
+                                   # hostname, and the controller's own public hostname (R176)
+                                   # is one whatever rule the tunnel carries, so a rule left
+                                   # wide reaches no page (bb.neat.fish answered its login, 11 Oct).
+                                   edge="Cf-Ray" in self.headers
+                                        or bool(own and host.lower().rsplit(":", 1)[0] == own))
+        if why:
+            self._safely(lambda: self._json({"error": why}, 403))
+        return bool(why)
 
     # The favicon set, generated by `bb tool graphics favicon` from static/favicon.svg (the
     # header robot as a standalone file) and committed. An allow-list by full
@@ -5144,6 +5263,13 @@ class Handler(BaseHTTPRequestHandler):
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
+        # The home tunnel follows its settings at once (R176): the process
+        # started, restarted or stopped, and with an API token the hostname's
+        # record and the tunnel's rules written; what happened rides back.
+        if any(k in TUNNEL_SETTINGS for k in want):
+            r["tunnel"] = tunnel.apply()
+            if settings.secret("cf_api_token") and settings.secret("tunnel_token") and settings.get("tunnel_host"):
+                r["published"] = tunnel.publish(settings.secret("cf_api_token"))
         return self._json(r | settings.payload())
 
     def _prefs_post(self, req):
@@ -5168,6 +5294,34 @@ class Handler(BaseHTTPRequestHandler):
         if ("node" in req or "nodes" in req) and prefs.node_changed(name, req) \
                 and self._refused("node", name):
             return
+        # A hosting-only node holds no project: its code and its sessions are
+        # what the flag keeps off it (nodes.host_only).
+        if ("node" in req or "nodes" in req) and not NODES_OK:
+            want = (req.get("nodes") if isinstance(req.get("nodes"), list) else []) + [req.get("node") or ""]
+            host = [(nodes.node(n) or {}).get("name") or n for n in want if n and nodes.host_only(n)]
+            if host:
+                return self._json({"error": f"{', '.join(host)} hosts containers only: no project's code "
+                                            "or sessions go there. Send a container to it from the "
+                                            "Docker tab instead"}, 400)
+            # A disabled node is kept but not offered (the operator, 11 Oct).
+            off = [(nodes.node(n) or {}).get("name") or n for n in want
+                   if n and (nodes.node(n) or {}).get("state") == "disabled"]
+            if off:
+                return self._json({"error": f"{', '.join(off)} is disabled on the Nodes tab: Enable it there first"}, 400)
+        # The hosting nodes its containers may also go to (prefs.hosts): a
+        # node is shared, so naming one is for whoever may set the project's
+        # node, and only a hosting-only node is one: a node that holds the
+        # project is in its node set already. Only a change is asked about.
+        if req.get("hosts") is not None and prefs.hosts_changed(name, req.get("hosts")):
+            if self._refused("node", name):
+                return
+            if not NODES_OK:
+                got = req.get("hosts") if isinstance(req.get("hosts"), list) else str(req.get("hosts")).split(",")
+                bad = [(nodes.node(n) or {}).get("name") or n for n in got
+                       if str(n).strip() and not nodes.host_only(str(n).strip())]
+                if bad:
+                    return self._json({"error": f"{', '.join(bad)} is not a hosting-only node: a node the "
+                                                "project works on takes its containers already, from Where it runs"}, 400)
         # Which other projects a session here may read is BuilderBot's
         # owner's alone (the operator, 6 Oct): it hands one project's sessions
         # another's code and notebook, which no administrator or user grants
@@ -5217,9 +5371,15 @@ class Handler(BaseHTTPRequestHandler):
                 and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
                 and self._refused("docker-write"):
             return
+        held = (("node" in req or "nodes" in req) and prefs.node_changed(name, req)) \
+            or (req.get("reads") is not None and prefs.reads_changed(name, req.get("reads")))
         got = prefs.dialog_save(name, req, users.uid_of(self._who()))
         if reach and not got[0].get("error"):
             net_nudge()
+        # A synced node that now holds this project (or stops) hears it at
+        # once, so its first copy starts and the Claude button follows it.
+        if held and not got[0].get("error") and not NODES_OK:
+            wssync.held_changed()
         return self._json(*got)
 
     def _nodes(self, req):
@@ -5420,6 +5580,14 @@ class Handler(BaseHTTPRequestHandler):
         # the verb is marked seen for the session that ran it.
         before = _seen_now(project, me) if me.get("session") else None
         out = bbrelay.run(me, req, project)
+        # What a relayed verb changed in the controller's copy reaches the
+        # project's synced nodes now, and the session's bb waits for its own
+        # copy to reach this revision before it goes on (R163, syncwait.py).
+        argv0 = (req.get("argv") or [""])[0] if isinstance(req.get("argv"), list) else ""
+        if argv0 in ("git", "version", "changelog") and out[1] == 200 and isinstance(out[0], dict) \
+                and _sync_bound(project):
+            wssync.changed(project)
+            out = (out[0] | {"sync_rev": wssync.rev_of(project)}, out[1])
         if before is not None:
             session_mark_own(project, me.get("uid") or "", me, since=before)
         return self._json(*out)
@@ -5437,18 +5605,46 @@ class Handler(BaseHTTPRequestHandler):
         bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
         auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        # A hosting-only node (nodes.host_only) is held to what running the
+        # containers sent to it needs, before any verb is read: nothing of
+        # it comes back otherwise, and asking is audited.
+        if auth.get("kind") == "node":
+            why = nodes.host_refuses(auth["node"], verb, q.get("what", [""])[0] if verb == "download" else "")
+            if why:
+                # Once an hour a node and verb: an agent from before the flag
+                # asks for its sync every half minute.
+                key = (auth["node"], verb)
+                if time.monotonic() - _host_refused_at.get(key, -3600) >= 3600:
+                    _host_refused_at[key] = time.monotonic()
+                    db.audit(f"node:{auth['node']}", "host-refused", verb[:60], {})
+                return self._json({"error": why}, 403)
         # The verbs that serve or take a FILE, on any method.
         if verb in ("source", "file", "download"):
             got, status = channel.fetch(verb, auth, q, authed=self._authed)
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb == "artifact":
+        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 length = 0
+            if verb == "sync-put":
+                return self._json(*channel.sync_put(auth, q, self.rfile, length))
+            if verb == "claude-put":
+                return self._json(*channel.claude_put(auth, q, self.rfile, length))
+            if verb == "devimage-put":
+                return self._json(*channel.devimage_put(auth, q, self.rfile, length))
+            if verb == "devdata-put":
+                return self._json(*channel.devdata_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
+        if verb in ("sync-file", "sync-tar", "claude-file", "devimage", "devdata"):
+            got, status = {"sync-file": channel.sync_file, "sync-tar": channel.sync_tar,
+                           "claude-file": channel.claude_file, "devimage": channel.devimage_file,
+                           "devdata": channel.devdata_file}[verb](auth, q)
+            if status != 200:
+                return self._json(got, status)
+            return self._send_file(got)
         if self.command != "POST":
             return self._json({"error": "POST"}, 405)
         req = self._read_json()
@@ -5479,11 +5675,26 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         for k, v in got["headers"].items():
             self.send_header(k, v)
-        if "path" in got:
-            self.send_header("Content-Length", str(got["path"].stat().st_size))
+        if "stream" in got:
+            # Written as it is made, ended by closing the connection: this
+            # server speaks HTTP/1.0, one request a connection (a synced
+            # project's first copy, R163).
             self.end_headers()
+            got["stream"](self.wfile)
+        elif "path" in got:
+            size = got["path"].stat().st_size
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            # Exactly what was promised: a transcript may grow while it is
+            # sent (B613), and bytes past the length would be the next
+            # response's to a client that reuses nothing but reads them.
             with open(got["path"], "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
+                while size > 0:
+                    chunk = f.read(min(1 << 20, size))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    size -= len(chunk)
         else:
             self.send_header("Content-Length", str(len(got["body"])))
             self.end_headers()
@@ -5687,6 +5898,20 @@ class Handler(BaseHTTPRequestHandler):
         r = idle.set_minutes(req.get("minutes"))
         return self._result(r)
 
+    def _paths(self, req):
+        """Where the controller keeps one kind of what grows (paths.py), and
+        what is there moved across. An administrator's, never a session's:
+        it is this machine's disks."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "the controller's storage is the operator's"}, 403)
+        if self._refused("admin"):
+            return
+        name = field(req, "name")
+        r = paths.set_path(name, field(req, "path"))
+        if r.get("ok"):
+            db.audit(self._principal(), "paths", name, {"path": field(req, "path"), "moving": r.get("moving")})
+        return self._result(r)
+
     def _devapp(self, req):
         """The dev-instance controls: the Docker tab's buttons, and `bb devapp`
         from a session. Who may press which is decided below, by the verb, by
@@ -5717,7 +5942,7 @@ class Handler(BaseHTTPRequestHandler):
         # same answer a stranger's container gets, whatever the verb, so a
         # session cannot learn by asking what another project runs.
         if not users.is_admin(me):
-            want = field(req, "instance") or (devapp.send_name(name) if act == "new"
+            want = field(req, "instance") or (devapp.send_name(name, field(req, "compose")) if act == "new"
                                               else devapp.only_instance(name))
             owner = devapp.owner_of(name, want)
             # ...and a session reads what belongs to a project its own reads
@@ -5750,6 +5975,27 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None
+        # A compose file edited from the Docker tab is a file in the project's
+        # tree: a write to the project as well as to its container.
+        if act == "compose-set" and self._readonly(name):
+            return None
+        # Sending, copying or moving a container, or putting it under another
+        # project, names only projects on the asker's own list, for an
+        # administrator and the owner as for a user (the operator, 10 Oct):
+        # they could add any project to their list first, and this is the
+        # seatbelt against a container landing under the wrong one.
+        if not session and act in ("new", "relocate", "owner", "move"):
+            for target in [name if act in ("new", "relocate") else "",
+                           field(req, "owner") if act in ("new", "owner") else "",
+                           field(req, "to") if act == "move" else ""]:
+                # A project, not a container written here: one of those is
+                # nobody's list to be on.
+                if target and registry.is_project(target) and not users.may_work(me, target):
+                    return self._json({"error": f"{registry.label(target)} is not on your list of projects: "
+                                                "add it to your own list on the Users tab first"}, 403)
+        if act == "relocate" and session:
+            return self._json({"error": "copying or moving a container to another node is a person's: "
+                                        "it puts the project's data on another machine"}, 403)
         # A SESSION is a further question, and the answer is a per-project
         # dial with the notebook's own three words. Rebuild runs the project's
         # own Dockerfile and brings the container up on the node's daemon: for
@@ -5772,10 +6018,30 @@ class Handler(BaseHTTPRequestHandler):
         # row that happens to carry this project's name, and a rebuild would
         # bounce a service still being used. The operator keeps both, through
         # the Docker manager, which is where an instance is removed.
+        # The exception is one SENT there on purpose (R166): its image is
+        # built on the project's own node and shipped, and the project's
+        # sessions are the ones meant to rebuild it.
+        # A node named by its name (bb devapp new --node NAME) is its id here.
+        if act == "new" and req.get("node") and not NODES_OK and not nodes.node(str(req["node"])):
+            hit = [n for n in nodes.node_list() if n.get("name") == str(req["node"]) and n.get("state") != "retired"]
+            if hit:
+                req["node"] = hit[0]["id"]
+        if act == "new" and req.get("ship") is True:
+            # A session may make one there when its project names the node
+            # under Hosts its containers on (prefs.hosts, the operator, 10
+            # Oct), under its Run its container dial below; anywhere else it
+            # is a person's.
+            if session and (name != sess or str(req.get("node") or "") not in (prefs.get(sess).get("hosts") or [])):
+                return self._json({"error": "sending a project's container to a node it is not on is a "
+                                            "person's, unless the node is under Hosts its containers on in "
+                                            "the project's settings: it puts the project's image on another machine"}, 403)
+            if not session and self._refused("node", name):
+                return None
         if act not in ("starter", "state") and session:
             on = devapp.instance_node(name, field(req, "instance"))
             mine = devapp.project_daemon(sess)
-            if on and mine and on != mine:
+            shipped_there = devapp._read_rec(name, devapp.instance_key(name, field(req, "instance") or devapp.MAIN)).get("ship")
+            if on and mine and on != mine and not shipped_there:
                 return self._json({"error": "this dev instance is on another node: it stayed "
                                             "where it was running when this project moved, "
                                             "and a session works on its own node's. The "
@@ -5844,7 +6110,7 @@ class Handler(BaseHTTPRequestHandler):
         # exist (15 Sep). With several, `main`; bb takes --instance for that.
         # A NEW one named by nobody takes the name Send would offer: the
         # project's own while it has none, then one beside it.
-        inst = field(req, "instance") or (devapp.send_name(name) if act == "new"
+        inst = field(req, "instance") or (devapp.send_name(name, field(req, "compose")) if act == "new"
                                           else devapp.only_instance(name))
         # A session at `ask` puts the change in front of a person instead;
         # devactions.request says which changes those are.
@@ -6368,6 +6634,41 @@ class Handler(BaseHTTPRequestHandler):
         payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
 
+    def _get_snapshots(self):
+        """GET /api/snapshots?project=NAME: the days kept of the project's
+        tree (snapshots.py), newest first, and how many it keeps. An
+        administrator's, like a restore."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a project's snapshots are the operator's"}, 403)
+        if self._refused("admin"):
+            return None
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return None
+        return self._json({"project": name, "keep": prefs.get(name)["snapshot_days"],
+                           "days": snapshots.days(name)})
+
+    def _snapshots(self, req):
+        """POST /api/snapshots: take one now, or restore the whole tree as of a
+        day or one file of it (snapshots.restore, which snapshots the tree
+        first so it can be undone). Never a session's: a session is what a
+        restore may be undoing."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a project's snapshots are the operator's"}, 403)
+        if self._refused("admin"):
+            return None
+        name = field(req, "project")
+        if self._not_project(name):
+            return None
+        act = field(req, "action")
+        if act == "take":
+            return self._result(snapshots.take(name))
+        if act == "restore":
+            return self._result(snapshots.restore(name, field(req, "day"), field(req, "path"),
+                                                  who=self._principal()))
+        return self._json({"error": "take or restore"}, 400)
+
     def _get_transcripts(self):
         """GET /api/transcripts?project=NAME: the signed-in account's own
         conversations with Claude on that project, newest first
@@ -6401,6 +6702,22 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
+        if q.get("as", [""])[0] == "raw":
+            # The file as Claude Code wrote it, for bb transcripts fetch: a
+            # synced node resuming a conversation it does not have (B613).
+            # Nothing when it is no longer than the copy the node has.
+            f = transcripts.raw(uid, name, q.get("id", [""])[0])
+            if f is None:
+                return self._json({"error": "no such conversation of yours"}, 404)
+            st = f.stat()
+            try:
+                have = int(q.get("have", ["-1"])[0])
+            except ValueError:
+                have = -1
+            if st.st_size <= have:
+                return self._json({"size": st.st_size}, 200)
+            return self._send_file({"path": f, "ctype": "application/octet-stream",
+                                    "headers": {"X-Mtime-Ms": str(st.st_mtime_ns // 1_000_000)}})
         text, fname = transcripts.render(uid, name, q.get("id", [""])[0],
                                          transcripts.zone(q.get("tz", [""])[0]))
         if text is None:
@@ -6683,6 +7000,34 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return self._refused("debug")
 
+    def _files(self, req):
+        """A project's files for a person's own editor (files.py, R159): the
+        account this request proved, a project it sees, and the file access
+        its settings give it through the editor's door, asked on this request
+        (ftp.access_for), so the extension can do nothing the account cannot.
+        A session is refused: it has the tree, and it is never a person."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session has its project's tree already: this is a "
+                                        "person's editor's"}, 403)
+        if field(req, "action") == "projects":
+            # The ones this account may open, each with its access: asked
+            # project by project through the same gate as every call after.
+            mine = []
+            for p in project_list(me):
+                a, _ = ftp.access_for(me, p["name"], "editor")
+                if a:
+                    mine.append({"name": p["name"], "access": a})
+            return self._json({"api": files.API, "projects": mine})
+        project = field(req, "project")
+        if self._not_project(project):
+            return None
+        access, why = ftp.access_for(me, project, "editor")
+        if not access:
+            return self._json({"error": why}, 403)
+        return self._json(*files.verb(field(req, "action"), project, req, access,
+                                      by=self._principal()))
+
     def _reports(self, req):
         """Problems with BuilderBot itself, reported by any project's session
         (reports.py, bb report). Anybody signed in adds one for a project they
@@ -6762,6 +7107,83 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("command-pin"):
             return None
         return self._json(*macros.pin(req.get("name", ""), bool(req.get("pinned"))))
+
+    def _get_storage(self):
+        """The Storage tab (storage.view, R169): every node this account
+        holds the Storage area on, what its disks hold, by project where
+        the account sees the project and as one line otherwise. Never a
+        session's: a session reads its node with bb node busy."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a node's disks are a person's to read here"}, 403)
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: " + NODES_OK}, 500)
+        return self._json(*storage.view(nodes.node_list(), who, is_admin=users.is_admin,
+                                        nodes_for=roles.nodes_for, may_see=users.may_see,
+                                        level_of=roles.level_of))
+
+    def _storage(self, req):
+        """Measure now on the Storage tab: a node's disks walked at once
+        (nodes.node_storage_measure). Write on Storage for that node."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a node's disks are a person's to read here"}, 403)
+        nid = field(req, "node")
+        if not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        if not users.is_admin(who) and roles.level_of(who, "storage", node=nid) != "write":
+            return self._json({"error": "measuring a node's disks again is Write on Storage"}, 403)
+        return self._result(nodes.node_storage_measure(self._principal(), nid))
+
+    def _get_nginx(self):
+        """The nginx tab (nginxproxy.view): every node's nginx, for an
+        account that may read the Nodes tab; never a session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a node's proxy is a person's"}, 403)
+        if not users.is_admin(who) and not roles.level_of(who, "nodes"):
+            return self._json({"error": "the nginx tab is the Nodes tab's area: ask for Read on Nodes"}, 403)
+        return self._json(nginxproxy.view(devapp, devactions.state))
+
+    def _nginx(self, req):
+        """Deploy, save, certificate, remove on one node's nginx
+        (nginxproxy.py): writing a compose file and building it on a node,
+        so docker-write like a written container, and never a session's."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a node's proxy is a person's"}, 403)
+        if self._refused("docker-write"):
+            return
+        act, nid = field(req, "action"), field(req, "node")
+        if not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        if act == "deploy":
+            r = nginxproxy.deploy(nid, containers, devactions, devapp)
+        elif act == "save":
+            r = nginxproxy.save_routes(nid, req.get("routes"))
+            # The certificate pasted is the node's default, or one
+            # hostname's own when cert_for names it (R175).
+            if not r.get("error") and isinstance(req.get("cert"), str) and req.get("cert").strip():
+                r = nginxproxy.set_cert(nid, req.get("cert"), req.get("key"), field(req, "cert_for"))
+            if not r.get("error") and req.get("drop_cert") is True:
+                r = nginxproxy.drop_cert(nid, field(req, "cert_for"))
+            if not r.get("error"):
+                r = nginxproxy.apply(nid, containers, devactions, devapp)
+        elif act == "remove":
+            r = nginxproxy.remove(nid, devactions, devapp)
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        return self._result(r)
+
+    def _bell(self, req):
+        """Put a bell note away for this account, or bring every one back
+        (bellseen.py). The account's own, so no grant; a session has no bell."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a session has no bell"}, 403)
+        uid = users.uid_of(who)
+        if field(req, "action") == "restore":
+            return self._json(*bellseen.restore(uid))
+        return self._json(*bellseen.dismiss(uid, req.get("keys")))
 
     def _layout(self, req):
         """Store this account's open tabs: layout.save_tabs."""
@@ -7145,6 +7567,7 @@ def main():
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     ciwatch.start()           # a project's CI, once a day (R117)
+    tunnel.apply()            # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()

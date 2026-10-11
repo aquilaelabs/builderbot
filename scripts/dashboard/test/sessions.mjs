@@ -270,6 +270,12 @@ const lockUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).user
 tmuxNew(`${lockUid}~claude-ep_silon`);
 await page.evaluate(() => refresh());
 const ndx = page.dialogs.length;
+// The question reads claude_with, which the polls fill on their own
+// schedules: wait on it, reading only (a refresh in the wait redraws the
+// rows and the click never lands). B540 was the compat sweep ending both
+// sessions here, a second apart, once the stub node said it has no Claude
+// Code; a running session is never reaped on that any more.
+await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
 await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the sessions
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
@@ -386,11 +392,17 @@ const bapi = async (path, body, hdrs) => (await fetch(URL.replace(/\/$/, '') + p
              'Content-Type': 'application/json', ...(hdrs || {}) },
   ...(body ? { body: JSON.stringify(body) } : {}) })).json();
 const deskbox = await bapi('/api/v1/nodes', { action: 'enroll', name: 'deskbox' });
-await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
+const deskAgent = await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
     cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
     session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
                workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } } },
   { Authorization: 'Bearer ' + deskbox.token });
+// ...with alpha's synced copy there (R163), as its agent's heartbeat says;
+// its answer is a 204 when there is no job, so the body is not read.
+await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/work', { method: 'POST',
+  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + deskAgent.token },
+  body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+    sync: { alpha: { ready: true, rev: 1 } } }, running: [], wait: 0 }) });
 await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
 // ...with the tester signed in to Claude there, as that node would have
 // reported it: a Claude press on a node with no sign-in offers the sign-in

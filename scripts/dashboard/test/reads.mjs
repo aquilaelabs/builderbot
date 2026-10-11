@@ -4,7 +4,7 @@
 // as a field), the session token widened to the reads on every
 // request, every write refused by name, the relayed words kept to reads,
 // the grant carrying the reads for the view, and the briefing naming them.
-import { launch, newPage, ok, done, ready, refreshUntil, saveDialog, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, refreshUntil, saveDialog, sectSave, URL, DIR } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -179,16 +179,12 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   await page.evaluate(() => renameProject('alpha', 'all'));
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   await page.fill('#rnSees', '/etc/ssh');
-  // With a session of this account's running here, Save asks first (Also
-  // sees is a change the session takes at its start); keeping it running
-  // is the answer, and the refusal comes back on the save that follows.
-  await page.click('#rnGo');
-  await page.waitForFunction(() => !document.getElementById('rnErrWrap').hidden || !document.getElementById('rnRestartAsk').hidden, null, { timeout: 10000 });
-  if (await page.$eval('#rnRestartAsk', e => !e.hidden)) await page.click('#rnKeep');
-  await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
-  const err = await page.$eval('#rnErrWrap', e => e.textContent);
+  // The section's own Save (Save, keep it running where a session of this
+  // account's is running, since Also sees is taken at its start), and the
+  // refusal on that section's bar.
+  const err = await sectSave(page, 'sees');
   ok(/\/etc\/ssh is the machine's own or BuilderBot's/.test(err) && await page.$eval('#rnmodal', e => !e.hidden),
-     `a place it cannot be shown is refused in the dialog, which stays open with the reason (${err.trim().slice(0, 90)})`);
+     `a place it cannot be shown is refused on its section's bar, the dialog open with the reason (${err.trim().slice(0, 90)})`);
   await page.keyboard.press('Escape');
   // The refusal is the one error the page logged, and it was asked for.
   ok(page.errors.every(e => /400/.test(e) && /api\/prefs/.test(e)), `...and nothing else went wrong on the way (${page.errors.join(' | ').slice(0, 120) || 'none'})`);

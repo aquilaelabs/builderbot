@@ -431,6 +431,22 @@ would use if a deployment ever wants one: the shape is there, unbuilt.
 4. Rotation and revocation are rows: revoke a token and the node's next call
    fails closed, showing offline with "credential revoked".
 
+**Enroll node is one script (R161, 9 Oct).** The dialog asks the name, the
+account jobs run as, whether sessions run there, how the machine reaches the
+controller and at what address, and answers with a file: the provisioner with
+those answers and the token inside, built on the press and kept nowhere.
+Behind WireGuard the config the person's router made goes in too, narrowed
+to route the controller's address alone, with its own commands (PostUp) and
+resolver dropped and a keepalive added; the provisioner brings it up as
+`wg-quick@bb` before anything else and checks the controller answers through
+it, and the agent binds the session ports to the tunnel's address. The
+tunnel is one-way only where the home end makes it so (the node may open the
+controller's port and nothing else, and the LAN opens the session ports
+back), because root on the node could undo anything done there; the dialog
+gives the router's rules. The controller holds up its half: a node's tunnel
+address is answered on `/api/v1/agent/*` and refused everything else, by the
+socket's own address. "Just a token" is the old commands, a Mac's included.
+
 **mTLS is a later layer, not a redesign**: the pinned-cert enrollment above is
 where a private CA slots in when a security review asks for it: same
 enrollment flow, the token exchange returns a client cert instead of (or
@@ -559,13 +575,133 @@ agent on every hello (`share_images()`) and by the controller at boot
   whole, holding every project including uncommitted work. Sessions run here;
   the notebook is about these directories; `bb` works exactly as today. It is
   the source of truth and the only writable copy.
-- **On a node: nothing permanent.** A job gets
+- **On a node: a synced copy, for sessions** (below), and nothing
+  permanent for a job. A job gets
   `/var/lib/builderbot/jobs/<job-id>/workspace`, materialized before the first
   step and deleted after, with a retention window (keep the last failed job
   per project), so failures can be inspected.
 - **The GUI's node browser reads that path**, read-only, for debugging: a
   viewing mechanism, never the execution mechanism. The agent exposes
   "list/read under this job's directory", not a filesystem.
+
+### A synced copy, the one way a node holds its projects (R162, R163)
+
+A node holds its projects without mounting anything: its `/workspace` is
+a directory of its own, and each project bound to it is a copy the agent
+keeps in step with the controller's over the agent API, the one connection
+a node behind a one-way tunnel may open. The controller's copy on the share
+stays the original; a node is never told about another node, only the
+controller is.
+
+- **The first copy** is one download: the controller streams the project
+  as a tar (`sync-tar`), the agent unpacks it and hashes what arrived, and
+  anything the stream did not bring is fetched a file at a time (R163).
+- **Up.** The agent compares the tree with its record of what the two last
+  agreed (in the data store, so it survives a restart). Which paths to look
+  at comes from inotify on Linux, so a tick reads the files that changed
+  rather than the tree; the whole tree is walked when a directory comes or
+  goes, when the kernel's queue overflows, and once a minute regardless. A
+  file that has changed and then held still for a tick goes up as a put
+  naming the hash it was changed from.
+- **Down.** A put, a write from VS Code (files.py tells wssync.py) or a
+  change a scan of the share finds bumps the project's revision and leaves
+  a hint the node's held work request takes at once; the agent then asks
+  what changed since its revision. It also asks every ten seconds, which is
+  what finds a change made on the share some other way.
+- **Conflicts.** A put whose base is not what the controller has now keeps
+  the controller's version and puts the node's beside it as
+  `NAME.conflict-NODE-TIME.EXT` (inside `.git`, under
+  `.git/bbsync-conflicts/`), which syncs everywhere; the node then takes the
+  version kept. The bell lists it until the copy is deleted.
+- **What a project reads** comes down too, read-only (R163): a node holds the
+  projects bound to it and the ones those read, so a session sees the read
+  ones at `/workspace/NAME` as it did on the share. The controller refuses
+  a put to one, the agent never sends one, and the controller's version
+  overwrites whatever changed there.
+- **A dev instance** on a synced node finds its project where a compose
+  expects it: devapp's path mapping takes the node's own `/workspace` as the
+  projects root, as it took the share mounted there (R163), and a dev
+  instance lives on its project's own nodes, which hold the project.
+- **A second account's worktree** (`/workspace/.worktrees/PROJECT/UID`,
+  session_dir) is a sync unit of its own beside its project, held by the
+  project's nodes (B615): one the controller has comes down, and one a
+  session made on a node goes up, the controller writing its `.git` line as
+  git does (a node never sends a `.git` file). A session on a node waits for
+  its account's worktree as it waits for the project.
+- **Not synced:** what a node rebuilds (`node_modules`, `.gradle`, virtualenvs,
+  caches), git's lock files, and a symlink pointing out of the project.
+  `.git` and `dist/` are synced: a session commits on the node, and a build
+  there lands its artifacts where the Artifacts tab reads them.
+- **A session waits** for its project's first copy: the node reports each
+  project as copying or ready, and the Claude button says which. Binding a
+  project to a synced node, or changing what it reads, tells every synced
+  node at once (`wssync.held_changed`), so the first copy starts on the
+  save rather than at the node's next look of its own, half a minute
+  later.
+- **Leaving it** (R164, 10 Oct). Stop syncing in the node's Sessions
+  section ends its sessions and holds new ones, while the agent keeps
+  sending up what is waiting: it walks every project whole once more and
+  reports what is left, files and conversations (`sync_drain` on the
+  heartbeat). Clean up /workspace is live only once that is nothing: the
+  node is then off (config `workspace: off`), and the agent removes each
+  project its records name, the records and `/workspace/.claude`, once, by
+  the token the controller handed it, never through a mount, and says what
+  it freed (`sync_clean`). Keep syncing undoes Stop before the clean-up;
+  from off, Move to a synced copy holds the projects again. There is no way
+  back to the projects share: no node mounts the controller's disk (the
+  operator, 10 Oct).
+- **Daily snapshots** (R165, 10 Oct), so a node gone wrong, or
+  compromised, cannot destroy the original through its copy: once a day
+  each project's tree, exactly what the sync carries, `.git` included, is
+  snapshotted on the controller (`snapshots.py`, in the project-snapshots
+  store of `paths.py`, where no node API reaches). A file's contents are
+  stored once by hash, read-only, and a day is a list of paths and hashes,
+  so an unchanged file costs nothing. Kept for the project's *Snapshots
+  kept for* days (14 by default, 0 for none), older days and the objects
+  only they named removed. The project settings' Snapshots fold restores the
+  whole tree as of a day, or one file; a restore first snapshots the tree
+  as it is (a *before restore* day), writes through the files the sync
+  reads, and tells the sync, so every node follows. An administrator's;
+  never a session's. Beside it, a node's writes into `.git` that would run
+  something on the controller are refused outright (B618).
+- **Conversations with Claude** (B613, 10 Oct). Every home's
+  `~/.claude/projects` links to `/workspace/.claude/<uid>/projects`, which
+  on a synced node is the node's own: the agent makes `/workspace/.claude`
+  as the session account, and its mirror (`claudesync.py` on both sides)
+  keeps the folders of the projects bound to the node in step with the
+  controller's, which the Profile and Memory tabs, `bb transcripts` and
+  the resume offer read. A transcript only grows, so a change goes up as
+  its new tail, checked against the controller's last 4 KB; a memory goes
+  whole. What the controller has that the node never had comes down when it
+  is a megabyte or less; a longer conversation comes down when it is
+  resumed there (bb-tty runs `bb transcripts fetch`), since every long
+  conversation on every node is gigabytes nobody asked for. A memory
+  removed on one side goes on the other; a conversation is never removed
+  across. Before this, moving a node over left the link pointing at
+  nothing and its sessions saved no conversation at all.
+- **bb waits for the copy** where the controller acts on its own copy for a
+  session (R163): a relayed `bb git`, `bb version` or `bb changelog`, `bb
+  sign`, and `bb version release --edit --attach`. Before, until a tick of
+  the agent that began after the command saw nothing left to send; after a
+  relayed verb, until this copy has caught up to the revision the controller
+  reached, which is also how a fetch's bundle in `.git/bb-relay/` arrives
+  before it is unbundled. The agent keeps each project's state in
+  `.git/.bbsync-state` (or `.bbsync-state` without git) for bb to read
+  (`lib/syncwait.py`); sync leaves the file alone.
+- **The only way** (R163 step 6, 10 Oct). A node enrolls holding a synced
+  copy, and nothing mounts the projects share on a node any more: the
+  enroll dialog's choice, Move to a synced copy as a move off the share,
+  the share reasons on the session gate (not mounted, refused by the
+  export, read-only), the agent's mount watcher and bb's NFS workarounds
+  (re-reading files after a relayed verb, running a build again after an
+  NFS lock) are gone. A desired mount at `/workspace` is refused on the
+  Storage section and by bb-sandbox, since it would cover the copy; the
+  agent still copies nothing through a mount it finds there, and Clean up
+  removes nothing through one. The operator's reason: nothing should reach
+  the controller's disk directly.
+
+The index is a table (`migrations/0005_workspace_sync.sql`), one row per
+file with its hash and the revision it last changed at, deletions kept.
 
 ### Materializing a job's source
 
@@ -785,6 +921,163 @@ job. The unhardwiring this phase owes: deploy targets touch no environment
 variable of their own: `DOCKER_HOST` became a node in phase 2, and both it
 and `DOCKER_HOST_PATHS` have since left the five places entirely (§11).
 
+**A container on a node its project is not on (R166, 10 Oct).** For a box
+that should run a project's container without ever holding its source (a
+web-facing one, a project kept off any public repository), Send to Docker
+offers every node, and one outside the project's set is marked *image
+shipped*. That instance is recorded `ship`, and its rebuild is two jobs: on
+the project's own node (the first that is up), build from its synced copy,
+`docker save` the images the compose file builds, and upload them to the
+controller (`devimage-put`, accepted only from that node for that running
+job, into the images store of `paths.py`); then on the instance's node,
+fetch it (`devimage`, the same rule), `docker load`, remove the file, and
+`up --no-build --pull never` from the instance's own compose directory.
+The image file is gone from the controller when the second job ends. A
+bind into the project's tree is refused before the build, since that node
+has no tree and must not. Making one is a person's (docker-write and the
+project's node right); the project's sessions rebuild it, as they do their
+own node's, and reach its published ports (`session_net_own` counts every
+node holding a container the project owns). What the image itself holds is
+the Dockerfile's: a final stage that copies the source carries the source.
+
+**Copy or move a container to another node, its data with it (10 Oct).**
+Send to Docker makes a fresh container; Copy or move on a Docker tab row
+takes one that exists, with its named volumes and its data directory, to
+any agent node, the project's own listed first (and only they carry its
+codebase, its development and its Claude sessions; on any other its image
+is shipped as above). The dialog shows its env to change for the new node.
+`relocate.py` runs it as three jobs, each queued when the one before
+succeeds: on the old node, stop it, pack every volume of its compose
+project and its data directory (through a `busybox` container, since a
+volume has no path the job's account reaches) and upload the file
+(`devdata-put`); on the new node, fetch it (`devdata`), make each volume
+again under the new name, labeled as compose labels its own, refusing one
+already there, and fill them; then the new instance's ordinary rebuild. A
+copy starts the original again after packing and is a new record carrying
+the original's ref, compose file, project and risk acknowledgement; a move
+keeps its name, takes its old node's containers down only once it is up
+there (`down`, so the old node keeps a copy of its volumes until somebody
+removes them), and goes back and starts there again if it does not come
+up. The row says each step, and why the last one did not happen. A
+person's only: a session cannot copy or move one.
+
+**A hosting-only node: a public box that runs containers and reaches back
+for nothing (10 Oct).** For a cloud VPS that should run a project's
+workers and web-facing containers and never be a way into the home network,
+the pieces stack:
+
+1. *Enroll it through a one-way tunnel.* Two kinds. Through a public
+   hostname (R170): a tunnel at home (Cloudflare Tunnel, Tailscale Funnel,
+   ngrok, frp, or another) publishes the controller at a name
+   (`bb.example.com`), forwarding `/api/v1/agent/` and answering
+   everything else 404 (the dialog prints the rule, with cloudflared's
+   config as the example; or the controller runs that tunnel itself from
+   the Settings tab's Public hostname group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
+   token, nothing on the router changes, and the VPS never learns the home
+   address, since it only ever talks to the tunnel's edge; the controller
+   answers that hostname on the agent API alone (`tunnel_refuses`, by the
+   Host header and an edge's own headers, which only narrow their writer).
+   The agent verifies the hostname's public certificate by the system's CAs
+   (`--reach public`, the pin `ca`) rather than pinning the controller's
+   own, which it never sees, and sends a container's data home in pieces
+   under the edge's request limit (Cloudflare's is 100 MB;
+   `Controller.upload_pieces`, `relocate.data_put`). Such a node is hosting
+   only by construction: the controller cannot reach its session ports back
+   through the tunnel. Through WireGuard (R161), for a
+   remote reached by address: the script narrows the router's WireGuard
+   config to the controller's one address, and the router's rules (the
+   dialog prints them) let the VPS open connections to the controller's
+   port and nothing else at home; the controller in turn answers its tunnel
+   address on the agent API alone.
+2. *Make it hosting only*, ticked in the Enroll dialog or later on its row
+   (`nodes.host_only`): no project may list it, so no code, synced copy or
+   session goes there, and its hello hands it no bb bundle, no session
+   tokens and no FTP; the agent stops its session half and runs no sync. At
+   the agent door (`Handler._agent`, `nodes.host_refuses`) it may say hello,
+   beat, take work, report its own jobs' logs and results, update its agent,
+   fetch an image shipped to it and carry a container's data in a copy or a
+   move, and nothing else (refusals audited, once an hour a verb). Only
+   container, storage and network, self-update and cache-clearing jobs are
+   placed on it. A node a project still lists is refused until it is taken
+   off; the node's own Projects section lists them, each with Remove
+   (`nodeProjectsSection`), which saves that project's settings without it.
+3. *Move the containers over* with Copy or move: each comes with its
+   volumes and data, its image built on the project's own node at home and
+   shipped, its env changed on the way where the VPS needs another port or
+   address.
+4. *Name it under Hosts its containers on*, in the project's settings
+   (Where it runs, `prefs.hosts`; only a hosting-only node may be named,
+   by whoever may set the project's node). The project's sessions may then
+   make a container there (`bb devapp new --node NAME`, built on the
+   project's own node and shipped) and rebuild and remove the ones there,
+   under its Claude may: Run its container, as on its own node; a node not
+   named stays a person's to send to.
+4z. *One name, one row.* A script made with a name a row already wears,
+   waiting or enrolled, is refused rather than a second row made
+   (`enroll_mint`); a waiting row shows what its script was made with and
+   its id (the script is named `enroll-NAME-ID.sh`, so the file on disk
+   says which row it is for), offers Download it again (a new script with
+   a new token, since a token is good once and never kept) and Discard,
+   which takes a row that never enrolled off outright (`node_discard`);
+   an enrolled node is retired, its history kept.
+4a. *Enroll it again* (R177): Enroll script on the node's row makes a new
+   script for a node already here, opened on its own answers, with no
+   secret in it (the node keeps its WireGuard config and its door's; a
+   secret pasted replaces the node's), bound to the machine the node
+   reported (`--machine`, the hash of its machine id, which the provisioner
+   checks before it changes anything and `nodes.enroll` checks again), and
+   enrolling under the same id, every earlier token of the node revoked so
+   one agent is left. For setting a node up afresh, or changing how it
+   reaches the controller.
+4b. *A door in for SSH* (R174): a tunnel client on the node, switched on
+   and off from the node's row (a `door` system job the agent answers by
+   starting or stopping it; the census reports `door: {kind, host,
+   installed, active}` and the row's switch reads that). Which client is a
+   recipe the provisioner knows (`--door`): cloudflared publishing port 22
+   at a hostname of its own with a tunnel token (`/etc/cloudflared/env`,
+   root's, read by its unit; the public hostname goes to
+   `ssh://localhost:22` in Zero Trust, since a token tunnel is remotely
+   managed), or Tailscale joining a tailnet with an auth key and answering
+   ssh there (`tailscale up --ssh`), with no public name. The secret rides
+   in the enroll script until it has run, then leaves it as the WireGuard
+   config does; the controller keeps none of it. Who reaches the door is
+   the tunnel's own say (Cloudflare Access, the tailnet's ACLs). Closing
+   public port 22 (`--door-close22`, an nftables rule leaving the loopback
+   and the tailnet) is a separate, default-off choice, since the person
+   running the script is usually on that port.
+5. *Put nginx in front of them* (R171, the nginx tab): one reverse proxy
+   per node, BuilderBot's own, listed for every node on the Tools card's
+   nginx tab. Its routes (a hostname or path to a port a container
+   publishes on that node, with or without TLS) and its certificate (a
+   Cloudflare origin certificate for a site behind Cloudflare) are kept on
+   the controller (`nginxproxy.py`, the key 0600 and never shown back), and
+   A certificate is the node's default, for any hostname without its own,
+   or one hostname's own (R175), since an origin certificate covers one
+   zone and a node may serve sites on several; nginx picks by server name.
+   Deploy writes a container from them through the written-container path
+   (`containers.create_container`), its nginx config and certificate inline
+   in the compose file as compose `configs`, so the node's compose job needs
+   nothing new. nginx runs on the host network and proxies to 127.0.0.1, so
+   it holds 80 and 443 on the machine and a container publishing either is
+   named as the clash. Save rewrites and rebuilds a deployed one; Remove
+   takes it off the Docker tab and keeps the routes. The Enroll dialog's
+   "Put nginx on it once it is enrolled" (`config.nginx`, `nodes.ON_ENROLL`)
+   deploys it on the node's first hello, so a box runs the script and
+   nginx appears with whatever the tab holds for it.
+
+What runs in those containers has no node token (it lives root-owned in
+the agent's own file) and reaches the controller, if at all, only as the
+tunnel's address, which is refused everything but the agent API.
+Development stays on the project's own nodes.
+
+**Which projects a container may go under.** The project pickers on Send,
+on a row's Project and Built from, and the project a Send, copy or move is
+made from, are the asker's own list of projects, for an administrator and
+the owner as for a user (`users.may_work`, refused on the server as well as
+left out of the picker): they could add any project to their list first,
+and the list is the seatbelt against a container landing under the wrong
+one.
+
 ## 8. Security model
 
 New as a section, because "usable in an enterprise" is mostly this.
@@ -989,6 +1282,8 @@ Notably absent: a `--workspace` role for agent nodes, since job-scoped snapshots
 replaced it (§6) for JOBS. A node that runs sessions (§19, phase 10a) mounts
 the projects share at `/workspace` all the same, through the phase-5 config
 plane like any other mount; that is the session's tree, not a job's.
+*Since replaced* (R162, R163, 10 Oct): the session's tree is a synced copy
+the agent keeps at `/workspace`, and nothing is mounted there.
 
 **Any size of VM, by construction.** The script assumes no disk layout and no
 sizes: every role defaults to the node's own filesystem, a role can be pointed
@@ -1015,16 +1310,28 @@ non-event.
 ### Leaving a machine as it was: uninstall
 
 A node is somebody's machine before it is BuilderBot's, so taking BuilderBot
-off it is a verb of its own, in three places that do one thing: **Uninstall**
+off it is a verb of its own, in three places that do one thing: **Un-enroll**
 on the node's row (Advanced), `sudo bb-sandbox uninstall` on the machine, and
-`provision-linux.sh --remove`, which runs the machine's own bb-sandbox. What
+`provision-linux.sh --remove`, which runs the machine's own bb-sandbox. None
+of the three goes through from the row while a Claude session or a container
+runs on the node: end them first, and the refusal counts them. What always
 goes is what the provisioner put there for BuilderBot alone: the agent and
-its unit, the session-ports firewall rule, the `bb` and `builder` accounts
-with their homes (Claude Code, the runners' directories, caches), the mounts
-BuilderBot used (`/workspace` and whatever a store sits on, taken out of
-fstab), the stores on the machine's own disk, `/etc/builderbot`, the sandbox
-label in `daemon.json` (docker keeps running; it takes at its next restart)
-and bb-sandbox itself. What stays is shared with the rest of the machine:
+its unit, the sessions' firewall rules and their own networks (every piece
+of the isolation, R79), the `bb` and `builder` accounts with their homes
+(Claude Code, the runners' directories, caches), `/etc/builderbot` with the
+tunnel to the controller, the sandbox label in `daemon.json` (docker keeps
+running; it takes at its next restart) and bb-sandbox itself. Three rings
+are asked for, on the row's dialog as boxes and on the machine as flags:
+`--stores` takes the stores on the machine's own disk (the toolchains, the
+caches, the artifacts, a dev instance's data, the synced project copies,
+`/var/lib/builderbot`); `--configured` undoes what was set up from the
+dashboard after enrolling (the mounts BuilderBot used, `/workspace` and
+whatever a store sits on, taken out of fstab; the runners' units; the GPU
+display); `--doors`, ticked by default for a hosting node, shuts what it was
+given as a host (cloudflared and its token, Tailscale's login, the port 22
+rule, the nginx container written for it). Without them the machine keeps
+those and can be enrolled again, here or on another controller, from Enroll
+node. What stays is shared with the rest of the machine:
 docker and the packages the provisioner installed (nfs-common, python3,
 tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories, and
 everything on the shares, which other nodes may be using. The row's verb
@@ -1756,7 +2063,10 @@ above, in order:
    mount; a session's tree is the mount, because it edits one tree for
    hours. Path parity does the rest: `/workspace/<project>` means the same
    directory on both sides, which is what lets bb's relayed verbs run on the
-   controller in the tree the session is in.
+   controller in the tree the session is in. *Since replaced* (R162, R163,
+   9-10 Oct): the node holds a synced copy at `/workspace` and mounts
+   nothing there; path parity still holds, and relayed verbs wait for the
+   two copies to agree (§6, the synced copy).
 2. **A project with no node has no Claude session (R47, 12 Sep).** The fork
    below was settled the other way on 2 September and has been settled again:
    this container carries no Claude Code at all, so there is nothing here for
@@ -1772,7 +2082,9 @@ above, in order:
    account, one login. **Transcripts and memories are one place**: every
    account's `~/.claude/projects`, on every machine, is a link to
    `/workspace/.claude/<uid>/projects` on the projects share
-   (`claude_projects_link` in lib/common.sh, made when the home is), and
+   (`claude_projects_link` in lib/common.sh, made when the home is; on a
+   node holding a synced copy, the node's own directory, mirrored with the
+   controller's: see the synced copy above), and
    the tree rule is the same on both machines: the owner in the project
    directory, everybody else in a worktree, so the transcript slug is the
    same string wherever the session ran, and the controller's Memory tab and
@@ -1824,7 +2136,10 @@ that came up under ten minutes ago whose network mount has not landed;
 the census carries the uptime (`session.up_s`) for that, the agent
 re-reports the moment `/workspace` appears rather than at the next
 ten-minute hello, and the provisioner's unit orders after `remote-fs.target`
-so the first census usually has the mount already. A mount the server
+so the first census usually has the mount already. *Since replaced* (R163
+step 6, 10 Oct): the mount refusals are gone with the mount; the gate
+waits for the project's synced copy instead ("being copied, N files to
+go"), and refuses a node taken off its copy (R164). A mount the server
 refused is neither: the agent tries an unmounted fstab entry when it takes
 the census and reports what mount said (`mounts[].error`), the row and the
 button repeat it, and Apply network asks each NFS server's exports

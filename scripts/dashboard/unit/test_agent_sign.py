@@ -5,19 +5,16 @@ jobs and sessions share an account, and a key handed over that is not the
 one the controller says it kept."""
 import base64
 import glob
-import importlib.util
 import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 import zipfile
+import agentpkg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_sign", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+agent = agentpkg.load("builderbot_agent_sign")
 agent.log = lambda *a, **k: None
 
 STORE = next((d for d in glob.glob("/mnt/SDK/*") + glob.glob("/sdk/*")

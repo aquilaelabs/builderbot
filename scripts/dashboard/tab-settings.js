@@ -13,8 +13,11 @@
 
 "use strict";
 
+// Revert on a section puts its fields back to what is saved: the draft for
+// them dropped and the tab repainted, which the live key has to notice.
+let settingsRev = 0;
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.idle, state?.log_days]);
+  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.log_days, state?.paths, settingsRev]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one
@@ -23,7 +26,7 @@ function settingsLive(){
 const settingsDraft = {};
 const sdVal = (id, value) => settingsDraft[id] ?? value;
 function settingsKeep(el){
-  el.querySelectorAll("input[data-set], select[data-set], #idleMin, #logDays").forEach(i => {
+  el.querySelectorAll("input[data-set], select[data-set], #idleMin, #logDays, input[data-path]").forEach(i => {
     const on = () => { settingsDraft[i.id] = i.type === "checkbox" ? i.checked : i.value; };
     i.oninput = on; i.onchange = on;
   });
@@ -40,34 +43,50 @@ function renderSettingsInto(i){
   const d = docSurface(i, "settings");
   if (!d) return;
   d.setBar(`<span class="dim">what this controller does; appearance is in the gear</span>`);
-  d.list.innerHTML = `
-    <div class="row stack2">
-      <div class="grow">${logSection()
-        || `<div class="sub">log settings arrive with the first poll…</div>`}</div>
-    </div>
-    ${reportsSection()}
-    <div class="row stack2">
-      <div class="grow">${idleSection()}</div>
-    </div>
-    ${settingsSections()}
-    <div class="row stack2" data-group="Reset">
+  // Sections, like every other tab's (the operator, 11 Oct): one fold per
+  // group, its status on the heading, a jump bar over them, and each with
+  // its own Apply and Revert. The groups' own markup is kept inside (the
+  // suites and the keepers address it), the heading taking the h4's place.
+  const idle = state?.idle?.minutes;
+  const paths = state?.paths?.paths || [];
+  const t = state?.settings?.tunnel;
+  const dbg = state?.settings?.settings?.debug_mode?.value;
+  const sect = (key, title, status, html, opts = {}) =>
+    docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
+  const groups = settingsSections();
+  d.list.innerHTML = `<div class="sectjump" data-sects></div>
+    ${sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logSection(), "logs")
+        || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`)}
+    ${reportsSection() ? sect("reports", "BuilderBot bug reports", "", reportsSection()) : ""}
+    ${sect("idle", "Claude sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
+           `<div class="row stack2" data-group="Claude sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
+    ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
+    ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
+    ${sect("reset", "Reset BuilderBot", "", `<div class="row stack2" data-group="Reset">
       <div class="grow">
-        <div class="name">Reset BuilderBot</div>
         <div class="sub">Start over at Create the owner. Everything but project files is moved aside, not deleted.</div>
         <div class="actbar"><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
         <div id="setResetBox"></div>
       </div>
-    </div>
-    <div class="row stack2">
+    </div>`)}
+    ${sect("nodes", "Nodes", "", `<div class="row stack2">
       <div class="grow">
-        <div class="name">Nodes</div>
         <div class="sub">The machines work runs on, each set up on its own row.</div>
         <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
       </div>
-    </div>`;
-  d.setFoot(`a change applies at once or at the next start: each section says which.`);
+    </div>`)}`;
+  d.setFoot(`a change applies at once or at the next start: each section says which. Revert puts a section's fields back to what is saved.`);
+  sectJump(d.list.querySelector("[data-sects]"));
+  wireSections(d.el);
+  d.el.querySelectorAll("[data-srevert]").forEach(b => b.onclick = () => {
+    const sec = b.closest("details.sect");
+    sec?.querySelectorAll("input, select").forEach(i => { if (i.id) delete settingsDraft[i.id]; });
+    settingsRev++;
+    drawPanes();
+  });
   wireLogSection(d.el);
   wireIdleSection(d.el);
+  wirePathsSection(d.el);
   wireSettingsSections(d.el);
   settingsKeep(d.el);
   const nd = d.el.querySelector("#setNodes");
@@ -82,6 +101,15 @@ function renderSettingsInto(i){
 // which the Diagnostics download under Logs carries. Counted on the press
 // rather than on the line: they arrive from sessions at any time, so a count
 // fetched when the tab opened would be stale by the time it was read.
+// A section's Revert beside its Apply: the first Apply button in the markup
+// gets one after it, wearing the section's key.
+function withRevert(html, key){
+  if (!html) return html;
+  const m = html.match(/<button[^>]*(id="(logApply|idleApply|pathsApply)"|class="setApply")[^>]*>Apply<\/button>/);
+  if (!m) return html;
+  return html.replace(m[0], `${m[0]}<button type="button" class="caution" data-srevert="${esc(key)}" title="put this section's fields back to what is saved">Revert</button>`);
+}
+
 function reportsSection(){
   // The debug grant's, and not drawn without it (the operator, 6 Oct).
   if (state?.can?.debug === false) return "";
@@ -118,7 +146,21 @@ async function clearReports(btn){
 // says so beside it, and the bar says whether a change applies at once or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
-  {title: "Debugging", fields: [
+  // The home tunnel the controller runs itself (R176): the public hostname
+  // a node off the LAN dials, the tunnel's token, and an API token that
+  // writes the hostname's record and the tunnel's rules rather than having
+  // them clicked. The two tokens are secrets: never shown back.
+  {key: "tunnel", title: "Public hostname", status: tunnelStatus, intro: tunnelSteps,
+   heading: s => !s?.tunnel ? "" : s.tunnel.connected ? "connected" : s.tunnel.configured ? (s.tunnel.running ? "starting" : "stopped") : "off",
+   headingCls: s => s?.tunnel?.connected ? "ok" : "",
+   fields: [
+    {key: "tunnel_host", label: "Hostname", type: "text", placeholder: "bb.example.com",
+     hint: "The name a node off your network dials the controller at, published by a tunnel from home. Enroll node fills it in."},
+    {key: "tunnel_token", label: "Tunnel token", type: "secret",
+     hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
+    {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
+     hint: "With Zone DNS Edit and Account Cloudflare Tunnel Edit: the hostname's record and the tunnel's two rules (the agent's API to the controller, everything else 404) are written on Apply rather than clicked."}]},
+  {key: "debug", title: "Debugging", heading: s => s?.settings?.debug_mode?.value ? "on" : "off", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
      hint: "Shows the Debug settings button here, and lets a project's settings grant its "
          + "sessions nodes' logs and the controller's diagnostics. Turning it on grants nothing by itself."}],
@@ -135,6 +177,36 @@ const SETTING_GROUPS = [
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
      hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
 ];
+
+// How the public hostname is set up, in the section itself (the operator,
+// 11 Oct): the steps in order, with the controller's own port in them.
+function tunnelSteps(s){
+  const port = s?.tunnel?.port || 7680;
+  return `<div class="sub">A name a node off your network dials to reach this controller, carried by a tunnel the controller runs itself. Nothing on your router changes, and the node never learns your address.</div>
+    <ol class="setsteps dim">
+      <li>In Cloudflare Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), named for this controller. Copy the long <code>eyJ…</code> token from its install command into Tunnel token below. Do not run that command: the controller runs the tunnel.</li>
+      <li>Pick the hostname, on a domain in your Cloudflare account (<code>bb.example.com</code>), and type it in Hostname.</li>
+      <li>Either paste an API token with Zone DNS Edit on that domain and Account Cloudflare Tunnel Edit, and Apply writes the hostname's record and the tunnel's rules; or set them yourself on the tunnel's Public Hostname page: path <code>api/v1/agent/.*</code> to HTTP <code>localhost:${esc(String(port))}</code> (the controller's own port, inside its container), and the bare hostname to HTTP status 404, so the name serves no page.</li>
+      <li>Apply. The line below says connected once the tunnel is up; Enroll node then fills the hostname in for a node reaching the controller through it.</li>
+    </ol>`;
+}
+
+// The tunnel's line on its group's action bar (R176): whether cloudflared
+// is here, running, registered, and at which name, as the server reads it.
+function tunnelStatus(s){
+  const t = s?.tunnel;
+  if (!t) return "applies at once";
+  if (t.error) return t.error;
+  if (!t.installed) return "cloudflared is not in this image: the tunnel cannot run from here";
+  if (!t.configured) return "off: paste a tunnel token and Apply to run the home tunnel here";
+  if (!t.running) return "starting";
+  if (!t.connected) return "running, not registered yet";
+  // Registered is not routed (the operator, 11 Oct): the server asks the
+  // name itself, and says so when the answer is somebody else's.
+  if (t.route?.ok === false) return `connected, but ${t.route.said}`;
+  if (t.route?.ok === true) return `connected: ${t.host || "the tunnel"} reaches this controller`;
+  return `connected; checking that ${t.host || "the name"} reaches this controller`;
+}
 
 // The reset's confirmation, the way a project's purge asks: the word typed
 // in a box under the button, and the red verb asleep until it matches.
@@ -214,7 +286,7 @@ function openDebugSettings(){
 
 function settingsSections(){
   const s = state?.settings;
-  if (!s) return `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
+  if (!s) return [{key: "wait", title: "Settings", status: "", html: `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`}];
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
   // The Debugging group is the debug grant's (roles.NAMED_ONLY): without it
   // the page does not show it at all (the operator, 6 Oct).
@@ -222,8 +294,22 @@ function settingsSections(){
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;
-            // Every setting is a switch: a checkbox inside its label, the
-            // way the Tests bar's are, with what the label cannot say on
+            // A text is a field with its label over it; a secret the same,
+            // typed blind, with "set" said beside it and never its value:
+            // left empty it is left alone, and its own tick takes it off.
+            if (f.type === "text" || f.type === "secret"){
+              const isSet = f.type === "secret" ? !!s.settings[f.key]?.set : !!v;
+              return `<div class="setrow col"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${
+                  f.type === "secret" ? (isSet ? ` <span class="pill ok">set</span>` : ` <span class="pill">not set</span>`) : src(f.key)}</label>
+                <input id="${id}" type="${f.type === "secret" ? "password" : "text"}" data-set="${f.key}"${
+                  f.type === "secret" ? ' data-secret="1"' : ""} value="${esc(f.type === "secret" ? "" : sdVal(id, v || ""))}"
+                  placeholder="${esc(f.type === "secret" ? (isSet ? "set: paste a new one to replace it" : "paste it") : (f.placeholder || ""))}"
+                  autocomplete="off" spellcheck="false">${
+                  f.type === "secret" && isSet ? `<label class="ndcap"><input type="checkbox" data-clear="${f.key}"> take it off</label>` : ""}
+              </div>`;
+            }
+            // Every other setting is a switch: a checkbox inside its label,
+            // the way the Tests bar's are, with what the label cannot say on
             // the ? (docs/design-language.md, Controls).
             return `<div class="logdays setrow"><label class="ndcap">
                 <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
@@ -239,19 +325,20 @@ function settingsSections(){
             title="${debugOn ? "the settings kept behind debug mode"
                              : "turn Debug mode on and Apply first: these are its settings"}"
             >Debug settings</button></div>`;
-    return `<div class="row stack2" data-group="${esc(g.title)}">
+    return {key: g.key, title: g.title, status: g.heading ? g.heading(s) : "", cls: g.headingCls ? g.headingCls(s) : "",
+      html: `<div class="row stack2" data-group="${esc(g.title)}">
       <div class="grow">
-        <h4>${esc(g.title)}</h4>
         <div class="logset">
+          ${g.intro ? g.intro(s) : ""}
           ${g.fields.map(field).join("")}${fold}
           <div class="actbar">
-            <span class="state">applies at once</span>
+            <span class="state">${g.status ? g.status(s) : "applies at once"}</span>
             <button type="button" class="setApply" title="save">Apply</button>
           </div>
         </div>
       </div>
-    </div>`;
-  }).join("");
+    </div>`};
+  });
 }
 
 function wireSettingsSections(el){
@@ -263,8 +350,11 @@ function wireSettingsSections(el){
     const apply = async () => {
       const set = {};
       box.querySelectorAll("[data-set]").forEach(i => {
+        // A secret left empty is left as it is; its tick takes it off.
+        if (i.dataset.secret && !i.value.trim()) return;
         set[i.dataset.set] = i.type === "checkbox" ? i.checked : i.value.trim();
       });
+      box.querySelectorAll("[data-clear]:checked").forEach(i => { set[i.dataset.clear] = ""; });
       busy(btn, "Applying");
       try{
         const r = await fetch("/api/settings", {method: "POST",
@@ -272,7 +362,12 @@ function wireSettingsSections(el){
         const j = await r.json();
         if (j.error) return notify(j.error, true);
         box.querySelectorAll("[data-set]").forEach(i => { delete settingsDraft[i.id]; });
-        notify("saved");
+        // What the tunnel did with it (R176): the record and rules written,
+        // or why not, said here rather than only on the next poll's line.
+        if (j.published?.error) notify(`saved; Cloudflare: ${j.published.error}`, true);
+        else if (j.published?.did) notify(`saved; Cloudflare: ${j.published.did.join("; ")}`);
+        else if (j.tunnel?.error) notify(`saved; the tunnel: ${j.tunnel.error}`, true);
+        else notify("saved");
         refresh();
       }catch(e){ notify("settings: " + e, true); }
       finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
@@ -331,6 +426,73 @@ function wireIdleSection(el){
   };
   el.querySelector("#idleApply").onclick = apply;
   inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
+}
+
+// Where the controller keeps what grows (paths.py): each kind on its own line,
+// the path in use, and a move in flight or the last one's error. Applying a
+// path moves what is there and switches once it has all arrived. The JSON
+// records, the database, the signing keys and the git credentials stay in
+// /config whatever is set here, and the section says so. An administrator's:
+// the poll carries nothing for anybody else, and the section is absent.
+function pathsSection(){
+  const list = state?.paths?.paths;
+  if (!list) return "";
+  const line = p => {
+    const id = "path_" + p.name;
+    const note = p.pinned ? `<div class="dim">${esc(p.pinned)}</div>`
+      : p.moving?.error ? `<div class="sub bad">moving to ${esc(p.moving.to)} stopped: ${esc(p.moving.error)}</div>`
+      : p.moving ? `<div class="dim">moving to ${esc(p.moving.to)}; ${esc(p.path)} is in use until it is done</div>`
+      : !p.set ? "" : `<div class="dim">default: ${esc(p.default)}</div>`;
+    return `<div class="logdays setrow col">
+        ${lbl(id, p.name, p.what)}
+        <input id="${id}" type="text" data-path="${esc(p.name)}" spellcheck="false" autocomplete="off"
+               value="${esc(sdVal(id, p.path))}"${p.pinned || (p.moving && !p.moving.error) ? " disabled" : ""}>
+        ${note}
+      </div>`;
+  };
+  return `<div class="row stack2" data-group="Storage">
+      <div class="grow">
+        <h4>Storage on this controller</h4>
+        <div class="logset">
+          <div class="dim">Where what grows is kept. A new path must be empty or new; what is there is moved across.
+            The records, the database, the signing keys and the git credentials stay in the state directory.</div>
+          ${list.map(line).join("")}
+          <div class="actbar">
+            <span class="state">applies once what is there has moved</span>
+            <button type="button" id="pathsApply" title="move each changed one to its new path">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function wirePathsSection(el){
+  const btn = el.querySelector("#pathsApply");
+  if (!btn) return;
+  const apply = async () => {
+    const list = state?.paths?.paths || [];
+    const changed = [...el.querySelectorAll("input[data-path]")]
+      .filter(i => !i.disabled && i.value.trim() !== (list.find(p => p.name === i.dataset.path)?.path || ""));
+    if (!changed.length) return notify("nothing changed");
+    busy(btn, "Applying");
+    try{
+      for (const i of changed){
+        const r = await fetch("/api/paths", {method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name: i.dataset.path, path: i.value.trim()})});
+        const j = await r.json();
+        if (j.error) return notify(`${i.dataset.path}: ${j.error}`, true);
+        delete settingsDraft[i.id];
+        notify(j.moving ? `${i.dataset.path}: moving what is there; it switches once it has arrived`
+                        : `${i.dataset.path} is kept at ${i.value.trim() || "its default"}`);
+      }
+      refresh();
+    }catch(e){ notify("storage: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  };
+  btn.onclick = apply;
+  el.querySelectorAll("input[data-path]").forEach(i => {
+    i.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
+  });
 }
 
 // The global rules (R63) are not on this tab: every project's notebook lists

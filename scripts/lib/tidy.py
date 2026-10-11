@@ -173,7 +173,7 @@ def processes(root=PROC, uid=None, spare=None):
             continue
         fds = fds_of(pid, root)
         # A server left listening (the operator, 7 Oct: an aquilaeLabs session's
-        # astro preview held files on the projects share until npm ci failed):
+        # astro preview held files in the project tree until npm ci failed):
         # listening, and its launcher gone. node is otherwise spared, since
         # Claude Code's own helpers run as node; a node that is an orphan
         # holding a port is a dev server somebody forgot.

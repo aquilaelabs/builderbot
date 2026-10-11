@@ -1,7 +1,7 @@
 """Projects by id (registry.py, R154): every directory has a number and a
 shown name, a directory is never handed out twice, shown names are unique
-among live projects with (2) after a second, and the trash keeps a
-project's directory for it."""
+among live projects with -2 after a second, a name follows GitHub's rules
+for a repository's, and the trash keeps a project's directory for it."""
 import json
 import os
 import shutil
@@ -51,10 +51,10 @@ class Registry(unittest.TestCase):
     def test_shown_names_are_unique_among_live_projects(self):
         registry.sync()
         (self.ws / "alpha-2").mkdir()
-        self.assertEqual(registry.claim("alpha-2", "alpha")["name"], "alpha (2)")
+        self.assertEqual(registry.claim("alpha-2", "alpha")["name"], "alpha-2")
         (self.ws / "alpha-3").mkdir()
-        self.assertEqual(registry.claim("alpha-3", "Alpha")["name"], "Alpha (3)")
-        self.assertIn("already a project's name", registry.set_name("alpha-3", "ALPHA (2)")["error"])
+        self.assertEqual(registry.claim("alpha-3", "Alpha")["name"], "Alpha-3")
+        self.assertIn("already a project's name", registry.set_name("alpha-3", "ALPHA 2")["error"])
         self.assertEqual(registry.set_name("alpha-3", "Third")["name"], "Third")
         self.assertEqual(registry.label("alpha-3"), "Third")
         self.assertEqual(registry.resolve("Third"), "alpha-3")
@@ -68,7 +68,7 @@ class Registry(unittest.TestCase):
         registry.claim("alpha-2", "alpha")
         self.assertEqual(registry.label("alpha-2"), "alpha", "a trashed one does not block the name")
         registry.mark("alpha", "live")
-        self.assertEqual(registry.label("alpha"), "alpha (2)")
+        self.assertEqual(registry.label("alpha"), "alpha-2")
 
     def test_a_trashed_folder_moved_back_by_hand_is_live_and_one_made_beside_it_is_not(self):
         registry.sync()
@@ -81,9 +81,29 @@ class Registry(unittest.TestCase):
         (self.ws / ".trash" / "alpha").rename(self.ws / "alpha")
         self.assertEqual(registry.sync()["projects"]["alpha"]["state"], "live", "moved back: it")
 
-    def test_names_are_one_printable_line(self):
-        self.assertEqual(registry.clean_name("  My   App\n\x07 "), "My App")
+    def test_names_follow_githubs_rules_for_a_repository(self):
+        # the operator, 9 Oct: a rename to "Turing Lens" kept the space
+        self.assertEqual(registry.clean_name("Turing Lens"), "Turing-Lens")
+        self.assertEqual(registry.clean_name("  My   App\n\x07 "), "My-App")
+        self.assertEqual(registry.clean_name("Clanker-Detector"), "Clanker-Detector")
+        self.assertEqual(registry.clean_name("a__b.c"), "a__b.c")
+        self.assertEqual(registry.clean_name("café crème!"), "caf-cr-me")
+        self.assertEqual(registry.clean_name(".."), "")
+        self.assertEqual(registry.clean_name("---"), "")
         self.assertEqual(len(registry.clean_name("x" * 200)), registry.NAME_MAX)
+        self.assertEqual(registry.NAME_MAX, 100)
+        registry.sync()
+        self.assertEqual(registry.set_name("alpha", "Turing Lens")["name"], "Turing-Lens")
+
+    def test_a_name_stored_before_the_rule_is_brought_to_it(self):
+        registry.sync()
+        d = json.loads(registry.FILE.read_text())
+        d["projects"]["alpha"]["name"] = "Turing Lens"
+        registry.FILE.write_text(json.dumps(d))
+        registry._cache.update(mtime=None, data=None)
+        registry.sync()
+        self.assertEqual(registry.label("alpha"), "Turing-Lens")
+        self.assertEqual(registry.resolve("Turing-Lens"), "alpha")
 
 
 if __name__ == "__main__":

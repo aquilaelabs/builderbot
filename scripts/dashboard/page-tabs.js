@@ -236,6 +236,15 @@ const TOOL_ICONS = {
   // A handset.
   phone: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="4.5" y="2" width="7" height="12" rx="1.4"/><path d="M7 11.8h2"/></svg>`,
+  // Two arrows through a gate: traffic passed on, for the nginx tab.
+  nginx: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 5.5h7.5"/><path d="M8 3.3l2.2 2.2L8 7.7"/>
+    <path d="M13.5 10.5H6"/><path d="M8.2 8.3L6 10.5l2.2 2.2"/>
+    <rect x="11" y="2.5" width="2.5" height="11" rx="0.6"/></svg>`,
+  // A drive: two platters, for the Storage tab.
+  storage: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <ellipse cx="8" cy="4.2" rx="5.5" ry="2"/><path d="M2.5 4.2v7.6c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2V4.2"/>
+    <path d="M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2"/></svg>`,
   // A magnifier, for the scanner's findings.
   findings: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <circle cx="6.8" cy="6.8" r="4"/><path d="M9.8 9.8 13.4 13.4"/></svg>`,
@@ -243,7 +252,8 @@ const TOOL_ICONS = {
 // Which button on the Tools card opens which kind, so the card can be
 // stamped with the icons once at load and the tab strip can look them up.
 const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bEmulator: "emulator", bJobs: "jobs",
-                      bNodes: "nodes", bFindings: "findings", bPhone: "phone", bRunner: "runner"};
+                      bNodes: "nodes", bFindings: "findings", bPhone: "phone", bRunner: "runner", bNginx: "nginx",
+                      bStorage: "storage"};
 
 const TABKINDS = {
   term:     { multi: true },
@@ -284,6 +294,16 @@ const TABKINDS = {
               icon: TOOL_ICONS.nodes,
               render: (i) => renderNodesInto(i), live: () => `${nodesRev}/${signinRev()}/${phRev}`,
               open: () => loadNodes() },
+  // nodesRev as well as its own: a node coming or going moves the sections.
+  nginx:    { multi: false, label: () => "nginx",
+              icon: TOOL_ICONS.nginx,
+              render: (i) => renderNginxInto(i), live: () => `${nginxRev}/${nodesRev}`,
+              open: () => loadNginx() },
+  // nodesRev as well as its own: a hello carries a fresh walk.
+  storage:  { multi: false, label: () => "Storage",
+              icon: TOOL_ICONS.storage,
+              render: (i) => renderStorageInto(i), live: () => `${storageRev}/${nodesRev}`,
+              open: () => loadStorage() },
   jobs:     { multi: false, label: () => "Jobs",
               icon: TOOL_ICONS.jobs,
               render: (i) => renderJobsInto(i), live: () => jobsRev,

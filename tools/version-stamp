@@ -6,7 +6,7 @@
 # It exists because this project's minor is not only a number: it is the
 # COMPATIBILITY WINDOW, and the window is written down in one more place:
 #
-#   scripts/agent/builderbot-agent.py   AGENT_VERSION = "WINDOW.BUILD"
+#   scripts/agent/builderbot_agent/__init__.py   AGENT_VERSION = "WINDOW.BUILD"
 #
 # ...which a bump used to leave behind. 0.5.0 only came out consistent because
 # a person moved it by hand first; a bump that forgot would have committed a
@@ -30,7 +30,7 @@ set -euo pipefail
 new="${1:?usage: version-stamp NEW-VERSION PART}"
 part="${2:?usage: version-stamp NEW-VERSION PART}"
 
-AGENT=scripts/agent/builderbot-agent.py
+AGENT=scripts/agent/builderbot_agent/__init__.py
 
 case "$part" in
     major|minor) ;;

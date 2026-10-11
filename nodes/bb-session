@@ -2,10 +2,10 @@
 """bb-session: run a session inside a view of this node that holds only its own
 project (roadmap R35, B156).
 
-Every session on a node runs as one account, and the projects share is
-mounted whole, so file permissions cannot keep one project's session out of
-another's tree, its test and CI logs, its cached token or its transcripts: the
-share even squashes every writer to one uid. Namespaces can. This builds a
+Every session on a node runs as one account, and the node holds every project
+bound to it, so file permissions cannot keep one project's session out of
+another's tree, its test and CI logs, its cached token or its transcripts:
+every file is that one uid's. Namespaces can. This builds a
 mount, PID and IPC namespace in which:
 
   * /workspace holds only the project, its worktrees and the account's Claude
@@ -335,7 +335,7 @@ def plan(c, a, uid):
     # The places on the node this project is set to see (its settings, the
     # operator's to write): a share it works with, which is otherwise out of
     # the view like every other. Only ever somebody's place: nothing of the
-    # system's, of the projects share, of a home or of the agent's, so
+    # system's, of /workspace, of a home or of the agent's, so
     # naming one cannot bring back what the view leaves out on purpose. One
     # that is not on this node is another of the project's nodes' and is
     # passed over.
@@ -432,8 +432,8 @@ def plan(c, a, uid):
     for i, p in shown:
         steps.append(("bind", f"{STAGE}/sees{i}", p))
 
-    # The projects share: this project, its worktrees, the account's share,
-    # and in that share the other projects' transcripts empty.
+    # /workspace: this project, its worktrees, the account's transcripts,
+    # and among those the other projects' transcripts empty.
     steps.append(("tmpfs", ws, "mode=0755"))
     for rel in (project, f".worktrees/{project}", f".claude/{account}"):
         if _real_dir(f"{ws}/{rel}"):

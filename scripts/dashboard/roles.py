@@ -71,7 +71,7 @@ AREAS = (
     ("settings", "Project settings", "project", "the settings", "change them, lock, rename and delete"),
     ("releases", "Releases and versions", "project", "versions and releases", "move the version and release"),
     ("gitauth", "Git authentication", "project", "how it authenticates", "change the credential"),
-    ("files", "File access (FTP)", "project", "sign in over FTP and download", "upload, rename and delete over FTP"),
+    ("files", "File access", "project", "read the files over FTP or in an editor", "save, upload, rename and delete them"),
     ("containers", "Containers", "project", "its containers and their logs", "start, stop and rebuild them"),
     ("terminal", "Terminal", "project", "the shielded Claude console", "the full tmux shell"),
     ("nodes", "Nodes", "global", "the Nodes tab", "configure nodes, and what a project's sessions reach"),
@@ -81,10 +81,13 @@ AREAS = (
     ("accounts", "Accounts and roles", "global", "the Users and Roles tabs", "add accounts, give roles"),
     ("newprojects", "New projects", "global", "the nodes a project may be made on", "make a project, and own it"),
     ("controller", "Controller", "global", "settings and diagnostics", "settings, debug, pinned commands"),
+    # The Storage tab (R169): what every node's disks hold, by project.
+    # Read sees it; Write measures a node again now.
+    ("storage", "Storage", "global", "the Storage tab", "measure a node's disks now"),
 )
 # The areas a Global role may hold on named nodes alone (its `nodes`, none
 # named being every node): what reaches a machine (the operator, 7 Oct).
-NODE_AREAS = frozenset({"nodes", "toolchains", "jobs", "newprojects"})
+NODE_AREAS = frozenset({"nodes", "toolchains", "jobs", "newprojects", "storage"})
 AREA_KEYS = tuple(a[0] for a in AREAS)
 PROJECT_AREAS = frozenset(a[0] for a in AREAS if a[2] == "project")
 LEVELS = ("read", "write")

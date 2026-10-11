@@ -38,6 +38,7 @@ audit = None
 conversation_text = None    # reports.conversation: a report's conversation, for the download
 
 STATE = None
+paths = None              # set by server.py: paths.py, where what grows is kept
 write_json = None
 _lock = threading.Lock()
 
@@ -69,7 +70,7 @@ def log_dir():
         return Path(os.environ["BB_LOG_DIR"])
     if Path("/logs").is_dir():
         return Path("/logs")
-    return STATE / "logs"
+    return paths.of("logs") if paths else STATE / "logs"
 
 
 # --- the setting -----------------------------------------------------------

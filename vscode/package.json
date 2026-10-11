@@ -1,0 +1,37 @@
+{
+  "name": "builderbot",
+  "displayName": "BuilderBot",
+  "description": "Open a BuilderBot project's files with no share mounted, see a Claude session's changes as it saves them, and work in that session's terminal, as your own BuilderBot account.",
+  "version": "0.1.0",
+  "publisher": "builderbot",
+  "license": "Apache-2.0",
+  "engines": { "vscode": "^1.84.0" },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": ["onFileSystem:builderbot"],
+  "builderbotApi": 1,
+  "contributes": {
+    "commands": [
+      { "command": "builderbot.signIn", "title": "Sign In", "category": "BuilderBot" },
+      { "command": "builderbot.signOut", "title": "Sign Out", "category": "BuilderBot" },
+      { "command": "builderbot.openProject", "title": "Open Project", "category": "BuilderBot" },
+      { "command": "builderbot.openSession", "title": "Open Claude Session", "category": "BuilderBot" },
+      { "command": "builderbot.search", "title": "Search Project Files", "category": "BuilderBot" }
+    ],
+    "configuration": {
+      "title": "BuilderBot",
+      "properties": {
+        "builderbot.url": {
+          "type": "string",
+          "default": "",
+          "description": "BuilderBot's address, as you open the dashboard. Sign In sets it."
+        },
+        "builderbot.allowSelfSignedCertificate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Accept a certificate no authority signed. Only for a controller you reach on your own network."
+        }
+      }
+    }
+  }
+}

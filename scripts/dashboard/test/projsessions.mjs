@@ -40,7 +40,9 @@ const beat = async () => {
   const r = await fetch(base + '/api/v1/agent/work', { method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + agent.token },
     body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
-      sessions: [{ name: nodeShell, attached: false, cwd: '/workspace/alpha', title: '' }] },
+      sessions: [{ name: nodeShell, attached: false, cwd: '/workspace/alpha', title: '' }],
+      // ...with each project's synced copy there (R163), as an agent says.
+      sync: { alpha: { ready: true, rev: 1 }, beta: { ready: true, rev: 1 }, gamma: { ready: true, rev: 1 }, delta: { ready: true, rev: 1 } } },
       running: [], wait: 0 }) });
   return r.status === 200 ? r.json() : {};
 };

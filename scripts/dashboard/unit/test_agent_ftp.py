@@ -4,7 +4,6 @@ controller's ftp-auth and the answer handed back down its stdin, a server
 for a project no longer named stopped, and a node without the toolchain
 said as such. The bb-ftpd here is a stand-in on PATH that asks one login
 and writes down the answer, so this runs without pyftpdlib."""
-import importlib.util
 import json
 import os
 import shutil
@@ -13,10 +12,8 @@ import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "builderbot_agent_ftp", os.path.join(HERE, "..", "..", "agent", "builderbot-agent.py"))
-agent = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent)
+import agentpkg  # noqa: E402
+agent = agentpkg.load("builderbot_agent_ftp")
 agent.log = lambda *a, **k: None
 
 STAND_IN = """#!/usr/bin/env python3

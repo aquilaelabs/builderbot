@@ -52,8 +52,9 @@ in decisions.md under *The notebook*.
 ## Nodes and the agent
 
 A node is a machine enrolled to run work: builds, tests, the emulator, a
-project's containers, and the Claude sessions themselves. It runs one
-file, `scripts/agent/builderbot-agent.py`, which dials into the controller
+project's containers, and the Claude sessions themselves. It runs the
+agent, `scripts/agent/` (the `builderbot_agent` package and its entry,
+shipped as one zip that python runs as it would a script), which dials into the controller
 (`channel.py` on that side: enroll, hello, work, result) and needs no port
 of its own; the controller keeps the registry and the job queue in
 `nodes.py`. `nodes/provision-linux.sh` makes a Linux machine a node,

@@ -28,10 +28,13 @@ ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 1),
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
-// The memories are folded on a new tab (the operator, 29 Sep), the count
-// on the heading; opened here for the rest of the file.
-ok(await page.$eval('#memSect', d => !d.open) && await page.$eval('#memN', e => e.textContent) === '2',
-   'the memories start folded, with their count on the heading');
+// Every section opens by default (the operator, 8 Oct: 9fd9ab9), the
+// memories with it, the count on the heading. Read once it has finished
+// sliding open, since the notebook's draw opens it.
+await page.waitForFunction(() => { const d = document.getElementById('memSect');
+  return d.open && !d.getAnimations().length; }, null, { timeout: 10000 }).catch(() => {});
+ok(await page.$eval('#memSect', d => d.open) && await page.$eval('#memN', e => e.textContent) === '2',
+   'the memories start open, with their count on the heading');
 await openFold(page, '#memSect');
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
    'the panel opens on that project');
@@ -108,31 +111,42 @@ ok(await page.$('#memDrift details[data-sect="memory:drift"]') !== null
     .some(d => /gone-elsewhere/.test(d.textContent)), null, { timeout: 10000 });
 }
 
+// The checks below read "the open memory", and every one opens by default
+// now (9fd9ab9): the others are shut first, so the open one is the one named.
+async function soleMem(name){
+  await page.evaluate(n => document.querySelectorAll('#memList .mem[open]').forEach(d => {
+    if (d.querySelector('.mname')?.textContent !== n) d.open = false;
+  }), name);
+  await openFold(page, `#memList .mem:has(.mname:text-is("${name}"))`);
+}
+
 // ---- editing -----------------------------------------------------------
-await openFold(page, '#memList .mem:has(.mname:text-is("tabs"))');
+await soleMem('tabs');
 // Read first, like a bug report: the text under its label, and Edit for the
 // fields. Cancel puts them away and drops what was typed.
-await page.waitForSelector('#memList .mem[open] .mEdit');
-ok(!await page.$('#memList .mem[open] textarea[data-file]')
-   && (await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice'),
+await page.waitForSelector(`#memList .mem:has(.mname:text-is("tabs")) .mEdit`);
+ok(!await page.$(`#memList .mem:has(.mname:text-is("tabs")) textarea[data-file]`)
+   && (await page.$eval(`#memList .mem:has(.mname:text-is("tabs")) .mtext`, e => e.textContent)).includes('asked for it twice'),
    'opening one shows the whole file to read, frontmatter and all, and no fields');
-await page.click('#memList .mem[open] .mEdit');
-await page.waitForSelector('#memList .mem[open] textarea[data-file]');
-ok((await page.$eval('#memList .mem[open] textarea[data-file]', t => t.value)).includes('asked for it twice'),
+await page.click(`#memList .mem:has(.mname:text-is("tabs")) .mEdit`);
+await page.waitForSelector(`#memList .mem:has(.mname:text-is("tabs")) textarea[data-file]`);
+ok((await page.$eval(`#memList .mem:has(.mname:text-is("tabs")) textarea[data-file]`, t => t.value)).includes('asked for it twice'),
    'Edit puts the file in a field');
-await page.$eval('#memList .mem[open] textarea[data-file]', t => {
+ok(await page.$eval('#memSect', d => d.open),
+   '...and the Memories section stays open around it, not folded by the redraw Edit makes (B594)');
+await page.$eval(`#memList .mem:has(.mname:text-is("tabs")) textarea[data-file]`, t => {
   t.value = t.value.replace('asked for it twice', 'a change nobody wanted');
   t.dispatchEvent(new Event('input'));
 });
-await page.click('#memList .mem[open] .mCancel');
-await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea[data-file]'), null, { timeout: 10000 });
-ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice')
+await page.click(`#memList .mem:has(.mname:text-is("tabs")) .mCancel`);
+await page.waitForFunction(() => !document.querySelector('#memList textarea[data-file="tabs.md"]'), null, { timeout: 10000 });
+ok((await page.$eval(`#memList .mem:has(.mname:text-is("tabs")) .mtext`, e => e.textContent)).includes('asked for it twice')
    && await page.$eval('[data-ssave="briefing:memories"]', b => b.disabled),
    '...and Cancel puts it away, reading what is on disk, with nothing left to save');
-await page.click('#memList .mem[open] .mEdit');
-await page.waitForSelector('#memList .mem[open] textarea[data-file]');
+await page.click(`#memList .mem:has(.mname:text-is("tabs")) .mEdit`);
+await page.waitForSelector(`#memList .mem:has(.mname:text-is("tabs")) textarea[data-file]`);
 
-await page.$eval('#memList .mem[open] textarea[data-file]', t => {
+await page.$eval(`#memList .mem:has(.mname:text-is("tabs")) textarea[data-file]`, t => {
   t.value = t.value.replace('asked for it twice', 'asked for it three times');
   t.dispatchEvent(new Event('input'));
 });
@@ -149,13 +163,13 @@ ok(read('tabs.md').includes('asked for it three times'),
    'Save writes the edit to the file on disk');
 ok(read('tabs.md').startsWith('---\n') && read('tabs.md').endsWith('\n'),
    '...intact, and newline-terminated');
-await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea[data-file]'), null, { timeout: 10000 });
-ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it three times'),
+await page.waitForFunction(() => !document.querySelector('#memList textarea[data-file="tabs.md"]'), null, { timeout: 10000 });
+ok((await page.$eval(`#memList .mem:has(.mname:text-is("tabs")) .mtext`, e => e.textContent)).includes('asked for it three times'),
    '...and written, the memory reads again, saying what was saved');
 
 // ---- forgetting --------------------------------------------------------
 page.dialogs = [];
-await page.click('#memList .mem[open] [data-del]');
+await page.click(`#memList .mem:has(.mname:text-is("tabs")) [data-del]`);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 1);
 ok(page.dialogs.some(d => d.includes('Forget tabs.md')),
    'forgetting asks first');
@@ -185,7 +199,7 @@ ok(!read('MEMORY.md').includes('vanished.md'), '...which takes that line out of 
 // What is left at this point: one memory (loose, unlisted). Filling the
 // memory's fields in gives it a line.
 await openFold(page, '#memSect');
-await openFold(page, '#memList .mem:has(.mname:text-is("loose"))');
+await soleMem('loose');
 await page.click('#memList .mem:has(.mname:text-is("loose")) .mEdit');
 await page.waitForSelector('#memList .mem:has(.mname:text-is("loose")) .ixt');
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixt', i => {
@@ -343,7 +357,7 @@ mkdirSync(MEM, { recursive: true });
 writeFileSync(`${MEM}/huge.md`, '---\nname: huge\n---\n' + 'x'.repeat(40000));
 await page.evaluate(() => notebooks.get('alpha').reloadMemory());
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 3);
-await openFold(page, '#memList .mem:has(.mname:text-is("huge"))');
+await soleMem('huge');
 ok(await page.$eval('#memList .mem:has(.mname:text-is("huge"))',
      l => !l.querySelector('textarea') && l.querySelector('.hint.bad')),
    'an oversized memory gets no editor, and says why');
@@ -386,10 +400,10 @@ ok(true, 'a memory a session writes appears in an open book, with nothing touche
 writeFileSync(`${MEM}/clash.md`,
   '---\nname: clash\ndescription: two writers\nmetadata:\n  type: project\n---\n\nas loaded\n');
 await page.evaluate(() => notebooks.get('alpha').reloadMemory());
-await openFold(page, '#memList .mem:has(.mname:text-is("clash"))');
+await soleMem('clash');
 await page.click('#memList .mem:has(.mname:text-is("clash")) .mEdit');
-await page.waitForSelector('#memList .mem[open] textarea[data-file]');
-await page.$eval('#memList .mem[open] textarea[data-file]', t => {
+await page.waitForSelector(`#memList .mem:has(.mname:text-is("clash")) textarea[data-file]`);
+await page.$eval(`#memList .mem:has(.mname:text-is("clash")) textarea[data-file]`, t => {
   t.value = t.value.replace('as loaded', 'what the operator typed');
   t.dispatchEvent(new Event('input')); });
 // A session writing the same file with its own tools, which is the writer
@@ -409,7 +423,7 @@ ok(/changed on disk while you had it open/.test(await memBand()),
 ok(/what the session wrote/.test(await memBand()),
    '...showing what is there now, to read and copy from');
 ok(read('clash.md').includes('what the session wrote'), '...with nothing written');
-ok((await page.$eval('#memList .mem[open] textarea[data-file]', t => t.value))
+ok((await page.$eval(`#memList .mem:has(.mname:text-is("clash")) textarea[data-file]`, t => t.value))
      .includes('what the operator typed'),
    '...and the typing still in the editor, which is why there is no Keep theirs');
 await page.click('#memClashMine');
@@ -418,7 +432,7 @@ await page.click('#memClashMine');
 // way, and the file was read before it landed (B207). The editor closes
 // only after the post succeeded and the list has been re-read.
 await page.waitForFunction(() => document.getElementById('memClash').hidden
-                                 && !document.querySelector('#memList .mem[open] textarea[data-file]'),
+                                 && !document.querySelector('#memList textarea[data-file="clash.md"]'),
                            { timeout: 15000 });
 ok(read('clash.md').includes('what the operator typed'),
    'Write mine over it does exactly that, against what is there now');

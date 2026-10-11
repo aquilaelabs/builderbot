@@ -360,7 +360,8 @@ ${code}`], { encoding: 'utf8' });
     const census = sessions => bare('/api/v1/agent/work', { method: 'POST',
       headers: { ...H, Authorization: 'Bearer ' + agent.token },
       body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096,
-        mem_used_mb: 512, sessions }, running: [], wait: 0 }) });
+        // ...with each project's synced copy there (R163), as an agent says.
+        mem_used_mb: 512, sessions, sync: { alpha: { ready: true, rev: 1 }, beta: { ready: true, rev: 1 }, gamma: { ready: true, rev: 1 }, delta: { ready: true, rev: 1 } } }, running: [], wait: 0 }) });
     await census([]);
     await napi('/api/prefs', { project: 'beta', node: box.id });
     const mine = async h => ((await as(h, '/api/status')).claude_auth || {}).nodes || {};

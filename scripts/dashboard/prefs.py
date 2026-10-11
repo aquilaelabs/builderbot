@@ -243,6 +243,13 @@ def _clean(rec):
             # worked on from either. Everything that reads one node keeps
             # reading `node`; containers may live on any of these.
             "nodes": _nodes_of(rec),
+            # The nodes outside that set its containers may also run on: a
+            # hosting-only node (nodes.host_only) holds no code and no
+            # session, and a container of this project there is built on
+            # its own node and shipped (R166). Naming one here lets the
+            # project's sessions make, rebuild and remove containers there
+            # under its Run its container dial (the operator, 10 Oct).
+            "hosts": _hosts_of(rec),
             # The other projects a session here may READ: their trees, bound
             # read-only into the session's view on a node, and their
             # notebooks through the API and the relayed verbs, every write
@@ -322,6 +329,7 @@ def _clean(rec):
             # age and never by need: two sessions on one project may each
             # be reading a reel the other made. 0 keeps them.
             "capture_days": _capture_days(rec.get("capture_days")),
+            "snapshot_days": _snapshot_days(rec.get("snapshot_days")),
             # How many dev builds of each kind the Artifacts tab keeps in
             # dist/ before it removes the older (R105); 0 keeps them all.
             "dev_keep": _dev_keep(rec.get("dev_keep")),
@@ -358,6 +366,9 @@ def debug_changed(project, req):
 
 
 CAPTURE_DAYS = 7
+# How many days of the project's daily snapshots are kept (R165), 0 for none:
+# what a node gone wrong through its synced copy can be undone from.
+SNAPSHOT_DAYS = 14
 DEV_KEEP = 3
 
 
@@ -368,6 +379,15 @@ def _dev_keep(v):
     except (TypeError, ValueError):
         return DEV_KEEP
     return n if 0 <= n <= 99 else DEV_KEEP
+
+
+def _snapshot_days(v):
+    """A whole number of days, 0 to 3650; anything else is the default."""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return SNAPSHOT_DAYS
+    return n if 0 <= n <= 3650 else SNAPSHOT_DAYS
 
 
 def _capture_days(v):
@@ -454,6 +474,25 @@ def node_changed(project, req):
     # node already in the set is a move (seen on the dev instance, 5 Oct).
     return (str(want["node"] or "")[:40] != str(cur.get("node") or "")[:40]
             or _nodes_of(want) != _nodes_of(cur))
+
+def _hosts_of(rec):
+    """The hosting nodes a project's containers may also go to, as stored:
+    node ids, at most 16, in the order given."""
+    got = rec.get("hosts") if isinstance(rec.get("hosts"), list) else []
+    out = []
+    for n in got:
+        n = str(n or "").strip()[:40]
+        if n and n not in out:
+            out.append(n)
+    return out[:16]
+
+
+def hosts_changed(project, hosts):
+    """Whether `hosts`, as the dialog sends it, names other nodes than the
+    ones stored."""
+    got = hosts if isinstance(hosts, list) else str(hosts).split(",")
+    return _hosts_of({"hosts": got}) != ((get(project) or {}).get("hosts") or [])
+
 
 def _nodes_of(rec):
     """The project's node set, primary first, from a record that may carry
@@ -568,7 +607,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
-              release=None, log_from=None, diag=None, build_local=None, reaches=None):
+              snapshot_days=None,
+              release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -679,6 +719,14 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if not 0 <= n <= 365:
                 return {"error": f"captures kept is a number of days, 0 to 365, not {capture_days}"}
             cur["capture_days"] = n
+        if snapshot_days is not None:
+            try:
+                n = int(snapshot_days)
+            except (TypeError, ValueError):
+                n = -1
+            if not 0 <= n <= 3650:
+                return {"error": f"snapshots kept is a number of days, 0 to 3650, not {snapshot_days}"}
+            cur["snapshot_days"] = n
         if dev_keep is not None:
             try:
                 n = int(dev_keep)
@@ -687,6 +735,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if not 0 <= n <= 99:
                 return {"error": f"dev builds kept is a number of builds, 0 to 99, not {dev_keep}"}
             cur["dev_keep"] = n
+        if hosts is not None:
+            cur["hosts"] = _hosts_of({"hosts": hosts if isinstance(hosts, list) else str(hosts).split(",")})
         if log_from is not None:
             cur["log_from"] = _log_from({"log_from": log_from})
         if diag is not None:
@@ -696,7 +746,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
+        if (cur["node"] or cur["hosts"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
                 or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
@@ -704,6 +754,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
                 or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
+                or cur["snapshot_days"] != SNAPSHOT_DAYS
                 or cur["sign"] != "ask" or cur["keys"] != "ask" or cur["release"] != "ask"
                 or cur["dev_keep"] != DEV_KEEP
                 or cur["gitpol"] != GITPOL_DEFAULT):
@@ -731,6 +782,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("gpu", None)
             if cur["capture_days"] == CAPTURE_DAYS:
                 rec.pop("capture_days", None)
+            if cur["snapshot_days"] == SNAPSHOT_DAYS:
+                rec.pop("snapshot_days", None)
             if cur["dev_keep"] == DEV_KEEP:
                 rec.pop("dev_keep", None)
             if cur["build_local"]:
@@ -828,10 +881,11 @@ def dialog_save(name, req, uid):
                   tests_in=req.get("tests_in"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
+                  snapshot_days=req.get("snapshot_days"),
                   dev_keep=req.get("dev_keep"), sign=req.get("sign"), keys=req.get("keys"),
                   release=req.get("release"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
-                  reaches=req.get("reaches"),
+                  reaches=req.get("reaches"), hosts=req.get("hosts"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)

@@ -1,8 +1,8 @@
 """A node session's git push, fetch, pull and ls-remote, done on the controller
 without trusting the session's repository (B148).
 
-The project tree is on the projects share, and a session on a node can write
-every file in it, .git/config and .git/hooks included. git runs what those
+The project tree is the controller's, kept in step with a node's synced copy,
+and a session on a node can write every file in it, .git/config and .git/hooks included. git runs what those
 name: a hook, an ssh command, a credential helper, an fsmonitor, a pack
 program. So this never runs git in that tree. Each project has a bare
 repository of the controller's own under STATE/gitrelay, whose config only
@@ -40,6 +40,7 @@ import statefile  # noqa: E402
 
 # Injected by configure().
 STATE = None
+paths = None              # set by server.py: paths.py, where what grows is kept
 WORKSPACE = None
 push_record = None      # project -> {"repo", "host", "how"} or None
 token_helper = None     # project -> "store --file=..." or ""
@@ -287,7 +288,7 @@ def _atomic(path, text):
 
 
 def _base():
-    base = STATE / "gitrelay"
+    base = paths.of("gitrelay") if paths else STATE / "gitrelay"
     base.mkdir(parents=True, exist_ok=True)
     os.chmod(base, 0o700)
     (base / "no-hooks").mkdir(exist_ok=True)

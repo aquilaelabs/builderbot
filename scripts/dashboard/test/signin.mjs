@@ -31,7 +31,9 @@ const agent = await call('/api/v1/agent/enroll',
 const asNode = { Authorization: 'Bearer ' + agent.token };
 // The heartbeat, which is also how an agent takes its next job: what it says
 // about sessions and logins rides the sample.
-const beat = (sample = {}) => call('/api/v1/agent/work', { sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, ...sample }, running: [], wait: 0 }, asNode);
+// ...with each project's synced copy there (R163), as an agent says.
+const beat = (sample = {}) => call('/api/v1/agent/work', { sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+  sync: { alpha: { ready: true, rev: 1 }, beta: { ready: true, rev: 1 }, gamma: { ready: true, rev: 1 }, delta: { ready: true, rev: 1 } }, ...sample }, running: [], wait: 0 }, asNode);
 await beat({ sessions: [] });
 await call('/api/prefs', { project: 'beta', node: box.id });
 const sandbox = ((await call('/api/v1/nodes')).nodes || []).find(n => n.name === 'sandbox');

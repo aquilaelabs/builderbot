@@ -38,12 +38,14 @@ def run():
                   "sandbox node; the root command runs outside it and will not find the file there. "
                   "A path under the project tree is seen by both.", file=sys.stderr)
     r = post({"action": "ask", "kind": "root", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[2:],
-              "project": os.environ.get("BB_PHONE_PROJECT", "")})
+              "project": os.environ.get("BB_PHONE_PROJECT", ""),
+              # A node the project hosts containers on, when named (--node).
+              **({"node": os.environ["BB_PHONE_NODE"]} if os.environ.get("BB_PHONE_NODE") else {})})
     if r.get("error"):
         print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
     rid = r["id"]
-    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up to 15 minutes "
-          "for Allow on the dashboard's Nodes tab or bell", file=sys.stderr)
+    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}) for root on {r.get('node') or 'the node'}, "
+          "waiting up to 15 minutes for Allow on the dashboard's Nodes tab or bell", file=sys.stderr)
     o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the administrator said no")
     sys.stdout.write(o.get("out") or "")
     sys.exit(o.get("code") or 0)

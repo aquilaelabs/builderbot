@@ -10,7 +10,8 @@ names), ls, or ctl (log, start, stop and restart, which BB_DEV_VERB names).
 BB_DEV_AUTH is the auth header, BB_DEV_PROJECT the project, BB_DEV_INSTANCE
 and BB_DEV_CONTAINER which of its containers, BB_DEV_WHY the reason a person
 reads, BB_DEV_FILE and BB_DEV_SET the env file and whether it is being set,
-BB_DEV_REF the branch a new container builds from, BB_DEV_NAME the container
+BB_DEV_REF the branch a new container builds from, BB_DEV_COMPOSE which of the
+project's compose files it is made from, BB_DEV_NAME the container
 a ctl verb acts on.
 """
 import os
@@ -19,6 +20,7 @@ import time
 import urllib.parse
 
 import bbapi
+import syncwait
 import waits
 
 
@@ -115,6 +117,9 @@ def _client(instance=None):
 def rebuild():
     auth = os.environ["BB_DEV_AUTH"]
     post, look = _client()
+    # A rebuild's plan carries the compose file and env from the
+    # controller's copy, so an edit made here goes up first (B623).
+    syncwait.up(os.environ["BB_DEV_PROJECT"], "the rebuild takes the compose file from the controller's copy")
     # What it was built from before, because that is the only signal that says a
     # build HAPPENED. A job that succeeded is not news to the row (job_view
     # returns nothing for one), so "no job running" reads the same three seconds
@@ -221,14 +226,22 @@ def new():
     container made from its own compose file on its own node, then built and
     started, with this waiting for the verdict. BB_DEV_INSTANCE names it;
     unnamed, the controller gives it the project's own name while it has
-    none and one beside it after. BB_DEV_REF pins the branch it builds from
-    and BB_DEV_FILE is its env. On `ask` one request carries all of it and
+    none and one beside it after. BB_DEV_REF pins the branch it builds from,
+    BB_DEV_HOST a hosting node to ship it to, and BB_DEV_FILE is its env. On `ask` one request carries all of it and
     Allow makes and builds it; on `auto` it is made, then built as `bb
     devapp rebuild` builds."""
     auth = os.environ["BB_DEV_AUTH"]
     post, _ = _client()
+    # The compose file is read from the controller's copy: what was written
+    # here a moment ago goes up first (B623).
+    syncwait.up(os.environ["BB_DEV_PROJECT"], "the controller reads the compose file from its copy")
     body = {"action": "new", "why": os.environ.get("BB_DEV_WHY", ""),
-            "ref": os.environ.get("BB_DEV_REF", "")}
+            "ref": os.environ.get("BB_DEV_REF", ""),
+            "compose": os.environ.get("BB_DEV_COMPOSE", "")}
+    # A hosting node the project names (Hosts its containers on): built on
+    # its own node and shipped there (R166).
+    if os.environ.get("BB_DEV_HOST"):
+        body["node"], body["ship"] = os.environ["BB_DEV_HOST"], True
     path = os.environ.get("BB_DEV_FILE", "")
     if path:
         body["text"] = open(path, encoding="utf-8").read()
