@@ -3071,7 +3071,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
             return {"error": "no such node"}
         if n["state"] != "online":
             return {"error": f"node is {n['state']}; it takes no new work"}
-        if host_only(n) and type not in HOST_JOBS:
+        if host_only(n) and type not in HOST_JOBS and not host_exec_ok(type, spec):
             return {"error": f"{n['name']} hosts containers only, and a {type} job is not one of those"}
         if n["kind"] == "agent" and type != "compose" and not n.get("live"):
             return {"error": "the agent on this node is not dialing in; the "
@@ -3356,6 +3356,20 @@ def sync_node_ids():
 HOST_VERBS = frozenset(("hello", "beat", "work", "log", "result", "download",
                         "devimage", "devdata", "devdata-put"))
 HOST_JOBS = frozenset(("compose", "system", "self-update", "cache-clear", "storage"))
+# ...and one docker verb at a time about the containers it hosts: the Docker
+# tab's listing is a `docker ps` exec on the node (devapp._agent_read), and
+# a container's log, start, stop and restart are one exec each
+# (devapp._agent_exec). With exec refused whole, a hosting-only node's
+# containers could be sent but never listed, read or restarted (B642).
+HOST_DOCKER = frozenset(("ps", "inspect", "version", "info", "logs", "start", "stop", "restart"))
+
+
+def host_exec_ok(type, spec):
+    """Whether an exec is a docker verb a hosting-only node answers."""
+    argv = spec.get("argv") if isinstance(spec, dict) else None
+    if type != "exec" or not isinstance(argv, list) or len(argv) < 2:
+        return False
+    return str(argv[0]).rsplit("/", 1)[-1] == "docker" and str(argv[1]) in HOST_DOCKER
 
 
 def host_only(n):

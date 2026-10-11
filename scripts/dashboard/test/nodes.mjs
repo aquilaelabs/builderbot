@@ -1231,6 +1231,16 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `everything but its own jobs is refused at the door, its own update still served (${JSON.stringify(codes)})`);
     const ex = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['true'] });
     ok(/hosts containers only, and a exec job/.test(ex.error || ''), `only container jobs go to it (${ex.error})`);
+    // ...and one docker verb about the containers it hosts, which is how
+    // the Docker tab lists them and reads a log there (B642): a bare exec
+    // of anything else is still refused.
+    const dps = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['docker', 'ps', '--all'] });
+    ok(!dps.error && dps.job, `docker ps goes to it, since that is how its containers are listed (${dps.error || dps.job})`);
+    const drun = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['docker', 'run', 'alpine'] });
+    ok(/hosts containers only, and a exec job/.test(drun.error || ''), `...and docker run does not (${drun.error})`);
+    // Taken back: nothing here picks a job up for vps-host, and a job left
+    // queued on its row changes what the checks below read.
+    if (dps.job) await napi('/api/v1/jobs', { action: 'cancel', id: dps.job });
     const bind = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
     ok(/hosts containers only/.test(bind.error || ''), `and no project may list it (${bind.error})`);
     // Disable (the operator, 11 Oct): kept and configured, off every picker
