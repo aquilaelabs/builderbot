@@ -103,6 +103,7 @@ class Ship(unittest.TestCase):
         self.assertNotIn("building", names, "nothing is built on the instance's node")
         up = next(s for s in r["plan"] if s["name"] == "starting")["argv"]
         self.assertIn("--no-build", up)
+        self.assertEqual(up[up.index("--pull") + 1], "missing", "what the tar did not carry is pulled (B660)")
         self.assertIn("{cdir}", up, "run from its own compose directory, not a tree it does not have")
         self.assertNotIn(str(self.ws / "alpha"), " ".join(up))
 

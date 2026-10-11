@@ -202,8 +202,12 @@ def _plan(project, instance, action, extra=None):
     # --remove-orphans on both (B592): a service the compose file no longer
     # names, renamed or dropped since it was started, was left running by
     # down and by remove, holding its ports, and the next up failed on them.
+    # A shipped instance builds nothing on its node (the image came in the
+    # tar), and pulls what it lacks: the tar carries the built images alone,
+    # and with --pull never a service on a registry image (mariadb:11) met
+    # "No such image" and the move was undone (B660, aquilaeLabs, 11 Oct).
     up = {"name": "starting", "argv": stamped + base + ["up", "-d", "--remove-orphans"]
-          + (["--no-build", "--pull", "never"] if ship else []), "timeout": 1800, "env": env}
+          + (["--no-build", "--pull", "missing"] if ship else []), "timeout": 1800, "env": env}
     down = {"name": "stopping", "argv": base + ["down", "--remove-orphans"], "timeout": 180, "env": ienv}
     build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
