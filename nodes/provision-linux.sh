@@ -804,10 +804,14 @@ if command -v curl >/dev/null 2>&1; then
     if curl -fsI --max-time 10 https://download.docker.com/ >/dev/null 2>&1; then chk ok "internet: download.docker.com answers"
     else chk warn "download.docker.com does not answer: no package will download; an offline node needs its packages brought in by hand"; fi
     if [ -n "$CONTROLLER" ]; then
+        # A failure, not a warning (11 Oct): a run that went on past this
+        # closed port 22 for a door and then could not enroll, and the
+        # person came back in through the KVM. Nothing below is worth doing
+        # when the controller cannot be reached.
         if curl -fsk --max-time 10 -o /dev/null "${CONTROLLER%/}/api/v1/agent/download" 2>/dev/null \
            || curl -sk --max-time 10 -o /dev/null -w '%{http_code}' "${CONTROLLER%/}/" 2>/dev/null | grep -q '^[234]'; then
             chk ok "controller: ${CONTROLLER} answers"
-        else chk warn "controller ${CONTROLLER} does not answer from here: enrollment will fail; check the address and that the dashboard is up"; fi
+        else chk fail "controller ${CONTROLLER} does not answer from here, so enrollment would fail: check the address and that the dashboard is up"; fi
     fi
 else
     chk warn "no curl yet; it is installed below, and the network is untested until then"
@@ -894,12 +898,21 @@ fi
 # system trusts, is checked now rather than after an hour of Docker.
 if [ "$REACH" = public ]; then
     say "reach: ${CONTROLLER} through its public hostname"
-    code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+    # The agent's own download with the enrollment token, which is what
+    # the enrollment below will do: only a 200 means the way is open. A
+    # tunnel that answers something else is said by what it said (a 502
+    # was taken as an answer once, and the run went on to close port 22
+    # and fail to enroll, 11 Oct).
+    code="$(curl -s -o /dev/null -m 15 -H "Authorization: Bearer ${TOKEN}" -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
     case "$code" in
-        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is the tunnel at home up with the rule the Nodes tab showed, and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
-        404) warn "${CONTROLLER} answers 404 on the agent's API: the tunnel at home does not forward /api/v1/agent/ to the controller yet (the Nodes tab showed the rule)"; exit 1 ;;
+        200) ;;
+        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is the tunnel at home up (the Settings tab's Public hostname line says connected), and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
+        404) warn "${CONTROLLER} answers 404 on the agent's API: the tunnel at home does not forward /api/v1/agent/ to the controller yet (Apply on Controller settings with an API token writes the rule, or add the public hostname in Zero Trust)"; exit 1 ;;
+        502|530) warn "${CONTROLLER} answers ${code}: the tunnel at home is up but what it forwards to does not answer. The hostname's service must be http://localhost:7680 when the controller runs the tunnel itself (Controller settings), or the controller's LAN address and port when cloudflared runs elsewhere at home"; exit 1 ;;
+        401|403) warn "${CONTROLLER} refused the enrollment token (${code}): it was used already or has run out; make a new script on the Nodes tab"; exit 1 ;;
+        *) warn "${CONTROLLER} answers ${code} on the agent's API, not 200: enrollment would fail; curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
     esac
-    printf '   %s answers (%s)\n' "$CONTROLLER" "$code"
+    printf '   %s answers\n' "$CONTROLLER"
 fi
 
 # --- a door in for SSH (R174) ------------------------------------------------
@@ -942,46 +955,6 @@ elif [ "$DOOR" = tailscale ]; then
         tailscale status >/dev/null 2>&1 || { warn "no auth key: the door's secret left the enroll script once it ran; make a new script on the Nodes tab"; exit 1; }
     fi
     printf '   up; ssh reaches this machine on the tailnet, and its ACLs decide who\n'
-fi
-if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ]; then
-    # Public port 22 shut, the loopback (cloudflared's path) and a tailnet
-    # address left alone: its own table, re-applied at boot by a unit where
-    # this machine has systemd.
-    say "port 22: closed to the internet (the door is the way in)"
-    # shellcheck disable=SC2046
-    command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
-    install -d -m 0755 /etc/builderbot
-    cat > /etc/builderbot/door-22.nft <<'NFT'
-# Written by BuilderBot's provision-linux.sh: port 22 from the loopback and the tailnet only.
-table inet builderbot_door
-delete table inet builderbot_door
-table inet builderbot_door {
-    chain input {
-        type filter hook input priority -10; policy accept;
-        tcp dport 22 iifname "lo" accept
-        tcp dport 22 ip saddr 100.64.0.0/10 accept
-        tcp dport 22 drop
-    }
-}
-NFT
-    if nft -f /etc/builderbot/door-22.nft 2>/dev/null; then
-        if [ "$INIT" = systemd ]; then
-            cat > /etc/systemd/system/builderbot-door-22.service <<UNIT
-[Unit]
-Description=BuilderBot: port 22 reachable through the door only
-After=network-pre.target
-[Service]
-Type=oneshot
-ExecStart=$(command -v nft) -f /etc/builderbot/door-22.nft
-RemainAfterExit=yes
-[Install]
-WantedBy=multi-user.target
-UNIT
-            systemctl enable builderbot-door-22 >/dev/null 2>&1 || true
-        fi
-    else
-        warn "nft could not apply the port 22 rule, so port 22 stays as it was"
-    fi
 fi
 
 say "docker"
@@ -2694,6 +2667,56 @@ json.dump(d, open(p, "w"), indent=2)
 PY
     fi
     svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
+# Public port 22 shut only now, with the node enrolled and the door's client
+# up: a run that closed it first and then could not enroll left the person
+# coming back in through the KVM (11 Oct). The loopback (cloudflared's
+# path) and a tailnet address are left alone; its own table, re-applied at
+# boot by a unit where this machine has systemd.
+door_up=""
+case "$DOOR" in
+    cloudflared) systemctl is-active --quiet cloudflared 2>/dev/null && door_up=1 ;;
+    tailscale)   tailscale status >/dev/null 2>&1 && door_up=1 ;;
+esac
+if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ] && [ -z "$door_up" ]; then
+    warn "port 22 stays open: the door (${DOOR}) is not up yet, and closing 22 without it would lock this machine"
+fi
+if [ -n "$DOOR" ] && [ "$DOOR_CLOSE22" = 1 ] && [ -n "$door_up" ]; then
+    say "port 22: closed to the internet (the door is the way in)"
+    # shellcheck disable=SC2046
+    command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
+    install -d -m 0755 /etc/builderbot
+    cat > /etc/builderbot/door-22.nft <<'NFT'
+# Written by BuilderBot's provision-linux.sh: port 22 from the loopback and the tailnet only.
+table inet builderbot_door
+delete table inet builderbot_door
+table inet builderbot_door {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        tcp dport 22 iifname "lo" accept
+        tcp dport 22 ip saddr 100.64.0.0/10 accept
+        tcp dport 22 drop
+    }
+}
+NFT
+    if nft -f /etc/builderbot/door-22.nft 2>/dev/null; then
+        if [ "$INIT" = systemd ]; then
+            cat > /etc/systemd/system/builderbot-door-22.service <<UNIT
+[Unit]
+Description=BuilderBot: port 22 reachable through the door only
+After=network-pre.target
+[Service]
+Type=oneshot
+ExecStart=$(command -v nft) -f /etc/builderbot/door-22.nft
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+            systemctl enable builderbot-door-22 >/dev/null 2>&1 || true
+        fi
+    else
+        warn "nft could not apply the port 22 rule, so port 22 stays as it was"
+    fi
+fi
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     # Enrolled on an earlier run. The agent does NOT keep itself current
     # (the dashboard's Update button queues that as a job, and nothing runs

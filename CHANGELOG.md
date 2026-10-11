@@ -403,6 +403,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A compose file that requires a variable its env does not have yet is no longer called broken on the Artifacts tab: it says which variables it needs and is judged with them stood in. (fdc65ea)
 - The Artifacts tab offers Send for a compose file named for its service (admin.compose.yml), the container named for the service. (e97f661)
 - Install selected on the Toolchains tab takes Claude Code together with other toolchains: its own job is queued beside theirs rather than the press refused. (0c8bfe3)
+- The enroll script stops when the controller does not answer, demands a real answer from a public hostname, and closes port 22 for a door only after the node has enrolled and the door is up. (215c5b9)
 
 ### Security
 
