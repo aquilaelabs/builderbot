@@ -151,7 +151,10 @@ function nginxBody(n){
   // The image it is pinned to, the newest line, and Update when behind
   // (R192): its own action bar, since Check now and Update are two verbs.
   const im = n.image || {}, lt = nginxLatest || {};
-  const pinned = `nginx:${im.tag || "?"}${im.digest ? ` (${im.digest.slice(7, 19)})` : ", not pinned to a digest yet"}`;
+  // A node with nothing deployed has nothing pinned: what Deploy would put
+  // there is said instead (the dev proof, 11 Oct).
+  const pinned = !n.deployed ? `nothing deployed yet; Deploy pins nginx:${lt.tag || im.tag || "?"}`
+    : `nginx:${im.tag || "?"}${im.digest ? ` (${im.digest.slice(7, 19)})` : ", not pinned to a digest yet"}`;
   const news = n.behind
     ? (n.deployed ? `nginx:${n.behind} is out: Update pins it and rebuilds` : `nginx:${n.behind} is out: Deploy puts it on the node`)
     : lt.digest ? "the newest line the registry lists" : "no check has read the registry yet";
