@@ -116,6 +116,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The controller can run the home tunnel itself: the Settings tab's Public hostname group takes the hostname, the tunnel's token and an optional Cloudflare API token that writes the hostname's record and the tunnel's rules; the image carries cloudflared, and Enroll node fills the hostname in. (03818ad)
 - Enroll script on a node's row makes a new script for that node, to run again on the same machine and nowhere else; it carries no secret, and the node keeps its id. (5542fba)
 - A Storage tab on the Tools card: what every node's disks hold, each filesystem as a meter, the stores and Docker's share, and each project's folders largest first, projects you cannot see counted as one line; Measure now walks a node's disks at once. Its own area, Storage. (6d600f9)
+- bb logs --node NAME --nginx reads the node's nginx log, a fourth machine log stream under the project's Debugging grant beside the agent's journal, the runner's and the terminal server's (R182) (a9dbd2b)
 
 ### Changed
 

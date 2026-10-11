@@ -3128,6 +3128,8 @@ ftp.configure(state=STATE, workspace=WORKSPACE, write_json=write_json, users=use
               node_agent=lambda nid: "" if NODES_OK else ((nodes.node(nid) or {}).get("agent") or {}).get("version") or "",
               node_info=lambda nid: None if NODES_OK else _ftp_node(nid))
 nodes.ftp_for = ftp.for_node
+# The node's nginx container, for its log stream (R182): named only where the nginx tab put one.
+nodes.nginx_for = lambda nid: nginxproxy.container_name(nid) if nginxproxy.deployed(devapp, nid) else ""
 
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).

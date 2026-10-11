@@ -1518,8 +1518,16 @@ LOG_STREAMS = {
                              "-n", "{lines}"]},
     "terminal": {"what": "the terminal server's log", "store": "data",
                  "argv": ["tail", "-n", "{lines}", "{data}/ttyd.log"]},
+    # The node's nginx (R171), where the nginx tab put one: what each request
+    # it routed met, which is what a session chasing a 502 on a route to its
+    # container wants (R182). The container's name is the node's (nginx_for).
+    "nginx": {"what": "the node's nginx: each request it routed and what the proxy met",
+              "argv": ["docker", "logs", "--tail", "{lines}", "{nginx}"], "nginx": True},
 }
 LOG_LINES_MAX = 2000
+# The deployed nginx container's name on a node, or "" where the nginx tab has
+# not put one there: the server hands this in (nginxproxy.container_name).
+nginx_for = lambda nid: ""  # noqa: E731
 
 
 def node_turn_limit(principal, node_id, limit):
@@ -1715,6 +1723,11 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     if spec.get("unit_argv") and unit:
         spec = dict(spec, argv=spec["unit_argv"], store=None)
         fills["unit"] = str(unit)
+    if spec.get("nginx"):
+        name = nginx_for(target_id) or ""
+        if not name:
+            return {"error": f"nginx is not deployed on {tgt['name']}: the nginx tab puts it there"}
+        fills["nginx"] = name
     if spec.get("store"):
         path = ((tgt.get("reported") or {}).get("stores") or {}).get(
             spec["store"], {}).get("path")

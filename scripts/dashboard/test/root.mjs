@@ -254,6 +254,12 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
      "...the agent's own log is its journal");
   ok(/ttyd\.log$/.test(await ranArgv(await readLog('terminal'))),
      '...and the terminal server writes a file under the data store');
+  // The node's nginx is a stream too (R182), read with docker logs where the
+  // nginx tab put one; on a node without it the refusal names the tab, and
+  // never runs a thing.
+  r = await readLog('nginx');
+  ok(/nginx is not deployed on sandbox: the nginx tab puts it there/.test(r.body.error || ''),
+     `the nginx stream on a node without nginx says where it comes from (${(r.body.error || 'ran').slice(0, 60)})`);
 
   await census(null);
   await api('/api/prefs', { project: 'alpha', log_from: [] });

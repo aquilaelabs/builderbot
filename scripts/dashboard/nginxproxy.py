@@ -316,6 +316,13 @@ def record(nid):
     return dict(_load().get(str(nid)) or {})
 
 
+def deployed(devapp, nid):
+    """Whether the nginx tab's container is on this node: written from here
+    (a file source under its name) and bound to this node."""
+    name = container_name(nid)
+    return bool(devapp.is_file_source(name) and devapp._read_rec(name, devapp.MAIN).get("node") == nid)
+
+
 def view(devapp, instance_state):
     """Every agent node with what its nginx is: deployed or not, its routes,
     its certificate (never the key), and the containers on it holding 80 or
@@ -327,13 +334,13 @@ def view(devapp, instance_state):
             continue
         nid, rec = n["id"], st.get(n["id"]) or {}
         name = container_name(nid)
-        deployed = devapp.is_file_source(name) and devapp._read_rec(name, devapp.MAIN).get("node") == nid
+        is_up = deployed(devapp, nid)
         row = {"node": nid, "name": n.get("name") or nid, "host_only": bool((n.get("config") or {}).get("host_only")),
-               "container": name, "deployed": bool(deployed),
+               "container": name, "deployed": is_up,
                "routes": rec.get("routes") or [], "cert": rec.get("cert") or {},
                "certs": rec.get("certs") or {},
                "live": n.get("live"), "clash": []}
-        if deployed:
+        if is_up:
             with contextlib.suppress(Exception):  # noqa: BLE001 (a row still draws without its state)
                 row["state"] = instance_state(name, devapp.MAIN)
         with contextlib.suppress(Exception):  # noqa: BLE001 (a node that does not answer has no clash to show)

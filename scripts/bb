@@ -437,9 +437,10 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
-bb logs --node NAME [--agent|--runner|--terminal] [N]
+bb logs --node NAME [--agent|--runner|--terminal|--nginx] [N]
                    a machine's own log: the agent's journal, the CI runner's,
-                   the terminal server's. Root's on that box: the enrolled
+                   the terminal server's, its nginx's where the nginx tab put
+                   one. Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a
                    session cannot read them at all. Offered only while **debug
                    mode** is on in Controller settings, the session's project
@@ -1955,7 +1956,7 @@ cmd_logs() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --node) want_node="${2:-}"; shift ;;
-            --agent|--runner|--terminal) stream="${1#--}" ;;
+            --agent|--runner|--terminal|--nginx) stream="${1#--}" ;;
             -f) follow=1 ;;
             -l|--list)
                 # Every stream, newest first, so the top of the list is this
@@ -1983,7 +1984,7 @@ cmd_logs() {
             # looked like the stream had been honored. A wrong answer that
             # looks like an answer is the worst of the three outcomes.
             *) die "bb logs: no such option \`$1'. Streams are --agent," \
-                   "--runner and --terminal; see \`bb logs --list'" ;;
+                   "--runner, --terminal and --nginx; see \`bb logs --list'" ;;
         esac
         shift
     done
@@ -1993,7 +1994,7 @@ cmd_logs() {
     # the asking node's row. Both refusals say what would change them.
     if [ -n "$want_node" ] || [ -n "$stream" ]; then
         [ -n "$want_node" ] || want_node="${BB_NODE:-}"
-        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--terminal]"
+        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--terminal|--nginx]"
         local auth
         auth="$(bb_auth_or_die)"
         BB_LOG_AUTH="$auth" BB_LOG_NODE="$want_node" \
