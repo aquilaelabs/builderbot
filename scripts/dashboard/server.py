@@ -2772,6 +2772,7 @@ containers.dial = lambda p: prefs.get(p)["devbuild"]
 containers.users = users
 containers.ask_rebuild = phone.ask_rebuild
 containers.net_nudge = net_nudge
+containers.project_hosts = lambda p: prefs.get(p).get("hosts") or []
 # One nginx per node, from the nginx tab (R171): its records here, the
 # container through containers.py, and the node's own view of its ports.
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
@@ -6040,7 +6041,11 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state") and session:
             on = devapp.instance_node(name, field(req, "instance"))
             mine = devapp.project_daemon(sess)
-            shipped_there = devapp._read_rec(name, devapp.instance_key(name, field(req, "instance") or devapp.MAIN)).get("ship")
+            # A shipped one is the session's while its node is still under the
+            # project's Hosts its containers on; taken off, the container stays
+            # the project's and the session loses it like any other left behind.
+            shipped_there = devapp._read_rec(name, devapp.instance_key(name, field(req, "instance") or devapp.MAIN)).get("ship") \
+                and on in (prefs.get(sess).get("hosts") or [])
             if on and mine and on != mine and not shipped_there:
                 return self._json({"error": "this dev instance is on another node: it stayed "
                                             "where it was running when this project moved, "

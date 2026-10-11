@@ -40,6 +40,9 @@ dial = None
 users = None
 ask_rebuild = None
 net_nudge = None
+# The hosting nodes a project names (prefs.hosts), handed in by the server: a
+# session reads its project's containers there too (B649).
+project_hosts = None
 
 
 def _targets(name):
@@ -471,7 +474,18 @@ def session_verb(sess, me, act, name, req, read_only=False):
     # alone refused the project's own dev instance on its second
     # node as not its own (B268).
     c, owner, nid = None, "", devapp.project_daemon(sess)
-    for cand in (devapp.nodes_of(sess) or [nid]):
+    # ...and on every node the project names under Hosts its containers on
+    # (R166): the project is not on those, so they are not in the node set,
+    # and a session asking for the probe it had just shipped to one was told
+    # it had no containers (B649). The nodes the project names NOW, and no
+    # other: a container left on a node taken off the project stays the
+    # project's, and the session neither reads nor runs it until the node is
+    # named again or the operator moves or removes it (the operator, 11 Oct).
+    where = list(devapp.nodes_of(sess) or [nid])
+    for on in (project_hosts(sess) if project_hosts else []):
+        if on and on not in where:
+            where.append(on)
+    for cand in where:
         with devapp.on_node(cand or None):
             c, owner = owned_container(name)
         if c:
@@ -483,7 +497,7 @@ def session_verb(sess, me, act, name, req, read_only=False):
     # Only a container that is the project's, so a name another project's
     # service shares reaches nothing of theirs.
     if owner != sess:
-        for cand in (devapp.nodes_of(sess) or [nid]):
+        for cand in where:
             with devapp.on_node(cand or None):
                 got = [x for x in devapp.containers().get("containers") or []
                        if x.get("service") == name and listed_owner(x) == sess]
