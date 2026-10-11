@@ -239,20 +239,6 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
 
 
 
-def _names_project(arg, name):
-    """Whether a terminal tab's argument is a session in this project.
-
-    The two shapes bb-tty accepts: `claude:<project>[:...]` and
-    `sh:<n>:<project>`. Split rather than matched with a prefix, because a
-    project called `app` must not claim `app-2`'s tabs.
-    """
-    parts = str(arg).split(":")
-    if len(parts) >= 2 and parts[0] == "claude":
-        return parts[1] == name
-    if len(parts) >= 3 and parts[0] == "sh":
-        return parts[2] == name
-    return False
-
 def rename(req):
     """Rename a project: the name it is shown under, and with it, in the same
     dialog, its remote's credential, authentication and address.
