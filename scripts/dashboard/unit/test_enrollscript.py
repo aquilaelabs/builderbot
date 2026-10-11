@@ -203,6 +203,10 @@ class Door(unittest.TestCase):
             p = subprocess.run(["bash", f], capture_output=True, text=True, timeout=30)
             with open(f) as fh:
                 after = fh.read()
+            # Run again, the repair: the secret is out of it, and the script
+            # still runs rather than dying on a chmod of a file it no longer
+            # writes (the operator, 11 Oct).
+            p2 = subprocess.run(["bash", f], capture_output=True, text=True, timeout=30)
         finally:
             shutil.rmtree(d, ignore_errors=True)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -212,6 +216,8 @@ class Door(unittest.TestCase):
         self.assertNotIn(base64.b64encode(b"eyJ.tok").decode(), after)
         self.assertIn("the node keeps it", after)
         self.assertIn("out of", p.stdout)
+        self.assertEqual(p2.returncode, 0, p2.stdout + p2.stderr)
+        self.assertNotIn("cannot access", p2.stderr)
 
 
 class Again(unittest.TestCase):

@@ -283,8 +283,13 @@ def build(ans, *, name, user, token, expires, provisioner, again=False, machine=
         lines.append(WG_AFTER)
         flags.append('--wg-conf "$dir/bb.conf"')
     if ans.get("door") and ans.get("door_secret"):
+        # The chmod stands after the block, so it outlives the block being
+        # taken out of the file on success: on the next run (the repair)
+        # there is no secret to chmod, and set -e ended the script on it
+        # before anything ran (the operator, 11 Oct). The provisioner keeps
+        # the door's installed secret when none is handed to it.
         lines += [DOOR_BEGIN, _b64(ans["door_secret"]), "DOORSECRET",
-                  'chmod 600 "$dir/door-secret"']
+                  '[ ! -f "$dir/door-secret" ] || chmod 600 "$dir/door-secret"']
         flags.append('--door-secret "$dir/door-secret"')
     elif ans.get("door"):
         lines.append(DOOR_AFTER)
