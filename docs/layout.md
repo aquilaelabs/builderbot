@@ -247,6 +247,10 @@ tools/api-doc.py                 writes docs/api.md from server.py's route table
 tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
+test/nettest/compose.yml         the network probe (R178's proof): a container shipped to a node that tries what a project's container may and may not reach
+test/nettest/Dockerfile          its image: alpine with curl, dig and nc, running probe.sh
+test/nettest/probe.sh            the probe itself: DNS, the internet, the controller, the node's 80 and 443, and not its 22, the private ranges or IPv6; PASS/FAIL per line in the log
+test/nettest/.env.example        the two addresses it needs: the controller's and the node's
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
 tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
