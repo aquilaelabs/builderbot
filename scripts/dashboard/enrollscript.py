@@ -215,8 +215,11 @@ def _b64(data):
     return "\n".join(s[i:i + 76] for i in range(0, len(s), 76))
 
 
-def filename(name):
-    return f"enroll-{_NAME.sub('-', name or 'node').strip('-') or 'node'}.sh"
+def filename(name, nid=""):
+    """enroll-NAME-ID.sh: the id in the name, so a script on disk says
+    which row it is for (the operator, 11 Oct); the row shows the same id."""
+    base = _NAME.sub('-', name or 'node').strip('-') or 'node'
+    return f"enroll-{base}-{_NAME.sub('-', str(nid))}.sh" if nid else f"enroll-{base}.sh"
 
 
 def build(ans, *, name, user, token, expires, provisioner, again=False, machine=""):

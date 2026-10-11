@@ -1409,10 +1409,15 @@ select:focus{outline-offset:-2px}
 .rngroup > .body{padding:0 0 var(--row-y);gap:0}
 /* The jump bar over a long surface (sectJump): its sections' names in a
    line that wraps, each a link to its own. */
-.sectjump{display:flex;flex-wrap:wrap;gap:4px 14px;padding:var(--row-y) var(--row-x);
+.sectjump{display:flex;flex-wrap:wrap;gap:6px 8px;padding:var(--row-y) var(--row-x);
   border-bottom:1px solid var(--line);font:var(--f-note)}
-.sectjump a{color:var(--accent);text-decoration:none;white-space:nowrap}
-.sectjump a:hover{text-decoration:underline}
+/* Chips, not bare words: as links alone they read as one more line of text
+   (the operator, 11 Oct). In a dialog the bar is a .field band, whose stack
+   is a column; the chips still sit in a row. */
+.field.sectjump,.modal .sectjump{display:flex;flex-direction:row;flex-wrap:wrap}
+.sectjump a{color:var(--accent);text-decoration:none;white-space:nowrap;padding:3px 10px;
+  border:1px solid var(--line);border-radius:99px;line-height:1.2}
+.sectjump a:hover{text-decoration:none;border-color:var(--accent)}
 .rnsign{padding:6px 0;border-top:1px solid var(--line)}
 /* A signed build's certificate fingerprint on its Artifacts row (R106):
    the whole of it, wrapping on a phone rather than cut off. */
@@ -1445,6 +1450,13 @@ select:focus{outline-offset:-2px}
 .rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 /* Also reaches: an address per row, its nodes ticked beside it, and its bin. */
 #rnReachRows{display:flex;flex-direction:column;gap:6px}
+/* The Storage tab (tab-storage.js): its sections hold field bands and rows,
+   so the body adds no inset; the project rows carry their numbers in
+   fixed columns, right-aligned, so the stack reads as a comparison. */
+.storagetab .sect>.body{padding:0 0 var(--row-y);gap:0}
+.storagetab .stproj .stcol{width:6.5em;text-align:right;font:var(--f-note);flex:0 0 auto}
+.storagetab .stproj .stcol b{font-weight:600}
+@media (max-width:600px){.storagetab .stproj .stcol{width:4.6em}}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
 .nginxtab .sect>.body{padding:0 0 var(--row-y);gap:0}
@@ -5086,6 +5098,7 @@ body.booting .pane>.loading{margin:auto}
         <button id="bNginx" onclick="openNginxTab()">nginx</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bPhone" onclick="openPhoneTab()">Phone</button>
+        <button id="bStorage" onclick="openStorageTab()">Storage</button>
         <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
       </div>
       <!-- Why a ghosted tool is ghosted, on the card: a tip is nothing on a
@@ -5173,6 +5186,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
 <script src="tab-nginx.js"></script>
+<script src="tab-storage.js"></script>
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
 <script src="tab-roles.js"></script>

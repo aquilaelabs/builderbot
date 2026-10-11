@@ -1174,6 +1174,23 @@ function renderNodesInto(i){
             esc(nodesAgent.version)}</span>` : ""}${
           n.config?.user ? ` · jobs run as ${esc(n.config.user)}` : ""}` : "";
     const pending = n.state === "pending";
+    // A waiting row says what its script was made with (the operator, 11
+    // Oct), and offers the script again: a new one, since a token is good
+    // once and never kept, so the old script stops working.
+    const picks = c => [`jobs run as ${esc(c.user || "bb")}`,
+      c.host_only ? "hosting only" : "runs sessions",
+      c.tunnel?.kind === "public" ? `reaches the controller at https://${esc(c.tunnel.host || "?")}`
+        : c.tunnel?.kind === "wireguard" ? `reaches the controller through WireGuard as ${esc(c.tunnel.addr || "?")}`
+        : "reaches the controller on this network",
+      c.door?.kind ? `SSH door: ${esc(c.door.kind)}${c.door.host ? ` at ${esc(c.door.host)}` : ""}` : "",
+      c.nginx ? "nginx once enrolled" : ""].filter(Boolean).join(" · ");
+    const pendingBar = n.kind === "agent" && pending ? `
+        <div class="sub ndpicks">Made with: ${picks(n.config || {})}.</div>
+        <div class="actbar ndpending">
+          <span class="lead dim">Waiting for enroll-${esc(n.name)}-${esc(n.id)}.sh to run on the machine. Download it again makes a new one with a new token (the old script stops working); Discard takes the row off.</span>
+          <button type="button" data-nd="reenroll" title="a new enroll script for this row, with a new token">Download it again</button>
+          <button type="button" class="danger" data-nd="discard" title="take this waiting row off: nothing has enrolled with it">Discard</button>
+        </div>` : "";
     const agentBar = n.kind === "agent" && !pending ? `
         <div class="actbar ndagent">
           <span class="lead dim${updating ? " note"
@@ -1207,11 +1224,12 @@ function renderNodesInto(i){
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
-          <span class="dim">· ${esc(n.kind)}</span></div>
+          <span class="dim">· ${esc(n.kind)}</span>
+          <code class="dim ndid" title="this node's id: the one in its enroll script's name">${esc(n.id)}</code></div>
         <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
         ${keepLine(n)}
         ${state?.can?.admin === false ? `<div class="sub warn ndreadonly">An administrator changes a node's settings. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
-        ${agentBar}
+        ${agentBar}${pendingBar}
       </div>
       <div class="ndsections">
         ${health}
@@ -1781,6 +1799,10 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               + "the controller for nothing but its own jobs. A project that lists it now has to be "
               + "moved off it first.")) return;
       }
+      if (act === "discard"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (!confirm(`Discard ${n?.name || "this row"}?\n\nNothing has enrolled with its script, so the row goes outright and the script it was made for stops working.`)) return;
+      }
       if (act === "reenroll"){
         const n = (nodesList || []).find(x => x.id === id);
         if (n){ modal.hidden = false; mintForm({}, n); }
@@ -1798,7 +1820,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
-               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
+               retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
                "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
                rename: "Renaming", turns: "Saving"}[act] || "Working");

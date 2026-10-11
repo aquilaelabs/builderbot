@@ -78,6 +78,7 @@ const SURFACE = [
   'postTrash', 'projectRow', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneButton', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'wirePhoneTab',
+  'openStorageTab', 'loadStorage', 'storageFilesystems', 'storageStores', 'storageProjects', 'storageSection', 'renderStorageInto', 'wireStorageTab',
   'openNginxTab', 'loadNginx', 'nginxAct', 'nginxRouteRow', 'nginxHosts', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxSection', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
   // guides are top-level consts, which are not window properties.

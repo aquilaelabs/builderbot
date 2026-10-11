@@ -590,6 +590,39 @@ def node_update(principal, node_id, fields):
     return {"ok": True}
 
 
+def node_storage_measure(principal, node_id):
+    """The Storage tab's Measure now (R169): a job the agent answers by
+    walking its disks at once rather than at the next hour, then a hello
+    with the result."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent":
+        return {"error": "only an agent node measures its disks"}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    r = job_add(principal, {"node": node_id}, "storage", {"timeout": 900})
+    if r.get("ok"):
+        audit(principal, "node-storage", node_id, {"job": r["job"]})
+    return r
+
+
+def node_discard(principal, node_id):
+    """A row that never enrolled, taken off outright (the operator, 11 Oct):
+    its script was discarded, so there is no history to keep and no
+    machine to tell. Only a waiting row; an enrolled node is retired."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("state") != "pending":
+        return {"error": f"{n['name']} has enrolled: Remove retires it, and its history stays"}
+    revoke_tokens(node_id)
+    _exec("DELETE FROM nodes WHERE id = ?", (node_id,))
+    _synced["at"] = 0.0
+    audit(principal, "node-discard", node_id, {"name": n.get("name")})
+    return {"ok": True}
+
+
 def node_state(principal, node_id, state):
     """Drain and undrain, plus retire, which is what Remove means: rows
     are history and an id is never reused, so a removed node keeps its row
@@ -803,6 +836,16 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
         _touch(existing, principal, "node-enroll-mint", {"token": tid, "again": True})
         return {"ok": True, "id": existing, "token": secret, "again": True,
                 "expires": int(time.time()) + ENROLL_TTL}
+    # One name, one node (the operator, 11 Oct): a second script made with
+    # a name that is already a row's, waiting or enrolled, is refused rather
+    # than a second row. A waiting row gets its script again from Enroll
+    # script on the row, or is discarded.
+    taken = next((o for o in node_list() if o.get("state") != "retired"
+                  and str(o.get("name") or "").lower() == name.lower()), None)
+    if taken:
+        return {"error": f"there is already a node called {name}"
+                         + (": Enroll script on its row makes it a new script, or Discard takes the waiting row off"
+                            if taken.get("state") == "pending" else ": pick another name, or Enroll script on its row")}
     nid = mint("n")
     _insert_node({
         "id": nid, "name": name, "kind": "agent",
@@ -874,7 +917,7 @@ def enroll_script(principal, req):
     return m | {"script": enrollscript.build(ans, name=name, user=user, token=m["token"],
                                               expires=m["expires"], provisioner=prov.read_bytes(),
                                               again=bool(again), machine=machine),
-                "filename": enrollscript.filename(name), "reach": ans["reach"],
+                "filename": enrollscript.filename(name, m["id"]), "reach": ans["reach"],
                 "home": enrollscript.home_rules(ans, port),
                 "tunnel_addr": ans.get("tunnel_addr", "")}
 
@@ -1125,6 +1168,40 @@ def _census(c):
         "unmet": {re.sub(r"[^A-Za-z0-9:._-]", "", str(k))[:40]:
                   [re.sub(r"[^A-Za-z0-9:._+/-]", "", str(x))[:60] for x in v if str(x)][:64]
                   for k, v in list(unmet.items())[:32] if isinstance(v, list) and v}}
+    # What the disks hold (R169, the agent's storage.py): the last hourly
+    # walk, bounded, for the Storage tab; the tab folds projects an account
+    # may not see into one total (storage.py here).
+    st = c.get("storage") if isinstance(c.get("storage"), dict) else {}
+    if st.get("at"):
+        def mb(v):
+            try:
+                return int(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+        out["storage"] = {
+            "at": int(st.get("at") or 0), "took_s": int(st.get("took_s") or 0),
+            "filesystems": [{"path": str(f.get("path") or "")[:200], "source": str(f.get("source") or "")[:200],
+                             "type": str(f.get("type") or "")[:16], "ro": bool(f.get("ro")),
+                             "total_mb": mb(f.get("total_mb")), "free_mb": mb(f.get("free_mb")),
+                             "used_mb": mb(f.get("used_mb")),
+                             "also": [str(x)[:200] for x in (f.get("also") or [])[:8]]}
+                            for f in (st.get("filesystems") or [])[:32] if isinstance(f, dict)],
+            "stores": {str(k)[:20]: {"path": str(v.get("path") or "")[:200], "fs": str(v.get("fs") or "")[:200],
+                                     "used_mb": mb(v.get("used_mb")), "slow": bool(v.get("slow"))}
+                       for k, v in list((st.get("stores") or {}).items())[:8] if isinstance(v, dict)},
+            "projects": {str(k)[:100]: {str(w)[:20]: mb(n) for w, n in list(v.items())[:8]}
+                         for k, v in list((st.get("projects") or {}).items())[:300] if isinstance(v, dict)},
+            "workspace": {"path": str((st.get("workspace") or {}).get("path") or "")[:200],
+                          "fs": str((st.get("workspace") or {}).get("fs") or "")[:200]},
+            "homes": {"path": str((st.get("homes") or {}).get("path") or "")[:200],
+                      "mb": mb((st.get("homes") or {}).get("mb")),
+                      "fs": str((st.get("homes") or {}).get("fs") or "")[:200]},
+            "docker": {"kinds": [{"kind": str(k.get("kind") or "")[:40], "count": int(k.get("count") or 0),
+                                  "mb": mb(k.get("mb")) or 0, "reclaimable_mb": mb(k.get("reclaimable_mb")) or 0}
+                                 for k in ((st.get("docker") or {}).get("kinds") or [])[:8] if isinstance(k, dict)],
+                       "root": str((st.get("docker") or {}).get("root") or "")[:200],
+                       "fs": str((st.get("docker") or {}).get("fs") or "")[:200]},
+            "slow": [str(x)[:200] for x in (st.get("slow") or [])[:16]]}
     out["mounts"] = []
     for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
         if isinstance(m, dict) and str(m.get("path") or "").startswith("/"):
@@ -2736,6 +2813,8 @@ def samples(nid):
 # (phase 5), toolchain (an install against the node's toolchain store)
 # and cache-clear (drop the node's build caches) are the agent's own.
 JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear",
+             # A walk of the node's disks now, for the Storage tab (R169).
+             "storage",
              # An Android system image onto a node's toolchain store, or off
              # it: there without being a toolchain (emulator.py).
              "image",
@@ -3205,7 +3284,7 @@ def sync_node_ids():
 # storage and network, self-update and cache-clearing jobs go to it.
 HOST_VERBS = frozenset(("hello", "beat", "work", "log", "result", "download",
                         "devimage", "devdata", "devdata-put"))
-HOST_JOBS = frozenset(("compose", "system", "self-update", "cache-clear"))
+HOST_JOBS = frozenset(("compose", "system", "self-update", "cache-clear", "storage"))
 
 
 def host_only(n):
@@ -4321,6 +4400,8 @@ def verb(principal, req):
              "root-asks": root_asks, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
+             "discard": lambda: node_discard(principal, nid),
+             "storage": lambda: node_storage_measure(principal, nid),
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
              "paths": paths, "check-paths": check_paths, "funnel": funnel,

@@ -113,6 +113,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The nginx tab holds a certificate per hostname beside the node's default, so sites on several domains behind one node each get their own. (ab6e253)
 - The controller can run the home tunnel itself: the Settings tab's Public hostname group takes the hostname, the tunnel's token and an optional Cloudflare API token that writes the hostname's record and the tunnel's rules; the image carries cloudflared, and Enroll node fills the hostname in. (03818ad)
 - Enroll script on a node's row makes a new script for that node, to run again on the same machine and nowhere else; it carries no secret, and the node keeps its id. (5542fba)
+- A Storage tab on the Tools card: what every node's disks hold, each filesystem as a meter, the stores and Docker's share, and each project's folders largest first, projects you cannot see counted as one line; Measure now walks a node's disks at once. Its own area, Storage. (6d600f9)
 
 ### Changed
 
@@ -248,6 +249,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The bell's drawer is grouped as Waiting on you, Needs attention and Recent. An update on a node is a short row, versions folded, with Dismiss: that version stays away for your account on every device until a newer one is out (3f597ad)
 - A project's settings save a section at a time: each section has its own Save and Revert, and where a running session would only take a change when it starts, the section offers Save, keep it running and Save and end it at once. (fdc65ea)
 - The briefing says how a session sends any of its compose files to Docker, what a required variable means, that a hosting node named in its settings takes its containers, and that what stands in front of a container is the nginx tab, a person's. (0937b55)
+- A node's name is taken once: a second script with it is refused; a waiting row shows its id and what its script was made with, and offers Download it again or Discard; the script is named enroll-NAME-ID.sh. (6d600f9)
 
 ### Removed
 

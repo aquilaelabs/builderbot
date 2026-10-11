@@ -1012,6 +1012,14 @@ the pieces stack:
    project's own node and shipped) and rebuild and remove the ones there,
    under its Claude may: Run its container, as on its own node; a node not
    named stays a person's to send to.
+4z. *One name, one row.* A script made with a name a row already wears,
+   waiting or enrolled, is refused rather than a second row made
+   (`enroll_mint`); a waiting row shows what its script was made with and
+   its id (the script is named `enroll-NAME-ID.sh`, so the file on disk
+   says which row it is for), offers Download it again (a new script with
+   a new token, since a token is good once and never kept) and Discard,
+   which takes a row that never enrolled off outright (`node_discard`);
+   an enrolled node is retired, its history kept.
 4a. *Enroll it again* (R177): Enroll script on the node's row makes a new
    script for a node already here, opened on its own answers, with no
    secret in it (the node keeps its WireGuard config and its door's; a

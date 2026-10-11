@@ -102,7 +102,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
-TAB_KINDS = {"term", "toolchains", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx",
+TAB_KINDS = {"term", "toolchains", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "storage",
              "nodes", "settings", "jobs", "users", "profile", "phone", "runner"}
 
 

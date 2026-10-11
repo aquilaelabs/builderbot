@@ -2590,6 +2590,7 @@ import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
 import nginxproxy                                                # noqa: E402
 import tunnel                                                    # noqa: E402
+import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
@@ -3577,6 +3578,7 @@ GET_ROUTES = (
     ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
     ("prefix", "/api/nginx", "_get_nginx"),
+    ("prefix", "/api/storage", "_get_storage"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/docker", "_get_docker"),
@@ -3637,6 +3639,7 @@ POST_ROUTES = (
     ("prefix", "/api/layout", "_layout"),
     ("exact", "/api/bell", "_bell"),
     ("exact", "/api/nginx", "_nginx"),
+    ("exact", "/api/storage", "_storage"),
     ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
@@ -4401,11 +4404,16 @@ class Handler(BaseHTTPRequestHandler):
         enrolled at, or an edge's own headers, which only narrow their writer."""
         if NODES_OK:
             return False
+        host = self.headers.get("Host", "")
+        own = settings.get("tunnel_host") if not NODES_OK else ""
         why = nodes.tunnel_refuses(self.client_address[0] if self.client_address else "",
-                                   self.path.partition("?")[0],
-                                   host=self.headers.get("Host", ""),
-                                   # Cloudflare's own mark; other tunnels are known by the hostname.
-                                   edge="Cf-Ray" in self.headers)
+                                   self.path.partition("?")[0], host=host,
+                                   # Cloudflare's own mark; other tunnels are known by the
+                                   # hostname, and the controller's own public hostname (R176)
+                                   # is one whatever rule the tunnel carries, so a rule left
+                                   # wide reaches no page (bb.neat.fish answered its login, 11 Oct).
+                                   edge="Cf-Ray" in self.headers
+                                        or bool(own and host.lower().rsplit(":", 1)[0] == own))
         if why:
             self._safely(lambda: self._json({"error": why}, 403))
         return bool(why)
@@ -7086,6 +7094,33 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("command-pin"):
             return None
         return self._json(*macros.pin(req.get("name", ""), bool(req.get("pinned"))))
+
+    def _get_storage(self):
+        """The Storage tab (storage.view, R169): every node this account
+        holds the Storage area on, what its disks hold, by project where
+        the account sees the project and as one line otherwise. Never a
+        session's: a session reads its node with bb node busy."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a node's disks are a person's to read here"}, 403)
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: " + NODES_OK}, 500)
+        return self._json(*storage.view(nodes.node_list(), who, is_admin=users.is_admin,
+                                        nodes_for=roles.nodes_for, may_see=users.may_see,
+                                        level_of=roles.level_of))
+
+    def _storage(self, req):
+        """Measure now on the Storage tab: a node's disks walked at once
+        (nodes.node_storage_measure). Write on Storage for that node."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a node's disks are a person's to read here"}, 403)
+        nid = field(req, "node")
+        if not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        if not users.is_admin(who) and roles.level_of(who, "storage", node=nid) != "write":
+            return self._json({"error": "measuring a node's disks again is Write on Storage"}, 403)
+        return self._result(nodes.node_storage_measure(self._principal(), nid))
 
     def _get_nginx(self):
         """The nginx tab (nginxproxy.view): every node's nginx, for an

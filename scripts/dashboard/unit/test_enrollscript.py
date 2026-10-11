@@ -143,6 +143,7 @@ class Script(unittest.TestCase):
 
     def test_the_file_is_named_for_the_node(self):
         self.assertEqual(es.filename("cloud box/1"), "enroll-cloud-box-1.sh")
+        self.assertEqual(es.filename("vps", "n_12ab"), "enroll-vps-n_12ab.sh")
 
 
 class PublicHostname(unittest.TestCase):

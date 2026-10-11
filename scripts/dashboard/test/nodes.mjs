@@ -2280,8 +2280,8 @@ await page.evaluate(async () => {
   const part = tag => { const m = script.match(new RegExp(`<<'${tag}'\\n([\\s\\S]*?)\\n${tag}\\n`));
                         return m ? Buffer.from(m[1].replace(/\n/g, ''), 'base64').toString('utf8') : ''; };
   const prov = readFileSync(`${REPO}/nodes/provision-linux.sh`, 'utf8');
-  ok(file === 'enroll-cloudbox.sh' && script.startsWith('#!/usr/bin/env bash') && part('PROVISIONER') === prov,
-     `Make the script saves ${file}, the provisioner this controller ships inside it`);
+  ok(/^enroll-cloudbox-n_[0-9a-f]+\.sh$/.test(file) && script.startsWith('#!/usr/bin/env bash') && part('PROVISIONER') === prov,
+     `Make the script saves ${file}, named with the row's id, the provisioner this controller ships inside it`);
   const conf = part('WGCONF');
   ok(/AllowedIPs = 192\.168\.1\.16\/32/.test(conf) && !/0\.0\.0\.0\/0|DNS/.test(conf) && /PersistentKeepalive = 25/.test(conf),
      `...with the router's config routing the controller alone (${conf.split('\n').filter(l => /Allowed|Keep/.test(l)).join('; ')})`);
@@ -2329,6 +2329,39 @@ await page.evaluate(async () => {
   const row2 = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'vpsbox'); });
   ok(row2?.state === 'pending' && row2.config?.tunnel?.host === 'bb.example.com' && row2.config?.host_only === true,
      `...and the pending row is hosting only with its hostname (${JSON.stringify(row2?.config)})`);
+  // One name, one node (the operator, 11 Oct): the same name again is
+  // refused rather than a second waiting row; the row shows what its
+  // script was made with, its id, and offers the script again or Discard.
+  const napi = async (path, body) => (await fetch(URL.replace(/\/$/, '') + path, body === undefined
+    ? { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } }
+    : { method: 'POST', headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body) })).json();
+  const dup = await napi('/api/v1/nodes', { action: 'enroll', script: true, name: 'vpsbox', user: 'bb', reach: 'lan', controller: 'http://192.168.1.16:7680' });
+  ok(/already a node called vpsbox/.test(dup.error || '') && /Discard/.test(dup.error || ''),
+     `a second script with a waiting row's name is refused, pointing at the row (${dup.error})`);
+  await page.click('#ndBody #ndTokDone');
+  const ROW2 = `.nodestab .ndrow[data-node="${row2.id}"]`;
+  // The tab shows one node at a time: the waiting row picked.
+  await page.evaluate(async id => { await loadNodes(); openNodesTab(id); }, row2.id);
+  await page.waitForSelector(`${ROW2} .ndpending`, { timeout: 10000 });
+  const pend = await page.$eval(ROW2, r => ({ id: r.querySelector('.ndid')?.textContent, picks: r.querySelector('.ndpicks')?.textContent,
+    again: !!r.querySelector('[data-nd="reenroll"]'), discard: !!r.querySelector('[data-nd="discard"]') }));
+  ok(pend.id === row2.id && /hosting only/.test(pend.picks) && /https:\/\/bb\.example\.com/.test(pend.picks) && pend.again && pend.discard,
+     `the waiting row shows its id, what its script was made with, Download it again and Discard (${pend.picks})`);
+  await page.click(`${ROW2} [data-nd="reenroll"]`);
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  const [dl5] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  ok(dl5.suggestedFilename() === `enroll-vpsbox-${row2.id}.sh`
+     && (await napi('/api/v1/nodes')).nodes.filter(n => n.name === 'vpsbox').length === 1,
+     `Download it again makes a new script for the same row, named with its id (${dl5.suggestedFilename()})`);
+  await page.click('#ndBody #ndTokDone');
+  page.dialogs.length = 0;
+  await page.click(`${ROW2} [data-nd="discard"]`);
+  await page.waitForFunction(id => !(nodesList || []).some(n => n.id === id), row2.id, { timeout: 10000 });
+  ok(page.dialogs.length === 1 && /Discard vpsbox/.test(page.dialogs[0])
+     && !(await napi('/api/v1/nodes', undefined)).nodes.some(n => n.id === row2.id),
+     'Discard asks, then takes the waiting row off outright');
+  await page.evaluate(async () => { await loadNodes(); openNodesTab((nodesList || []).find(n => n.name === 'shed')?.id); });
   // The controller's half: that hostname reaches the agent's API and nothing
   // else, by the Host header and by an edge's own headers.
   const gate = await page.evaluate(async () => {
@@ -2338,8 +2371,7 @@ await page.evaluate(async () => {
   });
   ok(gate.page === 200 && gate.tunnel === 403 && gate.agent !== 403,
      `...and a request wearing a tunnel edge's headers reaches the agent's API alone (${JSON.stringify(gate)})`);
-  await page.click('#ndBody #ndTokDone');
-  if (row2) await page.evaluate(id => nodeAct({ action: 'retire', id }), row2.id);
+  if (await page.$eval('#ndmodal', m => !m.hidden).catch(() => false)) await page.click('#ndBody #ndTokDone').catch(() => {});
   // A door in for SSH (R174): the dialog's recipe, its hostname and secret;
   // the script carries the secret in a block and runs the provisioner with
   // the door's flags; the pending row knows the door; and once the node

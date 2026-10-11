@@ -123,6 +123,13 @@ ok(groups.join('|') === 'Storage|Public hostname|Debugging|Reset',
   await page.selectOption('#ndBody #ndEnReach', 'public');
   ok(await page.$eval('#ndBody #ndEnCtl', e => e.value) === 'https://bb.example.com',
      'Enroll node fills the controller\'s own public hostname in');
+  // Asked for by its own public hostname, the controller answers the
+  // agent's API and nothing else, whatever rule the tunnel carries
+  // (bb.neat.fish served its login through a wide rule, 11 Oct).
+  const viaHost = (path) => execFileSync('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', 'Host: bb.example.com',
+    '-u', 'test:test', URL.replace(/\/$/, '') + path]).toString();
+  ok(viaHost('/api/status') === '403' && viaHost('/') === '403' && viaHost('/api/v1/agent/hello') !== '403',
+     `by its own hostname the controller refuses its pages and keeps the agent's API (${viaHost('/api/status')}, ${viaHost('/')})`);
   await page.click('#ndBody #ndEnCancel');
   await page.evaluate(() => openSettingsTab());
   await page.waitForSelector(`${G} [data-clear="tunnel_token"]`, { timeout: 15000 });

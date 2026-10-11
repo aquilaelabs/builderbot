@@ -83,6 +83,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
   },
+  storage: {
+    // A section per node, or the empty band on a box with none (R169).
+    open: () => page.evaluate(() => openStorageTab()),
+    readyWhen: '.storagetab .sect, .storagetab .empty',
+  },
   nginx: {
     // A section per node, or the empty band on a box with none (R171).
     open: () => page.evaluate(() => openNginxTab()),

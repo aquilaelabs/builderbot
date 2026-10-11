@@ -81,10 +81,13 @@ AREAS = (
     ("accounts", "Accounts and roles", "global", "the Users and Roles tabs", "add accounts, give roles"),
     ("newprojects", "New projects", "global", "the nodes a project may be made on", "make a project, and own it"),
     ("controller", "Controller", "global", "settings and diagnostics", "settings, debug, pinned commands"),
+    # The Storage tab (R169): what every node's disks hold, by project.
+    # Read sees it; Write measures a node again now.
+    ("storage", "Storage", "global", "the Storage tab", "measure a node's disks now"),
 )
 # The areas a Global role may hold on named nodes alone (its `nodes`, none
 # named being every node): what reaches a machine (the operator, 7 Oct).
-NODE_AREAS = frozenset({"nodes", "toolchains", "jobs", "newprojects"})
+NODE_AREAS = frozenset({"nodes", "toolchains", "jobs", "newprojects", "storage"})
 AREA_KEYS = tuple(a[0] for a in AREAS)
 PROJECT_AREAS = frozenset(a[0] for a in AREAS if a[2] == "project")
 LEVELS = ("read", "write")

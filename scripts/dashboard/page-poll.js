@@ -195,8 +195,9 @@ async function refresh(){
       if (!a) return;
       const show = {bSettings: a.controller, bUsers: a.accounts, bRoles: a.accounts,
                     bToolchains: a.toolchains, bJobs: a.jobs, bNodes: a.nodes,
-                    // The nginx tab is the Nodes tab's area (R171).
-                    bNginx: a.nodes};
+                    // The nginx tab is the Nodes tab's area (R171); the
+                    // Storage tab its own (R169).
+                    bNginx: a.nodes, bStorage: a.storage};
       for (const [id, lvl] of Object.entries(show)){
         const b = $(id);
         if (b) b.hidden = !lvl;
