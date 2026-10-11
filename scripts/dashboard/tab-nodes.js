@@ -1188,6 +1188,7 @@ function renderNodesInto(i){
               : `Update the agent to ${esc(nodesAgent.version)} once its running jobs finish`}">${
             updating ? "Updating…" : "Update agent"}</button>` : ""}
           <button type="button" data-nd="test" title="check that this node answers">Test</button>
+          <button type="button" data-nd="reenroll" title="a new enroll script for this node, to run again on the same machine">Enroll script</button>
         </div>
         <div class="sub ndtest" hidden></div>` : "";
     const health = docSection("nodes", "health", "Health",
@@ -1361,8 +1362,11 @@ function wireNodesTab(root){
   // with the answers, the token and (behind WireGuard) the tunnel inside,
   // built on the press and kept nowhere but the file the browser saves.
   // "Just a token" is the old way: the commands to paste, a Mac's included.
-  const mintForm = (was = {}) => {
-    document.getElementById("ndTitle").textContent = "Enroll a node";
+  // `again` is a node already here (R177): the form opens on its answers,
+  // its name fixed, its secrets left out (the node keeps them), and the
+  // script it makes carries that node's id and runs on its machine alone.
+  const mintForm = (was = {}, again = null) => {
+    document.getElementById("ndTitle").textContent = again ? `Enroll ${again.name} again` : "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
         <div class="prefrow">
@@ -1412,15 +1416,26 @@ function wireNodesTab(root){
           <textarea id="ndEnWgText" rows="7" spellcheck="false" autocomplete="off"
             placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.6.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = home.example.net:51820"></textarea></div>
       </div>
-      <div class="field"><div class="hint">The script carries a token good once, for a day, and runs as root on a Linux machine.</div></div>
+      <div class="field"><div class="hint">${again
+        ? "A new script for this node: run it again on the same machine, as root, to set it up afresh or change what it reaches the controller through. It carries no secret (the node keeps its WireGuard config and its door's); a secret pasted here replaces the node's. It refuses to run on another machine, and so does the controller."
+        : "The script carries a token good once, for a day, and runs as root on a Linux machine."}</div></div>
       <div class="foot">
         <button type="button" class="primary" id="ndEnGo">Make the script</button>
         <button type="button" id="ndEnTok">Just a token</button>
         <button type="button" id="ndEnCancel">Cancel</button>
       </div>`;
     const $b = sel => body.querySelector(sel);
+    if (again){
+      const c = again.config || {};
+      was = {"#ndEnName": again.name, "#ndEnUser": c.user || "bb",
+             "#ndEnSess": !c.host_only, "#ndEnHost": !!c.host_only, "#ndEnNginx": !!c.nginx,
+             "#ndEnReach": c.tunnel?.kind === "public" ? "public" : c.tunnel?.kind === "wireguard" ? "wireguard" : "lan",
+             "#ndEnCtl": c.tunnel?.kind === "public" && c.tunnel.host ? `https://${c.tunnel.host}` : location.origin,
+             "#ndEnDoor": c.door?.kind || "", "#ndEnDoorHost": c.door?.host || "", ...was};
+    }
     for (const [k, v] of Object.entries(was)) if ($b(k) && v !== undefined)
       $b(k)[typeof v === "boolean" ? "checked" : "value"] = v;
+    if (again) $b("#ndEnName").disabled = true;
     const reach = $b("#ndEnReach");
     // Hosting only takes sessions with it: the box is to run containers.
     // Through a public hostname it is so by construction (R170): the
@@ -1483,18 +1498,18 @@ function wireNodesTab(root){
     go.onclick = () => pressing(go, async () => {
       const kept = keep();
       const conf = $b("#ndEnWgText").value;
-      if (reach.value === "wireguard" && !conf.trim()){
+      if (reach.value === "wireguard" && !conf.trim() && !again){
         notify("choose the WireGuard config your router made for this machine, or paste it in", true); return;
       }
       busy(go, "Making");
-      const r = await nodeAct({action: "enroll", script: true, ...answers(),
+      const r = await nodeAct({action: "enroll", script: true, ...answers(), ...(again ? {node: again.id} : {}),
         sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
         host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
         door: door.value, door_host: $b("#ndEnDoorHost").value.trim(),
         door_secret: $b("#ndEnDoorSecret").value.trim(), door_close22: $b("#ndEnDoorClose").checked,
         controller: $b("#ndEnCtl").value.trim(),
         wg_conf: reach.value === "wireguard" ? conf : ""});
-      if (r.error){ mintForm(kept); return; }
+      if (r.error){ mintForm(kept, again); return; }
       mintScript(r);
       nodesRev++; drawPanes();              // the pending row joins the picker
     });
@@ -1502,8 +1517,9 @@ function wireNodesTab(root){
     tok.onclick = () => pressing(tok, async () => {
       const kept = keep(), a = answers();
       busy(tok, "Minting");
-      const r = await nodeAct({action: "enroll", ...a, host_only: $b("#ndEnHost").checked, nginx: ngx.checked});
-      if (r.error){ mintForm(kept); return; }
+      const r = await nodeAct({action: "enroll", ...a, host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
+                               ...(again ? {node: again.id} : {})});
+      if (r.error){ mintForm(kept, again); return; }
       // The URL the node should dial: this page's origin, which is the only
       // address the browser knows the controller by. A proxy in front is the
       // operator's to substitute.
@@ -1764,6 +1780,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               + "No project may list it, no session or synced copy runs there, and its agent may ask "
               + "the controller for nothing but its own jobs. A project that lists it now has to be "
               + "moved off it first.")) return;
+      }
+      if (act === "reenroll"){
+        const n = (nodesList || []).find(x => x.id === id);
+        if (n){ modal.hidden = false; mintForm({}, n); }
+        return;
       }
       if (act === "door" && b.dataset.on === "0"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";

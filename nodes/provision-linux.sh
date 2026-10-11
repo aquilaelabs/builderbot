@@ -67,6 +67,9 @@ REACH=""
 # with the auth key in it and answering ssh there. --door-close22 drops
 # public port 22 once the door is up.
 DOOR=""; DOOR_HOST=""; DOOR_SECRET=""; DOOR_CLOSE22=0
+# --machine HASH: the script was made for a node that enrolled from one
+# machine (R177), and runs on that one alone.
+MACHINE=""
 
 usage() {
     cat <<'EOF'
@@ -157,6 +160,8 @@ it, which is a paste rather than a questionnaire.
                        enrolling, and verified by the system's CAs on every
                        call rather than pinned. Such a node is hosting only,
                        with no sessions.
+  --machine HASH       made for one machine (the Nodes tab's Enroll script
+                       on a node's row): runs there and nowhere else.
   --door cloudflared   a door in for SSH, switched on and off from the
   --door tailscale     node's row on the Nodes tab. cloudflared publishes
                        this machine's port 22 at --door-host HOST (a
@@ -233,6 +238,7 @@ while [ $# -gt 0 ]; do
         --door-host) DOOR_HOST="$2"; shift 2 ;;
         --door-secret) DOOR_SECRET="$2"; shift 2 ;;
         --door-close22) DOOR_CLOSE22=1; shift ;;
+        --machine) MACHINE="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -272,6 +278,26 @@ if [ -n "$DOOR" ]; then
     case "$DOOR" in cloudflared|tailscale) ;; *) echo "--door takes cloudflared or tailscale" >&2; exit 1 ;; esac
     [ "${GUEST:-0}" != 1 ] || { echo "--door installs a service, which needs root, and a guest node runs without it" >&2; exit 1; }
     [ "$DOOR" != cloudflared ] || [ -n "$DOOR_HOST" ] || { echo "--door cloudflared needs --door-host HOST, the public hostname set on the tunnel" >&2; exit 1; }
+fi
+# The machine this script was made for (R177): the same fingerprint the
+# agent reports, so a script copied to another box stops here, before it
+# changes anything there.
+machine_id() {
+    local v=""
+    for f in /etc/machine-id /sys/class/dmi/id/product_uuid; do
+        [ -r "$f" ] || continue
+        v="$(tr -d ' \n\r\t' < "$f" 2>/dev/null || true)"
+        [ -n "$v" ] && { printf '%s' "$v" | sha256sum | cut -c1-32; return 0; }
+    done
+    return 1
+}
+if [ -n "$MACHINE" ]; then
+    here="$(machine_id || true)"
+    if [ -z "$here" ]; then
+        echo "this script was made for one machine and this one has no machine id to compare: make a new script on the Nodes tab (Enroll node)" >&2; exit 1
+    elif [ "$here" != "$MACHINE" ]; then
+        echo "this script was made for another machine (the node that enrolled with it): it does nothing here. Enroll this machine with a script of its own from the Nodes tab" >&2; exit 1
+    fi
 fi
 case "$TOKEN" in
     ""|bbe_*) ;;

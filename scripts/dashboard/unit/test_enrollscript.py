@@ -213,6 +213,30 @@ class Door(unittest.TestCase):
         self.assertIn("out of", p.stdout)
 
 
+class Again(unittest.TestCase):
+    """A node enrolling again (R177): the script bound to its machine, with
+    no secret in it, the node's own WireGuard config and door left as they
+    are."""
+    def test_the_script_is_bound_and_carries_no_secret(self):
+        ans = es.check({"reach": "wireguard", "controller": "http://192.168.1.16:7680", "tunnel_addr": "10.6.0.5",
+                        "door": "cloudflared", "door_host": "door.example.com"}, again=True)
+        self.assertNotIn("error", ans)
+        self.assertEqual((ans["wg_conf"], ans["tunnel_addr"], ans["door_secret"]), ("", "10.6.0.5", ""))
+        s = es.build(ans, name="vps", user="bb", token="bbe_x", expires=0, provisioner=b"x", again=True, machine="ab" * 16)
+        run = next(x for x in s.splitlines() if x.startswith('bash "$dir/provision-linux.sh"'))
+        self.assertIn("--machine 'abababababababababababababababab'", run)
+        self.assertIn('--wg-conf "$dir/bb.conf"', run)
+        self.assertIn("--door 'cloudflared' --door-host 'door.example.com'", run)
+        self.assertNotIn("--door-secret", run)
+        self.assertIsNone(section(s, "WGCONF"))
+        self.assertIsNone(section(s, "DOORSECRET"))
+        self.assertIn("install -m 600 /etc/wireguard/bb.conf", s)
+        self.assertIn("the node keeps it", s)
+        self.assertIn("enroll vps again", s)
+        # Without `again`, the same answers are refused for what they lack.
+        self.assertIn("PrivateKey", es.check({"reach": "wireguard", "controller": "http://192.168.1.16:7680"})["error"])
+
+
 class TunnelGate(unittest.TestCase):
     def setUp(self):
         self.was = nodes.tunnel_addrs, nodes.tunnel_hosts

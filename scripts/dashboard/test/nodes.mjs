@@ -1263,6 +1263,40 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(await page.$eval(`${ROW} .nddoor`, e => /Open it/.test(e.textContent) && !e.querySelector('.ndcmd')),
        '...and reported shut, the row offers Open it and no command');
     await hello(CENSUS);
+    // Enroll script on the row (R177): a new script for this node, bound
+    // to the machine it reported, with no secret in it; run on another
+    // machine the controller refuses it, on the same it enrolls again
+    // under the same id, and the old agent's token is dead.
+    const MACHINE = 'c'.repeat(32);
+    await hello({ ...CENSUS, machine: MACHINE });
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
+    await page.waitForSelector(`${ROW} [data-nd="reenroll"]`, { timeout: 10000 });
+    await page.click(`${ROW} [data-nd="reenroll"]`);
+    await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+    const again = await page.evaluate(() => ({ title: document.getElementById('ndTitle').textContent,
+      name: $('ndEnName').value, fixed: $('ndEnName').disabled, user: $('ndEnUser').value }));
+    ok(/Enroll shed again/.test(again.title) && again.name === 'shed' && again.fixed && again.user === 'bb',
+       `Enroll script opens the dialog on the node's own answers, its name fixed (${JSON.stringify(again)})`);
+    const [dl4] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+    const script4 = readFileSync(await dl4.path(), 'utf8');
+    const run4 = script4.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
+    const tok4 = (run4.match(/--token '(bbe_[^']+)'/) || [])[1];
+    ok(new RegExp(`--machine '${MACHINE}'`).test(run4) && !/DOORSECRET|WGCONF/.test(script4) && tok4,
+       `...and the script is bound to the machine the node reported, with no secret in it (${run4.replace(/bbe_[^']+/, 'bbe_…').slice(0, 120)})`);
+    await page.click('#ndBody #ndTokDone');
+    const rowsNow = (await napi('/api/v1/nodes')).nodes.filter(n => n.name === 'shed');
+    ok(rowsNow.length === 1 && rowsNow[0].id === minted.id && rowsNow[0].state === 'online',
+       'no second row: the node keeps its id and stays online while the script waits to run');
+    const enrollWith = (token, census) => fetch(base + '/api/v1/agent/enroll', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest, user: 'bb' }) }).then(r => r.json());
+    const other = await enrollWith(tok4, { ...CENSUS, machine: 'd'.repeat(32) });
+    ok(/another machine/.test(other.error || ''), `run on another machine, the controller refuses it (${other.error})`);
+    const same = await enrollWith(tok4, { ...CENSUS, machine: MACHINE });
+    ok(same.ok && same.node_id === minted.id, `on the same machine it enrolls again under the same id (${same.error || same.node_id})`);
+    const oldTok = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
+    ok(/revoked|token/i.test(oldTok.error || ''), `...and the old agent's token is dead (${oldTok.error})`);
+    en.token = same.token;
   }
   // The fold is held to the document rules the same as any tab surface
   // (uniform.mjs cannot see it: that suite has no sandbox node to open one

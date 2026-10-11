@@ -1,5 +1,6 @@
 """The census and the sample: what the node says about itself on every hello."""
 import errno
+import hashlib
 import ipaddress
 import json
 import os
@@ -120,6 +121,24 @@ def door_now(state):
     return out
 
 
+def machine_now():
+    """What this machine is, as a fingerprint the controller can hold a
+    node to (R177): the hash of /etc/machine-id (systemd's, kept across
+    reboots), else of the board's product uuid, else nothing. The enroll
+    script made for a node that has enrolled carries it, and a run on
+    another machine is refused on both ends. A hash, so the id itself
+    never travels."""
+    for path in ("/etc/machine-id", "/sys/class/dmi/id/product_uuid"):
+        try:
+            with open(path) as f:
+                v = f.read().strip()
+            if v:
+                return hashlib.sha256(v.encode()).hexdigest()[:32]
+        except OSError:
+            continue
+    return ""
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -134,6 +153,7 @@ def census(state):
         # a selector should not have to parse the display string above.
         "system": platform.system().lower(), "arch": platform.machine(),
         "hostname": socket.gethostname(),
+        "machine": machine_now(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",
         # git's, because nothing keeps it in step and nothing should: it is

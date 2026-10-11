@@ -112,6 +112,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Enroll node sets up a door in for SSH: cloudflared publishing port 22 at a hostname of its own, or Tailscale with ssh on the tailnet; the node's row switches it on and off and shows the ssh command, and the secret leaves the script once it has run. (1558011)
 - The nginx tab holds a certificate per hostname beside the node's default, so sites on several domains behind one node each get their own. (ab6e253)
 - The controller can run the home tunnel itself: the Settings tab's Public hostname group takes the hostname, the tunnel's token and an optional Cloudflare API token that writes the hostname's record and the tunnel's rules; the image carries cloudflared, and Enroll node fills the hostname in. (03818ad)
+- Enroll script on a node's row makes a new script for that node, to run again on the same machine and nowhere else; it carries no secret, and the node keeps its id. (5542fba)
 
 ### Changed
 

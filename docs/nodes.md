@@ -1012,6 +1012,15 @@ the pieces stack:
    project's own node and shipped) and rebuild and remove the ones there,
    under its Claude may: Run its container, as on its own node; a node not
    named stays a person's to send to.
+4a. *Enroll it again* (R177): Enroll script on the node's row makes a new
+   script for a node already here, opened on its own answers, with no
+   secret in it (the node keeps its WireGuard config and its door's; a
+   secret pasted replaces the node's), bound to the machine the node
+   reported (`--machine`, the hash of its machine id, which the provisioner
+   checks before it changes anything and `nodes.enroll` checks again), and
+   enrolling under the same id, every earlier token of the node revoked so
+   one agent is left. For setting a node up afresh, or changing how it
+   reaches the controller.
 4b. *A door in for SSH* (R174): a tunnel client on the node, switched on
    and off from the node's row (a `door` system job the agent answers by
    starting or stopping it; the census reports `door: {kind, host,

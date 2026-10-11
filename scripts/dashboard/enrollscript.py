@@ -133,10 +133,12 @@ def narrow_wg(conf, controller_ip):
     return "\n".join(out).strip() + "\n"
 
 
-def check(answers):
+def check(answers, again=False):
     """The answers, cleaned, or {"error": why}. `answers` is the dialog's:
     name, user, sessions (bool), reach, controller (the URL as the node
-    will reach it) and, for WireGuard, wg_conf (the router's file)."""
+    will reach it) and, for WireGuard, wg_conf (the router's file). With
+    `again` (R177, a node enrolling once more) the secrets may be left
+    out: the node keeps its WireGuard config and its door's secret."""
     reach = str(answers.get("reach") or "lan")
     if reach not in REACH:
         return {"error": f"no such way to reach the controller: {reach}"}
@@ -150,14 +152,14 @@ def check(answers):
     if door:
         if door not in DOORS:
             return {"error": f"no such door: {door}; one of {', '.join(DOORS)}"}
-        host = str(answers.get("door_host") or "").strip().lower()
+        dhost = str(answers.get("door_host") or "").strip().lower()
         secret = str(answers.get("door_secret") or "").strip()
-        if door == "cloudflared" and not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", host):
+        if door == "cloudflared" and not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", dhost):
             return {"error": "cloudflared's door is a hostname of its own, like ssh-vps.example.com (not the "
                              "controller's): the public hostname set on the tunnel in Zero Trust"}
-        if not secret or len(secret) > 4000 or any(c.isspace() for c in secret):
+        if (not secret and not again) or len(secret) > 4000 or any(c.isspace() for c in secret):
             return {"error": "the door's secret is one line: cloudflared's tunnel token, or Tailscale's auth key"}
-        out.update(door=door, door_host=host if door == "cloudflared" else "", door_secret=secret,
+        out.update(door=door, door_host=dhost if door == "cloudflared" else "", door_secret=secret,
                    door_close22=answers.get("door_close22") is True)
     if reach == "public":
         # A public name over HTTPS, verified by the system's CAs: an address
@@ -183,11 +185,17 @@ def check(answers):
         conf = str(answers.get("wg_conf") or "")
         if len(conf) > 8000:
             return {"error": "that file is too big to be a WireGuard config"}
-        wg = parse_wg(conf)
-        if wg.get("error"):
-            return wg
-        out.update(wg_conf=narrow_wg(conf, str(ip)), tunnel_addr=wg["addr"],
-                   endpoint=wg["endpoint"], controller_ip=str(ip))
+        if again and not conf.strip():
+            # The node's own /etc/wireguard/bb.conf is the config: the
+            # script installs that copy into its run (WG_AFTER).
+            out.update(wg_conf="", tunnel_addr=str(answers.get("tunnel_addr") or ""), endpoint="",
+                       controller_ip=str(ip))
+        else:
+            wg = parse_wg(conf)
+            if wg.get("error"):
+                return wg
+            out.update(wg_conf=narrow_wg(conf, str(ip)), tunnel_addr=wg["addr"],
+                       endpoint=wg["endpoint"], controller_ip=str(ip))
     return out
 
 
@@ -211,9 +219,15 @@ def filename(name):
     return f"enroll-{_NAME.sub('-', name or 'node').strip('-') or 'node'}.sh"
 
 
-def build(ans, *, name, user, token, expires, provisioner):
-    """The script, as text. `ans` is check()'s answer."""
+def build(ans, *, name, user, token, expires, provisioner, again=False, machine=""):
+    """The script, as text. `ans` is check()'s answer. With `again` (R177)
+    the secrets are the node's own (its WireGuard config installed from
+    /etc/wireguard, its door left as it is), and `machine` binds the
+    script to the machine the node enrolled from: the provisioner refuses
+    to run elsewhere, and the controller refuses the enrollment too."""
     flags = [f"--controller {_q(ans['controller'])}", f"--token {_q(token)}"]
+    if machine:
+        flags.append(f"--machine {_q(machine)}")
     if user and user != "bb":
         flags.append(f"--user {_q(user)}")
     if not ans["sessions"]:
@@ -229,7 +243,11 @@ def build(ans, *, name, user, token, expires, provisioner):
     when = time.strftime("%d %b %Y %H:%M UTC", time.gmtime(expires))
     lines = [
         "#!/usr/bin/env bash",
-        f"# BuilderBot: enroll {name} as a node of {ans['controller']}.",
+        f"# BuilderBot: enroll {name} {'again ' if again else ''}as a node of {ans['controller']}.",
+        *(["# Made for the machine it enrolled from: it refuses to run on another, and",
+           "# so does the controller. The node keeps its own secrets; none is in here.",
+           "# Running it is the repair: every step checks before it acts, puts back what",
+           "# is missing or has drifted, and leaves what is right alone."] if again else []),
         "# Made on the Nodes tab's Enroll node. Run it as root on the machine:",
         "# sudo bash THIS_FILE",
         "#",
@@ -254,14 +272,19 @@ def build(ans, *, name, user, token, expires, provisioner):
         _b64(provisioner),
         "PROVISIONER",
     ]
-    if ans["reach"] == "wireguard":
+    if ans["reach"] == "wireguard" and ans.get("wg_conf"):
         lines += [WG_BEGIN, _b64(ans["wg_conf"]), "WGCONF",
                   'chmod 600 "$dir/bb.conf"']
         flags.append('--wg-conf "$dir/bb.conf"')
-    if ans.get("door"):
+    elif ans["reach"] == "wireguard":
+        lines.append(WG_AFTER)
+        flags.append('--wg-conf "$dir/bb.conf"')
+    if ans.get("door") and ans.get("door_secret"):
         lines += [DOOR_BEGIN, _b64(ans["door_secret"]), "DOORSECRET",
                   'chmod 600 "$dir/door-secret"']
         flags.append('--door-secret "$dir/door-secret"')
+    elif ans.get("door"):
+        lines.append(DOOR_AFTER)
     lines.append(f'bash "$dir/provision-linux.sh" {" ".join(flags)} "$@"')
     # Only after the provisioner succeeded (set -e ends a failed run above,
     # with the secrets still in here for another try): each secret block out
@@ -272,7 +295,8 @@ def build(ans, *, name, user, token, expires, provisioner):
     for begin, end, after, said in (
             (WG_BEGIN, "WGCONF", WG_AFTER, "the WireGuard config is out of %s now; this node keeps its own in /etc/wireguard/bb.conf"),
             (DOOR_BEGIN, "DOORSECRET", DOOR_AFTER, "the door secret is out of %s now; this node keeps it")):
-        if (begin == WG_BEGIN and ans["reach"] != "wireguard") or (begin == DOOR_BEGIN and not ans.get("door")):
+        if (begin == WG_BEGIN and not (ans["reach"] == "wireguard" and ans.get("wg_conf"))) \
+                or (begin == DOOR_BEGIN and not (ans.get("door") and ans.get("door_secret"))):
             continue
         lines += [
             "if [ -f \"$0\" ] && grep -qxF " + _q(begin) + " \"$0\"; then",

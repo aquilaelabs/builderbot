@@ -767,8 +767,13 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
-def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False, nginx=False, door=None):
+def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False, nginx=False, door=None,
+                existing=None):
     """Add node, agent kind: a pending row and the one token that fills it.
+    With `existing` (R177), no row: a node already here gets a new enroll
+    token, its config brought to the answers, and the row's id and state
+    kept, so the script can be run again on that same machine (the
+    agent's machine fingerprint, which enroll() holds it to).
 
     The row exists BEFORE the machine does, which is the operator's view of
     "waiting for enrollment" (a line on the tab with the command to paste),
@@ -780,6 +785,24 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
     name = (name or "").strip()[:60] or "node"
     caps = [c for c in (capabilities or CAPABILITIES) if c in CAPABILITIES]
     user = re.sub(r"[^a-z0-9_-]", "", (user or "bb").lower())[:32] or "bb"
+    if existing:
+        n = node(existing)
+        if not n or n.get("kind") != "agent" or n.get("state") == "retired":
+            return {"error": "no such node to enroll again"}
+        cfg = dict(n.get("config") or {})
+        cfg["user"] = user
+        for key, val in (("tunnel", tunnel), ("host_only", True if host_only else None),
+                         ("nginx", True if nginx else None), ("door", door)):
+            if val:
+                cfg[key] = val
+            else:
+                cfg.pop(key, None)
+        _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), existing))
+        revoke_tokens(existing, ("enroll",))
+        tid, secret = _token_mint("enroll", existing, ENROLL_TTL)
+        _touch(existing, principal, "node-enroll-mint", {"token": tid, "again": True})
+        return {"ok": True, "id": existing, "token": secret, "again": True,
+                "expires": int(time.time()) + ENROLL_TTL}
     nid = mint("n")
     _insert_node({
         "id": nid, "name": name, "kind": "agent",
@@ -816,7 +839,13 @@ def enroll_script(principal, req):
     cannot be used leaves no pending row; then the row and its token, and
     the provisioner with the answers inside. Nothing of it is kept here."""
     ho = req.get("host_only") is True
-    ans = enrollscript.check(req | ({"sessions": False} if ho else {}))
+    # Again, for a node that is here (R177): the row's answers where the
+    # request leaves them out, its secrets never (the node keeps them),
+    # and the script bound to the machine the node reported.
+    again = node(field(req, "node")) if field(req, "node") else None
+    if field(req, "node") and not again:
+        return {"error": "no such node to enroll again"}
+    ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=bool(again))
     if ans.get("error"):
         return ans
     prov = AGENT_DIR.parent.parent / "nodes" / "provision-linux.sh"
@@ -829,17 +858,22 @@ def enroll_script(principal, req):
     # Through a public hostname the node is hosting only, whatever was
     # ticked (enrollscript.check): the session ports cannot be reached back.
     ho = ho or ans["reach"] == "public"
+    if again and ans["reach"] == "wireguard" and not tunnel:
+        tunnel = ((again.get("config") or {}).get("tunnel") or None)
     m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho,
                     nginx=req.get("nginx") is True,
-                    door={"kind": ans["door"], "host": ans.get("door_host", "")} if ans.get("door") else None)
+                    door={"kind": ans["door"], "host": ans.get("door_host", "")} if ans.get("door") else None,
+                    existing=again["id"] if again else None)
     _synced["at"] = 0.0
     if m.get("error"):
         return m
     name = node(m["id"])["name"]
     u = urllib.parse.urlparse(ans["controller"])
     port = u.port or (443 if u.scheme == "https" else 80)
+    machine = ((again or {}).get("reported") or {}).get("machine") or ""
     return m | {"script": enrollscript.build(ans, name=name, user=user, token=m["token"],
-                                              expires=m["expires"], provisioner=prov.read_bytes()),
+                                              expires=m["expires"], provisioner=prov.read_bytes(),
+                                              again=bool(again), machine=machine),
                 "filename": enrollscript.filename(name), "reach": ans["reach"],
                 "home": enrollscript.home_rules(ans, port),
                 "tunnel_addr": ans.get("tunnel_addr", "")}
@@ -857,15 +891,25 @@ def enroll(auth, census, addr, version="", digest="", user=""):
     bring the row online. `auth` is authenticate()'s answer for the token."""
     nid = auth["node"]
     n = node(nid)
-    if not n or n["state"] != "pending":
+    if not n or n["state"] == "retired":
         return {"error": "this node is not waiting for enrollment"}
+    # A node enrolling again (R177) is held to the machine it enrolled
+    # from: the fingerprint its census reports against the one on the row.
+    # Said before the token is burned, so the right machine can still use it.
+    had = (n.get("reported") or {}).get("machine") or ""
+    got = str((census or {}).get("machine") or "") if isinstance(census, dict) else ""
+    if n["state"] != "pending" and had and got and had != got:
+        return {"error": f"this script was made for {n['name']}, which is another machine: "
+                         "make a script for this one on the Nodes tab (Enroll node)"}
     # Burned in one statement, so two enrolments racing on one token (a
     # provisioner's retry) cannot both pass and mint two node tokens.
     cur = _exec("UPDATE tokens SET revoked = 1, uses = uses + 1 WHERE id = ? AND revoked = 0",
                 (auth["token"],))
     if cur.rowcount != 1:
         return {"error": "this enrollment token was already used"}
-    revoke_tokens(nid, ("enroll",))
+    # Every earlier token goes with the enrollment: the node token the
+    # last agent held, so a script run again leaves one agent, not two.
+    revoke_tokens(nid, ("enroll", "node"))
     tid, secret = _token_mint("node", nid)
     cfg = n.get("config") or {}
     if user:
@@ -950,6 +994,9 @@ def _census(c):
     for k in ("os", "docker", "docker_id", "gpu", "hostname", "git"):
         if c.get(k):
             out[k] = str(c[k])[:120]
+    # The machine's fingerprint (R177): what a re-enrollment is held to.
+    if re.fullmatch(r"[0-9a-f]{32}", str(c.get("machine") or "")):
+        out["machine"] = str(c["machine"])
     # The two placement dimensions (door 9), as fields the agent reports.
     out["system"] = re.sub(r"[^a-z0-9]", "", str(c.get("system") or "").lower())[:20]
     out["arch"] = re.sub(r"[^a-zA-Z0-9_]", "", str(c.get("arch") or ""))[:20]
