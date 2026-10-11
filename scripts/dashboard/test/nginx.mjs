@@ -30,7 +30,7 @@ ok(await page.$eval('#bNginx', b => !b.hidden && /nginx/.test(b.textContent)), '
 await page.click('#bNginx');
 await page.waitForSelector('.nginxtab [data-ngnode]', { timeout: 15000 });
 const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name === 'sandbox'));
-ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !sandbox.cert.set,
+ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !Object.keys(sandbox.certs || {}).length,
    `the tab lists the sandbox node with no nginx on it yet (${JSON.stringify(sandbox && [sandbox.deployed, sandbox.routes])})`);
 // One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
 ok(await page.$eval('.nginxtab .docbarrow label.pick select#ngNodeSel', s => [...s.options].some(o => o.textContent === 'sandbox')),
@@ -62,23 +62,26 @@ ok(/a port on the node/.test((await api('/api/nginx', { action: 'save', node: sa
 ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert: 'not a cert', key: 'nor a key' })).error || ''),
    '...and a certificate that is not one');
 
-// A certificate per hostname (R175): one made here with openssl, saved for
-// one of the routes' hostnames, listed beside the default, in the compose
-// file under that hostname's path.
+// A certificate per domain (R175, R188): one made here with openssl is
+// kept under the domain its names say, listed with its names, used by the
+// routes its names cover, and taken off again by its key. No default.
 {
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=www.example.com',
     '-addext', 'subjectAltName=DNS:www.example.com', '-keyout', `${DIR}/ngx-k.pem`, '-out', `${DIR}/ngx-c.pem`], { stdio: 'ignore' });
   const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
-  const own = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert_for: 'www.example.com', cert, key });
+  const own = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert, key });
   const v = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
-  ok(own.ok && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com' && !v.cert?.set,
-     `a certificate saved for one hostname is that hostname's own, with the default still none (${JSON.stringify(v.certs)})`);
+  ok(own.ok && own.host === 'www.example.com' && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com'
+     && v.resolved?.['www.example.com'] === 'www.example.com',
+     `a pasted pair is kept under the domain its names say, and the route for that hostname resolves to it (${JSON.stringify(v.certs)})`);
   await page.evaluate(() => loadNginx());
-  await page.waitForFunction(id => /www\.example\.com: www\.example\.com/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"]`)?.textContent || ''), sandbox.node, { timeout: 10000 });
-  ok(await page.$eval(sect, s => /Default: none/.test(s.textContent) && [...s.querySelectorAll('[data-ng="certfor"] option')].some(o => o.value === 'www.example.com')),
-     '...and the section lists it under the default and offers the hostname in the picker');
-  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert_for: 'www.example.com', drop_cert: true });
-  ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again');
+  await page.waitForFunction(id => document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .name`)?.textContent === 'www.example.com', sandbox.node, { timeout: 10000 });
+  ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('.ngcert .sub').textContent)
+       && [...s.querySelectorAll('.ngroute [data-ng="cert"] option')].some(o => o.value === 'www.example.com')
+       && /443, www\.example\.com's pair/.test(s.querySelector('.ngroute [data-ng="cert"] option[value=""]').textContent)),
+     "...and the section lists it with the route that uses it, and the route's picker names it as the automatic pick");
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, drop_cert: 'www.example.com' });
+  ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again by its key');
 }
 
 // Deploy: the container is written from the routes and built on the node.
@@ -117,14 +120,14 @@ ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.
   const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
   // The routes as saved above, two of them: a save carries the whole list.
   const kept = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes;
-  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, cert_for: 'www.example.com', cert, key });
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, cert, key });
   const shown = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
   ok(!/PRIVATE KEY/.test(shown.compose || '') && /tls_key_www_example_com:\n    content: \|\n      \(the private key: kept on the controller, never shown\)/.test(shown.compose || '')
      && /BEGIN CERTIFICATE/.test(shown.compose || ''),
      `the Docker tab's copy of nginx's compose carries the certificate and a line in place of the key`);
   const back = await api('/api/container', { action: 'save', name: 'nginx-sandbox', compose: shown.compose, env: '' });
   ok(/written from the nginx tab/.test(back.error || ''), `...and saving that copy back is refused (${(back.error || 'saved').slice(0, 60)})`);
-  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, cert_for: 'www.example.com', drop_cert: true });
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, drop_cert: 'www.example.com' });
 }
 
 // Remove: the container goes, the routes stay for a redeploy.

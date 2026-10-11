@@ -1051,9 +1051,16 @@ the pieces stack:
    publishes on that node, with or without TLS) and its certificate (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back), and
-   A certificate is the node's default, for any hostname without its own,
-   or one hostname's own (R175), since an origin certificate covers one
-   zone and a node may serve sites on several; nginx picks by server name.
+   A node holds a list of certificate pairs, each known by the domain its
+   names say (a wildcard pair for `*.example.com` is `example.com`'s; the
+   same key again is a renewal), and every route serves 443 with the pair
+   it picks, or with the one its hostname resolves to (its own, else the
+   nearest parent domain's) when it picks none; a hostname nothing covers
+   answers on 80 alone. There is no default pair (R188, the operator, 11
+   Oct): the catch-all on 443 refuses the handshake with no certificate
+   (`ssl_reject_handshake`), and a default from before is read in as a
+   listed pair under its domain. An origin certificate covers one zone and
+   a node may serve sites on several; nginx picks by server name.
    Deploy writes a container from them through the written-container path
    (`containers.create_container`), its nginx config and certificate inline
    in the compose file as compose `configs`, so the node's compose job needs

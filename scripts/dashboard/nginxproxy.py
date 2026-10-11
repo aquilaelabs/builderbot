@@ -76,14 +76,16 @@ def _cert_slug(host):
     return re.sub(r"[^a-z0-9]", "_", host.lower())
 
 
-def cert_for(rec, host):
-    """The hostname whose certificate a server's hostname uses, or "" for
-    the node's default: its own where it has one (R175), else the nearest
-    parent domain with one (the operator, 11 Oct: one wildcard pair saved
-    under example.com covers a.example.com and b.example.com, and another
-    domain's pair its own subdomains), so a pair is pasted once per domain
-    rather than once per hostname."""
+def cert_for(rec, host, pick=""):
+    """The key of the pair a server's hostname uses, or "": the route's own
+    pick where it names a pair the node holds (R188), else the hostname's
+    own pair, else the nearest parent domain's (one wildcard pair under
+    example.com covers a.example.com and b.example.com, another domain's
+    pair its own). No default (the operator, 11 Oct): a hostname nothing
+    covers answers on 80 alone."""
     certs = rec.get("certs") or {}
+    if pick and (certs.get(pick) or {}).get("set"):
+        return pick
     if not host or host == "*":
         return ""
     parts = host.split(".")
@@ -94,15 +96,12 @@ def cert_for(rec, host):
     return ""
 
 
-def cert_paths(rec, host):
-    """(cert, key) paths inside the container for a server's hostname:
-    its own or its domain's certificate where there is one (cert_for),
-    else the node's default, else none."""
-    own = cert_for(rec, host)
+def cert_paths(rec, host, pick=""):
+    """(cert, key) paths inside the container for a server's hostname
+    (cert_for), or none."""
+    own = cert_for(rec, host, pick)
     if own:
         return f"/etc/nginx/certs/{own}/cert.pem", f"/etc/nginx/certs/{own}/key.pem"
-    if (rec.get("cert") or {}).get("set"):
-        return "/etc/nginx/certs/cert.pem", "/etc/nginx/certs/key.pem"
     return "", ""
 
 
@@ -131,17 +130,25 @@ def clean_routes(routes):
             return {"error": f"a route's path starts with / and names a place on the site: not {path}"}
         if not port.isdigit() or not 1 <= int(port) <= 65535:
             return {"error": f"a route goes to a port on the node (1 to 65535): not {port or 'nothing'}"}
-        out.append({"host": host, "path": path, "port": int(port), "tls": r.get("tls") is not False})
+        # The pair it serves 443 with (R188): a key the node holds, or ""
+        # for the one its hostname resolves to (cert_for); checked for
+        # shape here and against the node's list when the config is written.
+        pick = str(r.get("cert") or "").strip().lower()
+        if pick and not HOST_RE.match(pick):
+            return {"error": f"a route's certificate is one the node holds, named by its domain: not {pick}"}
+        out.append({"host": host, "path": path, "port": int(port), "tls": r.get("tls") is not False, "cert": pick})
     return out
 
 
-def nginx_conf(routes, has_cert, rec=None):
+def nginx_conf(routes, rec=None):
     """nginx's config from the routes: a server per hostname, each path to
-    its port on this machine, 443 with the certificate where there is one
-    (the hostname's own, else the node's default: R175), and any name not
-    routed answered by closing the connection, so the box serves nothing it
-    was not told to. `has_cert` is the default's; `rec` carries the rest."""
-    rec = rec if rec is not None else ({"cert": {"set": True}} if has_cert else {})
+    its port on this machine, 443 with the pair the route picked or its
+    hostname resolves to (cert_for), and any name not routed answered by
+    closing the connection, on 443 by refusing the handshake with no
+    certificate at all (ssl_reject_handshake, nginx 1.19.4 and later; the
+    image is 1.27), so the box serves nothing it was not told to and
+    needs no default pair (R188). `rec` carries the node's pairs."""
+    rec = rec if rec is not None else {}
     by_host = {}
     for r in routes:
         by_host.setdefault(r["host"], []).append(r)
@@ -167,13 +174,15 @@ def nginx_conf(routes, has_cert, rec=None):
     any_host = "*" in by_host
     if not any_host:
         lines.append("  server { listen 80 default_server; server_name _; return 444; }")
-    dflt = cert_paths(rec, "*")
-    if dflt[0] and not (any_host and any(r["tls"] for r in by_host["*"])):
+    if not (any_host and any(r["tls"] for r in by_host["*"])):
         lines.append("  server { listen 443 ssl default_server; server_name _; "
-                     f"ssl_certificate {dflt[0]}; ssl_certificate_key {dflt[1]}; return 444; }}")
+                     "ssl_reject_handshake on; return 444; }")
     for host, rs in by_host.items():
         name = "_" if host == "*" else host
-        cert, key = cert_paths(rec, host)
+        # The pair for this hostname's server: its routes' pick (the first
+        # that names one), else what the hostname resolves to.
+        pick = next((r.get("cert") for r in rs if r.get("cert")), "")
+        cert, key = cert_paths(rec, host, pick)
         for listen in ("80", "443 ssl"):
             if listen.startswith("443") and not (cert and any(r["tls"] for r in rs)):
                 continue
@@ -206,11 +215,10 @@ def compose_text(nid, rec):
     and certificate inline as compose configs, so nothing but this file
     goes to the node."""
     routes = rec.get("routes") or []
-    has_cert = bool((rec.get("cert") or {}).get("set"))
-    # The hostnames' own certificates that a route uses (R175).
+    # The pairs a route uses, each once (R175, R188).
     own = sorted(h for h, c in (rec.get("certs") or {}).items()
-                 if (c or {}).get("set") and any(cert_for(rec, r["host"]) == h for r in routes))
-    conf = nginx_conf(routes, has_cert, rec)
+                 if (c or {}).get("set") and any(cert_for(rec, r["host"], r.get("cert", "")) == h for r in routes))
+    conf = nginx_conf(routes, rec)
     out = ["# Written by BuilderBot from the nginx tab (nginxproxy.py); Save there rewrites it.",
            "services:",
            "  nginx:",
@@ -223,9 +231,6 @@ def compose_text(nid, rec):
            "    configs:",
            "      - source: nginx_conf",
            "        target: /etc/nginx/nginx.conf"]
-    if has_cert:
-        out += ["      - source: tls_cert", "        target: /etc/nginx/certs/cert.pem",
-                "      - source: tls_key", "        target: /etc/nginx/certs/key.pem", "        mode: 0400"]
     for h in own:
         out += [f"      - source: tls_cert_{_cert_slug(h)}", f"        target: /etc/nginx/certs/{h}/cert.pem",
                 f"      - source: tls_key_{_cert_slug(h)}", f"        target: /etc/nginx/certs/{h}/key.pem", "        mode: 0400"]
@@ -233,10 +238,6 @@ def compose_text(nid, rec):
     # empties it (nginx's $host became nothing on bb-dev-sandbox, 10 Oct):
     # a literal dollar is written $$ there.
     out += ["configs:", "  nginx_conf:", "    content: |", _indent(conf.replace("$", "$$"), 6)]
-    if has_cert:
-        cert, key = _read_cert(nid)
-        out += ["  tls_cert:", "    content: |", _indent(cert, 6),
-                "  tls_key:", "    content: |", _indent(key, 6)]
     for h in own:
         cert, key = _read_cert(nid, h)
         out += [f"  tls_cert_{_cert_slug(h)}:", "    content: |", _indent(cert, 6),
@@ -288,28 +289,21 @@ def check_cert(cert, key):
 
 
 def set_cert(nid, cert, key, host=""):
-    """The node's default certificate, or with `host` that hostname's own
-    (R175): checked, kept 0600, summarized in the record."""
+    """A pair the node holds (R188): checked, kept 0600, summarized in the
+    record under the key it is known by: `host` when the person named one,
+    else the domain its names say (domain_of), so a wildcard pair for
+    *.example.com is example.com's. The same key again is a renewal and
+    replaces that pair; another domain's pair stands beside it. There is
+    no default (the operator, 11 Oct)."""
     host = str(host or "").strip().lower()
     if host and not HOST_RE.match(host):
-        return {"error": f"a certificate is for a hostname like www.example.com, or the node's default: not {host}"}
+        return {"error": f"a certificate is known by a name like example.com: not {host}"}
     got = check_cert(cert, key)
     if got.get("error"):
         return got
-    # Another domain's pair pasted for the default while a default stands
-    # (the operator, 11 Oct: turinglens.com's pair went without a word when
-    # aquilaelabs.dev's was saved over it) goes under its own domain, beside
-    # the default, and the answer says so; a pair for the same names is a
-    # renewal and replaces the default as before.
-    placed = ""
+    host = host or domain_of(got.get("names") or got.get("subject") or "")
     if not host:
-        cur = (record(nid).get("cert") or {})
-        if cur.get("set") and _names_of(cur) != _names_of(got):
-            host = domain_of(got.get("names") or got.get("subject") or "")
-            placed = cur.get("subject") or "the default"
-            if not host:
-                return {"error": "that pair names no hostname, and the node's default is "
-                                 f"{placed}'s: pick what it is for under For, or take the default off first"}
+        return {"error": "that pair names no hostname: say what it is for under Known as"}
     d = _cert_dir(nid, host)
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name, text in (("cert.pem", cert), ("key.pem", key)):
@@ -321,18 +315,9 @@ def set_cert(nid, cert, key, host=""):
     with _lock:
         st = _load()
         rec = st.setdefault(str(nid), {})
-        if host:
-            rec.setdefault("certs", {})[host] = summary
-        else:
-            rec["cert"] = summary
+        rec.setdefault("certs", {})[host] = summary
         _save(st)
-    return {"ok": True, "cert": summary, "host": host} | ({"placed": placed} if placed else {})
-
-
-def _names_of(summary):
-    """The DNS names a pair covers, as a set, for telling a renewal from
-    another domain's pair."""
-    return {n.strip().lower() for n in str(summary.get("names") or summary.get("subject") or "").split(",") if n.strip()}
+    return {"ok": True, "cert": summary, "host": host}
 
 
 def domain_of(names):
@@ -345,7 +330,11 @@ def domain_of(names):
 
 
 def drop_cert(nid, host=""):
+    """A pair taken off the node, by the key it is known by; a route that
+    picked it falls back to what its hostname resolves to, or 80 alone."""
     host = str(host or "").strip().lower()
+    if not host:
+        return {"error": "which certificate? name it by the key it is listed under"}
     d = _cert_dir(nid, host)
     for name in ("cert.pem", "key.pem"):
         with contextlib.suppress(OSError):
@@ -353,17 +342,37 @@ def drop_cert(nid, host=""):
     with _lock:
         st = _load()
         rec = st.get(str(nid)) or {}
-        if host:
-            (rec.get("certs") or {}).pop(host, None)
-        else:
-            rec.pop("cert", None)
+        (rec.get("certs") or {}).pop(host, None)
         _save(st)
     return {"ok": True}
+
+
+def _migrate(nid):
+    """A node's default pair from before R188 becomes a listed pair under
+    the domain its names say, its files moved under certs/<domain>: read on
+    the way in, once, so nothing a person saved is lost."""
+    with _lock:
+        st = _load()
+        rec = st.get(str(nid)) or {}
+        cur = rec.get("cert")
+        if not isinstance(cur, dict):
+            return
+        if cur.get("set"):
+            key = domain_of(cur.get("names") or cur.get("subject") or "") or "default"
+            src, dst = _cert_dir(nid), _cert_dir(nid, key)
+            dst.mkdir(parents=True, exist_ok=True, mode=0o700)
+            for name in ("cert.pem", "key.pem"):
+                with contextlib.suppress(OSError):
+                    (src / name).replace(dst / name)
+            rec.setdefault("certs", {}).setdefault(key, cur)
+        rec.pop("cert", None)
+        _save(st)
 
 
 # ---- the tab's verbs ----------------------------------------------------------
 
 def record(nid):
+    _migrate(nid)
     return dict(_load().get(str(nid)) or {})
 
 
@@ -378,18 +387,21 @@ def view(devapp, instance_state):
     """Every agent node with what its nginx is: deployed or not, its routes,
     its certificate (never the key), and the containers on it holding 80 or
     443 themselves. `instance_state` is devactions.state, for a deployed one."""
-    st = _load()
     out = []
     for n in node_list():
         if n.get("kind") != "agent" or n.get("state") in ("retired", "pending"):
             continue
-        nid, rec = n["id"], st.get(n["id"]) or {}
+        nid = n["id"]
+        rec = record(nid)
         name = container_name(nid)
         is_up = deployed(devapp, nid)
         row = {"node": nid, "name": n.get("name") or nid, "host_only": bool((n.get("config") or {}).get("host_only")),
                "container": name, "deployed": is_up,
-               "routes": rec.get("routes") or [], "cert": rec.get("cert") or {},
+               "routes": rec.get("routes") or [],
+               # The pairs it holds (R188), and for each route the key its
+               # hostname resolves to with no pick of its own, for the row.
                "certs": rec.get("certs") or {},
+               "resolved": {r["host"]: cert_for(rec, r["host"]) for r in (rec.get("routes") or [])},
                "live": n.get("live"), "clash": []}
         if is_up:
             with contextlib.suppress(Exception):  # noqa: BLE001 (a row still draws without its state)

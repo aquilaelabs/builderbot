@@ -31,24 +31,33 @@ class Routes(unittest.TestCase):
         self.assertIn("path", npx.save_routes("n1", [{"host": "*", "path": "no-slash", "port": "80"}])["error"])
         r = npx.save_routes("n1", [{"host": "WWW.Example.com", "path": "/", "port": "8080", "tls": True},
                                    {"host": "www.example.com", "path": "/relay", "port": 8788, "tls": False}])
-        self.assertEqual(r["routes"][0], {"host": "www.example.com", "path": "/", "port": 8080, "tls": True})
+        self.assertEqual(r["routes"][0], {"host": "www.example.com", "path": "/", "port": 8080, "tls": True, "cert": ""})
         self.assertEqual(npx.record("n1")["routes"], r["routes"])
         self.assertEqual(npx.container_name("n1"), "nginx-vps-box")
 
     def test_the_config_has_a_server_per_host_and_closes_the_rest(self):
         routes = npx.clean_routes([{"host": "www.example.com", "path": "/", "port": 8080},
                                    {"host": "www.example.com", "path": "/relay", "port": 8788, "tls": False}])
-        conf = npx.nginx_conf(routes, has_cert=True)
+        rec = {"certs": {"example.com": {"set": True}}}
+        conf = npx.nginx_conf(routes, rec)
         self.assertIn("server_name _; return 444;", conf)
         self.assertIn("listen 443 ssl;", conf)
-        self.assertIn("ssl_certificate /etc/nginx/certs/cert.pem;", conf)
+        self.assertIn("ssl_certificate /etc/nginx/certs/example.com/cert.pem;", conf, "its domain's pair")
+        self.assertIn("listen 443 ssl default_server; server_name _; ssl_reject_handshake on; return 444;", conf,
+                      "the catch-all refuses the handshake with no pair at all (R188)")
         self.assertIn("location /relay/ { proxy_pass http://127.0.0.1:8788; }", conf)
         self.assertIn("location / { proxy_pass http://127.0.0.1:8080; }", conf)
         self.assertLess(conf.index("location /relay/"), conf.index("location / "), "the longest path first")
-        plain = npx.nginx_conf(routes, has_cert=False)
-        self.assertNotIn("443", plain, "no certificate, no 443")
+        plain = npx.nginx_conf(routes, {})
+        self.assertNotIn("listen 443 ssl;", plain, "no pair covers it: 80 alone")
+        self.assertIn("ssl_reject_handshake", plain, "...and the catch-all still refuses 443")
+        # A route's own pick wins over its domain's pair.
+        picked = npx.clean_routes([{"host": "www.example.com", "path": "/", "port": 8080, "cert": "other.net"}])
+        rec2 = {"certs": {"example.com": {"set": True}, "other.net": {"set": True}}}
+        self.assertIn("certs/other.net/cert.pem", npx.nginx_conf(picked, rec2))
+        self.assertIn("certificate is one the node holds", npx.clean_routes([{"host": "a.b", "path": "/", "port": 1, "cert": "bad key"}])["error"])
         # A * route is the default server itself: no second one beside it.
-        star = npx.nginx_conf(npx.clean_routes([{"host": "*", "path": "/", "port": 8089}]), has_cert=True)
+        star = npx.nginx_conf(npx.clean_routes([{"host": "*", "path": "/", "port": 8089, "cert": "example.com"}]), rec)
         self.assertEqual(star.count("default_server"), 2, "one for 80 and one for 443, both the * route's")
         self.assertNotIn("return 444", star)
 
@@ -85,38 +94,53 @@ class Certificate(unittest.TestCase):
         self.assertIn("PEM", npx.check_cert(self.cert, "nope")["error"])
         other = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True, text=True, check=True).stdout
         self.assertIn("do not load together", npx.check_cert(self.cert, other)["error"])
+        npx.save_routes("n1", [{"host": "www.example.com", "path": "/", "port": 8080}])
         r = npx.set_cert("n1", self.cert, self.key)
-        self.assertEqual((r["cert"]["set"], r["cert"]["subject"]), (True, "www.example.com"))
+        self.assertEqual((r["cert"]["set"], r["cert"]["subject"], r["host"]), (True, "www.example.com", "www.example.com"),
+                         "kept under the domain its names say")
         self.assertGreater(r["cert"]["expires"], 0)
-        key = os.path.join(self.tmp, "nginx", "n1", "key.pem")
+        key = os.path.join(self.tmp, "nginx", "n1", "certs", "www.example.com", "key.pem")
         self.assertEqual(oct(os.stat(key).st_mode & 0o777), "0o600")
         text = npx.compose_text("n1", npx.record("n1"))
-        self.assertIn("tls_key:\n    content: |\n      -----BEGIN PRIVATE KEY-----", text)
+        self.assertIn("tls_key_www_example_com:\n    content: |\n      -----BEGIN PRIVATE KEY-----", text)
         self.assertIn("mode: 0400", text)
-        npx.drop_cert("n1")
+        self.assertIn("which certificate", npx.drop_cert("n1")["error"])
+        npx.drop_cert("n1", "www.example.com")
         self.assertFalse(os.path.exists(key))
-        self.assertNotIn("cert", npx.record("n1"))
+        self.assertNotIn("www.example.com", npx.record("n1").get("certs") or {})
 
-    def test_another_domains_pair_goes_beside_the_default_not_over_it(self):
-        """A pair for other names pasted for the default while one stands
-        goes under its own domain and says so; the same names replace it,
-        a renewal (B657: turinglens.com's default went without a word)."""
+    def test_two_domains_pairs_stand_side_by_side_and_a_default_from_before_is_read_in(self):
+        """A pair is kept under the domain its names say, so two domains'
+        pairs stand side by side and the same names again are a renewal
+        (B657: turinglens.com's pair went when another was saved as the
+        default); a default from before R188 is read in as a listed pair."""
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
                         "-subj", "/CN=*.aquilae.test", "-addext", "subjectAltName=DNS:*.aquilae.test,DNS:aquilae.test",
                         "-keyout", f"{self.tmp}/k2.pem", "-out", f"{self.tmp}/c2.pem"],
                        check=True, capture_output=True)
         cert2, key2 = open(f"{self.tmp}/c2.pem").read(), open(f"{self.tmp}/k2.pem").read()
-        self.assertTrue(npx.set_cert("n1", self.cert, self.key)["ok"])
+        self.assertEqual(npx.set_cert("n1", self.cert, self.key)["host"], "www.example.com")
         r = npx.set_cert("n1", cert2, key2)
-        self.assertEqual((r["host"], r["placed"]), ("aquilae.test", "www.example.com"), r)
+        self.assertEqual(r["host"], "aquilae.test", r)
         rec = npx.record("n1")
-        self.assertEqual(rec["cert"]["subject"], "www.example.com", "the default stands")
-        self.assertTrue(rec["certs"]["aquilae.test"]["set"], "the other domain's pair is beside it")
+        self.assertEqual(sorted(rec["certs"]), ["aquilae.test", "www.example.com"], "side by side")
+        self.assertNotIn("cert", rec, "no default")
         self.assertEqual(npx.cert_for(rec, "a.aquilae.test"), "aquilae.test")
-        again = npx.set_cert("n1", self.cert, self.key)
-        self.assertNotIn("placed", again, "the same names are a renewal of the default")
+        self.assertEqual(npx.cert_for(rec, "a.aquilae.test", "www.example.com"), "www.example.com", "a pick wins")
+        npx.set_cert("n1", self.cert, self.key)
+        self.assertEqual(len(npx.record("n1")["certs"]), 2, "the same names again are a renewal, not a third")
         self.assertEqual(npx.domain_of("*.example.com, example.com"), "example.com")
-        npx.drop_cert("n1"); npx.drop_cert("n1", host="aquilae.test")
+        # A default from before: its summary under rec["cert"] and its files
+        # at the node's own directory become a listed pair under its domain.
+        st = npx._load(); st["n1"]["cert"] = dict(st["n1"]["certs"]["www.example.com"]); npx._save(st)
+        d = npx._cert_dir("n1"); d.mkdir(parents=True, exist_ok=True)
+        (d / "cert.pem").write_text(self.cert); (d / "key.pem").write_text(self.key)
+        npx.drop_cert("n1", host="www.example.com")
+        rec = npx.record("n1")
+        self.assertNotIn("cert", rec)
+        self.assertTrue(rec["certs"]["www.example.com"]["set"], "read in under its domain")
+        self.assertTrue((npx._cert_dir("n1", "www.example.com") / "key.pem").is_file(), "its files moved")
+        npx.drop_cert("n1", host="www.example.com"); npx.drop_cert("n1", host="aquilae.test")
 
     def test_a_domains_certificate_covers_its_subdomains(self):
         """One pair per domain (the operator, 11 Oct): saved under
@@ -130,7 +154,7 @@ class Certificate(unittest.TestCase):
         self.assertEqual(npx.cert_for(rec, "a.example.com"), "example.com")
         self.assertEqual(npx.cert_for(rec, "www.other.net"), "", "another domain is not covered")
         self.assertEqual(npx.cert_for(rec, "com"), "", "the top label is nobody's")
-        conf = npx.nginx_conf(rec["routes"], False, rec)
+        conf = npx.nginx_conf(rec["routes"], rec)
         self.assertEqual(conf.count("ssl_certificate /etc/nginx/certs/example.com/cert.pem;"), 2,
                          "both subdomains' servers use the domain's pair")
         text = npx.compose_text("n1", rec)
@@ -140,24 +164,20 @@ class Certificate(unittest.TestCase):
         npx.drop_cert("n1", host="a.example.com")
         npx.drop_cert("n1", host="example.com")
 
-    def test_a_hostname_may_have_its_own_beside_the_default(self):
-        """One certificate per hostname (R175): a site on another domain
-        behind the same nginx gets its own, the rest use the default."""
+    def test_a_hostname_may_have_its_own_named_by_hand(self):
+        """One pair per hostname (R175), filed under a name typed rather
+        than the one its names say: a site on another domain behind the
+        same nginx gets its own, the rest answer on 80 alone."""
         npx.save_routes("n1", [{"host": "www.example.com", "path": "/", "port": 8080},
                                {"host": "www.other.net", "path": "/", "port": 8081}])
-        self.assertIn("hostname like", npx.set_cert("n1", self.cert, self.key, host="bad host")["error"])
+        self.assertIn("known by a name like", npx.set_cert("n1", self.cert, self.key, host="bad host")["error"])
         self.assertEqual(npx.set_cert("n1", self.cert, self.key, host="WWW.Other.net")["host"], "www.other.net")
         rec = npx.record("n1")
         self.assertTrue(rec["certs"]["www.other.net"]["set"] and "cert" not in rec)
-        conf = npx.nginx_conf(rec["routes"], False, rec)
+        conf = npx.nginx_conf(rec["routes"], rec)
         self.assertIn("ssl_certificate /etc/nginx/certs/www.other.net/cert.pem;", conf)
         self.assertNotIn("server_name www.example.com;\n    ssl_certificate", conf.replace("    listen 443 ssl;\n", ""))
-        self.assertEqual(conf.count("listen 443 ssl"), 1, "only the hostname with a certificate answers on 443")
-        npx.set_cert("n1", self.cert, self.key)
-        rec = npx.record("n1")
-        conf = npx.nginx_conf(rec["routes"], True, rec)
-        self.assertEqual(conf.count("listen 443 ssl"), 3, "the default covers the rest, and the catch-all")
-        self.assertIn("ssl_certificate /etc/nginx/certs/cert.pem;", conf)
+        self.assertEqual(conf.count("listen 443 ssl"), 2, "the hostname with a pair, and the catch-all that refuses")
         text = npx.compose_text("n1", rec)
         self.assertIn("target: /etc/nginx/certs/www.other.net/cert.pem", text)
         self.assertIn("tls_cert_www_other_net:\n    content: |", text)

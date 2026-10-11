@@ -3,8 +3,10 @@
 // (the node-switcher rule; the operator, 11 Oct: every tab about settings
 // on nodes picks one the same way): a state row saying whether its nginx
 // is deployed, the routes (a hostname or path, to a port a container on
-// that node publishes, with or without TLS), the certificates (kept on the
-// controller, pushed inside the compose file; a key never comes back), and
+// that node publishes, each serving 443 with a pair it picks or the one
+// its hostname resolves to, or 80 alone), the certificate pairs the node
+// holds (kept on the controller under the domain their names say, pushed
+// inside the compose file; a key never comes back; no default, R188), and
 // what else on the node holds 80 or 443. Deploy makes the container on a
 // node without one; Save writes the routes and certificate and rebuilds a
 // deployed one so the change is up; Remove takes it out of the manager.
@@ -65,12 +67,39 @@ function nginxPick(){
 }
 
 // A route as a row of fields: hostname, path, port, TLS, and Remove.
+// The pair a route serves 443 with (R188): none (80 alone), the one its
+// hostname resolves to (its own, else its domain's: `resolved` from the
+// server, drawn with the pair's key so the automatic pick is seen), or one
+// picked by its key from what the node holds.
+function nginxCertPick(n, r){
+  const keys = Object.keys(n.certs || {}).filter(k => n.certs[k]?.set).sort();
+  const auto = nginxResolve(n, r.host);
+  const pick = r.tls === false ? "none" : (keys.includes(r.cert) ? r.cert : "");
+  return `<select data-ng="cert" aria-label="the certificate this route serves 443 with">
+    <option value="none"${pick === "none" ? " selected" : ""}>80 only</option>
+    <option value=""${pick === "" ? " selected" : ""}>443, ${auto ? `${esc(auto)}'s pair` : "no pair covers it yet"}</option>
+    ${keys.map(k => `<option value="${esc(k)}"${pick === k ? " selected" : ""}>443, ${esc(k)}'s pair</option>`).join("")}
+  </select>`;
+}
+// What a hostname resolves to with no pick of its own: the server's answer
+// for a saved route, and the same rule here for one being typed.
+function nginxResolve(n, host){
+  if (!host || host === "*") return "";
+  if (n.resolved && host in n.resolved) return n.resolved[host];
+  const parts = host.split(".");
+  for (let i = 0; i < parts.length - 1; i++){
+    const cand = parts.slice(i).join(".");
+    if (n.certs?.[cand]?.set) return cand;
+  }
+  return "";
+}
+
 function nginxRouteRow(n, r, i){
   return `<div class="ngroute" data-i="${i}">
     <input data-ng="host" value="${esc(r.host)}" placeholder="www.example.com or *" aria-label="hostname" autocomplete="off" spellcheck="false">
     <input data-ng="path" value="${esc(r.path)}" placeholder="/" aria-label="path" autocomplete="off" spellcheck="false">
     <input data-ng="port" value="${esc(String(r.port))}" placeholder="8080" aria-label="port on the node" inputmode="numeric" autocomplete="off">
-    <label class="ndcap"><input type="checkbox" data-ng="tls"${r.tls !== false ? " checked" : ""}> 443 too</label>
+    ${nginxCertPick(n, r)}
     <button type="button" class="eye rm" data-ngrm aria-label="remove this route" title="remove this route">${BIN}</button>
   </div>`;
 }
@@ -80,40 +109,31 @@ function nginxRouteRow(n, r, i){
 function nginxRedraw(){ nginxRev++; drawPanes(); }
 
 function nginxDraftOf(n){
-  return nginxDraft[n.node] || (nginxDraft[n.node] = {routes: (n.routes || []).map(r => ({...r})), cert: "", key: "", drop: false, certFor: ""});
+  return nginxDraft[n.node] || (nginxDraft[n.node] = {routes: (n.routes || []).map(r => ({...r})), cert: "", key: "", certFor: ""});
 }
 
-// The hostnames a certificate can be for: the routes' own, without *, and
-// each one's parent domains, since a pair saved under example.com covers
-// every a.example.com route (one wildcard pair per domain, the operator,
-// 11 Oct); the top label alone is nobody's.
-function nginxHosts(n, d){
-  const out = new Set(Object.keys(n.certs || {}));
-  for (const h of (d?.routes || n.routes || []).map(r => r.host)){
-    if (!h || h === "*") continue;
-    const parts = h.split(".");
-    for (let i = 0; i < parts.length - 1; i++) out.add(parts.slice(i).join("."));
-  }
-  return [...out].filter(h => h && h !== "*").sort();
-}
-
-// Each certificate the node holds, one line: the default, then each
-// hostname's own, with its name and when it ends.
-function nginxCertLines(n){
-  const line = (label, c) => {
-    const when = c?.expires ? new Date(c.expires * 1000).toLocaleDateString() : "";
-    return `${esc(label)}: ${c?.set ? `${esc(c.subject || "")}${c.names ? ` (${esc(c.names)})` : ""}${when ? `, until ${esc(when)}` : ""}` : "none"}`;
-  };
+// Each pair the node holds, one line (R188): the key it is known by, its
+// subject and names, when it ends, and a way to take it off. A pair a
+// route picked is said to be in use; taking one off leaves its routes to
+// what their hostnames resolve to, or 80 alone.
+function nginxCertLines(n, d){
   const own = Object.entries(n.certs || {}).filter(([, c]) => c?.set).sort(([a], [b]) => a.localeCompare(b));
-  return [line("Default", n.cert), ...own.map(([h, c]) => line(h, c))].join("<br>")
-    + (!n.cert?.set && !own.length ? " (routes answer on 80 only)" : "");
+  if (!own.length) return `<div class="hint">none yet: every route answers on 80 only</div>`;
+  const routes = d?.routes || n.routes || [];
+  return own.map(([k, c]) => {
+    const when = c?.expires ? new Date(c.expires * 1000).toLocaleDateString() : "";
+    const used = routes.filter(r => r.tls !== false && (r.cert === k || (!r.cert && nginxResolve(n, r.host) === k))).length;
+    return `<div class="row ngcert"><div class="grow"><div class="name">${esc(k)}</div>
+      <div class="sub">${esc(c.subject || "")}${c.names ? ` (${esc(c.names)})` : ""}${when ? `, until ${esc(when)}` : ""}${
+        used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}</div></div>
+      <button type="button" class="eye rm" data-ngcertrm="${esc(k)}" aria-label="take ${esc(k)}'s pair off" title="take this pair off the node">${BIN}</button></div>`;
+  }).join("");
 }
 
 // What the tab says about one node: the state row, the routes, the
 // certificates, the clash if any, and the action bar.
 function nginxBody(n){
   const d = nginxDraftOf(n);
-  const cert = n.cert || {};
   const count = (n.routes || []).length;
   const pill = !n.deployed ? `<span class="pill">not deployed</span>`
     : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
@@ -137,15 +157,8 @@ function nginxBody(n){
     </div>
     <div class="field">
       ${lbl("", "Certificates")}
-      <div class="hint">${nginxCertLines(n)}</div>
-      <div class="hint">One per hostname, or one per domain that its subdomains' routes share (a wildcard or an origin certificate for example.com covers a.example.com and b.example.com), and the node's default for every hostname without one. Paste a pair for the one picked; a key is kept on the controller and never shown.</div>
-    </div>
-    <div class="field">
-      ${lbl("ngCertFor", "For")}
-      <select id="ngCertFor" data-ng="certfor" aria-label="which hostname the pasted certificate is for">
-        <option value=""${!d.certFor ? " selected" : ""}>the node's default (any hostname without its own)</option>
-        ${nginxHosts(n, d).map(h => `<option value="${esc(h)}"${d.certFor === h ? " selected" : ""}>${esc(h)}</option>`).join("")}
-      </select>
+      ${nginxCertLines(n, d)}
+      <div class="hint">The pairs this node holds, each known by the domain its names say (a wildcard pair for *.example.com is example.com's; the same again is a renewal). A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A key is kept on the controller and never shown.</div>
     </div>
     <div class="field">
       ${lbl("ngCert", "Certificate")}
@@ -154,7 +167,10 @@ function nginxBody(n){
     <div class="field">
       ${lbl("ngKey", "Private key")}
       <textarea id="ngKey" data-ng="key" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
-      ${(d.certFor ? n.certs?.[d.certFor]?.set : cert.set) ? `<label class="ndcap"><input type="checkbox" data-ng="drop"${d.drop ? " checked" : ""}> take ${d.certFor ? esc(d.certFor) + "'s" : "the default"} certificate off</label>` : ""}
+    </div>
+    <div class="field">
+      ${lbl("ngCertFor", "Known as")}
+      <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="the domain its names say, unless you name one" autocomplete="off" spellcheck="false">
     </div>
     ${clash}
     <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
@@ -193,18 +209,19 @@ function renderNginxInto(i){
 // differs from what is saved.
 function nginxReadDraft(sect, n){
   const d = nginxDraftOf(n);
-  d.routes = [...sect.querySelectorAll(".ngroute")].map(row => ({
-    host: row.querySelector('[data-ng="host"]').value.trim(),
-    path: row.querySelector('[data-ng="path"]').value.trim() || "/",
-    port: row.querySelector('[data-ng="port"]').value.trim(),
-    tls: row.querySelector('[data-ng="tls"]').checked}));
-  d.cert = sect.querySelector('[data-ng="cert"]').value;
-  d.key = sect.querySelector('[data-ng="key"]').value;
-  d.drop = !!sect.querySelector('[data-ng="drop"]')?.checked;
-  d.certFor = sect.querySelector('[data-ng="certfor"]')?.value || "";
-  const same = JSON.stringify(d.routes.map(r => ({...r, port: String(r.port)})))
-    === JSON.stringify((n.routes || []).map(r => ({host: r.host, path: r.path, port: String(r.port), tls: r.tls !== false})));
-  return !(same && !d.cert.trim() && !d.key.trim() && !d.drop);
+  d.routes = [...sect.querySelectorAll(".ngroute")].map(row => {
+    const pick = row.querySelector('.ngroute [data-ng="cert"]').value;
+    return {host: row.querySelector('[data-ng="host"]').value.trim(),
+            path: row.querySelector('[data-ng="path"]').value.trim() || "/",
+            port: row.querySelector('[data-ng="port"]').value.trim(),
+            tls: pick !== "none", cert: pick === "none" ? "" : pick};
+  });
+  d.cert = sect.querySelector('#ngCert').value;
+  d.key = sect.querySelector('#ngKey').value;
+  d.certFor = sect.querySelector('[data-ng="certfor"]')?.value.trim() || "";
+  const shape = r => ({host: r.host, path: r.path, port: String(r.port), tls: r.tls !== false, cert: r.cert || ""});
+  const same = JSON.stringify(d.routes.map(shape)) === JSON.stringify((n.routes || []).map(shape));
+  return !(same && !d.cert.trim() && !d.key.trim());
 }
 
 function wireNginxTab(root){
@@ -226,9 +243,18 @@ function wireNginxTab(root){
     bar.querySelector("[data-ngrevert]").disabled = !dirty;
   };
   sect.addEventListener("input", sync);
-  sect.addEventListener("change", e => {
-    if (e.target.matches?.('[data-ng="certfor"]')){ nginxReadDraft(sect, n); nginxRedraw(); return; }
-    sync();
+  sect.addEventListener("change", sync);
+  // A pair taken off: asked, then saved at once, since what it leaves (a
+  // route's pick falling back to its domain's pair, or 80 alone) is drawn
+  // from the server's answer.
+  sect.querySelectorAll("[data-ngcertrm]").forEach(b => b.onclick = async () => {
+    const k = b.dataset.ngcertrm;
+    if (!confirm(`Take ${k}'s pair off ${n.name}?\n\nA route that picked it falls back to what its hostname resolves to, or answers on 80 only.`)) return;
+    nginxReadDraft(sect, n);
+    busy(b, "Removing");
+    const j = await nginxAct({action: "save", node: nid, routes: nginxDraftOf(n).routes, drop_cert: k});
+    if (!j.error) delete nginxDraft[nid];
+    nginxRedraw();
   });
   sect.querySelector("[data-ngadd]").onclick = () => {
     nginxReadDraft(sect, n);
@@ -245,12 +271,11 @@ function wireNginxTab(root){
     const d = nginxDraftOf(n);
     busy(e.target, "Saving");
     const j = await nginxAct({action: "save", node: nid, routes: d.routes, cert_for: d.certFor,
-                              ...(d.cert.trim() ? {cert: d.cert, key: d.key} : {}), drop_cert: d.drop});
+                              ...(d.cert.trim() ? {cert: d.cert, key: d.key} : {})});
     if (!j.error) delete nginxDraft[nid];
-    // Another domain's pair pasted for the default went under its own
-    // domain instead, beside the default (B657): said, since the picker
-    // still read "the node's default".
-    if (j.placed) notify(`saved under ${j.host}, beside the default (${j.placed}): a pair for other names is not a replacement`);
+    // Where a pasted pair was filed, since the key is the pair's own to
+    // say unless a name was typed.
+    if (!j.error && d.cert.trim() && j.host) notify(`${n.name}: the pair is kept as ${j.host}'s`);
     nginxRedraw();
   };
   bar.querySelector("[data-ngrevert]").onclick = () => { delete nginxDraft[nid]; nginxRedraw(); };
