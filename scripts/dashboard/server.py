@@ -6067,7 +6067,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "a session creates its own project's container, "
                                                 "belonging to its own project"}, 403)
                 req.pop("owner", None)
-                req["node"] = ""
+                # ...on its own node: the node a session names is dropped,
+                # except for one it ships to, which the hosts gate above has
+                # already held to the project's Hosts its containers on.
+                # Dropped whole, a shipped new passed that gate and then
+                # landed, unshipped, on the project's own node (B645).
+                if req.get("ship") is not True:
+                    req["node"] = ""
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(me)} \
                 and self._readonly(name):

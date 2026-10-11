@@ -3194,6 +3194,30 @@ ok(await page.$('#devSend'),
     const away = await asSession({ project: 'ep.silon', action: 'new', instance: 'away', node: 'nowhere-node', ship: true });
     ok(away.status === 403 && /unless the node is under Hosts its containers on/.test(away.error || ''),
        `...nor one shipped to a node its project's settings do not name, said with where to name it (${away.status})`);
+    // ...and one shipped to a node the settings DO name under Hosts its
+    // containers on keeps that node and is marked shipped: the session branch
+    // blanked the node after the gate had let it through, so the container
+    // was made, unshipped, on the project's own node (B645, 11 Oct).
+    const vps = await page.evaluate(async () => {
+      const m = await (await fetch('/api/v1/nodes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enroll', name: 'vps-host', host_only: true }) })).json();
+      const h = await (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: 'ep.silon', hosts: [m.id] }) })).json();
+      return { id: m.id, err: m.error || h.error || '' };
+    });
+    const sent = await asSession({ project: 'ep.silon', action: 'new', instance: 'shipped', node: vps.id, ship: true });
+    const shipRec = (JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['ep.silon'] || {}).shipped || {};
+    ok(!vps.err && sent.status === 200 && shipRec.node === vps.id && shipRec.ship === true,
+       `...and one shipped to a node under Hosts its containers on is bound to it and marked shipped (${vps.err || sent.error || JSON.stringify([shipRec.node, shipRec.ship])})`);
+    await asSession({ project: 'ep.silon', action: 'remove', instance: 'shipped' });
+    // ...and the hosting node goes: the Send dialog below offers every hosting
+    // node there is, and counts them.
+    await page.evaluate(async (id) => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: 'ep.silon', hosts: [] }) });
+      await fetch('/api/v1/nodes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retire', id }) });
+    }, vps.id);
     // ...and removes one, under the same setting (the operator, 24 Sep):
     // the row goes, its env and data stay, as the tab's Remove leaves them.
     const gone = await asSession({ project: 'ep.silon', action: 'remove', instance: 'fresh' });
