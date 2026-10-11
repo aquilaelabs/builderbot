@@ -83,8 +83,55 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Storage|Debugging|Reset',
-   `the tab's stored settings are the one group that survived the question "does this need to exist", where what grows is kept (the operator, 10 Oct), and the reset: nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'Storage|Public hostname|Debugging|Reset',
+   `the tab's stored settings are the groups that survived the question "does this need to exist": where what grows is kept (the operator, 10 Oct), the home tunnel the controller runs itself (R176), and the reset (${groups.join(', ')})`);
+
+// The home tunnel (R176): a hostname, two secrets never shown back, and the
+// controller running cloudflared itself (the harness's stub) from them, with
+// the group's line reading the process. The token is nowhere in the page.
+{
+  const G = '.settingstab [data-group="Public hostname"]';
+  const f = await page.$eval(G, g => ({ host: g.querySelector('[data-set="tunnel_host"]')?.type,
+    tok: g.querySelector('[data-set="tunnel_token"]')?.type, api: g.querySelector('[data-set="cf_api_token"]')?.type,
+    pills: [...g.querySelectorAll('.pill')].map(p => p.textContent), state: g.querySelector('.actbar .state').textContent }));
+  ok(f.host === 'text' && f.tok === 'password' && f.api === 'password' && f.pills.filter(p => p === 'not set').length === 2
+     && /off: paste a tunnel token/.test(f.state),
+     `the Public hostname group asks for the hostname and two secrets, typed blind, and says the tunnel is off (${JSON.stringify(f)})`);
+  const TOKEN = Buffer.from(JSON.stringify({ a: 'a'.repeat(32), t: '12345678-1234-1234-1234-123456789abc', s: 'x' })).toString('base64');
+  await page.fill(`${G} [data-set="tunnel_host"]`, 'not a host');
+  await page.click(`${G} .setApply`);
+  await page.waitForFunction(() => /hostname like/.test(document.getElementById('toast')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
+  ok(await page.evaluate(() => /hostname like/.test(document.getElementById('toast')?.textContent || '')),
+     'a hostname that is not one is refused by name');
+  await page.fill(`${G} [data-set="tunnel_host"]`, 'bb.example.com');
+  await page.fill(`${G} [data-set="tunnel_token"]`, TOKEN);
+  await page.click(`${G} .setApply`);
+  await page.waitForFunction(sel => /connected: bb\.example\.com/.test(document.querySelector(sel + ' .actbar .state')?.textContent || ''), G, { timeout: 20000 });
+  const after = await page.$eval(G, g => ({ pills: [...g.querySelectorAll('.pill')].map(p => p.textContent),
+    tok: g.querySelector('[data-set="tunnel_token"]').value, clear: !!g.querySelector('[data-clear="tunnel_token"]') }));
+  ok(after.pills.includes('set') && after.tok === '' && after.clear
+     && !(await page.evaluate(t => JSON.stringify(state.settings).includes(t), TOKEN)),
+     `Apply runs the tunnel and the line reads connected; the token is set, blank in its box and nowhere in the page (${JSON.stringify(after.pills)})`);
+  ok(/registered tunnel connection/i.test((await page.evaluate(() => state.settings.tunnel.tail.join('\n')))),
+     '...and the process\'s last lines are what the server read');
+  // Enroll node fills the hostname in for a node reaching the controller
+  // through it.
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab #ndEnroll', { timeout: 15000 });
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  await page.selectOption('#ndBody #ndEnReach', 'public');
+  ok(await page.$eval('#ndBody #ndEnCtl', e => e.value) === 'https://bb.example.com',
+     'Enroll node fills the controller\'s own public hostname in');
+  await page.click('#ndBody #ndEnCancel');
+  await page.evaluate(() => openSettingsTab());
+  await page.waitForSelector(`${G} [data-clear="tunnel_token"]`, { timeout: 15000 });
+  await page.check(`${G} [data-clear="tunnel_token"]`);
+  await page.click(`${G} .setApply`);
+  await page.waitForFunction(sel => /off: paste a tunnel token/.test(document.querySelector(sel + ' .actbar .state')?.textContent || ''), G, { timeout: 20000 });
+  ok(true, '...and taking the token off stops the tunnel');
+  await post('/api/settings', { set: { tunnel_host: '' } });
+}
 // Debug mode grants nothing by itself: it puts the grant on a node's row.
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),

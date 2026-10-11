@@ -110,7 +110,8 @@ scripts/
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
     roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
     prefs.py                     which model and effort a project's Claude session runs on
-    settings.py                  controller settings, the things that used to be environment variables
+    settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
+    tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     toolchains.py                everything behind the Toolchains tab: catalog, sizes, the job worker
     emulator.py                  everything behind the Emulator tab: a node's Android system images

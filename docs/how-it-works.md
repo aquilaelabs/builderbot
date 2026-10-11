@@ -1613,7 +1613,14 @@ where each kind of thing that grows (project snapshots, job snapshots, the
 git relay's repositories, the Git view's working area, the logs) is kept,
 moved to a new empty path on Apply and switched once all of it is there,
 while the records, the database, the signing keys and the git credentials
-stay in the state directory (`paths.py`); and the tab says
+stay in the state directory (`paths.py`); its **Public hostname** group,
+where the controller runs the home tunnel itself (R176, `tunnel.py`): the
+hostname a node off the LAN dials, the tunnel's token from Zero Trust
+(a secret, said to be set and never shown back), and an optional Cloudflare
+API token with which the hostname's record and the tunnel's two rules (the
+agent's API to the controller, everything else 404) are written on Apply
+rather than clicked; the group's line says whether cloudflared is in the
+image, running and registered; and the tab says
 plainly what still comes from the environment and why (the placement rule and
 the unhardwiring are docs/nodes.md §13 and §11). One switch in its
 Debugging dialog, *Offer dev features* (Debug mode on, then Debug settings),

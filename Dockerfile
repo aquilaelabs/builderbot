@@ -267,6 +267,23 @@ RUN set -eux; \
     chmod +x /usr/local/bin/ttyd; \
     ttyd --version
 
+# cloudflared: the home tunnel the controller can run itself (R176), from
+# Cloudflare's release for this architecture. Latest rather than pinned,
+# like the provisioner's copy on a node: the client is kept in step with
+# Cloudflare's edge by the weekly rebuild, and a pin here would be the one
+# copy left behind. Absent on an architecture it is not built for, and the
+# Settings tab then says the tunnel cannot run from here.
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64|arm64) ;; \
+        *) echo "no cloudflared build for ${arch}; the home tunnel is not run from here"; exit 0 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/cloudflared \
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}"; \
+    chmod +x /usr/local/bin/cloudflared; \
+    cloudflared --version
+
 COPY scripts/ /opt/builderbot/scripts/
 COPY config/skel/ /opt/builderbot/skel/
 COPY config/templates/ /opt/builderbot/templates/

@@ -120,6 +120,17 @@ async function clearReports(btn){
 // says so beside it, and the bar says whether a change applies at once or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
+  // The home tunnel the controller runs itself (R176): the public hostname
+  // a node off the LAN dials, the tunnel's token, and an API token that
+  // writes the hostname's record and the tunnel's rules rather than having
+  // them clicked. The two tokens are secrets: never shown back.
+  {title: "Public hostname", status: tunnelStatus, fields: [
+    {key: "tunnel_host", label: "Hostname", type: "text", placeholder: "bb.example.com",
+     hint: "The name a node off your network dials the controller at, published by a tunnel from home. Enroll node fills it in."},
+    {key: "tunnel_token", label: "Tunnel token", type: "secret",
+     hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
+    {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
+     hint: "With Zone DNS Edit and Account Cloudflare Tunnel Edit: the hostname's record and the tunnel's two rules (the agent's API to the controller, everything else 404) are written on Apply rather than clicked."}]},
   {title: "Debugging", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
      hint: "Shows the Debug settings button here, and lets a project's settings grant its "
@@ -137,6 +148,18 @@ const SETTING_GROUPS = [
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
      hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
 ];
+
+// The tunnel's line on its group's action bar (R176): whether cloudflared
+// is here, running, registered, and at which name, as the server reads it.
+function tunnelStatus(s){
+  const t = s?.tunnel;
+  if (!t) return "applies at once";
+  if (t.error) return t.error;
+  if (!t.installed) return "cloudflared is not in this image: the tunnel cannot run from here";
+  if (!t.configured) return "off: paste a tunnel token and Apply to run the home tunnel here";
+  if (!t.running) return "starting";
+  return t.connected ? `connected: ${t.host || "the tunnel"} reaches this controller` : "running, not registered yet";
+}
 
 // The reset's confirmation, the way a project's purge asks: the word typed
 // in a box under the button, and the red verb asleep until it matches.
@@ -224,8 +247,22 @@ function settingsSections(){
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;
-            // Every setting is a switch: a checkbox inside its label, the
-            // way the Tests bar's are, with what the label cannot say on
+            // A text is a field with its label over it; a secret the same,
+            // typed blind, with "set" said beside it and never its value:
+            // left empty it is left alone, and its own tick takes it off.
+            if (f.type === "text" || f.type === "secret"){
+              const isSet = f.type === "secret" ? !!s.settings[f.key]?.set : !!v;
+              return `<div class="setrow col"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${
+                  f.type === "secret" ? (isSet ? ` <span class="pill ok">set</span>` : ` <span class="pill">not set</span>`) : src(f.key)}</label>
+                <input id="${id}" type="${f.type === "secret" ? "password" : "text"}" data-set="${f.key}"${
+                  f.type === "secret" ? ' data-secret="1"' : ""} value="${esc(f.type === "secret" ? "" : sdVal(id, v || ""))}"
+                  placeholder="${esc(f.type === "secret" ? (isSet ? "set: paste a new one to replace it" : "paste it") : (f.placeholder || ""))}"
+                  autocomplete="off" spellcheck="false">${
+                  f.type === "secret" && isSet ? `<label class="ndcap"><input type="checkbox" data-clear="${f.key}"> take it off</label>` : ""}
+              </div>`;
+            }
+            // Every other setting is a switch: a checkbox inside its label,
+            // the way the Tests bar's are, with what the label cannot say on
             // the ? (docs/design-language.md, Controls).
             return `<div class="logdays setrow"><label class="ndcap">
                 <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
@@ -247,7 +284,7 @@ function settingsSections(){
         <div class="logset">
           ${g.fields.map(field).join("")}${fold}
           <div class="actbar">
-            <span class="state">applies at once</span>
+            <span class="state">${g.status ? g.status(s) : "applies at once"}</span>
             <button type="button" class="setApply" title="save">Apply</button>
           </div>
         </div>
@@ -265,8 +302,11 @@ function wireSettingsSections(el){
     const apply = async () => {
       const set = {};
       box.querySelectorAll("[data-set]").forEach(i => {
+        // A secret left empty is left as it is; its tick takes it off.
+        if (i.dataset.secret && !i.value.trim()) return;
         set[i.dataset.set] = i.type === "checkbox" ? i.checked : i.value.trim();
       });
+      box.querySelectorAll("[data-clear]:checked").forEach(i => { set[i.dataset.clear] = ""; });
       busy(btn, "Applying");
       try{
         const r = await fetch("/api/settings", {method: "POST",
@@ -274,7 +314,12 @@ function wireSettingsSections(el){
         const j = await r.json();
         if (j.error) return notify(j.error, true);
         box.querySelectorAll("[data-set]").forEach(i => { delete settingsDraft[i.id]; });
-        notify("saved");
+        // What the tunnel did with it (R176): the record and rules written,
+        // or why not, said here rather than only on the next poll's line.
+        if (j.published?.error) notify(`saved; Cloudflare: ${j.published.error}`, true);
+        else if (j.published?.did) notify(`saved; Cloudflare: ${j.published.did.join("; ")}`);
+        else if (j.tunnel?.error) notify(`saved; the tunnel: ${j.tunnel.error}`, true);
+        else notify("saved");
         refresh();
       }catch(e){ notify("settings: " + e, true); }
       finally{ if (btn.isConnected) unbusy(btn, "Apply"); }

@@ -1390,6 +1390,7 @@ start_server() {
     BB_CLAUDE_LATEST_URL="file://$S/claude-latest" BB_CLAUDE_CHECK_DELAY=3600 \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
+    BB_CLOUDFLARED="$DASH/test/cloudflared-stub.sh" \
     python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &
   echo $! > "$PIDF" )
 pid="$(cat "$PIDF")"

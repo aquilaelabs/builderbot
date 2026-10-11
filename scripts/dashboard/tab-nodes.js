@@ -1449,6 +1449,10 @@ function wireNodesTab(root){
       const ctl = $b("#ndEnCtl");
       if (reach.value === "public" && /^https?:\/\/(\d+\.|localhost|\[)/.test(ctl.value)) ctl.value = "https://";
       else if (reach.value !== "public" && ctl.value === "https://") ctl.value = location.origin;
+      // The hostname the controller's own tunnel publishes (R176), filled
+      // in where the settings have one and nothing has been typed yet.
+      const own = state?.settings?.settings?.tunnel_host?.value;
+      if (reach.value === "public" && own && ctl.value === "https://") ctl.value = `https://${own}`;
       showHost();
     };
     reach.onchange = showWg;

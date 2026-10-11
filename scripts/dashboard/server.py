@@ -2074,6 +2074,8 @@ def _diag_watch(project, uid):
 
 # The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
 DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
+# ...and the home tunnel's (R176), applied by tunnel.py when they change.
+TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 
 
 # The project's settings a session takes once, when it starts: the trees
@@ -2587,6 +2589,7 @@ devapp.label_of = registry.label
 import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
 import nginxproxy                                                # noqa: E402
+import tunnel                                                    # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
@@ -2767,6 +2770,9 @@ nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_li
                      taken_ports=devapp.taken_ports)
 # ...and put on a node the moment it enrolls when the Enroll dialog asked
 # for it (config.nginx), so a box runs the script and nginx appears.
+# The home tunnel the controller runs itself (R176, tunnel.py): from the
+# settings, started at boot below when they say so.
+tunnel.configure(settings_mod=settings, dash_port=PORT)
 nodes.ON_ENROLL.append(lambda nid: nginxproxy.deploy(nid, containers, devactions, devapp)
                        if ((nodes.node(nid) or {}).get("config") or {}).get("nginx") else None)
 
@@ -3439,7 +3445,7 @@ def snapshot(who):
         "mapping": mapping.payload(),
         "max_tabs": layout.max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
-        "settings": settings.payload(),
+        "settings": settings.payload() | {"tunnel": tunnel.status()},
         # ...and where the controller keeps what grows, an administrator's.
         "paths": {} if users.may(who, "admin") else paths.view(),
         # The command list is built from the table above rather than spelled out
@@ -5241,6 +5247,13 @@ class Handler(BaseHTTPRequestHandler):
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
+        # The home tunnel follows its settings at once (R176): the process
+        # started, restarted or stopped, and with an API token the hostname's
+        # record and the tunnel's rules written; what happened rides back.
+        if any(k in TUNNEL_SETTINGS for k in want):
+            r["tunnel"] = tunnel.apply()
+            if settings.secret("cf_api_token") and settings.secret("tunnel_token") and settings.get("tunnel_host"):
+                r["published"] = tunnel.publish(settings.secret("cf_api_token"))
         return self._json(r | settings.payload())
 
     def _prefs_post(self, req):
@@ -7506,6 +7519,7 @@ def main():
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     ciwatch.start()           # a project's CI, once a day (R117)
+    tunnel.apply()            # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()
