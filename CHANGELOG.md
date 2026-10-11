@@ -426,6 +426,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A hosting-only node answers docker ps, inspect, logs, start, stop and restart about the containers it hosts, so the Docker tab lists them and a session reads their logs (B642) (babe946)
 - bb devapp new --node NODE from a session ships the container to the hosting node named, where it used to land unshipped on the project's own node (B645) (babe946)
 - The node agent takes a hello asked for again with its census beside the loop, so a nudge every minute no longer stops it taking jobs; the Docker and nginx tabs' docker ps jobs were waiting their 25s out (B644). Agent 0.7.166 (babe946)
+- A container shipped to a hosting node fetches its image even when the agent's first log post has not yet marked the job running; the first send to a public node was answered 403 (B648) (74ebb61)
 
 ### Security
 

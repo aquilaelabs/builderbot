@@ -4,6 +4,8 @@
 #   bb devapp new nettest --compose test/nettest/compose.yml --node NODE --env FILE
 # then read with bb devapp log nettest (or docker logs on the node).
 FROM alpine:3.20
+# The probe wants whatever alpine 3.20 carries today, not a pin to keep moving.
+# hadolint ignore=DL3018
 RUN apk add --no-cache curl bind-tools iproute2 busybox-extras
 COPY probe.sh /probe.sh
 CMD ["/bin/sh", "/probe.sh"]
