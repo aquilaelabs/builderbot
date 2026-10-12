@@ -213,7 +213,9 @@ def channels():
     bad = []
     claude = open("CLAUDE.md").read()
     brief = re.sub(r"<!--.*?-->", "", open("config/templates/briefing.md").read(), flags=re.S)
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dashboard"))
+    # The tree being linted, not the copy of bb this runs from: on a node
+    # that copy is the bundle, which carries no rules.py (B696).
+    sys.path.insert(0, os.path.join(os.getcwd(), "scripts", "dashboard"))
     import rules                                                    # noqa: E402
     sources = [("the briefing", brief)] + [(f"the shipped rule {r['name']}", r["text"])
                                            for r in rules.BUILTIN + rules.ALWAYS]
