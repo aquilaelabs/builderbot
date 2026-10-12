@@ -287,6 +287,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Logs section's days now reach every log the controller keeps, job logs included, on an hourly sweep rather than only at boot; Clear takes the CI runs and finished job logs too; a running job's log, a live log file, old job rows and the audit trail are all bounded (24ab1cc)
 - A node keeps its own logs bounded and readable: job output posted as it comes with a meter as its last frame, the terminal and runner logs, runner diagnostics, container logs and the journal all capped, faults said once rather than every few seconds (1586bdc)
 - The Claude button's menu no longer blinks or loses a press while the page updates, and offers Restart beside End session: the session ends and resumes the same conversation, starting fresh so it sees what changed (9b745b7)
+- A node's Toolchains tab lists only the toolchains its platform can have; the Not for this node fold is gone (0202f34)
 
 ### Removed
 

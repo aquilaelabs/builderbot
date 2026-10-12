@@ -667,8 +667,9 @@ await page.waitForFunction(() => tcNode === 'local' && toolchains && !toolchains
 // somebody looking for xcodes should be able to find out that it exists and
 // what it wants.
 //
-// Rendered from a payload rather than against a real Mac, because the thing
-// under test is which side of the fold a row lands on.
+// Rendered from a payload rather than against a real Mac: a recipe this
+// node's platform cannot have is not on its tab at all (the operator,
+// 12 Oct: no "Not for this node" fold of rows that can never be pressed).
 {
   const shape = await page.evaluate(() => {
     toolchains = { name: 'a-mac', root: '/Volumes/SDK/darwin-arm64', free_mb: 90000,
@@ -682,25 +683,11 @@ await page.waitForFunction(() => tcNode === 'local' && toolchains && !toolchains
           wrong_platform: 'linux/amd64' }] };
     tcRev++; drawPanes();
     const doc = document.querySelector('.doc.on');
-    const inList = [...doc.querySelectorAll('.tcs:not(.tcno .tcs) .tc .nm')]
-      .map(e => e.textContent.replace(/\s+/g, ' ').trim());
-    const fold = doc.querySelector('details.tcno');
-    return { inList,
-             folded: [...(fold?.querySelectorAll('.tc .nm') || [])]
-               .map(e => e.textContent.replace(/\s+/g, ' ').trim()),
-             shut: fold ? !fold.open : null,
-             count: fold?.querySelector('.sst')?.textContent || '',
-             says: [...(fold?.querySelectorAll('.tc .where') || [])]
-               .map(e => e.textContent.trim())[0] || '' };
+    return { names: [...doc.querySelectorAll('.tcs .tc .nm')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+             fold: !!doc.querySelector('details.tcno') };
   });
-  ok(shape.inList.join('|') === 'JDK|xcodes (Xcode installer)',
-     `the list is what this node can have (${shape.inList.join(', ')})`);
-  ok(shape.folded.join('|') === 'Swift|Rust' && shape.shut === true
-     && shape.count === '2',
-     `...and what it cannot is behind a shut fold that counts them (${
-       shape.folded.join(', ')}, ${shape.count})`);
-  ok(/packaged for linux\/amd64, and this node is not/.test(shape.says),
-     `...each still saying what it wants, so the fold is not a hiding place (${shape.says})`);
+  ok(shape.names.join('|') === 'JDK|xcodes (Xcode installer)' && !shape.fold,
+     `the tab is what this node can have, and nothing else (${shape.names.join(', ')})`);
   await page.evaluate(() => { toolchains = null; loadToolchains(); });
   await page.waitForFunction(() => toolchains && !toolchains.error, { timeout: 20000 });
 }

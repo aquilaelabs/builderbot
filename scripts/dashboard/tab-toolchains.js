@@ -240,9 +240,8 @@ function tcRow(p, busy, job, managed){
     ".".repeat(tcDots)}</span></span>`;
   return `<label class="tc${upToDate ? " done" : ""}">
     <input type="checkbox" value="${esc(p.name)}"${
-      busy || p.wrong_platform || noUpgrade ? " disabled" : ""}${
-      p.wrong_platform ? ` title="this recipe is packaged for ${esc(p.wrong_platform)}: installing it here would fetch binaries that cannot run"`
-      : noUpgrade ? ` checked disabled title="installed; no update in place: a newer version, once a check finds one, is installed in its place"`
+      busy || noUpgrade ? " disabled" : ""}${
+      noUpgrade ? ` checked disabled title="installed; no update in place: a newer version, once a check finds one, is installed in its place"`
       : upToDate ? ` checked disabled title="installed and up to date"`
                : tcTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
@@ -261,8 +260,7 @@ function tcRow(p, busy, job, managed){
         // that is, so naming it per row was a repetition, and on a node,
         // where the census reports no per-toolchain path, it read "installed
         // at " with nothing after it.
-        p.wrong_platform ? `packaged for ${esc(p.wrong_platform)}, and this node is not`
-        : p.installed ? (p.path ? "installed at " + esc(p.path) : "installed")
+        p.installed ? (p.path ? "installed at " + esc(p.path) : "installed")
                       : "not installed"}</span>`}
       ${upd}${err}${
         // Sessions that started before this landed still have the old PATH
@@ -534,18 +532,6 @@ function renderToolchainsInto(i){
       d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
     <div class="tcs">${(d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join("")}</div>
-    ${(() => {
-      // Behind a fold rather than in the list. A recipe this node's platform
-      // cannot have is a row that can never be pressed, and on a Mac that is
-      // eleven of the sixteen: a tab of dead controls. Not hidden either:
-      // somebody looking for xcodes should find out that it exists and what
-      // it needs, which is a click rather than a search.
-      const no = (d.items || []).filter(i => i.wrong_platform);
-      if (!no.length) return "";
-      return `<details class="sect tcno"${sectAttr("toolchains:no:" + tcNode)}><summary><span class="t">Not for this node</span>
-          <span class="sst">${no.length}</span></summary>
-        <div class="tcs">${no.map(i => tcRow(i, true, job)).join("")}</div></details>`;
-    })()}
     <div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
