@@ -147,7 +147,7 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   const said = (await api('/api/preamble?project=alpha')).text;
   const where = (await api('/api/preamble?project=alpha&topic=where')).text || '';
   ok(/Of the shares and disks mounted on its node, this project is shown \/mnt\/media, \/srv\/samples, as the node has each/.test(said)
-     && /A share or\s+a disk mounted on the node, another project's build cache or container data,\s+and the home of the account sessions run as are not in its view/.test(where),
+     && /a share or disk mounted on the\s+node, another project's build cache or container data, and the home of the\s+account sessions run as are not in its view/.test(where),
      'the block says which shares this project is shown, and the where topic that the rest of the node is not in its view');
   const shown = execFileSync('bash', [`${REPO}/scripts/bb`, 'settings'],
     { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`,

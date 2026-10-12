@@ -1820,6 +1820,8 @@ ok(await page.$$eval('#rnColor [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
    'the dialog offers a color, with none picked for a project nobody colored');
 await page.click('#rnColor [data-color="teal"]');
+// The bars wake on a 0 ms timer after the click (B691): read them after it.
+await page.waitForFunction(() => !document.querySelector('.rnbar[data-rnbar="project"] [data-rnsave]')?.disabled, null, { timeout: 5000 });
 ok(await page.$eval('.rnbar[data-rnbar="project"] [data-rnsave]', b => !b.disabled)
    && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
    'a change wakes its own section\'s Save and no other');
@@ -2177,9 +2179,11 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   await page.click('.settingstab #logApply');
   await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
                              { timeout: 10000 });
-  const back = await page.evaluate(() =>
-    fetch('/api/status').then(r => r.json()).then(j => j.logs.days));
-  ok(back === 30, '...and raising it again is just a setting, with nothing to crop');
+  // The status answer follows the setting within a poll, not the instant
+  // Apply re-enables: asked until it says so.
+  await page.waitForFunction(async () => (await (await fetch('/api/status')).json()).logs?.days === 30,
+                             null, { timeout: 10000, polling: 500 });
+  ok(true, '...and raising it again is just a setting, with nothing to crop');
   await page.evaluate(() => { const t = tabs.find(x => x.kind === 'settings');
                               if (t) hideTab(t.id); });
 
@@ -2468,6 +2472,9 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   ok(reads.room > 0 && reads.down && !reads.up && /inset/.test(reads.shadow) && readsEnd[0] && !readsEnd[1],
      `a list that scrolls, the project's Reads, darkens the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
   await page.$eval(box, b => { b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll')); });
+  // The classes follow the scroll on the page's next frame: read them once they have.
+  await page.waitForFunction(sel => { const l = document.querySelector(sel);
+    return l && l.classList.contains('scrollup') && !l.classList.contains('scrolldown'); }, box, { timeout: 5000 }).catch(() => {});
   const b = await cls();
   ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down })})`);
   await page.evaluate(() => closeRename());
