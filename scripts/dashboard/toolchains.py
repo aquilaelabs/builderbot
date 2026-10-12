@@ -1676,6 +1676,10 @@ def _driver_name(n, action, pkg):
     return f"{DRIVER}:{pkg}", ""
 
 
+# The longest one toolchain's install, update or removal may take on a node.
+TC_STEP_S = 3600
+
+
 def node_job(principal, nid, action, names, driver=""):
     """Queue the toolchain job. Refused, with numbers, when the store cannot
     hold what is asked, measured here the last time it was installed, so a
@@ -1738,8 +1742,15 @@ def node_job(principal, nid, action, names, driver=""):
     # store could not hold both. It is scoped by platform now: each machine
     # installs under <store>/<os>-<arch> (roadmap R19), so a Mac and a Linux
     # box sharing a share is the design, not a mistake.
+    every = names + [x for x in (drv, ctk) if x]
+    # Two limits (the operator, 12 Oct): each toolchain's step gets an hour,
+    # which the agent enforces and then moves on; the job as a whole gets
+    # an hour per toolchain, which is what the controller holds it to. One
+    # hour for both marked a nineteen-toolchain batch lost at 65 minutes
+    # while the node went on installing.
     r = nodes.job_add(principal, {"node": nid}, "toolchain",
-                      {"action": action, "names": names + [x for x in (drv, ctk) if x], "timeout": 3600})
+                      {"action": action, "names": every, "step_timeout": TC_STEP_S,
+                       "timeout": TC_STEP_S * max(1, len(every)) + 600})
     if r.get("ok") and added:
         r["added"] = added
     return r

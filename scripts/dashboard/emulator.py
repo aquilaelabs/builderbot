@@ -275,4 +275,4 @@ def node_job(principal, nid, action, image_id):
     if busy:
         return {"error": busy}
     return nodes.job_add(principal, {"node": nid}, "image",
-                         {"action": action, "image": ids[0], "images": ids, "timeout": 3600 * len(ids)})
+                         {"action": action, "image": ids[0], "images": ids, "step_timeout": 3600, "timeout": 3600 * len(ids) + 600})

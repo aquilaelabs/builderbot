@@ -353,7 +353,7 @@ class WorkMixin:
                 job.say(f"== bb toolchains {verb} {name}\n")
                 st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
                                                 "toolchains", verb, name],
-                                       "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                       "cwd": store, "timeout": spec.get("step_timeout") or spec.get("timeout") or 3600,
                                        "env": sdk_env(self.state)})
                 if st_ != "succeeded":
                     bad += 1
@@ -589,7 +589,7 @@ class WorkMixin:
             job.say(f"== bb emu image {action} {iid}\n")
             st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
                                             "emu", "image", action, iid],
-                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                   "cwd": store, "timeout": spec.get("step_timeout") or spec.get("timeout") or 3600,
                                    "env": sdk_env(self.state)})
             if st_ != "succeeded":
                 break

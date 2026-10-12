@@ -499,8 +499,12 @@ sdk_builds_with() {
 }
 
 # sdk_fetch URL DEST: download with a progress line, into a temp file first.
+# A download that stops receiving (under 1 kB/s for two minutes) fails
+# rather than holding the job until its step's hour is up, and a server
+# that never answers fails in thirty seconds; two retries for a blip.
 sdk_fetch() {
-    curl -fL --progress-bar -o "$2" "$1"
+    curl -fL --progress-bar --connect-timeout 30 --speed-limit 1024 --speed-time 120 \
+        --retry 2 --retry-delay 5 -o "$2" "$1"
 }
 
 # sdkmanager --list is a network round trip wrapped in a JVM start, and a full
