@@ -17,7 +17,7 @@
 // them dropped and the tab repainted, which the live key has to notice.
 let settingsRev = 0;
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.log_days, state?.paths, settingsRev]);
+  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one

@@ -31,7 +31,7 @@ NOTES
        question-mark placeholder however many PNGs are sitting on disk.
        If the repo ever goes public this starts working on its own. -->
   <Icon>https://raw.githubusercontent.com/aquilaelabs/BuilderBot/main/config/icon.png</Icon>
-  <ExtraParams>--hostname=builderbot</ExtraParams>
+  <ExtraParams>--hostname=builderbot --log-opt max-size=20m --log-opt max-file=3</ExtraParams>
   <PostArgs/>
   <DonateText/>
   <DonateLink/>

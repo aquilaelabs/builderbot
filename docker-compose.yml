@@ -30,6 +30,12 @@ services:
     # BuilderBot ...` command in the docs works under either install method.
     container_name: BuilderBot
     hostname: builderbot
+    # What the container prints, kept by Docker on the host: bounded, since
+    # the json-file driver keeps all of it by default. The same output is in
+    # the logs directory under the Logs section's days (builderbot.log).
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "3"}
     restart: unless-stopped
 
     # Keeps a TTY attached so `docker exec -it builderbot claude` behaves like a

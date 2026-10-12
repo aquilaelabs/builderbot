@@ -283,6 +283,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Claude's model and effort are picked each time a session starts: the Claude button's menu turns, after Resume or New conversation, to Model and Effort with Start, opening on the last ones picked; the project's settings no longer hold them (ca8eae8)
 - Enrolling a Mac is a dev feature until one has been proven: the Enroll dialog names it, and the controller serves its provisioner, only with Offer dev features on in Settings (62801e7)
 - Reset BuilderBot opens a dialog that un-enrolls the nodes first, uninstalling BuilderBot from each and waiting for every one to report before anything moves, so each machine can be enrolled again; a node's Un-enroll asks the same way and says what goes and what stays (20c3975)
+- The Logs section's days now reach every log the controller keeps, job logs included, on an hourly sweep rather than only at boot; Clear takes the CI runs and finished job logs too; a running job's log, a live log file, old job rows and the audit trail are all bounded (24ab1cc)
 
 ### Removed
 

@@ -3802,6 +3802,20 @@ def job(job_id, with_log=True):
 # thirty days on a busy one can be a thousand.
 JOB_LOG_KEEP = 40          # newest jobs per project whose logs are kept
 JOB_LOG_DAYS = 30          # ...and nothing older than this, however few there are
+# ...where "this" is the operator's Days of logs kept, the one policy every
+# log here follows (logs.days, set by server.py); 30 is its default and the
+# number until it is set.
+log_days = lambda: JOB_LOG_DAYS   # noqa: E731
+# A job's log while it runs, whatever the sweep says after: a chatty build
+# stored every chunk it sent until it ended. Past this many 32 kB chunks
+# (16 MB) the middle goes and a line says how much; the start and the end
+# are what anyone reads.
+JOB_LOG_MAX_CHUNKS = 512
+JOB_LOG_HEAD_CHUNKS = 32
+# The job ROWS (spec, outputs, error): kept far longer than their logs,
+# because "did this ever run" is history, but not for ever.
+JOB_ROWS_KEEP = 2000       # newest finished jobs per project kept as rows
+JOB_ROWS_DAYS = 365
 
 
 def prune_job_logs(project=None):
@@ -3823,7 +3837,7 @@ def prune_job_logs(project=None):
             "('succeeded', 'failed', 'canceled') "
             "ORDER BY COALESCE(ended, queued) DESC LIMIT -1 OFFSET ?",
             (proj, JOB_LOG_KEEP))
-        cutoff = int(time.time()) - JOB_LOG_DAYS * 86400
+        cutoff = int(time.time()) - log_days() * 86400
         aged = _rows(
             "SELECT id FROM jobs WHERE project = ? AND state IN "
             "('succeeded', 'failed', 'canceled') AND COALESCE(ended, queued) < ?",
@@ -3833,6 +3847,54 @@ def prune_job_logs(project=None):
                 _exec("DELETE FROM job_logs WHERE job_id = ?", (jid,))
                 gone += 1
     return gone
+
+
+def prune_jobs():
+    """Drop finished job rows past JOB_ROWS_KEEP per project and older than
+    JOB_ROWS_DAYS, with whatever log they still have. How many went."""
+    gone = 0
+    cutoff = int(time.time()) - JOB_ROWS_DAYS * 86400
+    for row in _rows("SELECT DISTINCT project FROM jobs"):
+        old = _rows("SELECT id FROM jobs WHERE project = ? AND state IN ('succeeded', 'failed', 'canceled') "
+                    "AND COALESCE(ended, queued) < ? ORDER BY COALESCE(ended, queued) DESC LIMIT -1 OFFSET ?",
+                    (row["project"], cutoff, JOB_ROWS_KEEP))
+        for r in old:
+            _exec("DELETE FROM job_logs WHERE job_id = ?", (r["id"],))
+            _exec("DELETE FROM jobs WHERE id = ?", (r["id"],))
+            gone += 1
+    return gone
+
+
+def clear_job_logs():
+    """Every finished job's log, for the Logs section's Clear: the rows stay,
+    as the sweep keeps them. How many jobs lost theirs."""
+    ids = [r["job_id"] for r in _rows(
+        "SELECT DISTINCT l.job_id FROM job_logs l JOIN jobs j ON j.id = l.job_id "
+        "WHERE j.state IN ('succeeded', 'failed', 'canceled')")]
+    for jid in ids:
+        _exec("DELETE FROM job_logs WHERE job_id = ?", (jid,))
+    return len(ids)
+
+
+def _cap_job_log(job_id):
+    """Keep one job's log under JOB_LOG_MAX_CHUNKS while it runs: the first
+    JOB_LOG_HEAD_CHUNKS and the newest, with the middle replaced by one line
+    that says how much went, at the seq where the gap is."""
+    n = _rows("SELECT COUNT(*) AS n FROM job_logs WHERE job_id = ?", (job_id,))[0]["n"]
+    if n <= JOB_LOG_MAX_CHUNKS:
+        return
+    seqs = [r["seq"] for r in _rows("SELECT seq FROM job_logs WHERE job_id = ? ORDER BY seq", (job_id,))]
+    drop = seqs[JOB_LOG_HEAD_CHUNKS:len(seqs) - (JOB_LOG_MAX_CHUNKS - JOB_LOG_HEAD_CHUNKS - 1)]
+    if not drop:
+        return
+    size = sum(r["n"] for r in _rows(
+        f"SELECT LENGTH(chunk) AS n FROM job_logs WHERE job_id = ? AND seq IN ({','.join('?' * len(drop))})",
+        (job_id, *drop)))
+    _exec(f"DELETE FROM job_logs WHERE job_id = ? AND seq IN ({','.join('?' * len(drop))})", (job_id, *drop))
+    _exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES (?, ?, ?, ?)",
+          (job_id, drop[0], int(time.time()),
+           f"\n[builderbot] {size} characters of this job's output left out here: a job keeps "
+           f"its first and its newest {JOB_LOG_MAX_CHUNKS * 32 // 1024} MB at most\n"))
 
 
 def job_forget(job_id):
@@ -3903,6 +3965,8 @@ def job_log(node_id, job_id, chunks, step=None):
             _exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES "
                   "(?, ?, ?, ?)", (job_id, seq, now, str(c.get("chunk"))[:32768]))
             n += 1
+        if n:
+            _cap_job_log(job_id)
         if got[0]["state"] == "assigned":
             _exec("UPDATE jobs SET state = 'running' WHERE id = ?", (job_id,))
         # The word the row shows, when the agent sent one with this post.

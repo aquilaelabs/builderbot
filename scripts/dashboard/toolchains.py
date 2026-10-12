@@ -797,6 +797,9 @@ def _node_errors(job_id, failed, verb):
         said = _job_tail("\n".join(lines), keep=4) or ([refused] if refused else [])
         out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
     _node_errors_seen[key] = out
+    # The newest few jobs' answers: it was kept for every job ever read.
+    while len(_node_errors_seen) > 64:
+        _node_errors_seen.pop(next(iter(_node_errors_seen)))
     return out
 
 

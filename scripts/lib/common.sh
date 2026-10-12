@@ -219,14 +219,21 @@ run_as_builder() {
 
 # bb_log_dir: where the persistent log lives. Priority: explicit BB_LOG_DIR
 # env, then a mounted /logs volume (the optional template/compose mapping),
-# then the default inside /config.
+# then the Settings tab's Storage path for logs (paths.json, which
+# logs.log_dir reads too), then the default inside /config. The two readers
+# disagreed once the path was moved: the boot wrote one directory and the
+# sweep, Clear and the downloads read the other.
 bb_log_dir() {
+    local moved=""
     if [ -n "${BB_LOG_DIR:-}" ]; then
         printf '%s' "$BB_LOG_DIR"
     elif [ -d /logs ]; then
         printf '%s' /logs
     else
-        printf '%s' /config/logs
+        [ -r "${DASHBOARD_STATE:-/config}/paths.json" ] && moved="$(python3 -c \
+            'import json,sys; print(json.load(open(sys.argv[1])).get("logs") or "")' \
+            "${DASHBOARD_STATE:-/config}/paths.json" 2>/dev/null || true)"
+        printf '%s' "${moved:-/config/logs}"
     fi
 }
 

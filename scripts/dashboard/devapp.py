@@ -1166,6 +1166,11 @@ def _guard(argv):
     return ""
 
 
+# Set by server.py (diag.redact): an argv or an output tail can carry a
+# token, and docker.log is in the downloads.
+redact = lambda text: text   # noqa: E731
+
+
 def _docker_log(line):
     """One line into the Docker manager's own log, best effort.
 
@@ -1180,7 +1185,7 @@ def _docker_log(line):
         d = log_dir()
         d.mkdir(parents=True, exist_ok=True)
         with open(d / "docker.log", "a", encoding="utf-8") as f:
-            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {redact(line)}\n")
     except OSError:
         pass
 

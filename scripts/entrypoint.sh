@@ -194,8 +194,8 @@ setup_ssh_agent() {
 # Rotating per start rather than per size means one file equals one container
 # lifetime, so "what happened on that boot" is answerable by opening a file
 # instead of hunting for the boundary in an appended stream. The cost is that a
-# crash loop burns through generations quickly, which is what BB_LOG_KEEP is
-# now for: a ceiling, not the policy. How long logs are actually kept is a
+# crash loop burns through generations quickly, which is what the ceiling of
+# 60 is for (logs.MAX_GENERATIONS, the same number): not the policy. How long logs are actually kept is a
 # number of DAYS, set in the dashboard's settings menu and applied by
 # dashboard/logs.py: a count is the wrong unit for "was that this week?", and
 # five generations of a crash loop is five minutes.
@@ -270,6 +270,10 @@ record_image() {
         printf '# first-seen\trev\tversion\tbuilt\n' > "$f" 2>/dev/null || return 0
     fi
     printf '%s\n' "$line" >> "$f" 2>/dev/null || return 0
+    # The newest 500 images, which is years of updates: it was never trimmed.
+    if [ "$(wc -l < "$f")" -gt 501 ]; then
+        { head -1 "$f"; tail -n 500 "$f"; } > "$f.tmp" 2>/dev/null && mv -f "$f.tmp" "$f"
+    fi
     # Everything else in /config belongs to the builder; keep this the same so
     # a later reader is not the one to find out it is root's.
     chown "${PUID:-99}:${PGID:-100}" "$f" 2>/dev/null || true

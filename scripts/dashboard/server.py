@@ -484,6 +484,28 @@ def compat_reap_once():
     return ended
 
 
+# The log policy on a clock (the operator, 12 Oct): the days were applied at
+# boot and at Apply only, so a controller up for weeks kept what had fallen
+# past them, and its live files grew without bound. Every hour: the earlier
+# generations and the CI runs past the days, a live file past its ceiling,
+# the job logs past theirs, the job rows and the audit past theirs.
+LOG_SWEEP_EVERY = 3600
+
+
+def log_sweep_loop():
+    while True:
+        time.sleep(LOG_SWEEP_EVERY)
+        try:
+            r = logs.sweep()
+            r["job_logs"] = nodes.prune_job_logs()
+            r["job_rows"] = nodes.prune_jobs()
+            r["audit"] = db.prune_audit()
+            if any(r.values()):
+                print(f"dashboard: log sweep: {', '.join(f'{k} {v}' for k, v in r.items() if v)}", flush=True)
+        except Exception as e:                                # noqa: BLE001 (the loop outlives one bad pass)
+            print(f"dashboard: log sweep skipped: {type(e).__name__}: {e}", flush=True)
+
+
 def _compat_loop():
     while True:
         try:
@@ -2654,7 +2676,7 @@ idle.configure(state=STATE, write_json=write_json,
                changed=lambda: [nodes.ask_hello(n["id"]) for n in nodes.node_list()
                                 if n.get("kind") == "agent"])
 # On boot, because that is when a generation was just rotated in and the oldest
-# one fell off the end of the policy. Nothing else runs on a schedule here.
+# one fell off the end of the policy; then every hour (log_sweep_loop below).
 logs.prune()
 
 import prefs                                                     # noqa: E402
@@ -2738,6 +2760,10 @@ try:
     # retention at all until R17 step 1. Swept once here for whatever ended
     # while this controller was down; a running one sweeps a project as its
     # own jobs end, which is when it gains a log.
+    # The one log policy (the Logs section's days) reaches the job logs,
+    # and Clear reaches them too.
+    nodes.log_days = logs.days
+    logs.clear_job_logs = nodes.clear_job_logs
     try:
         _gone = nodes.prune_job_logs()
         if _gone:
@@ -3250,6 +3276,7 @@ nodes.nginx_for = lambda nid: nginxproxy.container_name(nid) if nginxproxy.deplo
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).
 import diag                                                      # noqa: E402
+devapp.redact = diag.redact       # docker.log carries argvs and output tails
 
 import reports                                                   # noqa: E402
 import files                                                     # noqa: E402
@@ -3530,7 +3557,10 @@ def snapshot(who):
         # page's heartbeat. Every Docker button on the page reads this one
         # answer rather than each finding out by failing.
         "docker": devapp.available_default(),
-        "logs": logs.payload(),
+        # An administrator's, as the Logs section that reads it is: it
+        # walks the log directory and the CI tree, which a session's poll
+        # has no use for and every poll would pay.
+        "logs": logs.payload() if users.is_admin(who) else None,
         "idle": idle.payload(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
@@ -4636,8 +4666,11 @@ class Handler(BaseHTTPRequestHandler):
         query KEYS only, never values: a project's name in a query is the
         one thing here that is somebody's."""
         who = self._who()
-        if not who or not (users.is_admin(who) or who.get("session")):
-            return self._json({"error": "the trace is for an administrator or a session"}, 403)
+        # A session's only with the diagnostics grant: the trace is every
+        # request the controller answered, every project's paths among them.
+        if not who or not (users.is_admin(who) or (who.get("session") and not self._diag_why())):
+            return self._json({"error": "the trace is for an administrator, or a session whose project "
+                                        "has the diagnostics grant (its settings, Debug)"}, 403)
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         try:
             since = float((q.get("since") or ["0"])[0])
@@ -7764,6 +7797,7 @@ def main():
     if not NODES_OK:
         claudecode.start()        # the first check soon after the start, then every six hours
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
+    threading.Thread(target=log_sweep_loop, name="log-sweep", daemon=True).start()
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     ciwatch.start()           # a project's CI, once a day (R117)
     tunnel.apply()            # the home tunnel, where the settings say so (R176)

@@ -202,6 +202,26 @@ def audit(principal, action, target, params):
         print(f"[db] audit write failed: {e}", flush=True)
 
 
+# The audit trail is a record, not a log, so the logs' days do not reach it;
+# it is still not kept for ever: a year, and never more than this many rows.
+AUDIT_DAYS = 365
+AUDIT_MAX_ROWS = 200_000
+
+
+def prune_audit():
+    """Drop audit rows older than AUDIT_DAYS, then the oldest past
+    AUDIT_MAX_ROWS. How many went."""
+    try:
+        before = _rows("SELECT COUNT(*) AS n FROM audit")[0]["n"]
+        _exec("DELETE FROM audit WHERE at < ?", (int(time.time()) - AUDIT_DAYS * 86400,))
+        _exec("DELETE FROM audit WHERE id IN (SELECT id FROM audit ORDER BY at DESC LIMIT -1 OFFSET ?)",
+              (AUDIT_MAX_ROWS,))
+        return before - _rows("SELECT COUNT(*) AS n FROM audit")[0]["n"]
+    except sqlite3.Error as e:
+        print(f"[db] audit sweep skipped: {e}", flush=True)
+        return 0
+
+
 def audit_tail(n=50):
     """The newest rows, for tests and a future view; not an endpoint yet."""
     return _rows("SELECT * FROM audit ORDER BY at DESC, id DESC LIMIT ?",
