@@ -5,7 +5,6 @@ claude_scope():
 
     bb-rule-hook guard PROJECT SESSION    # PreToolUse, on Bash
     bb-rule-hook recall PROJECT SESSION   # SessionStart, after a compaction
-    bb-rule-hook start PROJECT SESSION    # SessionStart, when one begins
     bb-rule-hook map PROJECT SESSION      # PreToolUse, on Grep
 
 GUARD refuses a Bash call that runs a command a rule refuses (rules.py,
@@ -26,11 +25,6 @@ few lines, so a session that reached for grep out of habit still gets the
 one-call answer and does not spend the reads it would have saved (the
 operator, 12 Oct). The search runs either way; a name the map does not
 know adds nothing.
-
-START shows the person, as a system message and nothing else, what the
-session was handed: each part of the block (bb preamble) with its size,
-so what Claude starts from is on the screen rather than only in its
-system prompt (the operator, 12 Oct).
 
 RECALL runs when Claude Code has summarized a long conversation. The
 briefing and the standing rules are in the system prompt and survive
@@ -113,8 +107,7 @@ def map_first(req, patterns):
         return
     text = ("The code map answers this lookup in one call; its answer, beside your search "
             "(bb map who-calls NAME gives the callers):\n" + "\n".join(said))
-    json.dump({"systemMessage": rulehook.shown("looked it up in the map", text),
-               "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}, sys.stdout)
+    json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}, sys.stdout)
 
 
 def grep_tool(project, req):
@@ -132,11 +125,9 @@ def guard(project, req):
     if not hit:
         map_first(req, rulehook.search_patterns(command))
         return
-    why = rulehook.refusal(*hit)
-    json.dump({"systemMessage": rulehook.shown("refused a command", why),
-               "hookSpecificOutput": {"hookEventName": "PreToolUse",
+    json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                       "permissionDecision": "deny",
-                                      "permissionDecisionReason": why}}, sys.stdout)
+                                      "permissionDecisionReason": rulehook.refusal(*hit)}}, sys.stdout)
 
 
 def recall(project, req):
@@ -149,31 +140,13 @@ def recall(project, req):
         r = local_rules()
         said = r.said(r.by_names(project, names), again=True)
     if said:
-        json.dump({"systemMessage": rulehook.shown("told Claude again after the summary", said),
-                   "hookSpecificOutput": {"hookEventName": "SessionStart",
+        json.dump({"hookSpecificOutput": {"hookEventName": "SessionStart",
                                           "additionalContext": said}}, sys.stdout)
-
-
-def start(project, req):
-    import subprocess
-    bb = os.path.join(HERE, "..", "bb")
-    r = subprocess.run(["bash", bb, "preamble", "--json"], capture_output=True, text=True, timeout=20,
-                       env={**os.environ, "BB_PROJECT": project})
-    got = json.loads(r.stdout or "{}")
-    parts = got.get("parts") or []
-    if not parts:
-        return
-    size = lambda n: f"{n / 1024:.1f} KB" if n >= 1024 else f"{n} bytes"
-    said = ", ".join(f"{p.get('name')} {size(int(p.get('bytes') or 0))}" for p in parts)
-    left = "; ".join(got.get("notes") or [])
-    json.dump({"systemMessage": rulehook.shown(
-        "briefed Claude", f"{said} ({size(int(got.get('bytes') or 0))} in all){'; ' + left if left else ''}."
-                          " `bb preamble` prints it whole, as does the notebook's Briefing view.")}, sys.stdout)
 
 
 def main():
     verb, project = (sys.argv[1:3] + ["", ""])[:2]
-    if not project or verb not in ("guard", "recall", "start", "map"):
+    if not project or verb not in ("guard", "recall", "map"):
         return
     try:
         req = json.load(sys.stdin)
@@ -181,7 +154,7 @@ def main():
         return
     if not isinstance(req, dict):
         return
-    {"guard": guard, "recall": recall, "start": start, "map": grep_tool}[verb](project, req)
+    {"guard": guard, "recall": recall, "map": grep_tool}[verb](project, req)
 
 
 if __name__ == "__main__":

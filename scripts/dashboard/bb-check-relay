@@ -127,9 +127,7 @@ def main():
     tail = out.strip()[-1500:]
     reason = ("A house rule's check failed on what you changed. Fix it, or "
               "say plainly why it cannot pass, before handing this back:\n" + tail)
-    print(json.dumps({"decision": "block", "reason": reason,
-                      # ...and the person sees why the hand-back was held.
-                      "systemMessage": "[BuilderBot held the hand-back] " + reason[:4000]}))
+    print(json.dumps({"decision": "block", "reason": reason}))
 
 
 if __name__ == "__main__":

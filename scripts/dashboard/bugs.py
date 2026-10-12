@@ -47,7 +47,6 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import ids  # noqa: E402
-import share  # noqa: E402
 import pending  # noqa: E402
 import time
 from pathlib import Path
@@ -129,8 +128,6 @@ STATUS_WORDS = {"open": "open", "fixed": "fixed", "wontfix": "won't fix",
 MAX_SHORT = 300
 MAX_LONG = 4000
 MAX_BUGS = 200
-# What a title is cut to where the tracker is over its share of a prompt.
-TITLE_SHORT = 120
 
 # What a report may carry besides its title. Fixed here, once: the CLI, the
 # HTTP handler and the editor all consult this list rather than each keeping
@@ -740,71 +737,35 @@ def remove(project, bug_id, why="", by="you"):
     return {"ok": True}
 
 
-def fitted(project, budget=None):
-    """(the block bb-tty appends for a session, after the roadmap's; what it
-    left out of it to keep to `budget`).
-
-    The open bugs by number, severity and title (enough to recognize one when
-    the work touches it), with the fields left on disk behind `bb bug show`,
-    because ten full repro scripts in every prompt is the price of nothing.
-
-    The tracker only grows, so the block keeps to a share of the prompt
-    (share.py): every title, then the titles cut short, then as many as fit,
-    the worst first and the newest of each severity before the older, with
-    the rest as a count by severity.
-    """
+def open_bugs(project):
+    """The open bugs, as stored."""
     with _lock:
-        rows = [b for b in (load()["projects"].get(project) or [])
-                if b.get("status") == "open"]
+        return [b for b in (load()["projects"].get(project) or []) if b.get("status") == "open"]
+
+
+def brief(project):
+    """The tracker's lines in a session's block (R202): how many are open by
+    severity and the verbs, in place of the list; the bugs a prompt names
+    arrive on that prompt (preamble.mentioned) and `bb bug show` prints one
+    in full. Empty when nothing is open."""
+    rows = open_bugs(project)
     if not rows:
-        return "", ""
-    rows.sort(key=lambda b: (SEVERITIES.index(b.get("severity", "medium"))
-                             if b.get("severity") in SEVERITIES else 1))
-    rows.reverse()
-
-    def line(b, cap=0):
-        return (f"- {ids.label('bugs', b['id'])} [{b.get('severity', 'medium')}] "
-                f"{share.clip(b['title'], cap) if cap else b['title']}")
-
-    def whole(body, left):
-        return ("The project also has a bug tracker, with these open:\n\n"
-                + body + "\n\n"
-                + (f"The tracker is longer than its share of your prompt, so this leaves out {left}: "
-                   "`bb bug` lists every one. " if left else "")
-                + "`bb bug show B7` gives one in full: where it lives, how to "
-                "reproduce it, what is known about why. When you fix one, close it "
-                "with `bb bug fix B7 \"what fixed it\"`; when you find a new one "
-                "and it is out of scope for what you are on, `bb bug add "
-                "\"...\" --sev medium --area \"...\" --repro \"...\"` rather than "
-                "only mentioning it. Add what you learn about an open one to its "
-                "notes with `bb bug note B7 \"...\"`. The tracker is where the "
-                "next session looks first."), left
-
-    def counted(rest):
-        by = {}
-        for b in rest:
-            by[b.get("severity", "medium")] = by.get(b.get("severity", "medium"), 0) + 1
-        return ", ".join(f"{by[k]} {k}" for k in reversed(SEVERITIES) if by.get(k))
-
-    def some():
-        lines = [line(b, TITLE_SHORT) for b in rows]
-        most = whole("", f"{len(rows)} of its {len(rows)} open bugs and the ends of the long titles")[0]
-        tail = "\nand {n} more ({by})."
-        room = (budget or 0) - share.size(most) - share.size(tail.format(n=len(rows), by=counted(rows)))
-        n = share.filled(lines, room)
-        gone = len(rows) - n
-        return whole("\n".join(lines[:n]) + (tail.format(n=gone, by=counted(rows[n:])) if gone else ""),
-                     (f"{gone} of its {len(rows)} open bugs and " if gone else "") + "the ends of the long titles")
-
-    return share.fitted([
-        lambda: whole("\n".join(line(b) for b in rows), ""),
-        lambda: whole("\n".join(line(b, TITLE_SHORT) for b in rows), "the ends of the long titles"),
-        some], budget)
+        return ""
+    by = {}
+    for b in rows:
+        by[b.get("severity", "medium")] = by.get(b.get("severity", "medium"), 0) + 1
+    sev = ", ".join(f"{by[s]} {s}" for s in reversed(SEVERITIES) if by.get(s))
+    return (f"The project has a bug tracker with {len(rows)} open ({sev}). `bb bug` lists them, "
+            "`bb bug show B7` prints one in full: where it lives, how to reproduce it, what is known "
+            "about why. The bugs a prompt names arrive with it. `bb bug add \"...\" --sev medium "
+            "--area \"...\" --repro \"...\"` files one you find that is out of scope, `bb bug note B7 "
+            "\"...\"` adds what you learn about an open one, and `bb bug fix B7 \"what fixed it\"` "
+            "closes one you fixed. The tracker is where the next session looks first.")
 
 
 def prompt(project):
-    """The tracker's block with nothing left out: `bb bug --prompt`."""
-    return fitted(project)[0]
+    """The tracker's lines in a session's block: `bb bug --prompt`."""
+    return brief(project)
 
 
 # ---- the Bugs tab's verbs, one call from the dashboard's /api/bugs ----------

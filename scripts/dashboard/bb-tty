@@ -504,10 +504,7 @@ claude_scope() {
               SessionStart: [
               {matcher: "compact",
                hooks: [{type: "command",
-                        command: "\($rule) recall \($proj) \($who)", timeout: 30}]},
-              {matcher: "startup|resume|clear",
-               hooks: [{type: "command",
-                        command: "\($rule) start \($proj) \($who)", timeout: 30}]}],
+                        command: "\($rule) recall \($proj) \($who)", timeout: 30}]}],
               UserPromptSubmit: [
               {hooks: [{type: "command",
                         command: "\($relay) \($proj) \($who)"},

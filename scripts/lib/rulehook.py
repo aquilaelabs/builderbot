@@ -132,21 +132,6 @@ def refusal(g, command):
             "your reply and leave it to the person; do not run it another way.")
 
 
-# What the person sees of it (the operator, 12 Oct): every hook that hands
-# Claude text hands the person the same as a systemMessage, which Claude
-# Code shows in the conversation, so what Claude is acting on is on the
-# screen and not only in its context.
-SHOWN_MAX = 4000
-
-
-def shown(what, text):
-    """`text` as the person is shown it, labeled with what it is."""
-    text = str(text or "").strip()
-    if len(text) > SHOWN_MAX:
-        text = text[:SHOWN_MAX].rstrip() + " ..."
-    return f"[BuilderBot {what}] {text}"
-
-
 # ---- the map first (the operator, 12 Oct) -----------------------------------
 # A grep for where something is defined, or where it is called, is a
 # question the code map answers in one call with the function's own

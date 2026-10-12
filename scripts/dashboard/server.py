@@ -3154,7 +3154,7 @@ bbrelay.configure(users=users, projects=projects, prefs=prefs, gitrelay=gitrelay
 # a node's hooks with the session's token (roadmap #24): hooks.py.
 import hooks                                                     # noqa: E402
 
-hooks.configure(users=users, rules=rules, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
+hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
                 turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope)
 
 
@@ -5156,6 +5156,12 @@ class Handler(BaseHTTPRequestHandler):
         # The asker's own reply style rides the block, as it does for the
         # session bb-tty starts for them.
         mine = prefs.all_for_user(users.uid_of(self._who())).get(name) or {}
+        if q.get("topic"):
+            # One topic of the briefing (R202), what bb help TOPIC prints.
+            t = preamble.topic(name, q["topic"][0].strip().lower()[:40])
+            if t is None:
+                return self._json({"error": "no such topic"}, 404)
+            return self._json({"project": name, "topic": q["topic"][0], "text": t})
         return self._json(preamble.payload(name, reply=mine.get("reply") or "", asks=mine.get("asks") or ""))
 
     def _get_brief(self):

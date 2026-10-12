@@ -19,11 +19,30 @@ stopped by a hook when it runs, with the reason.
 - A question for the person goes in your reply, before acting on a guess that would change the work.
 - A refusal (a project's dial, a hook, a permission prompt) is an answer: never route around it.
 - Run `bb tidy` when a task or a batch of them is done.
+- Where a name is defined or called: `bb map find NAME` and `bb map who-calls NAME`; grep is for text.
+- The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step done R4 2`; `bb report "..."` for a problem with BuilderBot itself.
+- `bb version policy` before moving the version; `bb changelog add "..." --cat NAME` for what a change means to the person using it.
+- Another account's branch (claude/<their name>) is theirs: merge, rebase or delete it only when asked.
 - The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
+- The rest of this briefing is read by topic, `bb help TOPIC`, when the work reaches it; the index below names each.
 
 <!-- BUILDERBOT:CORE-END -->
 
+## This project
+
+<!-- BUILDERBOT:READS -->
+
+Start a test run in the background and answer while it runs. What a change
+asked for meanwhile does is this project's setting (Claude may, "While a
+test runs: a change asked for"):
+<!-- BUILDERBOT:TESTCHANGE -->
+
+<!-- BUILDERBOT:DESIGN -->
+
+<!-- BUILDERBOT:TOPICS -->
+
 ## Start here
+<!-- BUILDERBOT:TOPIC start: this machine and the controller, bb status and bb catchup, what survives a rebuild, /tmp, an old briefing block in CLAUDE.md -->
 
 `bb status` names this machine and the controller's build. `bb catchup`
 says what the controller has been on and what changed since, which is the
@@ -55,6 +74,7 @@ gone. Removing it is an ordinary edit to the project's own file, committed
 like any other; say in your reply that you did.
 
 ## Where this project runs
+<!-- BUILDERBOT:TOPIC where: the nodes a project runs on, what a session reaches over the network and sees on disk, the projects it reads -->
 
 A project works on the nodes its settings name: a primary, and any others
 it also works on. This session is on one of them; a build or test you
@@ -85,9 +105,8 @@ operator's, so say in your reply which path is needed and why. Work in this
 project only: never look for context in another project under /workspace
 beyond the ones it reads, and when something seems to be missing, ask.
 
-<!-- BUILDERBOT:READS -->
-
 ## Finding your way
+<!-- BUILDERBOT:TOPIC map: bb map: find, who-calls, draws, suites, and when grep is the tool -->
 
     bb map who-calls NAME      every call of NAME, with the function it is made from
     bb map find NAME           where NAME is defined; bb map defs FILE lists a file
@@ -104,6 +123,7 @@ all for something it indexes, report that to BuilderBot (below), and carry
 on with grep.
 
 ## Building and testing
+<!-- BUILDERBOT:TOPIC build: bb build, bb test and bb run, the toolchains, documents and sound, BB_TEST_WORKERS, and reading what ran: bb jobs, bb diag, bb logs -->
 
     bb build           this project's build command, here
     bb test [ARGS]     its test command, with ARGS after it
@@ -180,14 +200,8 @@ toolchain installs among them, in `bb jobs`) and a node's machine logs
 (`bb logs --node NAME --agent|--runner|--terminal|--system|--kernel|--crash
 [N]`). A refusal names the grant it needs; say which in your reply.
 
-## While tests run
-
-Start a run in the background and answer while it runs. What a change
-asked for meanwhile does is this project's setting (Claude may, "While a
-test runs: a change asked for"):
-<!-- BUILDERBOT:TESTCHANGE -->
-
 ## Cleaning up after a task
+<!-- BUILDERBOT:TOPIC tidy: bb tidy, what it ends and what it keeps -->
 
 The node is shared, and what a task leaves running holds memory, the card
 or disk that other sessions are waiting for. When a task or a batch of
@@ -205,6 +219,7 @@ gives you (`bb tidy --keep emulator` when the next step tests on it,
 reply; `bb tidy --dry` shows what it would do.
 
 ## Measuring speed
+<!-- BUILDERBOT:TOPIC speed: bb node busy before any timing means anything -->
 
 This machine is shared, and your view of it holds only your own processes:
 the load you can read says it is busy and never why. Before a timing means
@@ -221,6 +236,7 @@ and never compare two timings taken under different loads as if they were
 alike.
 
 ## Proving a change
+<!-- BUILDERBOT:TOPIC capture: proving a change on screen: bb capture shot and reel, the emulator, an X display, captures in dist/ -->
 
 Tests pass on the node; the product is what a person meets on the
 dashboard or in the app, which is a dev instance rebuilt from its compose
@@ -283,6 +299,7 @@ the project may still be reading one. `bb capture ls` names them, and
 `bb capture prune NAME` lets one of yours go sooner; leave anybody else's.
 
 ## Asking a person
+<!-- BUILDERBOT:TOPIC asks: asking a person: bb root run, bb phone run, bb container new, the project's dials and what ask, auto and deny mean -->
 
 A question for the person is asked in your reply: they read it in this
 session's pane and answer on their next prompt. Nothing else carries it, so
@@ -306,6 +323,7 @@ refusal names the setting; `bb settings` shows each dial as it stands for
 this project. Never route around a refusal.
 
 ## The notebook
+<!-- BUILDERBOT:TOPIC notebook: the record's verbs in full, bb design, the wiki, bb transcripts, bb rules, bb report -->
 
 `bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, `bb design`,
 `bb wiki`, and `bb <verb> -h` for the rest of any of them. `bb design` is what the
@@ -331,8 +349,6 @@ asked to, or when the work leaves something its readers need (a setup
 step, how a feature is used); what a session needs goes in the tree's docs
 instead. Pushing it to the repository's wiki is a person's, from the view.
 
-<!-- BUILDERBOT:DESIGN -->
-
 The record's verbs, as you meet things:
 `bb bug add "..." --sev medium --area "..." --repro "..."` for
 a bug, `bb roadmap add "..."` for work worth doing, `bb bug note B7 "..."`
@@ -354,6 +370,7 @@ own tree, whose tracker it is), the verb refuses and names it, and
 `bb bug add --here` files it here.
 
 ## Versions and the changelog
+<!-- BUILDERBOT:TOPIC versions: bb version, bb changelog, releases and their edits, what goes in dist/ -->
 
 `bb version` is this project's identity; `bb version policy` says what you
 may move, which is usually nothing (the project's Claude may: Move the
@@ -386,6 +403,7 @@ pinned there. A build named with no version is never removed by itself,
 so name every build with `bb version --file`.
 
 ## Git
+<!-- BUILDERBOT:TOPIC git: bb git push and its policy, credentials, bb ci-log, what the controller watches in CI -->
 
 Never write a credential into a repository: not in a test fixture, not in
 CI config, not in an .env file that is not gitignored. A branch another
@@ -408,6 +426,7 @@ or a fix on your branch before it becomes a red run.
 
 <!-- BUILDERBOT:IF android *.gradle *.gradle.kts android AndroidManifest.xml -->
 ## Android
+<!-- BUILDERBOT:TOPIC android: the emulator, its images and touch, a real phone lent to the project, signing a release -->
 
 The emulator, the system images, the GPU and adb are this machine's:
 `bb emu list|start|status|stop|log|gpu`, and `bb emu shot|gfx PKG|install FILE`,
@@ -520,6 +539,7 @@ project with no key says so.
 
 <!-- BUILDERBOT:IF gpu node:gpu -->
 ## The GPU
+<!-- BUILDERBOT:TOPIC gpu: the card: bb gpu, bb gpu run, python-ml, what a container needs for it -->
 
 This node has an NVIDIA card: `bb status` names it under "where" with
 its free memory, and `bb gpu` says who is computing on it and whether
@@ -557,6 +577,7 @@ operator's, on the Toolchains and Nodes tabs.
 <!-- BUILDERBOT:END -->
 
 ## Containers
+<!-- BUILDERBOT:TOPIC containers: this project's containers, its dev instance (bb devapp), bb container new, hosting-only nodes, the nginx tab -->
 
 A container on the Docker tab belongs to one project or to none, which the
 operator sets on its row, and a session sees and works on its own project's

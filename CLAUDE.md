@@ -290,8 +290,11 @@ by hand cost four commands and still could not see the failed builds.
     behavior.
   - What a session is briefed with comes from `config/templates/briefing.md`,
     assembled per session by `preamble.py` with the project's rules, roadmap
-    and open bugs. Nothing is copied into a project, so editing that file is
-    the whole of changing what every session reads.
+    and open bugs: the core before `BUILDERBOT:CORE-END` and the project's
+    own lines are in the block, and each `## Heading` carrying a
+    `BUILDERBOT:TOPIC slug: gist` marker is a topic, named in the block's
+    index and read with `bb help TOPIC`. Nothing is copied into a project,
+    so editing that file is the whole of changing what every session reads.
   - The weekly Monday build is uncached by design and is always a full pull;
     a manual dispatch is cached unless its `no_cache` box is ticked.
 

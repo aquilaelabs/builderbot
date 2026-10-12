@@ -135,7 +135,6 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - After Claude Code summarizes a long conversation, the named house rules it had been told are said again in full (9981b52)
 - bb rules audit [DAYS] counts, over your own conversations on a project, the commands a rule refuses that were run or tried, and how often the code map was asked against a grep of the code (9981b52)
 - A house rule can refuse commands outright (Commands it refuses, bb rules add --refuse): a session's shell call that runs one is stopped with the rule as the reason. ask-do-not-install refuses the package managers; pkill -f and the emulator binary are refused everywhere (9981b52)
-- What a session is told by BuilderBot's hooks is shown to the person too, as a system message labeled BuilderBot's: the rules a file or word raises, the catch-up, a refused command, a held hand-back, and at the start what it was briefed with, part by part (8553fdb)
 - A search for where a name is defined or called (grep for def NAME, function NAME, NAME( or the Grep tool) is handed bb map find's answer beside it, so a session reaching for grep still gets the one-call answer (8553fdb)
 - A test suite started in the foreground of a session is refused with the reason: it holds every reply, so a new ask could not cut in as the While a test runs setting says (8553fdb)
 
@@ -297,7 +296,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Claude button's menu no longer blinks or loses a press while the page updates, and offers Restart beside End session: the session ends and resumes the same conversation, starting fresh so it sees what changed (9b745b7)
 - A node's Toolchains tab lists only the toolchains its platform can have; the Not for this node fold is gone (0202f34)
 - The README is a front page (what BuilderBot is, what it does, pictures, where the docs are), and the settings, the bb command list and Android signing are in docs/reference.md, with docs/README.md as the index (9ed3126)
-- What a session is handed opens with a short core of what holds every time, then the house rules, then the rest of the briefing; the roadmap and bug lists take a smaller share of it (9981b52)
+- What a session is handed opens with a short core of what holds every time, then the house rules, then the project's own lines and an index of the rest of the briefing as topics, each read whole with bb help TOPIC when the work reaches it; the roadmap and the bugs are a count and the verbs, and the items and bugs a prompt names, by number or by words shared with the title, arrive on that prompt, once a conversation (R202)
 
 ### Removed
 

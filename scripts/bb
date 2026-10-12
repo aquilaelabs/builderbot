@@ -346,6 +346,9 @@ bb rules pending   rules a session added that are waiting for your approval
 bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
                    refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb help TOPIC      one topic of the session briefing in full (start, where, map, build, tidy,
+                   speed, capture, asks, notebook, versions, git, android, gpu, containers);
+                   bb help topics lists them, bb help VERB one verb's lines
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started
 bb design          what this project looks like, from the notebook's Design view:
@@ -2254,7 +2257,18 @@ cmd_preamble() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
-    python3 "$BB_LIB/preamble-verbs.py" "$dir" "$proj" "${1:-}"
+    python3 "$BB_LIB/preamble-verbs.py" "$dir" "$proj" "${1:-}" "${2:-}"
+}
+
+# bb help [VERB|TOPIC]: the list; one verb's lines; or one topic of the
+# session briefing (R202), which a node relays like the rest of bb preamble.
+cmd_help() {
+    [ -n "${1:-}" ] || { usage; return 0; }
+    verb_help "$1" 2>/dev/null && return 0
+    case "$1" in
+        topics) bash "$0" preamble --topics ;;
+        *) bash "$0" preamble --topic "$1" ;;
+    esac
 }
 
 cmd_rules() {
@@ -5507,7 +5521,7 @@ case "${1:-help}" in
     capture)  shift; dist_ignored; cmd_capture "$@" ;;
     tool)     shift; dist_ignored; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
-    -h|--help|help) usage ;;
+    -h|--help|help) cmd_help "${@:2}" ;;
     *) usage; exit 1 ;;
 esac
 exit

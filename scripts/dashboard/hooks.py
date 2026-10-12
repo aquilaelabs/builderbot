@@ -32,6 +32,7 @@ from fields import field
 # limit its turns count against (turn_scope).
 users = None
 rules = None
+preamble = None
 overlap = None
 chat = None
 roadmap = None
@@ -87,10 +88,12 @@ def verb(kind, req, me, uid, project):
         # each named rule is said once a conversation, and again only
         # after a summary (recall), not on every prompt that names it.
         told = set(req.get("told") or []) if isinstance(req.get("told"), list) else set()
-        hit = [r for r in rules.matching(project, prompt=str(req.get("prompt") or "")[:20000])
-               if r["name"] not in told]
-        return {"ok": True, "line": line, "rules": rules.said(hit),
-                "names": [r["name"] for r in hit]}, 200
+        prompt = str(req.get("prompt") or "")[:20000]
+        hit = [r for r in rules.matching(project, prompt=prompt) if r["name"] not in told]
+        # ...and the open items and bugs the prompt names (R202), the same way.
+        related, rnames = preamble.mentioned(project, prompt, told)
+        return {"ok": True, "line": line, "rules": rules.said(hit), "related": related,
+                "names": [r["name"] for r in hit] + rnames}, 200
     if kind == "guards":
         return {"ok": True, "guards": rules.guards(project)}, 200
     if kind == "recall":

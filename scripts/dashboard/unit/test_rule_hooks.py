@@ -115,16 +115,12 @@ class Store(unittest.TestCase):
         for line in ("bb tests unit", "bb tests log", "./run.sh", "bash run.sh", "bb dashboard trace 30"):
             self.assertIsNone(rules.refusing("alpha", line), line)
 
-    def test_what_claude_is_told_is_shown_to_the_person(self):
+    def test_what_claude_is_told_is_context_alone(self):
         rules.add("alpha", "agent-compat", "Add, do not change.", by="you", words="agent")
         out = json.loads(self.hook("bb-prompt-relay", "alpha", "u_t",
                                    stdin={"prompt": "the agent", "session_id": "c"}))
         self.assertIn("Add, do not change.", out["hookSpecificOutput"]["additionalContext"])
-        self.assertTrue(out["systemMessage"].startswith("[BuilderBot told Claude]"))
-        self.assertIn("Add, do not change.", out["systemMessage"])
-        out = json.loads(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
-                                   stdin={"tool_name": "Bash", "tool_input": {"command": "pkill -f x"}}))
-        self.assertTrue(out["systemMessage"].startswith("[BuilderBot refused a command]"))
+        self.assertEqual(set(out), {"hookSpecificOutput"})
         self.assertEqual(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
                                    stdin={"tool_name": "Bash", "tool_input": {"command": "bb tests run",
                                                                               "run_in_background": True}}), "")
@@ -191,7 +187,10 @@ class Store(unittest.TestCase):
             catchup = staticmethod(lambda *a: "")
             settled_line = staticmethod(lambda *a: "")
 
-        hooks.configure(users=Users, rules=rules, overlap=Overlap, roadmap=Quiet, pending=Quiet,
+        class Pre:
+            mentioned = staticmethod(lambda *a: ("", []))
+
+        hooks.configure(users=Users, rules=rules, preamble=Pre, overlap=Overlap, roadmap=Quiet, pending=Quiet,
                         seen_note=lambda *a, **k: "")
         got, _ = hooks.verb("note", {"path": "scripts/agent/x.py"}, {}, "u_t", "alpha")
         self.assertIn("Add, do not change.", got["rules"])

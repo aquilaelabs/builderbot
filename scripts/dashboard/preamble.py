@@ -40,18 +40,13 @@ rules_mod = roadmap_mod = bugs_mod = None
 # (the server and bb) already run with it set and neither has to be taught.
 WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 
-# What each part that grows with a project may take of a session's prompt,
-# in bytes (share.py): the block is an index into the notebook, and a part
-# over its share says less per row before it leaves a row out. The
-# briefing itself is the template's size and the project's own for nothing.
-# Sixteen kilobytes is about four thousand tokens; on this project, the
-# day these were set, the rules were 9.7 KB and the roadmap 17.2, of which
-# 4.8 were steps already done.
-# Halved for the roadmap and the bugs on 12 Oct (R200 step 5): every line a
-# session reads at the same volume dilutes the ones it must follow, and a
-# title cut short is a pointer either way; `bb roadmap` and `bb bug` have
-# the rest.
-SHARES = {"rules": 16 * 1024, "roadmap": 8 * 1024, "bugs": 6 * 1024}
+# What the rules may take of a session's prompt, in bytes (share.py): over
+# it the named rules say less before one is left out. Sixteen kilobytes is
+# about four thousand tokens. The roadmap and the bugs had shares once and
+# are counts now (R202): a session read two hundred titles cut short on
+# every conversation and used few, and the items a prompt names arrive on
+# that prompt instead (mentioned).
+SHARES = {"rules": 16 * 1024}
 
 # Where the briefing's core ends (config/templates/briefing.md): the lines
 # that hold every time come first, then the house rules, then the rest of
@@ -59,6 +54,13 @@ SHARES = {"rules": 16 * 1024, "roadmap": 8 * 1024, "bugs": 6 * 1024}
 # what is followed; a rule after five thousand words of how-to was read at
 # the same weight as the how-to.
 _CORE_END = "<!-- BUILDERBOT:CORE-END -->"
+# The rest of the template is topics (R202): each `## Heading` after the
+# core carries a TOPIC marker with its slug and a gist, the block carries
+# the index of them where the TOPICS marker stands, and `bb help TOPIC`
+# prints one when the work reaches it. A session read the whole manual
+# on every conversation (38 KB of 62) and the rules at its volume.
+_TOPICS = "<!-- BUILDERBOT:TOPICS -->"
+_TOPIC = re.compile(r"^<!-- BUILDERBOT:TOPIC ([a-z][a-z0-9-]*): (.*?) -->$")
 
 
 live_fn = None
@@ -291,8 +293,11 @@ _IF = re.compile(r"<!-- BUILDERBOT:IF ([^>]*?) *-->")
 _END = "<!-- BUILDERBOT:END -->"
 
 
-def briefing(project):
-    """How this machine works, as every session on it is told (R63).
+def briefing(project, gates=True):
+    """How this machine works, as every session on it is told (R63), whole:
+    the core, the project's own lines and every topic. `gates` off keeps
+    the sections the tree would leave out, for `bb help TOPIC` on a
+    project that is not an Android one.
 
     It used to be a 53KB block rendered into every project as CLAUDE.md and
     pushed again whenever the template moved, which is drift by construction:
@@ -328,8 +333,8 @@ def briefing(project):
         if m:
             bits = m.group(1).split()
             # `node:gpu` is evidence the node gives rather than the tree.
-            skip = not any((bool(node_gpu and node_gpu(project)) if g == "node:gpu" else _has(tree, g))
-                           for g in bits[1:])
+            skip = gates and not any((bool(node_gpu and node_gpu(project)) if g == "node:gpu" else _has(tree, g))
+                                     for g in bits[1:])
             continue
         if _END in line:
             skip = False
@@ -350,6 +355,47 @@ def briefing(project):
                 continue
             out.append(test_change_line(project) if line.strip() == _TESTCHANGE else line)
     return "\n".join(out).strip("\n")
+
+
+def split(text):
+    """(the text with its topics taken out and the index put where the
+    TOPICS marker stands, [(slug, title, gist, body)] in order)."""
+    kept, topics, cur = [], [], None
+    for line in text.split("\n"):
+        m = _TOPIC.match(line.strip())
+        if m and kept and kept[-1].startswith("## "):
+            cur = [m.group(1), kept.pop()[3:].strip(), m.group(2).strip(), []]
+            topics.append(cur)
+            continue
+        if cur is not None and line.startswith("## "):
+            cur = None
+        if cur is not None:
+            cur[3].append(line)
+            continue
+        kept.append(line)
+    index = ""
+    if topics:
+        index = ("Topics of this briefing, each read with `bb help TOPIC` when the work reaches it:\n"
+                 + "\n".join(f"- {slug}: {gist}" for slug, _, gist, _ in topics))
+    out = "\n".join(kept).replace(_TOPICS, index)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out, [(slug, title, gist, "\n".join(body).strip("\n")) for slug, title, gist, body in topics]
+
+
+def topics(project):
+    """[(slug, gist, bytes)] of the topics a session here is pointed at."""
+    return [(slug, gist, len(body.encode("utf-8"))) for slug, _, gist, body in split(briefing(project))[1]]
+
+
+def topic(project, slug):
+    """One topic's text, headed, for `bb help TOPIC`; None when there is
+    none by that name. Every topic answers, the tree's gates aside: a
+    question about the emulator on a project with no Android is still a
+    question."""
+    for s, title, _, body in split(briefing(project, gates=False))[1]:
+        if s == slug:
+            return f"## {title}\n\n{body}"
+    return None
 
 
 def _has(tree, pattern):
@@ -377,7 +423,7 @@ def parts(project, reply="", asks=""):
 
     def brief(half):
         if "text" not in whole:
-            whole["text"] = briefing(project)
+            whole["text"] = split(briefing(project))[0]
         core, mark, rest = whole["text"].partition(_CORE_END)
         if not mark:                       # a template without the mark: all of it is the briefing
             core, rest = "", core
@@ -390,8 +436,8 @@ def parts(project, reply="", asks=""):
                      # What is running, as a fact rather than a guess (R75
                      # step 5): a session argued from a build it assumed once.
                      ("live", lambda: (live_fn() if live_fn else "", "")),
-                     ("roadmap", lambda: roadmap_mod.fitted(project, SHARES["roadmap"])),
-                     ("bugs", lambda: bugs_mod.fitted(project, SHARES["bugs"]))):
+                     ("roadmap", lambda: (roadmap_mod.brief(project), "")),
+                     ("bugs", lambda: (bugs_mod.brief(project), ""))):
         try:
             text, left = fn()
             text = (text or "").strip("\n")
@@ -405,6 +451,85 @@ def parts(project, reply="", asks=""):
         if text:
             out.append((name, text, left))
     return out
+
+
+# ---- what a prompt names on the record (R202) ---------------------------------
+# The block carries counts; the items and bugs a prompt is about arrive on
+# that prompt, through the hook every prompt already runs, the way a named
+# rule does: the titles whose words the person typed, or whose number they
+# said, the best three of each, once a conversation.
+_STOP = set("""a an the and or of to in on for with from by at as is are was were be been being it its
+this that these those not no yes you your we our they them their there here what which who when where
+how why do does did done have has had will would can could should may might into over under about after
+before than then also only any all some each one two new old more most very just like than when while
+make makes made take takes took get gets got put puts set sets use uses used using work works working
+look looks looking see sees seen want wants need needs still again same other another thing things way
+fix fixes fixed add adds added change changes changed""".split())
+_NUMBERED = re.compile(r"\b([RB])(\d+)\b")
+MENTIONED_EACH = 3
+
+
+def _words(text):
+    """The words of a title or a prompt worth matching on: four letters or
+    more, a trailing s dropped, the common ones out."""
+    out = set()
+    for w in re.findall(r"[a-z0-9][a-z0-9_-]{3,}", str(text or "").lower()):
+        w = w[:-1] if w.endswith("s") and len(w) > 4 else w
+        if w not in _STOP:
+            out.add(w)
+    return out
+
+
+def mentioned(project, text, told=()):
+    """(what to say, the names to remember) for the open roadmap items and
+    bugs that `text`, what a person typed, names: by number (R4, B7) or by
+    two or more words shared with the title. `told` is what this
+    conversation was handed already, left out."""
+    words = _words(text)
+    numbered = {(k, int(n)) for k, n in _NUMBERED.findall(str(text or ""))}
+    if not words and not numbered:
+        return "", []
+    told = set(told or ())
+
+    def label(kind, n):
+        try:
+            import ids                                   # beside this module
+            return ids.label(kind, n)
+        except Exception:                                # noqa: BLE001
+            return f"{'R' if kind == 'roadmap' else 'B'}{n}"
+
+    found = []
+    try:
+        rows = [r for r in roadmap_mod.items(project) if not r.get("shelved")]
+    except Exception:                                    # noqa: BLE001
+        rows = []
+    for r in rows:
+        name = f"roadmap-{r.get('id')}"
+        score = len(words & _words(r.get("text", ""))) + (10 if ("R", r.get("id")) in numbered else 0)
+        if name in told or score < 2:
+            continue
+        steps = [s for s in r.get("steps") or [] if not s.get("done")]
+        found.append((score, 0, name, f"{label('roadmap', r['id'])} {str(r.get('text', ''))[:140]}"
+                      + (f" ({len(steps)} step{'s' if len(steps) != 1 else ''} open)" if steps else "")
+                      + f": `bb roadmap show {label('roadmap', r['id'])}`"))
+    try:
+        bugs = bugs_mod.open_bugs(project)
+    except Exception:                                    # noqa: BLE001
+        bugs = []
+    for b in bugs:
+        name = f"bug-{b.get('id')}"
+        score = len(words & _words(b.get("title", ""))) + (10 if ("B", b.get("id")) in numbered else 0)
+        if name in told or score < 2:
+            continue
+        found.append((score, 1, name, f"{label('bugs', b['id'])} [{b.get('severity', 'medium')}] "
+                      f"{str(b.get('title', ''))[:140]}: `bb bug show {label('bugs', b['id'])}`"))
+    if not found:
+        return "", []
+    keep = []
+    for kind in (0, 1):
+        keep += sorted([f for f in found if f[1] == kind], key=lambda f: -f[0])[:MENTIONED_EACH]
+    return ("On the record, named by what you were asked:\n"
+            + "\n".join(f"- {line}" for _, _, _, line in keep)), [name for _, _, name, _ in keep]
 
 
 def block(project, reply="", asks=""):
@@ -422,6 +547,9 @@ def payload(project, reply="", asks=""):
     ps = parts(project, reply, asks)
     text = "\n\n".join(t for _, t, _ in ps)
     return {"text": text, "bytes": len(text.encode("utf-8")),
+            # What is pointed at rather than sent: the topics, with what
+            # each would cost, so the tab says what the block leaves out.
+            "topics": [{"slug": s, "gist": g, "bytes": b} for s, g, b in topics(project)],
             "parts": [{"name": n, "bytes": len(t.encode("utf-8")),
                        **({"share": SHARES[n]} if n in SHARES else {}),
                        **({"left": left} if left else {})} for n, t, left in ps],

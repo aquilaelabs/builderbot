@@ -346,6 +346,9 @@ bb rules pending   rules a session added that are waiting for your approval
 bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
                    refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb help TOPIC      one topic of the session briefing in full (start, where, map, build, tidy,
+                   speed, capture, asks, notebook, versions, git, android, gpu, containers);
+                   bb help topics lists them, bb help VERB one verb's lines
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started
 bb design          what this project looks like, from the notebook's Design view:

@@ -161,7 +161,8 @@ function nbAnalysisView({$, nb, project}){
         <div class="sub dim" id="preParts">${
           (d.parts || []).map(x => `${esc(x.name)} ${preSize(x.bytes)}${
             x.share ? ` of ${preSize(x.share)}` : ""}`).join(" · ")
-        }</div>${short.map(x => `<div class="sub warn">The ${esc(x.name)} part is over its share, so a `
+        }</div>${(d.topics || []).length ? `<div class="sub dim" id="preTopics">pointed at, not sent: ${
+          d.topics.map(t => esc(t.slug)).join(", ")} (${preSize(d.topics.reduce((n, t) => n + t.bytes, 0))}), each read with bb help TOPIC</div>` : ""}${short.map(x => `<div class="sub warn">The ${esc(x.name)} part is over its share, so a `
           + `session's prompt leaves out ${esc(x.left)}. Nothing is lost: the notebook keeps all of it, `
           + `and a session reads the rest when it needs it.</div>`).join("")}
       </div>`;

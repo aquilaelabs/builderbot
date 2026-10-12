@@ -100,7 +100,8 @@ def catchup(project, session, prompt="", told=()):
     try:
         if on_node():
             r = post_hook({"kind": "seen", "prompt": prompt[:20000], "told": list(told)[:200]})
-            return (str(r.get("line") or ""), str(r.get("rules") or ""),
+            return (str(r.get("line") or ""),
+                    "\n\n".join(x for x in (str(r.get("rules") or ""), str(r.get("related") or "")) if x),
                     [str(n) for n in r.get("names") or []])
         here = os.path.dirname(os.path.abspath(__file__))
         sys.path.insert(0, here)
@@ -114,7 +115,15 @@ def catchup(project, session, prompt="", told=()):
                                     str(pending.settled_line(project) or ""))
                         if x)
         said, names = rules_firing(project, prompt=prompt, told=told)
-        return line, said, names
+        # ...and the open items and bugs the prompt names (R202).
+        import bugs                                          # noqa: E402
+        import preamble                                      # noqa: E402
+        import rules                                         # noqa: E402
+        bugs.configure(state=os.environ.get("DASHBOARD_STATE", "/config"), write_json=_write_json)
+        rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"), write_json=_write_json)
+        preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
+        related, rnames = preamble.mentioned(project, prompt, told)
+        return line, "\n\n".join(x for x in (said, related) if x), names + rnames
     except Exception:                     # noqa: BLE001  (never cost a turn)
         return "", "", []
 
@@ -187,10 +196,7 @@ def main():
             rulehook.remember(project, req.get("session_id"), names)
         told = "\n\n".join(x for x in (say, fired) if x)
         if told:
-            # To Claude as context, and the same to the person as a
-            # system message, so what Claude is acting on is on the screen.
-            print(json.dumps({"systemMessage": rulehook.shown("told Claude", told),
-                              "hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                                                      "additionalContext": told}}))
     if not text or not project:
         return

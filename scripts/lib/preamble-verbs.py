@@ -4,14 +4,16 @@ in the order it reads them, assembled once by dashboard/preamble.py so
 the Briefing tab cannot drift from what a session actually gets.
 
 Arguments: the dashboard directory, the project, and --json for the
-payload rather than the text. DASHBOARD_STATE says where the notebook's
-files are.
+payload rather than the text, --topic SLUG for one topic of the briefing
+(what `bb help TOPIC` prints), --topics for the list. DASHBOARD_STATE
+says where the notebook's files are.
 """
 import json
 import os
 import sys
 
 d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
+arg = sys.argv[4] if len(sys.argv) > 4 else ""
 sys.path.insert(0, d)
 import statefile, rules, roadmap, bugs, preamble, prefs, design
 state = os.environ.get("DASHBOARD_STATE", "/config")
@@ -49,6 +51,17 @@ preamble.node_gpu = node_gpu
 # The account the session is for (bb-tty hands it over as BB_UID): its own
 # reply style on the project rides the block.
 mine = prefs.all_for_user(os.environ.get("BB_UID", "")).get(proj) or {}
+if op == "--topic":
+    t = preamble.topic(proj, arg.strip().lower())
+    if t is None:
+        names = ", ".join(s for s, _, _ in preamble.topics(proj))
+        sys.exit(f"[builderbot] ERROR: no topic called {arg!r} in the briefing; the topics: {names}")
+    print(t)
+    sys.exit(0)
+if op == "--topics":
+    for slug, gist, n in preamble.topics(proj):
+        print(f"  {slug:<11}{gist}")
+    sys.exit(0)
 p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "")
 if op == "--json":
     print(json.dumps(p))
