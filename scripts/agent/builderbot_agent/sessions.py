@@ -388,6 +388,7 @@ class SessionsMixin:
         this process (no digest to compare, since the fetch answers with one),
         which is when sessions start."""
         if self.ttyd and (digest is None or digest == self.session_bundle):
+            self.bundle_back()
             return
         if not self.session_account():
             SESSION.update(up=False, port=0, ro_port=0, user="", bundle="",
@@ -401,6 +402,28 @@ class SessionsMixin:
         self.session_bundle = self.session_digest or digest
         self.session_tried = time.time()
         self.session_start(into)
+
+    BUNDLE_BACK_EVERY = 60
+
+    def bundle_back(self):
+        """Fetch the bundle again when `.bb/current` is gone from the store
+        while sessions run: the same digest, so nothing restarts, but every
+        heartbeat task that runs bb (an idle session's token, the logins
+        list, the census's versions) and every shell's PATH need it there.
+        A store emptied by hand took it (the operator, 12 Oct: "no bundle bb
+        at .../.bb/current/scripts/bb, so no idle session's token is
+        refreshed"), and only the next job or session start fetched it.
+        Once a minute at most while it is missing."""
+        store = tc_root(self.state)
+        if not store or os.access(os.path.join(store, ".bb", "current", "scripts", "bb"), os.X_OK):
+            return
+        now = time.time()
+        if now - getattr(self, "_bundle_back_at", 0) < self.BUNDLE_BACK_EVERY:
+            return
+        self._bundle_back_at = now
+        who = self.as_user({}, self.session_account()) if self.session_account() else None
+        if self.bundle(None, who):
+            log("sessions: the bundle was gone from the toolchain store; fetched it again")
 
     def _tmux(self, argv, timeout=10):
         """tmux as the session account: its server, its sessions. The
