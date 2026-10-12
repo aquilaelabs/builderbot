@@ -337,10 +337,14 @@ bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (
 bb rules           the house rules for this project: the operator's and yours
 bb rules show NAME one of them in full: what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
+                   [--refuse "CMD, CMD"]: commands it refuses outright when a session runs one
+                   [--replaces RULE]: the global rule it takes the place of in this project
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
+bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
+                   refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started
@@ -2280,6 +2284,15 @@ cmd_rules() {
         rules_json="$(BB_PROJECT="$proj" bash "$0" rules --json)" \
             || { warn "could not read the rules, so no check ran: the controller may be restarting"; return 75; }
         RULES_JSON="$rules_json" python3 "$BB_LIB/rules-check.py" "$WORKSPACE/$proj" "$@"
+        return $?
+    fi
+    # `bb rules audit [DAYS]` (R200): this account's conversations on the
+    # project, counted against the rules that refuse, through the
+    # controller's API like bb transcripts, which is where they are kept.
+    if [ "${1:-}" = audit ]; then
+        shift
+        BB_TRANSCRIPTS_AUTH="$(bb_auth_or_die)" BB_TRANSCRIPTS_PROJECT="$proj" \
+            python3 "$BB_LIB/transcripts-verbs.py" audit "$@"
         return $?
     fi
     # Every verb BELOW here reads and writes the rules themselves, which is
@@ -5402,7 +5415,7 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
         # `rules -h` is help, the bb beside it answers (B411).
-        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests unit"|"tests coverage"|"rules check"|"rules -h"|"rules --help"|"findings sample") : ;;
+        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests unit"|"tests coverage"|"rules check"|"rules audit"|"rules -h"|"rules --help"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and

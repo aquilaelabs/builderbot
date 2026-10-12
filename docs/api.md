@@ -17,7 +17,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: admin |
 | GET | `/api/findings` | prefix | `_get_findings` | GET /api/findings: findings.view, scoped to the projects this account sees, and for a session to its own. |  |
 | GET | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile tab): read on GET, saved on POST, by profiletab.py. |  |
-| GET | `/api/transcripts` | prefix | `_get_transcripts` | GET /api/transcripts?project=NAME: the signed-in account's own conversations with Claude on that project, newest first (transcripts.mine). |  |
+| GET | `/api/transcripts` | prefix | `_get_transcripts` | GET /api/transcripts?project=NAME: the signed-in account's own conversations with Claude on that project, newest first (transcripts.mine); with audit=DAYS, what they did against the house rules that can be counted instea |  |
 | GET | `/api/snapshots` | prefix | `_get_snapshots` | GET /api/snapshots?project=NAME: the days kept of the project's tree (snapshots.py), newest first, and how many it keeps. | refused: admin |
 | GET | `/api/transcript` | prefix | `_get_transcript` | GET /api/transcript?project=NAME&id=SESSION: one of the signed-in account's own conversations with Claude on that project as a text file, every command and answer in it (transcripts.render); as JSON with as=json, which i |  |
 | GET | `/api/git` | prefix | `_get_git` | GET /api/git: the notebook's Git view (gitview.view), for a project this account may see. |  |

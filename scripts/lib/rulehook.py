@@ -1,0 +1,129 @@
+"""What a session's hooks keep between calls about the house rules (R200).
+
+Two small records, on the machine the session runs on, under the account's
+own cache beside bb-check-relay's stamp:
+
+  fired/<conversation id>  the named rules this conversation was told,
+                           one name a line, so the SessionStart hook can
+                           say them again after a summary drops them
+                           (Claude Code keeps the id across a compaction);
+  guards.json              what the Bash guard refuses in this project, as
+                           the controller last said, kept a minute so a
+                           node does not ask on every command.
+
+Here rather than in the hooks themselves because three of them read and
+write it (bb-work-note, bb-prompt-relay, bb-rule-hook), and in scripts/lib
+because a node carries this directory and not the dashboard's modules.
+Every function swallows its own failures: a hook that cannot keep a note
+is never worth a turn.
+"""
+import json
+import os
+import re
+import time
+
+import cmdmatch
+
+GUARDS_FOR = 60                 # seconds a node's copy of the guards is used
+FIRED_FOR = 14 * 86400          # a conversation's record kept this long after its last write
+_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+def _uid():
+    return os.environ.get("BB_ACCOUNT_UID") or "_none"
+
+
+def project_dir(project):
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.environ.get("HOME", "/tmp"), ".cache")
+    return os.path.join(base, "builderbot", "u", _uid(), "project", project)
+
+
+def _fired_file(project, conversation):
+    if not _ID.match(str(conversation or "")) or not project:
+        return ""
+    return os.path.join(project_dir(project), "fired", conversation)
+
+
+def remember(project, conversation, names):
+    """Add these rule names to what this conversation was told."""
+    f = _fired_file(project, conversation)
+    names = [n for n in (names or []) if re.match(r"^[a-z0-9][a-z0-9-]{0,39}$", str(n))]
+    if not f or not names:
+        return
+    try:
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        have = set(fired(project, conversation))
+        with open(f, "a") as out:
+            for n in names:
+                if n not in have:
+                    out.write(n + "\n")
+                    have.add(n)
+        _prune(os.path.dirname(f))
+    except OSError:
+        pass
+
+
+def fired(project, conversation):
+    """The rule names this conversation was told, in the order it heard them."""
+    f = _fired_file(project, conversation)
+    try:
+        with open(f) as src:
+            return [ln.strip() for ln in src if ln.strip()]
+    except OSError:
+        return []
+
+
+def _prune(d):
+    now = time.time()
+    try:
+        for e in os.scandir(d):
+            if e.is_file() and now - e.stat().st_mtime > FIRED_FOR:
+                os.unlink(e.path)
+    except OSError:
+        pass
+
+
+def cached_guards(project, stale=False):
+    """The guards as last fetched, or None when there is no fresh copy;
+    `stale` takes any copy, for when the controller does not answer."""
+    f = os.path.join(project_dir(project), "guards.json")
+    try:
+        if not stale and time.time() - os.stat(f).st_mtime > GUARDS_FOR:
+            return None
+        with open(f) as src:
+            got = json.load(src)
+        return got if isinstance(got, list) else None
+    except (OSError, ValueError):
+        return None
+
+
+def keep_guards(project, guards):
+    f = os.path.join(project_dir(project), "guards.json")
+    try:
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        with open(f + ".new", "w") as out:
+            json.dump(guards, out)
+        os.replace(f + ".new", f)
+    except OSError:
+        pass
+
+
+def refused(guards, command):
+    """(the guard that refuses this shell line, the command as read) or
+    None. `guards` is rules.guards()'s list, from the store or the
+    controller."""
+    for g in guards or []:
+        hit = cmdmatch.first_match(command, g.get("refuse") or [])
+        if hit:
+            return g, hit[0]
+    return None
+
+
+def refusal(g, command):
+    """What a refused Bash call is told, in place of running."""
+    whose = {"builderbot": "BuilderBot's briefing", "claude": "a note a session left"}.get(
+        g.get("by"), "the operator's house rule")
+    return (f"Refused by {whose} [{g.get('name', '')}]: `{command[:160]}` is a command it does not "
+            f"let run.\n{g.get('text', '')}\n"
+            "Do it the way the rule says. If the rule is wrong for what you are doing, say so in "
+            "your reply and leave it to the person; do not run it another way.")

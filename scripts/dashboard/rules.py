@@ -52,7 +52,9 @@ because two ways to say the same thing is two things to keep in step.
 
 The honest limit, which the tab states rather than implying otherwise: this is
 not the sibling-project deny list. That one is a refusal from the file tools.
-A rule is a request the model can still fumble.
+A rule is a request the model can still fumble, except where it names the
+commands it refuses (R200): those a hook stops on a session's shell call,
+with the rule as the reason (bb-rule-hook, scripts/lib/cmdmatch.py).
 
 Same arrangement as roadmap.py and bugs.py: the server or the bb CLI hands over
 write_json and the state directory; nothing here reaches back.
@@ -73,6 +75,13 @@ if _here not in sys.path:
 import statefile  # noqa: E402
 import pending  # noqa: E402
 import share  # noqa: E402
+# The shell reader the guard on a node uses too (scripts/lib, which a node
+# carries where it does not carry this directory).
+_lib = os.path.join(os.path.dirname(_here), "lib")
+if _lib not in sys.path:
+    sys.path.insert(0, _lib)
+import cmdmatch  # noqa: E402
+import rulehook  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 write_json = None
@@ -106,11 +115,13 @@ def replay(project, verb, args):
     if verb == "add":
         return add(project, args.get("name", ""), args.get("text", ""),
                    paths=args.get("paths", ""), words=args.get("words", ""), by="claude",
-                   doc=args.get("doc", ""), check=args.get("check", ""))
+                   doc=args.get("doc", ""), check=args.get("check", ""),
+                   refuse=args.get("refuse", ""), replaces=args.get("replaces", ""))
     if verb == "edit":
         return edit(project, args.get("name", ""), text=args.get("text"),
                     paths=args.get("paths"), words=args.get("words"), by="claude",
-                    doc=args.get("doc"), check=args.get("check"))
+                    doc=args.get("doc"), check=args.get("check"),
+                    refuse=args.get("refuse"), replaces=args.get("replaces"))
     return {"error": f"not a rules change that can be replayed: {verb}"}
 
 
@@ -133,6 +144,9 @@ MAX_TEXT = 2000
 MAX_RULES = 40
 MAX_NAMED = 200
 MAX_TRIGGERS = 12
+# What a rule may refuse outright (R200 step 3): commands as typed, the start
+# of each one a session's Bash call may not run while the rule is on.
+MAX_REFUSE = 24
 
 # Global rules (R63) live under a key no project can be called: a project is a
 # directory on the projects share, and `*` is not a name one can have. So the
@@ -159,7 +173,15 @@ BUILTIN = [
     {"name": "ask-do-not-install",
      "text": "Never install a tool with a system package manager: it is invisible"
              " to `bb toolchains` and gone when the node is rebuilt. Say what is"
-             " missing; installing is the operator's."},
+             " missing; installing is the operator's.",
+     # Refused, not only said (R200): the one rule here a command shows
+     # being broken, so the guard stops it with this text as the reason.
+     "refuse": ["apt install", "apt-get install", "apt-get -y install", "aptitude install",
+                "dnf install", "yum install", "zypper install", "apk add",
+                "pacman -S", "brew install", "snap install",
+                # A dry run installs nothing (an audit found one, 12 Oct).
+                "!apt-get install* -s*", "!apt-get install* --simulate*", "!apt install* -s*",
+                "!apt install* --simulate*", "!dnf install* --assumeno*"]},
     {"name": "file-what-you-find",
      "text": "What you notice goes on the record, not only in a reply: a bug"
              " with `bb bug add`, work worth doing with `bb roadmap add`. Tick"
@@ -174,6 +196,34 @@ BUILTIN = [
              " an app on the emulator, use the change there the way a person"
              " would before calling it done, and say what you saw."},
 ]
+
+# What the briefing says a session never does, refused by the guard as well
+# (R200 step 3). Not rules, and not switchable, for the reason BUILTIN gives:
+# each is a mistake that only ever costs something (a shell killing itself,
+# an emulator nobody can stop or save, a commit identity written over the
+# one the account carries), so the line in config/templates/briefing.md and
+# its refusal here are one decision said twice, and nothing a session or a
+# project's dial turns off.
+ALWAYS = [
+    {"name": "pkill-by-pid",
+     "text": "A `pkill -f PATTERN` run from a tool call matches the shell running that call, because"
+             " the pattern is on its command line, and kills it: end a process by its pid, or with"
+             " `pkill -x NAME`.",
+     "refuse": ["pkill -f", "pkill --full"]},
+    {"name": "emulator-through-bb",
+     "text": "The emulator is started with `bb emu start` and stopped with `bb emu stop`, never the"
+             " emulator binary: bb picks the GPU, waits for the boot, keeps the log and saves its"
+             " state on stop.",
+     "refuse": ["emulator -avd", "emulator @*"]},
+    {"name": "identity-is-given",
+     "text": "Your commit identity arrives as git's environment, so a commit that cannot find an"
+             " author is a fault to report with `bb report`, not one to fix with git config"
+             " --global user.name or user.email.",
+     # The account's own, never a throwaway repository's: a test fixture
+     # sets an identity in its scratch repo, which an audit found (12 Oct).
+     "refuse": ["git config --global user.name", "git config --global user.email"]},
+]
+
 
 # What the standing block costs before it is worth saying out loud on the tab.
 # Not a refusal: the operator decides what their sessions are worth paying
@@ -272,8 +322,14 @@ def effective(project):
     if project == GLOBAL:
         return globals_now()
     here = project_off(project)
-    on = [r for r in globals_now() if not r.get("disabled") and r["name"] not in here]
-    return on + rules(project) + _design_rules(project)
+    own = rules(project)
+    # A project rule that names the global rule it replaces (R200 step 4)
+    # takes that one's place: a session here reads the project's alone,
+    # rather than both and an instruction to prefer one.
+    gone = {r.get("replaces") for r in own if r.get("replaces")}
+    on = [r for r in globals_now()
+          if not r.get("disabled") and r["name"] not in here and r["name"] not in gone]
+    return on + own + _design_rules(project)
 
 
 def _design_rules(project):
@@ -331,12 +387,34 @@ def _clean(r, i):
             "words": [w.lower() for w in bits(r.get("words"))],
             "doc": doc,
             "check": " ".join(str(r.get("check") or "").split())[:300],
+            # Commands it refuses outright (R200 step 3), each the start of a
+            # command as typed; commas between them, since one has spaces.
+            "refuse": _refusals(r.get("refuse")),
+            # The global rule this one takes the place of in its project.
+            "replaces": _slug(r.get("replaces")),
             # Whose it is, and therefore who may change it later. Defaulting
             # to the operator is deliberate: this field arrived after rules
             # did, and a rule written before it existed was written on the
             # tab, which is theirs.
             "by": "claude" if r.get("by") == "claude" else "you",
             "at": int(r.get("at") or time.time())}
+
+
+def _refusals(v):
+    """A rule's refusals, from a list or the line somebody typed."""
+    parts = [str(x) for x in v] if isinstance(v, (list, tuple)) else str(v or "").split(",")
+    out = []
+    for p in parts:
+        p = " ".join(p.split())[:120]
+        # One that is all wildcards would refuse every command there is.
+        if p and re.search(r"[A-Za-z0-9]", p) and p not in out:
+            out.append(p)
+    return out[:MAX_REFUSE]
+
+
+def _slug(v):
+    n = re.sub(r"[^a-z0-9]+", "-", str(v or "").strip().lower()).strip("-")[:40].strip("-")
+    return n if NAME_RE.match(n) else ""
 
 
 def conditional(r):
@@ -471,7 +549,7 @@ def history(project, limit=None, since=None, find=None):
     return rows[:limit] if limit else rows
 
 
-def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
+def add(project, name, text, paths="", words="", by="claude", doc="", check="", refuse="", replaces=""):
     """One rule, appended. The session's verb; the tab replaces the list.
 
     A session's rule is marked as its own, which is what lets it change one
@@ -482,6 +560,9 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
         return {"error": "a rule needs something to say"}
     if project == GLOBAL and by == "claude":
         return {"error": _NOT_YOURS}
+    bad = _replaces_bad(project, replaces)
+    if bad:
+        return {"error": bad}
     # The gate (roadmap #27): a session's rule may be held or refused per
     # project. Keyed by the name it would get, which the replay re-derives.
     if by == "claude" and not pending.replaying():
@@ -490,17 +571,20 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
             return {"error": pending.refusal("rules")}
         if g == "ask":
             r = _clean({"name": name, "text": text, "paths": paths,
-                        "words": words, "by": by, "doc": doc, "check": check}, 0)
+                        "words": words, "by": by, "doc": doc, "check": check,
+                        "refuse": refuse, "replaces": replaces}, 0)
             return pending.hold(project, "rules", "add",
                                 {"name": r["name"], "text": text,
-                                 "paths": paths, "words": words, "doc": doc, "check": check},
+                                 "paths": paths, "words": words, "doc": doc, "check": check,
+                                 "refuse": r["refuse"], "replaces": r["replaces"]},
                                 summary=f"{r['name']}: {r['text']}", number=r["name"])
     with _lock:
         d = load()
         p = _project(d, project)
         rs = p.setdefault("rules", [])
         r = _clean({"name": name, "text": text, "paths": paths,
-                    "words": words, "by": by, "doc": doc, "check": check}, len(rs))
+                    "words": words, "by": by, "doc": doc, "check": check,
+                    "refuse": refuse, "replaces": replaces}, len(rs))
         over = _over(rs + [r])
         if over:
             return {"error": over}
@@ -523,6 +607,19 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
 _NOT_YOURS = ("a global rule reaches every project on this BuilderBot, so only "
               "the operator adds or changes one. Say in your reply what you "
               "would add and why, and they add it from a project's Briefing")
+
+
+def _replaces_bad(project, replaces):
+    """Why `replaces` cannot be what a rule says it takes the place of, or
+    "": only a project's rule replaces, and only a global rule that exists."""
+    n = _slug(replaces)
+    if not n:
+        return ""
+    if project == GLOBAL:
+        return "a global rule applies everywhere; only a project's rule replaces one"
+    if n not in {r["name"] for r in globals_now()}:
+        return (f"there is no global rule called {n}; `bb rules --global` lists them")
+    return ""
 
 
 def _builtin_names():
@@ -581,12 +678,15 @@ def _mine(rs, name, by):
 
 
 def edit(project, name, *, text=None, paths=None, words=None, by="claude",
-         doc=None, check=None):
+         doc=None, check=None, refuse=None, replaces=None):
     if project == GLOBAL and by == "claude":
         return {"error": _NOT_YOURS}
     if project == GLOBAL and str(name or "").strip().lower() in _builtin_names():
         return {"error": "that rule ships with BuilderBot and is read-only: turn "
                          "it off for a project, or for every project, from a project's Briefing"}
+    bad = _replaces_bad(project, replaces)
+    if bad:
+        return {"error": bad}
     with _lock:
         d = load()
         p = _project(d, project)
@@ -597,7 +697,7 @@ def edit(project, name, *, text=None, paths=None, words=None, by="claude",
         was = dict(rs[i])
         merged = dict(was)
         for k, v in (("text", text), ("paths", paths), ("words", words),
-                     ("doc", doc), ("check", check)):
+                     ("doc", doc), ("check", check), ("refuse", refuse), ("replaces", replaces)):
             if v is not None:
                 merged[k] = v
         rs[i] = _clean(merged, i)
@@ -708,6 +808,12 @@ def _block(rs, triggers):
             bits.append(f"defined in full in {r['doc']}, read first")
         if r.get("check"):
             bits.append(f"checked by `bb rules check {r['name']}`, run before handing back")
+        named = [x for x in r.get("refuse") or [] if not x.startswith("!")]
+        if named and not short:
+            bits.append("a command it names is refused when you run it: " + ", ".join(named[:4])
+                        + (", ..." if len(named) > 4 else ""))
+        if r.get("replaces"):
+            bits.append(f"in place of the global rule {r['replaces']}")
         return (" (" + "; ".join(bits) + ")") if bits else ""
     for r in rs:
         if not conditional(r):
@@ -790,6 +896,52 @@ def matching(project, *, prompt="", path=""):
         if hit:
             out.append(r)
     return out
+
+
+def guards(project):
+    """What the Bash guard refuses in this project (R200 step 3): each rule
+    in effect that refuses something, then the briefing's never-do lines,
+    as {name, text, refuse, by}. What a node's guard caches."""
+    out = [{"name": r["name"], "text": r["text"], "refuse": list(r["refuse"]),
+            "by": r.get("by") or "you"}
+           for r in effective(project) if r.get("refuse")]
+    return out + [dict(g, by="builderbot") for g in ALWAYS]
+
+
+def refusing(project, command):
+    """(the guard that refuses this shell line, the command as read) or
+    None, over what is in effect here."""
+    return rulehook.refused(guards(project), command)
+
+
+def by_names(project, names):
+    """The rules in effect here with these names, in their order."""
+    want = [str(n) for n in names or []]
+    have = {r["name"]: r for r in effective(project)}
+    return [have[n] for n in want if n in have]
+
+
+def said(hit, *, path="", again=False):
+    """The fired rules as a session is told them: on the turn a file or a
+    prompt calls for them, or again after a summary (`again`). One wording
+    for both hooks and for the controller's answer to a node's."""
+    if not hit:
+        return ""
+    if again:
+        lead = ("Your conversation was just summarized. These house rules were raised earlier in "
+                "it and still hold; they are in full here because a summary does not carry them:")
+    elif path:
+        lead = f"House rules cover {path}, which you are about to edit:"
+    else:
+        lead = "House rules for this project cover what you are about to do:"
+    out = [lead]
+    for r in hit:
+        who = ("* a note a session left, yours to change" if r.get("by") == "claude"
+               else "the operator's, not yours to change")
+        doc = f"\nDefined in full in {r['doc']}; read it first." if r.get("doc") else ""
+        chk = f"\nRun `bb rules check {r['name']}` before calling the work done." if r.get("check") else ""
+        out.append(f"\n[{r['name']}] ({who})\n{r['text']}{doc}{chk}")
+    return "\n".join(out)
 
 
 def _stem(pat):

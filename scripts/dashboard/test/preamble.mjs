@@ -42,7 +42,7 @@ put('rules.json', { projects: {} });
 put('roadmap.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
-ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
+ok((p.parts || []).map(x => x.name).join(',') === 'core,rules,briefing,live'
    && /this node carries git, tmux, jq, python3 and curl by itself/.test(p.text)
    && /\(global\)/.test(p.text) && (p.notes || []).length === 0,
    `a project with nothing set still gets the briefing and the shipped global rules (${
@@ -111,15 +111,15 @@ ok(!/\n\n\n/.test(p.text),
    '...joined by one blank line, so a store with nothing leaves no gap where it would have been');
 ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && (p.notes || []).length === 0,
    `...and the size is the block's own (${p.bytes} bytes)`);
-ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap,bugs',
-   `...with each named and measured separately, the briefing first (${
+ok((p.parts || []).map(x => x.name).join(',') === 'core,rules,briefing,live,roadmap,bugs',
+   `...with each named and measured separately, the briefing's core and the rules first (${
      (p.parts || []).map(x => `${x.name} ${x.bytes}`).join(' · ')})`);
 
 // ---- a store that contributes nothing leaves no gap -------------------------
 put('bugs.json', { projects: {} });
 p = await pre();
 ok(at('RULESMARK') >= 0 && !/BUGMARK/.test(p.text) && !/\n\n\n/.test(p.text)
-   && (p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap',
+   && (p.parts || []).map(x => x.name).join(',') === 'core,rules,briefing,live,roadmap',
    'a tracker with nothing open drops out of the block entirely, gap included');
 
 // ---- a share for each part, and no tail to lose ------------------------------
@@ -129,7 +129,7 @@ ok(at('RULESMARK') >= 0 && !/BUGMARK/.test(p.text) && !/\n\n\n/.test(p.text)
 // item to keep it short. Now what is kept and what is sent are two things:
 // each part that grows has a share, one over it says less per row before it
 // leaves a row out, and every part is always there.
-const SHARE = { rules: 16384, roadmap: 16384, bugs: 8192 };
+const SHARE = { rules: 16384, roadmap: 8192, bugs: 6144 };
 const part = name => (p.parts || []).find(x => x.name === name) || {};
 {
   const steps = [{ text: 'the first step, which is done', done: true }, { text: 'the second step, to do' }];

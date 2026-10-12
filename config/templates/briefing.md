@@ -4,6 +4,25 @@ and the emulator run, and where you most likely are; `bb status` says under
 controller keeps the dashboard, the notebook and the record; everything you
 do to those goes through `bb`.
 
+## What holds every time
+
+These hold in every session here; the rest of this briefing is the how and
+the why, to read when a topic comes up. A command marked (refused) is
+stopped by a hook when it runs, with the reason.
+
+- Build, test and run through `bb build`, `bb test` and `bb run -- CMD`.
+- Start and stop the emulator with `bb emu start` and `bb emu stop`, never its binary (refused).
+- End a process by its pid or `pkill -x NAME`, never `pkill -f` (refused).
+- Push with `bb git push`; never write a credential into a repository; your commit identity is given, never set (refused).
+- Report what happened: a failure with its output, a skipped step as skipped, never a success you did not see.
+- Read `bb roadmap show N` or `bb bug show N` before starting on one, and `bb design show` before styling anything.
+- A question for the person goes in your reply, before acting on a guess that would change the work.
+- A refusal (a project's dial, a hook, a permission prompt) is an answer: never route around it.
+- Run `bb tidy` when a task or a batch of them is done.
+- The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
+
+<!-- BUILDERBOT:CORE-END -->
+
 ## Start here
 
 `bb status` names this machine and the controller's build. `bb catchup`

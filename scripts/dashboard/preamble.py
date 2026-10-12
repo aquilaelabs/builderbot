@@ -47,7 +47,18 @@ WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 # Sixteen kilobytes is about four thousand tokens; on this project, the
 # day these were set, the rules were 9.7 KB and the roadmap 17.2, of which
 # 4.8 were steps already done.
-SHARES = {"rules": 16 * 1024, "roadmap": 16 * 1024, "bugs": 8 * 1024}
+# Halved for the roadmap and the bugs on 12 Oct (R200 step 5): every line a
+# session reads at the same volume dilutes the ones it must follow, and a
+# title cut short is a pointer either way; `bb roadmap` and `bb bug` have
+# the rest.
+SHARES = {"rules": 16 * 1024, "roadmap": 8 * 1024, "bugs": 6 * 1024}
+
+# Where the briefing's core ends (config/templates/briefing.md): the lines
+# that hold every time come first, then the house rules, then the rest of
+# the briefing as reference (R200 step 5). What is read first and short is
+# what is followed; a rule after five thousand words of how-to was read at
+# the same weight as the how-to.
+_CORE_END = "<!-- BUILDERBOT:CORE-END -->"
 
 
 live_fn = None
@@ -352,20 +363,33 @@ def parts(project, reply="", asks=""):
     """The pieces, in the order a session reads them, each as (name, text,
     what it left out to keep to its share).
 
-    The briefing first, because it is what the rest is said in terms of; then
-    how the operator wants this worked on; then what there is to work on.
+    The briefing's core first, then the house rules, then the person's own
+    settings: what a session is held to, short, before anything it reads
+    for reference (R200). Then the rest of the briefing, what is running,
+    and what there is to work on.
 
     Each store answers "" when it has nothing, and an empty piece contributes
     no blank line: a project with no bugs must not start its sessions with a
     gap where the tracker would have been.
     """
     out = []
-    for name, fn in (("briefing", lambda: (briefing(project), "")),
+    whole = {}
+
+    def brief(half):
+        if "text" not in whole:
+            whole["text"] = briefing(project)
+        core, mark, rest = whole["text"].partition(_CORE_END)
+        if not mark:                       # a template without the mark: all of it is the briefing
+            core, rest = "", core
+        return (core if half == "core" else rest), ""
+
+    for name, fn in (("core", lambda: brief("core")),
+                     ("rules", lambda: rules_mod.fitted(project, SHARES["rules"])),
+                     ("replies", lambda: (person_part(reply, asks), "")),
+                     ("briefing", lambda: brief("rest")),
                      # What is running, as a fact rather than a guess (R75
                      # step 5): a session argued from a build it assumed once.
                      ("live", lambda: (live_fn() if live_fn else "", "")),
-                     ("replies", lambda: (person_part(reply, asks), "")),
-                     ("rules", lambda: rules_mod.fitted(project, SHARES["rules"])),
                      ("roadmap", lambda: roadmap_mod.fitted(project, SHARES["roadmap"])),
                      ("bugs", lambda: bugs_mod.fitted(project, SHARES["bugs"]))):
         try:

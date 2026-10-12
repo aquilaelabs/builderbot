@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Two hooks that hold a session to its house rules (R200), with the
+project and the account baked into the command line by bb-tty's
+claude_scope():
+
+    bb-rule-hook guard PROJECT SESSION    # PreToolUse, on Bash
+    bb-rule-hook recall PROJECT SESSION   # SessionStart, after a compaction
+
+GUARD refuses a Bash call that runs a command a rule refuses (rules.py,
+`refuse`: the shipped ask-do-not-install, the operator's own, and the
+briefing's never-do lines), with the rule's text as the reason, so a
+habit is stopped where it happens rather than read about earlier and
+forgotten. On the controller the store is read here; on a node the
+controller's list is fetched on the hook trip and kept a minute
+(scripts/lib/rulehook.py). A line the reader cannot parse, a list that
+cannot be had, any failure of this script: the call goes ahead, since a
+guard that cannot run is not worth a turn, and bb-gate already holds
+every call while the controller is not answering.
+
+RECALL runs when Claude Code has summarized a long conversation. The
+briefing and the standing rules are in the system prompt and survive
+that; what does not is the named rules that arrived on earlier turns, so
+this says those again in full, from the record bb-work-note and
+bb-prompt-relay keep of what fired in this conversation.
+"""
+import contextlib
+import json
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "lib"))
+import rulehook  # noqa: E402
+
+
+def on_node():
+    return os.environ.get("BUILDERBOT_ROLE", "").lower() in ("node", "worker", "agent")
+
+
+def post_hook(body):
+    import bbapi                                             # noqa: E402
+    r = bbapi.call("/api/v1/hook", body, auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10)
+    return r if isinstance(r, dict) else {}
+
+
+def _write_json(p, d):
+    with open(f"{p}.new", "w") as f:
+        json.dump(d, f, indent=2)
+    os.replace(f"{p}.new", p)
+
+
+def local_rules():
+    sys.path.insert(0, HERE)
+    import rules                                             # noqa: E402
+    rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"), write_json=_write_json)
+    return rules
+
+
+def guards(project):
+    if not on_node():
+        return local_rules().guards(project)
+    have = rulehook.cached_guards(project)
+    if have is None:
+        got = post_hook({"kind": "guards"}).get("guards")
+        if isinstance(got, list):
+            rulehook.keep_guards(project, got)
+            have = got
+        else:
+            have = rulehook.cached_guards(project, stale=True) or []
+    return have
+
+
+def guard(project, req):
+    if req.get("tool_name") not in (None, "Bash"):
+        return
+    command = str((req.get("tool_input") or {}).get("command") or "")
+    if not command.strip():
+        return
+    hit = rulehook.refused(guards(project), command)
+    if not hit:
+        return
+    json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                      "permissionDecision": "deny",
+                                      "permissionDecisionReason": rulehook.refusal(*hit)}}, sys.stdout)
+
+
+def recall(project, req):
+    names = rulehook.fired(project, req.get("session_id"))
+    if not names:
+        return
+    if on_node():
+        said = str(post_hook({"kind": "recall", "names": names}).get("rules") or "")
+    else:
+        r = local_rules()
+        said = r.said(r.by_names(project, names), again=True)
+    if said:
+        json.dump({"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                          "additionalContext": said}}, sys.stdout)
+
+
+def main():
+    verb, project = (sys.argv[1:3] + ["", ""])[:2]
+    if not project or verb not in ("guard", "recall"):
+        return
+    try:
+        req = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return
+    if not isinstance(req, dict):
+        return
+    (guard if verb == "guard" else recall)(project, req)
+
+
+if __name__ == "__main__":
+    with contextlib.suppress(Exception):   # never cost a turn
+        main()
+    sys.exit(0)

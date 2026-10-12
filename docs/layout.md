@@ -28,6 +28,8 @@ scripts/
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/preflight.sh               `bb tests preflight`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
+  lib/cmdmatch.py                which commands a shell line runs, read as a shell splits it, for a rule that refuses (R200)
+  lib/rulehook.py                what a session's hooks keep about the house rules: what fired, the guard list, a refusal's words (R200)
   lib/syncwait.py                a session's bb on a synced node waits for its copy to be in step with the controller's (R163)
   lib/codemap.py                 the code map bb map answers from: an index over the tree, rebuilt when a source is newer (R75)
   lib/trace-verbs.py             bb dashboard trace: what the server was asked over a window, by endpoint and asker
@@ -106,7 +108,8 @@ scripts/
     bb-check-relay               the relay's own check, run by bb tests preflight
     bb-gate                      the hook every tool call asks before it runs, on a node
     bb-prompt-relay              a node session's prompts and answers, back to the controller
-    bb-work-note                 what a session is changing, for the overlap warning
+    bb-work-note                 what a session is changing, for the overlap warning, and the named rules its file raises
+    bb-rule-hook                 refuses a shell call a rule refuses, and says the named rules again after a summary (R200)
     bb-keep-login                a hook that does nothing, for sessions an earlier build of this window started with it
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
     roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them

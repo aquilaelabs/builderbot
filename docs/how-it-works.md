@@ -2742,7 +2742,7 @@ grows, and every conversation pays for the block. So the notebook keeps what
 there is (two hundred open roadmap items, the parked ones not counted; two
 hundred open bugs; forty standing rules and two hundred named ones), and the
 block is an index into it. Each part that grows has a share of a session's
-prompt: 16 KB for the rules, 16 KB for the roadmap, 8 KB for the bugs. A part
+prompt: 16 KB for the rules, 8 KB for the roadmap, 6 KB for the bugs. A part
 over its share says less per row before it leaves a row out. The roadmap gives
 its items with their open steps, then their titles with the steps as a count,
 then the titles cut short with the parked ones as a count, then as many as fit
@@ -2756,7 +2756,8 @@ whatever the others hold.
 
 **And you can read the whole of it.** The Briefing tab's last fold, *What a
 session is sent*, holds the exact string a session started here is handed: the
-house rules, then the open roadmap, then the open bugs, with its size on the
+briefing's core, the house rules, the rest of the briefing, then the open
+roadmap and the open bugs, with its size on the
 heading and each part's size under it against its share, so a part that has
 started saying less is seen there before a session meets it. It is the same string, not a rendering
 of the same idea: the tab and `bb-tty` both ask `bb preamble` for it, so the
@@ -4078,10 +4079,42 @@ away and honest about being a shell.
 ## Telling a project's sessions about this environment
 
 Every session is handed one block of text before it types anything, assembled
-by the controller at the moment the session starts: how this machine works,
-then the house rules in effect, then the open roadmap and the open bugs. The
-Briefing tab shows a person exactly that string, byte for byte, because it is
-the same assembly rather than another rendering of it.
+by the controller at the moment the session starts: a short core of what
+holds every time, then the house rules in effect, then the rest of how this
+machine works, then the open roadmap and the open bugs. What a session is held
+to comes first and short, because a rule read after five thousand words of
+how-to is read at the same weight as the how-to. The Briefing tab shows a
+person exactly that string, byte for byte, because it is the same assembly
+rather than another rendering of it.
+
+### Holding a session to its rules
+
+Text in a prompt is a request a model can fumble, so the rules that can be
+checked are checked as well as said:
+
+- **A named rule arrives when it applies.** A rule with files or words is
+  named in the block and its text arrives on the turn a session edits one of
+  its files or is asked about one of its words, on a node as on the
+  controller: the hooks ask the controller on the trip each edit and each
+  prompt already makes.
+- **And again after a summary.** When Claude Code summarizes a long
+  conversation, the briefing and the standing rules stay in the system
+  prompt but a named rule told earlier would be lost; a hook remembers which
+  ones a conversation was told and says them again in full.
+- **A rule can refuse.** A rule's *Commands it refuses* (`bb rules add
+  --refuse`) are the starts of commands a session's shell call may not run:
+  the call is refused with the rule's text as the reason. The shipped
+  ask-do-not-install refuses the system package managers, and three of the
+  briefing's never-do lines are refused in every project (`pkill -f`, the
+  emulator binary, setting the account's commit identity). A pattern that
+  starts with `!` is an exception, such as a package manager's dry run.
+- **A project rule replaces a global one by name.** *In place of* (`bb rules
+  add --replaces NAME`) takes a global rule out of that project's block, so
+  a session reads one rule rather than two and an instruction to prefer one.
+- **And it can be counted.** `bb rules audit [DAYS]` reads the account's
+  own conversations on the project and counts the commands a rule refuses,
+  run or tried, and how often the code map was asked against a grep of the
+  code, so whether sessions keep to a rule is a number rather than a feeling.
 
 What a session is told is split by one question: is there value in turning
 it off? An obligation somebody might reasonably not want (sessions filing

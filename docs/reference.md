@@ -337,10 +337,14 @@ bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (
 bb rules           the house rules for this project: the operator's and yours
 bb rules show NAME one of them in full: what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
+                   [--refuse "CMD, CMD"]: commands it refuses outright when a session runs one
+                   [--replaces RULE]: the global rule it takes the place of in this project
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
+bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
+                   refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started

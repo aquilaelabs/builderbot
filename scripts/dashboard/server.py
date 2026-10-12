@@ -2453,6 +2453,9 @@ import mapping                                                   # noqa: E402
 # front of every session started here; claude_scope() in bb-tty denies the
 # file tools on the file. Roadmap #7.
 import rules                                                     # noqa: E402
+# The guard's reading of a shell line, from scripts/lib (rules.py put it on
+# the path): `bb rules audit` counts the account's conversations with it.
+import rulehook                                                  # noqa: E402
 import codebase                                                  # noqa: E402
 import pending                                                   # noqa: E402
 import settings                                                  # noqa: E402
@@ -3151,7 +3154,7 @@ bbrelay.configure(users=users, projects=projects, prefs=prefs, gitrelay=gitrelay
 # a node's hooks with the session's token (roadmap #24): hooks.py.
 import hooks                                                     # noqa: E402
 
-hooks.configure(users=users, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
+hooks.configure(users=users, rules=rules, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
                 turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope)
 
 
@@ -6927,7 +6930,8 @@ class Handler(BaseHTTPRequestHandler):
     def _get_transcripts(self):
         """GET /api/transcripts?project=NAME: the signed-in account's own
         conversations with Claude on that project, newest first
-        (transcripts.mine). Anybody signed in, their own only, a session
+        (transcripts.mine); with audit=DAYS, what they did against the
+        house rules that can be counted instead (transcripts.audit). Anybody signed in, their own only, a session
         included: on its own project and on one its project reads, it
         lists the account's conversations there for `bb transcripts`."""
         me = self._who()
@@ -6938,6 +6942,19 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
+        if q.get("audit"):
+            # `bb rules audit` (R200 step 6): the same conversations,
+            # counted against the guards in effect on the project.
+            try:
+                days = max(1, min(90, int(q["audit"][0])))
+            except ValueError:
+                days = transcripts.AUDIT_DAYS
+            guards = rules.guards(name)
+
+            def judge(cmd):
+                hit = rulehook.refused(guards, cmd)
+                return hit[0]["name"] if hit else ""
+            return self._json({"project": name, "audit": transcripts.audit(uid, name, judge, days)})
         return self._json({"project": name, "rows": transcripts.mine(uid, [name])})
 
     def _get_transcript(self):
