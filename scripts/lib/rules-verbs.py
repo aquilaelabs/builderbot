@@ -57,6 +57,8 @@ elif op == "show":
                 print("refuses: " + ", ".join(r["refuse"]))
             if r.get("replaces"):
                 print(f"in place of the global rule {r['replaces']}")
+            if r.get("why"):
+                print(f"\nwhy: {r['why']}")
             break
     else:
         for g in reg.ALWAYS:
@@ -70,9 +72,9 @@ elif op == "show":
 elif op == "add":
     if len(rest) < 2:
         sys.exit('usage: bb rules add <name> "the rule" [--files GLOB,...] [--words W,...] '
-                 '[--refuse "CMD, CMD"] [--replaces GLOBAL-RULE]')
+                 '[--refuse "CMD, CMD"] [--replaces GLOBAL-RULE] [--why "..."]')
     name, said, paths_, wds_, doc_, chk_, i = rest[0], [], "", "", "", "", 1
-    ref_, repl_ = "", ""
+    ref_, repl_, why_ = "", "", ""
     while i < len(rest):
         if rest[i] == "--files" and i + 1 < len(rest):
             paths_ = rest[i + 1]; i += 2
@@ -86,10 +88,12 @@ elif op == "add":
             ref_ = rest[i + 1]; i += 2
         elif rest[i] == "--replaces" and i + 1 < len(rest):
             repl_ = rest[i + 1]; i += 2
+        elif rest[i] == "--why" and i + 1 < len(rest):
+            why_ = rest[i + 1]; i += 2
         else:
             said.append(rest[i]); i += 1
     r = reg.add(proj, name, " ".join(said), paths=paths_, words=wds_, by="claude",
-                doc=doc_, check=chk_, refuse=ref_, replaces=repl_)
+                doc=doc_, check=chk_, refuse=ref_, replaces=repl_, why=why_)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
     if r.get("held"):
@@ -120,14 +124,14 @@ elif op == "edit":
     # leaving the words alone; "" clears a flag.
     said, flags, i = [], {}, 1
     while i < len(rest):
-        if rest[i] in ("--doc", "--check", "--files", "--words", "--refuse", "--replaces") and i + 1 < len(rest):
+        if rest[i] in ("--doc", "--check", "--files", "--words", "--refuse", "--replaces", "--why") and i + 1 < len(rest):
             flags[{"--files": "paths", "--words": "words"}.get(rest[i], rest[i][2:])] = rest[i + 1]
             i += 2
         else:
             said.append(rest[i]); i += 1
     if not said and not flags:
         sys.exit('usage: bb rules edit <name> "what it should say now" [--doc PATH] [--check CMD] '
-                 '[--refuse "CMD, CMD"] [--replaces GLOBAL-RULE]')
+                 '[--refuse "CMD, CMD"] [--replaces GLOBAL-RULE] [--why "..."]')
     r = reg.edit(proj, rest[0], text=" ".join(said) if said else None, by="claude", **flags)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")

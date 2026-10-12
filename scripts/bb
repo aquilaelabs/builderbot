@@ -339,6 +339,7 @@ bb rules show NAME one of them in full: what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
                    [--refuse "CMD, CMD"]: commands it refuses outright when a session runs one
                    [--replaces RULE]: the global rule it takes the place of in this project
+                   [--why "..."]: the reason behind it, kept for show and the tab, never sent
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you
@@ -4132,6 +4133,14 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
     if [ -f docs/layout.md ]; then
         section "layout (docs/layout.md vs git ls-files)"
         python3 "$BB_LIB/lint-checks.py" layout || rc=1
+    fi
+
+    # The instruction channels, each saying its own (R202): CLAUDE.md the
+    # tree, the briefing the machine, the shipped rules the obligations, and
+    # no history in what a session is handed.
+    if [ -f CLAUDE.md ] && [ -f config/templates/briefing.md ] && [ -f scripts/dashboard/rules.py ]; then
+        section "channels (CLAUDE.md, the briefing, the shipped rules)"
+        python3 "$BB_LIB/lint-checks.py" channels || rc=1
     fi
 
     echo

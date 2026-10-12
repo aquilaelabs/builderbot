@@ -102,7 +102,7 @@ function nbRulesView({$, nb, project}){
     mutate(own, shippedOff);
     const r = await postJSON("/api/global-rules", {action: "save",
       rules: own.map(g => ({name: g.name, text: g.text, paths: g.paths || [], words: g.words || [],
-                            doc: g.doc || "", check: g.check || "", refuse: g.refuse || []})),
+                            doc: g.doc || "", check: g.check || "", refuse: g.refuse || [], why: g.why || ""})),
       disabled: [...shippedOff]});
     let j = {};
     try{ j = await r.json(); }catch{ j = {error: `the controller answered ${r.status}`}; }
@@ -173,6 +173,8 @@ function nbRulesView({$, nb, project}){
               aria-label="rule name">
             ${lbl("", "The rule")}
             <textarea class="rlText" spellcheck="false" maxlength="2000">${esc(r.text || "")}</textarea>
+            ${lbl("", "Why", "the reason behind it, kept here and in bb rules show; a session is sent the rule alone")}
+            <textarea class="rlWhy" spellcheck="false" maxlength="2000" rows="2">${esc(r.why || "")}</textarea>
             <div class="two">
               <div>${lbl("", "Files it covers", "paths or globs, comma-separated; the rule arrives when a session edits one")}
               <input class="rlPaths" autocomplete="off" spellcheck="false"
@@ -210,6 +212,7 @@ function nbRulesView({$, nb, project}){
               <button type="button" class="danger rlRm">Remove</button>
             </div>` : `
             <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
+            ${r.why ? `<div class="bfield"><label>why</label><div class="bval">${esc(r.why)}</div></div>` : ""}
             ${(r.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc((r.paths || []).join(", "))}</div></div>` : ""}
             ${(r.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc((r.words || []).join(", "))}</div></div>` : ""}
             ${(r.overlaps || []).length ? `<div class="bfield rlover"><label>shares ground</label><div class="bval">${esc(overlapLine(r))}. Both reach a session; where they disagree it follows this one and says so.</div></div>` : ""}
@@ -275,7 +278,7 @@ function nbRulesView({$, nb, project}){
         const el = row.querySelector(sel);
         if (el) el.oninput = () => ruleField(i, k, el.value);
       };
-      put("name", ".rlName"); put("text", ".rlText");
+      put("name", ".rlName"); put("text", ".rlText"); put("why", ".rlWhy");
       put("paths", ".rlPaths"); put("words", ".rlWords");
       put("doc", ".rlDoc"); put("check", ".rlCheck");
       put("refuse", ".rlRefuse");
@@ -311,7 +314,7 @@ function nbRulesView({$, nb, project}){
         nb.ruleEditing.delete(i);
         const seen = list => JSON.stringify(list.map(r => [r.name || "", r.text || "",
           (r.paths || []).join(","), (r.words || []).join(","), r.doc || "", r.check || "",
-          (r.refuse || []).join(","), r.replaces || ""]));
+          (r.refuse || []).join(","), r.replaces || "", r.why || ""]));
         nb.rulePending = seen(rs) === seen(nb.ruleData?.rules || []) ? null : rs;
         drawRules(); nb.syncSave();
       };

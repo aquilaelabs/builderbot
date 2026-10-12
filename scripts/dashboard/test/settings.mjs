@@ -333,8 +333,8 @@ ok(elsewhere.git_name === 'T. Person',
   ok((await globals()).find(r => r.name === first)?.disabled === true
      && !(await pre('beta')).includes((await globals()).find(r => r.name === first).text.slice(0, 40)),
      `an administrator turns a shipped rule off for every project from there (${first})`);
-  ok(/Never write a credential into a repository/.test(await pre('beta')) && /Report what happened, not what\s+should have/.test(await pre('beta')),
-     'what nobody would turn off is in the briefing instead: no credential in a repository, a true report');
+  ok(/never write a credential into a repository/.test(await pre('beta')) && /never a success you did not see/.test(await pre('beta')),
+     'what nobody would turn off is in the briefing\'s core instead: no credential in a repository, a true report');
   // Put back as they were.
   await fetch(URL.replace(/\/$/, '') + '/api/global-rules', { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'save', rules: [], disabled: [] }) });

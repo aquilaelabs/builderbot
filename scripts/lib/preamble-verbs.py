@@ -59,7 +59,7 @@ if op == "--topic":
     print(t)
     sys.exit(0)
 if op == "--topics":
-    for slug, gist, n in preamble.topics(proj):
+    for slug, gist, _ in preamble.topics(proj):
         print(f"  {slug:<11}{gist}")
     sys.exit(0)
 p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "")

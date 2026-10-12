@@ -137,6 +137,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A house rule can refuse commands outright (Commands it refuses, bb rules add --refuse): a session's shell call that runs one is stopped with the rule as the reason. ask-do-not-install refuses the package managers; pkill -f and the emulator binary are refused everywhere (9981b52)
 - A search for where a name is defined or called (grep for def NAME, function NAME, NAME( or the Grep tool) is handed bb map find's answer beside it, so a session reaching for grep still gets the one-call answer (8553fdb)
 - A test suite started in the foreground of a session is refused with the reason: it holds every reply, so a new ask could not cut in as the While a test runs setting says (8553fdb)
+- A house rule carries its why (Why on the Briefing view, bb rules add --why), kept for bb rules show and the tab and never sent to a session, so the block carries the instruction alone (b7cab78)
+- bb lint checks the instruction channels: CLAUDE.md describes the tree, the briefing the machine, the shipped rules the obligations, a sentence shared between them or a date, bug number or attribution in either is a finding (b7cab78)
 
 ### Changed
 

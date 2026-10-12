@@ -339,6 +339,7 @@ bb rules show NAME one of them in full: what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
                    [--refuse "CMD, CMD"]: commands it refuses outright when a session runs one
                    [--replaces RULE]: the global rule it takes the place of in this project
+                   [--why "..."]: the reason behind it, kept for show and the tab, never sent
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you

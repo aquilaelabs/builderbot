@@ -409,3 +409,74 @@ log as they happen. So the session's story is in one file and the detail is
 next door, including a failed compose call, which the Docker manager reports
 in both places.
 
+## Starting the emulator by hand
+
+**`bb emu start` is the only way an emulator is started (30 Sep 2026).** A
+session that started the binary by hand slept five seconds and met a cold
+boot's "System UI isn't responding" dialog instead of its own app. The verb
+picks the GPU this node has (hardware where the card has a display, software
+otherwise, and software when the card is short of memory), waits for the boot
+to finish before it returns, keeps the log where `bb emu log` reads it, and
+refuses a second one. Other projects' emulators may be running on the same
+node, so it first checks that the node has room for one more (its memory, and
+that its processors are not saturated); without room it waits up to five
+minutes and then refuses with the numbers, which is the node being full and
+not a fault. An Android phone booting on the card can fill it, and
+`bb emu start` then starts it again in software by itself.
+
+## A touch with its timing kept
+
+**`bb emu touch` and `bb phone touch` exist because adb's own input verbs
+cost about 300 ms a call (by 13 Oct 2026).** That cannot time a glide across
+letters or tell a long-press from a slide, so a touch is sent whole with its
+timing, in screen pixels, and the line it prints says how long the stroke
+took on the device. A glide moves like a hand unless `--hand ruler` says
+otherwise, since a keyboard under test meets a normal hand and a stroke nobody
+makes proves nothing.
+
+## What bb tidy ends
+
+**A server a session put in the background and left listening is ended with
+the rest (by 13 Oct 2026).** A dev server or a preview holds files in the
+project tree, which a later `npm ci` then cannot clear. The same sweep ends
+the session's emulator through `bb emu stop`, so its state is saved, anything
+else of its own on the NVIDIA card, its Gradle and Kotlin daemons and the
+headless browsers a test left behind, and clears its own files from /tmp,
+which in a session is memory. It touches only the session's own, never Claude
+Code's folder in /tmp, and nothing a running process still has open.
+
+## No Docker socket in a session
+
+**A session has no Docker socket of its own (by 13 Oct 2026)** because the
+daemon is the node's and its group is root there. A container is acted on
+through `bb devapp`, under the project's dial, and one that does not exist yet
+is an ask through `bb container new`. Such a container has no project tree
+behind it: compose resolves its relative paths, `build: .` included, against
+its own empty data directory, which is why one that builds from a path is
+refused and this project's own code goes into Docker with `bb devapp new`.
+
+## Gradle builds outside the project tree
+
+**Each module's build folder is on the node's own disk, with a link at its
+usual place (by 13 Oct 2026).** The project tree is copied up to the
+controller as it is saved, and build output is not worth that: so BuilderBot
+points Gradle's build directories at the node's disk and leaves `app/build`
+as a link, and its outputs are read where they always were. That holds for
+builds that use the project's own Gradle home, the one `$GRADLE_USER_HOME`
+names, which is also why another project's daemon never holds a lock this
+build waits on; point Gradle at another home and its builds land in the tree
+again.
+
+## Ending a process by pid
+
+**`pkill -f` is refused in a session (by 13 Oct 2026)** because a
+`pkill -f PATTERN` run from a tool call matches the shell running that call,
+the pattern being on its command line, and kills it. A process is ended by
+its pid or with `pkill -x NAME`.
+
+## python-ml's first import
+
+**The first `import torch` on a node can take minutes and is not a hang (by
+13 Oct 2026).** It reads gigabytes off the toolchain store; the next import
+takes seconds. A session that meets it starts the job in the background
+rather than waiting on it in the foreground.

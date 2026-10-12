@@ -2884,8 +2884,9 @@ ok(page.errors.length === 0,
     await napi('/api/prefs', { project: 'delta', node: shed.id });
     const withCard = (await napi('/api/preamble?project=delta')).text || '';
     await napi('/api/prefs', { project: 'delta', node: '' });
-    ok(!/## The GPU/.test(without) && /## The GPU/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(withCard),
-       'the briefing carries its GPU section for a project whose node has a card, and for no other');
+    const gpuTopic = (await napi('/api/preamble?project=delta&topic=gpu')).text || '';
+    ok(!/- gpu: /.test(without) && /- gpu: the card/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(gpuTopic),
+       'the briefing names its GPU topic for a project whose node has a card, and for no other; the topic answers either way');
   }
   // The sound a node has (R107): the census's cards and server, cleaned on
   // the way in, and a line on the row in words.

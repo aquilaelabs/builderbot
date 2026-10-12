@@ -125,6 +125,14 @@ class Store(unittest.TestCase):
                                    stdin={"tool_name": "Bash", "tool_input": {"command": "bb tests run",
                                                                               "run_in_background": True}}), "")
 
+    def test_a_rule_keeps_its_why_and_never_sends_it(self):
+        r = rules.add("alpha", "tidy", "Run bb tidy after a task.", by="you",
+                      why="A session left an emulator running for a day once.")
+        self.assertEqual(r["rule"]["why"], "A session left an emulator running for a day once.")
+        self.assertIn("Run bb tidy after a task.", rules.block("alpha"))
+        self.assertNotIn("emulator running for a day", rules.block("alpha"))
+        self.assertNotIn("emulator running for a day", rules.said(rules.by_names("alpha", ["tidy"])))
+
     def test_turned_off_it_refuses_nothing_and_the_briefing_lines_still_do(self):
         rules.set_project_off("alpha", ["ask-do-not-install"])
         self.assertIsNone(rules.refusing("alpha", "apt install jq"))
