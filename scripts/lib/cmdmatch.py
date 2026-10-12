@@ -94,6 +94,11 @@ def _unwrap(words):
                 return words[i:]
             continue
         base = os.path.basename(w)
+        # `bash scripts/bb tests run` runs the script: read it as the
+        # command, the way `bash -c '...'` is read again below.
+        if base in ("bash", "sh", "dash", "zsh") and i + 1 < len(words) and not words[i + 1].startswith("-"):
+            i += 1
+            break
         if base in WRAPPERS:
             i += 1
             valued = _VALUED.get(base, set())

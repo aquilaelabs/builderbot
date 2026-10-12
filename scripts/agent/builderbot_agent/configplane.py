@@ -4,7 +4,6 @@ import os
 import re
 import shutil
 import subprocess
-import threading
 import time
 from .base import (
     daemon_json_with_ip,

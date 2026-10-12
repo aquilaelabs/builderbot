@@ -108,11 +108,14 @@ def keep_guards(project, guards):
         pass
 
 
-def refused(guards, command):
+def refused(guards, command, background=False):
     """(the guard that refuses this shell line, the command as read) or
     None. `guards` is rules.guards()'s list, from the store or the
-    controller."""
+    controller; one marked `foreground` refuses only a call that is not run
+    in the background."""
     for g in guards or []:
+        if background and g.get("foreground"):
+            continue
         hit = cmdmatch.first_match(command, g.get("refuse") or [])
         if hit:
             return g, hit[0]
@@ -127,3 +130,73 @@ def refusal(g, command):
             f"let run.\n{g.get('text', '')}\n"
             "Do it the way the rule says. If the rule is wrong for what you are doing, say so in "
             "your reply and leave it to the person; do not run it another way.")
+
+
+# What the person sees of it (the operator, 12 Oct): every hook that hands
+# Claude text hands the person the same as a systemMessage, which Claude
+# Code shows in the conversation, so what Claude is acting on is on the
+# screen and not only in its context.
+SHOWN_MAX = 4000
+
+
+def shown(what, text):
+    """`text` as the person is shown it, labeled with what it is."""
+    text = str(text or "").strip()
+    if len(text) > SHOWN_MAX:
+        text = text[:SHOWN_MAX].rstrip() + " ..."
+    return f"[BuilderBot {what}] {text}"
+
+
+# ---- the map first (the operator, 12 Oct) -----------------------------------
+# A grep for where something is defined, or where it is called, is a
+# question the code map answers in one call with the function's own
+# comment (`bb map find`). A session that greps for it anyway is handed
+# the map's answer beside its search, so the lookups the map would have
+# saved are not spent. The search still runs: this adds, never refuses.
+
+_DEF_WORDS = r"(?:async\s+function|function|def|class|fn|func|fun|interface|struct|enum|const|let|var|type)"
+_DEF = re.compile(_DEF_WORDS + r"\s+([A-Za-z_][A-Za-z0-9_]{2,})")
+_CALL = re.compile(r"^([A-Za-z_][A-Za-z0-9_]{3,})\($")
+MAP_NAMES = 2
+MAP_LINES = 6
+
+
+def _plain(pattern):
+    """A regex as the words it looks for: anchors, word edges and the
+    escapes a person types around a name taken out."""
+    p = str(pattern or "")
+    for a, b in (("\\b", ""), ("\\<", ""), ("\\>", ""), ("\\s+", " "), ("\\s*", " "),
+                 ("\\(", "("), ("[[:space:]]+", " "), ("[[:space:]]*", " ")):
+        p = p.replace(a, b)
+    return p.strip().lstrip("^").rstrip("$")
+
+
+def symbols(pattern):
+    """The names a search pattern is looking up: `def NAME`, `function
+    NAME`, `class NAME` and the like, or `NAME(` alone. Nothing for a
+    search of text."""
+    out = []
+    for alt in re.split(r"\\?\|", str(pattern or "")):
+        p = _plain(alt)
+        m = _DEF.search(p) or _CALL.match(p.replace(" ", ""))
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+    return out[:MAP_NAMES]
+
+
+def search_patterns(command):
+    """The patterns of the code searches a shell line runs: grep -r, rg and
+    git grep, each's first pattern (or its -e ones)."""
+    out = []
+    for w in cmdmatch.commands(command):
+        if w[:2] == ["git", "grep"]:
+            args = w[2:]
+        elif w[:1] in (["grep"], ["egrep"], ["rg"]):
+            args = w[1:]
+        else:
+            continue
+        pats = [args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-e", "--regexp")]
+        if not pats:
+            pats = [a for a in args if not a.startswith("-")][:1]
+        out += pats
+    return out

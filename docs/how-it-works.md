@@ -4111,6 +4111,18 @@ checked are checked as well as said:
 - **A project rule replaces a global one by name.** *In place of* (`bb rules
   add --replaces NAME`) takes a global rule out of that project's block, so
   a session reads one rule rather than two and an instruction to prefer one.
+- **The map first.** A search for where a name is defined or called (a grep
+  for `def NAME`, `function NAME` or `NAME(`, or the Grep tool's) is handed
+  `bb map find NAME`'s answer beside it, a few lines, so the reads the map
+  saves are not spent; the search still runs, and a name the map does not
+  know adds nothing.
+- **You see what it is told.** Each of these hooks shows the person the
+  text it hands Claude, as a system message labeled BuilderBot's, and a
+  session's start shows what it was briefed with, part by part with sizes.
+- **Test runs in the background.** A suite started in the foreground is
+  refused, since it holds every reply until it ends and a new ask could
+  never cut into it the way the project's *While a test runs* setting
+  says; the unit tier runs either way.
 - **And it can be counted.** `bb rules audit [DAYS]` reads the account's
   own conversations on the project and counts the commands a rule refuses,
   run or tried, and how often the code map was asked against a grep of the

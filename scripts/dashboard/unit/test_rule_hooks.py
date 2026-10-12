@@ -57,6 +57,22 @@ class Reading(unittest.TestCase):
             self.assertIsNone(self.hit(line), line)
 
 
+class MapFirst(unittest.TestCase):
+    def test_a_definition_or_a_call_is_a_lookup_and_text_is_not(self):
+        import rulehook
+        for pat, want in [("def claudeRestart", ["claudeRestart"]), ("^def _clean\\b", ["_clean"]),
+                          ("function startClaude", ["startClaude"]), ("claudeLiveOn\\(", ["claudeLiveOn"]),
+                          ("class Foo|def bar_baz", ["Foo", "bar_baz"]),
+                          ("TODO", []), ("apt install", []), ("resumePick", [])]:
+            self.assertEqual(rulehook.symbols(pat), want, pat)
+
+    def test_the_searches_a_shell_line_runs(self):
+        import rulehook
+        self.assertEqual(rulehook.search_patterns(
+            'grep -rn "function startClaude" scripts | head; rg -e "def _clean" .; git grep -n "x(" ; ls'),
+            ["function startClaude", "def _clean", "x("])
+
+
 class Store(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -88,6 +104,30 @@ class Store(unittest.TestCase):
         self.assertIsNotNone(rules.refusing("alpha", "apt-get install -y nvidia-driver-595"))
         self.assertIsNone(rules.refusing("alpha", "git config user.email t@t"))
         self.assertIsNotNone(rules.refusing("alpha", "git config --global user.email me@x"))
+
+    def test_a_test_run_is_refused_only_in_the_foreground(self):
+        for line in ("bb tests run", "bash scripts/bb tests preflight --base HEAD",
+                     "cd /workspace/BuilderBot && timeout 900 bash scripts/bb dashboard test cards 2>&1 | tail",
+                     "bash scripts/dashboard/test/run.sh cards"):
+            g = rules.refusing("alpha", line)
+            self.assertEqual(g and g[0]["name"], "tests-in-the-background", line)
+            self.assertIsNone(rules.refusing("alpha", line, background=True), line)
+        for line in ("bb tests unit", "bb tests log", "./run.sh", "bash run.sh", "bb dashboard trace 30"):
+            self.assertIsNone(rules.refusing("alpha", line), line)
+
+    def test_what_claude_is_told_is_shown_to_the_person(self):
+        rules.add("alpha", "agent-compat", "Add, do not change.", by="you", words="agent")
+        out = json.loads(self.hook("bb-prompt-relay", "alpha", "u_t",
+                                   stdin={"prompt": "the agent", "session_id": "c"}))
+        self.assertIn("Add, do not change.", out["hookSpecificOutput"]["additionalContext"])
+        self.assertTrue(out["systemMessage"].startswith("[BuilderBot told Claude]"))
+        self.assertIn("Add, do not change.", out["systemMessage"])
+        out = json.loads(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
+                                   stdin={"tool_name": "Bash", "tool_input": {"command": "pkill -f x"}}))
+        self.assertTrue(out["systemMessage"].startswith("[BuilderBot refused a command]"))
+        self.assertEqual(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
+                                   stdin={"tool_name": "Bash", "tool_input": {"command": "bb tests run",
+                                                                              "run_in_background": True}}), "")
 
     def test_turned_off_it_refuses_nothing_and_the_briefing_lines_still_do(self):
         rules.set_project_off("alpha", ["ask-do-not-install"])

@@ -30,7 +30,7 @@ import re
 import threading
 import time
 import urllib.parse
-from .base import log, log_once
+from .base import log_once
 
 TICK = 5.0
 LIST_EVERY = 30.0

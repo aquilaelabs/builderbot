@@ -267,7 +267,7 @@ def audit(uid, project, judge, days=AUDIT_DAYS):
     refuses (or would have, before it refused anything), by the guard's
     name with a few of the commands; how many calls asked `bb map` against
     how many searched the code (grep -r, rg, git grep, the Grep and Glob
-    tools); and how many calls the guard did refuse. `judge(command)` is the
+    tools); and how many calls the guard did refuse. `judge(command, background)` is the
     guard's name for a shell line or "". A turn a person can read is
     counted, never Claude's reasoning; nothing here leaves the account."""
     since = time.time() - max(1, int(days)) * 86400
@@ -332,7 +332,7 @@ def audit(uid, project, judge, days=AUDIT_DAYS):
                                 searched = True
                         out["map"] += mapped
                         out["grep"] += searched
-                        hit = judge(cmd)
+                        hit = judge(cmd, bool((b.get("input") or {}).get("run_in_background")))
                         if hit:
                             out["guards"][hit] = out["guards"].get(hit, 0) + 1
                             ex = out["examples"].setdefault(hit, [])

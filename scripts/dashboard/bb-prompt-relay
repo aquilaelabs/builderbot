@@ -176,15 +176,19 @@ def main():
         # keyed to "agent" should fire whether the word came from the operator
         # or from a task notification about one.
         say, fired, names = catchup(project, session, str(req.get("prompt") or ""))
-        if say:
-            print(say)
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+        import rulehook                                       # noqa: E402
         if fired:
-            print(fired)
             # Remembered for this conversation, so a summary does not drop
             # it (bb-rule-hook recall).
-            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-            import rulehook                                   # noqa: E402
             rulehook.remember(project, req.get("session_id"), names)
+        told = "\n\n".join(x for x in (say, fired) if x)
+        if told:
+            # To Claude as context, and the same to the person as a
+            # system message, so what Claude is acting on is on the screen.
+            print(json.dumps({"systemMessage": rulehook.shown("told Claude", told),
+                              "hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                                                     "additionalContext": told}}))
     if not text or not project:
         return
     if len(text) > MAX:

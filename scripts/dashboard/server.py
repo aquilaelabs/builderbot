@@ -6951,8 +6951,8 @@ class Handler(BaseHTTPRequestHandler):
                 days = transcripts.AUDIT_DAYS
             guards = rules.guards(name)
 
-            def judge(cmd):
-                hit = rulehook.refused(guards, cmd)
+            def judge(cmd, background=False):
+                hit = rulehook.refused(guards, cmd, background)
                 return hit[0]["name"] if hit else ""
             return self._json({"project": name, "audit": transcripts.audit(uid, name, judge, days)})
         return self._json({"project": name, "rows": transcripts.mine(uid, [name])})

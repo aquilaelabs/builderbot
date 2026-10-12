@@ -80,7 +80,6 @@ import share  # noqa: E402
 _lib = os.path.join(os.path.dirname(_here), "lib")
 if _lib not in sys.path:
     sys.path.insert(0, _lib)
-import cmdmatch  # noqa: E402
 import rulehook  # noqa: E402
 from pathlib import Path  # noqa: E402
 
@@ -215,6 +214,17 @@ ALWAYS = [
              " emulator binary: bb picks the GPU, waits for the boot, keeps the log and saves its"
              " state on stop.",
      "refuse": ["emulator -avd", "emulator @*"]},
+    # Only a call that is not in the background (`foreground`): a run started
+    # with run_in_background is what the line asks for (the operator, 12 Oct:
+    # a run held every reply, so a new ask could never cut into it).
+    {"name": "tests-in-the-background",
+     "text": "Start a test run in the background (run_in_background) and wait on its"
+             " notification, answering meanwhile: a run in the foreground holds every reply until"
+             " it ends, so a new ask cannot cut into it the way the project's While a test runs"
+             " setting says. The unit tier (bb tests unit) is quick enough to run either way.",
+     "refuse": ["bb test", "bb tests run", "bb tests preflight", "bb tests lab", "bb tests coverage",
+                "bb dashboard test", "*/dashboard/test/run.sh"],
+     "foreground": True},
     {"name": "identity-is-given",
      "text": "Your commit identity arrives as git's environment, so a commit that cannot find an"
              " author is a fault to report with `bb report`, not one to fix with git config"
@@ -908,10 +918,10 @@ def guards(project):
     return out + [dict(g, by="builderbot") for g in ALWAYS]
 
 
-def refusing(project, command):
+def refusing(project, command, background=False):
     """(the guard that refuses this shell line, the command as read) or
     None, over what is in effect here."""
-    return rulehook.refused(guards(project), command)
+    return rulehook.refused(guards(project), command, background)
 
 
 def by_names(project, names):

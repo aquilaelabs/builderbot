@@ -135,6 +135,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - After Claude Code summarizes a long conversation, the named house rules it had been told are said again in full (9981b52)
 - bb rules audit [DAYS] counts, over your own conversations on a project, the commands a rule refuses that were run or tried, and how often the code map was asked against a grep of the code (9981b52)
 - A house rule can refuse commands outright (Commands it refuses, bb rules add --refuse): a session's shell call that runs one is stopped with the rule as the reason. ask-do-not-install refuses the package managers; pkill -f and the emulator binary are refused everywhere (9981b52)
+- What a session is told by BuilderBot's hooks is shown to the person too, as a system message labeled BuilderBot's: the rules a file or word raises, the catch-up, a refused command, a held hand-back, and at the start what it was briefed with, part by part (8553fdb)
+- A search for where a name is defined or called (grep for def NAME, function NAME, NAME( or the Grep tool) is handed bb map find's answer beside it, so a session reaching for grep still gets the one-call answer (8553fdb)
+- A test suite started in the foreground of a session is refused with the reason: it holds every reply, so a new ask could not cut in as the While a test runs setting says (8553fdb)
 
 ### Changed
 

@@ -160,7 +160,10 @@ def main():
     # The documented shape, and a plain line beside it: if this version of
     # Claude Code words its hook output differently, the line is still in the
     # transcript and the note is still on disk.
-    json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+    sys.path.insert(0, os.path.join(here, "..", "lib"))
+    import rulehook                                           # noqa: E402
+    json.dump({"systemMessage": rulehook.shown("told Claude", say),
+               "hookSpecificOutput": {"hookEventName": "PreToolUse",
                                       "additionalContext": say}}, sys.stdout)
     print(f"\n[builderbot] {say}", file=sys.stderr)
 
