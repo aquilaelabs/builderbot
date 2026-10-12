@@ -69,6 +69,11 @@ class Emptied(unittest.TestCase):
         self.assertEqual(items["go"]["state"], "current", "the install since the check made it current")
         self.assertEqual([t["name"] for r in bell if r.get("kind") == "toolchain" for t in r["tools"]], [])
 
+    def test_platform_tools_alone_is_not_the_android_tools(self):
+        items, _ = self.run_with(node({"top": ["android"], "android": ["platform-tools"], "incomplete": [], "roots": []}))
+        self.assertFalse(items["android-tools"]["installed"], "android-tools is cmdline-tools")
+        self.assertTrue(items["android:platform-tools"]["installed"])
+
     def test_a_node_that_has_not_listed_its_store_is_still_unknown(self):
         items, _ = self.run_with(node(None))
         self.assertTrue(items["jdk"]["unknown"])

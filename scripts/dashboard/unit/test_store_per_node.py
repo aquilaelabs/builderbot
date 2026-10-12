@@ -28,12 +28,27 @@ class OwnDirectory(unittest.TestCase):
         self.assertEqual(st.use_scope(self.store, "n_9381e721"), "n_9381e721")
         self.assertTrue(os.path.isdir(os.path.join(self.store, "n_9381e721")))
         self.assertEqual(st.tc_root(state), os.path.join(self.store, "n_9381e721"))
-        os.makedirs(os.path.join(self.store, "n_9381e721", "go"))
+        os.makedirs(os.path.join(self.store, "n_9381e721", "go", "bin"))
         os.makedirs(os.path.join(self.store, "n_0ldd0ne1"))
         os.makedirs(os.path.join(self.store, "shared"))
         dirs = st.store_dirs(state)
         self.assertEqual(dirs["top"], ["go"], "its own directory's toolchains")
         self.assertEqual(sorted(dirs["roots"]), ["n_0ldd0ne1", "n_9381e721", "shared"])
+
+
+    def test_an_empty_directory_is_no_toolchain(self):
+        """A delete that could not finish leaves an empty platform-tools
+        (the operator, 12 Oct): it is not listed, so no row reads installed."""
+        st = self.stores
+        state = {"stores": {"toolchains": self.store}}
+        st.use_scope(self.store, "n_9381e721")
+        root = os.path.join(self.store, "n_9381e721")
+        os.makedirs(os.path.join(root, "android", "platform-tools"))
+        os.makedirs(os.path.join(root, "go"))
+        os.makedirs(os.path.join(root, "jdk", "bin"))
+        dirs = st.store_dirs(state)
+        self.assertEqual(dirs["top"], ["android", "jdk"], "go is empty; android holds a directory")
+        self.assertEqual(dirs["android"], [], "an empty platform-tools is not listed")
 
 
 if __name__ == "__main__":

@@ -311,10 +311,20 @@ def store_dirs(state):
     out = {"top": [], "android": []}
     if not store:
         return out
+    # An empty directory is no toolchain: a delete that could not finish
+    # (a file still open over NFS) or a mount point leaves one, and listed,
+    # an empty android/platform-tools read as two Android rows installed on
+    # a store wiped to start over (the operator, 12 Oct).
+    def full(d):
+        with contextlib.suppress(OSError):
+            return os.path.isdir(d) and any(True for _ in os.scandir(d))
+        return False
     with contextlib.suppress(OSError):
-        out["top"] = sorted(x for x in os.listdir(store) if not x.startswith("."))[:64]
+        out["top"] = sorted(x for x in os.listdir(store) if not x.startswith(".")
+                            and full(os.path.join(store, x)))[:64]
     with contextlib.suppress(OSError):
-        out["android"] = sorted(os.listdir(os.path.join(store, "android")))[:64]
+        out["android"] = sorted(x for x in os.listdir(os.path.join(store, "android"))
+                                if x.startswith(".") or full(os.path.join(store, "android", x)))[:64]
     # A directory is not a toolchain: an install that stopped part-way leaves
     # one without the file that completes it (playwright's module beside its
     # browsers). A layout that names that file (`needs`) is checked here, and

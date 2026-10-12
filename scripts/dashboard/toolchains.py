@@ -948,7 +948,7 @@ def payload_for_node(nid):
         if probe.startswith("android:"):
             here = probe.split(":", 1)[1] in andr
         elif probe == "android-tools":
-            here = bool({"cmdline-tools", "platform-tools"} & andr)
+            here = "cmdline-tools" in andr
         else:
             here = probe in top
         if name in set((rep.get("store_dirs") or {}).get("incomplete") or []):
@@ -1229,7 +1229,7 @@ def names_in(dirs):
         if probe.startswith("android:"):
             here = probe.split(":", 1)[1] in andr
         elif probe == "android-tools":
-            here = bool({"cmdline-tools", "platform-tools"} & andr)
+            here = "cmdline-tools" in andr
         else:
             here = probe in top
         if here:
@@ -1354,7 +1354,7 @@ def node_has(n):
             # the binaries, so it corroborates; where a node has reported no
             # toolchains at all there is nothing to corroborate with and the
             # directory is all there is to go on.
-            here = bool({"cmdline-tools", "platform-tools"} & andr) \
+            here = "cmdline-tools" in andr \
                 and (bool(tc.get("android-sdk")) if tc else True)
         else:
             here = probe in top
