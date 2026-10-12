@@ -4908,7 +4908,16 @@ class Handler(BaseHTTPRequestHandler):
         if why:
             return self._json({"error": why, "toolchains": []})
         if nid and nid != "local" and not NODES_OK:
-            return self._json(toolchains.payload_for_node(nid))
+            d = toolchains.payload_for_node(nid)
+            # A toolchain job's output is the node's, read by a session only
+            # with its project's diagnostics grant, as bb jobs reads it (the
+            # operator, 12 Oct): the rows and what failed stay, the log lines
+            # and the error excerpts go, with the reason in their place.
+            why = self._diag_why() if (self._who() or {}).get("session") else ""
+            if why and isinstance(d.get("job"), dict):
+                d["job"] = {k: v for k, v in d["job"].items() if k not in ("log", "errors")}
+                d["job"]["hidden"] = why
+            return self._json(d)
         return self._json(toolchains.payload())
 
     def _get_emulator(self):
