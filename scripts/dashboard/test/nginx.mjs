@@ -151,11 +151,12 @@ ok(await page.$eval('#bellPanel', e => /nginx update on sandbox/.test(e.textCont
      && e.querySelector('[data-bdismiss^="nginx:"]')),
    'the bell carries an nginx note of its own kind, with Dismiss keyed to the digest');
 await page.click('#bBell');
-// ...and the Docker row says so with Update nginx.
+// ...and the Docker row says so with Update, the word every row's update uses.
 await page.evaluate(() => openDocker());
 await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
-ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)),
-   'the Docker tab\'s row of a node\'s nginx says the line is out, with Update nginx');
+ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
+     && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),
+   'the Docker tab\'s row of a node\'s nginx says the line is out, with Update as on every row');
 await page.evaluate(() => openNginxTab());
 await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
 await page.click(`${sect} [data-ngupdate]`);   // its confirm is accepted by lib.mjs's dialog handler
