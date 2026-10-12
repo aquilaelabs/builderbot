@@ -112,8 +112,9 @@ class Store(unittest.TestCase):
             g = rules.refusing("alpha", line)
             self.assertEqual(g and g[0]["name"], "tests-in-the-background", line)
             self.assertIsNone(rules.refusing("alpha", line, background=True), line)
-        for line in ("bb tests unit", "bb tests log", "./run.sh", "bash run.sh", "bb dashboard trace 30"):
-            self.assertIsNone(rules.refusing("alpha", line), line)
+        for line in ("bb tests unit", "bb tests log", "./run.sh", "bash run.sh", "bb dashboard trace 30",
+                     "bb tests preflight --dry", "bb tests preflight --files a.py --dry 2>&1 | tail"):
+            self.assertIsNone(rules.refusing("alpha", line), line)     # --dry is the plan alone (B698)
 
     def test_what_claude_is_told_is_context_alone(self):
         rules.add("alpha", "agent-compat", "Add, do not change.", by="you", words="agent")

@@ -224,7 +224,8 @@ ALWAYS = [
              " it ends, so a new ask cannot cut into it the way the project's While a test runs"
              " setting says. The unit tier (bb tests unit) is quick enough to run either way.",
      "refuse": ["bb test", "bb tests run", "bb tests preflight", "bb tests lab", "bb tests coverage",
-                "bb dashboard test", "*/dashboard/test/run.sh"],
+                "bb dashboard test", "*/dashboard/test/run.sh",
+                "!bb tests preflight* --dry*"],          # the plan only: nothing runs (B698)
      "foreground": True},
     {"name": "identity-is-given",
      "text": "Your commit identity arrives as git's environment, so a commit that cannot find an"
