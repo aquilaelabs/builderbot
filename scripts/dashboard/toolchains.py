@@ -803,6 +803,20 @@ def _node_errors(job_id, failed, verb):
     return out
 
 
+_tried_memo = {}
+
+
+def _tried(job_id):
+    """The toolchains a node's job began, read from its log's headers
+    (`== bb toolchains VERB NAME`), kept per job."""
+    if job_id not in _tried_memo:
+        text = (nodes.job(job_id) or {}).get("log") or "" if nodes else ""
+        _tried_memo[job_id] = set(re.findall(r"^== bb toolchains [a-z]+ (\S+)$", text, re.M))
+        while len(_tried_memo) > 32:
+            _tried_memo.pop(next(iter(_tried_memo)))
+    return _tried_memo[job_id]
+
+
 def finished(act, names, here, rep, state):
     """(done, failed) for a node's last toolchain job, from what is true now.
 
@@ -1060,6 +1074,12 @@ def payload_for_node(nid):
                 here = {i["name"] for i in items if i["installed"]}
                 here |= {r["name"] for r in (driver_row(n), container_row(n)) if r and r["here"]}
                 done, failed = finished(act, names, here, rep, j.get("state"))
+                # Stopped: a toolchain it never reached did not fail, it was
+                # not tried (the operator, 12 Oct: Abort on flutter called the
+                # twelve behind it failed). Which were tried is in the log.
+                if j.get("state") == "canceled":
+                    tried = _tried(j["id"])
+                    failed = [x for x in failed if x in tried]
                 job = {"running": False, "action": act, "queue": [], "current": "",
                        "done": done, "failed": failed,
                        "errors": _node_errors(j["id"], failed, act),

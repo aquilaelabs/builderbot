@@ -104,7 +104,9 @@ class Job(threading.Thread):
         self.canceled = True
         p = self.proc
         if p is not None and p.poll() is None:
-            self._kill(p)
+            # On a thread of its own: the kill now waits for the child's
+            # cleanup, and a cancel arrives on the agent's main loop.
+            threading.Thread(target=self._kill, args=(p,), daemon=True).start()
 
     def step(self, name):
         """What this job is doing now, for the row. Rides the next log post
@@ -625,12 +627,22 @@ class Job(threading.Thread):
         return state, code
 
     @staticmethod
-    def _kill(p):
+    def _kill(p, grace=60):
         # The whole session, not just the leader: a build spawns children
         # that would otherwise keep the pipe open and the job "running".
+        # TERM first, then up to `grace` seconds for it to finish what it does
+        # on TERM (a toolchain install removes its partial download, which
+        # for flutter over NFS took longer than the two seconds this gave:
+        # killed mid-delete, half of it stayed and read as installed, the
+        # operator, 12 Oct), then KILL whatever is left of the group.
         try:
             os.killpg(p.pid, 15)
-            time.sleep(2)
-            os.killpg(p.pid, 9)
         except OSError:
-            pass
+            return
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if p.poll() is not None:
+                break
+            time.sleep(0.25)
+        with contextlib.suppress(OSError):
+            os.killpg(p.pid, 9)

@@ -480,6 +480,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - An Android package can be removed from the Toolchains tab when the Android command-line tools are not installed: its directory is deleted directly (a968c58)
 - The Toolchains tab ticks what an install put on a node as soon as the node reports it, rather than after the page is reloaded (f266d17)
 - Install selected on a node installs every ticked toolchain, not the first eight (8a77d93)
+- Aborting a toolchain install no longer leaves half a toolchain reading installed, or calls the toolchains it never reached failed (6d24de5)
 
 ### Security
 
