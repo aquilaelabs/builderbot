@@ -215,7 +215,8 @@ elif op == "add":
         print("[builderbot] not filed yet. Send it with bb report \"what happened\" [--area A] "
               f"[--repro \"...\"] if it is a problem with BuilderBot itself, or add --here if it is "
               f"{proj}'s own bug. It names BuilderBot or bb, and BuilderBot's problems go to its "
-              f"maintainers, not into {proj}'s tracker",
+              f"maintainers, not into {proj}'s tracker, while {proj}'s setting Claude may: Report "
+              "BuilderBot bugs is on (off makes bb bug add file here)",
               file=sys.stderr)
         sys.exit(1)
     r = bugs.add(proj, title, by="claude",
