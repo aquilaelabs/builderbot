@@ -381,7 +381,17 @@ print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
     const was = git('rev-parse', 'HEAD').trim();
     git('checkout', '-q', '-b', 'ready'); writeFileSync(`${B}/r.txt`, 'r\n');
     git('add', 'r.txt'); git('commit', '-q', '-m', 'Ready work');
+    // The status poll keeps what git said of a project until its .git
+    // moves (R94): a branch switched under it is read at once, never a
+    // kept answer from before.
+    const statusBranch = async () => ((await (await fetch(URL.replace(/\/$/, '') + '/api/status',
+      { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json()).projects || [])
+      .find(p => p.name === 'beta')?.git;
+    const onReady = await statusBranch();
     git('checkout', '-q', main);
+    const onMain = await statusBranch();
+    ok(onReady === 'ready' && onMain === main,
+       `the status poll reads a branch switched under it at once, never one kept from before (${onReady}, then ${onMain})`);
     ok((await act('merge', { name: main })).error, 'the branch the tree is on cannot be merged into itself');
     const m = await act('merge', { name: 'ready' });
     ok(m.ok && existsSync(`${B}/r.txt`) && (await api('what=status')).branch === main,

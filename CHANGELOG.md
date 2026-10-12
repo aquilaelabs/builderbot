@@ -462,6 +462,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Docker tab asks the node every time, so a row stops reading 'as last seen' while anything runs there; the kept listing stands in only when the node does not answer (7d31173)
 - An agent update that learns more of the published-ports setting applies it on its own, without the switch being turned off and on (07c6c68)
 - A machine log read goes beside a long job on the node instead of waiting behind it; an agent pulls a synced project every two minutes as a fallback rather than every ten seconds; a waiting node's new enroll script is worded as a first enrollment; an answered ask leaves the bell at once (ee6b2b5)
+- The status poll asks git about a project only when its repository has changed, and reads the uptime without starting a process, instead of three git commands per project and a ps on every poll (4893035)
 
 ### Security
 

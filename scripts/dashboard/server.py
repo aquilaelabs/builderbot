@@ -678,6 +678,68 @@ def _row_git_ready(base, over):
     return bool(g["name"] and g["email"])
 
 
+# What git says of each project, kept until what it depends on moves (R94):
+# three git forks per project on every /api/status, about sixty a poll on a
+# controller with twenty projects, and the status poll at 1.3s on average
+# (12 Oct). Keyed on what .git/HEAD says, .git/config's size and time and
+# .git's time: a branch switch rewrites HEAD and a remote change config, so
+# either asks git again; a .git that is a file (a worktree) is asked every
+# time, and nothing is kept longer than GIT_FACTS_S.
+GIT_FACTS_S = 60.0
+_git_facts_kept = {}
+
+
+def _git_stamp(d):
+    # HEAD by its contents, a few bytes that are the branch itself, since a
+    # share that keeps times to the second would not tell two switches in
+    # one second apart; config by its size and time, and .git's time.
+    g = d / ".git"
+    try:
+        if not g.is_dir():
+            return None
+        c = (g / "config").stat()
+        return ((g / "HEAD").read_bytes()[:512], c.st_size, c.st_mtime_ns, g.stat().st_mtime_ns)
+    except OSError:
+        return None
+
+
+def _git_facts(d):
+    """(git_ok, linked, fhost, forge, github, branch) for one project."""
+    stamp = _git_stamp(d)
+    hit = _git_facts_kept.get(str(d))
+    if stamp is not None and hit and hit[0] == stamp and time.time() - hit[1] < GIT_FACTS_S:
+        return hit[2]
+    branch, git_ok, linked, github, fhost, forge = None, False, True, False, "", forges.OTHER
+    if (d / ".git").exists():
+        # Asking git rather than trusting the directory's existence: a
+        # half-copied or corrupt .git looks identical from out here, and a
+        # repo git cannot read is not one anything can act on.
+        git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
+                     timeout=10)["out"].strip() == "true"
+    if git_ok:
+        # Asked of git, not read out of .git/config: a worktree or a
+        # submodule keeps its config elsewhere, and these drive visible
+        # controls (the chain on the row; the GitHub command card's
+        # ghosting), so a wrong guess here offers an action that cannot
+        # work. -v for the URLs, which is what says which host it is on.
+        remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
+        linked = bool(remotes.strip())
+        # Which forge, for the chain's own words, and `github` still on its
+        # own, because the command card runs `gh` and that is GitHub's and
+        # nobody else's.
+        fhost = _remote_host(remotes) if linked else ""
+        forge = forges.forge_of(fhost)
+        github = fhost.lower().split(":")[0] == "github.com"
+        r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"], timeout=10)
+        # `out` carries stderr too, so a detached HEAD would otherwise put a
+        # `fatal:` line where the branch name goes.
+        branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
+    facts = (git_ok, linked, fhost, forge, github, branch)
+    if stamp is not None:
+        _git_facts_kept[str(d)] = (stamp, time.time(), facts)
+    return facts
+
+
 def _projects_on_disk():
     """The directories under /workspace that are projects, each with what is
     wrong with it: the walk, the permissions, and what git says of the
@@ -767,35 +829,9 @@ def _projects_on_disk():
             except OSError:
                 pass                    # unreadable: covered by `missing` above
 
-            if (d / ".git").exists():
-                # Asking git rather than trusting the directory's existence: a
-                # half-copied or corrupt .git looks identical from out here, and
-                # a repo git cannot read is not one anything can act on.
-                git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
-                             timeout=10)["out"].strip() == "true"
+            git_ok, linked, fhost, forge, github, branch = _git_facts(d)
             if not git_ok:
                 issues.append({"level": "error", "text": "no valid git repository"})
-            else:
-                # Asked of git, not read out of .git/config: a worktree or a
-                # submodule keeps its config elsewhere, and these drive
-                # visible controls (the chain on the row; the GitHub command
-                # card's ghosting), so a wrong guess here offers an action
-                # that cannot work. -v for the URLs, which is what says which
-                # host it is on.
-                remotes = run(["git", "-C", str(d), "remote", "-v"],
-                              timeout=10)["out"]
-                linked = bool(remotes.strip())
-                # Which forge, for the chain's own words, and `github` still
-                # on its own, because the command card runs `gh` and that is
-                # GitHub's and nobody else's.
-                fhost = _remote_host(remotes) if linked else ""
-                forge = forges.forge_of(fhost)
-                github = fhost.lower().split(":")[0] == "github.com"
-                r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
-                        timeout=10)
-                # `out` carries stderr too, so a detached HEAD would otherwise
-                # put a `fatal:` line where the branch name goes.
-                branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
 
         out.append({"dir": d, "name": d.name, "issues": issues, "git": branch,
                     "git_ok": git_ok, "linked": linked, "github": github,
@@ -1782,9 +1818,21 @@ def end_session(session, node=""):
 
 def uptime():
     # PID 1 started when the container did, so its elapsed time is the
-    # container's; /proc/uptime is the host's under a shared kernel.
-    r = run(["ps", "-o", "etime=", "-p", "1"], timeout=10)
-    return r["out"].strip() or "?"
+    # container's; /proc/uptime alone is the host's under a shared kernel.
+    # Read from /proc in ps's own etime shape ([[dd-]hh:]mm:ss) rather than
+    # forking ps on every status poll (R94); ps where /proc does not say.
+    try:
+        start = int(open("/proc/1/stat").read().rsplit(")", 1)[1].split()[19])
+        up = float(open("/proc/uptime").read().split()[0])
+        secs = max(0, int(up - start / os.sysconf("SC_CLK_TCK")))
+        d, rest = divmod(secs, 86400)
+        h, rest = divmod(rest, 3600)
+        m, sec = divmod(rest, 60)
+        return (f"{d}-{h:02d}:{m:02d}:{sec:02d}" if d else f"{h:02d}:{m:02d}:{sec:02d}" if h
+                else f"{m:02d}:{sec:02d}")
+    except (OSError, ValueError, IndexError):
+        r = run(["ps", "-o", "etime=", "-p", "1"], timeout=10)
+        return r["out"].strip() or "?"
 
 
 # The API surface the companion app is written against (android/). One
