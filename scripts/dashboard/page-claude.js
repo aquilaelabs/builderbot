@@ -14,6 +14,12 @@
 
 // Which project's chooser is open, if any.
 let resumeFor = null;
+// The second step of the Claude button's menu (the operator, 12 Oct): which
+// conversation on which node was picked, and the model and effort it is to
+// start on, chosen there each time rather than kept in the project's
+// settings. Kept here as they are picked, since the menu is drawn again on
+// every poll. null while the menu offers its first step.
+let resumePick = null;
 
 // `ps -o etime=` gives MM:SS under an hour, HH:MM:SS under a day, and
 // D-HH:MM:SS beyond one. Rendered raw in a header with four buttons beside it
@@ -109,14 +115,11 @@ function openClaude(name, ev){
   const ns = claudeNodes(p);
   // Nowhere for it to run opens the reason under the row rather than a
   // tab, which is the whole of what the press can do.
-  const asks = !!p?.session_why || ns.length > 1 || !!p?.last_claude
-    || liveSessions().has(myClaude(name))
-    || ns.some(n => n.where === "node" && !claudeSigned(n));
-  if (!asks){
-    resumeFor = null;
-    return startClaude(name, null, "");
-  }
+  // Always the menu now: a session starts on the model and effort picked in
+  // it (the operator, 12 Oct), so even one node and nothing to resume asks.
+  void ns;
   resumeFor = resumeFor === name ? null : name;
+  resumePick = null;
   drawProjects(state.projects);
 }
 
@@ -142,6 +145,7 @@ function startClaude(name, sessionId, node){
 
 function launchClaude(name, sessionId, node){
   resumeFor = null;
+  resumePick = null;
   // Redraw the card, not just the tabs: the chooser is a child of it and would
   // otherwise sit there until the next poll, over a choice already made.
   if (state) drawProjects(state.projects);
@@ -234,6 +238,57 @@ function claudeNodeFacts(n){
   return bits.join(" · ");
 }
 
+// The menu's second step: the model and effort a session starts on, picked
+// each time (the operator, 12 Oct), opening on the last ones picked here,
+// and Start. Saved as this account's own for the project, which is what the
+// launcher reads when the session starts, so nothing else changes.
+let resumeModelNow = {project: "", model: ""};
+function resumePicker(p, m, card, anchor, ns, several){
+  const r = resumePick;
+  const n = ns.find(x => x.id === r.node) || ns[0] || {};
+  const opts = (table, cur) => table.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${
+    esc(v === "" && table === MODELS && resumeModelNow.project === p.name && resumeModelNow.model
+      ? `Claude's default (last session: ${(MODELS.find(([x]) => x === resumeModelNow.model) || [])[1] || resumeModelNow.model})` : l)}</option>`).join("");
+  m.innerHTML = `<div class="sub">${r.sessionId ? `Resume the conversation from ${esc(ago(p.last_claude?.when))}` : "A new conversation"}${
+      several || n.name ? ` on ${esc(n.name || "")}` : ""}</div>
+    <label class="pick">Model <select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></label>
+    <label class="pick">Effort <select id="rmEffort" aria-label="effort this session starts on">${opts(EFFORTS, r.effort)}</select></label>
+    <div class="actbar"><span class="state" id="rmSay"></span><span class="sp"></span>
+      <button type="button" data-back>Back</button>
+      <button type="button" class="primary" data-start>Start</button></div>`;
+  m.dataset.pick = p.name;
+  card.appendChild(m);
+  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
+  m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
+  m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
+  m.querySelector("[data-start]").onclick = async e => {
+    busy(e.target, "Starting");
+    if (r.model !== (p.yours?.model || "") || r.effort !== (p.yours?.effort || "")){
+      const j = await (await postJSON("/api/prefs", {project: p.name, model: r.model, effort: r.effort})).json()
+        .catch(() => ({error: "no answer"}));
+      if (j.error){ unbusy(e.target, "Start"); m.querySelector("#rmSay").textContent = j.error; return; }
+      if (p.yours) Object.assign(p.yours, {model: r.model, effort: r.effort});
+    }
+    resumePick = null;
+    startClaude(p.name, r.sessionId, r.node);
+  };
+  // What the last session here answered on, for Claude's default to name.
+  if (resumeModelNow.project !== p.name){
+    resumeModelNow = {project: p.name, model: ""};
+    fetch(`/api/claude-now?project=${encodeURIComponent(p.name)}`).then(x => x.json())
+      .then(j => {
+        if (!j.model || resumeModelNow.project !== p.name) return;
+        resumeModelNow.model = j.model;
+        const o = document.querySelector('#rmModel option[value=""]');
+        if (o) o.textContent = `Claude's default (last session: ${(MODELS.find(([x]) => x === j.model) || [])[1] || j.model})`;
+      })
+      .catch(() => {});
+  }
+  const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
+  m.style.top = (a.bottom - c.top + 4) + "px";
+}
+
 function placeResumeMenu(){
   const p = (state?.projects || []).find(x => x.name === resumeFor);
   const anchor = $("projects").querySelector(`[data-c="${CSS.escape(resumeFor)}"]`);
@@ -243,6 +298,10 @@ function placeResumeMenu(){
   const m = document.createElement("div");
   m.className = "pinmenu resumemenu";
   m.id = "resumemenu";
+  if (resumePick?.project === p.name){
+    resumePicker(p, m, card, anchor, ns, several);
+    return;
+  }
   // What one node offers: Open tab and End session where this account's
   // session runs there; its sign-in where this account has none there;
   // else Resume and New conversation, or the one press when there is
@@ -280,8 +339,16 @@ function placeResumeMenu(){
     drawProjects(state.projects);
     openNodeClaude(b.dataset.signinNode);
   });
-  m.querySelectorAll("[data-r]").forEach(b => b.onclick = () => startClaude(p.name, p.last_claude.id, b.dataset.node));
-  m.querySelectorAll("[data-n]").forEach(b => b.onclick = () => startClaude(p.name, null, b.dataset.node));
+  // Resume or New conversation picked: the menu turns to the model and
+  // effort to start on, with Start. A new project's first session goes to
+  // its brief instead, which asks the same two beside the brief.
+  const pick = (sessionId, node) => {
+    if (!sessionId && p.brief && !claudeLiveOn(p.name, {id: node || ""})) return startClaude(p.name, null, node);
+    resumePick = {project: p.name, sessionId, node, model: p.yours?.model || "", effort: p.yours?.effort || ""};
+    drawProjects(state.projects);
+  };
+  m.querySelectorAll("[data-r]").forEach(b => b.onclick = () => pick(p.last_claude.id, b.dataset.node));
+  m.querySelectorAll("[data-n]").forEach(b => b.onclick = () => pick(null, b.dataset.node));
   m.querySelectorAll("[data-open]").forEach(b => b.onclick = () => launchClaude(p.name, null, b.dataset.node));
   m.querySelectorAll("[data-end]").forEach(b => b.onclick = () =>
     claudeEnd(p.name, ns.find(n => n.id === b.dataset.end) || {id: "", name: ""}, several));

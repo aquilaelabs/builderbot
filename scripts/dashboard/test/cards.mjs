@@ -1808,13 +1808,14 @@ ok(!await page.$eval('#rnDelete', e => e.hidden) && /Delete project/.test(await 
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
 }
-await page.selectOption('#rnModel', 'sonnet');
-ok(!await page.$eval('#rnModel', e => e.disabled)
-   && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
-   'with no session running it simply applies at the next start');
+await page.selectOption('#rnAsks', 'fewer');
+ok(!await page.$eval('#rnAsks', e => e.disabled) && !(await page.$('#rnModel')) && !(await page.$('#rnEffort'))
+   && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent))
+   && /picked each time a session starts, in the Claude button's menu/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+   'with no session running it simply applies at the next start; the model and effort are no longer the dialog\'s');
 // A color for the project: nine swatches, none by default, and the one
 // picked is worn by the row and by the notebook tab once saved.
-await page.selectOption('#rnModel', '');
+await page.selectOption('#rnAsks', '');
 ok(await page.$$eval('#rnColor [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
    'the dialog offers a color, with none picked for a project nobody colored');
@@ -1861,43 +1862,8 @@ await page.click('#rnCancel');
   tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
   await refreshUntil(page, () => liveSessions().has(myClaude('alpha')),
                      { timeout: 20000 });
-  // With no model set, the dialog says which model the last session here
-  // answered on, on the "Claude's default" option and in the hint, and
-  // leaves the default selected: opening it changes nothing, so nothing is
-  // asked and nothing restarts (the operator's report, 14 Sep). Picking that
-  // model is a choice and is saved as one: the picker once showed the last
-  // model as if it were set and saved "", so a project read Fable in its
-  // settings and launched on Opus (the operator, 11 Oct).
-  const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
-  const tdir = `${DIR}/home/.claude/projects/${slug}`;
-  mkdirSync(tdir, { recursive: true });
-  writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
-    '{"type":"user","message":{"role":"user","content":"hi"}}\n'
-    + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.waitForFunction(() => /last session: Fable/.test(document.querySelector('#rnModel option[value=""]').textContent),
-                             null, { timeout: 8000 });
-  ok(await page.$eval('#rnModel', e => e.value) === ''
-     && /last session here answered on Fable/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
-     'with nothing set, the default stays picked and says the model the last session ran on');
-  const askedBefore = page.dialogs.length;
-  ok(await page.$eval('.rnbar[data-rnbar="yours"] [data-rnsave]', b => b.disabled),
-     'with the default left where it was nothing is unsaved: its section\'s Save stays dead');
-  await page.selectOption('#rnModel', 'fable');
-  ok(!await page.$eval('.rnbar[data-rnbar="yours"] [data-rnsave]', b => b.disabled),
-     '...and picking that same model is a change, which its section\'s Save offers to keep');
-  await page.selectOption('#rnModel', '');
-  await page.click('#rnCancel');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
-  ok(page.dialogs.length === askedBefore, '...and closing asks nothing');
-  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))
-       && !(state?.projects || []).find(p => p.name === 'alpha')?.yours?.model),
-     '...restarts nothing, and stores nothing: the default is still the default');
-  rmSync(tdir, { recursive: true, force: true });
-  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
-  await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnModel', 'sonnet');
   await page.selectOption('#rnAsks', 'fewer');
   // Both answers are on the section's bar from the start (the operator,
   // 10 Oct): a first press that only asked saved nothing for whoever pressed
@@ -1908,14 +1874,14 @@ await page.click('#rnCancel');
     state: b.querySelector('.state').textContent, save: b.querySelector('[data-rnsave]').hidden,
     keep: b.querySelector('[data-rnkeep]').textContent, end: b.querySelector('[data-rnend]').textContent,
     others: [...document.querySelectorAll('.rnbar:not([data-rnbar="yours"]) [data-rnsave]')].every(x => x.disabled),
-    stored: (state?.projects || []).find(p => p.name === 'alpha')?.yours?.model || '' }));
+    stored: (state?.projects || []).find(p => p.name === 'alpha')?.yours?.asks || '' }));
   ok(asked.save && asked.keep === 'Save, keep it running' && asked.end === 'Save and end it'
-     && /^Model, Questions changed; its running session takes Model, Questions only when it starts$/.test(asked.state)
+     && /^Questions changed; its running session takes Questions only when it starts$/.test(asked.state)
      && asked.others && asked.stored === '' && page.dialogs.length === before,
      `with a session running, the section's bar names what it takes only at its start and offers both answers at once (${JSON.stringify(asked)})`);
   ok(!(await sectSave(page, 'yours')), '...Save, keep it running saves');
   await refreshUntil(page, () => (state?.projects || [])
-    .find(p => p.name === 'alpha')?.yours?.model === 'sonnet', { timeout: 20000 });
+    .find(p => p.name === 'alpha')?.yours?.asks === 'fewer', { timeout: 20000 });
   ok(true, '...and keeping it running still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
@@ -1958,14 +1924,7 @@ await page.click('#rnCancel');
                      { timeout: 20000 });
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnModel', '');
-  await saveDialog(page);
-  // `|| ''` because a record back at every default is REMOVED rather than
-  // stored (the file says only what somebody chose), so the row carries no
-  // model key at all, which every reader of it defaults the same way.
-  await refreshUntil(page, () => ((state?.projects || [])
-    .find(p => p.name === 'alpha')?.yours?.model || '') === '',
-    { timeout: 20000 });
+  await page.click('#rnCancel');
 }
 
 // Ghosted where no session can start. Unlike the credential fields above there
@@ -1975,9 +1934,9 @@ await page.waitForFunction(() => (state?.projects || [])
   .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
 await page.evaluate(() => renameProject('gamma'));
 await page.waitForSelector('#rnmodal:not([hidden])');
-ok(await page.$eval('#rnModel', e => e.disabled)
-   && await page.$eval('#rnEffort', e => e.disabled),
-   'a locked project cannot be given a model: no session starts there to have one');
+ok(await page.$eval('#rnReply', e => e.disabled)
+   && await page.$eval('#rnAsks', e => e.disabled),
+   'a locked project cannot be given session settings: no session starts there to have them');
 ok(/Locked/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
@@ -2337,9 +2296,44 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
      && /^Resume: 2 h ago$/.test(menu.buttons[0].text) && menu.buttons[2].text === 'Sign in on fresh',
      `...Resume and New conversation for the node this account is signed in on, a sign-in for the one it is not, and no press for one that cannot start a session (${
         menu.buttons.map(b => b.text).join(' | ')})`);
+  // The last session here answered on Fable: the next step's Model names it
+  // on "Claude's default", read from the newest transcript.
+  const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
+  const tdir = `${DIR}/home/.claude/projects/${slug}`;
+  mkdirSync(tdir, { recursive: true });
+  writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
+    '{"type":"user","message":{"role":"user","content":"hi"}}\n'
+    + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
   await page.waitForFunction(() => { const b = document.querySelector('#resumemenu [data-n][data-node="n_ubu"]');
     if (!b) return false; b.click(); return true; }, null, { timeout: 10000 });
+  // New conversation picked: the menu turns to the model and effort to start
+  // on, with Start (the operator, 12 Oct), and starts nothing yet.
+  await page.waitForSelector('#resumemenu #rmModel', { timeout: 10000 });
+  await page.waitForFunction(() => /last session: Fable/.test(document.querySelector('#rmModel option[value=""]')?.textContent || ''),
+                             null, { timeout: 8000 });
+  const step = await page.$eval('#resumemenu', m => ({ text: m.querySelector('.sub').textContent.trim(),
+    models: [...m.querySelectorAll('#rmModel option')].map(o => o.value), efforts: [...m.querySelectorAll('#rmEffort option')].map(o => o.value),
+    buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }));
+  ok(/^A new conversation on ubu$/.test(step.text) && step.models.includes('opus') && step.models.includes('fable')
+     && step.efforts.includes('high') && step.buttons.join() === 'Back,Start'
+     && !(await page.evaluate(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'))),
+     `...New conversation turns the menu to Model and Effort with Start, naming the last session's model on the default, and starts nothing yet (${step.text}; ${step.buttons.join(' | ')})`);
+  // A poll redraws the card: the step and what was picked stay.
+  await page.selectOption('#rmModel', 'sonnet');
+  await page.selectOption('#rmEffort', 'high');
+  await page.evaluate(() => refresh());
+  await page.waitForTimeout(600);
+  ok(await page.$eval('#rmModel', e => e.value) === 'sonnet' && await page.$eval('#rmEffort', e => e.value) === 'high',
+     '...and a poll redrawing the card keeps the step and the picks');
+  await page.click('#resumemenu [data-start]');
   await page.waitForFunction(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'), null, { timeout: 10000 });
+  await refreshUntil(page, () => { const y = (state?.projects || []).find(p => p.name === 'alpha')?.yours || {};
+    return y.model === 'sonnet' && y.effort === 'high'; }, { timeout: 20000 });
+  ok(true, '...and Start saves them as this account\'s for the project, which the launcher reads, and opens the session');
+  await (await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'alpha', model: '', effort: '' }) })).json();
+  rmSync(tdir, { recursive: true, force: true });
   // The row planted again in the same evaluation as the read: a poll that
   // was already on its way when the hold went on lands whenever it lands.
   const tab = await page.evaluate(() => {

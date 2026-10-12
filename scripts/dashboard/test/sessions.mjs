@@ -308,6 +308,11 @@ const phone = await newPage(browser, { viewport: { width: 400, height: 800 } });
 await phone.goto(URL);
 await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'sespanel', { timeout: 30000 });
 await phone.evaluate(() => setView('terminal'));
+// Over a shell tab, opened here: Keys is on the bar over a shell tab and
+// nowhere else, and this page opens on the layout the desktop saved, which
+// has no tab left after the middle-click above (it passed while that save
+// landed late, and stopped once the poll got quicker, 12 Oct).
+await phone.evaluate(() => { if (!tabs.some(t => t.kind === 'term')) openTab({kind: 'term', arg: argForSession('shell-alpha'), label: 'shell-alpha'}); });
 await phone.waitForSelector('#mKeys', { state: 'visible' });
 ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && !await phone.$('#bKeys'),
    'the phone bar carries the keys, and the strip has no ⌨ anywhere to hide');

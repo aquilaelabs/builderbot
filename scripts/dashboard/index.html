@@ -4319,10 +4319,6 @@ body.booting .pane>.loading{margin:auto}
       <label id="rnMineLabel">Your sessions and commits<span class="help" data-help="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
       <div class="hint">Yours alone; everything above is the project's.</div>
       <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
-        <label class="pick">Model <select id="rnModel"
-          aria-label="model your sessions here start on"></select></label>
-        <label class="pick">Effort <select id="rnEffort"
-          aria-label="effort your sessions here start on"></select></label>
         <label class="pick">Replies <select id="rnReply"
           aria-label="how wordy Claude's replies to you are here">
           <option value="">Claude's default</option>
@@ -5664,7 +5660,6 @@ $("rnColor").onclick = e => {
   $("rnColor").querySelectorAll("[data-color]").forEach(x => {
     x.setAttribute("aria-checked", String(x === b)); });
 };
-["rnModel", "rnEffort"].forEach(id => { $(id).onchange = rnDrawPrefs; });
 $("rnTokenClear").onclick = () => {
   rnClearToken = !rnClearToken;
   if (rnClearToken) $("rnToken").value = "";   // whatever was typed was for the

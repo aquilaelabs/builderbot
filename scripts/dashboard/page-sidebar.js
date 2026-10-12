@@ -447,8 +447,12 @@ function drawProjects(all){
   // The chooser is positioned against the card, so it is a sibling of the list
   // rather than part of it: replacing the list's innerHTML does not remove it,
   // and without this they stack up one per draw.
-  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => n.remove());
-  if (resumeFor) placeResumeMenu();
+  // ...except the menu's second step while it is up for the same project:
+  // drawn again on every poll, a pull-down somebody had open snapped shut.
+  const keep = resumePick && resumeFor === resumePick.project
+    ? el.closest(".card").querySelector(`.resumemenu[data-pick="${CSS.escape(resumePick.project)}"]`) : null;
+  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => { if (n !== keep) n.remove(); });
+  if (resumeFor && !keep) placeResumeMenu();
 }
 
 // Handlers for the job row, and the ellipsis it needs running. Called from
