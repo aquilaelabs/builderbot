@@ -451,7 +451,11 @@ function drawProjects(all){
   // drawn again on every poll, a pull-down somebody had open snapped shut.
   const keep = resumePick && resumeFor === resumePick.project
     ? el.closest(".card").querySelector(`.resumemenu[data-pick="${CSS.escape(resumePick.project)}"]`) : null;
-  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => { if (n !== keep) n.remove(); });
+  // ...and its first step too, which placeResumeMenu leaves in place when
+  // it would draw the same thing (a redraw replaced it under the pointer).
+  const first = resumeFor && !keep
+    ? el.closest(".card").querySelector(`.resumemenu[data-for="${CSS.escape(resumeFor)}"]:not([data-pick])`) : null;
+  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => { if (n !== keep && n !== first) n.remove(); });
   if (resumeFor && !keep) placeResumeMenu();
 }
 

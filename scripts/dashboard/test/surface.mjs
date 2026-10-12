@@ -40,7 +40,7 @@ import { dirname, join } from 'node:path';
 // it moved.
 const SURFACE = [
   'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
-  'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
+  'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'claudeRestart', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'cardDropIndex', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
