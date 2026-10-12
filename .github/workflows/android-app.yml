@@ -3,8 +3,14 @@
 # job gets), so the build is `gradlew` and nothing else. The APK lands in
 # BuilderBot's own dist/ on the projects share when the runner's machine
 # mounts it (the sandbox does, at /workspace), which is where the Artifacts
-# tab lists it and where /api/meta points an app that finds itself behind;
-# and it goes up as a workflow artifact either way.
+# tab lists it and where /api/meta points an app that finds itself behind.
+# It is not uploaded as a workflow artifact: the ones worth keeping are the
+# releases, whose files hang off the GitHub release itself, and a 14 MB
+# artifact per push kept 90 days filled the account's 0.5 GB of Actions
+# storage in a month (B669), which the self-hosted runner does nothing
+# about, since it saves minutes and an artifact is billed by the GB-month
+# whoever uploads it. A runner that does not mount the share says so in
+# the log and the APK goes nowhere.
 #
 # On main only, for the paths the app is built from: a PR does not build it
 # (the dashboard suite's appapi.mjs already holds the contract there), so
@@ -138,21 +144,8 @@ jobs:
             cp "${{ steps.name.outputs.file }}" /workspace/BuilderBot/dist/
             echo "in dist/: ${{ steps.name.outputs.file }}"
           else
-            echo "the projects share is not mounted on this runner; the APK is a workflow artifact only"
+            echo "::warning::the projects share is not mounted on this runner, so the APK went nowhere: it is not kept as a workflow artifact (B669)"
           fi
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a   # v7.0.1, pinned by commit (B274)
-        with:
-          name: ${{ steps.name.outputs.file }}
-          path: ${{ steps.name.outputs.file }}
-          if-no-files-found: error
-          # A week, not the repository's 90 days: the copy that matters is
-          # the one in dist/ on the share, and this one is for a runner that
-          # does not mount it. Kept the default, forty pushes a month at
-          # 14 MB each filled the account's 0.5 GB of Actions storage, which
-          # a self-hosted runner does nothing about (it saves minutes, and
-          # an artifact is billed by the GB-month whoever uploads it).
-          retention-days: 7
 
       - name: Close the log
         if: always()

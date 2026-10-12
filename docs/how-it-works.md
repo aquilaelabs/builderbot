@@ -4282,8 +4282,10 @@ together: the file, the constant, the app.
 a node's runner: the JDK and the Android SDK come from the node's toolchain
 store, the same environment every `bb` job gets, on a push to `main` that
 touches `android/`, names it by `bb version --file`, drops it into
-BuilderBot's `dist/` where the runner's machine mounts the projects share,
-and uploads it as a workflow artifact. Locally, `cd android && ./gradlew
+BuilderBot's `dist/` where the runner's machine mounts the projects share.
+It is not kept as a workflow artifact: the builds worth keeping are the
+releases, whose files hang off the GitHub release, and one artifact per
+push filled the account's Actions storage in a month (B669). Locally, `cd android && ./gradlew
 assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.
 On a node the build writes under the node's own disk rather than the
 projects share (a job's cache folder, or the account's `~/.cache/builderbot/gradle`),
