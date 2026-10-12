@@ -54,12 +54,13 @@ if verb == "audit":
     # the last DAYS, counted against the rules that refuse commands.
     days = argv[1] if len(argv) > 1 and argv[1].isdigit() else "7"
     q = urllib.parse.urlencode({"project": proj, "audit": days})
-    r = bbapi.call(f"/api/transcripts?{q}", auth=auth)
+    r = bbapi.call(f"/api/transcripts?{q}", auth=auth, timeout=300)
     if not isinstance(r, dict) or r.get("error"):
         fail(r.get("error") if isinstance(r, dict) else "the controller answered something that is not an audit")
     a = r.get("audit") or {}
     print(f"your conversations on {proj} over the last {a.get('days')} days: "
-          f"{a.get('conversations', 0)}, with {a.get('bash', 0)} shell commands")
+          f"{a.get('conversations', 0)}, with {a.get('bash', 0)} shell commands"
+          + (f" (the newest {48} MB of {a['partial']} long one{'s' if a['partial'] != 1 else ''})" if a.get("partial") else ""))
     g = a.get("guards") or {}
     if g:
         print("commands a rule refuses (refused since the guard, or would have been before it):")
