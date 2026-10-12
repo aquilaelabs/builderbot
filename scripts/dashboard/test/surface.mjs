@@ -92,7 +92,7 @@ const SURFACE = [
     'reportsSection', 'clearReports',
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
-  'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
+  'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth', 'rnDrawKey', 'rnKeyAct',
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnDrawSigning', 'rnFillColor', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnLoadSigning', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSaveSigning', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',

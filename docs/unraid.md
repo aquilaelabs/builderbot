@@ -39,7 +39,7 @@ those rows. Nothing else.
 |---|---|---|---|
 | **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
 | **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the runner section of the node's row on the Nodes tab; kept root-only on the controller. Never visible to sessions |
-| **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | `/secrets/ssh/`. Loaded into a root-owned agent: usable by git, unreadable by sessions |
+| **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | Made or pasted under **Deploy key** in a project's settings (kept at `/config/deploy-keys`, root-only), or dropped into `/secrets/ssh/` by hand. Either way loaded into a root-owned agent: usable by git, unreadable by sessions |
 | **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
 **Runner scope decides the runner token's permission**, and it is the only
@@ -407,12 +407,14 @@ Pick per your taste:
 
 | Approach | Result |
 |---|---|
-| SSH key in `secrets/ssh/` | Usable *and* unreadable: the only option that gives both |
+| Deploy key made or pasted in the project's settings, or an SSH key in `secrets/ssh/` | Usable *and* unreadable: the only option that gives both |
 | Per-project token, in the clone dialog | Session-readable by design, but scoped to the one repository that names it: a token that opens one repo opens one repo |
 | `gh auth login` in a session | Same exposure, and a separate token you can revoke independently |
 
 **How the SSH shielding works:** at startup a *root-owned* `ssh-agent` loads
-every key from `secrets/ssh/`; sessions get only the agent's socket. When
+every key from `secrets/ssh/` and every deploy key a project's settings made
+or kept (`/config/deploy-keys`, through the root-only `deploy-key` helper,
+the builder account's second sudo rule); sessions get only the agent's socket. When
 Claude runs `git push`, the agent signs the authentication challenge on its
 behalf: the key *works* everywhere, but the private key bytes are never
 readable by any session, so it cannot be copied out of the container. (Keys

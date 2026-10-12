@@ -7383,6 +7383,11 @@ class Handler(BaseHTTPRequestHandler):
         # authenticates with, or with a token typed and not saved yet.
         if req.get("action") == "test":
             return self._json(*projects.auth_test(name, str(req.get("token") or "")))
+        # Its own deploy key, made or pasted beside the token (the operator,
+        # 12 Oct): the private half goes to the root-only helper and no
+        # further.
+        if str(req.get("action") or "").startswith("key-"):
+            return self._json(*projects.deploy_key(name, str(req["action"]), str(req.get("key") or "")))
         return self._json(*projects.auth_answer(name))
 
     def _project_ftp(self, req):

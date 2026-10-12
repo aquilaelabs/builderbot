@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+#
+# Root-only helper that keeps the deploy keys made or pasted in a project's
+# settings, and loads them into the shielded ssh-agent, so the unprivileged
+# `builder` user (and any Claude session running as it) can push with a key
+# and never read it. The keys an operator drops into /secrets/ssh by hand
+# are loaded beside these at boot, and nothing here touches them.
+#
+# The builder user may run exactly this script via sudo (the image's sudoers
+# rule). A private key comes in on stdin once; every verb prints the public
+# half at most.
+#
+#   deploy-key make NAME     make an ed25519 key called NAME, load it, print its public half
+#   deploy-key store NAME    keep the private key read on stdin as NAME, load it, print its public half
+#   deploy-key forget NAME   unload NAME and remove it
+#   deploy-key --list        NAME per kept key, one per line
+#   deploy-key --load        load every kept key into the agent (boot)
+#
+set -euo pipefail
+
+. /opt/builderbot/scripts/lib/common.sh
+
+# Under /config so a key survives the container being recreated; root-only,
+# so the dashboard and every session reach it only through this script.
+STORE=/config/deploy-keys
+SOCK=/run/builderbot/ssh-agent.sock
+
+[ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"
+
+kind="${1:-}"
+name="${2:-}"
+case "$kind" in
+    make|store|forget)
+        [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] \
+            || die "usage: deploy-key $kind NAME (letters, digits, dot, dash, underscore)" ;;
+    --list|--load) ;;
+    *) die "usage: deploy-key [make|store|forget] NAME, or --list, or --load" ;;
+esac
+install -d -m 0700 -o root -g root "$STORE"
+file="$STORE/$name"
+
+# Into the agent, the comment being the key's name: the dashboard lists the
+# agent's keys by comment (server.agent_keys), and ssh-add takes it from the
+# key file.
+load() {
+    [ -S "$SOCK" ] || die "the shielded ssh-agent is not running here (no ssh-agent or socat in the image?)"
+    SSH_AUTH_SOCK="$SOCK" ssh-add "$1" >/dev/null 2>&1 || die "the agent would not take $(basename "$1")"
+}
+
+case "$kind" in
+    make)
+        [ ! -e "$file" ] || die "a deploy key called $name is kept already: forget it first"
+        ssh-keygen -q -t ed25519 -N "" -C "$name" -f "$file" >/dev/null
+        chmod 0600 "$file"
+        load "$file"
+        cat "$file.pub" ;;
+    store)
+        [ ! -e "$file" ] || die "a deploy key called $name is kept already: forget it first"
+        tmp="$(mktemp "$STORE/.in.XXXXXX")"
+        trap 'rm -f "$tmp" "$tmp.pub"' EXIT
+        head -c 16384 > "$tmp"
+        chmod 0600 "$tmp"
+        grep -q 'PRIVATE KEY' "$tmp" || die "that is not a private key: paste the whole file, BEGIN and END lines included"
+        ssh-keygen -y -P "" -f "$tmp" > "$tmp.pub" 2>/dev/null \
+            || die "that key cannot be read without a passphrase, or is not a key ssh reads"
+        # Its comment set to the name, so the agent lists it by that name.
+        ssh-keygen -q -c -C "$name" -P "" -f "$tmp" >/dev/null 2>&1 || true
+        ssh-keygen -y -P "" -f "$tmp" | awk -v n="$name" '{print $1, $2, n}' > "$tmp.pub"
+        mv "$tmp" "$file"; mv "$tmp.pub" "$file.pub"
+        trap - EXIT
+        load "$file"
+        cat "$file.pub" ;;
+    forget)
+        [ -e "$file" ] || die "no deploy key called $name is kept here"
+        [ -S "$SOCK" ] && SSH_AUTH_SOCK="$SOCK" ssh-add -d "$file.pub" >/dev/null 2>&1 || true
+        rm -f "$file" "$file.pub"
+        echo "forgot $name" ;;
+    --list)
+        for f in "$STORE"/*.pub; do
+            [ -f "$f" ] || continue
+            basename "$f" .pub
+        done ;;
+    --load)
+        n=0
+        for f in "$STORE"/*; do
+            [ -f "$f" ] && [ "${f%.pub}" = "$f" ] || continue
+            if [ -S "$SOCK" ] && SSH_AUTH_SOCK="$SOCK" ssh-add "$f" >/dev/null 2>&1; then
+                n=$((n + 1))
+            else
+                warn "could not load deploy key $(basename "$f")"
+            fi
+        done
+        echo "$n" ;;
+esac

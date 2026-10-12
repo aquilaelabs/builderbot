@@ -18,7 +18,8 @@ unraid/builderbot.xml            Unraid Docker template (one-click updates)
 scripts/
   entrypoint.sh                  secrets shield, uid remap, hooks, ssh-agent
   supervisor.sh                  keeps the box alive; the graceful shutdown
-  mint-runner-token              root-only token helper (the one sudo command)
+  mint-runner-token              root-only token helper (one of the two sudo commands)
+  deploy-key                     root-only deploy key helper: make, keep, forget, load (the other)
   healthcheck.sh                 docker healthcheck
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec

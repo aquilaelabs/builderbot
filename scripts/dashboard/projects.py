@@ -31,6 +31,7 @@ import re
 import secrets
 import shutil
 import signal
+import subprocess
 import tarfile
 import tempfile
 import threading
@@ -525,7 +526,99 @@ def auth_options(project, dest):
             # project that has only ever been https has no alias and no key
             # picked, and offering "deploy key" would be offering to build
             # one, which is the clone dialog's job, not this one's.
-            "ssh": now == "ssh" or bool(_remembered_ssh(project))}
+            "ssh": now == "ssh" or bool(_remembered_ssh(project)),
+            # The deploy key made or pasted for it in these settings, if any:
+            # its public half and where the host takes it.
+            "deploy": deploy_key_of(project, dest)}
+
+
+# ---- a project's own deploy key (the operator, 12 Oct) -----------------------
+#
+# Made or pasted in the project's settings, beside the access token, rather
+# than only dropped into /secrets/ssh by hand (which still works, and whose
+# keys the clone dialog offers as before). The private half goes to the
+# root-only helper on stdin and is never seen here again: the helper keeps it
+# under /config/deploy-keys and loads it into the shielded agent, so a
+# session can push with it and never read it, as with the hand-placed keys.
+KEY_HELPER = "/opt/builderbot/scripts/deploy-key"
+# Where each host takes a deploy key, after https://HOST/OWNER/REPO.
+_KEY_PAGES = {"github": "/settings/keys", "gitea": "/settings/keys", "forgejo": "/settings/keys",
+              "codeberg": "/settings/keys", "gitlab": "/-/settings/repository",
+              "bitbucket": "/admin/access-keys/"}
+
+
+def deploy_key_name(project):
+    """The agent's name for a project's own key: the project's folder, and
+    a suffix that keeps it apart from a hand-placed key of the same name."""
+    return f"{project}-deploy"
+
+
+def _key_page(dest):
+    url = origin_url(dest)
+    host, repo = forges.host_of(url), repo_path_of(url)
+    tail = _KEY_PAGES.get(forges.forge_of(host).get("id", ""))
+    return f"https://{host}/{repo}{tail}" if host and repo and tail else ""
+
+
+def deploy_key_of(project, dest):
+    """{name, pub, page} for the key this project's settings made, or None."""
+    name = deploy_key_name(project)
+    k = next((k for k in (agent_keys() or []) if k["name"] == name), None)
+    return {"name": name, "pub": k["pub"], "page": _key_page(dest)} if k else None
+
+
+def _key_helper(argv, text=None):
+    try:
+        p = subprocess.run(["sudo", "-n", KEY_HELPER, *argv], input=text, capture_output=True,
+                           text=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "", f"the deploy-key helper did not run: {e}"
+    if p.returncode != 0:
+        said = (p.stderr or p.stdout).strip().splitlines()
+        return "", re.sub(r"^\[builderbot\] ERROR: ", "", said[-1] if said else f"exit {p.returncode}")[:200]
+    return p.stdout.strip(), ""
+
+
+def deploy_key(project, action, text=""):
+    """Make, keep (pasted on `text`) or forget this project's deploy key.
+    (payload, status). A key made or kept is wired as the project's ssh
+    remote to switch to (Deploy key, then Save); it does not switch."""
+    if not PROJECT_NAME.fullmatch(project or "") or not (WORKSPACE / project).is_dir():
+        return {"error": "unknown project"}, 400
+    dest = WORKSPACE / project
+    name = deploy_key_name(project)
+    if action == "key-forget":
+        if f"bb-{name}-" in origin_url(dest):
+            return {"error": "this project pushes with that key now: pick the access token or "
+                             "Disabled and Save first"}, 409
+        _, err = _key_helper(["forget", name])
+        if err:
+            return {"error": err}, 400
+        d = load_push()
+        if isinstance(d.get(project), dict) and f"bb-{name}-" in (d[project].get("ssh_url") or ""):
+            d[project].pop("ssh_url", None)
+            save_push(d)
+        return {"ok": True, "message": "the deploy key is forgotten here; remove it on the host too"}, 200
+    if action not in ("key-make", "key-store"):
+        return {"error": "a deploy key is made, pasted or forgotten"}, 400
+    url = origin_url(dest)
+    host, repo = forges.host_of(url), repo_path_of(url)
+    if not host or not repo:
+        return {"error": "this project has no remote on a host to give a deploy key to"}, 400
+    if not isinstance(load_push().get(project), dict):
+        return {"error": "this project was cloned without push rights, so a key would push nothing"}, 400
+    if action == "key-store" and "PRIVATE KEY" not in text:
+        return {"error": "paste the whole private key, BEGIN and END lines included"}, 400
+    pub, err = _key_helper(["make" if action == "key-make" else "store", name],
+                           text if action == "key-store" else None)
+    if err:
+        return {"error": err}, 400
+    pub = pub.splitlines()[-1].strip() if pub else ""
+    alias = ensure_deploy_alias(name, pub, host)
+    _remember_ssh(project, f"git@{alias}:{repo}.git")
+    return {"ok": True, "deploy": {"name": name, "pub": pub, "page": _key_page(dest)},
+            "message": ("add the public key below to the repository as a deploy key with write "
+                        "access, then pick Deploy key and Save")}, 200
 
 
 def _same_repository(dest, url):

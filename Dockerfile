@@ -218,10 +218,13 @@ RUN set -eux; \
     useradd -m -u 1000 -g 1000 -s /bin/bash builder; \
     # No general sudo: with blanket root access, shielding secrets from the
     # builder user (i.e. from Claude sessions) would be theater. The one
-    # sanctioned privilege is minting short-lived runner tokens from the
-    # root-only secret stash. System packages install via EXTRA_APT_PACKAGES,
+    # sanctioned privileges are minting short-lived runner tokens from the
+    # root-only secret stash, and the deploy keys below. System packages install via EXTRA_APT_PACKAGES,
     # which runs as root during startup.
-    echo 'builder ALL=(root) NOPASSWD: /opt/builderbot/scripts/mint-runner-token' > /etc/sudoers.d/builder; \
+    # ...and keeping the deploy keys made or pasted in a project's settings,
+    # whose private halves the builder user never reads (deploy-key).
+    printf '%s\n' 'builder ALL=(root) NOPASSWD: /opt/builderbot/scripts/mint-runner-token' \
+        'builder ALL=(root) NOPASSWD: /opt/builderbot/scripts/deploy-key' > /etc/sudoers.d/builder; \
     chmod 0440 /etc/sudoers.d/builder; \
     # Explicitly lock both accounts' passwords: password auth must never be a
     # path to privilege in this container, and there is nothing to brute-force,

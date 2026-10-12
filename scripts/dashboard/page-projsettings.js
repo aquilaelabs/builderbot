@@ -550,6 +550,7 @@ function renameProject(name, mode = "all"){
   $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`;
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
+  $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
   rnLoadAuth(name);
   rnLoadSigning(name);
   rnLoadSnapshots(name);
@@ -1075,6 +1076,7 @@ function rnLoadAuth(name){
   rnAuthNow = rnAuthPick = rnAuthOpts = null;
   rnClearToken = false;
   $("rnAuthField").hidden = true;
+  $("rnKeyField").hidden = true;
   $("rnAddrField").hidden = true;
   $("rnAddr").value = "";
   $("rnTestField").hidden = true;
@@ -1094,9 +1096,52 @@ function rnLoadAuth(name){
       $("rnAddrField").hidden = !j.url;
       $("rnTestField").hidden = !j.url;
       rnDrawAuth();
+      rnDrawKey();
       rnBars();
     })
     .catch(() => {});                          // the rename itself still works
+}
+
+// The project's own deploy key (the operator, 12 Oct): made or pasted here,
+// shown by its public half with where the host takes it, forgotten here.
+// Shown wherever the token is: a project that may push.
+function rnDrawKey(){
+  const f = $("rnKeyField");
+  if (!rnAuthOpts || $("rnTokenField").hidden){ f.hidden = true; return; }
+  f.hidden = false;
+  const k = rnAuthOpts.deploy, pasting = !$("rnKeyPaste").hidden;
+  $("rnKeyPub").hidden = !k;
+  $("rnKeyPub").textContent = k ? k.pub : "";
+  $("rnKeyMake").hidden = !!k || pasting;
+  $("rnKeyPasteBtn").hidden = !!k;
+  $("rnKeyPasteBtn").textContent = pasting ? "Keep it" : "Paste a key";
+  $("rnKeyCopy").hidden = $("rnKeyForget").hidden = !k;
+  $("rnKeyHint").innerHTML = k
+    ? `Add this on the host as a deploy key with write access${k.page ? `: <a href="${esc(k.page)}" target="_blank" rel="noopener">its deploy keys page</a>` : ""}, then pick Deploy key below and Save.`
+    : pasting ? "Paste the whole private key, without a passphrase. It is kept where sessions can push with it and never read it."
+    : "None made here. Make one, or paste one you have.";
+}
+
+async function rnKeyAct(action){
+  const name = rnFor, btn = {"key-make": "rnKeyMake", "key-store": "rnKeyPasteBtn", "key-forget": "rnKeyForget"}[action];
+  busy($(btn), action === "key-forget" ? "Forgetting" : action === "key-make" ? "Making" : "Keeping");
+  let j;
+  try{
+    j = await (await postJSON("/api/project-auth", {name, action,
+      key: action === "key-store" ? $("rnKeyPaste").value : ""})).json();
+  }catch{ j = {error: "no answer from the dashboard"}; }
+  $(btn).disabled = false;
+  $(btn).removeAttribute("aria-busy");
+  if (rnFor !== name) return;
+  const out = $("rnKeyOut");
+  out.classList.toggle("bad", !!j.error);
+  out.textContent = j.error || j.message || "";
+  out.hidden = !out.textContent;
+  if (!j.error){
+    $("rnKeyPaste").value = "";
+    $("rnKeyPaste").hidden = true;
+    rnLoadAuth(name);
+  } else rnDrawKey();
 }
 
 function rnDrawAuth(){

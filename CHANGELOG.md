@@ -127,6 +127,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The bell flashes red twice when something new goes wrong, then settles to its red dot (7d31173)
 - A running container on a hosting node whose port no nginx route points at says so on its Docker row, with the way to the nginx tab (ee6b2b5)
 - An open cloudflared SSH door's row gives the ~/.ssh/config block for the PC, named for the node, and MobaXterm's way in (ee6b2b5)
+- A project's settings can make a deploy key or take a pasted one, beside its access token: kept root-only so sessions push with it and never read it, its public half shown with a link to the host's deploy keys page. Keys in /secrets/ssh still work (d6b61e3)
 
 ### Changed
 

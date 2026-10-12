@@ -113,8 +113,9 @@ SED
     fi
 }
 
-# Shielded SSH keys: private keys dropped in /secrets/ssh (root-only mount)
-# are loaded into a root-owned ssh-agent. Builder processes get only the
+# Shielded SSH keys: private keys dropped in /secrets/ssh (root-only mount),
+# and the deploy keys made or pasted in a project's settings (deploy-key,
+# under /config/deploy-keys), are loaded into a root-owned ssh-agent. Builder processes get only the
 # agent socket (SSH_AUTH_SOCK is baked into the image env), so git/ssh can
 # *use* the keys (the agent signs on their behalf), but no session can ever
 # read the private key material itself.
@@ -124,7 +125,8 @@ setup_ssh_agent() {
     local root_sock=/run/builderbot/ssh-agent.sock
     local k added=0
 
-    [ -d "$keydir" ] || return 0
+    # Started whether or not /secrets/ssh is there: a deploy key made in a
+    # project's settings needs the agent running to be loaded into.
     command -v ssh-agent >/dev/null 2>&1 || { warn "ssh-agent not available"; return 0; }
 
     mkdir -p /run/builderbot
@@ -135,6 +137,7 @@ setup_ssh_agent() {
     ssh-agent -a "$root_sock" >/dev/null
 
     for k in "$keydir"/*; do
+        [ -d "$keydir" ] || break
         [ -f "$k" ] || continue
         grep -q 'PRIVATE KEY' "$k" 2>/dev/null || continue
         # ssh-add refuses group/world-readable keys; the mount is root-only
@@ -146,11 +149,7 @@ setup_ssh_agent() {
         fi
     done
 
-    if [ "$added" -eq 0 ]; then
-        warn "no usable keys in ${keydir}; ssh-agent left empty"
-        rm -f "$root_sock"
-        return 0
-    fi
+    added=$((added + $(/opt/builderbot/scripts/deploy-key --load 2>/dev/null || echo 0)))
 
     # ssh-agent rejects any client whose uid differs from its own (root is the
     # sole exception), so the builder user cannot talk to it directly no matter
@@ -181,7 +180,7 @@ setup_ssh_agent() {
     done
 
     if [ -S "$user_sock" ]; then
-        log "ssh-agent: ${added} shielded key(s) loaded; sessions can use them, not read them"
+        log "ssh-agent: ${added} shielded key(s) loaded; sessions can use them, not read them; a project's settings can add a deploy key"
     else
         warn "ssh-agent proxy failed to start; shielded keys will be unusable"
     fi

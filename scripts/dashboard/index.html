@@ -2591,10 +2591,11 @@ pre.diff .d-ctx{color:var(--dim)}
    "public key" as an add-an-SSH-key form and then offers itself on every
    field on the page whose label says name, title, label or description
    (B533), whatever data-bwignore says. */
-#pPub{margin-top:8px;background:var(--sunk);border:1px solid var(--line);
+#pPub,#rnKeyPub{margin-top:8px;background:var(--sunk);border:1px solid var(--line);
   border-radius:var(--r-control);padding:6px 8px;font:11px/1.5 var(--mono);
   color:var(--dim);white-space:pre;overflow-x:auto;user-select:all}
 #pCopy{margin-top:6px}
+#rnKeyPaste{width:100%;margin-top:8px;font:11px/1.5 var(--mono)}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 /* The count rides on the book, so the row answers "does Claude remember
@@ -4068,6 +4069,22 @@ body.booting .pane>.loading{margin:auto}
            is what changes the project. -->
       <button type="button" id="rnTokenClear" class="link" hidden></button>
       <div class="hint" id="rnTokenHint"></div>
+    </div>
+    <!-- Its own deploy key, made or pasted here rather than only dropped into
+         /secrets/ssh by hand (the operator, 12 Oct). Acts at the press, like
+         Test: the private half goes to the root-only helper and is never
+         shown again; the public half is shown to add on the host. -->
+    <div class="field" id="rnKeyField" hidden>
+      <label id="rnKeyLabel">Deploy key<span class="help" data-help="made or pasted here, kept where sessions can push with it and never read it" tabindex="0">?</span></label>
+      <div id="rnKeyPub" tabindex="0" aria-label="the deploy key's public half" hidden></div>
+      <textarea id="rnKeyPaste" rows="4" autocomplete="off" spellcheck="false" data-bwignore hidden
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+      <div class="logdays setrow"><span class="hint grow" id="rnKeyHint"></span>
+        <button type="button" id="rnKeyMake">Make a key</button>
+        <button type="button" id="rnKeyPasteBtn">Paste a key</button>
+        <button type="button" id="rnKeyCopy" hidden>Copy public key</button>
+        <button type="button" id="rnKeyForget" class="danger" hidden>Forget</button></div>
+      <div class="hint" id="rnKeyOut" hidden></div>
     </div>
     <!-- Which of the two credentials git actually reaches for. A project can
          hold both (a deploy key in the agent and a token in /config) and
@@ -5673,6 +5690,18 @@ $("rnAuthToken").onclick = () => rnAuthSet("https");
 // it is a single intention, and the submit does them in that order.
 $("rnToken").addEventListener("input", rnDrawAuth);
 $("rnTest").onclick = rnTestAuth;
+$("rnKeyMake").onclick = () => rnKeyAct("key-make");
+$("rnKeyPasteBtn").onclick = () => {
+  if ($("rnKeyPaste").hidden){ $("rnKeyPaste").hidden = false; $("rnKeyPaste").focus(); rnDrawKey(); return; }
+  rnKeyAct("key-store");
+};
+$("rnKeyForget").onclick = () => rnKeyAct("key-forget");
+$("rnKeyCopy").onclick = async () => {
+  const pub = $("rnKeyPub").textContent;
+  try { await navigator.clipboard.writeText(pub); }
+  catch { getSelection().selectAllChildren($("rnKeyPub")); document.execCommand("copy"); }
+  notify("public key copied: add it on the host as a deploy key with write access");
+};
 
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
