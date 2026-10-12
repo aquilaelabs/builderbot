@@ -360,6 +360,13 @@ class WorkMixin:
                     if st_ == "canceled":
                         return st_, code
                     break
+            else:
+                # Landed: the terminal server is started again now, not when
+                # the whole batch ends, so a session opened meanwhile has it
+                # on its PATH (the operator, 12 Oct: one opened an hour into
+                # a batch still had the old environment). Open sessions run on.
+                if action in ("install", "update"):
+                    self.session_renew()
         # The machine's own two, in the order each needs: the toolkit hands
         # the driver's libraries to a container, so it goes on after the
         # driver and comes off before it.

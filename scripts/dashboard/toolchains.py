@@ -1272,12 +1272,18 @@ def _landed_at(nid):
     out = {}
     if not nodes:
         return out
+    n = nodes.node(nid)
+    here = node_has(n) if n else set()
     for j in nodes.jobs_for(node_id=nid, type="toolchain", n=50):
         sp = j.get("spec") or {}
-        if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
+        if sp.get("action") not in ("install", "update") or j.get("state") not in ("succeeded", "failed", "canceled"):
             continue
+        # A job that stopped part way still landed what it installed before
+        # it stopped (the operator, 12 Oct: an aborted batch put node and
+        # playwright on the store, and no session was told to restart).
         for name in sp.get("names") or []:
-            out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
+            if j.get("state") == "succeeded" or str(name) in here:
+                out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
     return out
 
 
