@@ -43,7 +43,11 @@ SKIP_DIRS = {"node_modules", ".gradle", "__pycache__", ".venv", "venv", ".next",
 TMP = ".bbsync-"
 MAX_FILE = 512 * 1024 * 1024
 TICK = 1.0
-PULL_EVERY = 10.0
+# The fallback only: a project that moved on the controller is said in the
+# held work request and pulled at once. Every ten seconds per project was
+# 87 posts a minute at 0.44s each on a controller with two synced nodes,
+# most of its time (B643, 11 Oct), to learn nothing had changed.
+PULL_EVERY = 120.0
 ASK_EVERY = 30.0
 WALK_EVERY = 60.0        # a whole walk even with the watcher, for what it cannot see
 MOUNTED = ("something is mounted at /workspace, where this node's synced copy goes; "

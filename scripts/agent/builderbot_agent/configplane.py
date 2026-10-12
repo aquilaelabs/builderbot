@@ -125,6 +125,35 @@ class ConfigPlaneMixin:
             subprocess.run([sc, "restart", "docker"], capture_output=True, timeout=180, check=False)
         self.hello_again("published ports' bind address changed")
 
+    def keep_journal(self):
+        """The journal kept across boots (R185), as the provisioner sets it
+        on a fresh enrollment, for a node enrolled before it did: a drop-in,
+        journald restarted only when it is new. Root's; once per agent run."""
+        if getattr(self, "_journal_kept", False):
+            return
+        self._journal_kept = True
+        f = "/etc/systemd/journald.conf.d/50-builderbot.conf"
+        # A managed node only, the way the rest of upkeep tells one: root, and
+        # stamped a sandbox. A guest's journal is its owner's (R23).
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not shutil.which("journalctl"):
+            return
+        try:
+            if os.path.isfile(f) and "Storage=persistent" in open(f, encoding="utf-8").read():
+                return
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            os.makedirs("/var/log/journal", exist_ok=True)
+            with open(f + ".new", "w", encoding="utf-8") as out:
+                out.write("# Written by BuilderBot (R185): keep the journal across boots.\n[Journal]\nStorage=persistent\n")
+            os.replace(f + ".new", f)
+        except OSError as e:
+            log(f"journal: could not keep it across boots ({e})")
+            return
+        for argv in (["systemd-tmpfiles", "--create", "--prefix", "/var/log/journal"],
+                     ["systemctl", "restart", "systemd-journald"]):
+            if shutil.which(argv[0]):
+                subprocess.run(argv, capture_output=True, timeout=60, check=False)
+        log("journal: kept across boots from now")
+
     def _apply_door(self, job, cfg):
         """The door in for SSH on or off (R174): cloudflared's service
         started or stopped (and kept so across a boot), or the node brought

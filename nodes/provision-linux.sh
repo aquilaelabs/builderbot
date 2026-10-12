@@ -1118,6 +1118,25 @@ if stamp_daemon; then
     say "stamped this daemon as BuilderBot's sandbox"
 fi
 
+# The journal kept across boots (R185): a fresh VPS keeps it in memory only,
+# so after a crash `bb logs --node NAME --crash` met "No journal boot entry
+# found for the specified boot (-1)" on draconis (11 Oct). A drop-in rather
+# than an edit of journald.conf, so the distribution's own file is left as it
+# was; journald restarted only when the drop-in is new.
+keep_journal() {
+    local f=/etc/systemd/journald.conf.d/50-builderbot.conf
+    command -v journalctl >/dev/null 2>&1 || return 1
+    [ -f "$f" ] && grep -q '^Storage=persistent' "$f" && return 1
+    install -d -m 0755 /etc/systemd/journald.conf.d /var/log/journal
+    printf '# Written by BuilderBot (R185): keep the journal across boots.\n[Journal]\nStorage=persistent\n' > "$f"
+    command -v systemd-tmpfiles >/dev/null 2>&1 && systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1
+    return 0
+}
+if keep_journal; then
+    systemctl restart systemd-journald >/dev/null 2>&1 || warn "journald did not restart; the journal is kept from the next boot"
+    say "the system journal is kept across boots from now"
+fi
+
 # One implementation of "let this account in", used for both. The validation
 # is the point: a key that does not parse leaves a VM nothing can ssh into,
 # found from the console after the fact.

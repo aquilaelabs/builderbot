@@ -1282,10 +1282,8 @@ def session_target(project, claude=False, node="", uid=""):
     # downstream (empty here, the node's name when a node refused), so the
     # row can say this plainly and keep red for the machine that is broken.
     no_node = {"where": "refused", "name": "",
-               # A full stop, not a dash: shortWhy() on the page cuts this
-               # at the first sentence end to put the fact on the row and
-               # leave the instruction to the tooltip, and the dash it used
-               # to cut at is gone from the page's vocabulary.
+               # The row says it whole, the fact and then what to do about
+               # it (no tooltip carries a second half any more).
                "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
                       "one on the Nodes tab"} if claude \
         else {"where": "local"}
@@ -1304,8 +1302,8 @@ def session_target(project, claude=False, node="", uid=""):
         why = (f"{name} hosts containers only, so no session runs there: pick another node in "
                f"{project}'s settings")
     elif n.get("state") == "retired":
-        # Un-enrolled (the operator, 5 Oct): the fact first, for the row, and
-        # what to do after it, for the tooltip.
+        # Un-enrolled (the operator, 5 Oct): the fact first, then what to do
+        # about it, both on the row.
         why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
                "or enroll it again")
         passing = True          # its own sentence says the way on
@@ -7257,7 +7255,7 @@ class Handler(BaseHTTPRequestHandler):
         What it does NOT claim: a session in ANOTHER project still reaches this
         directory through Bash. The file tools are denied on every sibling
         already, and that is the whole of the guarantee here too: locking adds
-        "no session of its own", not a sandbox. The tooltip says so.
+        "no session of its own", not a sandbox, and says no more than that.
         """
         name, on = req.get("name", ""), bool(req.get("locked"))
         # A project this account was given, and the right (B174): a lock ends
@@ -7631,6 +7629,9 @@ def main():
     tunnel.apply()            # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
+    # The copies the nodes hold, looked at here on a timer and announced when
+    # they moved, so a node need not keep asking (B643).
+    threading.Thread(target=wssync.look_loop, name="sync-look", daemon=True).start()
     if imagecheck.AUTOCHECK:          # every container's registry images, weekly (R195)
         threading.Thread(target=imagecheck.check_loop, name="image-check", daemon=True).start()
     if nginxproxy.AUTOCHECK:          # the nginx image against the registry, weekly (R192)

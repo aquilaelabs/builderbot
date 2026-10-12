@@ -3890,6 +3890,8 @@ def _head(project, instance=None):
     still a commit this can name."""
     ref = (str(_read_rec(project, instance).get("ref") or "").strip()
            if instance else "")
+    if not (WORKSPACE / project).is_dir():
+        return ""                      # no tree to ask (B634, as _dirty)
 
     def run():
         r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
@@ -3902,6 +3904,11 @@ def _dirty(project):
     # Without taking the index lock: this is polled for the row, and git
     # status refreshing the index would hold it just as a session in the
     # same tree runs git and meets index.lock: File exists (B155).
+    # No tree, no question: a record under a written container's name that
+    # lost its source mark (one a late job wrote back after a Remove) sent
+    # git to a directory that is not there on every poll (B634).
+    if not (WORKSPACE / project).is_dir():
+        return False
     r = _run(["git", "-C", str(WORKSPACE / project), "status", "--porcelain"],
              timeout=10, env_extra={"GIT_OPTIONAL_LOCKS": "0"})
     return r["code"] == 0 and bool(r["out"].strip())

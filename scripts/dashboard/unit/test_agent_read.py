@@ -53,5 +53,22 @@ class AgentRead(unittest.TestCase):
         self.assertEqual((r["code"], r["out"], r.get("stale")), (1, "the node did not answer in 25s", None))
 
 
+class NoTree(unittest.TestCase):
+    """A record under a written container's name that lost its source mark
+    asks git nothing: there is no tree (B634)."""
+
+    def test_no_tree_no_git(self):
+        import tempfile
+        from pathlib import Path
+        saved_ws, saved_run = devapp.WORKSPACE, devapp._run
+        self.addCleanup(setattr, devapp, "WORKSPACE", saved_ws)
+        self.addCleanup(setattr, devapp, "_run", saved_run)
+        devapp.WORKSPACE = Path(tempfile.mkdtemp())
+        asked = []
+        devapp._run = lambda argv, **k: asked.append(argv) or {"code": 128, "out": "cannot change to"}
+        self.assertEqual((devapp._dirty("nginx-vps"), devapp._head("nginx-vps")), (False, ""))
+        self.assertEqual(asked, [], "git was not asked")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1353,8 +1353,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const doorRow = await page.$eval(`${ROW} .nddoor`, e => ({ text: e.textContent, on: e.querySelector('[data-nd="door"]').dataset.on,
       cmd: e.querySelector('.ndcmd')?.textContent || '' }));
     ok(/SSH door: cloudflared, open/.test(doorRow.text) && doorRow.on === '0' && /Shut it/.test(doorRow.text)
-       && /cloudflared access ssh --hostname ssh-shed\.example\.com/.test(doorRow.cmd),
-       `a node reporting its door open shows Shut it and the ssh command (${doorRow.cmd.slice(0, 90)})`);
+       && /Host shed\n\s+HostName ssh-shed\.example\.com\n\s+User \S+\n\s+ProxyCommand cloudflared access ssh --hostname %h/.test(doorRow.cmd)
+       && /ssh shed/.test(doorRow.text) && /MobaXterm/.test(doorRow.text),
+       `a node reporting its door open shows Shut it and the PC's ssh config block named for the node, with MobaXterm's way (R179) (${doorRow.cmd.replace(/\s+/g, ' ').slice(0, 90)})`);
     page.dialogs.length = 0;
     await page.click(`${ROW} .nddoor [data-nd="door"]`);
     const doorJob = await (async () => { for (let i = 0; i < 40; i++){
@@ -2456,7 +2457,14 @@ await page.evaluate(async () => {
      `the waiting row shows its id, what its script was made with, Download it again and Discard (${pend.picks})`);
   await page.click(`${ROW2} [data-nd="reenroll"]`);
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  // A waiting node never ran its script, so its new one is a first
+  // enrollment in its words, not a repair "on the same machine" (B637).
+  ok(await page.$eval('#ndBody', b => /a token good once, for a day/.test(b.textContent) && !/run it again on the same machine/.test(b.textContent)),
+     'a waiting node\'s new script is worded as a first enrollment, not a repair of a machine it never had');
   const [dl5] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const body5 = readFileSync(await dl5.path(), 'utf8').split('\n').slice(0, 4).join('\n');
+  ok(/enroll vpsbox as a node/.test(body5) && !/again/.test(body5.split('\n')[1]) && !/Made for the machine it enrolled from/.test(body5),
+     `...and so is the script's header (${body5.split('\n')[1]})`);
   ok(dl5.suggestedFilename() === `enroll-vpsbox-${row2.id}.sh`
      && (await napi('/api/v1/nodes')).nodes.filter(n => n.name === 'vpsbox').length === 1,
      `Download it again makes a new script for the same row, named with its id (${dl5.suggestedFilename()})`);

@@ -896,7 +896,12 @@ def enroll_script(principal, req):
     again = node(field(req, "node")) if field(req, "node") else None
     if field(req, "node") and not again:
         return {"error": "no such node to enroll again"}
-    ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=bool(again))
+    # Again for a machine only once there is one: a pending node never ran
+    # its script, so the new one is a first enrollment under the same row,
+    # its secrets asked for and carried, and its words those of a first
+    # (B637: it said "run it again on the same machine", "no secret").
+    enrolled = bool(again) and again.get("state") != "pending"
+    ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=enrolled)
     if ans.get("error"):
         return ans
     prov = AGENT_DIR.parent.parent / "nodes" / "provision-linux.sh"
@@ -909,7 +914,7 @@ def enroll_script(principal, req):
     # Through a public hostname the node is hosting only, whatever was
     # ticked (enrollscript.check): the session ports cannot be reached back.
     ho = ho or ans["reach"] == "public"
-    if again and ans["reach"] == "wireguard" and not tunnel:
+    if enrolled and ans["reach"] == "wireguard" and not tunnel:
         tunnel = ((again.get("config") or {}).get("tunnel") or None)
     m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho,
                     nginx=req.get("nginx") is True,
@@ -924,7 +929,7 @@ def enroll_script(principal, req):
     machine = ((again or {}).get("reported") or {}).get("machine") or ""
     return m | {"script": enrollscript.build(ans, name=name, user=user, token=m["token"],
                                               expires=m["expires"], provisioner=prov.read_bytes(),
-                                              again=bool(again), machine=machine),
+                                              again=enrolled, machine=machine),
                 "filename": enrollscript.filename(name, m["id"]), "reach": ans["reach"],
                 "home": enrollscript.home_rules(ans, port),
                 "tunnel_addr": ans.get("tunnel_addr", "")}
@@ -1780,7 +1785,9 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     argv = [x.format(**fills) for x in spec["argv"]]
     why = (f"{project or asking_id} reads {tgt['name']}'s "
            f"{stream} log, granted in its settings' Debug, not asked for here")
-    return root_wait(principal, target_id, argv, why=why, timeout=120)
+    # Light (B654): a read of a few hundred lines, beside whatever holds the
+    # node's slot, rather than behind it.
+    return root_wait(principal, target_id, argv, why=why, timeout=LIGHT_S, light=True)
 
 
 DEFAULT_RUNNER_LABELS = ("builderbot", "self-hosted", "linux")
@@ -3286,7 +3293,7 @@ def tell_wait(node_id, session, text, timeout=20):
     return {"error": f"the agent on {n['name']} took the send but did not report back within {timeout}s"}
 
 
-def root_wait(principal, node_id, argv, why="", timeout=600):
+def root_wait(principal, node_id, argv, why="", timeout=600, light=False):
     """One approved command as root on a node (roadmap R38): a system job
     with `apply: root`, waited for like run_wait. The gate is node_apply's
     (an online agent node that enrolled as a sandbox, one system job at a
@@ -3306,9 +3313,9 @@ def root_wait(principal, node_id, argv, why="", timeout=600):
         return {"error": f"the node is {n['state']}; a root command goes to an online node"}
     if node_locked(n):
         return {"error": node_locked(n)}
-    if system_job_for(node_id):
+    if not light and system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
-    spec = {"apply": "root", "timeout": int(timeout),
+    spec = {"apply": "root", "timeout": int(timeout), **({"light": True} if light else {}),
             "config": {"argv": [str(a) for a in argv], "why": str(why)[:300],
                        # The person, for the log's first line; the audit row
                        # keeps the principal as it is.
@@ -3523,7 +3530,11 @@ def _light(j):
         t = int((j.get("spec") or {}).get("timeout") or 0)
     except (TypeError, ValueError):
         return False
-    return j.get("type") == "exec" and 0 < t <= LIGHT_S
+    # ...and a machine log read, a root `system` job marked light by
+    # log_read_named: a journal tail waited up to a storage measurement's
+    # fifteen minutes behind it, then was taken back (B654).
+    light = j.get("type") == "exec" or (j.get("type") == "system" and (j.get("spec") or {}).get("light") is True)
+    return light and 0 < t <= LIGHT_S
 
 
 def _light_running(node_id):

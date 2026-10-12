@@ -392,6 +392,47 @@ def _all_projects():
     return [p for p in _names() if _there(p)]
 
 
+# The controller's own look at the copies the nodes hold (B643, 11 Oct): a
+# change made straight in a project here, not through a verb that scans, is
+# found by this every LOOK_EVERY seconds and announced to the nodes holding
+# it in their held work request. Before, each node asked `since` for every
+# project every ten seconds and that ask was what scanned: 87 posts a
+# minute at 0.44s each with two synced nodes, most of the server's time.
+LOOK_EVERY = float(os.environ.get("BB_SYNC_LOOK_EVERY") or 10)
+
+
+def held():
+    """Every project and worktree some node holds a copy of: the projects
+    with settings, and what they read, which may have none of its own (a
+    read-only project was never looked at, so a change made here never
+    came down: wssync.mjs, 11 Oct)."""
+    names = list(_all_projects())
+    for q in list(names):
+        names += [r for r in (_reads_of(q) or []) if r not in names and _there(r)]
+    out = []
+    for p in names:
+        for unit in [p, *worktrees_of(p)]:
+            if _watchers(unit):
+                out.append(unit)
+    return out
+
+
+def look_loop():
+    """Scan what the nodes hold, on a timer; scan() wakes them when it moved."""
+    while True:
+        time.sleep(LOOK_EVERY)
+        try:
+            units = held()
+        except Exception as e:   # noqa: BLE001 (the loop outlives one bad pass)
+            print(f"[wssync] look: {type(e).__name__}: {e}", flush=True)
+            continue
+        for unit in units:
+            try:
+                scan(unit)
+            except Exception as e:   # noqa: BLE001 (one project's trouble is not the loop's)
+                print(f"[wssync] {unit}: {type(e).__name__}: {e}", flush=True)
+
+
 def configure_projects(fn):
     globals()["_names"] = fn
 

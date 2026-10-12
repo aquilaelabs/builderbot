@@ -96,7 +96,14 @@ await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
 
 // ---- Allow runs that one command on the node, and the session gets the output ------
-await page.click('.ndask [data-rallow]');
+// The ask leaves the list the moment it is answered, not when the command
+// it allowed has finished running (B641): read in the same turn as the
+// press, before the request it sent could have come back.
+const immediate = await page.evaluate(() => {
+  document.querySelector('.ndask [data-rallow]').click();
+  return !(ph?.asks || []).some(a => a.kind === 'root');
+});
+ok(immediate, 'Allow takes the ask off the list in the same moment, before the command it allowed has run');
 await page.waitForFunction(() => !document.querySelector('.ndask'), null, { timeout: 30000 });
 // Allow answers at once and the command runs on a thread, so the outcome is
 // polled the way the session polls it.

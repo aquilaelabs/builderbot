@@ -442,6 +442,23 @@ function nodeSyncRow(n){
 // The door in for SSH (R174): what the machine reports, or what the enroll
 // script set up while it has not reported yet; the switch is a system job,
 // and the line says the ssh command to use.
+// What a PC needs to come in through a cloudflared door (R179, the
+// operator's own way in to draconis, 11 Oct): an ~/.ssh/config block named
+// for the node, so every server keeps its own name and its own saved
+// password rather than all of them being localhost:22, and `ssh NAME`.
+// MobaXterm's own SSH sessions read no ssh config, so it is said how it
+// gets there: a session that runs `ssh NAME` in its local terminal.
+function nodeDoorConfig(n, d){
+  const host = d.host || "HOST", user = n.config?.user || "bb";
+  const alias = String(n.name || "node").toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  return `<pre class="ndcmd"># in ~/.ssh/config on your PC, with cloudflared installed there
+Host ${esc(alias)}
+  HostName ${esc(host)}
+  User ${esc(user)}
+  ProxyCommand cloudflared access ssh --hostname %h</pre>
+      <div class="sub">Then <code>ssh ${esc(alias)}</code>. In MobaXterm, whose own SSH sessions read no ssh config, make a Shell session that runs <code>ssh ${esc(alias)}</code>, or type it in its local terminal.</div>`;
+}
+
 function nodeDoorRow(n){
   if (n.kind !== "agent") return "";
   const d = n.reported?.door || n.config?.door;
@@ -455,7 +472,7 @@ function nodeDoorRow(n){
       <div class="actbar"><span class="state">SSH door: ${esc(d.kind)}, ${esc(state)}${
         d.kind === "cloudflared" ? " (Cloudflare Access decides who reaches it)" : " (the tailnet's ACLs decide who reaches it)"}</span><span class="sp"></span>
         ${known && d.installed ? `<button type="button" data-nd="door" data-on="${d.active ? "0" : "1"}" ${n.live ? "" : "disabled"}>${d.active ? "Shut it" : "Open it"}</button>` : ""}</div>
-      ${known && d.installed && d.active ? `<pre class="ndcmd">${cmd}</pre>` : ""}
+      ${known && d.installed && d.active ? (d.kind === "cloudflared" ? nodeDoorConfig(n, d) : `<pre class="ndcmd">${cmd}</pre>`) : ""}
     </div>`;
 }
 
@@ -1508,6 +1525,9 @@ function wireNodesTab(root){
   // its name fixed, its secrets left out (the node keeps them), and the
   // script it makes carries that node's id and runs on its machine alone.
   const mintForm = (was = {}, again = null) => {
+    // A node that has a machine (B637): a pending one never ran its script,
+    // so its new one is a first enrollment, worded and checked as one.
+    const enrolled = !!again && again.state !== "pending";
     document.getElementById("ndTitle").textContent = again ? `Enroll ${again.name} again` : "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
@@ -1558,7 +1578,7 @@ function wireNodesTab(root){
           <textarea id="ndEnWgText" rows="7" spellcheck="false" autocomplete="off"
             placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.6.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = home.example.net:51820"></textarea></div>
       </div>
-      <div class="field"><div class="hint">${again
+      <div class="field"><div class="hint">${enrolled
         ? "A new script for this node: run it again on the same machine, as root, to set it up afresh or change what it reaches the controller through. It carries no secret (the node keeps its WireGuard config and its door's); a secret pasted here replaces the node's. It refuses to run on another machine, and so does the controller."
         : "The script carries a token good once, for a day, and runs as root on a Linux machine."}</div></div>
       <div class="foot">
@@ -1640,7 +1660,7 @@ function wireNodesTab(root){
     go.onclick = () => pressing(go, async () => {
       const kept = keep();
       const conf = $b("#ndEnWgText").value;
-      if (reach.value === "wireguard" && !conf.trim() && !again){
+      if (reach.value === "wireguard" && !conf.trim() && !enrolled){
         notify("choose the WireGuard config your router made for this machine, or paste it in", true); return;
       }
       busy(go, "Making");
