@@ -15,7 +15,6 @@ import contextlib
 import hashlib
 import json
 import os
-import platform
 import re
 import signal
 import sqlite3
@@ -848,11 +847,28 @@ def _check_rows(job_id):
     return rows
 
 
+def store_known(n):
+    """Whether a node's listing of its store is the whole truth about it: a
+    store named, and the agent has reported what is in it (every agent
+    since store_dirs, an empty listing included). Then a toolchain not in
+    the listing is not installed whatever the last check said, and a store
+    emptied by hand reads as nothing installed rather than nothing known
+    (B671, the operator, 12 Oct: the store wiped, every row still current)."""
+    rep = (n or {}).get("reported") or {}
+    return bool(((rep.get("stores") or {}).get("toolchains") or {}).get("path")) \
+        and isinstance(rep.get("store_dirs"), dict)
+
+
 def last_check(nid):
     """What the last check on a node said, {name: {installed, latest,
     status}}, and when it ended (0 for never): the tab's state column and
-    the bell's update row read the same answer (the operator, 9 Oct)."""
+    the bell's update row read the same answer (the operator, 9 Oct). What
+    the node's own listing no longer holds is absent, whatever the check
+    or an install since it said (B671): the listing comes with every
+    hello, so a directory deleted by hand is read within one."""
     recent = nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []
+    n = nodes.node(nid) if nodes else None
+    gone = (set(p["name"] for p in TOOLCHAINS) - node_has(n)) if n and store_known(n) else set()
     for j in recent:
         if (j.get("spec") or {}).get("action") != "check":
             continue
@@ -866,7 +882,8 @@ def last_check(nid):
                  if (k.get("spec") or {}).get("action") == "install" and k.get("state") == "succeeded"
                  and int(k.get("ended") or 0) > int(j.get("ended") or 0)
                  for x in ((k.get("spec") or {}).get("names") or [])}
-        rows = {name: (dict(r, status="current") if name in since else r)
+        rows = {name: (dict(r, status="absent", installed="") if name in gone
+                       else dict(r, status="current") if name in since else r)
                 for name, r in _check_rows(j["id"]).items()}
         return rows, int(j.get("ended") or 0)
     return {}, 0
@@ -921,7 +938,10 @@ def payload_for_node(nid):
     # for the version string it happens to carry.
     top = set(((rep.get("store_dirs") or {}).get("top")) or [])
     andr = set(((rep.get("store_dirs") or {}).get("android")) or [])
-    known = bool(top or andr)
+    # An empty listing from an agent that sends one is an empty store, and
+    # every row is there to install again (B671); only a node that has not
+    # listed its store at all is unknown.
+    known = store_known(n) or bool(top or andr)
     for p in TOOLCHAINS:
         probe, name = p["probe"], p["name"]
         if probe.startswith("android:"):
@@ -1096,9 +1116,8 @@ def payload_for_node(nid):
             # Install selected and says why before the press, not after (the
             # operator, 12 Oct).
             "store_busy": sharers_busy(nid),
-            # Its move off the shared directory, while that job runs, and
-            # what on the store no node runs from any more (R196).
-            "moving": moving(nid), "cleanable": cleanable(nid),
+            # What on the store no node runs from any more (R196).
+            "cleanable": cleanable(nid),
             "items": items, "job": job or {"running": False}}
 
 
@@ -1251,59 +1270,12 @@ def names_in(dirs):
     return out
 
 
-# Each node's move off the shared <os>-<arch> directory (R196, the operator,
-# 12 Oct: reinstall per node, so every binary is built for its own distro):
-# one install job of what the old directory holds, queued once per node and
-# remembered here, so a move that failed is the Toolchains tab's to retry
-# rather than a job queued again every five minutes.
-
-def _moves():
-    try:
-        d = json.loads(Path(STATE / "toolchain-moves.json").read_text())
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError, TypeError):
-        return {}
-
-
-def node_moves_due():
-    """Queue the move for each live node that has its own directory and an
-    old shared one still holding toolchains it has not got. The node ids
-    queued."""
-    if not nodes or not TOOLCHAINS:
-        return []
-    done, queued = _moves(), []
-    for n in nodes.node_list():
-        if n.get("kind") != "agent" or n.get("state") != "online" or not n.get("live") or n["id"] in done:
-            continue
-        rep = n.get("reported") or {}
-        dirs = rep.get("store_dirs") or {}
-        if "legacy" not in dirs or not _scope_of(n).startswith("n_"):
-            continue
-        plat = platform_of(n)
-        mine = set(names_in(dirs))
-        want = [x for x in names_in(dirs["legacy"]) if x not in mine
-                and supports(next((p for p in TOOLCHAINS if p["name"] == x), {}), plat)]
-        if any(j.get("state") in ("queued", "assigned", "running")
-               for j in nodes.jobs_for(node_id=n["id"], type="toolchain", n=5) or []):
-            continue
-        if want:
-            r = node_job("system", n["id"], "install", want)
-            if r.get("error"):
-                print(f"[toolchains] moving {n['name']}'s toolchains into its own directory: {r['error']}", flush=True)
-                continue
-            queued.append(n["id"])
-        done[n["id"]] = {"at": int(time.time()), "names": want}
-        write_json(STATE / "toolchain-moves.json", done)
-    return queued
-
-
 def cleanable(nid):
     """[{dir, what}] at the top of this node's toolchain store that no node
-    runs from any more (R196): the old shared <os>-<arch> once every node on
-    the share has its own directory and has moved, and a directory named for
-    a node that is retired or unknown here (a node enrolled again starts
-    afresh under its new id, and leaves its old one behind). Never `shared`,
-    never a live node's."""
+    runs from any more (R196): a directory named for a node that is retired
+    or unknown here (a node enrolled again starts afresh under its new id,
+    and leaves its old one behind). Never a live node's, and never anything
+    not named for a node: `shared`, and the controller's own <os>-<arch>."""
     if not nodes:
         return []
     n = nodes.node(nid)
@@ -1313,40 +1285,17 @@ def cleanable(nid):
         return []
     share = _store_share(n)
     peers = [o for o in nodes.node_list(all=True) if o.get("kind") == "agent" and _store_share(o) == share] if share else [n]
-    live = [o for o in peers if o.get("state") != "retired"]
-    # ...and this controller's own, where it keeps Playwright's browsers for
-    # bb capture shot: its <os>-<arch> under the same share, which is the
-    # directory the nodes used to share, so it is never offered while the
-    # controller's store is this share.
-    mine = nodes.node(nodes.LOCAL) if getattr(nodes, "LOCAL", "") else None
-    own = {f"{platform.system().lower()}-{platform.machine() or 'unknown'}"} if mine and _store_share(mine) == share else set()
-    in_use = {_scope_of(o) for o in live} | {"shared"} | own
+    in_use = {_scope_of(o) for o in peers if o.get("state") != "retired"}
     names = {o["id"]: o.get("name") or o["id"] for o in nodes.node_list(all=True)}
     retired = {o["id"] for o in nodes.node_list(all=True) if o.get("state") == "retired"}
-    moves = _moves()
-    unmoved = [o for o in live if "legacy" in ((o.get("reported") or {}).get("store_dirs") or {})
-               and (o["id"] not in moves or moving(o["id"]))]
     out = []
     for d in roots:
-        if d in in_use:
+        if d in in_use or not re.fullmatch(r"n_[0-9a-f]{4,32}", d):
             continue
-        if re.fullmatch(r"[a-z]+-[a-z0-9_]+", d) and not d.startswith("n_"):
-            if not unmoved and all(_scope_of(o).startswith("n_") for o in live):
-                out.append({"dir": d, "what": "the directory every node shared before each had its own"})
-        elif re.fullmatch(r"n_[0-9a-f]{4,32}", d) and (d in retired or d not in names):
+        if d in retired or d not in names:
             out.append({"dir": d, "what": f"{names[d]}'s, a node since retired" if d in names
                         else "a node's no longer enrolled here"})
     return out
-
-
-def moving(nid):
-    """What this node's move off the shared directory installs, while its
-    job runs, for the Toolchains tab's line; [] otherwise."""
-    m = _moves().get(nid) or {}
-    if not m.get("names") or not nodes:
-        return []
-    running = [j for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1) or []]
-    return list(m["names"]) if running else []
 
 
 def store_sharers(node_id):
@@ -1904,8 +1853,6 @@ def versions_loop():
                 due = time.time() + TC_CHECK_EVERY
         with contextlib.suppress(Exception):
             node_checks_due()
-        with contextlib.suppress(Exception):
-            node_moves_due()
         time.sleep(300)
 
 

@@ -514,8 +514,6 @@ function renderToolchainsInto(i){
       : "No toolchain store found."}</div>
     ${pstale ? `<div class="tchead warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div>` : ""}
-    ${onNode && (d.moving || []).length ? `<div class="tchead tcmoving">Moving its toolchains into its own directory on the store: ${
-      esc(d.moving.join(", "))} ${d.moving.length === 1 ? "is" : "are"} being installed again for this node, from the directory every node shared before.</div>` : ""}
     ${onNode && (d.cleanable || []).length && mayToolchains() ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
       d.cleanable.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</span><span class="sp"></span>
       <button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button></div></div>` : ""}

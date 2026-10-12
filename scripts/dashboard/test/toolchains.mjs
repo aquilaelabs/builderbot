@@ -851,19 +851,17 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
     const dead = !!doc.querySelector('[data-tc="install"]')?.disabled;
     toolchains = { ...fake, store_busy: [] }; tcRev++; drawPanes();
     const quiet = !document.querySelector('.tcshared');
-    // Its move off the shared directory, and what no node runs from (R196).
-    toolchains = { ...fake, store_busy: [], moving: ['jdk', 'swift'],
-                   cleanable: [{ dir: 'linux-x86_64', what: 'the directory every node shared before each had its own' }] };
+    // What on the store no node runs from any more (R196).
+    toolchains = { ...fake, store_busy: [],
+                   cleanable: [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }] };
     tcRev++; drawPanes();
-    const moveLine = document.querySelector('.tcmoving')?.textContent.replace(/\s+/g, ' ') || '';
     const clean = document.querySelector('.tcclean')?.textContent.replace(/\s+/g, ' ') || '';
     const rm = !!document.querySelector('.tcclean [data-tcclean].danger');
     tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
-    return { line, dead, quiet, moveLine, clean, rm };
+    return { line, dead, quiet, clean, rm };
   });
-  ok(/Moving its toolchains into its own directory on the store: jdk, swift are being installed again for this node/.test(seen.moveLine)
-     && /On this store and used by no node: linux-x86_64 \(the directory every node shared/.test(seen.clean) && seen.rm,
-     `a node's move into its own directory is said while it runs, and what no node runs from is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
+  ok(/On this store and used by no node: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
+     `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
   ok(/redhatbox is installing swift in the toolchain store this node shares: an install here waits until it is done/.test(seen.line)
      && seen.dead && seen.quiet,
      `a sharing node's install is said at the top and ghosts Install selected, and nothing is said once it is done (${seen.line.slice(0, 70)})`);

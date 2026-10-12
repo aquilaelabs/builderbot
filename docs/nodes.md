@@ -565,15 +565,20 @@ is relative to that root (`tc_root()`, `sdk_root`). It was `<os>-<arch>`, one
 directory for every machine of a platform, and a session on one node met a
 toolchain another node was replacing, with two distros' binaries in one
 place; a node's own directory shares nothing, so an install on one waits for
-no other, and a node enrolled again starts afresh under its new id. A node
-moving off the old shared directory reports what is still in it
-(`store_dirs.legacy`) and the controller installs those again into the
-node's own, once per node (`toolchains.node_moves_due`). What no node runs
-from any more (a retired node's directory, and the old shared one once every
-node on the share has moved) is offered for removal on the Toolchains tab,
-never `shared` and never the controller's own `<os>-<arch>`, where it keeps
+no other, and a node enrolled again starts afresh under its new id. There
+is no migration from the old shared directory: an install that moved
+twenty-eight toolchains in one job ran its last twenty unseen past the job
+log's cap (B670), so the operator emptied the store and installed each
+node's set again from the Toolchains tab (12 Oct). What no node runs from
+any more (a retired or unknown node's directory, `store_dirs.roots`) is
+offered for removal on the Toolchains tab (`toolchains.cleanable`), never
+`shared` and never the controller's own `<os>-<arch>`, where it keeps
 Playwright's browsers. The census reports the scope beside the store's
-path. The Android system images are guest
+path, and its listing of the directory (`store_dirs`, every hello) is the
+authority on what is installed: a toolchain deleted from the store by hand
+reads as not installed within a hello, whatever the last check said
+(`toolchains.store_known`, B671), so a store emptied to start over offers
+every row for installing again. The Android system images are guest
 artifacts, identical on every host, and live once under `<store>/shared`
 with each scope's `android/system-images` a symlink to them: kept by the
 agent on every hello (`share_images()`) and by the controller at boot

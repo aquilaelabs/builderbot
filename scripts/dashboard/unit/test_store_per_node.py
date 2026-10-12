@@ -22,11 +22,9 @@ class OwnDirectory(unittest.TestCase):
         self.addCleanup(self.stores._SCOPE.update, name="")
         self.stores._SCOPE.update(name="")
 
-    def test_the_node_id_is_the_directory_and_the_old_one_is_reported(self):
+    def test_the_node_id_is_the_directory_and_the_roots_are_reported(self):
         st = self.stores
-        old = os.path.join(self.store, st.legacy_scope())
-        os.makedirs(os.path.join(old, "jdk"))
-        os.makedirs(os.path.join(old, "android", "platform-tools"))
+        os.makedirs(os.path.join(self.store, st.legacy_scope(), "jdk"))
         self.assertEqual(st.tc_scope(), st.legacy_scope(), "the shared one stands in before the id is known")
         self.assertEqual(st.use_scope(self.store, "not an id"), st.legacy_scope(), "only a node id is a directory")
         self.assertEqual(st.use_scope(self.store, "n_9381e721"), "n_9381e721")
@@ -37,8 +35,7 @@ class OwnDirectory(unittest.TestCase):
         os.makedirs(os.path.join(self.store, "n_0ldd0ne1"))
         dirs = st.store_dirs(state)
         self.assertEqual(dirs["top"], ["go"], "its own directory's toolchains")
-        self.assertEqual(dirs["legacy"], {"top": ["android", "jdk"], "android": ["platform-tools"]},
-                         "what is still in the shared one")
+        self.assertNotIn("legacy", dirs, "the shared directory is nobody's business any more")
         self.assertEqual(sorted(dirs["roots"]), sorted([st.legacy_scope(), "n_0ldd0ne1", "n_9381e721"]))
 
 

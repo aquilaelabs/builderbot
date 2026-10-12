@@ -335,22 +335,11 @@ def store_dirs(state):
         d = os.path.join(store, entry["dir"])
         if os.path.isdir(d) and not os.path.exists(os.path.join(d, need)):
             out.setdefault("incomplete", []).append(entry["name"])
-    # ...and what is still in the directory every machine of this platform
-    # shared before R196, while this node has its own: the controller moves
-    # those into this node's directory by installing them again here.
-    base = (state.get("stores") or {}).get("toolchains") or ""
-    old = os.path.join(base, legacy_scope()) if base and tc_scope() != legacy_scope() else ""
-    if old and os.path.isdir(old):
-        leg = {"top": [], "android": []}
-        with contextlib.suppress(OSError):
-            leg["top"] = sorted(x for x in os.listdir(old) if not x.startswith("."))[:64]
-        with contextlib.suppress(OSError):
-            leg["android"] = sorted(os.listdir(os.path.join(old, "android")))[:64]
-        out["legacy"] = leg
     # ...and the directories at the top of the store, whose names say whose
-    # they are: a node's id, the old shared one, `shared`: what is there
-    # that no node runs from any more is the controller's to offer for
+    # they are (a node's id, `shared`, the controller's own), while this
+    # node has its own: a retired node's is the controller's to offer for
     # removal (R196).
+    base = (state.get("stores") or {}).get("toolchains") or ""
     if base and tc_scope() != legacy_scope():
         with contextlib.suppress(OSError):
             out["roots"] = sorted(x for x in os.listdir(base)
