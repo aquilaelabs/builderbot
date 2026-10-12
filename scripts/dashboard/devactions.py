@@ -1383,7 +1383,11 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
                 return r | {"error": w["error"]}, 400
         return r, (400 if r.get("error") else 200)
     if instance not in devapp.instances(project):
-        return {"error": f"no instance {instance} of {project}"}, 400
+        # Named, so a verb that assumed the default meets the one that
+        # exists (bb devapp rebuild with one instance called builderbot-dev).
+        have = devapp.instances(project)
+        return {"error": f"no instance {instance} of {project}"
+                + (f"; --instance names one of {', '.join(have)}" if have else "")}, 400
     if action == "remove":
         r = remove_instance(project, instance)
         return r, (400 if r.get("error") else 200)

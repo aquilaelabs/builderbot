@@ -493,6 +493,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Install selected on a node installs every ticked toolchain, not the first eight (8a77d93)
 - Aborting a toolchain install no longer leaves half a toolchain reading installed, or calls the toolchains it never reached failed (6d24de5)
 - A named house rule reaches a session on a node: its text arrives on the turn the session edits one of its files or is asked about one of its words, where on a node (every session) it never arrived (B686) (9981b52)
+- A session on a project your account has a worktree of starts on a synced node: it waited for a copy that was there all along, because the node's report lost the slashes in the worktree's name (d33089b)
 
 ### Security
 
