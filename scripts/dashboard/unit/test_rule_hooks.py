@@ -132,6 +132,12 @@ class Store(unittest.TestCase):
         self.assertIn("Run bb tidy after a task.", rules.block("alpha"))
         self.assertNotIn("emulator running for a day", rules.block("alpha"))
         self.assertNotIn("emulator running for a day", rules.said(rules.by_names("alpha", ["tidy"])))
+        # An edit stores a new why, and one that says nothing about it keeps the old (B694).
+        r = rules.edit("alpha", "tidy", text="Run bb tidy when a task is done.", by="you",
+                       why="The emulator ran for a day.")
+        self.assertEqual(r["rule"]["why"], "The emulator ran for a day.")
+        r = rules.edit("alpha", "tidy", text="Run bb tidy when a batch is done.", by="you")
+        self.assertEqual(r["rule"]["why"], "The emulator ran for a day.")
 
     def test_turned_off_it_refuses_nothing_and_the_briefing_lines_still_do(self):
         rules.set_project_off("alpha", ["ask-do-not-install"])

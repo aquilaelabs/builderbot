@@ -706,9 +706,9 @@ def edit(project, name, *, text=None, paths=None, words=None, by="claude",
         d = load()
         p = _project(d, project)
         rs = p.setdefault("rules", [])
-        i, why = _mine(rs, str(name or "").strip().lower(), by)
-        if why:
-            return {"error": why}
+        i, bad = _mine(rs, str(name or "").strip().lower(), by)
+        if bad:
+            return {"error": bad}
         was = dict(rs[i])
         merged = dict(was)
         for k, v in (("text", text), ("paths", paths), ("words", words),
