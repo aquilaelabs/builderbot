@@ -95,5 +95,21 @@ class Moves(unittest.TestCase):
         self.assertNotIn(here, {c["dir"] for c in toolchains.cleanable("n_aaaa1111")})
 
 
+class HelloKeepsTheListing(unittest.TestCase):
+    """The hello's whitelist of a node's census keeps the two lists the move
+    reads (store_dirs.legacy and roots): with top, android and incomplete
+    alone, a node on the new directory reported its old one as empty and no
+    move was ever queued (bb-dev-sandbox, 12 Oct)."""
+
+    def test_legacy_and_roots_come_through(self):
+        import nodes
+        got = nodes._census({"store_dirs": {"top": ["go"], "android": [], "incomplete": [],
+                                            "roots": ["linux-x86_64", "n_aaaa1111", "shared"],
+                                            "legacy": {"top": ["jdk", "android"], "android": ["platform-tools"], "junk": 1}}})
+        self.assertEqual(got["store_dirs"]["roots"], ["linux-x86_64", "n_aaaa1111", "shared"])
+        self.assertEqual(got["store_dirs"]["legacy"], {"top": ["jdk", "android"], "android": ["platform-tools"]})
+        self.assertNotIn("legacy", nodes._census({"store_dirs": {"top": []}})["store_dirs"], "none reported, none kept")
+
+
 if __name__ == "__main__":
     unittest.main()

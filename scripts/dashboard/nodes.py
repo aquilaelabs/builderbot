@@ -1091,7 +1091,12 @@ def _census(c):
     out["toolchain_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
     out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
-                         for k in ("top", "android", "incomplete")}
+                         for k in ("top", "android", "incomplete", "roots")}
+    # ...and what is still in the directory every node shared before R196
+    # (the move off it is read from this), in the same two-list shape.
+    leg = sd.get("legacy") if isinstance(sd.get("legacy"), dict) else None
+    if leg is not None:
+        out["store_dirs"]["legacy"] = {k: [str(x)[:60] for x in (leg.get(k) or [])[:64]] for k in ("top", "android")}
     # The android system images in the toolchain store, and the AVDs built on
     # each (roadmap #20). Whitelisted like store_dirs and toolchain_versions,
     # and for the same reason: a field the agent reports and this drops is a
