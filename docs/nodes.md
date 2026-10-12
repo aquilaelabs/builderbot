@@ -7,8 +7,10 @@ something: a VM on the same server, a spare desktop, a cloud box, a MacBook.
 Sessions, builds, tests, CI and the emulator run on nodes; the controller
 runs none of them. It was written before that was true (the first sections
 describe turning one container with one remote daemon into this) and kept as
-the reasons behind each decision; what is built is in the README and
-docs/how-it-works.md, and where the two differ, the code and those are right.
+the reasons behind each decision; what is built is described in
+[how-it-works.md](how-it-works.md), with its settings and `bb` commands in
+[reference.md](reference.md), and where this document differs from them, the
+code and those are right.
 
 Second pass. The first version of this document optimized for one operator and
 cut everything an organization would need. The brief has since widened: **the
@@ -445,7 +447,9 @@ controller's port and nothing else, and the LAN opens the session ports
 back), because root on the node could undo anything done there; the dialog
 gives the router's rules. The controller holds up its half: a node's tunnel
 address is answered on `/api/v1/agent/*` and refused everything else, by the
-socket's own address. "Just a token" is the old commands, a Mac's included.
+socket's own address. "Just a token" is the old commands; a Mac's are among
+them only while Offer dev features is on in Settings, since a macOS node is a
+dev feature and not offered otherwise.
 
 **mTLS is a later layer, not a redesign**: the pinned-cert enrollment above is
 where a private CA slots in when a security review asks for it: same
@@ -535,6 +539,15 @@ controller-scoped setting described below: that scope is switches today, and
 `env-only-what-must` takes a default with a reason in the code as the other
 honest answer. Artifacts in `dist/` and a node's failed workspaces are still
 unswept.
+
+*Amended 12 October:* the age is no longer a constant of its own. Every log
+the controller keeps follows one policy, Days of logs kept in Settings
+(`logs.days`, 30 until it is set, which `nodes.log_days` reads), and an
+hourly sweep (`server.log_sweep_loop`) applies it to the job logs, the job
+rows (`JOB_ROWS_KEEP`, `JOB_ROWS_DAYS`) and the audit as well as to the
+container's own log files. The count is still `JOB_LOG_KEEP`, and a job's
+log is capped while it runs (`JOB_LOG_MAX_CHUNKS`): past it the middle goes
+and a line says how much.
 
 This is the Gitea/Grafana pattern and it is well-trodden: the homelab never
 learns Postgres exists; the enterprise gets real concurrency and a backup
@@ -1074,6 +1087,10 @@ the pieces stack:
    publishes on that node, with or without TLS) and its certificates (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back). A
+   route's hostname is picked from one list every node's nginx shares
+   (Hostnames on the tab, the operator, 12 Oct): a name is added once and
+   any route on any node, for any project's container, picks it, and one a
+   route still uses cannot be deleted. A
    node holds a list of certificate pairs, each known by the domain its
    names say (a wildcard pair for `*.example.com` is `example.com`'s; the
    same key again is a renewal), and every route serves 443 with the pair
@@ -1246,9 +1263,10 @@ key. The `ssh_addr` column stays, written empty and read by nothing:
 migrations are numbered and append-only, and dropping a column across two
 engines is a one-way door for a cosmetic gain.
 
-**Tools → Nodes** is the screen: a row per node with state, capability
-toggles, services, labels, pool, concurrency, last seen, and Enroll, Test,
-Drain, Remove, Reboot and Shut down, plus the approval queue when a bulk
+**Tools → Nodes** is the screen: a row per node with state, the toolchains
+its census reports (capabilities stopped being toggles on 2 Sep, §2),
+services, labels, pool, concurrency, last seen, and Enroll, Test, Drain,
+Un-enroll, Reboot and Shut down, plus the approval queue when a bulk
 token is in play. Drain means "finish what you are running, accept nothing
 new", and it is what makes a node safe to patch, at home and in a fleet alike.
 Reboot and Shut down are the machine's own, asked for from its row: a system
@@ -1396,6 +1414,11 @@ still ask the controller for the tokens; the two on-machine forms cannot,
 and say so. The agent starts the removal under a transient unit of its own,
 reports the job, and is gone with it; the controller retires the row when
 that result lands. Enrolling the machine again is a fresh provisioner run.
+The row's dialog says in one box what un-enrolling takes off a machine and
+what it leaves, and Reset BuilderBot on the Settings tab shows the same box
+and offers to un-enroll every node first, so each machine is clean to enroll
+again; a node with sessions or containers running cannot be ticked there
+either (the operator, 12 Oct).
 
 ### After provisioning: reconfiguring a node from the GUI
 
@@ -1564,7 +1587,11 @@ Stays where it is: the gear's popup. Nothing here changes.
 mounts, credentials, PUID/PGID, `DATABASE_URL` itself. Stays in the
 environment and the five documented places. The test for this scope: *if
 changing it means recreating the container, it is env.* This list should only
-ever shrink: `DOCKER_HOST` leaving it (§11) is the pattern.
+ever shrink: `DOCKER_HOST` leaving it (§11) is the pattern. *Where it stands
+(12 Oct):* the container takes PUID, PGID, TZ and DASHBOARD_PORT beside its
+mounts, and publishing tokens are `*.env` files in the secrets folder rather
+than variables; `.env.example`, the compose file and the Unraid template are
+the list.
 
 **Controller-scoped**, what the controller owns and can apply live:
 enrollment defaults (auto-approve, token TTL), retention (job logs, artifacts,
@@ -1608,10 +1635,10 @@ they are: no churn for its own sake.
 **Node-scoped**: services, labels, pool, concurrency (capabilities left this
 list on 2 Sep; see §2): the
 **Nodes tab**, a document tab opened from the Tools card beside Docker manager
-and Static analysis. Row anatomy in the house language: name, state as a pill
+and Analysis. Row anatomy in the house language: name, state as a pill
 (online / offline / draining / pending: the severity-pill palette already
 says how), the toolchains its census reports, labels, last-seen, and per-row Test / Drain /
-Remove; Enroll at the top; the pending-approval strip above the list when a
+Un-enroll; Enroll at the top; the pending-approval strip above the list when a
 bulk token is in play, in the same held-above-the-fold shape the Phone tab's
 asks use.
 
@@ -1640,7 +1667,10 @@ scopes is two settings wearing one name, and should be split before it ships.
 
 - **Jobs** (phase 4): a document tab, with queue, running, recent; per-job log
   tail (the dev-instance row's rendering, generalized), Cancel on a row, and
-  a filter for what is not over. `bb jobs` is the read-only form.
+  a filter for what is not over. `bb jobs` is the read-only form: `bb jobs
+  [--node NAME] [--type T]` lists, `bb jobs ID [--all]` reads one job's log,
+  and a session sees its project's jobs, the nodes' own toolchain and system
+  jobs only with the diagnostics grant.
 - Later, enterprise-flavored and additive: the audit view (a read of the
   table phase 1 starts writing), pool filters wherever a node list appears.
 
@@ -1815,7 +1845,7 @@ by the phase's own rule: only after a node runner had taken a real job (3 Sep,
 the smoke test on bb-sandbox) and every workflow in this repo had moved there.
 `runner.sh`, its supervision, `bb runner`, the image's install step and the
 five `RUNNER_*` settings all went in one change; the Runner card is a view of
-the nodes' runners now, and `github_url()` reads only the environment.
+the nodes' runners now.
 
 **Phase 8: deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
@@ -2000,7 +2030,11 @@ its builds, tests, CI and emulation run on; a session on this container
 reaches them only through `bb` verbs that submit jobs; the artifacts come
 back into `dist/`. A VM is therefore required for full function, and the
 sandbox VM the Docker manager already needs is the first node: `provision-linux.sh
---controller URL --token bbe_…` enrolls it in the same run.
+--controller URL --token bbe_…` enrolls it in the same run. Since 12 Oct
+(R199) a first run asks for it before anything else: the setup page makes
+the owner account, shows the controller's basics, and opens nothing more
+until a node is enrolled and answering, made with Create sandbox VM or
+Enroll node, and one that runs sessions rather than a hosting-only one.
 
 Three things follow, in the order they have to happen.
 
@@ -2167,7 +2201,7 @@ above, in order:
    the controller runs its own bb in that project's tree and returns what it
    printed. One implementation of every verb, kept where the state is;
    the verbs that relay are one list in `scripts/lib/relay-verbs`, read by
-   bb on the node and by the server, and a test holds both to it. `sdk`, `emu`, `run`, `build`, `test` are NOT
+   bb on the node and by the server, and a test holds both to it. `toolchains`, `emu`, `run`, `build`, `test` are NOT
    relayed; they answer for the machine the session is on, which is the
    point. The token's scope is the project; a session's credential is the
    same scoped token it has always had (bug #16), now with a hop.
@@ -2297,10 +2331,14 @@ the controller already shields: the shape shelved #15 wanted, arrived at
 from the other side). The controller never runs that git in the shared
 tree, whose hooks and config a session can write: it works in a repository
 of its own that borrows the tree's objects, and the node's bb brings the
-result into the tree as the session (scripts/dashboard/gitrelay.py). The Claude login is
-handed to a node's account by `bb login` with the session's token, which
-is the one exception and is deliberate: it is the account's own credential,
-placed in that account's home, 0600, and nowhere a job can read.
+result into the tree as the session (scripts/dashboard/gitrelay.py). A
+project's SSH deploy key is one of these: made or pasted in the project's
+settings beside its git access token (the operator, 12 Oct), kept where its
+sessions push with it and never read it. The Claude login was
+handed to a node's account by `bb login` with the session's token, as the
+one deliberate exception. *Since replaced* (R47, §19): the login never
+travels; each node signs an account in for itself from its row, and what
+crosses the wire is only whether it is signed in.
 
 **A node keeps one footprint, and the machine stays its owner's.** The
 sandbox VM is *managed*: the controller may edit its fstab, netplan, docker

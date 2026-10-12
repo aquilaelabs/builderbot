@@ -85,15 +85,33 @@ ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy',
 
 // On the deployed form, a route typed: Save wakes, and Save keeps it and
 // rebuilds nginx; then the route list is put back as it was.
+// The hostname is made once on the shared list, then picked on the route
+// (the operator, 12 Oct).
+await page.fill(`${sect} [data-nghostnew]`, 'api.example.com');
+await page.click(`${sect} [data-nghostadd]`);
+await page.waitForFunction(() => (nginxHostnames || []).some(h => h.name === 'api.example.com'), null, { timeout: 15000 });
+await page.waitForSelector(`${sect} .nghost [data-nghostrm="api.example.com"]`, { timeout: 15000 });
+ok(true, 'a hostname added to the list is on it, with Delete while nothing routes it');
 await page.click(`${sect} [data-ngadd]`);
 await page.waitForSelector(`${sect} .ngroute:nth-child(2)`, { timeout: 5000 });
-await page.fill(`${sect} .ngroute:nth-child(2) [data-ng="host"]`, 'api.example.com');
+ok(await page.$eval(`${sect} .ngroute:nth-child(2) [data-ng="host"]`, el => el.tagName === 'SELECT'
+     && [...el.options].some(o => o.value === 'api.example.com') && [...el.options].some(o => o.value === '*')),
+   '...and a new route picks its hostname from that list, every name (*) beside it');
+await page.selectOption(`${sect} .ngroute:nth-child(2) [data-ng="host"]`, 'api.example.com');
 await page.fill(`${sect} .ngroute:nth-child(2) [data-ng="port"]`, '8081');
 ok(await page.$eval(`${sect} [data-ngsave]`, b => !b.disabled), 'a route typed wakes the section\'s Save');
 await page.click(`${sect} [data-ngsave]`);
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.length === 2, sandbox.node, { timeout: 15000 });
 ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.some(r => r.host === 'api.example.com' && r.port === 8081),
    '...and Save keeps it on the controller');
+{
+  const busyName = await api('/api/nginx', { action: 'host-remove', name: 'api.example.com' });
+  ok(/routed on sandbox: take those routes off first/.test(busyName.error || ''),
+     `a hostname a route uses is not deleted, and the refusal names where (${(busyName.error || 'deleted').slice(0, 70)})`);
+  await api('/api/nginx', { action: 'host-add', name: 'spare.example.com' });
+  const gone = await api('/api/nginx', { action: 'host-remove', name: 'spare.example.com' });
+  ok(gone.ok && !gone.hostnames.some(h => h.name === 'spare.example.com'), '...and one routed nowhere is');
+}
 const quietRoutes = async () => { for (let i = 0; i < 180; i++){ if (!(((await api('/api/v1/jobs?active=1')).jobs) || []).some(j => j.project === 'nginx-sandbox')) return; await new Promise(r => setTimeout(r, 500)); } };
 await quietRoutes();
 await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
@@ -151,11 +169,12 @@ ok(await page.$eval('#bellPanel', e => /nginx update on sandbox/.test(e.textCont
      && e.querySelector('[data-bdismiss^="nginx:"]')),
    'the bell carries an nginx note of its own kind, with Dismiss keyed to the digest');
 await page.click('#bBell');
-// ...and the Docker row says so with Update nginx.
+// ...and the Docker row says so with Update, the word every row's update uses.
 await page.evaluate(() => openDocker());
 await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
-ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)),
-   'the Docker tab\'s row of a node\'s nginx says the line is out, with Update nginx');
+ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
+     && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),
+   'the Docker tab\'s row of a node\'s nginx says the line is out, with Update as on every row');
 await page.evaluate(() => openNginxTab());
 await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
 await page.click(`${sect} [data-ngupdate]`);   // its confirm is accepted by lib.mjs's dialog handler

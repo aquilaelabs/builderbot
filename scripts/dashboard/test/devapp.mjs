@@ -672,7 +672,14 @@ await dmClick('rebuild');
 await page.waitForFunction(sel => {
   const e = document.querySelector(sel + ' .state');
   return e && /building|pulling|starting|working|queued/i.test(e.textContent);
-}, DM, { timeout: 20000 });
+}, DM, { timeout: 20000 }).catch(async e => {
+  // What the row said instead, and what the daemon was asked, so a miss here
+  // names its cause rather than only its line.
+  const said = await page.$eval(DM, r => ({ state: r.querySelector('.state')?.textContent.trim(),
+    buttons: [...r.querySelectorAll('[data-dm]')].map(b => `${b.dataset.dm}${b.disabled ? '(off)' : ''}`) })).catch(() => null);
+  throw new Error(`the row never said it was building: ${JSON.stringify(said)}; dialogs ${JSON.stringify(page.dialogs.slice(-2))}\n`
+    + dockerLog().split('\n').filter(l => /ep-silon /.test(l)).slice(-6).join('\n') + `\n${e.message}`);
+});
 ok(await page.$(`${DM} .dmlog`) === null, "the row carries the job's phase and no tail of its output");
 ok(await page.$(`${DM} [data-dm="abort"]`) !== null,
    '...with an Abort beside it, which a build never had');

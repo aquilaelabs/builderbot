@@ -312,8 +312,14 @@ await phone.evaluate(() => setView('terminal'));
 // nowhere else, and this page opens on the layout the desktop saved, which
 // has no tab left after the middle-click above (it passed while that save
 // landed late, and stopped once the poll got quicker, 12 Oct).
-await phone.evaluate(() => { if (!tabs.some(t => t.kind === 'term')) openTab({kind: 'term', arg: argForSession('shell-alpha'), label: 'shell-alpha'}); });
-await phone.waitForSelector('#mKeys', { state: 'visible' });
+// ...and opened again until it stays: the page adopts the layout the desktop
+// saved, which can land after the tab is opened and take it away again
+// (12 Oct: the tab list read empty when the wait gave up).
+await phone.waitForFunction(() => {
+  if (!tabs.some(t => t.kind === 'term')) openTab({kind: 'term', arg: argForSession('shell-alpha'), label: 'shell-alpha'});
+  const k = document.getElementById('mKeys');
+  return k && !k.hidden && k.offsetParent !== null;
+}, null, { timeout: 30000, polling: 500 });
 ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && !await phone.$('#bKeys'),
    'the phone bar carries the keys, and the strip has no ⌨ anywhere to hide');
 // A truncated version string answers nothing, so where it will not fit the

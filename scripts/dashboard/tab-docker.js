@@ -1382,7 +1382,7 @@ function dmRowsHtml(ins, job, blind){
         ${(d.images_behind || []).length && !busy ? `<button type="button" data-dm="update"
           title="pull the newer images and start it again: docker compose pull, then up -d">Update</button>` : ""}
         ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
-          title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx tab's record and rebuild with it">Update nginx</button>` : ""}
+          title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx tab's record and rebuild with it">Update</button>` : ""}
         `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}

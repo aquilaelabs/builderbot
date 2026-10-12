@@ -353,13 +353,20 @@ class WorkMixin:
                 job.say(f"== bb toolchains {verb} {name}\n")
                 st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
                                                 "toolchains", verb, name],
-                                       "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                       "cwd": store, "timeout": spec.get("step_timeout") or spec.get("timeout") or 3600,
                                        "env": sdk_env(self.state)})
                 if st_ != "succeeded":
                     bad += 1
                     if st_ == "canceled":
                         return st_, code
                     break
+            else:
+                # Landed: the terminal server is started again now, not when
+                # the whole batch ends, so a session opened meanwhile has it
+                # on its PATH (the operator, 12 Oct: one opened an hour into
+                # a batch still had the old environment). Open sessions run on.
+                if action in ("install", "update"):
+                    self.session_renew()
         # The machine's own two, in the order each needs: the toolkit hands
         # the driver's libraries to a container, so it goes on after the
         # driver and comes off before it.
@@ -589,7 +596,7 @@ class WorkMixin:
             job.say(f"== bb emu image {action} {iid}\n")
             st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
                                             "emu", "image", action, iid],
-                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                   "cwd": store, "timeout": spec.get("step_timeout") or spec.get("timeout") or 3600,
                                    "env": sdk_env(self.state)})
             if st_ != "succeeded":
                 break

@@ -1401,6 +1401,7 @@ start_server() {
     BB_COMPAT_SWEEP=1 \
     BB_CLOUDFLARED="$DASH/test/cloudflared-stub.sh" \
     BB_TUNNEL_ROUTE_BASE="http://127.0.0.1:$PORT" \
+    DEBUG_MODE=1 \
     python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &
   echo $! > "$PIDF" )
 pid="$(cat "$PIDF")"

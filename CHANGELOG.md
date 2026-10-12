@@ -130,6 +130,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings can make a deploy key or take a pasted one, beside its access token: kept root-only so sessions push with it and never read it, its public half shown with a link to the host's deploy keys page. Keys in /secrets/ssh still work (d6b61e3)
 - A first run is a setup page: after the owner, where what grows is kept, when an idle Claude session ends and a public hostname, each with its default, then a first node, which the rest of BuilderBot waits for (20c3975)
 - A project's row says under a session when it needs a restart to see what changed since it started, and why: a toolchain installed on its node, or BuilderBot updated (4909460)
+- The nginx tab keeps one list of public hostnames for every node: add a name once, pick it from a pull-down on any route for any project's container, and delete it once nothing routes it (368121d)
 
 ### Changed
 
@@ -286,6 +287,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Reset BuilderBot opens a dialog that un-enrolls the nodes first, uninstalling BuilderBot from each and waiting for every one to report before anything moves, so each machine can be enrolled again; a node's Un-enroll asks the same way and says what goes and what stays (20c3975)
 - The Logs section's days now reach every log the controller keeps, job logs included, on an hourly sweep rather than only at boot; Clear takes the CI runs and finished job logs too; a running job's log, a live log file, old job rows and the audit trail are all bounded (24ab1cc)
 - A node keeps its own logs bounded and readable: job output posted as it comes with a meter as its last frame, the terminal and runner logs, runner diagnostics, container logs and the journal all capped, faults said once rather than every few seconds (1586bdc)
+- The Claude button's menu no longer blinks or loses a press while the page updates, and offers Restart beside End session: the session ends and resumes the same conversation, starting fresh so it sees what changed (9b745b7)
+- A node's Toolchains tab lists only the toolchains its platform can have; the Not for this node fold is gone (0202f34)
+- The README is a front page (what BuilderBot is, what it does, pictures, where the docs are), and the settings, the bb command list and Android signing are in docs/reference.md, with docs/README.md as the index (9ed3126)
 
 ### Removed
 
@@ -476,6 +480,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Swift and other toolchains already installed update on a node: an update uses the verb that recipe has, or removes and installs again (ca8eae8)
 - A toolchain deleted from a node's store by hand reads as not installed within a hello, on the Toolchains tab and in the bell, instead of keeping the last check's current or update; a store emptied to start over offers every row for installing again (075cbca)
 - An Android package can be removed from the Toolchains tab when the Android command-line tools are not installed: its directory is deleted directly (a968c58)
+- The Toolchains tab ticks what an install put on a node as soon as the node reports it, rather than after the page is reloaded (f266d17)
+- Install selected on a node installs every ticked toolchain, not the first eight (8a77d93)
+- Aborting a toolchain install no longer leaves half a toolchain reading installed, or calls the toolchains it never reached failed (6d24de5)
 
 ### Security
 

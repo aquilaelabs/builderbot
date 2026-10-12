@@ -21,6 +21,10 @@ class LandedSince(unittest.TestCase):
             @staticmethod
             def jobs_for(node_id=None, type=None, n=50, **k):
                 return jobs
+
+            @staticmethod
+            def node(nid):
+                return None
         saved = toolchains.nodes
         self.addCleanup(setattr, toolchains, "nodes", saved)
         toolchains.nodes = Nodes()

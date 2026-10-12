@@ -1628,32 +1628,24 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       body: JSON.stringify({ census: { ...CENSUS, arch: 'x86_64', stores: { ...CENSUS.stores,
           toolchains: { ...CENSUS.stores.toolchains, id: ID } } },
         version: shipped.version, digest: shipped.digest }) });
+    // Each node installs into its own directory of the store (R196), so the
+    // same toolchain on both at once is two directories, not a clash; the
+    // one thing they share is the Android system images, whose image jobs
+    // wait for each other (unit/test_store_areas.py holds that).
     const first = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
     const second = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: other.id });
-    ok(first.job && /installing jdk into the toolchain store it shares/.test(second.error || ''),
-       `...and the same toolchain is not unpacked by both at once, naming why (${
-         (second.error || 'no error').slice(0, 90)})`);
-    // It is the directory that clashes, not the share: another toolchain on
-    // the other node goes ahead, and so does a check, which writes nothing.
-    // Two installs on two nodes used to be refused for sharing a store at all.
-    const beside = await napi('/api/toolchains', { action: 'install', names: ['go'], node: other.id });
-    ok(beside.job && !beside.error,
-       `...while another toolchain installs on the other node at the same time (${beside.job || beside.error})`);
+    ok(first.job && second.job && !second.error,
+       `...and the same toolchain installs on both at once, each into its own directory (${second.job || second.error})`);
+    if (second.job) await napi('/api/v1/jobs', { action: 'cancel', id: second.job });
     const again = await napi('/api/toolchains', { action: 'install', names: ['node'], node: minted.id });
     ok(/already running on .*One at a time on a node/.test(again.error || ''),
        `...and one node still runs one toolchain job at a time (${(again.error || 'no error').slice(0, 80)})`);
-    if (beside.job) await napi('/api/v1/jobs', { action: 'cancel', id: beside.job });
+    for (let i = 0; i < 60 && /queued|assigned|running/.test((await napi(`/api/v1/jobs?id=${second.job}`))?.state || ''); i++)
+      await new Promise(r => setTimeout(r, 250));
     const look = await napi('/api/toolchains', { action: 'check', node: other.id });
-    ok(look.job && !look.error, `...and a check, which writes no store, is not held by it (${look.job || look.error})`);
+    ok(look.job && !look.error, `...and a check on the other node is not held by it (${look.job || look.error})`);
     if (look.job) await napi('/api/v1/jobs', { action: 'cancel', id: look.job });
     if (first.job) await napi('/api/v1/jobs', { action: 'cancel', id: first.job });
-    // The Android SDK is one tree, whatever part of it each job adds.
-    const sdk1 = await napi('/api/toolchains', { action: 'install', names: ['android:ndk'], node: minted.id });
-    const sdk2 = await napi('/api/toolchains', { action: 'install', names: ['android:cmake'], node: other.id });
-    ok(sdk1.job && /installing [^;]*\bandroid\b[^;]* into the toolchain store/.test(sdk2.error || ''),
-       `...and two parts of the Android SDK wait for each other, being one tree (${(sdk2.error || 'no error').slice(0, 80)})`);
-    if (sdk1.job) await napi('/api/v1/jobs', { action: 'cancel', id: sdk1.job });
-    if (sdk2.job) await napi('/api/v1/jobs', { action: 'cancel', id: sdk2.job });
     await napi('/api/v1/nodes', { action: 'retire', id: other.id });
     await withId('x86_64', en.token);
     // A toolchain that needs another pulls it in, ahead of itself. Before
@@ -1701,9 +1693,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       if (p.job && p.job.running === false && p.job.action) seen = p.job;
       else await sleep(250);
     }
+    // Canceled before it began anything, so jdk did not fail, it was not
+    // tried (B683): only what the log shows begun can have failed.
     ok(seen && seen.action === 'install' && seen.done.includes('flutter')
-       && seen.failed.includes('jdk'),
-       `a finished node job says what actually landed, read from the census (${
+       && !seen.failed.includes('jdk'),
+       `a finished node job says what actually landed, read from the census, and a stopped one fails nothing it never began (${
          JSON.stringify(seen && {done: seen.done, failed: seen.failed})})`);
   }
   // ---- the Emulator tab: a node's android system images -------------------

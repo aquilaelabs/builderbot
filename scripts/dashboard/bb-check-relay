@@ -92,7 +92,13 @@ def main():
         pass
     bb = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
     try:
-        r = subprocess.run(["bash", bb, "rules", "check"], cwd=cwd, capture_output=True,
+        # With the toolchain store's environment as it is now, not as the
+        # session's was when it started: a toolchain installed since (node
+        # and playwright, for the design check) was not on its PATH, and the
+        # check failed on the session's age rather than on the change
+        # (the operator, 12 Oct).
+        r = subprocess.run(["bash", "-c", 'eval "$(bash "$0" toolchains env 2>/dev/null)"; exec bash "$0" rules check',
+                            bb], cwd=cwd, capture_output=True,
                            text=True, timeout=3600,
                            env={**os.environ, "BB_PROJECT": project})
     except (OSError, subprocess.SubprocessError):

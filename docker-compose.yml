@@ -43,6 +43,11 @@ services:
     stdin_open: true
     tty: true
 
+    # The .env beside this file, into the container as well as into the
+    # interpolation below, when there is one.
+    env_file:
+      - path: .env
+        required: false
     # Only what the container needs before BuilderBot runs; everything else
     # is set in the dashboard (Settings, a project's settings, the Nodes tab).
     environment:

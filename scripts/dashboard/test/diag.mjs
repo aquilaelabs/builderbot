@@ -41,9 +41,13 @@ const CRED = /bb[a-z]_[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{16,}|password\s*[:
   ok(typeof r.body.controller?.agent_shipped === 'string' && 'debug_mode' in (r.body.settings || {})
      && Array.isArray(r.body.doctor?.checks) && typeof r.body.jobs?.last_24h === 'object',
      '...with the build it ships, the switches, the doctor and the jobs in it');
-  const one = await call('/api/diag', { sections: ['nodes', 'nosuch'] });
+  const one = await call('/api/diag', { sections: ['nodes'] });
   ok(one.status === 200 && Array.isArray(one.body.nodes) && !('audit' in one.body),
-     '...or only the sections asked for, an unknown one ignored');
+     '...or only the sections asked for');
+  // An unknown one is said, not quietly answered with everything (B675).
+  const bad = await call('/api/diag', { sections: ['nodes', 'nosuch'] });
+  ok(bad.status === 400 && /no section nosuch: the sections are/.test(bad.body.error || ''),
+     `...and an unknown one is refused, naming the sections there are (${bad.status}: ${(bad.body.error || '').slice(0, 60)})`);
   ok(!CRED.test(JSON.stringify(r.body)), 'and nothing in it is shaped like a credential');
 }
 

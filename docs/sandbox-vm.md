@@ -4,9 +4,9 @@ A small virtual machine whose only job is to run Docker, so that a Claude
 session can build, run and destroy containers without any of it reaching the
 server's real ones.
 
-BuilderBot stays exactly what it is: the container, on the projects share,
-with the GPU and the emulator and the runner. Only the *daemon* moves. It is
-one environment variable on BuilderBot's side.
+BuilderBot's controller stays exactly what it is: the container, on the
+projects share, holding the record. Only the *daemon* moves, onto a machine
+enrolled as a node like any other; nothing on BuilderBot's side is a setting.
 
 ## Why a VM rather than a network
 
@@ -66,9 +66,9 @@ asks. Mount it anywhere else and every project's compose file is wrong in the
 worst way available: Docker does not fail on a missing bind source, it creates
 an empty directory and mounts that, and the app comes up with no data.
 
-the path mapping exists precisely because today's daemon is the host's and
-its paths are not BuilderBot's. Give the sandbox parity and that setting
-becomes an identity mapping you can leave empty.
+A node's path mapping, on its row on the Nodes tab, exists for a daemon
+whose paths are not BuilderBot's. Give the sandbox parity and that mapping
+becomes an identity you can leave empty.
 
 **The dev-data path is the sandbox's alone.** `/devdata`, where a compose
 that opts in with `${BB_DEV_DATA}/...` puts its volumes: needs mounting on
@@ -593,7 +593,7 @@ Then what differs from Unraid's placeholder, each for a reason:
 
 ## Pointing BuilderBot at it
 
-Three settings on the container's template, then the proxy comes off.
+Three steps, none of them on the container's template, then the proxy comes off.
 
 **1. The VM's host key is met on first use, and there is nothing to do.**
 `docker -H ssh://…` shells out to `ssh`, and ssh run non-interactively
@@ -685,7 +685,9 @@ comes with it: a rebuild that changes nothing rebuilds nothing.
 
 ## What is deliberately not in it
 
-No GPU, no Android SDK, no Playwright, no Actions runner. They stay in
-BuilderBot, where the hardware and the shares already are. The sandbox is a
-Docker host and nothing else, and keeping it that way is what makes throwing
-it away cheap.
+Nothing of the controller's: no accounts, no notebook, no git credential
+(a node pushes through the controller), and no GPU until the commented
+`hostdev` block above is filled in (roadmap R20). What it does carry, Docker
+and, on a node that runs sessions, Claude Code, the emulator and the
+toolchains installed on it, is a node's and can be put back from the Nodes
+tab, and keeping the record off it is what makes throwing it away cheap.

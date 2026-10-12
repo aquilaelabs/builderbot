@@ -499,8 +499,12 @@ sdk_builds_with() {
 }
 
 # sdk_fetch URL DEST: download with a progress line, into a temp file first.
+# A download that stops receiving (under 1 kB/s for two minutes) fails
+# rather than holding the job until its step's hour is up, and a server
+# that never answers fails in thirty seconds; two retries for a blip.
 sdk_fetch() {
-    curl -fL --progress-bar -o "$2" "$1"
+    curl -fL --progress-bar --connect-timeout 30 --speed-limit 1024 --speed-time 120 \
+        --retry 2 --retry-delay 5 -o "$2" "$1"
 }
 
 # sdkmanager --list is a network round trip wrapped in a JVM start, and a full
@@ -990,7 +994,26 @@ SDK_PARTIAL=""
 sdk_mark_partial() {
     local d="$1"
     if [ -L "$d" ]; then d="$(readlink -f "$d")"; fi
-    if [ ! -d "$d" ] || [ -z "$(ls -A "$d" 2>/dev/null)" ]; then SDK_PARTIAL="$d"; fi
+    if [ ! -d "$d" ] || [ -z "$(ls -A "$d" 2>/dev/null)" ]; then
+        SDK_PARTIAL="$d"
+        # ...and a marker beside it until the install has finished, which no
+        # kill can leave unsaid: an Abort that cut the cleanup short left half
+        # of flutter on the share, and a directory read as installed (the
+        # operator, 12 Oct). The agent does not list a directory with its
+        # marker, and the next install clears what the marker names.
+        mkdir -p "$(dirname "$d")" && : > "$(sdk_partial_marker "$d")"
+    fi
+}
+sdk_partial_marker() { printf '%s/.bb-installing.%s' "$(dirname "$1")" "$(basename "$1")"; }
+# What an interrupted install left: its directory and its marker, cleared
+# before this one begins, so a half toolchain is never mistaken for a whole one.
+sdk_clear_interrupted() {
+    local d="$1" m
+    m="$(sdk_partial_marker "$d")"
+    [ -e "$m" ] || return 0
+    warn "an earlier install of $(basename "$d") did not finish; clearing what it left in ${d}"
+    rm -rf "${d:?}"
+    rm -f "$m"
 }
 # Interrupted rather than failed: the dashboard's Abort sends the whole
 # process group a TERM, so the download dies with it. Handled explicitly
@@ -1001,7 +1024,7 @@ sdk_install_aborted() {
     trap - EXIT
     if [ -n "${SDK_PARTIAL:-}" ]; then
         warn "aborted; removing the partial ${SDK_PARTIAL}"
-        rm -rf "${SDK_PARTIAL:?}"
+        rm -rf "${SDK_PARTIAL:?}" && rm -f "$(sdk_partial_marker "$SDK_PARTIAL")"
         SDK_PARTIAL=""
     else
         warn "aborted"
@@ -1013,7 +1036,7 @@ sdk_install_cleanup() {
     local rc=$?
     if [ "$rc" = 0 ] || [ -z "${SDK_PARTIAL:-}" ]; then return 0; fi
     warn "install failed (exit ${rc}); removing the partial ${SDK_PARTIAL}"
-    rm -rf "${SDK_PARTIAL:?}"
+    rm -rf "${SDK_PARTIAL:?}" && rm -f "$(sdk_partial_marker "$SDK_PARTIAL")"
     SDK_PARTIAL=""
     # Android packages leave a record of the operation behind as well, and a
     # stale one blocks every later install and uninstall of that package.
@@ -1222,7 +1245,15 @@ sdk_install_git() {
     sdk_meta_into warm argv "$what" source.warm "dir=$d"
     if [ "${#warm[@]}" != 0 ]; then
         log "$(sdk_meta field "$what" source.warm_note)"
-        "${warm[@]}"
+        # Bounded, and asked of nobody: flutter's first --version sat for half
+        # an hour on bb-sandbox with nothing written (12 Oct) and held every
+        # toolchain queued behind it. CI=true is how its tool knows no person
+        # is there to answer; a warm-up that does not finish in the limit
+        # fails this toolchain alone, saying so, and the job goes on.
+        if ! CI=true FLUTTER_SUPPRESS_ANALYTICS=true DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+                timeout --kill-after=30 "${BB_WARM_TIMEOUT:-900}" "${warm[@]}" < /dev/null; then
+            die "${what}: warming did not finish within ${BB_WARM_TIMEOUT:-900}s (${warm[*]}); this install is taken off again, and Install retries it"
+        fi
     fi
 }
 
@@ -1317,6 +1348,7 @@ sdk_install() {
     [ -n "$kind" ] || { sdk_image_flavor "$what" >/dev/null && kind=sdkmanager; }
     [ -n "$kind" ] || die "unknown toolchain: ${what} (bb toolchains list names them)"
     mkdir -p "$root"
+    [ "$kind" = sdkmanager ] || sdk_clear_interrupted "$(sdk_dir "$what")"
     # EXIT rather than RETURN: a failing step here reaches `die`, which exits
     # the process, and a RETURN trap never fires on that path.
     trap sdk_install_cleanup EXIT
@@ -1335,6 +1367,7 @@ sdk_install() {
     case "$kind" in
         tarball|script|git) log "${what} ready: new shells pick it up; this one: eval \"\$(bb toolchains env)\"" ;;
     esac
+    [ -z "${SDK_PARTIAL:-}" ] || rm -f "$(sdk_partial_marker "$SDK_PARTIAL")"
     SDK_PARTIAL=""
     # Cleared here rather than up front: an install that fails leaves the
     # toolchain absent, and a marker cleared on the way in would have let the

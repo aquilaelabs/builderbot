@@ -1454,6 +1454,9 @@ const DIALOGS = {
   // from what is on screen, so it opens whether or not the Settings tab is
   // the one showing, and debug mode decides the BUTTON rather than this.
   setdebug: () => openDebugSettings(),
+  // Reset BuilderBot (the operator, 12 Oct): the nodes to un-enroll first,
+  // what un-enrolling does, and the word. Opened, measured, never pressed.
+  reset: () => askReset(),
   // One container's log. The stub daemon answers, so the dialog draws its
   // real shape rather than an error band.
   dockerlog: async () => { openDocker(); await new Promise(r => setTimeout(r, 1200));

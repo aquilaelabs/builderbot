@@ -2236,12 +2236,14 @@ def _reset_after(principal):
 
 
 def setup_node():
-    """The name of a node enrolled and answering, for Finish on the setup
-    page (R199), or ""."""
+    """The name of a node enrolled, answering and running sessions, for
+    Finish on the setup page (R199), or "": a hosting-only one holds no
+    code, so a project has nowhere to work or build."""
     if nodes is None:
         return ""
     return next((n["name"] for n in nodes.node_list()
-                 if n.get("kind") == "agent" and n.get("state") == "online" and n.get("live")), "")
+                 if n.get("kind") == "agent" and n.get("state") == "online" and n.get("live")
+                 and not (n.get("config") or {}).get("host_only")), "")
 # ...and the home tunnel's (R176), applied by tunnel.py when they change.
 TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 
@@ -2720,6 +2722,15 @@ idle.configure(state=STATE, write_json=write_json,
 logs.prune()
 
 import prefs                                                     # noqa: E402
+# Debug and dev options only on a controller started with DEBUG_MODE=1; at a
+# start without it every one of them is put back off, so turning it on
+# again starts from nothing granted (the operator, 12 Oct).
+if not settings.debug_available():
+    try:
+        if settings.reset_debug() | bool(prefs.reset_debug()):
+            print("dashboard: DEBUG_MODE is not 1, so every debug and dev option was turned off", flush=True)
+    except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
+        print(f"dashboard: debug options not reset: {e}", flush=True)
 # The briefing reads a project's own settings for its "While tests run"
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
@@ -4908,7 +4919,16 @@ class Handler(BaseHTTPRequestHandler):
         if why:
             return self._json({"error": why, "toolchains": []})
         if nid and nid != "local" and not NODES_OK:
-            return self._json(toolchains.payload_for_node(nid))
+            d = toolchains.payload_for_node(nid)
+            # A toolchain job's output is the node's, read by a session only
+            # with its project's diagnostics grant, as bb jobs reads it (the
+            # operator, 12 Oct): the rows and what failed stay, the log lines
+            # and the error excerpts go, with the reason in their place.
+            why = self._diag_why() if (self._who() or {}).get("session") else ""
+            if why and isinstance(d.get("job"), dict):
+                d["job"] = {k: v for k, v in d["job"].items() if k not in ("log", "errors")}
+                d["job"]["hidden"] = why
+            return self._json(d)
         return self._json(toolchains.payload())
 
     def _get_emulator(self):
@@ -5478,7 +5498,8 @@ class Handler(BaseHTTPRequestHandler):
         # Finish on the setup page (R199): the first node is the one step
         # that cannot wait, so it is checked here and not only on the page.
         if want.get("setup_done") is True and not settings.get("setup_done") and not setup_node():
-            return self._json({"error": "enroll a node first: Finish needs one enrolled and answering"}, 409)
+            return self._json({"error": "enroll a node that runs sessions first: Finish needs one enrolled and "
+                                        "answering, and not hosting only"}, 409)
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
@@ -5580,6 +5601,11 @@ class Handler(BaseHTTPRequestHandler):
         # ...and what its sessions may read for debugging (the machine logs
         # of named nodes, the controller's diagnostics): the debug grant's,
         # per project rather than per node (the operator, 6 Oct).
+        # Granted only where debug mode can be on at all (DEBUG_MODE=1); a
+        # grant taken off is always allowed.
+        if prefs.debug_changed(name, req) and not settings.debug_available() \
+                and (req.get("diag") is True or req.get("log_from")):
+            return self._json({"error": "the debug options are not available on this controller"}, 403)
         if prefs.debug_changed(name, req) and self._refused("debug"):
             return
         # ...nor is the dial that hands a session this project's container:
@@ -7389,6 +7415,11 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("docker-write"):
             return
         act, nid = field(req, "action"), field(req, "node")
+        # The hostname list is every node's (one pull-down on every route).
+        if act == "host-add":
+            return self._result(nginxproxy.add_hostname(field(req, "name")))
+        if act == "host-remove":
+            return self._result(nginxproxy.remove_hostname(field(req, "name")))
         if not nid or not nodes.node(nid):
             return self._json({"error": "which node?"}, 400)
         if act == "deploy":

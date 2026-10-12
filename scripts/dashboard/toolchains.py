@@ -803,6 +803,20 @@ def _node_errors(job_id, failed, verb):
     return out
 
 
+_tried_memo = {}
+
+
+def _tried(job_id):
+    """The toolchains a node's job began, read from its log's headers
+    (`== bb toolchains VERB NAME`), kept per job."""
+    if job_id not in _tried_memo:
+        text = (nodes.job(job_id) or {}).get("log") or "" if nodes else ""
+        _tried_memo[job_id] = set(re.findall(r"^== bb toolchains [a-z]+ (\S+)$", text, re.M))
+        while len(_tried_memo) > 32:
+            _tried_memo.pop(next(iter(_tried_memo)))
+    return _tried_memo[job_id]
+
+
 def finished(act, names, here, rep, state):
     """(done, failed) for a node's last toolchain job, from what is true now.
 
@@ -1060,6 +1074,12 @@ def payload_for_node(nid):
                 here = {i["name"] for i in items if i["installed"]}
                 here |= {r["name"] for r in (driver_row(n), container_row(n)) if r and r["here"]}
                 done, failed = finished(act, names, here, rep, j.get("state"))
+                # Stopped: a toolchain it never reached did not fail, it was
+                # not tried (the operator, 12 Oct: Abort on flutter called the
+                # twelve behind it failed). Which were tried is in the log.
+                if j.get("state") == "canceled":
+                    tried = _tried(j["id"])
+                    failed = [x for x in failed if x in tried]
                 job = {"running": False, "action": act, "queue": [], "current": "",
                        "done": done, "failed": failed,
                        "errors": _node_errors(j["id"], failed, act),
@@ -1125,7 +1145,13 @@ def payload_for_node(nid):
             "shared": False, "checked": checked, "sizing": False,
             # What on the store no node runs from any more (R196).
             "cleanable": cleanable(nid),
-            "items": items, "job": job or {"running": False}}
+            "items": items, "job": job or {"running": False},
+            # A job that ended and succeeded while the store still reads as
+            # before it: the node's census lands a moment after the job's end,
+            # and the tab read the store once and stopped, so the rows stayed
+            # unticked until the page was reloaded (the operator, 12 Oct). The
+            # tab asks again while this says so, two minutes at most.
+            "store_settling": _store_settling(job, items)}
 
 
 DRIVER = "nvidia-driver"
@@ -1206,6 +1232,22 @@ def _store_share(n):
     return (best[1], path[len(best[0]):])
 
 
+def _store_settling(job, items):
+    """Whether the last finished job's names are not yet where it left them
+    in the node's listing (installed for an install or update, gone for a
+    removal), within two minutes of its end."""
+    if not job or job.get("running") or job.get("action") not in ("install", "update", "remove"):
+        return False
+    j = (nodes.job(job["id"], with_log=False) or {}) if nodes and job.get("id") else {}
+    if j.get("state") != "succeeded" or time.time() - int(j.get("ended") or 0) > 120:
+        return False
+    here = {i["name"] for i in items if i["installed"]}
+    names = [n for n in ((j.get("spec") or {}).get("names") or []) if n != DRIVER and not str(n).startswith(DRIVER + ":")
+             and n != TOOLKIT and n in {i["name"] for i in items}]
+    want = job["action"] != "remove"
+    return any((n in here) != want for n in names)
+
+
 def landed_since(nid, started):
     """The toolchains installed or updated on this node after `started`
     whose layout puts something on PATH or sets a variable: what a session
@@ -1230,12 +1272,18 @@ def _landed_at(nid):
     out = {}
     if not nodes:
         return out
+    n = nodes.node(nid)
+    here = node_has(n) if n else set()
     for j in nodes.jobs_for(node_id=nid, type="toolchain", n=50):
         sp = j.get("spec") or {}
-        if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
+        if sp.get("action") not in ("install", "update") or j.get("state") not in ("succeeded", "failed", "canceled"):
             continue
+        # A job that stopped part way still landed what it installed before
+        # it stopped (the operator, 12 Oct: an aborted batch put node and
+        # playwright on the store, and no session was told to restart).
         for name in sp.get("names") or []:
-            out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
+            if j.get("state") == "succeeded" or str(name) in here:
+                out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
     return out
 
 
@@ -1654,6 +1702,10 @@ def _driver_name(n, action, pkg):
     return f"{DRIVER}:{pkg}", ""
 
 
+# The longest one toolchain's install, update or removal may take on a node.
+TC_STEP_S = 3600
+
+
 def node_job(principal, nid, action, names, driver=""):
     """Queue the toolchain job. Refused, with numbers, when the store cannot
     hold what is asked, measured here the last time it was installed, so a
@@ -1716,8 +1768,15 @@ def node_job(principal, nid, action, names, driver=""):
     # store could not hold both. It is scoped by platform now: each machine
     # installs under <store>/<os>-<arch> (roadmap R19), so a Mac and a Linux
     # box sharing a share is the design, not a mistake.
+    every = names + [x for x in (drv, ctk) if x]
+    # Two limits (the operator, 12 Oct): each toolchain's step gets an hour,
+    # which the agent enforces and then moves on; the job as a whole gets
+    # an hour per toolchain, which is what the controller holds it to. One
+    # hour for both marked a nineteen-toolchain batch lost at 65 minutes
+    # while the node went on installing.
     r = nodes.job_add(principal, {"node": nid}, "toolchain",
-                      {"action": action, "names": names + [x for x in (drv, ctk) if x], "timeout": 3600})
+                      {"action": action, "names": every, "step_timeout": TC_STEP_S,
+                       "timeout": TC_STEP_S * max(1, len(every)) + 600})
     if r.get("ok") and added:
         r["added"] = added
     return r
@@ -1760,7 +1819,7 @@ def auto_sysdeps(nid):
     sig = json.dumps(unmet, sort_keys=True)
     if _auto_sysdeps.get(nid) == sig:
         return None
-    r = node_job("system", nid, "sysdeps", sorted(unmet)[:8])
+    r = node_job("system", nid, "sysdeps", sorted(unmet))
     # Only a job actually queued counts as tried: one refused because
     # another toolchain job holds the store is tried again on a later hello.
     if r.get("ok"):
@@ -1948,9 +2007,14 @@ def verb(action, req, principal):
             # The system packages the held recipes need, installed
             # without the recipes (roadmap R51): named ones, or every
             # held one when none are named.
-            names = [n for n in (req.get("names") or []) if n in known][:8]
+            names = [n for n in (req.get("names") or []) if n in known]
         else:
-            names = [n for n in (req.get("names") or []) if n in known][:8]
+            # Every name asked for (B681): this kept the first eight and
+            # dropped the rest without a word, so Install selected with the
+            # whole catalog ticked installed eight and their requirements,
+            # twice (the operator, 12 Oct), long after the agent stopped
+            # doing the same (B673).
+            names = [n for n in (req.get("names") or []) if n in known]
             if not names:
                 return {"error": "nothing selected"}, 400
         r = node_job(principal, nid, action, names, driver=field(req, "driver"))

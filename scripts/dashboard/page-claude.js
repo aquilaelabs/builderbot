@@ -86,6 +86,30 @@ async function claudeEnd(name, n, several){
   refresh();
 }
 
+// Restart (the operator, 12 Oct): end the session and pick its conversation
+// up again, which is how a session sees what changed since it started (a
+// toolchain on its node's PATH, BuilderBot's briefing; the project row says
+// which). The menu turns to the model and effort with Start, the
+// conversation it was in already chosen.
+async function claudeRestart(name, n, several){
+  const where = n.name ? ` on ${n.name}` : "";
+  const p = (state?.projects || []).find(x => x.name === name);
+  if (!confirm(`Restart your Claude session on ${projLabel(name)}${where}?\n\nIt ends now and resumes the same conversation, starting fresh so it sees what changed since it started.`)) return;
+  const conv = p?.last_claude?.id || null;
+  try{
+    const j = await endSession(myClaude(name), n.id);
+    if (j.error) return notify(j.error, true);
+    const arg = `claude:${name}` + (several && n.id ? `:n:${n.id}` : "");
+    const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
+    if (t) dropTab(t.id);
+  }catch(e){ return notify("could not end it: " + e, true); }
+  resumeFor = name;
+  resumePick = {project: name, sessionId: conv, node: several ? n.id : "",
+                model: p?.yours?.model || "", effort: p?.yours?.effort || ""};
+  refresh();
+  if (state) drawProjects(state.projects);
+}
+
 // Something started a session on a node this account has not signed in on
 // (a step sent from the notebook, a brief): it goes to that node's sign-in
 // instead of to a session that would start and say so. True when it did.
@@ -299,6 +323,8 @@ function placeResumeMenu(){
   m.className = "pinmenu resumemenu";
   m.id = "resumemenu";
   if (resumePick?.project === p.name){
+    // The first step leaves as the second comes up.
+    card.querySelector(`.resumemenu[data-for="${CSS.escape(p.name)}"]:not([data-pick])`)?.remove();
     resumePicker(p, m, card, anchor, ns, several);
     return;
   }
@@ -310,6 +336,7 @@ function placeResumeMenu(){
     const node = several ? n.id : "";
     if (claudeLiveOn(p.name, n))
       return `<button data-open="1" data-node="${esc(node)}" class="primary">Open tab</button>`
+        + `<button data-restart="${esc(n.id)}" class="danger">Restart</button>`
         + `<button data-end="${esc(n.id)}" class="danger">End session</button>`;
     if (n.where !== "node") return `<div class="sub bad">${esc(n.why)}</div>`;
     if (!claudeSigned(n))
@@ -317,7 +344,7 @@ function placeResumeMenu(){
     return (p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
       + `<button data-n="1" data-node="${esc(node)}">New conversation</button>`;
   };
-  m.innerHTML = !ns.length
+  const html = !ns.length
     // No node, or one that refused, and there is nowhere else: a session
     // runs on a node and this container carries no Claude Code. The reason,
     // and no choice under it: a menu with nothing in it would be a button
@@ -333,6 +360,16 @@ function placeResumeMenu(){
         claudeNodeFacts(ns[0]) ? ` <span class="dim">${esc(claudeNodeFacts(ns[0]))}</span>` : ""}</div>` : "")
       + (claudeLiveOn(p.name, ns[0]) ? `<div class="sub">Your session is running here.</div>`
        : claudeSigned(ns[0]) ? "" : `<div class="sub">You are not signed in to Claude here.</div>`) + offer(ns[0]);
+  // The same menu as the one up already is left where it is (the operator,
+  // 12 Oct): drawn again on every poll, its buttons were replaced under the
+  // pointer and its entrance played again, so a press that began on one
+  // button ended on another and did nothing, and it blinked.
+  const was = card.querySelector(`.resumemenu[data-for="${CSS.escape(p.name)}"]:not([data-pick])`);
+  if (was && was.dataset.sig === html) return;
+  was?.remove();
+  m.dataset.for = p.name;
+  m.dataset.sig = html;
+  m.innerHTML = html;
   card.appendChild(m);
   m.querySelectorAll("[data-signin-node]").forEach(b => b.onclick = () => {
     resumeFor = null;
@@ -352,6 +389,8 @@ function placeResumeMenu(){
   m.querySelectorAll("[data-open]").forEach(b => b.onclick = () => launchClaude(p.name, null, b.dataset.node));
   m.querySelectorAll("[data-end]").forEach(b => b.onclick = () =>
     claudeEnd(p.name, ns.find(n => n.id === b.dataset.end) || {id: "", name: ""}, several));
+  m.querySelectorAll("[data-restart]").forEach(b => b.onclick = () =>
+    claudeRestart(p.name, ns.find(n => n.id === b.dataset.restart) || {id: "", name: ""}, several));
   const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
   m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
   m.style.top = (a.bottom - c.top + 4) + "px";

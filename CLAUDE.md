@@ -194,8 +194,9 @@ by hand cost four commands and still could not see the failed builds.
   restarts; `--off` reverts), so a dashboard change can be looked at in the
   browser without a 40-minute image build. `bb capture shot URL... [FILE|DIR]` takes
   headless screenshots to show the operator; it reads `DASHBOARD_AUTH` from
-  the environment for the dashboard's own pages. `tools/readme-shots.sh`
-  regenerates the README's screenshots from a staged instance.
+  the environment for the dashboard's own pages. `tools/readme-shots.mjs`
+  regenerates the README's screenshots from a running dashboard, normally
+  the dev instance, with the default scheme and the addresses scrubbed.
 
 - **Lint:** CI runs shellcheck, hadolint, ruff (ruff.toml at the root; the
   agent's own pins it to the python a Rocky node carries), actionlint, compose validation and
@@ -280,12 +281,13 @@ by hand cost four commands and still could not see the failed builds.
   - Anything the web UI can execute is a table lookup (`MACROS`, `TMUX_KEYS`,
     `TMUX_LITERALS`, `TOOLCHAINS`) rather than a command string, and `bb-tty` validates its one
     URL argument against directories that actually exist. New surface keeps that
-    shape: the terminal is one port over for anything else.
+    shape: the terminal, under `/term`, is there for anything else.
   - A setting that has to be in the environment lands in five places:
     `.env.example`, `docker-compose.yml`, `unraid/builderbot.xml`, the
-    configuration reference in `README.md`, and `docs/unraid.md` when it
-    needs host-side setup. The README is the documentation surface and is
-    expected to move with behavior.
+    configuration reference in `docs/reference.md`, and `docs/unraid.md`
+    when it needs host-side setup. The README is the front page and
+    `docs/` the documentation surface, which is expected to move with
+    behavior.
   - What a session is briefed with comes from `config/templates/briefing.md`,
     assembled per session by `preamble.py` with the project's rules, roadmap
     and open bugs. Nothing is copied into a project, so editing that file is
@@ -293,7 +295,9 @@ by hand cost four commands and still could not see the failed builds.
   - The weekly Monday build is uncached by design and is always a full pull;
     a manual dispatch is cached unless its `no_cache` box is ticked.
 
-`README.md` holds the configuration reference and the `bb` command reference;
+`README.md` is the front page and `docs/README.md` the index of the docs;
+`docs/reference.md` holds the configuration reference and the `bb` command
+reference (its `bb` block written by `tools/bb-ref.sh`);
 `docs/install.md` is the setup checklist, `docs/unraid.md` the host-side
 walkthrough, `docs/how-it-works.md` the explanatory prose, `docs/decisions.md`
 the design decisions with their dates and reasons, and `docs/layout.md` the

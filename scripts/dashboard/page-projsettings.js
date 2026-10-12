@@ -306,7 +306,9 @@ function rnFillDebug(){
   const p = (state?.projects || []).find(x => x.name === rnFor);
   const was = new Set(p?.prefs?.log_from || []);
   const rows = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
-  wrap.hidden = rnMode === "git" || state?.can?.debug === false;
+  // ...and only where debug mode is on, which needs a controller started
+  // with DEBUG_MODE=1 (settings.debug_available).
+  wrap.hidden = rnMode === "git" || state?.can?.debug === false || !state?.settings?.settings?.debug_mode?.value;
   box.innerHTML = lrow("@diag", "The controller's diagnostics", "bb diag", !!p?.prefs?.diag)
     + rows.map(n => lrow(n.id, n.name, "machine logs", was.has(n.id))).join("");
 }

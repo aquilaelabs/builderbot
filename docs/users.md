@@ -1,7 +1,8 @@
 # Users, roles and project access
 
-*Design, 4 September 2026. Nothing here is built yet: roadmap #22 carries the
-steps. Read this before starting one.*
+*Design, 4 September 2026, built since under roadmap #22. The sections below
+keep the reasoning as it was written; where they say what is to be built, it
+has been.*
 
 ## The problem
 
@@ -109,7 +110,9 @@ without invalidating everybody.
 
 The first page a container with no accounts serves is the **first-run
 screen**, and it asks for the owner's name and password; until that is done
-nothing else is reachable, and after it the store is the truth. Nothing at
+nothing else is reachable, and after it the store is the truth. (The setup
+page follows it: the controller's basics, then a first node that runs
+sessions, before the rest of the dashboard opens.) Nothing at
 boot reads a credential from the environment: one there stays readable
 forever. The one place `DASHBOARD_AUTH=name:password` is honored is `bb`,
 for a single command from a plain `docker exec` shell that has no session
@@ -189,6 +192,6 @@ the honest amount of mechanism.
 
 ## The surface
 
-Tools → **Users**, opening a document tab like Nodes and Jobs. Rows of name,
+Administration → **Users**, opening a document tab like Nodes and Jobs. Rows of name,
 role, projects and last seen; add, edit, remove. The owner's row carries no
 delete control and says why, rather than offering one that fails.

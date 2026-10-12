@@ -1500,7 +1500,11 @@ select:focus{outline-offset:-2px}
 /* ...and its route rows: hostname, path, port, TLS. */
 .ngroute{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0}
 /* The field band gives every input its full width; a route's share it. */
-.ngroute input[data-ng="host"]{width:auto;flex:2 1 12em;min-width:0}
+.ngroute select[data-ng="host"]{width:auto;flex:2 1 12em;min-width:0}
+/* The shared hostname list on the nginx tab: a name, where it is routed,
+   and Delete where it is routed nowhere; the box to add one under it. */
+.nghost{display:flex;align-items:center;gap:8px;margin:2px 0}
+.nghost + .actbar input,.field > .actbar input[data-nghostnew]{flex:1 1 14em;min-width:0}
 .ngroute input[data-ng="path"]{width:auto;flex:1 1 7em;min-width:0}
 .ngroute input[data-ng="port"]{width:auto;flex:0 1 6em;min-width:0}
 .ngroute .ndcap{white-space:nowrap}

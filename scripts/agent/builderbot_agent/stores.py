@@ -316,8 +316,16 @@ def store_dirs(state):
     # an empty android/platform-tools read as two Android rows installed on
     # a store wiped to start over (the operator, 12 Oct).
     def full(d):
+        # ...nor one an install has not finished (its marker beside it,
+        # sdk.sh sdk_mark_partial): half a toolchain left by an Abort read
+        # as installed (the operator, 12 Oct).
+        if os.path.exists(os.path.join(os.path.dirname(d), ".bb-installing." + os.path.basename(d))):
+            return False
         with contextlib.suppress(OSError):
-            return os.path.isdir(d) and any(True for _ in os.scandir(d))
+            if not os.path.isdir(d):
+                return False
+            with os.scandir(d) as entries:
+                return any(True for _ in entries)
         return False
     with contextlib.suppress(OSError):
         out["top"] = sorted(x for x in os.listdir(store) if not x.startswith(".")
