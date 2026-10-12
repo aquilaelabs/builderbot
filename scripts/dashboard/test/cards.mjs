@@ -2373,6 +2373,47 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   ok(/End your Claude session on alpha on ubu\?/.test(page.dialogs.at(-1) || '') && ended.asked?.node === 'n_ubu'
      && ended.asked?.name === await page.evaluate(() => myClaude('alpha')) && ended.dropped === 1 && !ended.tab && !ended.open,
      `End session asks first, ends that node's session and drops its tab (${JSON.stringify(ended)})`);
+  // Restart (the operator, 12 Oct): the model and effort first, then the
+  // question, and only then the session ended and started again. Asked
+  // first and ended at once, it left a person picking a model with no
+  // session running, and a start racing the end needed a second press.
+  {
+    await page.waitForFunction(() => {
+      state.projects.find(x => x.name === 'alpha').session_nodes = [
+        { id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' }];
+      state.sessions = [...(state.sessions || []).filter(s => s.name !== myClaude('alpha')),
+                        { name: myClaude('alpha'), node_id: 'n_ubu', attached: false }];
+      resumeFor = null; resumePick = null; openClaude('alpha');
+      return !!document.querySelector('#resumemenu [data-restart]');
+    }, null, { timeout: 10000 });
+    const d0 = page.dialogs.length;
+    const first = await page.evaluate(async () => {
+      window.bbRestartLog = [];
+      window.realEnd = endSession; window.realStart = startClaude;
+      window.endSession = async (name, node) => {
+        bbRestartLog.push(['end', node]);
+        state.sessions = (state.sessions || []).filter(s => s.name !== name);
+        return { ok: true };
+      };
+      window.startClaude = (name, sid, node) => { bbRestartLog.push(['start', node]); resumePick = null; resumeFor = null; };
+      document.querySelector('#resumemenu [data-restart]').click();
+      await new Promise(r => setTimeout(r, 300));
+      const go = document.querySelector('#resumemenu [data-start]');
+      return { label: go?.textContent.trim(), danger: !!go?.classList.contains('danger'),
+               model: !!document.querySelector('#rmModel'), log: [...bbRestartLog] };
+    });
+    ok(page.dialogs.length === d0 && first.label === 'Restart' && first.danger && first.model && first.log.length === 0,
+       `Restart turns the menu to the model and effort first, asking nothing and ending nothing yet (${JSON.stringify(first)})`);
+    const done = await page.evaluate(async () => {
+      document.querySelector('#resumemenu [data-start]').click();
+      for (let i = 0; i < 50 && !bbRestartLog.some(x => x[0] === 'start'); i++) await new Promise(r => setTimeout(r, 100));
+      window.endSession = realEnd; window.startClaude = realStart;
+      return bbRestartLog;
+    });
+    ok(/Restart your Claude session on alpha on ubu\?/.test(page.dialogs.at(-1) || '') && page.dialogs.length === d0 + 1
+       && JSON.stringify(done) === JSON.stringify([['end', 'n_ubu'], ['start', '']]),
+       `...then its Restart asks, ends the session and only then starts it again (${JSON.stringify(done)})`);
+  }
   // A project on one node: its chooser names that node with what it has,
   // as each of several gets.
   const one = await page.evaluate(() => {

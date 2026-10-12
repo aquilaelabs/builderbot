@@ -89,25 +89,39 @@ async function claudeEnd(name, n, several){
 // Restart (the operator, 12 Oct): end the session and pick its conversation
 // up again, which is how a session sees what changed since it started (a
 // toolchain on its node's PATH, BuilderBot's briefing; the project row says
-// which). The menu turns to the model and effort with Start, the
-// conversation it was in already chosen.
-async function claudeRestart(name, n, several){
-  const where = n.name ? ` on ${n.name}` : "";
+// which). The menu turns to the model and effort first, the conversation it
+// was in already chosen; its Restart asks, and only then is the session
+// ended and started again (restartNow). Asked first and ended at once, it
+// left a person picking a model with no session running.
+function claudeRestart(name, n, several){
   const p = (state?.projects || []).find(x => x.name === name);
-  if (!confirm(`Restart your Claude session on ${projLabel(name)}${where}?\n\nIt ends now and resumes the same conversation, starting fresh so it sees what changed since it started.`)) return;
-  const conv = p?.last_claude?.id || null;
-  try{
-    const j = await endSession(myClaude(name), n.id);
-    if (j.error) return notify(j.error, true);
-    const arg = `claude:${name}` + (several && n.id ? `:n:${n.id}` : "");
-    const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
-    if (t) dropTab(t.id);
-  }catch(e){ return notify("could not end it: " + e, true); }
   resumeFor = name;
-  resumePick = {project: name, sessionId: conv, node: several ? n.id : "",
-                model: p?.yours?.model || "", effort: p?.yours?.effort || ""};
-  refresh();
+  resumePick = {project: name, sessionId: p?.last_claude?.id || null, node: several ? n.id : "",
+                model: p?.yours?.model || "", effort: p?.yours?.effort || "",
+                restart: {id: n.id || "", name: n.name || "", several: !!several}};
   if (state) drawProjects(state.projects);
+}
+
+// The restart itself, once the model and effort are picked and the person
+// said yes: end the session, wait until the controller no longer lists it,
+// then start the same conversation. Started while the old one was still
+// going down, the new tab attached to the dying session and showed it end,
+// and a second press was what got a session (the operator, 12 Oct).
+async function restartNow(name, r){
+  const n = r.restart;
+  const where = n.name ? ` on ${n.name}` : "";
+  const j = await endSession(myClaude(name), n.id).catch(e => ({error: String(e)}));
+  if (j.error) return j.error;
+  const arg = `claude:${name}` + (n.several && n.id ? `:n:${n.id}` : "");
+  const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
+  if (t) dropTab(t.id);
+  for (let i = 0; i < 40 && claudeLiveOn(name, {id: n.id}); i++){
+    await new Promise(res => setTimeout(res, 500));
+    await refresh();
+  }
+  if (claudeLiveOn(name, {id: n.id}))
+    return `your session${where} is still going down; press Restart again in a moment`;
+  return "";
 }
 
 // Something started a session on a node this account has not signed in on
@@ -273,25 +287,33 @@ function resumePicker(p, m, card, anchor, ns, several){
   const opts = (table, cur) => table.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${
     esc(v === "" && table === MODELS && resumeModelNow.project === p.name && resumeModelNow.model
       ? `Claude's default (last session: ${(MODELS.find(([x]) => x === resumeModelNow.model) || [])[1] || resumeModelNow.model})` : l)}</option>`).join("");
-  m.innerHTML = `<div class="sub">${r.sessionId ? `Resume the conversation from ${esc(ago(p.last_claude?.when))}` : "A new conversation"}${
+  m.innerHTML = `<div class="sub">${r.restart ? "Restart your session, resuming its conversation"
+      : r.sessionId ? `Resume the conversation from ${esc(ago(p.last_claude?.when))}` : "A new conversation"}${
       several || n.name ? ` on ${esc(n.name || "")}` : ""}</div>
     <label class="pick">Model <select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></label>
     <label class="pick">Effort <select id="rmEffort" aria-label="effort this session starts on">${opts(EFFORTS, r.effort)}</select></label>
     <div class="actbar"><span class="state" id="rmSay"></span><span class="sp"></span>
       <button type="button" data-back>Back</button>
-      <button type="button" class="primary" data-start>Start</button></div>`;
+      <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
   m.dataset.pick = p.name;
   card.appendChild(m);
   m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
-    busy(e.target, "Starting");
+    const label = r.restart ? "Restart" : "Start";
+    if (r.restart && !confirm(`Restart your Claude session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
+        + "It ends now and resumes the same conversation, starting fresh so it sees what changed since it started.")) return;
+    busy(e.target, r.restart ? "Restarting" : "Starting");
     if (r.model !== (p.yours?.model || "") || r.effort !== (p.yours?.effort || "")){
       const j = await (await postJSON("/api/prefs", {project: p.name, model: r.model, effort: r.effort})).json()
         .catch(() => ({error: "no answer"}));
-      if (j.error){ unbusy(e.target, "Start"); m.querySelector("#rmSay").textContent = j.error; return; }
+      if (j.error){ unbusy(e.target, label); m.querySelector("#rmSay").textContent = j.error; return; }
       if (p.yours) Object.assign(p.yours, {model: r.model, effort: r.effort});
+    }
+    if (r.restart){
+      const why = await restartNow(p.name, r);
+      if (why){ unbusy(e.target, label); m.querySelector("#rmSay").textContent = why; return; }
     }
     resumePick = null;
     startClaude(p.name, r.sessionId, r.node);
