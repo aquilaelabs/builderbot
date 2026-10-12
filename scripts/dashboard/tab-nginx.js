@@ -25,6 +25,7 @@ let nginxErr = "";
 let nginxRev = 0;
 let nginxNode = "";               // the node the tab shows
 let nginxLatest = {};             // the registry's newest line, from the same answer
+let nginxHostnames = [];          // every node's hostnames: [{name, used: [{node, path, port}]}]
 // The routes being edited, per node, until Save or Revert; absent while a
 // node shows what is saved.
 const nginxDraft = {};
@@ -40,6 +41,7 @@ async function loadNginx(){
     nginxErr = j.error || "";
     nginxList = j.nodes || [];
     nginxLatest = j.latest || {};
+    nginxHostnames = j.hostnames || [];
   }catch(e){
     nginxErr = String(e);
     nginxList = nginxList || [];
@@ -101,9 +103,33 @@ function nginxResolve(n, host){
   return "";
 }
 
+// A route's hostname, picked from the one list every node shares (the
+// operator, 12 Oct): made once under Hostnames, then any route on any node,
+// for any project's container, picks it. Every name (*) beside them.
+function nginxHostPick(r){
+  const names = nginxHostnames.map(h => h.name);
+  if (r.host && r.host !== "*" && !names.includes(r.host)) names.push(r.host);
+  return `<select data-ng="host" aria-label="hostname">
+    ${r.host ? "" : `<option value="" selected>pick a hostname</option>`}
+    ${names.map(h => `<option value="${esc(h)}"${h === r.host ? " selected" : ""}>${esc(h)}</option>`).join("")}
+    <option value="*"${r.host === "*" ? " selected" : ""}>every name (*)</option>
+  </select>`;
+}
+
+// The list itself: each name with where it is routed, Delete on one routed
+// nowhere, and a box to add one.
+function nginxHostLines(){
+  const rows = nginxHostnames.map(h => `<div class="nghost"><span class="grow"><code>${esc(h.name)}</code> <span class="dim">${
+      h.used.length ? "routed on " + esc([...new Set(h.used.map(u => u.node))].join(", ")) : "not routed yet"}</span></span>${
+      h.used.length ? "" : `<button type="button" class="eye rm" data-nghostrm="${esc(h.name)}" aria-label="delete ${esc(h.name)}">${BIN}</button>`}</div>`).join("");
+  return `${rows || `<div class="hint">none yet</div>`}
+    <div class="actbar"><input data-nghostnew placeholder="www.example.com" aria-label="a hostname to add" autocomplete="off" spellcheck="false">
+      <button type="button" data-nghostadd>Add</button></div>`;
+}
+
 function nginxRouteRow(n, r, i){
   return `<div class="ngroute" data-i="${i}">
-    <input data-ng="host" value="${esc(r.host)}" placeholder="www.example.com or *" aria-label="hostname" autocomplete="off" spellcheck="false">
+    ${nginxHostPick(r)}
     <input data-ng="path" value="${esc(r.path)}" placeholder="/" aria-label="path" autocomplete="off" spellcheck="false">
     <input data-ng="port" value="${esc(String(r.port))}" placeholder="8080" aria-label="port on the node" inputmode="numeric" autocomplete="off">
     ${nginxCertPick(n, r)}
@@ -192,6 +218,11 @@ function nginxBody(n){
         <div class="sub">${sub}</div></div>
     </div>
     <div class="field">
+      ${lbl("", "Hostnames")}
+      <div class="hint">The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's).</div>
+      ${nginxHostLines()}
+    </div>
+    <div class="field">
       ${lbl("", "Routes")}
       <div class="hint">Each hostname or path goes to a port a container publishes on ${esc(n.name)}; nginx runs on the host network and reaches it at 127.0.0.1. A name nothing routes is answered by closing the connection.</div>
       <div class="ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
@@ -255,7 +286,7 @@ function nginxReadDraft(sect, n){
   const d = nginxDraftOf(n);
   d.routes = [...sect.querySelectorAll(".ngroute")].map(row => {
     const pick = row.querySelector('.ngroute [data-ng="cert"]').value;
-    return {host: row.querySelector('[data-ng="host"]').value.trim(),
+    return {host: row.querySelector('[data-ng="host"]').value,
             path: row.querySelector('[data-ng="path"]').value.trim() || "/",
             port: row.querySelector('[data-ng="port"]').value.trim(),
             tls: pick !== "none", cert: pick === "none" ? "" : pick};
@@ -308,6 +339,24 @@ function wireNginxTab(root){
     busy(b, "Removing");
     const j = await nginxAct({action: "save", node: nid, routes: nginxDraftOf(n).routes, drop_cert: k});
     if (!j.error) delete nginxDraft[nid];
+    nginxRedraw();
+  });
+  // The hostname list is saved at the press, and every node's draft kept:
+  // it is a list beside the routes, not part of what Save sends.
+  const hostAdd = sect.querySelector("[data-nghostadd]"), hostNew = sect.querySelector("[data-nghostnew]");
+  if (hostAdd) hostAdd.onclick = async () => {
+    const name = hostNew.value.trim();
+    if (!name) return;
+    nginxReadDraft(sect, n);
+    busy(hostAdd, "Adding");
+    await nginxAct({action: "host-add", name});
+    nginxRedraw();
+  };
+  if (hostNew) hostNew.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); hostAdd.click(); } };
+  sect.querySelectorAll("[data-nghostrm]").forEach(b => b.onclick = async () => {
+    nginxReadDraft(sect, n);
+    busy(b, "Deleting");
+    await nginxAct({action: "host-remove", name: b.dataset.nghostrm});
     nginxRedraw();
   });
   sect.querySelector("[data-ngadd]").onclick = () => {

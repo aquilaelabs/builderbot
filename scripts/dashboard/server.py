@@ -7398,6 +7398,11 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("docker-write"):
             return
         act, nid = field(req, "action"), field(req, "node")
+        # The hostname list is every node's (one pull-down on every route).
+        if act == "host-add":
+            return self._result(nginxproxy.add_hostname(field(req, "name")))
+        if act == "host-remove":
+            return self._result(nginxproxy.remove_hostname(field(req, "name")))
         if not nid or not nodes.node(nid):
             return self._json({"error": "which node?"}, 400)
         if act == "deploy":

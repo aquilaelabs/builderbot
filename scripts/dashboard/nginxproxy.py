@@ -564,7 +564,64 @@ def view(devapp, instance_state):
             with devapp.on_node(nid):
                 row["clash"] = taken_ports(name, devapp.MAIN, [{"published": "80"}, {"published": "443"}])
         out.append(row)
-    return {"nodes": out, "image": IMAGE, "latest": latest_image()}
+    return {"nodes": out, "image": IMAGE, "latest": latest_image(), "hostnames": hostnames()}
+
+
+# ---- the public hostnames (the operator, 12 Oct) ----------------------------
+#
+# One list for every node's nginx, so a name made once is picked from a
+# pull-down on any route, by any project's container, rather than typed again
+# on each: what a route can name. Kept beside the nodes' records; a name a
+# route uses is on the list whether or not it was added there, and one in use
+# cannot be deleted.
+
+def _hosts_file():
+    return STATE / "nginx-hostnames.json"
+
+
+def _hosts_saved():
+    try:
+        d = json.loads(_hosts_file().read_text())
+        return [str(h) for h in d if isinstance(h, str)] if isinstance(d, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def hostnames():
+    """[{name, used: [{node, path, port}]}]: every hostname on the list and
+    every one a route uses, in name order, with where each is used."""
+    used = {}
+    names = {n["id"]: n.get("name") or n["id"] for n in node_list()}
+    for nid, rec in _load().items():
+        for r in (rec.get("routes") or []) if isinstance(rec, dict) else []:
+            if r.get("host") and r["host"] != "*":
+                used.setdefault(r["host"], []).append({"node": names.get(nid, nid), "path": r.get("path") or "/",
+                                                       "port": r.get("port")})
+    return [{"name": h, "used": used.get(h, [])} for h in sorted(set(_hosts_saved()) | set(used))]
+
+
+def add_hostname(name):
+    h = str(name or "").strip().lower()
+    if not HOST_RE.match(h):
+        return {"error": f"a hostname is a name like www.example.com: not {h or 'nothing'}"}
+    with _lock:
+        have = _hosts_saved()
+        if h not in have:
+            write_json(_hosts_file(), sorted(have + [h]))
+    return {"ok": True, "hostnames": hostnames()}
+
+
+def remove_hostname(name):
+    h = str(name or "").strip().lower()
+    row = next((x for x in hostnames() if x["name"] == h), None)
+    if not row:
+        return {"error": f"{h} is not on the list"}
+    if row["used"]:
+        return {"error": f"{h} is routed on {', '.join(sorted({u['node'] for u in row['used']}))}: "
+                         "take those routes off first"}
+    with _lock:
+        write_json(_hosts_file(), [x for x in _hosts_saved() if x != h])
+    return {"ok": True, "hostnames": hostnames()}
 
 
 def save_routes(nid, routes):

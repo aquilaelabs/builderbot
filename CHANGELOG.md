@@ -130,6 +130,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings can make a deploy key or take a pasted one, beside its access token: kept root-only so sessions push with it and never read it, its public half shown with a link to the host's deploy keys page. Keys in /secrets/ssh still work (d6b61e3)
 - A first run is a setup page: after the owner, where what grows is kept, when an idle Claude session ends and a public hostname, each with its default, then a first node, which the rest of BuilderBot waits for (20c3975)
 - A project's row says under a session when it needs a restart to see what changed since it started, and why: a toolchain installed on its node, or BuilderBot updated (4909460)
+- The nginx tab keeps one list of public hostnames for every node: add a name once, pick it from a pull-down on any route for any project's container, and delete it once nothing routes it (368121d)
 
 ### Changed
 
