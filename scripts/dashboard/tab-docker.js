@@ -1350,8 +1350,8 @@ function dmRowsHtml(ins, job, blind){
         ${d.compose_path ? `<div class="sub dim dmfrom">made from <code>${esc(d.compose_path)}</code></div>` : ""}
         ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : "bad"} dmreloc">${esc(d.relocating.line)}${
           d.relocating.busy ? '<span class="dots"></span>' : ""}</div>` : ""}
-        ${d.astray ? `<div class="sub bad">on this node, but ${esc(projLabel(d.owner || d.project))} works on ${
-          esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
+        ${d.astray ? `<div class="sub warn">On this node, while ${esc(projLabel(d.owner || d.project))} works on ${
+          esc(d.astray)} and does not host its containers here, so its sessions cannot reach it. To keep it here, add this node to the project's Hosts its containers on; to move it, Remove it and Send to Docker again.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${dmMoveLine(d)}${
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
           ? dmBootLine(d.name, !!d.boot) : ""}</div>

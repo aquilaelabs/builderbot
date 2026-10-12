@@ -3105,6 +3105,7 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    after_create=mapping.start)
 # The session network reaches the containers of the projects a project reads.
 devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
+devapp.hosts_of = lambda p: (prefs.get(p) or {}).get("hosts") or []
 devapp.reaches_of = prefs.reaches_on
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock

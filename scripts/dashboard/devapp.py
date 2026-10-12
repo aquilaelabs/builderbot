@@ -117,6 +117,7 @@ project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 project_nodes = None  # ...and the set it works on, primary first (R82)
 all_project_nodes = None  # () -> {project: [node ids]}, every project's set
 reads_of = None           # project -> [projects it reads] (prefs.reads), set by the server
+hosts_of = None           # project -> [node ids it hosts its containers on] (prefs hosts), set by the server
 reaches_of = None         # (project, node) -> ["ADDR" or "ADDR:PORT"] its sessions there may reach (prefs.reaches_on)
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
@@ -2532,8 +2533,14 @@ def _overview_here(picked):
             # means out of reach, said on the row (R79, the operator 25 Sep).
             whose = owner_of(project, inst, rec)
             own = nodes_of(whose) if whose else []
+            # Where it belongs too: one of the nodes the project hosts its
+            # containers on, or a node it was shipped to on purpose (R166).
+            # Its sessions reach it there by its published ports, so neither
+            # is out of place (the operator, 12 Oct: a hosting node's row
+            # said so in red).
+            hosted = picked in (hosts_of(whose) if whose and hosts_of else []) or bool(rec.get("ship"))
             out.append({
-                "astray": ", ".join(node_name(n) for n in own) if own and picked and picked not in own else "",
+                "astray": ", ".join(node_name(n) for n in own) if own and picked and picked not in own and not hosted else "",
                 "project": project, "instance": inst, "name": pn,
                 # The project it belongs to, or "" for none: whose sessions
                 # may see it and work on it, and the group it is drawn in.
