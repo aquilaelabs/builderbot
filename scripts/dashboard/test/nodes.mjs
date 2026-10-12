@@ -1693,9 +1693,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       if (p.job && p.job.running === false && p.job.action) seen = p.job;
       else await sleep(250);
     }
+    // Canceled before it began anything, so jdk did not fail, it was not
+    // tried (B683): only what the log shows begun can have failed.
     ok(seen && seen.action === 'install' && seen.done.includes('flutter')
-       && seen.failed.includes('jdk'),
-       `a finished node job says what actually landed, read from the census (${
+       && !seen.failed.includes('jdk'),
+       `a finished node job says what actually landed, read from the census, and a stopped one fails nothing it never began (${
          JSON.stringify(seen && {done: seen.done, failed: seen.failed})})`);
   }
   // ---- the Emulator tab: a node's android system images -------------------
