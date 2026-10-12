@@ -50,7 +50,7 @@ function drawSetup(){
     </div>
     ${pathsSection() ? step(1, "Where what grows is kept", pathsSection()) : ""}
     ${step(2, "When an idle Claude session ends", idleSection())}
-    ${tunnel ? step(3, "A public hostname, if your first node is off this network", tunnel.html, true) : ""}
+    ${tunnel ? step(3, "A public hostname, if your first node is a remote server that only hosts containers", tunnel.html, true) : ""}
     ${step(4, "Your first node", `<div class="row stack2"><div class="grow">
         <div class="${node ? "" : "dim"}">${node
           ? `${esc(node.name)} is enrolled and answering.`
