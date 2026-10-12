@@ -88,7 +88,7 @@ def post_hook(body):
                       auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10) or {}
 
 
-def catchup(project, session, prompt=""):
+def catchup(project, session, prompt="", told=()):
     """(one sentence about what has moved in the notebook since this session
     was last told, or "", and told, so the next prompt does not repeat it;
     on a node, the rules the prompt raises and their names, which ride on
@@ -99,7 +99,7 @@ def catchup(project, session, prompt=""):
     """
     try:
         if on_node():
-            r = post_hook({"kind": "seen", "prompt": prompt[:20000]})
+            r = post_hook({"kind": "seen", "prompt": prompt[:20000], "told": list(told)[:200]})
             return (str(r.get("line") or ""), str(r.get("rules") or ""),
                     [str(n) for n in r.get("names") or []])
         here = os.path.dirname(os.path.abspath(__file__))
@@ -113,7 +113,7 @@ def catchup(project, session, prompt=""):
         line = " ".join(x for x in (str(roadmap.catchup(project, session) or ""),
                                     str(pending.settled_line(project) or ""))
                         if x)
-        said, names = rules_firing(project, prompt=prompt)
+        said, names = rules_firing(project, prompt=prompt, told=told)
         return line, said, names
     except Exception:                     # noqa: BLE001  (never cost a turn)
         return "", "", []
@@ -126,7 +126,7 @@ def _write_json(p, d):
     os.replace(tmp, p)
 
 
-def rules_firing(project, *, prompt="", path=""):
+def rules_firing(project, *, prompt="", path="", told=()):
     """(what to say, the names) for the conditional rules this prompt or
     path fires, read from the store here, on the controller. A node asks
     the controller on the `seen` trip every prompt already makes (B686: it
@@ -143,7 +143,7 @@ def rules_firing(project, *, prompt="", path=""):
         import rules                                          # noqa: E402
         rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                         write_json=_write_json)
-        hit = rules.matching(project, prompt=prompt, path=path)
+        hit = [r for r in rules.matching(project, prompt=prompt, path=path) if r["name"] not in set(told)]
         return rules.said(hit), [r["name"] for r in hit]
     except Exception:                     # noqa: BLE001  (never cost a turn)
         return "", []
@@ -172,12 +172,15 @@ def main():
         # ...with any house rule this prompt fires (roadmap #7). A conditional
         # rule is named in the standing block and not quoted there, so this is
         # where its text actually arrives: on the turn somebody asks about the
-        # thing it is about. The full prompt, not human_part, because a rule
-        # keyed to "agent" should fire whether the word came from the operator
-        # or from a task notification about one.
-        say, fired, names = catchup(project, session, str(req.get("prompt") or ""))
+        # thing it is about. What a person typed (human_part), not the
+        # machinery around it: a task notification's "output-file" sent the
+        # files rule whole on every background run's end (the operator, 12 Oct,
+        # cutting tokens). And once a conversation: the rules it was told are
+        # not said again until a summary drops them (bb-rule-hook recall).
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
         import rulehook                                       # noqa: E402
+        told = rulehook.fired(project, req.get("session_id"))
+        say, fired, names = catchup(project, session, text, told)
         if fired:
             # Remembered for this conversation, so a summary does not drop
             # it (bb-rule-hook recall).

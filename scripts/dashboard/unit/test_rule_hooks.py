@@ -164,6 +164,18 @@ class Store(unittest.TestCase):
         self.assertEqual(self.hook("bb-rule-hook", "recall", "alpha", "u_t",
                                    stdin={"source": "compact", "session_id": "conv-2"}), "")
 
+    def test_a_rule_is_said_once_a_conversation_and_never_for_machinery(self):
+        rules.add("alpha", "agent-compat", "Add, do not change.", by="you", words="agent")
+        first = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={"prompt": "the agent", "session_id": "k1"})
+        again = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={"prompt": "the agent again", "session_id": "k1"})
+        other = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={"prompt": "the agent", "session_id": "k2"})
+        self.assertIn("Add, do not change.", first)
+        self.assertNotIn("Add, do not change.", again)
+        self.assertIn("Add, do not change.", other)
+        quiet = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={
+            "prompt": "<task-notification>the agent output-file</task-notification>", "session_id": "k3"})
+        self.assertNotIn("Add, do not change.", quiet)
+
     def test_the_node_endpoint_carries_the_rules(self):
         rules.add("alpha", "agent-compat", "Add, do not change.", by="you",
                   words="agent", paths="scripts/agent")
@@ -186,6 +198,8 @@ class Store(unittest.TestCase):
         self.assertEqual(got["names"], ["agent-compat"])
         got, _ = hooks.verb("seen", {"prompt": "the agent again"}, {}, "u_t", "alpha")
         self.assertEqual(got["names"], ["agent-compat"])
+        got, _ = hooks.verb("seen", {"prompt": "the agent again", "told": ["agent-compat"]}, {}, "u_t", "alpha")
+        self.assertEqual(got["names"], [])
         got, _ = hooks.verb("guards", {}, {}, "u_t", "alpha")
         self.assertIn("pkill-by-pid", [g["name"] for g in got["guards"]])
         got, _ = hooks.verb("recall", {"names": ["agent-compat"]}, {}, "u_t", "alpha")
