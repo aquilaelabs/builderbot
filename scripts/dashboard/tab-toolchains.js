@@ -629,7 +629,7 @@ function renderToolchainsInto(i){
   // After a job that touched the driver, or a check, the census that
   // follows is what says where the driver stands: asked again until it has
   // landed (settling).
-  const drvSettling = (d.machine || []).some(m => m.settling);
+  const drvSettling = (d.machine || []).some(m => m.settling) || !!d.store_settling;
   clearTimeout(tcPoll);
   if (busy)
     tcPoll = setTimeout(loadToolchains, 500);

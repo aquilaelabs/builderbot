@@ -1125,7 +1125,13 @@ def payload_for_node(nid):
             "shared": False, "checked": checked, "sizing": False,
             # What on the store no node runs from any more (R196).
             "cleanable": cleanable(nid),
-            "items": items, "job": job or {"running": False}}
+            "items": items, "job": job or {"running": False},
+            # A job that ended and succeeded while the store still reads as
+            # before it: the node's census lands a moment after the job's end,
+            # and the tab read the store once and stopped, so the rows stayed
+            # unticked until the page was reloaded (the operator, 12 Oct). The
+            # tab asks again while this says so, two minutes at most.
+            "store_settling": _store_settling(job, items)}
 
 
 DRIVER = "nvidia-driver"
@@ -1204,6 +1210,22 @@ def _store_share(n):
     if not best or not best[1]:
         return None                      # a path of the node's own
     return (best[1], path[len(best[0]):])
+
+
+def _store_settling(job, items):
+    """Whether the last finished job's names are not yet where it left them
+    in the node's listing (installed for an install or update, gone for a
+    removal), within two minutes of its end."""
+    if not job or job.get("running") or job.get("action") not in ("install", "update", "remove"):
+        return False
+    j = (nodes.job(job["id"], with_log=False) or {}) if nodes and job.get("id") else {}
+    if j.get("state") != "succeeded" or time.time() - int(j.get("ended") or 0) > 120:
+        return False
+    here = {i["name"] for i in items if i["installed"]}
+    names = [n for n in ((j.get("spec") or {}).get("names") or []) if n != DRIVER and not str(n).startswith(DRIVER + ":")
+             and n != TOOLKIT and n in {i["name"] for i in items}]
+    want = job["action"] != "remove"
+    return any((n in here) != want for n in names)
 
 
 def landed_since(nid, started):
