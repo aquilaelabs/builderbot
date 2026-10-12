@@ -27,12 +27,11 @@ if (process.env.BB_COVERAGE_DIR){
   process.env.BB_COVERAGE_SUITE = 'agent';
   process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot_agent';   // the copy's modules count as the tree's
 }
-// A node's toolchains live under <store>/<node id> (R196; <store>/<os>-<arch>
-// before it, R19), so every fixture written INTO a store goes there, while
-// the store's own path (the setting) stays the share. Set once the node's id
-// is minted, below.
-let SCOPE = `linux-${execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim()}`;
-let PK = `${DIR}/agenttoolchains/${SCOPE}`;
+// A node's toolchains live under <store>/<node id> (R196), so every fixture
+// written INTO a store goes there, while the store's own path (the setting)
+// stays the share. Set once the node's id is minted, below.
+let SCOPE = '';
+let PK = '';
 const NODE_JSON = `${DIR}/node.json`;
 const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 const api = async (path, body) => {
@@ -2227,8 +2226,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
       }, 30000);
       const log = ef?.log || '';
-      ok(/root=.*agenttoolchains/.test(log) && /java=.*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/jdk/.test(log)
-         && /android=.*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/android/.test(log),
+      ok(/root=.*agenttoolchains/.test(log) && /java=.*agenttoolchains\/n_[0-9a-f]+\/jdk/.test(log)
+         && /android=.*agenttoolchains\/n_[0-9a-f]+\/android/.test(log),
          `a build job gets the node's toolchain store root, JAVA_HOME and ANDROID_HOME (${
            (log.match(/root=.*/) || [''])[0].slice(0, 60)})`);
       ok(/cilog=.*agentdata\/ci-logs/.test(log),
@@ -2327,8 +2326,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            JSON.stringify(im)})`);
       ok(!im.some(x => /android-33/.test(x.id)),
          '...and an empty image directory is not one: a half-removed tree is not a bootable image');
-      ok(/path=[^\n]*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/jdk\/bin/.test(log)
-         && /path=[^\n]*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/go\/bin/.test(log),
+      ok(/path=[^\n]*agenttoolchains\/n_[0-9a-f]+\/jdk\/bin/.test(log)
+         && /path=[^\n]*agenttoolchains\/n_[0-9a-f]+\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');
       // ...composed from the catalog's layout, sent at hello, rather than
       // from a table in the agent that has to agree with three others.
@@ -2501,7 +2500,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // same bundle at start (roadmap #24), and a second unpack of the same
     // digest is exactly what the digest is for.
     ok(pfin && pfin.type === 'toolchain'
-       && (/bb .* unpacked into .*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/\.bb/.test(pfin.log)
+       && (/bb .* unpacked into .*agenttoolchains\/n_[0-9a-f]+\/\.bb/.test(pfin.log)
            || existsSync(`${PK}/.bb/current/scripts/bb`))
        && /== bb toolchains remove flutter/.test(pfin.log) && /not installed|unknown toolchain/.test(pfin.log),
        `the bundle lands in the toolchain store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
@@ -2538,14 +2537,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          `a node's finished toolchain job carries an errors field for the rows (${JSON.stringify(tcv?.job?.errors)})`);
       const log = [
         'toolchain', '== system packages for graphics: fonts-dejavu-core',
-        '== bb toolchains install diagrams', '[builderbot] installing diagrams into /mnt/SDK/linux-x86_64/diagrams',
+        '== bb toolchains install diagrams', '[builderbot] installing diagrams into /mnt/SDK/n_9381e721/diagrams',
         '######################################################################## 100.0%',
         '[builderbot] diagrams ready: new shells pick it up',
-        '== bb toolchains install graphics', '[builderbot] installing graphics into /mnt/SDK/linux-x86_64/graphics',
+        '== bb toolchains install graphics', '[builderbot] installing graphics into /mnt/SDK/n_9381e721/graphics',
         '#=#=#', '##O#-#',
         '##O=#  #                                                   curl: (22) The requested URL returned error: 404',
         '[builderbot] ERROR: could not download https://example.invalid/ImageMagick-gcc-x86_64.AppImage',
-        '[builderbot] WARN: install failed (exit 1); removing the partial /mnt/SDK/linux-x86_64/graphics',
+        '[builderbot] WARN: install failed (exit 1); removing the partial /mnt/SDK/n_9381e721/graphics',
         '1 of 2 did not install', ''].join('\n');
       const parsed = JSON.parse(execFileSync('python3', ['-c', `
 import json, sys, types
@@ -2814,7 +2813,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // The rest of that file is the node's job environment: without it a CI
     // job's PATH was the bare system's, and the browser suite skipped with
     // exit 0 on every run (bug B74).
-    ok(/^SDK_ROOT=.*(agenttoolchains|fakeshare\/toolchains)\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)$/m.test(renv)
+    ok(/^SDK_ROOT=.*(agenttoolchains|fakeshare\/toolchains)\/n_[0-9a-f]+$/m.test(renv)
        && /^PATH=.*(agenttoolchains|fakeshare\/toolchains)/m.test(renv)
        && /^ANDROID_HOME=.*\/android$/m.test(renv) && /^BB_CI_LOG_DIR=/m.test(renv),
        '...and carries the same toolchain environment every bb job on the node gets, so CI sees the store');

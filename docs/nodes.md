@@ -561,19 +561,15 @@ of the node's own, and the node's toolchains live one level down, under
 agent, and `sdk_scope` in `scripts/lib/common.sh` from the `BB_SDK_SCOPE`
 the agent sets in every job's, session's and runner's environment).
 Everything else: the layout, the probes, the census, the bundle under `.bb`:
-is relative to that root (`tc_root()`, `sdk_root`). It was `<os>-<arch>`, one
-directory for every machine of a platform, and a session on one node met a
-toolchain another node was replacing, with two distros' binaries in one
-place; a node's own directory shares nothing, so an install on one waits for
-no other, and a node enrolled again starts afresh under its new id. There
-is no migration from the old shared directory: an install that moved
-twenty-eight toolchains in one job ran its last twenty unseen past the job
-log's cap (B670), so the operator emptied the store and installed each
-node's set again from the Toolchains tab (12 Oct). What no node runs from
-any more (a retired or unknown node's directory, `store_dirs.roots`) is
-offered for removal on the Toolchains tab (`toolchains.cleanable`), never
-`shared` and never the controller's own `<os>-<arch>`, where it keeps
-Playwright's browsers. The census reports the scope beside the store's
+is relative to that root (`tc_root()`, `sdk_root`); an agent with no id yet
+has no toolchain directory. A node's own directory shares nothing, so no
+session meets a toolchain another node is replacing, no two distros'
+binaries land in one place, an install on one node waits for no other, and
+a node enrolled again starts afresh under its new id. What no node runs
+from any more (a retired or unknown node's directory, `store_dirs.roots`)
+is offered for removal on the Toolchains tab (`toolchains.cleanable`).
+This controller keeps its own toolchains (Playwright's browsers for
+`bb capture shot`) under `<store>/<os>-<arch>`, which is never offered. The census reports the scope beside the store's
 path, and its listing of the directory (`store_dirs`, every hello) is the
 authority on what is installed: a toolchain deleted from the store by hand
 reads as not installed within a hello, whatever the last check said
@@ -828,19 +824,15 @@ the Tools card is ghosted until some node has the tools and the emulator.
   store is a deliberate arrangement for co-located nodes with the
   one-install-at-a-time rule enforced across them or not at all.
 
-  *Where it landed (2 Sep):* enforced. Reading is automatic and always was:
-  a node's `toolchains` are a live probe of its toolchain store at every
-  census, so a node whose neighbor installed something on the shared export
-  reports it at its next `hello` (ten minutes, or at once after any job that
-  ends in one). Writing is what needed the rule: `toolchains.store_sharers`
-  identifies the nodes that share a store, by the census's mount SOURCE
-  under the store path, never by the path string, since
-  `/var/lib/builderbot/toolchains` is every node's default and a different disk
-  on each, and a toolchain job is refused while one touching the same
-  toolchain (the Android SDK counting as one) is running on any of them,
-  naming the node and the toolchain (1 Oct: it used to be any job at all,
-  which held a second node's unrelated install). The Toolchains tab says a store is shared, and
-  with whom, before anybody presses Install.
+  *Where it landed:* each node keeps its toolchains in a directory of its
+  own on the store (R196, 12 Oct), so sharing one is safe by layout rather
+  than by rule. What the machines on a share still write together is the
+  Android system images under `<store>/shared`: `toolchains.store_sharers`
+  identifies the machines on a share by the census's mount SOURCE under
+  the store path, never by the path string (`/var/lib/builderbot/toolchains`
+  is every node's default and a different disk on each), and an image job
+  waits while another machine's is running (`store_areas`, `store_busy`),
+  naming it.
 - **Disk is checked before, not discovered after.** The catalog already knows
   each toolchain's size; the census reports each store's headroom. A
   toolchain-install job is refused at placement when the store cannot hold it,

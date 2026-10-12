@@ -961,10 +961,10 @@ lives in its body. The cards:
   pacman, zypper, apk) and may name alternatives for a library renamed
   between releases; `tools/check-sysdeps.py` checks every name against the
   real package indexes of Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9
-  and 10, Fedora, Arch, openSUSE and Alpine. A recipe's system libraries are each machine's own
-  while the store is shared, so when a node lacks some for a toolchain the
-  store already holds (a node enrolled after dotnet went in, with no
-  libicu), a node BuilderBot manages installs them by itself the next time it
+  and 10, Fedora, Arch, openSUSE and Alpine. A recipe's system libraries are each machine's own,
+  outside the store, so when a node lacks some for a toolchain its store
+  already holds (a package removed since, or a machine rebuilt under its
+  store), a node BuilderBot manages installs them by itself the next time it
   reports in, once per missing set, and never while its system changes are
   locked to its console. Anywhere it cannot (a guest node, a locked one, an
   install that failed) the tab says which and **Install system packages**
@@ -1484,8 +1484,8 @@ and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
 `sdk-env.sh`, whose every line is an absolute path, lives on the home volume
 for that reason. Any number of machines may share one: each node installs
-under its own directory in the store (R196, after R19's per-platform one),
-so no machine runs a binary another put there.
+under its own directory in the store, named by its node id (R196), so no
+machine runs a binary another put there.
 
 **A project's node does not decide where its CI runs, and nothing can make
 it.** That setting governs BuilderBot's own queue: `bb build`, `bb test`,

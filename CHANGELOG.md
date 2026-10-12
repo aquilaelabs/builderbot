@@ -277,7 +277,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A copy or move that did not happen is a note in the bell, with Dismiss, instead of a line on the container's row for ever; it goes once the container builds or starts again (7d31173)
 - The nginx tab shows a node without nginx as one line and Deploy, and its routes and certificates once nginx is there (ee6b2b5)
 - A managed node keeps its journal across boots, so its crash log has the boot before to read (ee6b2b5)
-- Each node keeps its own toolchains in the store, under its node id, instead of one directory shared by every machine of a platform; a retired node's directory is offered for removal on the Toolchains tab. Toolchains are installed again per node from the Toolchains tab; nothing moves off the old shared directory by itself (ca8eae8)
+- Each node keeps its own toolchains in the store, under its node id, so nodes sharing one store never wait on or overwrite each other's installs; a retired node's directory is offered for removal on the Toolchains tab (ca8eae8)
 - Claude's model and effort are picked each time a session starts: the Claude button's menu turns, after Resume or New conversation, to Model and Effort with Start, opening on the last ones picked; the project's settings no longer hold them (ca8eae8)
 
 ### Removed

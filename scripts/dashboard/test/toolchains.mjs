@@ -844,27 +844,16 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   const seen = await page.evaluate(() => {
     const was = { tcNode, toolchains };
     const fake = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', items: [], machine: [],
-                   job: { running: false }, store_busy: [{ node: 'redhatbox', action: 'install', names: ['swift'] }] };
-    tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
-    const doc = document.querySelector('.pane .doc.on') || document;
-    const line = doc.querySelector('.tcshared')?.textContent.replace(/\s+/g, ' ') || '';
-    const dead = !!doc.querySelector('[data-tc="install"]')?.disabled;
-    toolchains = { ...fake, store_busy: [] }; tcRev++; drawPanes();
-    const quiet = !document.querySelector('.tcshared');
-    // What on the store no node runs from any more (R196).
-    toolchains = { ...fake, store_busy: [],
+                   job: { running: false },
                    cleanable: [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }] };
-    tcRev++; drawPanes();
+    tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
     const clean = document.querySelector('.tcclean')?.textContent.replace(/\s+/g, ' ') || '';
     const rm = !!document.querySelector('.tcclean [data-tcclean].danger');
     tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
-    return { line, dead, quiet, clean, rm };
+    return { clean, rm };
   });
   ok(/On this store and used by no node: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
      `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
-  ok(/redhatbox is installing swift in the toolchain store this node shares: an install here waits until it is done/.test(seen.line)
-     && seen.dead && seen.quiet,
-     `a sharing node's install is said at the top and ghosts Install selected, and nothing is said once it is done (${seen.line.slice(0, 70)})`);
 }
 
 await done(browser);

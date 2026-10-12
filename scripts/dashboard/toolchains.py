@@ -15,6 +15,7 @@ import contextlib
 import hashlib
 import json
 import os
+import platform
 import re
 import signal
 import sqlite3
@@ -1002,9 +1003,8 @@ def payload_for_node(nid):
         if names:
             i["system"] = {"manager": fam, "names": names,
                            "missing": list(unmet.get(i["name"]) or []) if i["installed"] else None}
-    # A toolchain another one needs, missing on this node: the store is
-    # shared, so diagrams can be installed from one node and be on every
-    # node, while the jdk it runs on was removed from this one, or never
+    # A toolchain another one needs, missing on this node: diagrams can be
+    # installed while the jdk it runs on was removed since, or never
     # arrived. The row says which, and offers that row's own install.
     here = {i["name"] for i in items if i["installed"]}
     for i in items:
@@ -1111,49 +1111,9 @@ def payload_for_node(nid):
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": checked, "sizing": False,
-            # What a node sharing this store is installing into it now: an
-            # install here waits for it (store_busy), so the tab ghosts
-            # Install selected and says why before the press, not after (the
-            # operator, 12 Oct).
-            "store_busy": sharers_busy(nid),
             # What on the store no node runs from any more (R196).
             "cleanable": cleanable(nid),
             "items": items, "job": job or {"running": False}}
-
-
-def sharers_busy(nid):
-    """[{node, action, names}] for each toolchain or image job running on a
-    node that shares this one's store, and this container's own installer
-    where it shares it too."""
-    out = []
-    if not nodes:
-        return out
-    for other in store_sharers(nid):
-        if other["id"] == nodes.LOCAL:
-            if _tc_job["running"]:
-                out.append({"node": "this controller", "action": _tc_job["action"],
-                            "names": [x for x in [_tc_job["current"], *_tc_job["queue"]] if x]})
-            continue
-        for t in STORE_JOBS:
-            for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
-                sp = j.get("spec") or {}
-                out.append({"node": other.get("name") or other["id"], "action": sp.get("action") or t,
-                            "names": [str(x) for x in (sp.get("names") or [])][:8]})
-    return out
-
-
-def node_job_done(job, state):
-    """A toolchain job ended on a node: every node sharing its store asks
-    for a fresh census too, so its rows say what is in the store now rather
-    than at its next hello, ten minutes on (the operator, 12 Oct: the box
-    ticked on bb-sandbox-redhat and not on bb-sandbox, one share between)."""
-    nid = (job or {}).get("node") or ""
-    if not nodes or not nid:
-        return ""
-    for other in store_sharers(nid):
-        if other["id"] != nodes.LOCAL:
-            nodes.ask_hello(other["id"])
-    return ""
 
 
 DRIVER = "nvidia-driver"
@@ -1236,18 +1196,16 @@ def _store_share(n):
 
 def _landed_at(nid):
     """{toolchain: when a job last installed or updated it} on this node's
-    store, which is also every node sharing it: installed from one, it is on
-    all of them, and so are the sessions it has not reached."""
+    own directory of the store."""
     out = {}
     if not nodes:
         return out
-    for x in [nid] + [o["id"] for o in store_sharers(nid)]:
-        for j in nodes.jobs_for(node_id=x, type="toolchain", n=50):
-            sp = j.get("spec") or {}
-            if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
-                continue
-            for name in sp.get("names") or []:
-                out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
+    for j in nodes.jobs_for(node_id=nid, type="toolchain", n=50):
+        sp = j.get("spec") or {}
+        if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
+            continue
+        for name in sp.get("names") or []:
+            out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
     return out
 
 
@@ -1307,20 +1265,23 @@ def store_sharers(node_id):
     mine = _store_share(me) if me else None
     if not mine:
         return []
-    # ...and the same directory in it: since R196 each node keeps its own
-    # (<store>/<node id>), so nodes on one share share nothing but the
-    # Android system images, and an install on one waits for none on
-    # another. A node not on R196 yet reports the old <os>-<arch> scope,
-    # and two of those still share it.
-    scope = _scope_of(me)
+    # Each keeps its own directory in it (<store>/<node id>), so what they
+    # can collide on is what store_areas says: the Android system images.
     return [n for n in nodes.node_list()
-            if n["id"] != node_id and n["state"] != "retired"
-            and _store_share(n) == mine and _scope_of(n) == scope]
+            if n["id"] != node_id and n["state"] != "retired" and _store_share(n) == mine]
 
 
 def _scope_of(n):
     """The directory under its toolchain store a node's toolchains are in."""
     return str((((n or {}).get("reported") or {}).get("stores") or {}).get("toolchains", {}).get("scope") or "")
+
+
+def _dir_of(n):
+    """The directory a node's toolchain jobs write under the store: its
+    node id (R196), and this controller's own <os>-<arch>."""
+    if nodes and (n or {}).get("id") == nodes.LOCAL:
+        return f"{platform.system().lower()}-{platform.machine() or 'unknown'}"
+    return _scope_of(n) or str((n or {}).get("id") or "")
 
 
 # The census spells an arch the way uname does; the catalog uses the
@@ -1463,11 +1424,12 @@ def _store_job_on(node_id):
     return any(nodes.jobs_for(node_id=node_id, type=t, active=True, n=1) for t in STORE_JOBS)
 
 
-def store_areas(names, action="install", plat=""):
-    """The parts of a toolchain store these names write, as (platform, area).
+def store_areas(names, action="install", where=""):
+    """The parts of a toolchain store these names write, as (directory,
+    area), the directory being the machine's own under the store (_dir_of).
 
-    Each toolchain unpacks into a directory of its own under its machine's
-    <os>-<arch> scope, so two installs collide only on the same toolchain,
+    Each toolchain unpacks into a directory of its own there, so two
+    installs collide only on the same toolchain in the same directory,
     except the Android family, which sdkmanager keeps in one SDK tree. The
     driver, the container toolkit, system packages and a check write no
     store at all: they are each machine's own, or only read."""
@@ -1478,45 +1440,42 @@ def store_areas(names, action="install", plat=""):
         x = str(x)
         if x == TOOLKIT or x == DRIVER or x.startswith(DRIVER + ":"):
             continue
-        out.add((plat, "android" if x == "android-tools" or x.startswith("android:") else x))
+        out.add((where, "android" if x == "android-tools" or x.startswith("android:") else x))
     return out
 
 
-def _image_areas(plat):
+def _image_areas(where):
     # The SDK tree an image job's sdkmanager runs in, and the system images,
-    # which every platform on the store shares (one directory, no scope).
-    return {(plat, "android"), ("", "android system images")}
+    # which every machine on the store shares (<store>/shared).
+    return {(where, "android"), ("", "android system images")}
 
 
-def _job_areas(j, plat):
+def _job_areas(j, where):
     sp = j.get("spec") or {}
     if j.get("type") == "image":
-        return _image_areas(plat)
-    return store_areas(sp.get("names") or [], sp.get("action") or "install", plat)
+        return _image_areas(where)
+    return store_areas(sp.get("names") or [], sp.get("action") or "install", where)
 
 
 def store_busy(nid, names=None, action="install"):
     """Why this node's toolchain store cannot take this job now, or "".
 
     On the node itself, one toolchain or image job at a time: its tab shows
-    one job. Across nodes that share the store, only a job touching the same
-    toolchain (the Android SDK counting as one) waits: docs/nodes.md section
-    6 names the trap, two agents unpacking into one NFS directory, and it is
-    the directory that clashes, not the share. Two installs of different
-    toolchains on two nodes used to be refused for sharing a store at all.
+    one job. Across machines that share the store, a job waits only for one
+    writing the same directory (store_areas): each keeps its toolchains in
+    its own, so that is the Android system images under <store>/shared.
     `names` None is any write to the store (an image job: the Android SDK)."""
     n = nodes.node(nid)
     if _store_job_on(nid):
         return f"a toolchain or image job is already running on {n['name']}. One at a time on a node."
-    mine = (store_areas(names, action, platform_of(n)) if names is not None
-            else _image_areas(platform_of(n)))
+    mine = (store_areas(names, action, _dir_of(n)) if names is not None
+            else _image_areas(_dir_of(n)))
     if not mine:
         return ""
     for other in store_sharers(nid):
-        plat = platform_of(other)
         for t in STORE_JOBS:
             for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
-                both = sorted(a for _, a in mine & _job_areas(j, plat))
+                both = sorted(a for _, a in mine & _job_areas(j, _dir_of(other)))
                 if both:
                     return (f"{other['name']} is installing {', '.join(both)} into the toolchain store "
                             f"it shares with {n['name']}; this waits for it, since two machines "
@@ -1527,7 +1486,7 @@ def store_busy(nid, names=None, action="install"):
     if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in store_sharers(nid)):
         local = nodes.node(nodes.LOCAL)
         theirs = store_areas(list(_tc_job["queue"]) + [_tc_job["current"]] if _tc_job["current"]
-                             else list(_tc_job["queue"]), _tc_job["action"], platform_of(local))
+                             else list(_tc_job["queue"]), _tc_job["action"], _dir_of(local))
         both = sorted(a for _, a in mine & theirs)
         if both:
             return (f"this container is installing {', '.join(both)} into the toolchain store "
@@ -1745,10 +1704,9 @@ def auto_sysdeps(nid):
     """Install the system packages a node lacks for what its store holds,
     without anybody pressing Install system packages.
 
-    The store is shared, so a toolchain installed from one node is on every
-    node that mounts it, while the libraries it needs are each machine's
-    own: the install job installs them only on the node it ran on, and every
-    other one showed a banner asking for a second press. Those packages were
+    The libraries a toolchain needs are the machine's own, outside the
+    store, so they can be missing while the toolchain is there (a package
+    removed since, a machine rebuilt under its store). Those packages were
     already chosen when the recipe was installed, so a node BuilderBot
     manages (the sandbox stamp) installs them itself when its census says
     they are missing. Not on a guest node, whose system is its owner's, and
@@ -1791,11 +1749,11 @@ def start_job(action, names, auto=False):
         if nodes:
             try:
                 me = nodes.node(nodes.LOCAL)
-                mine = store_areas(list(names), action, platform_of(me))
+                mine = store_areas(list(names), action, _dir_of(me))
                 for other in store_sharers(nodes.LOCAL):
                     for t in STORE_JOBS:
                         for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
-                            if mine & _job_areas(j, platform_of(other)):
+                            if mine & _job_areas(j, _dir_of(other)):
                                 return False
             except sqlite3.Error as e:
                 print(f"dashboard: toolchains: store sharers unread, going ahead: {e}",

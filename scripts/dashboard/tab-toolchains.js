@@ -155,9 +155,9 @@ function tcSystemLine(p, managed){
   return `<span class="sub tcsysd${miss.length ? " warn" : ""}">${head}: ${list}.${fix}</span>`;
 }
 
-// A toolchain this one needs that is not on this node: the store is shared,
-// so a recipe can be here while what it runs on is not. Said on the row,
-// with that row's own install one press away.
+// A toolchain this one needs that is not on this node: what it runs on was
+// removed since, or never arrived. Said on the row, with that row's own
+// install one press away.
 function tcNeedsLine(p){
   const gone = p.needs_missing || [];
   if (!gone.length) return "";
@@ -488,10 +488,6 @@ function renderToolchainsInto(i){
     <span class="sp"></span>
     <button type="button" id="tcRefresh"
       title="read this store again: what is installed, and how big it is">Refresh</button>`);
-  // What a node sharing this store is doing in it now (the operator, 12
-  // Oct): an install here would wait for it, so Install selected is ghosted
-  // and the line above says who and what, while it lasts and no longer.
-  const sbusy = (onNode && d.store_busy) || [];
   surf.list.innerHTML = `
     <div class="tchead">${onNode
       ? (d.root
@@ -517,15 +513,11 @@ function renderToolchainsInto(i){
     ${onNode && (d.cleanable || []).length && mayToolchains() ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
       d.cleanable.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</span><span class="sp"></span>
       <button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button></div></div>` : ""}
-    ${sbusy.length ? `<div class="tchead warn tcshared">${sbusy.map(b => `${esc(b.node)} is ${
-      b.action === "remove" ? "removing" : b.action === "check" ? "checking" : "installing"} ${
-      esc((b.names || []).join(", ") || "toolchains")}`).join("; ")} in the toolchain store this node shares: an install here waits until ${
-      sbusy.length === 1 ? "it is" : "they are"} done.</div>` : ""}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
-      // R51): the store is shared, so a toolchain installed from one node is
-      // on every node, while the libraries it needs are each machine's own.
-      // One press installs the libraries and leaves the recipes alone.
+      // R51): the libraries are the machine's own, outside the store, and
+      // can go missing while the toolchain stays. One press installs the
+      // libraries and leaves the recipes alone.
       tcSandboxNow = !!(onNode && d.sandbox);
       const unmet = Object.entries((onNode && d.sysdeps?.unmet) || {});
       if (!unmet.length) return "";
@@ -555,7 +547,7 @@ function renderToolchainsInto(i){
     })()}
     <div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
-      ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale || sbusy.length ? " disabled" : ""}
+      ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >Install selected</button>`}
       ${busy && mayToolchains() ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${

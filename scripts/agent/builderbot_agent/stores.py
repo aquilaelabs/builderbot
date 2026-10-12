@@ -3,7 +3,6 @@ import contextlib
 import json
 import os
 import re
-import platform
 import subprocess
 from .base import DEFAULT_STORES, NODE_JSON, STORE_DENY_EXACT, STORE_DENY_UNDER, _run, log
 
@@ -133,40 +132,32 @@ STORE_ID_FILE = ".bb-store-id"
 
 
 # ---------------------------------------------------------------------------
-# the toolchain store, scoped by platform (roadmap R19)
+# the toolchain store, a directory per node (R196)
 #
-# One share can serve a Linux box, a Mac and a Windows machine only if their
-# binaries do not land on top of each other: the store's root is therefore
-# <store>/<os>-<arch> (linux-x86_64, darwin-arm64), and everything else
-# (the layout, the probes, the census, the bundle) is relative to that. The
-# operator's setting stays the share; the scope is this machine's own fact.
-# What is the same bytes on every host (the Android system images, tens of
-# gigabytes) lives once under <store>/shared and each scope's android tree
-# links to it, because sdkmanager and Gradle want one ANDROID_HOME and
-# would otherwise fetch a second copy per platform. (The one-time move of a
-# flat store into its scope ran on 9 Sep 2026 and was taken out again.)
+# One share can serve any number of machines only if their binaries do not
+# land on top of each other: a node's root is therefore <store>/<node id>,
+# and everything else (the layout, the probes, the census, the bundle) is
+# relative to that. The operator's setting stays the share. What is the same
+# bytes on every host (the Android system images, tens of gigabytes) lives
+# once under <store>/shared and each node's android tree links to it,
+# because sdkmanager and Gradle want one ANDROID_HOME and would otherwise
+# fetch a second copy per node.
 
 
 # This node's own directory under the toolchain store (R196, the operator, 12
-# Oct): its node id, so no two machines share a directory of toolchains, and
-# an id is never renamed or reused, so nothing ever moves. It was <os>-<arch>,
-# one directory for every machine of a platform, and a session on one node
-# met a toolchain another node was replacing, with two distros' binaries in
-# one place. Set by the agent from its state at start (use_scope); the
-# platform's name stands in only for a node not enrolled yet.
+# Oct): its node id, so no two machines share a directory of toolchains,
+# whatever distro each runs, and an id is never renamed or reused. Set by the
+# agent from its state at start and on every hello (use_scope). An agent that
+# has no id has no toolchain directory: tc_root is "" and every toolchain
+# job says the node has no store.
 _SCOPE = {"name": ""}
 _ID = re.compile(r"n_[0-9a-f]{4,32}")
 
 
-def legacy_scope():
-    """The directory every machine of this platform shared before R196."""
-    return f"{platform.system().lower()}-{platform.machine() or 'unknown'}"
-
-
 def tc_scope():
-    """This machine's scope directory name under the toolchain store: the
-    node's id once known, the old shared <os>-<arch> before that."""
-    return _SCOPE["name"] or legacy_scope()
+    """This node's directory name under the toolchain store, its node id,
+    or "" before it has one."""
+    return _SCOPE["name"]
 
 
 def use_scope(store, node_id):
@@ -178,17 +169,17 @@ def use_scope(store, node_id):
         try:
             os.makedirs(os.path.join(store, node_id), exist_ok=True)
         except OSError as e:
-            log(f"toolchains: could not make {os.path.join(store, node_id)} ({e}); staying with {tc_scope()}")
+            log(f"toolchains: could not make {os.path.join(store, node_id)} ({e})")
             return tc_scope()
     _SCOPE["name"] = node_id
     return node_id
 
 
 def tc_root(state):
-    """Where THIS machine's toolchains live: the toolchain store's scope
-    directory, or "" when the node has no toolchain store."""
+    """Where THIS machine's toolchains live: <store>/<node id>, or "" when
+    the node has no toolchain store or no id yet."""
     store = (state.get("stores") or {}).get("toolchains") or ""
-    return os.path.join(store, tc_scope()) if store else ""
+    return os.path.join(store, tc_scope()) if store and tc_scope() else ""
 
 
 def store_id(path):
@@ -336,11 +327,10 @@ def store_dirs(state):
         if os.path.isdir(d) and not os.path.exists(os.path.join(d, need)):
             out.setdefault("incomplete", []).append(entry["name"])
     # ...and the directories at the top of the store, whose names say whose
-    # they are (a node's id, `shared`, the controller's own), while this
-    # node has its own: a retired node's is the controller's to offer for
-    # removal (R196).
+    # they are (a node's id, `shared`, the controller's own): a retired
+    # node's is the controller's to offer for removal (R196).
     base = (state.get("stores") or {}).get("toolchains") or ""
-    if base and tc_scope() != legacy_scope():
+    if base:
         with contextlib.suppress(OSError):
             out["roots"] = sorted(x for x in os.listdir(base)
                                   if not x.startswith(".") and os.path.isdir(os.path.join(base, x)))[:64]

@@ -259,18 +259,17 @@ class WorkMixin:
         ctk = [n for n in names if n == TOOLKIT]
         names = [n for n in names if n not in drv and n not in ctk]
         if action == "clean":
-            # What the store holds that no node runs from (R196): the old
-            # shared <os>-<arch> directory, or a retired node's. The
-            # controller offered these names; each is checked again here: a
-            # plain name at the top of the store, never this node's own,
-            # never `shared`, and nothing running from it.
+            # A retired node's directory on the store (R196). The controller
+            # offered these names; each is checked again here: a node id at
+            # the top of the store, never this node's own, and nothing
+            # running from it.
             base = (self.state.get("stores") or {}).get("toolchains") or ""
             bad = 0
             for name in names:
                 job.step(name)
                 d = os.path.join(base, name)
-                if (not base or "/" in name or name.startswith(".") or name in ("shared", tc_scope())
-                        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) or not os.path.isdir(d)):
+                if (not base or name == tc_scope() or not re.fullmatch(r"n_[0-9a-f]{4,32}", name)
+                        or not os.path.isdir(d)):
                     job.say(f"refused: {name} is not a directory this node may take off the store\n")
                     bad += 1
                     continue
