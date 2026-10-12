@@ -53,14 +53,26 @@ elif op == "show":
                 print(f"\ndefined in full in {r['doc']}")
             if r.get("check"):
                 print(f"checked by: {r['check']}   (bb rules check {r['name']})")
+            if r.get("refuse"):
+                print("refuses: " + ", ".join(r["refuse"]))
+            if r.get("replaces"):
+                print(f"in place of the global rule {r['replaces']}")
             break
     else:
-        names = ", ".join(r["name"] for r in reg.effective(proj)) or "none"
-        sys.exit(f"no rule called {want} here; this project has: {names}")
+        for g in reg.ALWAYS:
+            if g["name"] == want:
+                print(g["text"] + "\nrefuses: " + ", ".join(g["refuse"])
+                      + "\n(the briefing's, refused in every project)")
+                break
+        else:
+            names = ", ".join(r["name"] for r in reg.effective(proj)) or "none"
+            sys.exit(f"no rule called {want} here; this project has: {names}")
 elif op == "add":
     if len(rest) < 2:
-        sys.exit('usage: bb rules add <name> "the rule" [--files GLOB,...] [--words W,...]')
+        sys.exit('usage: bb rules add <name> "the rule" [--files GLOB,...] [--words W,...] '
+                 '[--refuse "CMD, CMD"] [--replaces GLOBAL-RULE]')
     name, said, paths_, wds_, doc_, chk_, i = rest[0], [], "", "", "", "", 1
+    ref_, repl_ = "", ""
     while i < len(rest):
         if rest[i] == "--files" and i + 1 < len(rest):
             paths_ = rest[i + 1]; i += 2
@@ -70,10 +82,14 @@ elif op == "add":
             doc_ = rest[i + 1]; i += 2
         elif rest[i] == "--check" and i + 1 < len(rest):
             chk_ = rest[i + 1]; i += 2
+        elif rest[i] == "--refuse" and i + 1 < len(rest):
+            ref_ = rest[i + 1]; i += 2
+        elif rest[i] == "--replaces" and i + 1 < len(rest):
+            repl_ = rest[i + 1]; i += 2
         else:
             said.append(rest[i]); i += 1
     r = reg.add(proj, name, " ".join(said), paths=paths_, words=wds_, by="claude",
-                doc=doc_, check=chk_)
+                doc=doc_, check=chk_, refuse=ref_, replaces=repl_)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
     if r.get("held"):
@@ -104,13 +120,14 @@ elif op == "edit":
     # leaving the words alone; "" clears a flag.
     said, flags, i = [], {}, 1
     while i < len(rest):
-        if rest[i] in ("--doc", "--check", "--files", "--words") and i + 1 < len(rest):
+        if rest[i] in ("--doc", "--check", "--files", "--words", "--refuse", "--replaces") and i + 1 < len(rest):
             flags[{"--files": "paths", "--words": "words"}.get(rest[i], rest[i][2:])] = rest[i + 1]
             i += 2
         else:
             said.append(rest[i]); i += 1
     if not said and not flags:
-        sys.exit('usage: bb rules edit <name> "what it should say now" [--doc PATH] [--check CMD]')
+        sys.exit('usage: bb rules edit <name> "what it should say now" [--doc PATH] [--check CMD] '
+                 '[--refuse "CMD, CMD"] [--replaces GLOBAL-RULE]')
     r = reg.edit(proj, rest[0], text=" ".join(said) if said else None, by="claude", **flags)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
@@ -170,7 +187,9 @@ elif op == "list":
         first = (r["text"].strip().splitlines() or [""])[0]
         mine = "*" if r.get("by") == "claude" else " "
         frame = ((" [global]" if r.get("scope") == "global" else "")
-                 + (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else ""))
+                 + (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else "")
+                 + (" [refuses]" if r.get("refuse") else "")
+                 + (f" [for {r['replaces']}]" if r.get("replaces") else ""))
         print(f" {mine}{r['name']:<{w}}{first[:60]}{when}{frame}")
     print("\n`bb rules show <name>` for one in full. A * is one a session "
           "wrote: yours to `edit` or `rm`. The rest are the operator's: read "

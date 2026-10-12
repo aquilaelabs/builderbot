@@ -304,6 +304,7 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/pr
                 "nodes/bb-session",
                 "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
                 "scripts/dashboard/bb-prompt-relay", "scripts/dashboard/bb-check-relay",
+                "scripts/dashboard/bb-rule-hook",
                 # The gate, which refuses every tool call while the
                 # controller is not answering, so a node's sessions stop for
                 # an update the same way the controller's do.

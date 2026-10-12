@@ -26,6 +26,10 @@ await page.goto(URL);
 await ready(page);
 
 // ---- the dialog: two listboxes -----------------------------------------------------
+// The Debug grants are drawn only with debug mode on, which needs the
+// controller started with DEBUG_MODE=1 (run.sh does) and the switch on.
+await api('/api/settings', { set: { debug_mode: true } });
+await refreshUntil(page, () => !!state?.settings?.settings?.debug_mode?.value, { timeout: 20000 });
 await page.evaluate(() => renameProject('alpha', 'all'));
 await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
 await page.waitForSelector('#rnReadsField:not([hidden])', { timeout: 10000 });
@@ -47,6 +51,7 @@ await saveDialog(page);
 await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reads?.join() === 'beta', { timeout: 20000 });
 ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.reads.join() === 'beta',
    'Save keeps the ticked projects as the reads, in the settings store');
+await api('/api/settings', { set: { debug_mode: false } });
 await page.evaluate(() => renameProject('alpha', 'all'));
 await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
 ok(await page.$eval('#rnReads input[value="beta"]', i => i.checked), '...and the dialog opens with it ticked');

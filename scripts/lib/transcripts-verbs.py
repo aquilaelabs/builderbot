@@ -8,7 +8,9 @@ file itself into this machine's folder for it, which is how a synced node
 resumes a conversation it does not have (B613). A session reads its
 account's conversations on its own project and on one its project reads
 (`bb -p NAME transcripts`), and nobody else's: the controller looks under
-the account's transcripts and nowhere else. BB_TRANSCRIPTS_AUTH is the
+the account's transcripts and nowhere else. `audit [DAYS]` is `bb rules
+audit`: the same conversations counted against the rules that refuse
+commands (R200). BB_TRANSCRIPTS_AUTH is the
 auth header and BB_TRANSCRIPTS_PROJECT the project.
 """
 import os
@@ -45,6 +47,30 @@ if verb == "list":
         when = time.strftime("%d %b %H:%M", time.localtime(int(row.get("at") or 0)))
         print(f"  {row['id']}  {when}  {size(int(row.get('bytes') or 0)):>7}  {row.get('first') or ''}")
     print("bb transcripts show ID prints one: what was said, every command Claude ran and what it answered")
+    raise SystemExit(0)
+
+if verb == "audit":
+    # `bb rules audit [DAYS]` (R200): the account's conversations here over
+    # the last DAYS, counted against the rules that refuse commands.
+    days = argv[1] if len(argv) > 1 and argv[1].isdigit() else "7"
+    q = urllib.parse.urlencode({"project": proj, "audit": days})
+    r = bbapi.call(f"/api/transcripts?{q}", auth=auth)
+    if not isinstance(r, dict) or r.get("error"):
+        fail(r.get("error") if isinstance(r, dict) else "the controller answered something that is not an audit")
+    a = r.get("audit") or {}
+    print(f"your conversations on {proj} over the last {a.get('days')} days: "
+          f"{a.get('conversations', 0)}, with {a.get('bash', 0)} shell commands")
+    g = a.get("guards") or {}
+    if g:
+        print("commands a rule refuses (refused since the guard, or would have been before it):")
+        for name, n in sorted(g.items(), key=lambda kv: -kv[1]):
+            print(f"  {n:>5}  {name}")
+            for ex in (a.get("examples") or {}).get(name, []):
+                print(f"         $ {ex[:120]}")
+    else:
+        print("no command a rule refuses")
+    print(f"refused by the guard: {a.get('refused', 0)}")
+    print(f"the code map asked: {a.get('map', 0)}, grep and Grep: {a.get('grep', 0)}")
     raise SystemExit(0)
 
 if verb == "show":

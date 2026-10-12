@@ -241,3 +241,101 @@ def render(uid, project, sid, tz=None):
         return None, f"could not read it: {e}"
     name = f"claude-{project}-{time.strftime('%Y%m%d-%H%M', time.localtime(mtime))}-{sid[:8]}.txt"
     return "\n".join(out).rstrip() + "\n", name
+
+
+# ---- what the conversations did, against the house rules (R200 step 6) -----
+
+AUDIT_DAYS = 7
+_EXAMPLES = 3
+
+
+def _simple_commands(command):
+    """The commands a shell line runs, as cmdmatch reads them, imported
+    from scripts/lib the way rules.py does."""
+    import os
+    import sys
+    lib = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    import cmdmatch
+    return cmdmatch.commands(command)
+
+
+def audit(uid, project, judge, days=AUDIT_DAYS):
+    """How this account's conversations on the project have kept to the
+    rules that can be counted, over the last `days`: each Bash call a guard
+    refuses (or would have, before it refused anything), by the guard's
+    name with a few of the commands; how many calls asked `bb map` against
+    how many searched the code (grep -r, rg, git grep, the Grep and Glob
+    tools); and how many calls the guard did refuse. `judge(command)` is the
+    guard's name for a shell line or "". A turn a person can read is
+    counted, never Claude's reasoning; nothing here leaves the account."""
+    since = time.time() - max(1, int(days)) * 86400
+    out = {"days": int(days), "conversations": 0, "bash": 0, "guards": {}, "examples": {},
+           "map": 0, "grep": 0, "refused": 0}
+    # A transcript writes one call into more than one record (a resumed or
+    # summarized conversation carries its history again): counted once, by
+    # the call's own id.
+    seen = set()
+    for d in _dirs(uid, project):
+        try:
+            files = [f for f in d.glob("*.jsonl") if f.is_file() and f.stat().st_mtime >= since]
+        except OSError:
+            continue
+        for f in files:
+            out["conversations"] += 1
+            try:
+                src = f.open(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            with src:
+                for line in src:
+                    # Most of a transcript is text and the briefing again;
+                    # only a line with a tool in it is worth parsing.
+                    if '"tool_use"' not in line and "Refused by" not in line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    content = ((rec.get("message") or {}).get("content")) if isinstance(rec, dict) else None
+                    for b in content if isinstance(content, list) else []:
+                        if not isinstance(b, dict):
+                            continue
+                        key = b.get("id") or b.get("tool_use_id")
+                        if key:
+                            if (b.get("type"), key) in seen:
+                                continue
+                            seen.add((b.get("type"), key))
+                        if b.get("type") == "tool_result" and "Refused by" in _result_text(b)[:200]:
+                            out["refused"] += 1
+                        if b.get("type") != "tool_use":
+                            continue
+                        name = b.get("name")
+                        if name in ("Grep", "Glob"):
+                            out["grep"] += 1
+                            continue
+                        if name != "Bash":
+                            continue
+                        cmd = str((b.get("input") or {}).get("command") or "")
+                        out["bash"] += 1
+                        # Once a call each: a search of the code (grep -r,
+                        # rg, git grep), not a grep filtering a pipe.
+                        mapped = searched = False
+                        for w in _simple_commands(cmd):
+                            if w[:1] == ["bb"] and "map" in w[1:4]:
+                                mapped = True
+                            elif w[:1] in (["rg"], ["ag"]) or w[:2] == ["git", "grep"] or (
+                                    w[:1] in (["grep"], ["egrep"]) and any(
+                                        x == "--recursive" or (x.startswith("-") and not x.startswith("--")
+                                                               and ("r" in x or "R" in x)) for x in w[1:])):
+                                searched = True
+                        out["map"] += mapped
+                        out["grep"] += searched
+                        hit = judge(cmd)
+                        if hit:
+                            out["guards"][hit] = out["guards"].get(hit, 0) + 1
+                            ex = out["examples"].setdefault(hit, [])
+                            if len(ex) < _EXAMPLES:
+                                ex.append(cmd[:200])
+    return out

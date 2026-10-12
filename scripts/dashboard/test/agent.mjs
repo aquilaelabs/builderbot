@@ -1523,6 +1523,39 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(/test\s+src\/picker\.py\s+\[pick\]/.test(work) && noteOut === '',
          `an edit's note from the node is what bb work reads here, symbol guessed and file relative to the tree (${
            (work.split('\n').find(l => /picker/.test(l)) || '').trim()})`);
+      // ---- the house rules reach a session on a node (B686, R200) -------
+      // The note's answer and the prompt's seen carry the named rules the
+      // controller's store fires, the hooks remember what this conversation
+      // was told so a summary can say it again, and the Bash guard refuses
+      // with the controller's list. It used to be silent on a node, which
+      // is every session.
+      {
+        const rcache = `${DIR}/rulecache`; mkdirSync(rcache, { recursive: true });
+        const renv = { ...nodeEnv, XDG_CACHE_HOME: rcache };
+        const rhook = (name, args, input) => execFileSync('python3', [`${REPO}/scripts/dashboard/${name}`, ...args],
+          { input: JSON.stringify(input), encoding: 'utf8', env: renv, stdio: ['pipe', 'pipe', 'pipe'] });
+        let kept = null;
+        try { kept = readFileSync(`${DIR}/state/rules.json`, 'utf8'); } catch { /* none yet */ }
+        const was = (await api('/api/rules', { project: 'alpha', action: 'save', rules: [
+          { name: 'zebra', text: 'ZEBRARULE keep the stripes', paths: ['src/striped'], words: ['zebrafish'] }] }));
+        const noted = rhook('bb-work-note', ['alpha', 'ignored'],
+          { session_id: 'conv-node', tool_input: { file_path: '/workspace/alpha/src/striped/a.py', old_string: 'x' } });
+        const asked2 = rhook('bb-prompt-relay', ['alpha', 'ignored'], { session_id: 'conv-node', prompt: 'the zebrafish again' });
+        ok(/ZEBRARULE/.test(noted) && /ZEBRARULE/.test(asked2) && !was.error,
+           `a named rule reaches a session on a node, on the edit of a file it covers and on a prompt naming its word (${
+             noted.slice(0, 80)} | ${asked2.trim().slice(0, 80)})`);
+        const again = rhook('bb-rule-hook', ['recall', 'alpha', 'ignored'], { source: 'compact', session_id: 'conv-node' });
+        ok(/summarized/.test(again) && /ZEBRARULE/.test(again)
+           && rhook('bb-rule-hook', ['recall', 'alpha', 'ignored'], { source: 'compact', session_id: 'conv-other' }) === '',
+           '...and after a summary the conversation that was told it is told again, and no other');
+        const denied = rhook('bb-rule-hook', ['guard', 'alpha', 'ignored'],
+          { tool_name: 'Bash', tool_input: { command: 'sleep 1; pkill -f chromium' } });
+        ok(/"permissionDecision": "deny"/.test(denied) && /pkill-by-pid/.test(denied)
+           && rhook('bb-rule-hook', ['guard', 'alpha', 'ignored'], { tool_name: 'Bash', tool_input: { command: 'ls -la' } }) === '',
+           `the Bash guard on a node refuses what the controller's list refuses, with the reason, and lets the rest run (${denied.slice(0, 90)})`);
+        if (kept === null) rmSync(`${DIR}/state/rules.json`, { force: true });
+        else writeFileSync(`${DIR}/state/rules.json`, kept);
+      }
       const bad = await fetch(URL.replace(/\/$/, '') + '/api/v1/hook', { method: 'POST',
         headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'asked', text: 'hi' }) });

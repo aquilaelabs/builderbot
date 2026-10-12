@@ -79,13 +79,12 @@ def write_json(p, d):
 
 
 def house_rules(project, rel):
-    """The operator's conditional rules that this path fires, as lines to say.
-
-    Silent on a node and silent on any failure: a node keeps no /config, and
-    a rule that cannot be read is never worth taking an edit with.
-    """
-    if os.environ.get("BUILDERBOT_ROLE", "").lower() == "node":
-        return []
+    """(what to say, the names) for the conditional rules this path fires,
+    read from the store here, on the controller. On a node the same comes
+    back in the note's answer (hooks.py), which is how a session there is
+    told at all (B686: it used to be silent on a node, which is every
+    session). Silent on any failure: a rule that cannot be read is never
+    worth taking an edit with."""
     try:
         here = os.path.dirname(os.path.abspath(__file__))
         if here not in sys.path:
@@ -94,15 +93,9 @@ def house_rules(project, rel):
         rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                         write_json=write_json)
         hit = rules.matching(project, path=rel)
+        return rules.said(hit, path=rel), [r["name"] for r in hit]
     except Exception:                     # noqa: BLE001  (never take an edit with it)
-        return []
-    def line(r):
-        who = ("* A note a session left, yours to change" if r.get("by") == "claude"
-               else "The operator's house rule, theirs and not yours")
-        doc = f"\nIt is defined in full in {r['doc']}; read that before editing." if r.get("doc") else ""
-        chk = f"\nRun `bb rules check {r['name']}` before calling this work done." if r.get("check") else ""
-        return f"{who}: [{r['name']}] covers this file.\n{r['text']}{doc}{chk}"
-    return [line(r) for r in hit]
+        return "", []
 
 
 def main():
@@ -131,7 +124,9 @@ def main():
         import bbapi                                          # noqa: E402
         r = bbapi.call("/api/v1/hook", {"kind": "note", "path": rel, "symbol": symbol},
                        auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10)
-        others = r.get("others") or [] if isinstance(r, dict) else []
+        r = r if isinstance(r, dict) else {}
+        others = r.get("others") or []
+        ruled, names = str(r.get("rules") or ""), list(r.get("names") or [])
     else:
         sys.path.insert(0, here)
         import overlap                                        # noqa: E402
@@ -140,6 +135,7 @@ def main():
                           write_json=write_json)
         others = overlap.others_touching(project, session, rel)
         overlap.note(project, session, rel, symbol)
+        ruled, names = house_rules(project, rel)
     # ...and any house rule this file fires (roadmap #7). Here rather than in
     # the prompt hook because this is the half that knows which file is about
     # to be written: a rule keyed to scripts/agent/** should arrive when the
@@ -151,7 +147,13 @@ def main():
                     + ". You are each in your own worktree, so nothing is being "
                       "overwritten, but you will be merging against their version "
                       "of this file. `bb work` shows what overlaps.")
-    said += house_rules(project, rel)
+    if ruled:
+        said.append(ruled)
+        # ...remembered, so a summary of this conversation does not drop it
+        # (bb-rule-hook recall).
+        sys.path.insert(0, os.path.join(here, "..", "lib"))
+        import rulehook                                       # noqa: E402
+        rulehook.remember(project, req.get("session_id"), names)
     if not said:
         return
     say = "\n\n".join(said)

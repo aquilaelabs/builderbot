@@ -101,7 +101,8 @@ function nbRulesView({$, nb, project}){
     const shippedOff = new Set(gs.filter(g => g.builtin && g.disabled).map(g => g.name));
     mutate(own, shippedOff);
     const r = await postJSON("/api/global-rules", {action: "save",
-      rules: own.map(g => ({name: g.name, text: g.text, paths: g.paths || [], words: g.words || []})),
+      rules: own.map(g => ({name: g.name, text: g.text, paths: g.paths || [], words: g.words || [],
+                            doc: g.doc || "", check: g.check || "", refuse: g.refuse || []})),
       disabled: [...shippedOff]});
     let j = {};
     try{ j = await r.json(); }catch{ j = {error: `the controller answered ${r.status}`}; }
@@ -192,6 +193,17 @@ function nbRulesView({$, nb, project}){
                 placeholder="bash scripts/test.sh"
                 value="${esc(r.check || "")}" aria-label="check"></div>
             </div>
+            <div class="two">
+              <div>${lbl("", "Commands it refuses", "comma-separated, each the start of a command as typed; a session's Bash call that runs one is refused with this rule as the reason")}
+              <input class="rlRefuse" autocomplete="off" spellcheck="false"
+                placeholder="./gradlew assemble, npm publish"
+                value="${esc((r.refuse || []).join(", "))}" aria-label="commands it refuses"></div>
+              <div>${lbl("", "In place of", "a global rule this one replaces here; a session in this project reads only this one")}
+              <select class="rlRepl" aria-label="the global rule it replaces">
+                <option value="">no global rule</option>${(d.global || []).map(g =>
+                  `<option value="${esc(g.name)}"${g.name === r.replaces ? " selected" : ""}>${esc(g.name)}</option>`).join("")}
+              </select></div>
+            </div>
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)} · the section's Save writes it</span>
               <button type="button" class="stop rlCancel" title="discard what was typed">Cancel</button>
@@ -203,6 +215,8 @@ function nbRulesView({$, nb, project}){
             ${(r.overlaps || []).length ? `<div class="bfield rlover"><label>shares ground</label><div class="bval">${esc(overlapLine(r))}. Both reach a session; where they disagree it follows this one and says so.</div></div>` : ""}
             ${r.doc ? `<div class="bfield rlframe"><label>defined in</label><div class="bval">${esc(r.doc)}</div></div>` : ""}
             ${r.check ? `<div class="bfield rlframe"><label>checked by</label><div class="bval">${esc(r.check)} <span class="dim">· bb rules check ${esc(r.name || "")}</span></div></div>` : ""}
+            ${(r.refuse || []).length ? `<div class="bfield rlframe"><label>refuses</label><div class="bval">${esc(r.refuse.join(", "))} <span class="dim">· a session's command that starts with one is refused</span></div></div>` : ""}
+            ${r.replaces ? `<div class="bfield rlframe"><label>in place of</label><div class="bval">the global rule ${esc(r.replaces)}, which sessions here no longer read</div></div>` : ""}
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)}</span>
               <button type="button" class="rlEdit">Edit</button>
@@ -264,6 +278,9 @@ function nbRulesView({$, nb, project}){
       put("name", ".rlName"); put("text", ".rlText");
       put("paths", ".rlPaths"); put("words", ".rlWords");
       put("doc", ".rlDoc"); put("check", ".rlCheck");
+      put("refuse", ".rlRefuse");
+      const repl = row.querySelector(".rlRepl");
+      if (repl) repl.onchange = () => ruleField(i, "replaces", repl.value);
       // Removing a row shifts every index above it; the set is rebuilt from
       // the rows that stay so an open editor does not jump to its neighbor.
       row.querySelector(".rlRm").onclick = () => {
@@ -275,7 +292,7 @@ function nbRulesView({$, nb, project}){
       const ed = row.querySelector(".rlEdit");
       if (ed) ed.onclick = () => {
         const r = (nb.rulePending || nb.ruleData?.rules || [])[i];
-        nb.ruleWas.set(i, {...r, paths: [...(r.paths || [])], words: [...(r.words || [])]});
+        nb.ruleWas.set(i, {...r, paths: [...(r.paths || [])], words: [...(r.words || [])], refuse: [...(r.refuse || [])]});
         nb.ruleEditing.add(i); nb.ruleOpen.add(i); drawRules();
       };
       // Back to reading it, as it read before Edit. If that leaves the list
@@ -293,7 +310,8 @@ function nbRulesView({$, nb, project}){
         }
         nb.ruleEditing.delete(i);
         const seen = list => JSON.stringify(list.map(r => [r.name || "", r.text || "",
-          (r.paths || []).join(","), (r.words || []).join(","), r.doc || "", r.check || ""]));
+          (r.paths || []).join(","), (r.words || []).join(","), r.doc || "", r.check || "",
+          (r.refuse || []).join(","), r.replaces || ""]));
         nb.rulePending = seen(rs) === seen(nb.ruleData?.rules || []) ? null : rs;
         drawRules(); nb.syncSave();
       };
@@ -371,6 +389,8 @@ function nbRulesView({$, nb, project}){
     if (!r) return;
     if (key === "paths" || key === "words")
       r[key] = value.split(/[,\s]+/).filter(Boolean);
+    else if (key === "refuse")
+      r[key] = value.split(",").map(x => x.trim()).filter(Boolean);
     else r[key] = value;
     const box = $("rulesBox")?.querySelector(`.rulerow[data-i="${i}"]`);
     if (box){

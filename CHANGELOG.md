@@ -131,6 +131,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A first run is a setup page: after the owner, where what grows is kept, when an idle Claude session ends and a public hostname, each with its default, then a first node, which the rest of BuilderBot waits for (20c3975)
 - A project's row says under a session when it needs a restart to see what changed since it started, and why: a toolchain installed on its node, or BuilderBot updated (4909460)
 - The nginx tab keeps one list of public hostnames for every node: add a name once, pick it from a pull-down on any route for any project's container, and delete it once nothing routes it (368121d)
+- A project rule can replace a global one by name (In place of, bb rules add --replaces), so a session in that project reads one rule rather than two (9981b52)
+- After Claude Code summarizes a long conversation, the named house rules it had been told are said again in full (9981b52)
+- bb rules audit [DAYS] counts, over your own conversations on a project, the commands a rule refuses that were run or tried, and how often the code map was asked against a grep of the code (9981b52)
+- A house rule can refuse commands outright (Commands it refuses, bb rules add --refuse): a session's shell call that runs one is stopped with the rule as the reason. ask-do-not-install refuses the package managers; pkill -f and the emulator binary are refused everywhere (9981b52)
 
 ### Changed
 
@@ -290,6 +294,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Claude button's menu no longer blinks or loses a press while the page updates, and offers Restart beside End session: the session ends and resumes the same conversation, starting fresh so it sees what changed (9b745b7)
 - A node's Toolchains tab lists only the toolchains its platform can have; the Not for this node fold is gone (0202f34)
 - The README is a front page (what BuilderBot is, what it does, pictures, where the docs are), and the settings, the bb command list and Android signing are in docs/reference.md, with docs/README.md as the index (9ed3126)
+- What a session is handed opens with a short core of what holds every time, then the house rules, then the rest of the briefing; the roadmap and bug lists take a smaller share of it (9981b52)
 
 ### Removed
 
@@ -483,6 +488,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Toolchains tab ticks what an install put on a node as soon as the node reports it, rather than after the page is reloaded (f266d17)
 - Install selected on a node installs every ticked toolchain, not the first eight (8a77d93)
 - Aborting a toolchain install no longer leaves half a toolchain reading installed, or calls the toolchains it never reached failed (6d24de5)
+- A named house rule reaches a session on a node: its text arrives on the turn the session edits one of its files or is asked about one of its words, where on a node (every session) it never arrived (B686) (9981b52)
 
 ### Security
 

@@ -426,7 +426,7 @@ claude_scope() {
     # it denies a file that session was never going to touch and leaves its
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
-    # Four hooks ride in the same file. bb-gate refuses EVERY tool call
+    # Six hooks ride in the same file. bb-gate refuses EVERY tool call
     # while the controller is not answering, which is what a restart after an
     # update looks like: there is nothing to do but wait, and working blind
     # against a machine that is changing is worse than waiting.
@@ -438,7 +438,10 @@ claude_scope() {
     # others sharing it know what is being worked on before they start the
     # same thing. bb-check-relay runs, when the session is about to stop, the
     # checks of the house rules whose files it changed, and refuses the stop
-    # while one fails (roadmap R31). bb-gate --turn holds a prompt until the
+    # while one fails (roadmap R31). bb-rule-hook guard refuses a Bash call
+    # that runs a command a rule refuses, and bb-rule-hook recall says again,
+    # after Claude Code summarizes the conversation, the named rules it had
+    # been told (R200). bb-gate --turn holds a prompt until the
     # node's limit on sessions working at once has a turn free (turns.py),
     # and --turn-done on Stop hands it back. Its timeout is its own: a
     # UserPromptSubmit hook gets thirty seconds otherwise, and one that runs
@@ -470,6 +473,7 @@ claude_scope() {
                --arg note "$hooks/bb-work-note" \
                --arg relay "$hooks/bb-prompt-relay" \
                --arg check "$hooks/bb-check-relay" \
+               --arg rule "$hooks/bb-rule-hook" \
                --arg proj "$proj" --arg who "${account:-owner}" \
                --arg mem "$HOME/.claude/projects/${here//\//-}/memory" '
            {permissions: {
@@ -490,7 +494,14 @@ claude_scope() {
                         command: "\($gate) \($proj) \($who)", timeout: 60}]},
               {matcher: "Edit|Write|NotebookEdit",
                hooks: [{type: "command",
-                        command: "\($note) \($proj) \($who)"}]}],
+                        command: "\($note) \($proj) \($who)"}]},
+              {matcher: "Bash",
+               hooks: [{type: "command",
+                        command: "\($rule) guard \($proj) \($who)", timeout: 30}]}],
+              SessionStart: [
+              {matcher: "compact",
+               hooks: [{type: "command",
+                        command: "\($rule) recall \($proj) \($who)", timeout: 30}]}],
               UserPromptSubmit: [
               {hooks: [{type: "command",
                         command: "\($relay) \($proj) \($who)"},

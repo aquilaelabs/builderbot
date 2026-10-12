@@ -532,6 +532,9 @@ ok(await phone.$eval('.resumemenu', el => {
    '...brought into the scrolled sidebar, not left below its fold');
 await phone.setViewportSize({ width: 400, height: 800 });
 await phone.click('.resumemenu [data-n]');
+// New conversation turns the menu to the model and effort it starts on
+// (R197), and Start is what opens it.
+await phone.click('.resumemenu [data-start]');
 await phone.waitForFunction(() => tabs.some(t => t.arg === 'claude:alpha') && document.body.dataset.view === 'terminal');
 ok(true, 'phone: New conversation opens the Claude tab and switches to the terminal');
 // ...and alpha goes back to having no node, which is how every other file

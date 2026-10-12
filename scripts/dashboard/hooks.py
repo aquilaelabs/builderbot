@@ -13,6 +13,12 @@ already in, which is how a session stays current without anybody pressing
 a button, roadmap #27), and `turn` and `turn-done` (a prompt about to
 start, or a turn over: turns.py).
 
+The house rules ride on the same round trips (R200, B686): a `note`'s
+answer carries the named rules the file fires and a `seen`'s the ones the
+prompt fires, said whole, with their names so the session's hook can
+remember what fired; `guards` is what the Bash guard refuses here; and
+`recall` says again, after a summary, the rules a conversation was told.
+
 The account is the token's, never the request's: the server checks the
 token and hands verb() the account and project it was minted for, and
 that is who the note is filed under and who the feed says asked.
@@ -25,6 +31,7 @@ from fields import field
 # session is told it has not seen (session_seen_note) and which node and
 # limit its turns count against (turn_scope).
 users = None
+rules = None
 overlap = None
 chat = None
 roadmap = None
@@ -51,7 +58,9 @@ def verb(kind, req, me, uid, project):
         others = overlap.others_touching(project, uid, path)
         overlap.note(project, uid, path, str(req.get("symbol") or "")[:120])
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
-        return {"ok": True, "others": [by_uid.get(o, o) for o in others]}, 200
+        hit = rules.matching(project, path=path)
+        return {"ok": True, "others": [by_uid.get(o, o) for o in others],
+                "rules": rules.said(hit, path=path), "names": [r["name"] for r in hit]}, 200
     if kind == "asked":
         text = str(req.get("text") or "").strip()[:800]
         if not text:
@@ -72,7 +81,15 @@ def verb(kind, req, me, uid, project):
         line = " ".join(x for x in (roadmap.catchup(project, uid),
                                     pending.settled_line(project),
                                     seen_note(project, uid, field(req, "node"), who=me)) if x)
-        return {"ok": True, "line": line}, 200
+        # ...and the rules the prompt raises, on the trip already being made.
+        hit = rules.matching(project, prompt=str(req.get("prompt") or "")[:20000])
+        return {"ok": True, "line": line, "rules": rules.said(hit),
+                "names": [r["name"] for r in hit]}, 200
+    if kind == "guards":
+        return {"ok": True, "guards": rules.guards(project)}, 200
+    if kind == "recall":
+        names = req.get("names") if isinstance(req.get("names"), list) else []
+        return {"ok": True, "rules": rules.said(rules.by_names(project, names[:200]), again=True)}, 200
     if kind in ("turn", "turn-done"):
         # A prompt about to start, or a turn over (turns.py): how many
         # sessions on one node work at once, when an administrator has
@@ -89,4 +106,4 @@ def verb(kind, req, me, uid, project):
             n = nodes.node(nid) or {}
             r["node"] = n.get("name") or nid
         return {"ok": True, **r}, 200
-    return {"error": "a hook is note, asked, started, seen, turn or turn-done"}, 400
+    return {"error": "a hook is note, asked, started, seen, guards, recall, turn or turn-done"}, 400
