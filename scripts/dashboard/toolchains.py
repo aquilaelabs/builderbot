@@ -1021,10 +1021,19 @@ def payload_for_node(nid):
     job = None
     if nodes:
         for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1):
+            names = [DRIVER if str(x).startswith(DRIVER + ":") else str(x)
+                     for x in (j.get("spec") or {}).get("names", [])]
+            # How far through the batch it is, from the name the agent says
+            # it is on (step): the ones before it are behind it, the ones
+            # after it still to come. Every name sat in the queue for the
+            # whole job, and the tab read "1 of 10" from start to end (the
+            # operator, 12 Oct).
+            cur = j.get("step", "")
+            at = names.index(cur) if cur in names else -1
             job = {"running": True, "action": (j.get("spec") or {}).get("action", ""),
-                   "queue": [DRIVER if str(x).startswith(DRIVER + ":") else x
-                             for x in (j.get("spec") or {}).get("names", [])],
-                   "current": j.get("step", ""),
+                   "queue": names[at + 1:] if at >= 0 else names,
+                   "passed": names[:at] if at >= 0 else [],
+                   "current": cur,
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
                    "failed": [], "aborting": bool(j.get("cancel")), "node": nid, "id": j["id"]}
             break

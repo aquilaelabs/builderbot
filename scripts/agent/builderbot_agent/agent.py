@@ -426,7 +426,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     time.sleep(delay)
                     delay = min(delay * 2, 60)
                     continue
-                delay = 1
+                # Only an answer resets the wait: a census still on its way
+                # is not one, and reset here, a controller being rebuilt was
+                # asked every second for minutes, a journal line each time.
+                if said is not None:
+                    delay = 1
             self.session_check()
             self.session_firewall_check()
             self.session_idle_reap()
@@ -512,7 +516,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 time.sleep(300)
                 continue
             log(f"work: {st} {r.get('error', '')}; retrying in {delay}s")
-            self.hello_again(f"the work poll failed ({st})")
+            # A fresh census for a controller that answered and refused; one
+            # that did not answer at all (0) has nobody to hear it.
+            if st:
+                self.hello_again(f"the work poll failed ({st})")
             time.sleep(delay)
             delay = min(delay * 2, 60)
 

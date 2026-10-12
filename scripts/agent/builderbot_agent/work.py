@@ -18,6 +18,11 @@ from .toolchains import held_recipes, read_catalog, sdk_env, sysdeps_missing, tc
 from .gpu import DRIVER_PKG, _gpu_card
 
 
+# More names than the catalog has recipes is a request that is wrong, not a
+# batch to trim.
+TC_NAMES_MAX = 64
+
+
 class WorkMixin:
     """Agent's project-work jobs: one of the parts class Agent (agent.py) is made of."""
 
@@ -238,7 +243,14 @@ class WorkMixin:
             job.say("refused: this node has no toolchain store\n")
             return "failed", 78
         action = spec.get("action")
-        names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
+        names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])]
+        # Every name it was sent, or a refusal that says so: this kept the
+        # first eight and dropped the rest without a word, so a batch of
+        # nine reported success with the ninth never tried, and the move of
+        # twenty-eight installed eight (the operator, 12 Oct).
+        if len(names) > TC_NAMES_MAX:
+            job.say(f"refused: {len(names)} toolchains in one job; at most {TC_NAMES_MAX}\n")
+            return "failed", 64
         if action not in ("install", "remove", "sysdeps", "check") or (
                 not names and action not in ("sysdeps", "check")):
             job.say("refused: a toolchain job installs or removes named toolchains, "

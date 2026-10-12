@@ -113,7 +113,8 @@ const tcWorking = (job, items) => {
   const row = (items || []).find(i => i.name === job.current);
   const what = job.action === "check" ? "for updates"
     : row?.label || (job.current || "").replace(/^android:/, "");
-  const done = (job.done || []).length + (job.failed || []).length, left = (job.queue || []).length;
+  const done = (job.done || []).length + (job.failed || []).length + (job.passed || []).length,
+        left = (job.queue || []).length;
   const of = job.action !== "check" && done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
   return `<span class="state tcworking">${esc(verb)} ${esc(what)}${of}<span class="dots"></span></span>`;
 };

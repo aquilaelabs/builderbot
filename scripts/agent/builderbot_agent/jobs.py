@@ -18,6 +18,17 @@ from .toolchains import sdk_env
 # ---------------------------------------------------------------------------
 # jobs
 
+def _last_frame(line):
+    """A line a progress meter redrew in place (frames joined by carriage
+    returns) as the frame it ended on. Every frame used to go into the log:
+    sdkmanager's unzip meter was most of a toolchain job's 60 kB, and the
+    lines worth reading were lost among them (the operator, 12 Oct)."""
+    if "\r" not in line:
+        return line
+    end = "\n" if line.endswith("\n") else ""
+    frames = [f for f in line.rstrip("\n").split("\r") if f.strip()]
+    return (frames[-1].rstrip() if frames else "") + end
+
 class Job(threading.Thread):
     """One job, on its own thread, reporting as it goes.
 
@@ -188,6 +199,12 @@ class Job(threading.Thread):
                 # ttyd on the node to report a version number would be rude.
                 if spec.get("action") != "check":
                     self.agent.session_renew()
+                    # The census before the end: the controller says which
+                    # names landed from what the store holds, and read from
+                    # the census of before the job, a toolchain that had
+                    # just landed read as failed until the next hello (the
+                    # operator, 12 Oct: Build-Tools, installed, said failed).
+                    self.agent.hello()
             elif self.job.get("type") == "image":
                 state, code = self.agent.image(self, spec)
             elif self.job.get("type") == "sign":
@@ -542,7 +559,7 @@ class Job(threading.Thread):
         def pump():
             try:
                 for line in p.stdout:
-                    self.say(line.decode("utf-8", "replace"))
+                    self.say(_last_frame(line.decode("utf-8", "replace")))
             except (OSError, ValueError):
                 pass                      # the pipe went with the process
         reader = threading.Thread(target=pump, daemon=True)

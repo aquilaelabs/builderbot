@@ -787,7 +787,9 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
     if [ "$status" = unknown ]; then
         if [ "$inst" = "-" ]; then status=absent
         elif [ "$latest" = "-" ]; then status=unknown
-        elif [ "$inst" = "$latest" ]; then status=current
+        # The same release written with and without its build (Temurin's
+        # 21.0.12.1+1 against java's own 21.0.12.1) is the same release.
+        elif [ "${inst%%+*}" = "${latest%%+*}" ]; then status=current
         else status=update
         fi
     fi
