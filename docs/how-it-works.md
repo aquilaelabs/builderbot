@@ -1107,9 +1107,8 @@ are cleared rather than left quoting a version this daemon has never seen; the
 instances stay, since their compose file and env are this side's.
 
 **With no daemon reachable, the controls that would drive one are disabled**,
-each carrying the reason as its tooltip, and the manager tab says the same
-thing in words at the top: a tooltip is not reachable on a phone, and *"why is
-everything grayed out"* should be answered by looking. That is the node
+and the manager tab says why in words at the top: *"why is everything grayed
+out"* should be answered by looking, on a phone as at a desk. That is the node
 unset, or a sandbox VM this container
 cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
@@ -1761,8 +1760,8 @@ that is not an administrator sees what belongs to its projects.
   every 30 minutes and
   re-run on demand with its ↻. Its status row wears the verdict as a dot,
   green, amber or red, beside an "all n ok" button that unfolds the detail:
-  failures and warnings as full lines, with the fix hint from `bb doctor`'s
-  own output in the tooltip, and passing checks collapsed into green chips.
+  failures and warnings as full lines, each with the fix hint from `bb
+  doctor`'s own output beside it, and passing checks collapsed into green chips.
   A verdict getting worse unfolds that detail by itself; healing folds it
   back. Only the detail: collapsing the whole card is your setting, and the
   verdict never overrides it. A plain user's card carries only the lines

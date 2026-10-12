@@ -2625,6 +2625,28 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
     body: JSON.stringify({ action: 'save', name: 'radarr', rename: 'radarr', compose: 'services:\n  app:\n    image: lscr.io/x:latest\n', env: '' }) })).json()));
   ok(!saved.error && !saved.job, `a Save with the name as it was renames nothing (${JSON.stringify(saved).slice(0, 60)})`);
 }
+// ---- a port only nginx reaches, with no route yet -------------------------
+// The first-time trap of a container moved to a VPS (11 Oct): its port is on
+// 127.0.0.1 there, so it answers nowhere until an nginx route points at it,
+// and the row says so with the way to the nginx tab; routed, it says nothing.
+{
+  const said = await page.evaluate(() => {
+    const was = dockerList;
+    const row = { owner: 'aquilaeLabs', running: true, ports: ['127.0.0.1:8380->80/tcp', '9000->9000/tcp'] };
+    dockerList = { ...(was || {}), node: 'n1', ports_local: true, nginx_ports: [] };
+    const bare = dmUnrouted(row);
+    dockerList = { ...(was || {}), node: 'n1', ports_local: true, nginx_ports: [8380] };
+    const routed = dmUnrouted(row);
+    dockerList = { ...(was || {}), node: 'n1', ports_local: false, nginx_ports: [] };
+    const elsewhere = dmUnrouted(row);
+    dockerList = was;
+    return { bare, routed, elsewhere };
+  });
+  ok(/8380 is reachable only through this node's nginx, and no route points at it yet/.test(said.bare)
+     && /data-dmnginx="n1"/.test(said.bare) && !/9000/.test(said.bare) && said.routed === '' && said.elsewhere === '',
+     `a loopback port nothing routes to says so with the way to the nginx tab, and says nothing once routed or off a hosting node (${said.bare.replace(/<[^>]+>/g, '').slice(0, 70)})`);
+}
+
 // ---- a registry image that moved (R195) ---------------------------------
 // The operator, 11 Oct: Update on any container whose image comes from a
 // registry, not nginx alone. radarr runs one (no build): the node has pulled

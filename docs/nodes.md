@@ -989,6 +989,10 @@ the pieces stack:
    dialog prints them) let the VPS open connections to the controller's
    port and nothing else at home; the controller in turn answers its tunnel
    address on the agent API alone.
+1a. *Its journal is kept across boots* (R185): the provisioner writes a
+   journald drop-in (`Storage=persistent`), and the agent does the same on
+   a managed node enrolled before, so `bb logs --node NAME --crash` has the
+   boot before a crash to read; a fresh VPS keeps its journal in memory.
 2. *Make it hosting only*, ticked in the Enroll dialog or later on its row
    (`nodes.host_only`): no project may list it, so no code, synced copy or
    session goes there, and its hello hands it no bb bundle, no session
@@ -1004,7 +1008,13 @@ the pieces stack:
 3. *Move the containers over* with Copy or move: each comes with its
    volumes and data, its image built on the project's own node at home and
    shipped, its env changed on the way where the VPS needs another port or
-   address.
+   address. A service that runs a registry image (mariadb) is pulled on the
+   VPS (B660). One that does not come up goes back where it was, and why is
+   a note in the bell, not a line on the row. Its name is its own and can be
+   changed in Edit while it is down, the node carrying its volumes and data
+   directory to the new one (R191). Its registry images keep up to date
+   with Check for updates and Update on the Docker tab (R195); what is
+   built from code keeps Rebuild.
 4. *Name it under Hosts its containers on*, in the project's settings
    (Where it runs, `prefs.hosts`; only a hosting-only node may be named,
    by whoever may set the project's node). The project's sessions may then
@@ -1044,14 +1054,20 @@ the pieces stack:
    the tunnel's own say (Cloudflare Access, the tailnet's ACLs). Closing
    public port 22 (`--door-close22`, an nftables rule leaving the loopback
    and the tailnet) is a separate, default-off choice, since the person
-   running the script is usually on that port.
+   running the script is usually on that port. An open cloudflared door's
+   row hands the PC an `~/.ssh/config` block named for the node (`Host
+   NAME`, `HostName`, `User`, `ProxyCommand cloudflared access ssh
+   --hostname %h`), so each server keeps its own name and saved password
+   rather than all being `localhost:22`, and says MobaXterm's way in: its
+   own SSH sessions read no ssh config, so a Shell session that runs `ssh
+   NAME` (R179).
 5. *Put nginx in front of them* (R171, the nginx tab): one reverse proxy
    per node, BuilderBot's own, listed for every node on the Tools card's
    nginx tab. Its routes (a hostname or path to a port a container
-   publishes on that node, with or without TLS) and its certificate (a
+   publishes on that node, with or without TLS) and its certificates (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
-   the controller (`nginxproxy.py`, the key 0600 and never shown back), and
-   A node holds a list of certificate pairs, each known by the domain its
+   the controller (`nginxproxy.py`, the key 0600 and never shown back). A
+   node holds a list of certificate pairs, each known by the domain its
    names say (a wildcard pair for `*.example.com` is `example.com`'s; the
    same key again is a renewal), and every route serves 443 with the pair
    it picks, or with the one its hostname resolves to (its own, else the
@@ -1062,12 +1078,25 @@ the pieces stack:
    listed pair under its domain. An origin certificate covers one zone and
    a node may serve sites on several; nginx picks by server name.
    On a hosting-only node a container's published ports bind to
-   `127.0.0.1` by default (R190: docker's `ip` in `daemon.json`, written by
-   the agent when the switch on the node's row says so, on by default for
-   a hosting-only node, docker restarted once), so only the node's nginx
-   and its tunnel reach them and nothing is open to the internet by
-   accident; a port that must be public is published as `0.0.0.0:PORT:80`
-   in the compose on purpose.
+   `127.0.0.1` by default (R190), so only the node's nginx and its tunnel
+   reach them and nothing is open to the internet by accident; a port that
+   must be public is published as `0.0.0.0:PORT:80` in the compose on
+   purpose. The agent writes two keys to `daemon.json` when the switch on
+   the node's row says so (on by default for a hosting-only node): `ip`,
+   the default bridge's, and `default-network-opts`'
+   `com.docker.network.bridge.host_binding_ipv4`, which every network
+   compose makes takes instead (B666: with `ip` alone a compose
+   container's ports answered from the internet). It checks on every
+   hello and restarts docker only when the file differs, so an agent
+   update that learns more of the setting applies it by itself (B667). A
+   network keeps the options it was made with, so a container made before
+   is bound again by a Down and Up; its Docker row says so in red while a
+   port is still published on every address.
+   nginx's image is pinned per node by digest (R192): a weekly check of the
+   registry, Check now and Update on the nginx tab, Update on its Docker
+   row, and a bell note when a newer line is out. Its Docker row's Edit is
+   for reading: name, compose file and env are the nginx tab's to write,
+   and the server refuses them from anywhere else.
    Deploy writes a container from them through the written-container path
    (`containers.create_container`), its nginx config and certificate inline
    in the compose file as compose `configs`, so the node's compose job needs
@@ -1077,7 +1106,13 @@ the pieces stack:
    takes it off the Docker tab and keeps the routes. The Enroll dialog's
    "Put nginx on it once it is enrolled" (`config.nginx`, `nodes.ON_ENROLL`)
    deploys it on the node's first hello, so a box runs the script and
-   nginx appears with whatever the tab holds for it.
+   nginx appears with whatever the tab holds for it. A node without nginx
+   shows one line and Deploy on the tab, and the routes and certificates
+   once it is there (R181); routes kept for it before (the API, the Enroll
+   tick) are said on that line and come up with it. On the Docker tab, a
+   running container on such a node whose 127.0.0.1 port no route points at
+   says so, with the way to the nginx tab: a container moved to a VPS
+   answers nowhere until a route does.
 
 What runs in those containers has no node token (it lives root-owned in
 the agent's own file) and reaches the controller, if at all, only as the

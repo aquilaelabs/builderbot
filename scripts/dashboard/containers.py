@@ -703,6 +703,11 @@ def manager_view(nid, seen):
     # A node whose ports stay on it: a row still publishing on every address
     # (made before the node said so) says so, with what puts it right.
     got["ports_local"] = bool(ports_local and got.get("node") and ports_local(got["node"]))
+    # ...and the ports nginx routes to there, so a row whose port only nginx
+    # reaches can say when nothing routes to it yet: the first-time trap of
+    # a container moved to a VPS that then answers nowhere (11 Oct).
+    got["nginx_ports"] = sorted({int(r.get("port") or 0) for r in (nginxproxy.record(got["node"]).get("routes") or [])}
+                                if got["ports_local"] else set())
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
         # A node's nginx behind the newest line says so on its row, with

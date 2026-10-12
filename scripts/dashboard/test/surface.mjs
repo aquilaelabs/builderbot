@@ -100,7 +100,7 @@ const SURFACE = [
   'signIn', 'signOut', 'slideBody', 'slideCard', 'fadeFoldCard', 'slideDetails',
   'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'sendSure', 'launchClaude', 'startDrag',
   'openBrief', 'closeBrief', 'briefGo', 'pArchivePicked',
-  'tabLabel', 'tabLabels', 'tabTitle', 'untitle', 'untitleIn', 'untitleWatch', 'helpToggle', 'cLock', 'toggleBell',
+  'tabLabel', 'tabLabels', 'tabTitle', 'untitle', 'untitleIn', 'untitleWatch', 'helpToggle', 'cLock', 'dmUnrouted', 'nodeDoorConfig', 'nginxUndeployed', 'toggleBell',
   'toggleCard', 'togglePin', 'toggleUiMenu', 'unveil', 'updateArrows',
   'viewAfterRestart', 'watchSignin', 'wireConsole', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
   'wireProjectRows'

@@ -888,17 +888,9 @@ button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
    finger alike. :not(:disabled), so a dead button stays visibly inert. */
 button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
   transform:translateY(1px);filter:brightness(.82)}
-/* ...except the sidebar's row icons, which dim instead.
-   BOTH transform and filter make an element the containing block for its own
-   absolutely positioned ::after, and in the sidebar a tooltip is measured
-   against the ROW: 340px of column cannot hold a 280px box centered on its
-   rightmost button. Pressed, the tip re-measured itself against a 32px button:
-   twelve pixels wide, one character per line, running down the whole card.
-   Hiding it on :active was not enough, and the way it failed said why: the
-   press TRANSITIONS back over 100ms, so the button goes on being a containing
-   block after :active has stopped matching, and the tip reappeared mangled
-   just after the click instead of during it. Opacity creates no containing
-   block, so there is nothing left to be caught by. */
+/* ...except the sidebar's row icons, which dim instead. The dip was taken
+   off them because it upset the tooltips measured against their row; there
+   are no tooltips now (11 Oct), and the dim alone is kept as it is. */
 .side .acts button:active:not(:disabled){
   transform:none;filter:none;opacity:.65}
 @media(prefers-reduced-motion:reduce){
@@ -1137,9 +1129,9 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
 .cmd .tack.on svg{fill:currentColor}
 @media(max-width:900px){ .cmd button{min-height:var(--tap)} }
-/* A custom command's title is the operator's own words and can be any length;
-   the card keeps its shape and the full text lives in the tooltip. */
-.cmd .run{max-width:190px;overflow:hidden;text-overflow:ellipsis;display:block}
+/* A custom command's title is the operator's own words and can be any length:
+   it wraps inside the button, since no tooltip holds the rest any more. */
+.cmd .run{max-width:190px;white-space:normal;overflow-wrap:anywhere;text-align:left;display:block}
 
 /* The dialogs: the command editor and the new-project form. Dialogs rather
    than cards of their own: each is a detour, and should hand the page back

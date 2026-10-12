@@ -40,49 +40,25 @@ const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
 ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
      && s.querySelector('[data-ngdeploy]') && !s.querySelector('[data-ngremove]')
-     && s.querySelector('[data-ngsave]').disabled),
-   '...its state row says so, with Deploy and a dead Save');
+     && !s.querySelector('[data-ngsave]') && !s.querySelector('[data-ngadd]') && !s.querySelector('#ngCert')),
+   '...its state row says so, with Deploy alone: no routes or certificates before nginx is there (R181)');
 
-// A route typed: Save wakes, and Save keeps it (not deployed yet, so nothing
-// is built).
-await page.click(`${sect} [data-ngadd]`);
-await page.waitForSelector(`${sect} .ngroute`, { timeout: 5000 });
-await page.fill(`${sect} .ngroute [data-ng="host"]`, 'www.example.com');
-await page.fill(`${sect} .ngroute [data-ng="port"]`, '8080');
-ok(await page.$eval(`${sect} [data-ngsave]`, b => !b.disabled), 'a route typed wakes the section\'s Save');
-await page.click(`${sect} [data-ngsave]`);
-await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.length === 1, sandbox.node, { timeout: 15000 });
+// Routes kept before Deploy, as the Enroll dialog's tick has them for a node
+// that has not said hello yet: the server keeps them, and Deploy brings
+// them up.
+const kept = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [{ host: 'www.example.com', path: '/', port: 8080, tls: true }] });
 const saved = await api('/api/nginx');
 const row = saved.nodes.find(n => n.node === sandbox.node);
-ok(row.routes.length === 1 && row.routes[0].host === 'www.example.com' && row.routes[0].port === 8080 && row.routes[0].tls === true
+ok(kept.ok && row.routes.length === 1 && row.routes[0].host === 'www.example.com' && row.routes[0].port === 8080 && row.routes[0].tls === true
    && !row.deployed,
-   `...and Save keeps the route on the controller, with nothing deployed yet (${JSON.stringify(row.routes)})`);
+   `a route saved before Deploy is kept on the controller, with nothing deployed yet (${JSON.stringify(row.routes)})`);
+await page.evaluate(() => loadNginx());
+await page.waitForFunction(id => /1 route and 0 certificates/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''), sandbox.node, { timeout: 10000 });
+ok(true, '...and the undeployed node says Deploy will bring that route up');
 ok(/a port on the node/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [{ host: 'x.example.com', port: 'eighty' }] })).error || ''),
    'a route with no port is refused by name');
 ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert: 'not a cert', key: 'nor a key' })).error || ''),
    '...and a certificate that is not one');
-
-// A certificate per domain (R175, R188): one made here with openssl is
-// kept under the domain its names say, listed with its names, used by the
-// routes its names cover, and taken off again by its key. No default.
-{
-  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=www.example.com',
-    '-addext', 'subjectAltName=DNS:www.example.com', '-keyout', `${DIR}/ngx-k.pem`, '-out', `${DIR}/ngx-c.pem`], { stdio: 'ignore' });
-  const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
-  const own = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert, key });
-  const v = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
-  ok(own.ok && own.host === 'www.example.com' && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com'
-     && v.resolved?.['www.example.com'] === 'www.example.com',
-     `a pasted pair is kept under the domain its names say, and the route for that hostname resolves to it (${JSON.stringify(v.certs)})`);
-  await page.evaluate(() => loadNginx());
-  await page.waitForFunction(id => document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .name`)?.textContent === 'www.example.com', sandbox.node, { timeout: 10000 });
-  ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('.ngcert .sub').textContent)
-       && [...s.querySelectorAll('.ngroute [data-ng="cert"] option')].some(o => o.value === 'www.example.com')
-       && /443, www\.example\.com's pair/.test(s.querySelector('.ngroute [data-ng="cert"] option[value=""]').textContent)),
-     "...and the section lists it with the route that uses it, and the route's picker names it as the automatic pick");
-  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, drop_cert: 'www.example.com' });
-  ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again by its key');
-}
 
 // Deploy: the container is written from the routes and built on the node.
 await page.click(`${sect} [data-ngdeploy]`);
@@ -106,6 +82,46 @@ ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill
    '...and the state row now says so, with Remove in place of Deploy');
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
+
+// On the deployed form, a route typed: Save wakes, and Save keeps it and
+// rebuilds nginx; then the route list is put back as it was.
+await page.click(`${sect} [data-ngadd]`);
+await page.waitForSelector(`${sect} .ngroute:nth-child(2)`, { timeout: 5000 });
+await page.fill(`${sect} .ngroute:nth-child(2) [data-ng="host"]`, 'api.example.com');
+await page.fill(`${sect} .ngroute:nth-child(2) [data-ng="port"]`, '8081');
+ok(await page.$eval(`${sect} [data-ngsave]`, b => !b.disabled), 'a route typed wakes the section\'s Save');
+await page.click(`${sect} [data-ngsave]`);
+await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.length === 2, sandbox.node, { timeout: 15000 });
+ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.some(r => r.host === 'api.example.com' && r.port === 8081),
+   '...and Save keeps it on the controller');
+const quietRoutes = async () => { for (let i = 0; i < 180; i++){ if (!(((await api('/api/v1/jobs?active=1')).jobs) || []).some(j => j.project === 'nginx-sandbox')) return; await new Promise(r => setTimeout(r, 500)); } };
+await quietRoutes();
+await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
+await quietRoutes();
+await page.evaluate(() => loadNginx());
+
+// A certificate per domain (R175, R188): one made here with openssl is
+// kept under the domain its names say, listed with its names, used by the
+// routes its names cover, and taken off again by its key. No default.
+{
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=www.example.com',
+    '-addext', 'subjectAltName=DNS:www.example.com', '-keyout', `${DIR}/ngx-k.pem`, '-out', `${DIR}/ngx-c.pem`], { stdio: 'ignore' });
+  const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
+  const own = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert, key });
+  const v = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
+  ok(own.ok && own.host === 'www.example.com' && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com'
+     && v.resolved?.['www.example.com'] === 'www.example.com',
+     `a pasted pair is kept under the domain its names say, and the route for that hostname resolves to it (${JSON.stringify(v.certs)})`);
+  await page.evaluate(() => loadNginx());
+  await page.waitForFunction(id => document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .name`)?.textContent === 'www.example.com', sandbox.node, { timeout: 10000 });
+  ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('.ngcert .sub').textContent)
+       && [...s.querySelectorAll('.ngroute [data-ng="cert"] option')].some(o => o.value === 'www.example.com')
+       && /443, www\.example\.com's pair/.test(s.querySelector('.ngroute [data-ng="cert"] option[value=""]').textContent)),
+     "...and the section lists it with the route that uses it, and the route's picker names it as the automatic pick");
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, drop_cert: 'www.example.com' });
+  ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again by its key');
+}
+
 
 // The image (R192): the registry's tag list read by Check now (a file here,
 // BB_NGINX_TAGS_URL), the newest release line's alpine tag kept, and the

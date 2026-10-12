@@ -1291,6 +1291,20 @@ async function dmLogs(name, node = dockerNode){
   }
 }
 
+// A port only this node's nginx reaches (127.0.0.1 on a node whose ports
+// stay on it) and no nginx route points at: the container answers nowhere
+// until one does, which is the step a first move to a VPS missed (the
+// operator, 11 Oct). Said under the row, with the way to the nginx tab.
+function dmUnrouted(d){
+  if (!dockerList?.ports_local || d.owner === "System" || !d.running) return "";
+  const routed = new Set(dockerList.nginx_ports || []);
+  const loop = (d.ports || []).map(p => /^127\.0\.0\.1:(\d+)->/.exec(p)?.[1]).filter(Boolean).map(Number)
+    .filter(p => !routed.has(p));
+  if (!loop.length) return "";
+  return `<div class="sub dmunrouted">${loop.join(", ")} ${loop.length === 1 ? "is" : "are"} reachable only through this node's nginx, and no route points ${
+    loop.length === 1 ? "at it" : "at them"} yet: <a href="#" data-dmnginx="${esc(dockerList.node || "")}">add a route on the nginx tab</a></div>`;
+}
+
 function dmRowsHtml(ins, job, blind){
   return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
@@ -1347,6 +1361,7 @@ function dmRowsHtml(ins, job, blind){
         ${dockerList?.ports_local && (d.open_ports || []).length ? `<div class="sub bad dmopen">${esc(d.open_ports.join(", "))} ${
           d.open_ports.length === 1 ? "is" : "are"} published on every address of this node, so the internet reaches ${
           d.open_ports.length === 1 ? "it" : "them"} past nginx: Down and Up binds ${d.open_ports.length === 1 ? "it" : "them"} to 127.0.0.1</div>` : ""}
+        ${dmUnrouted(d)}
         ${(d.images_behind || []).length ? `<div class="sub warn dmimages">a newer ${esc(d.images_behind.join(", "))} is out: Update pulls it and starts it again</div>` : ""}
         </div>
       </div>
@@ -1407,6 +1422,8 @@ function dmRowsHtml(ins, job, blind){
 // them. `list` is the answer the rows were drawn from, for the saved values
 // a pick is compared against.
 function dmWireRows(el, list = dockerList){
+  // The unrouted port's way to the nginx tab (dmUnrouted).
+  el.querySelectorAll("[data-dmnginx]").forEach(a => a.onclick = e => { e.preventDefault(); openNginxTab(a.dataset.dmnginx); });
   wireSections(el);
   el.querySelectorAll("details.sect").forEach(d => {
     const sum = d.querySelector(":scope > summary");
@@ -1706,9 +1723,8 @@ function renderDockerInto(i){
   const rows = dmGroupsHtml(ins, cs, job, blind);
   // Its own class rather than the projects tab's: the two look alike and a
   // selector that matched both would be a test passing on the wrong tab.
-  // Said in words at the top, not only in the tooltips below: a tooltip is
-  // not reachable on a phone, and "why is everything grayed out" should be
-  // answered by looking rather than by hovering.
+  // Said in words at the top: "why is everything grayed out" is answered by
+  // looking, on a phone as at a desk.
   // Why everything is grayed, in words at the top. The poll's sentence when it
   // has one; otherwise the daemon's own words from the call this page just
   // made, which is the case the poll cannot see: a VM that went away inside

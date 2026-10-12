@@ -55,8 +55,9 @@ function tabLabel(t){
   return sessionLabels().get(sessionOf(t.arg)) || t.label;
 }
 
-// The tooltip is the full path, which is the thing a basename loses, plus,
-// for a Claude tab, what the session says it is doing.
+// A tab's full description, the full path a basename loses, plus, for a
+// Claude tab, what the session says it is doing: kept for a screen reader
+// (untitle), since the page draws no tooltips.
 function tabTitle(t){
   // A notebook's title is computed like its label, so a rename shows at once.
   if (t.kind === "notebook") return tabLabel(t);

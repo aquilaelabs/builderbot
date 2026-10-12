@@ -139,33 +139,50 @@ function nginxCertLines(n, d){
 
 // What the tab says about one node: the state row, the routes, the
 // certificates, the clash if any, and the action bar.
+// A node without nginx (R181, the operator, 11 Oct): one line saying so and
+// Deploy, not the whole form. Routes and certificates come once it is there,
+// which is also when they can be tried; a node that already holds routes
+// from before says how many Deploy will bring up.
+function nginxUndeployed(n){
+  const count = (n.routes || []).length, certs = Object.keys(n.certs || {}).length;
+  const clash = (n.clash || []).length
+    ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
+  return `<div data-ngnode="${esc(n.node)}">
+    <div class="row toolstate">
+      <div class="grow"><div class="name">nginx on ${esc(n.name)} <span class="pill">not deployed</span></div>
+        <div class="sub">${count || certs
+          ? `Deploy puts nginx on ${esc(n.name)} with the ${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
+          : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}</div></div>
+    </div>
+    ${clash}
+    <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
+      <span class="state"></span><span class="sp"></span>
+      <button type="button" class="primary" data-ngdeploy>Deploy</button>
+    </div></div>
+  </div>`;
+}
+
 function nginxBody(n){
+  if (!n.deployed) return nginxUndeployed(n);
   const d = nginxDraftOf(n);
   const count = (n.routes || []).length;
-  const pill = !n.deployed ? `<span class="pill">not deployed</span>`
-    : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
+  const pill = n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
     : `<span class="pill ok">deployed</span>`;
-  const sub = n.deployed
-    ? `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the Docker tab, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`
-    : "Save keeps the routes; Deploy puts nginx on the node with them";
+  const sub = `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the Docker tab, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`;
   // The image it is pinned to, the newest line, and Update when behind
   // (R192): its own action bar, since Check now and Update are two verbs.
   const im = n.image || {}, lt = nginxLatest || {};
-  // A node with nothing deployed has nothing pinned: what Deploy would put
-  // there is said instead (the dev proof, 11 Oct).
-  const pinned = !n.deployed ? `nothing deployed yet; Deploy pins nginx:${lt.tag || im.tag || "?"}`
-    : `nginx:${im.tag || "?"}${im.digest ? ` (${im.digest.slice(7, 19)})` : ", not pinned to a digest yet"}`;
-  const news = n.behind
-    ? (n.deployed ? `nginx:${n.behind} is out: Update pins it and rebuilds` : `nginx:${n.behind} is out: Deploy puts it on the node`)
+  const pinned = `nginx:${im.tag || "?"}${im.digest ? ` (${im.digest.slice(7, 19)})` : ", not pinned to a digest yet"}`;
+  const news = n.behind ? `nginx:${n.behind} is out: Update pins it and rebuilds`
     : lt.digest ? "the newest line the registry lists" : "no check has read the registry yet";
   const checked = lt.at ? `checked ${ago(lt.at)}` : "never checked";
   const image = `<div class="field">
       ${lbl("", "Image")}
       <div class="sub ngimage">${esc(pinned)}</div>
-      <div class="hint${n.behind && n.deployed ? " warn" : ""}">${esc(news)}. The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.</div>
+      <div class="hint${n.behind ? " warn" : ""}">${esc(news)}. The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.</div>
       <div class="actbar ngimgbar"><span class="state">${esc(checked)}${lt.error ? ` · ${esc(lt.error)}` : ""}</span><span class="sp"></span>
         <button type="button" data-ngcheck>Check now</button>
-        ${n.deployed && n.behind ? `<button type="button" class="primary" data-ngupdate>Update to ${esc(n.behind)}</button>` : ""}</div>
+        ${n.behind ? `<button type="button" class="primary" data-ngupdate>Update to ${esc(n.behind)}</button>` : ""}</div>
     </div>`;
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
@@ -205,8 +222,7 @@ function nginxBody(n){
       <span class="state"></span><span class="sp"></span>
       <button type="button" data-ngsave disabled>Save</button>
       <button type="button" class="caution" data-ngrevert disabled>Revert</button>
-      ${n.deployed ? `<button type="button" class="danger" data-ngremove>Remove</button>`
-                   : `<button type="button" class="primary" data-ngdeploy>Deploy</button>`}
+      <button type="button" class="danger" data-ngremove>Remove</button>
     </div></div>
   </div>`;
 }
@@ -265,6 +281,16 @@ function wireNginxTab(root){
   const n = nginxList.find(x => x.node === nid);
   if (!n) return;
   const bar = sect.querySelector(".ngbar");
+  // Not deployed: Deploy is the one thing on it (R181).
+  if (!n.deployed){
+    const dep = bar.querySelector("[data-ngdeploy]");
+    if (dep) dep.onclick = async e => {
+      busy(e.target, "Deploying");
+      await nginxAct({action: "deploy", node: nid});
+      nginxRedraw();
+    };
+    return;
+  }
   const sync = () => {
     const dirty = nginxReadDraft(sect, n);
     bar.querySelector("[data-ngsave]").disabled = !dirty;
@@ -307,13 +333,6 @@ function wireNginxTab(root){
     nginxRedraw();
   };
   bar.querySelector("[data-ngrevert]").onclick = () => { delete nginxDraft[nid]; nginxRedraw(); };
-  const dep = bar.querySelector("[data-ngdeploy]");
-  if (dep) dep.onclick = async e => {
-    if (nginxReadDraft(sect, n) && !confirm(`Deploy nginx on ${n.name} with what is saved? Unsaved changes here are not in it: Save first to include them.`)) return;
-    busy(e.target, "Deploying");
-    await nginxAct({action: "deploy", node: nid});
-    nginxRedraw();
-  };
   const chk = sect.querySelector("[data-ngcheck]");
   if (chk) chk.onclick = async e => {
     nginxReadDraft(sect, n);

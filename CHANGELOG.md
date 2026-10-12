@@ -125,6 +125,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's nginx keeps up to date like the toolchains: the registry is read weekly (or by Check now), a node is pinned to the newest line's digest when deployed or updated, and one behind says so on the nginx tab, its Docker row and the bell, each with Update (67f9d7d)
 - Every container's registry images are checked weekly against their registries (Check for updates on the Docker tab asks now): one behind says so on its row with Update, which pulls and starts it again, and the bell carries a note per node; what is built from code keeps Rebuild (e015d8a)
 - The bell flashes red twice when something new goes wrong, then settles to its red dot (7d31173)
+- A running container on a hosting node whose port no nginx route points at says so on its Docker row, with the way to the nginx tab (ee6b2b5)
+- An open cloudflared SSH door's row gives the ~/.ssh/config block for the PC, named for the node, and MobaXterm's way in (ee6b2b5)
 
 ### Changed
 
@@ -273,6 +275,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - No tooltips: a dead control is ghosted and says nothing, a warning or an error is a line on the page (a failing poll under the header, a container's missing env on its row, a session's whole reason on its project row), and a ? opens its words as a line under its label (7b2120b)
 - A project's container is named whatever you want: Send to Docker offers a name per compose file, and the Edit dialog renames it while it is down; while it runs, Edit is for reading, with Save ghosted and both boxes read-only (e015d8a)
 - A copy or move that did not happen is a note in the bell, with Dismiss, instead of a line on the container's row for ever; it goes once the container builds or starts again (7d31173)
+- The nginx tab shows a node without nginx as one line and Deploy, and its routes and certificates once nginx is there (ee6b2b5)
+- A managed node keeps its journal across boots, so its crash log has the boot before to read (ee6b2b5)
 
 ### Removed
 
@@ -457,6 +461,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A hosting node's published ports really stay on it: the agent sets the bind address every compose network takes, not only the default bridge's, and a container still published on every address says so on its Docker row in red (7d31173)
 - The Docker tab asks the node every time, so a row stops reading 'as last seen' while anything runs there; the kept listing stands in only when the node does not answer (7d31173)
 - An agent update that learns more of the published-ports setting applies it on its own, without the switch being turned off and on (07c6c68)
+- A machine log read goes beside a long job on the node instead of waiting behind it; an agent pulls a synced project every two minutes as a fallback rather than every ten seconds; a waiting node's new enroll script is worded as a first enrollment; an answered ask leaves the bell at once (ee6b2b5)
 
 ### Security
 
