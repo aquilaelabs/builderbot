@@ -1222,7 +1222,15 @@ sdk_install_git() {
     sdk_meta_into warm argv "$what" source.warm "dir=$d"
     if [ "${#warm[@]}" != 0 ]; then
         log "$(sdk_meta field "$what" source.warm_note)"
-        "${warm[@]}"
+        # Bounded, and asked of nobody: flutter's first --version sat for half
+        # an hour on bb-sandbox with nothing written (12 Oct) and held every
+        # toolchain queued behind it. CI=true is how its tool knows no person
+        # is there to answer; a warm-up that does not finish in the limit
+        # fails this toolchain alone, saying so, and the job goes on.
+        if ! CI=true FLUTTER_SUPPRESS_ANALYTICS=true DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+                timeout --kill-after=30 "${BB_WARM_TIMEOUT:-900}" "${warm[@]}" < /dev/null; then
+            die "${what}: warming did not finish within ${BB_WARM_TIMEOUT:-900}s (${warm[*]}); this install is taken off again, and Install retries it"
+        fi
     fi
 }
 
