@@ -2236,12 +2236,14 @@ def _reset_after(principal):
 
 
 def setup_node():
-    """The name of a node enrolled and answering, for Finish on the setup
-    page (R199), or ""."""
+    """The name of a node enrolled, answering and running sessions, for
+    Finish on the setup page (R199), or "": a hosting-only one holds no
+    code, so a project has nowhere to work or build."""
     if nodes is None:
         return ""
     return next((n["name"] for n in nodes.node_list()
-                 if n.get("kind") == "agent" and n.get("state") == "online" and n.get("live")), "")
+                 if n.get("kind") == "agent" and n.get("state") == "online" and n.get("live")
+                 and not (n.get("config") or {}).get("host_only")), "")
 # ...and the home tunnel's (R176), applied by tunnel.py when they change.
 TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 
@@ -5487,7 +5489,8 @@ class Handler(BaseHTTPRequestHandler):
         # Finish on the setup page (R199): the first node is the one step
         # that cannot wait, so it is checked here and not only on the page.
         if want.get("setup_done") is True and not settings.get("setup_done") and not setup_node():
-            return self._json({"error": "enroll a node first: Finish needs one enrolled and answering"}, 409)
+            return self._json({"error": "enroll a node that runs sessions first: Finish needs one enrolled and "
+                                        "answering, and not hosting only"}, 409)
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
