@@ -471,7 +471,7 @@ What happens then:
 Honest limits: container-root can always read the stash (that's what makes
 the runner and the agent work); a session can still *use* the agent to push
 while it's running (usage is the point: extraction is what's blocked); and
-`NPM_TOKEN` lands in the controller's `~/.npmrc` if you use it.
+an `NPM_TOKEN` in the secrets folder lands in the controller's `~/.npmrc`.
 Shielding covers the credentials with real blast radius: the PAT and the
 SSH private keys.
 
@@ -538,8 +538,8 @@ node, or add the image on the Emulator tab.
 
 | Target | How |
 |---|---|
-| npm | set `NPM_TOKEN`, then `npm publish` |
-| PyPI | set `UV_PUBLISH_TOKEN`, then `uv publish` |
+| npm | `NPM_TOKEN=` in an `*.env` file in the secrets folder, then `npm publish` |
+| PyPI | `UV_PUBLISH_TOKEN=` in the same file, then `uv publish` |
 | Play Store / Maven | Gradle handles it (`./gradlew publish`); signing keys belong in the home volume or CI secrets, not the image |
 | GitHub Releases | `gh release create`, after `gh auth login` in a shell |
 
@@ -583,8 +583,7 @@ the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project is owned differently, fix that project once
-(`chown -R 99:100 /mnt/user/projects/FreshBoot`) or set
-`CHOWN_PROJECTS=true` to do it for all of them at every start. The container
+(`chown -R 99:100 /mnt/user/projects/FreshBoot`). The container
 never chowns the projects share itself; that folder is yours, and a container
 quietly changing the ownership of a share because it started is a surprise, not
 a repair. It warns in the log if it cannot write there, and the dashboard names

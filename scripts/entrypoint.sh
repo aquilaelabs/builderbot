@@ -19,44 +19,14 @@ PGID="${PGID:-100}"
 
 # Shield secrets from the builder user (and therefore from Claude sessions).
 #
-# Values may arrive as container env vars or as /secrets/*.env files (a
-# root-owned mount: the fully shielded path, since env vars remain visible
-# to `docker exec`'d processes no matter what we do here). Either way they
-# are stashed into a root-only file for the mint-runner-token helper, turned
-# into log-redaction rules, and, when SHIELD_SECRETS is on, scrubbed from
-# the environment every builder process inherits.
-# Values stashed for the root helper and registered for log redaction.
-#
-# No git token here: a project carries its own, in the clone dialog. What is
-# left is the PAT that mints registration tokens for NODE runners, which is
-# shielded rather than explained.
-SECRET_VARS=(ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN NODE_TOKEN)
+# Values arrive as /secrets/*.env files (a root-owned mount), or as container
+# variables someone set by hand. Either way they are turned into
+# log-redaction rules and scrubbed from the environment every builder process
+# inherits, always: there is no switch (SHIELD_SECRETS went with 1aa17f3).
+# The publishing tokens a shell on the controller uses; a git token is a
+# project's own, and a runner's is typed on the Nodes tab.
+SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN)
 
-# DOCKER_HOST is the operator's to write as the sandbox VM's address (just the
-# machine, `10.0.0.9`), and it is also a variable the docker CLI reads for
-# itself, where a bare address means tcp://<addr>:2375 and nothing answers.
-#
-# So it is normalized once, here, before anything inherits it: the dashboard,
-# every terminal, every script, and a session that simply runs `docker ps`. The
-# dashboard normalizes again on its own subprocesses, which after this is a
-# no-op and stays because that module is loaded by `bb doctor` too.
-#
-# ssh:// with an account already in it is left exactly as written.
-if [ -n "${DOCKER_HOST:-}" ]; then
-    case "$DOCKER_HOST" in
-        *://*)
-            case "$DOCKER_HOST" in
-                ssh://*@*) ;;                       # spelled out in full
-                ssh://*)   DOCKER_HOST="ssh://bb@${DOCKER_HOST#ssh://}" ;;
-                *) ;;                               # tcp://, unix://: the
-                                                    # feature refuses these and
-                                                    # says so; not ours to edit
-            esac ;;
-        *@*) DOCKER_HOST="ssh://$DOCKER_HOST" ;;
-        *)   DOCKER_HOST="ssh://bb@$DOCKER_HOST" ;;
-    esac
-    export DOCKER_HOST
-fi
 
 stash_secrets() {
     mkdir -p /run/builderbot
@@ -350,9 +320,9 @@ seed_home() {
     chmod 700 "$BUILDER_HOME/.ssh"
 
     # Recursed only when the top of the tree is not already the account's:
-    # a home of gigabytes was walked on every start (B283). CHOWN_HOME=false
-    # skips it whatever the owner says.
-    if is_true "${CHOWN_HOME:-true}" && [ "$(stat -c %u:%g "$BUILDER_HOME" 2>/dev/null)" != "$PUID:$PGID" ]; then
+    # a home of gigabytes was walked on every start (B283). That check is
+    # the whole switch; the CHOWN_HOME variable that also skipped it is gone.
+    if [ "$(stat -c %u:%g "$BUILDER_HOME" 2>/dev/null)" != "$PUID:$PGID" ]; then
         chown -R "$PUID:$PGID" "$BUILDER_HOME"
     fi
     # Make the persistent log readable/rotatable from the share.
@@ -368,17 +338,9 @@ seed_home() {
     else
         chown "$PUID:$PGID" "$WORKSPACE" 2>/dev/null || true
     fi
-
-    # Project mounts are deliberately left alone: a recursive chown across a
-    # share is slow and hard to undo. Set CHOWN_PROJECTS=true to opt in.
-    if is_true "${CHOWN_PROJECTS:-false}"; then
-        local d
-        for d in "$WORKSPACE"/*/; do
-            [ -d "$d" ] || continue
-            log "chown -R ${PUID}:${PGID} ${d}"
-            chown -R "$PUID:$PGID" "$d"
-        done
-    fi
+    # Project folders are left alone: a recursive chown across a share is
+    # slow and hard to undo, and the Projects card names a folder whose
+    # ownership is wrong. (CHOWN_PROJECTS, which did it on every boot, is gone.)
 }
 
 # The Android SDK lives in the image at /opt, so anything sdkmanager installs

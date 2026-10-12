@@ -67,24 +67,28 @@ is [docs/unraid.md](docs/unraid.md).
 
 ## Configuration reference
 
+Only what the container or the host has to know before BuilderBot runs is a
+variable; everything else is set in the dashboard: Settings for the
+controller, a project's settings for the project, the Nodes tab for each
+machine. Tokens are never variables: git keys and publishing tokens go in the
+root-only secrets folder ([docs/unraid.md](docs/unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions)),
+a project's settings make its deploy key or hold its access token, and a
+runner's token is typed on the Nodes tab.
+
 | Variable | Default | Purpose |
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
-| `TZ` | `Etc/UTC` | The container's clock, for its logs and file names. Optional: the dashboard shows times in each browser's own zone, or the one picked on the Profile tab's On this browser, kept in a cookie there |
-| `SDK_ROOT` | `/sdk` | Where the toolchains *you* install are kept; see [the toolchain store lives outside the image](docs/how-it-works.md#the-toolchain-store-lives-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
-| `NPM_TOKEN` | *(none)* | `npm publish` auth for a shell on the controller (lands in its `~/.npmrc`). A Claude session runs on a node, with that node's home, and does not get it |
-| `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
-| `BUILDERBOT_PULL` | `missing` | compose's pull policy for the image: `missing` pulls (an install); `build` builds this checkout, which is what BuilderBot's own dev instance sets, with `BUILDERBOT_TAG=dev` |
-| `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
-| `COMPOSE_PROFILES` | empty | compose's own switch: `lab` in a dev instance's env file starts the lab's Gitea beside it (the `gitea` service), for `bb tests lab` |
-| `BB_LAB_HOST` | `127.0.0.1` | the address other machines reach that Gitea on |
-| `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
+| `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked on the Profile tab |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
-| `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
+| `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
+| `BUILDERBOT_PULL` | `missing` | BuilderBot's own dev instance only: compose's pull policy, `build` to build this checkout (with `BUILDERBOT_TAG=dev`) |
+| `COMPOSE_PROFILES` | empty | BuilderBot's own dev instance only: `lab` starts the lab's Gitea beside it, for `bb tests lab` |
+| `BB_LAB_HOST` | `127.0.0.1` | the address other machines reach that Gitea on |
 
-Mounts: the projects folder, three state dirs (`home`, `config`, `work`), and
-two optional ones: `/secrets` (ro, shielded credentials) and `/logs`
-(relocate logs).
+Mounts: the projects folder, the state directories (`home`, `config`), the
+controller's toolchain store, and three optional ones: `/secrets` (ro,
+shielded credentials), `/reports` (ro, a scanner's output) and `/logs`
+(the logs on a share of their own).
 
 ## The `bb` helper
 

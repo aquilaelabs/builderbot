@@ -346,9 +346,7 @@ ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 ENV SDK_ROOT=/sdk
 
 ENV PUID=99 \
-    PGID=100 \
-    AUTO_UPDATE_CLAUDE=true \
-    CHOWN_HOME=true
+    PGID=100
 
 # Which build of the image this is, readable from inside it.
 #

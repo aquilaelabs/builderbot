@@ -296,6 +296,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The debug option Update Claude Code before a session starts is gone: a node's Claude Code updates when Update is pressed on the Toolchains tab, and nothing else (457ab4b)
 - A BuilderBot bug report is now a log in the diagnostics that a person reads and clears: bb report file, bb report close and a session's bb report listing are gone, since only an install that hosts BuilderBot's own project could answer one (075362f)
 - Nodes no longer mount the projects share in any form: every node holds its projects as a synced copy, a /workspace mount is refused on the Storage section and by bb-sandbox, and the enroll dialog no longer asks (279c51d)
+- The container takes four settings and nothing else: PUID, PGID, TZ and the dashboard port; SDK_ROOT, DASHBOARD_TTYD_PORT, CHOWN_HOME, CHOWN_PROJECTS and NPM_TOKEN are gone from the template, compose and the env example (a publishing token goes in the secrets folder) (2b922bc)
 
 ### Fixed
 
