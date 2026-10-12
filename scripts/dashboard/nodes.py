@@ -4750,8 +4750,13 @@ def jobs_view(jid, q, mine, system=None):
         n = min(500, max(1, int(q.get("n", ["100"])[0])))
     except ValueError:
         n = 100
+    # A node by its id or its name: `bb jobs --node bb-sandbox` is how a
+    # person or a session says it.
+    nd = q.get("node", [""])[0] or None
+    if nd and not nd.startswith("n_"):
+        nd = next((x["id"] for x in node_list(all=True) if x.get("name") == nd), nd)
     rows = jobs_for(
-        q.get("node", [""])[0] or None, n=500 if mine is not None else n,
+        nd, n=500 if mine is not None else n,
         project=q.get("project", [""])[0] or None,
         type=q.get("type", [""])[0] or None,
         active=q.get("active", [""])[0] == "1")

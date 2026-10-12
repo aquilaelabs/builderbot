@@ -15,9 +15,18 @@ import time
 
 import bbapi
 
+import urllib.parse
+
 auth = os.environ["BB_JOBS_AUTH"]
 jid = sys.argv[2] if len(sys.argv) > 2 else ""
-d = bbapi.call(f"/api/v1/jobs?id={jid}" if jid else f"/api/v1/jobs?n={int(sys.argv[1])}", auth=auth)
+try:
+    n = int(sys.argv[1])
+except ValueError:
+    sys.exit(f"[builderbot] ERROR: -n takes a number, not {sys.argv[1]!r}")
+q = {"n": n} | {k: v for k, v in (("node", os.environ.get("BB_JOBS_NODE", "")),
+                                  ("type", os.environ.get("BB_JOBS_TYPE", ""))) if v}
+d = bbapi.call(f"/api/v1/jobs?id={urllib.parse.quote(jid)}" if jid
+               else "/api/v1/jobs?" + urllib.parse.urlencode(q), auth=auth)
 if jid:
     # One job answers as itself; the API's "no such job" is the same answer
     # for one that is another project's, on purpose.
@@ -67,7 +76,7 @@ for j in rows:
                   + ("still running" if j["state"] in ("queued", "assigned", "running")
                      else "an empty pane waiting to fill") + ")")
         else:
-            cut = log[-20000:]
-            print(f"\n  ---- log{' (last 20000 characters)' if cut != log else ''} ----")
+            cut = log if os.environ.get("BB_JOBS_ALL") else log[-20000:]
+            print(f"\n  ---- log{' (last 20000 characters; --all for the whole of it)' if cut != log else ''} ----")
             for ln in cut.splitlines():
                 print("  " + ln)

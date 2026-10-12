@@ -1446,16 +1446,23 @@ ci_hosted_only() {
 
 cmd_ci_log() {
     local dir; dir="$(ci_log_dir)"
-    local proj="" want="" list=0
+    local proj="${BB_CILOG_PROJECT:-}" want="" list=0 whole=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --list|-l) list=1 ;;
-            --project) proj="${2:-}"; shift ;;
+            --all) whole=1 ;;
+            --project) [ $# -ge 2 ] || die "--project needs a name"; proj="$2"; shift ;;
             -*) die "unknown option: $1" ;;
             *) want="$1" ;;
         esac
         shift
     done
+    # A session reads its own project's CI and its reads', as the hosted
+    # runs' route already holds; the kept files were read for any name.
+    if [ -n "$proj" ] && [ -n "${BB_ACCOUNT_UID:-}" ] && [ "$proj" != "${BB_PROJECT:-}" ] \
+       && ! printf ' %s ' "${BB_READS:-}" | grep -qF " $proj "; then
+        die "$proj is not this project and not one it reads, so its CI logs are not this session's to read"
+    fi
     # The project this is run from, the same way `bb roadmap` decides.
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
@@ -1497,7 +1504,9 @@ cmd_ci_log() {
                     if [ -n "$want" ]; then f="$(ls -1 "$d"/"$want"*.log 2>/dev/null | head -1)"
                     else f="$(ls -1t "$d"/*.log 2>/dev/null | head -1)"; fi
                     [ -n "$f" ] || { echo "no kept log for that run"; exit 0; }
-                    cat "$f"'
+                    n="$(wc -l < "$f")"
+                    if [ '"$whole"' = 1 ] || [ "$n" -le 3000 ]; then cat "$f"
+                    else echo "[builderbot] the last 3000 of $n lines; --all prints all of it"; tail -n 3000 "$f"; fi'
             fi
             return 0
         fi
@@ -1524,7 +1533,18 @@ cmd_ci_log() {
         done
         [ -n "$pick" ] || die "no kept log for run ${want}; try: bb ci-log --list"
     fi
-    cat "$pick"
+    bb_cat_tail "$pick" "$whole" "bb ci-log $( [ -n "$want" ] && printf '%s ' "$want")--all"
+}
+
+# A kept log, its last 3000 lines unless the whole was asked for, saying so
+# when it cut: a run's log can be megabytes, and a session reading it whole
+# fills its context with the part nobody needed (B675).
+bb_cat_tail() {
+    local f="$1" whole="$2" more="$3" n
+    n="$(wc -l < "$f" 2>/dev/null || echo 0)"
+    if [ "$whole" = 1 ] || [ "$n" -le 3000 ]; then cat "$f"; return; fi
+    echo "[builderbot] the last 3000 of ${n} lines; ${more} prints all of it"
+    tail -n 3000 "$f"
 }
 
 # ---- what has happened here lately -----------------------------------------
@@ -1905,7 +1925,9 @@ EOF
 logs_are_the_controllers() {
     on_node || return 0
     die "there is no container log here: this is a node, and that log is the" \
-        "controller's. \`bb ci-log\` reads a CI run's output on this machine"
+        "controller's. From here: \`bb diag errors\` for the controller's faults," \
+        "\`bb jobs\` for a job's log, \`bb logs --node NAME --agent\` for a node's own," \
+        "and \`bb ci-log\` for a CI run (the first three need the project's Debug grants)"
 }
 
 # bb diag: the controller's diagnostics (scripts/dashboard/diag.py). One
@@ -1980,7 +2002,9 @@ cmd_logs() {
                     *) gen="$2"; shift ;;
                 esac
                 ;;
-            *[0-9]*) lines="$1" ;;
+            *[!0-9]*) die "bb logs: no such option \`$1'. Streams are --agent," \
+                   "--runner, --terminal, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
+            [0-9]*) lines="$1" ;;
             # A flag this does not know used to fall straight through, so
             # `bb logs --node X --nope` quietly read the AGENT's journal and
             # looked like the stream had been honored. A wrong answer that
@@ -1997,6 +2021,9 @@ cmd_logs() {
     if [ -n "$want_node" ] || [ -n "$stream" ]; then
         [ -n "$want_node" ] || want_node="${BB_NODE:-}"
         [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash]"
+        # A node's log is read once through a job, so there is nothing to
+        # follow: said, rather than -f quietly printing once.
+        [ "$follow" = 0 ] || die "bb logs --node reads the last lines once; -f follows only the controller's own log"
         local auth
         auth="$(bb_auth_or_die)"
         BB_LOG_AUTH="$auth" BB_LOG_NODE="$want_node" \
@@ -2443,7 +2470,7 @@ cmd_tests() {
         if [ "${2:-}" = -f ] || [ "${2:-}" = --follow ]; then
             exec tail -n 200 -f "$rl"
         fi
-        cat "$rl"
+        bb_cat_tail "$rl" "$([ "${2:-}" = --all ] && echo 1 || echo 0)" "bb tests log --all"
         return
     fi
     if [ "${1:-}" = last ]; then
@@ -2916,7 +2943,10 @@ EOT
                 esac
             done
             [ "$verb" = logs ] && verb=log
-            BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" \
+            # The project too (B675): a read project's container is
+            # answered only when its project is named, so `bb -p X devapp
+            # log NAME` fell to this session's own and was refused.
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" \
                 python3 "$BB_LIB/devapp-verbs.py" ctl
             ;;
         *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [NAME] [--branch REF] [--compose FILE] [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
@@ -3421,18 +3451,31 @@ cmd_nodes() {
 # is the same answer one level down: what a session may already see that a
 # job HAPPENED, it may now see the reason.
 cmd_jobs() {
-    local py n=30 jid=""
-    case "${1:-}" in
-        -n) n="${2:-30}" ;;
-        -h|--help) echo "bb jobs [-n N | ID]   the recent jobs, or one job's log"; return 0 ;;
-        j_*) jid="$1" ;;
-        "") : ;;
-        *) die "bb jobs [-n N | ID]: an id looks like j_1a2b3c4d" ;;
-    esac
+    local n=30 jid="" node="" type="" whole=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -n) [ $# -ge 2 ] || die "-n needs a value"; n="$2"; shift 2 ;;
+            --node) [ $# -ge 2 ] || die "--node needs a value"; node="$2"; shift 2 ;;
+            --type) [ $# -ge 2 ] || die "--type needs a value"; type="$2"; shift 2 ;;
+            --all) whole=1; shift ;;
+            -h|--help)
+                echo "bb jobs [-n N] [--node NAME] [--type toolchain|system|compose|exec|image|self-update]"
+                echo "bb jobs ID [--all]     one job's log: its last 20000 characters, or all of it"
+                echo "A session sees its project's jobs and its reads'; with the diagnostics grant, the"
+                echo "nodes' own jobs too (toolchain installs, system changes), redacted."
+                return 0 ;;
+            j_*) jid="$1"; shift ;;
+            *) die "bb jobs [-n N] [--node NAME] [--type T] | ID [--all]: an id looks like j_1a2b3c4d" ;;
+        esac
+    done
     # Through the API as the caller, which narrows the list the way the Jobs
-    # tab is narrowed: a session to its project's jobs (B317).
+    # tab is narrowed: a session to its project's jobs (B317), and with the
+    # diagnostics grant the nodes' own (system, toolchain) jobs as well. Run
+    # here rather than relayed, so the call carries the session's account,
+    # which that grant is checked against (the relayed token has none).
     local auth; auth="$(bb_auth_or_die)"
-    BB_JOBS_AUTH="$auth" python3 "$BB_LIB/jobs-verbs.py" "$n" "$jid"
+    BB_JOBS_AUTH="$auth" BB_JOBS_NODE="$node" BB_JOBS_TYPE="$type" BB_JOBS_ALL="$whole" \
+        python3 "$BB_LIB/jobs-verbs.py" "$n" "$jid"
 }
 
 # bb run / build / test: a job on the project's node, watched from here.
@@ -5287,6 +5330,9 @@ if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
     [ -n "${2:-}" ] || die "bb -p NAME VERB: which project?"
     case "$2" in */*|.*) die "bb -p: '$2' is not a project name" ;; esac
     export BB_PROJECT="$2" BB_ROADMAP_PROJECT="$2" BB_BUG_PROJECT="$2" BB_VERSION_PROJECT="$2"
+    # ...and the verbs that read logs (B675): `bb -p X tests log` and
+    # `bb -p X ci-log` answered for this session's own project.
+    export BB_TESTS_PROJECT="$2" BB_CILOG_PROJECT="$2"
     export BB_TREE="$WORKSPACE/$2"
     shift 2
     # Said rather than answered for this project or for nothing
@@ -5389,6 +5435,10 @@ case "${1:-help}" in
     node)     shift
               case "${1:-busy}" in
                   -h|--help) sed -n '/^bb node busy/,/if it never was/p' "$0"; exit 0 ;;
+                  # A node's own log is `bb logs --node`; asked as `bb node
+                  # log NAME [--runner] [N]`, it is the same read.
+                  log) shift; nd="${1:-${BB_NODE:-}}"; [ $# -gt 0 ] && shift
+                       cmd_logs --node "$nd" "$@"; exit $? ;;
               esac
               BB_BUSY_AUTH="$(bb_auth_or_die)" BB_BUSY_PROJECT="$(bb_project 2>/dev/null || true)" \
                   BB_BUSY_NODE="${BB_NODE:-}" exec python3 "$BB_LIB/busy-verbs.py" "$@" ;;

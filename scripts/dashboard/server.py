@@ -7106,23 +7106,27 @@ class Handler(BaseHTTPRequestHandler):
                                             "the Roles tab"}, 403)
         elif self._refused("debug"):
             return None
-        return self._result(nodes.log_read_named(self._principal(), asking, field(req, "node"),
-                                                 field(req, "stream"), req.get("lines"),
-                                                 bool(settings.get("debug_mode")),
-                                                 grants=prefs.get(proj)["log_from"] if proj else [],
-                                                 project=proj), 403)
+        r = nodes.log_read_named(self._principal(), asking, field(req, "node"),
+                                 field(req, "stream"), req.get("lines"),
+                                 bool(settings.get("debug_mode")),
+                                 grants=prefs.get(proj)["log_from"] if proj else [],
+                                 project=proj)
+        # Redacted for a session, as the same text read through the Jobs
+        # API already is: a machine's journal names tokens as it goes.
+        if (self._who() or {}).get("session") and isinstance(r.get("out"), str):
+            r["out"] = diag.redact(r["out"])
+        return self._result(r, 403)
 
     def _diag(self, req):
         """The controller's diagnostics (diag.py). An administrator's, and a
-        session's only when the debug switch is on, the session's node is
-        ticked for it on Debug settings, and the session's account is an
-        administrator: a node is shared, so the node's tick alone would hand
-        it to every tester whose session runs there. POST, so each read is in
-        the audit trail."""
+        session's only when the debug switch is on, its project's settings
+        grant it the diagnostics, and the session's account holds the debug
+        grant (_diag_why). POST, so each read is in the audit trail."""
         if self._diag_refused():
             return None
         want = req.get("sections") if isinstance(req.get("sections"), list) else None
-        return self._json(diag.report([str(x) for x in want] if want else None))
+        r = diag.report([str(x) for x in want] if want else None)
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _diag_why(self):
         """Why this caller may not read the controller's diagnostics, or "":

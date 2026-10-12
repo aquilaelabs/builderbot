@@ -150,6 +150,17 @@ A `pkill -f PATTERN` run from a tool call matches the shell running that
 call, because the pattern is on its command line, and kills it: end a
 process by pid, or with `pkill -x NAME`.
 
+What ran is read rather than guessed. `bb jobs [--node NAME] [--type T]`
+lists the jobs this project may see (its own and its reads') and `bb jobs
+ID [--all]` prints one's log; `bb tests log` the last test run, `bb ci-log`
+a CI run's, `bb devapp log NAME` a container's, each with `-p NAME` for a
+project it reads. Two more are the operator's to grant on the project's
+settings, with debug mode on: the diagnostics (`bb diag [SECTION]`, the
+controller's faults, failed jobs with their ids, and the nodes' own jobs,
+toolchain installs among them, in `bb jobs`) and a node's machine logs
+(`bb logs --node NAME --agent|--runner|--terminal|--system|--kernel|--crash
+[N]`). A refusal names the grant it needs; say which in your reply.
+
 ## While tests run
 
 Start a run in the background and answer while it runs. What a change
