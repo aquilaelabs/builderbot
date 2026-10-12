@@ -3,7 +3,7 @@
 //
 // After the owner is made, the page is this until Finish: what the controller
 // needs that lives in the app rather than the environment (where what grows
-// is kept, when an idle Claude session ends, the public hostname), each with
+// is kept, and when an idle Claude session ends), each with
 // its default shown and nothing to change unless the default is wrong, and
 // then a node, which cannot wait: nothing runs without one (the operator,
 // 12 Oct). The node step is the Nodes tab itself under the panel, with its
@@ -41,17 +41,15 @@ function drawSetup(){
   const sig = JSON.stringify([settingsLive(), node?.name || ""]);
   if (sig === setupSig) return;
   setupSig = sig;
-  const tunnel = settingsSections().find(g => g.key === "tunnel");
   const step = (n, title, html, opt) => `<details class="sect" open><summary><span class="t">${n}. ${esc(title)}</span>${
     opt ? `<span class="state">optional</span>` : ""}</summary><div class="body">${html}</div></details>`;
   el.innerHTML = `<div class="setuphead">
       <h2>Set up BuilderBot</h2>
-      <p class="dim">The first three have defaults, shown below; change one only if it is wrong for this machine, and each stays under Controller settings afterwards. The fourth cannot wait: BuilderBot works on nodes, so the rest opens once one is enrolled.</p>
+      <p class="dim">The first two have defaults, shown below; change one only if it is wrong for this machine, and each stays under Controller settings afterwards. The third cannot wait: BuilderBot works on nodes, so the rest opens once one is enrolled.</p>
     </div>
     ${pathsSection() ? step(1, "Where what grows is kept", pathsSection()) : ""}
     ${step(2, "When an idle Claude session ends", idleSection())}
-    ${tunnel ? step(3, "A public hostname, for nodes off this network", tunnel.html, true) : ""}
-    ${step(4, "Your first node", `<div class="row stack2"><div class="grow">
+    ${step(3, "Your first node", `<div class="row stack2"><div class="grow">
         <div class="${node ? "" : "dim"}">${node
           ? `${esc(node.name)} is enrolled and answering.`
           : "Create a sandbox VM, or enroll a machine you already have, with the two buttons on the Nodes tab below. Finish opens once it is enrolled and answering."}</div>
@@ -61,7 +59,6 @@ function drawSetup(){
       </div></div>`)}`;
   wireIdleSection(el);
   wirePathsSection(el);
-  wireSettingsSections(el);
   settingsKeep(el);
   $("setupFinish").onclick = setupFinish;
 }
