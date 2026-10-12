@@ -2278,8 +2278,13 @@ def _build_env(project, instance=MAIN):
     """
     ref = (str(_read_rec(project, instance).get("ref") or "").strip()
            if instance else "")
-    r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", ref or "HEAD"],
-             timeout=10)
+    # A container with no project tree behind it (nginx's, one made with
+    # bb container new) has no commit to stamp: asked anyway, git said
+    # "cannot change to /workspace/nginx-draconis" in the log on every
+    # update (12 Oct), as _head and _dirty already knew not to.
+    tree = (WORKSPACE / project).is_dir()
+    r = (_run(["git", "-C", str(WORKSPACE / project), "rev-parse", ref or "HEAD"], timeout=10)
+         if tree else {"code": 1, "out": ""})
     out = {"BB_BUILD_AT": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())}
     if r["code"] == 0 and r["out"].strip():
         out["BB_BUILD_REV"] = r["out"].strip()
