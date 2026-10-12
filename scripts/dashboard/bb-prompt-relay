@@ -58,7 +58,10 @@ MAX = 800
 WRAPPERS = ("task-notification", "system-reminder", "command-name",
             "command-message", "command-args", "local-command-stdout",
             "local-command-stderr", "function_results", "function_calls",
-            "user-prompt-submit-hook")
+            "user-prompt-submit-hook",
+            # A subagent's hand-back names every topic it touched: one
+            # fired ten rules at once, 26 KB, as if a person had asked.
+            "agent-message")
 
 
 def human_part(text):
