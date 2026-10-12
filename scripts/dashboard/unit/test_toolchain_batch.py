@@ -65,6 +65,8 @@ class NoCut(unittest.TestCase):
         self.assertGreater(agent.TC_NAMES_MAX, len(toolchains.TOOLCHAINS or range(40)))
         src = open(os.path.join(REPO, "scripts", "agent", "builderbot_agent", "work.py")).read()
         self.assertNotIn('(spec.get("names") or [])][:', src, "no batch is cut short without a word")
+        ctl = open(os.path.join(REPO, "scripts", "dashboard", "toolchains.py")).read()
+        self.assertNotIn('if n in known][:', ctl, "...on the controller either (B681)")
 
 
 class SameRelease(unittest.TestCase):

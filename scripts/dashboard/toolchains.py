@@ -1782,7 +1782,7 @@ def auto_sysdeps(nid):
     sig = json.dumps(unmet, sort_keys=True)
     if _auto_sysdeps.get(nid) == sig:
         return None
-    r = node_job("system", nid, "sysdeps", sorted(unmet)[:8])
+    r = node_job("system", nid, "sysdeps", sorted(unmet))
     # Only a job actually queued counts as tried: one refused because
     # another toolchain job holds the store is tried again on a later hello.
     if r.get("ok"):
@@ -1970,9 +1970,14 @@ def verb(action, req, principal):
             # The system packages the held recipes need, installed
             # without the recipes (roadmap R51): named ones, or every
             # held one when none are named.
-            names = [n for n in (req.get("names") or []) if n in known][:8]
+            names = [n for n in (req.get("names") or []) if n in known]
         else:
-            names = [n for n in (req.get("names") or []) if n in known][:8]
+            # Every name asked for (B681): this kept the first eight and
+            # dropped the rest without a word, so Install selected with the
+            # whole catalog ticked installed eight and their requirements,
+            # twice (the operator, 12 Oct), long after the agent stopped
+            # doing the same (B673).
+            names = [n for n in (req.get("names") or []) if n in known]
             if not names:
                 return {"error": "nothing selected"}, 400
         r = node_job(principal, nid, action, names, driver=field(req, "driver"))
