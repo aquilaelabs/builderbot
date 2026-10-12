@@ -88,22 +88,10 @@ function hiddenLabel(flagged){
 
 const nbOpen = name => tabs.some(t => t.kind === "notebook" && t.arg === name);
 
-// The first clause of a refusal: what is wrong, without what to do about it.
-// Every sentence session_target() writes is shaped "<this> is wrong; <do
-// this>" or "<this> is wrong. <do this>", so the first sentence end or the
-// first dash, whichever comes first, is the half a row can carry. The rest
-// stays on the button's tooltip, where a paragraph costs nothing.
-function shortWhy(why){
-  const s = String(why || "").trim();
-  const at = [s.indexOf(": "), s.indexOf(". ")].filter(i => i > 0);
-  return (at.length ? s.slice(0, Math.min(...at)) : s).replace(/[.,:;]+$/, "");
-}
-
 // ...and its handlers, for the same reason. A row rendered into the tab has
 // to DO the same things as one in the card, and a second copy of this list is
 // how one of them quietly stops offering Notebook.
 function wireProjectRows(root){
-  tipify(root);
   // A phone shows the two controls a phone is for: the session and the
   // notebook, and folds the rest behind this. Six 38px buttons were a third
   // of a 140px row, on a screen that fits six rows; the row is the list, and
@@ -221,14 +209,14 @@ function projectRow(p, live, cls, inTab){
           // After the name, because it is a fact about the project rather
           // than a control: the row reads "StreamLift, locked" at a glance
           // without hunting for which of six icons is lit.
-          ? ` <span class="lockmark" aria-label="locked" data-tip="locked; you run this one">${LOCK}</span>`
+          ? ` <span class="lockmark" aria-label="locked; you run this one">${LOCK}</span>`
           : ""}${notMine(p)
           // The same shape as the padlock and for the same reason: a fact
           // about the row, said where the name is, rather than something to
           // work out from which controls are gray. A different word, because
           // it is a different thing: the padlock is the operator keeping a
           // project to themselves, this is a project you have not taken on.
-          ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
+          ? ` <span class="lockmark" aria-label="read-only: ${esc(NOT_MINE_WHY)}">${LOCK}</span>`
           : ""}</div></div>
         ${state?.mapping?.[p.name] ? (m => m.running
             ? `<div class="sub">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
@@ -338,18 +326,17 @@ function projectRow(p, live, cls, inTab){
         //
         // A project whose NODE cannot start one says so in red whenever it
         // is not LOCKED, which is the one case where no session is the point
-        // rather than a fault. Short: what is wrong and not what to do about
-        // it, because the fix runs to a paragraph on some of these and the
-        // ghosted button's tooltip is where a paragraph is free (the rows
-        // are tipified, so that is a tap on a phone as well as a hover). A
-        // project with no node said nothing here for a week ("(node: none)"
+        // rather than a fault. The whole sentence, what is wrong and what to
+        // do about it: it was cut to its first clause with the rest on the
+        // ghosted button's tooltip, and there are no tooltips now (the
+        // operator, 11 Oct). A project with no node said nothing here for a week ("(node: none)"
         // beside the name was called the whole fact, 15 Sep); it says so
         // now, because a dead button and a tooltip are not a reason on a
         // phone, and the operator stared at three such rows after an update
         // (23 Sep). The same line for a node whose agent is out of window
         // (held), unless the row is already saying the map is building.
         : (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked
-          ? `<div class="sub sessline ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(shortWhy(p.session_why || p.held))}</div>` : ""}
+          ? `<div class="sub sessline ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(p.session_why || p.held)}</div>` : ""}
     </div>
 `;
 }
@@ -460,8 +447,12 @@ function drawProjects(all){
   // The chooser is positioned against the card, so it is a sibling of the list
   // rather than part of it: replacing the list's innerHTML does not remove it,
   // and without this they stack up one per draw.
-  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => n.remove());
-  if (resumeFor) placeResumeMenu();
+  // ...except the menu's second step while it is up for the same project:
+  // drawn again on every poll, a pull-down somebody had open snapped shut.
+  const keep = resumePick && resumeFor === resumePick.project
+    ? el.closest(".card").querySelector(`.resumemenu[data-pick="${CSS.escape(resumePick.project)}"]`) : null;
+  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => { if (n !== keep) n.remove(); });
+  if (resumeFor && !keep) placeResumeMenu();
 }
 
 // Handlers for the job row, and the ellipsis it needs running. Called from

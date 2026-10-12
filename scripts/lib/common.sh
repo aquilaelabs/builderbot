@@ -126,12 +126,14 @@ sdk_store_root() {
     printf '%s' "${BUILDER_HOME:-${HOME:-/home/builder}}/.sdk"
 }
 
-# sdk_scope: this machine's directory in the store, <os>-<arch> as uname
-# spells them (linux-x86_64). One share serves a Linux box, a Mac and a
-# Windows machine only if their binaries do not land on top of each other,
-# so everything installed lives one level down from the share (roadmap
-# R19); the agent on a node keeps the same rule, in the same words.
-sdk_scope() { printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname -m)"; }
+# sdk_scope: this machine's directory in the store, so machines sharing one
+# never land binaries on top of each other. On a node the agent names it
+# (BB_SDK_SCOPE), its node id (R196); this container, which has no node id,
+# keeps its own under <os>-<arch> as uname spells them (linux-x86_64).
+sdk_scope() {
+    if [ -n "${BB_SDK_SCOPE:-}" ]; then printf '%s' "$BB_SDK_SCOPE"; return; fi
+    printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname -m)"
+}
 
 # sdk_root: where THIS machine's toolchains are, the store's scope directory.
 # Every install, probe and PATH entry is relative to this.
@@ -217,14 +219,21 @@ run_as_builder() {
 
 # bb_log_dir: where the persistent log lives. Priority: explicit BB_LOG_DIR
 # env, then a mounted /logs volume (the optional template/compose mapping),
-# then the default inside /config.
+# then the Settings tab's Storage path for logs (paths.json, which
+# logs.log_dir reads too), then the default inside /config. The two readers
+# disagreed once the path was moved: the boot wrote one directory and the
+# sweep, Clear and the downloads read the other.
 bb_log_dir() {
+    local moved=""
     if [ -n "${BB_LOG_DIR:-}" ]; then
         printf '%s' "$BB_LOG_DIR"
     elif [ -d /logs ]; then
         printf '%s' /logs
     else
-        printf '%s' /config/logs
+        [ -r "${DASHBOARD_STATE:-/config}/paths.json" ] && moved="$(python3 -c \
+            'import json,sys; print(json.load(open(sys.argv[1])).get("logs") or "")' \
+            "${DASHBOARD_STATE:-/config}/paths.json" 2>/dev/null || true)"
+        printf '%s' "${moved:-/config/logs}"
     fi
 }
 

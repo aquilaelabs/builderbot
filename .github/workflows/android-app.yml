@@ -3,8 +3,14 @@
 # job gets), so the build is `gradlew` and nothing else. The APK lands in
 # BuilderBot's own dist/ on the projects share when the runner's machine
 # mounts it (the sandbox does, at /workspace), which is where the Artifacts
-# tab lists it and where /api/meta points an app that finds itself behind;
-# and it goes up as a workflow artifact either way.
+# tab lists it and where /api/meta points an app that finds itself behind.
+# It is not uploaded as a workflow artifact: the ones worth keeping are the
+# releases, whose files hang off the GitHub release itself, and a 14 MB
+# artifact per push kept 90 days filled the account's 0.5 GB of Actions
+# storage in a month (B669), which the self-hosted runner does nothing
+# about, since it saves minutes and an artifact is billed by the GB-month
+# whoever uploads it. A runner that does not mount the share says so in
+# the log and the APK goes nowhere.
 #
 # On main only, for the paths the app is built from: a PR does not build it
 # (the dashboard suite's appapi.mjs already holds the contract there), so
@@ -27,10 +33,41 @@ jobs:
   build:
     runs-on: [self-hosted, bb-sandbox]
     timeout-minutes: 40
+    # bash with pipefail (the default `bash -e` has it too, said here because
+    # every step below pipes into tee, and a tee's success must not be the
+    # step's).
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1, pinned by commit (B274)
         with:
           fetch-depth: 0   # bb version counts commits
+
+      - name: Open a log this container can read afterwards
+        # As dashboard.yml and lint.yml keep theirs, for `bb ci-log`: the
+        # runner keeps no step output on disk, and a failed build of the app
+        # on 11 Oct (run 38155552427) could be read nowhere but on GitHub,
+        # which a session has no token for (B665).
+        run: |
+          set -o pipefail
+          dir="${BB_CI_LOG_DIR:-}"
+          if [ -z "$dir" ]; then
+            if [ -w /config ]; then dir=/config/ci-logs; else dir="$HOME/ci-logs"; fi
+          fi
+          dir="$dir/${GITHUB_REPOSITORY##*/}"
+          mkdir -p "$dir"
+          log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+          echo "CI_LOG=$log" >> "$GITHUB_ENV"
+          echo "CI_LOG_DIR=$dir" >> "$GITHUB_ENV"
+          {
+            echo "# ${GITHUB_WORKFLOW} on ${GITHUB_REPOSITORY}"
+            echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
+            echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
+            echo "commit: ${GITHUB_SHA}"
+            echo "opened: $(date -Is)"
+            echo
+          } > "$log"
 
       # One identity for the app and the thing it talks to. The APK's name,
       # its versionName and its versionCode all come from `bb version` here
@@ -71,6 +108,9 @@ jobs:
           BB_APP_KEY_ALIAS: ${{ secrets.BB_APP_KEY_ALIAS }}
           BB_APP_KEY_PASSWORD: ${{ secrets.BB_APP_KEY_PASSWORD }}
         run: |
+          set -o pipefail
+          exec > >(tee -a "$CI_LOG") 2>&1
+          echo "== Build the APK"
           if [ -n "$BB_APP_KEYSTORE_B64" ] && [ -n "$BB_APP_KEYSTORE_PASSWORD" ] && [ -n "$BB_APP_KEY_ALIAS" ]; then
             ks="$RUNNER_TEMP/bb-app.keystore"
             printf '%s' "$BB_APP_KEYSTORE_B64" | base64 -d > "$ks"
@@ -89,22 +129,31 @@ jobs:
       - name: Name it by the repository's version
         id: name
         run: |
+          exec > >(tee -a "$CI_LOG") 2>&1
+          echo "== Name it by the repository's version"
           echo "file=builderbot-app-${{ steps.v.outputs.file }}.apk" >> "$GITHUB_OUTPUT"
           cp "android/${{ steps.build.outputs.apk }}" \
              "builderbot-app-${{ steps.v.outputs.file }}.apk"
 
       - name: Land it in BuilderBot's dist/ where the share is mounted
         run: |
+          exec > >(tee -a "$CI_LOG") 2>&1
+          echo "== Land it in BuilderBot's dist/"
           if [ -d /workspace/BuilderBot ]; then
             mkdir -p /workspace/BuilderBot/dist
             cp "${{ steps.name.outputs.file }}" /workspace/BuilderBot/dist/
             echo "in dist/: ${{ steps.name.outputs.file }}"
           else
-            echo "the projects share is not mounted on this runner; the APK is a workflow artifact only"
+            echo "::warning::the projects share is not mounted on this runner, so the APK went nowhere: it is not kept as a workflow artifact (B669)"
           fi
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a   # v7.0.1, pinned by commit (B274)
-        with:
-          name: ${{ steps.name.outputs.file }}
-          path: ${{ steps.name.outputs.file }}
-          if-no-files-found: error
+      - name: Close the log
+        if: always()
+        # Written whatever happened: "it failed and said nothing" is the case
+        # this exists for. The last sixty runs are kept, shared by every
+        # workflow that files under this repository.
+        run: |
+          [ -n "${CI_LOG:-}" ] || exit 0
+          printf '\nresult: %s\nclosed: %s\n' "${{ job.status }}" "$(date -Is)" >> "$CI_LOG"
+          find "$CI_LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
+            | sort -rn | tail -n +61 | cut -d' ' -f2- | xargs -r rm -f

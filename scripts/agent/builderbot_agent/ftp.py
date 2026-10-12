@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import threading
-from .base import log
+from .base import hello_again, log
 from .toolchains import sdk_env
 
 
@@ -112,7 +112,7 @@ class FtpServers:
             p = self.procs.get(name)
             if p and p["proc"] is proc:
                 p["why"] = "bb-ftpd ended; it is started again on the next hello"
-        self.agent.hello_at = 0
+        hello_again(self.agent, f"bb-ftpd for {name} ended")
 
     @staticmethod
     def _drain(name, proc):

@@ -132,7 +132,7 @@ async function refresh(){
     // a plain reload still lands where it left off.
     viewAfterRestart();
     $("dot").classList.remove("off");
-    $("dot").removeAttribute("title");
+    $("dot").removeAttribute("aria-label");
     // The container's hostname, which answers "which BuilderBot am I looking
     // at", and on the ordinary box, where the container is called builderbot,
     // answers it with the word already three inches to its left. Two of the
@@ -144,6 +144,7 @@ async function refresh(){
     // The word that tells two dashboards apart: on when dev features, the
     // ones not yet vetted, are offered here, which production never has.
     $("devtag").hidden = !state.settings?.settings?.offer_unvetted?.value;
+    drawSetup();
     $("uptime").textContent = "up " + shortUptime(state.uptime);
     drawBuild(state.image);
     adoptLayout(state.layout);
@@ -216,7 +217,6 @@ async function refresh(){
       const b = $("bEmulator"), e = state?.emulator, w = $("toolsWhy");
       if (!b || !e) return;
       b.disabled = !e.ready;
-      if (e.ready) b.removeAttribute("data-tip"); else b.dataset.tip = e.why;
       if (w){
         const say = e.ready ? "" : `Emulator: ${e.why}`;
         if (w.textContent !== say) w.textContent = say;
@@ -239,6 +239,8 @@ async function refresh(){
     // and then fails on this page is still a failed poll, and resetting the
     // count on arrival read every one of those as the first.
     pollFails = 0;
+    const pw = $("pollWhy");
+    if (pw && !pw.hidden){ pw.hidden = true; pw.textContent = ""; }
   }catch(e){
     // The light goes red either way; the console says whether the box was
     // unreachable or this page tripped over its own data.
@@ -260,13 +262,18 @@ async function refresh(){
     pollFails++;
     const n = `${pollFails} poll${pollFails === 1 ? "" : "s"} failed in a row`;
     const why = `Last reason: ${e && e.message ? e.message : e}`;
-    $("dot").setAttribute("title", fetched
+    // Said under the header from the second failure on (the light alone was
+    // a tooltip, 11 Oct): one failed poll is a blip, two is a state.
+    const said = fetched
       ? `the container answers, but this page fails on its answer: ${n}. ${why}`
-      : `not talking to the container: ${n}. ${why}`);
+      : `not talking to the container: ${n}. ${why}`;
+    $("dot").setAttribute("aria-label", said);
+    const pw = $("pollWhy");
+    if (pw && pollFails > 1){ pw.textContent = said; pw.hidden = false; }
     if (pollFails > 1)
       document.querySelectorAll(".card .loading").forEach(el => {
         el.textContent = fetched
-          ? "not drawn: the page could not read the server's answer (the light says why)"
+          ? "not drawn: the page could not read the server's answer (the line under the header says why)"
           : "not loaded: the page is not reaching the container";
         el.classList.add("warn");
       });

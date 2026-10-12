@@ -12,10 +12,15 @@ import urllib.request
 import zipfile
 from . import storage
 from .base import DRIVER, SANDBOX_BIN, TOOLKIT
-from .stores import tc_root
+from .stores import tc_root, tc_scope
 from .backends import pkg_backend
-from .toolchains import held_recipes, read_catalog, sdk_env, sysdeps_missing, tc_dir, tc_users, tc_users_said
+from .toolchains import held_recipes, read_catalog, sdk_env, sysdeps_missing, tc_dir, tc_users, tc_users_said, tc_verbs
 from .gpu import DRIVER_PKG, _gpu_card
+
+
+# More names than the catalog has recipes is a request that is wrong, not a
+# batch to trim.
+TC_NAMES_MAX = 64
 
 
 class WorkMixin:
@@ -238,7 +243,14 @@ class WorkMixin:
             job.say("refused: this node has no toolchain store\n")
             return "failed", 78
         action = spec.get("action")
-        names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
+        names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])]
+        # Every name it was sent, or a refusal that says so: this kept the
+        # first eight and dropped the rest without a word, so a batch of
+        # nine reported success with the ninth never tried, and the move of
+        # twenty-eight installed eight (the operator, 12 Oct).
+        if len(names) > TC_NAMES_MAX:
+            job.say(f"refused: {len(names)} toolchains in one job; at most {TC_NAMES_MAX}\n")
+            return "failed", 64
         if action not in ("install", "remove", "sysdeps", "check") or (
                 not names and action not in ("sysdeps", "check")):
             job.say("refused: a toolchain job installs or removes named toolchains, "
@@ -258,13 +270,41 @@ class WorkMixin:
         # ...and the container toolkit beside it, the machine's as well.
         ctk = [n for n in names if n == TOOLKIT]
         names = [n for n in names if n not in drv and n not in ctk]
+        if action == "clean":
+            # A retired node's directory on the store (R196). The controller
+            # offered these names; each is checked again here: a node id at
+            # the top of the store, never this node's own, and nothing
+            # running from it.
+            base = (self.state.get("stores") or {}).get("toolchains") or ""
+            bad = 0
+            for name in names:
+                job.step(name)
+                d = os.path.join(base, name)
+                if (not base or name == tc_scope() or not re.fullmatch(r"n_[0-9a-f]{4,32}", name)
+                        or not os.path.isdir(d)):
+                    job.say(f"refused: {name} is not a directory this node may take off the store\n")
+                    bad += 1
+                    continue
+                users = tc_users(d)
+                if users:
+                    job.say(tc_users_said(name, users))
+                    bad += 1
+                    continue
+                job.say(f"== taking {d} off the store\n")
+                try:
+                    shutil.rmtree(d)
+                except OSError as e:
+                    job.say(f"could not take {d} off: {e}\n")
+                    bad += 1
+            self.hello()
+            return ("failed", 1) if bad else ("succeeded", 0)
         if action == "check":
             # apt's lists brought current first, as root, so the census after
             # the check says what the driver would update to.
             if _gpu_card() and os.access(SANDBOX_BIN, os.X_OK):
                 self.refresh_sandbox_tool(job)
                 self._sh(job, [SANDBOX_BIN, "gpu-driver", "refresh"], timeout=300)
-                self.hello_at = 0
+                self.hello_again("the GPU driver check refreshed apt")
             # What is newer upstream, asked from HERE rather than from the
             # controller, because the answer is about this store: the version
             # a recipe would fetch is the same everywhere, but what is
@@ -306,15 +346,20 @@ class WorkMixin:
             if action == "install" and not self._system_deps(job, name, into):
                 bad += 1
                 continue
-            job.say(f"== bb toolchains {action} {name}\n")
-            st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
-                                            "toolchains", action, name],
-                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
-                                   "env": sdk_env(self.state)})
-            if st_ != "succeeded":
-                bad += 1
-                if st_ == "canceled":
-                    return st_, code
+            # One verb, or a remove and then the install for a recipe that
+            # cannot update in place (tc_verbs, R193): the remove that fails
+            # ends this name there, with the old one still installed.
+            for verb in tc_verbs(store, name, cat.get(name), action):
+                job.say(f"== bb toolchains {verb} {name}\n")
+                st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                                "toolchains", verb, name],
+                                       "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                       "env": sdk_env(self.state)})
+                if st_ != "succeeded":
+                    bad += 1
+                    if st_ == "canceled":
+                        return st_, code
+                    break
         # The machine's own two, in the order each needs: the toolkit hands
         # the driver's libraries to a container, so it goes on after the
         # driver and comes off before it.

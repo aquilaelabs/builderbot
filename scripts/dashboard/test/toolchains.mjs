@@ -301,12 +301,12 @@ ok(await page.$$eval('.doc .tc .upd', us => us.length === 0),
 const pill = (name, n = 0) => page.$$eval('.doc .tc', (ls, [v, i]) => {
   const l = ls.find(x => x.querySelector('input').value === v);
   const ps = l ? l.querySelectorAll('.nm .pill') : [];
-  return ps[i] ? { text: ps[i].textContent, title: ps[i].title } : null;
+  return ps[i] ? { text: ps[i].textContent, title: saidOf(ps[i]) } : null;
 }, [name, n]);
 await page.waitForFunction(() => {
   const l = [...document.querySelectorAll('.doc .tc')]
     .find(x => x.querySelector('input').value === 'flutter');
-  return l && /measured/.test(l.querySelector('.nm .pill').title);
+  return l && /measured/.test(saidOf(l.querySelector('.nm .pill')));
 }, { timeout: 30000 });
 ok(/measured on disk/.test((await pill('flutter')).title),
    'an installed toolchain shows what it takes on disk, and says so');
@@ -582,7 +582,7 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
   const rows = await page.$$eval('.doc .tc', ls => ls.map(l => ({
     name: l.querySelector('input')?.value,
     disabled: !!l.querySelector('input')?.disabled,
-    title: l.querySelector('input')?.title || '',
+    title: saidOf(l.querySelector('input')),
   })));
   const go = rows.find(r => r.name === 'go');
   ok(go && go.disabled && /no update in place/.test(go.title),
@@ -591,16 +591,17 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
   const fl = rows.find(r => r.name === 'flutter');
   ok(fl && !/no update in place/.test(fl.title),
      'while one that CAN update in place is not marked that way');
-  // ...and when a newer version is out, its row says what updates it rather
-  // than "tick it", which its locked box cannot (the operator, 6 Oct, JDK 21).
-  const line = await page.evaluate(() => {
+  // ...and when a newer version is out, its box is live and the row says
+  // the install removes the old one first (R193, the operator, 11 Oct; before
+  // that the locked box told them to uninstall it by hand, 6 Oct, JDK 21).
+  const out = await page.evaluate(() => {
     const d = document.createElement('div');
     d.innerHTML = tcRow({ name: 'go', label: 'Go', installed: true, updatable: false, state: 'update', about: '' },
                         false, null, true);
-    return d.querySelector('.sub.upd')?.textContent || '';
+    return { line: d.querySelector('.sub.upd')?.textContent || '', dead: !!d.querySelector('input')?.disabled };
   });
-  ok(/uninstall it with the bin, then tick it/.test(line),
-     `a locked row with an update out says how to get it, on the row (${line})`);
+  ok(!out.dead && /tick it and press Install selected; it is removed and installed again/.test(out.line),
+     `a tarball recipe with an update out can be ticked, and the row says the install removes the old one first (${out.line})`);
   // ...and the catalog is where that is decided, not a list in the server.
   const seen = await page.evaluate(() => (toolchains.items || [])
     .filter(i => i.updatable).map(i => i.name).sort());
@@ -827,6 +828,32 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      `...and whether a container there can be given the card, by the container toolkit's own tool (${nokit.slice(0, 20)} | ${haskit.slice(0, 14)})`);
   wf(`${devd}/vendor`, '0x1234\n');
   ok(nv('', '', '') === '' && kit() === '', '...and nothing at all on a machine with no NVIDIA card');
+}
+
+// A node sharing this store is installing into it (the operator, 12 Oct):
+// the tab says who and what at the top and ghosts Install selected, before
+// the press rather than refusing after it; nothing is said otherwise.
+{
+  await page.evaluate(() => {
+    if (!tabs.some(t => t.kind === 'toolchains')) openToolchains();
+    focusTab(tabs.find(t => t.kind === 'toolchains').id);
+  });
+  // Its own load landed first: planting the payload before that let the
+  // load wipe it, and the pane read "loading".
+  await page.waitForFunction(() => toolchains && tabOf(panes[active])?.kind === 'toolchains' && !!document.querySelector('.pane .doc.on .tctab'), null, { timeout: 15000 });
+  const seen = await page.evaluate(() => {
+    const was = { tcNode, toolchains };
+    const fake = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', items: [], machine: [],
+                   job: { running: false },
+                   cleanable: [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }] };
+    tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
+    const clean = document.querySelector('.tcclean')?.textContent.replace(/\s+/g, ' ') || '';
+    const rm = !!document.querySelector('.tcclean [data-tcclean].danger');
+    tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
+    return { clean, rm };
+  });
+  ok(/On this store and used by no node: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
+     `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
 }
 
 await done(browser);

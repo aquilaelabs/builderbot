@@ -6,7 +6,7 @@
 // enrolls. The harness's sandbox node is the node, and its stub docker reads
 // the generated compose file the way a daemon would.
 import { URL, launch, newPage, ok, done, ready, DIR } from './lib.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 // Poll fn until it answers something other than null, or give up.
 const until = async (fn, ms = 15000, step = 200) => {
@@ -30,7 +30,7 @@ ok(await page.$eval('#bNginx', b => !b.hidden && /nginx/.test(b.textContent)), '
 await page.click('#bNginx');
 await page.waitForSelector('.nginxtab [data-ngnode]', { timeout: 15000 });
 const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name === 'sandbox'));
-ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !sandbox.cert.set,
+ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !Object.keys(sandbox.certs || {}).length,
    `the tab lists the sandbox node with no nginx on it yet (${JSON.stringify(sandbox && [sandbox.deployed, sandbox.routes])})`);
 // One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
 ok(await page.$eval('.nginxtab .docbarrow label.pick select#ngNodeSel', s => [...s.options].some(o => o.textContent === 'sandbox')),
@@ -40,56 +40,40 @@ const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
 ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
      && s.querySelector('[data-ngdeploy]') && !s.querySelector('[data-ngremove]')
-     && s.querySelector('[data-ngsave]').disabled),
-   '...its state row says so, with Deploy and a dead Save');
+     && !s.querySelector('[data-ngsave]') && !s.querySelector('[data-ngadd]') && !s.querySelector('#ngCert')),
+   '...its state row says so, with Deploy alone: no routes or certificates before nginx is there (R181)');
 
-// A route typed: Save wakes, and Save keeps it (not deployed yet, so nothing
-// is built).
-await page.click(`${sect} [data-ngadd]`);
-await page.waitForSelector(`${sect} .ngroute`, { timeout: 5000 });
-await page.fill(`${sect} .ngroute [data-ng="host"]`, 'www.example.com');
-await page.fill(`${sect} .ngroute [data-ng="port"]`, '8080');
-ok(await page.$eval(`${sect} [data-ngsave]`, b => !b.disabled), 'a route typed wakes the section\'s Save');
-await page.click(`${sect} [data-ngsave]`);
-await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.length === 1, sandbox.node, { timeout: 15000 });
+// Routes kept before Deploy, as the Enroll dialog's tick has them for a node
+// that has not said hello yet: the server keeps them, and Deploy brings
+// them up.
+const kept = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [{ host: 'www.example.com', path: '/', port: 8080, tls: true }] });
 const saved = await api('/api/nginx');
 const row = saved.nodes.find(n => n.node === sandbox.node);
-ok(row.routes.length === 1 && row.routes[0].host === 'www.example.com' && row.routes[0].port === 8080 && row.routes[0].tls === true
+ok(kept.ok && row.routes.length === 1 && row.routes[0].host === 'www.example.com' && row.routes[0].port === 8080 && row.routes[0].tls === true
    && !row.deployed,
-   `...and Save keeps the route on the controller, with nothing deployed yet (${JSON.stringify(row.routes)})`);
+   `a route saved before Deploy is kept on the controller, with nothing deployed yet (${JSON.stringify(row.routes)})`);
+await page.evaluate(() => loadNginx());
+await page.waitForFunction(id => /1 route and 0 certificates/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''), sandbox.node, { timeout: 10000 });
+ok(true, '...and the undeployed node says Deploy will bring that route up');
 ok(/a port on the node/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [{ host: 'x.example.com', port: 'eighty' }] })).error || ''),
    'a route with no port is refused by name');
 ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert: 'not a cert', key: 'nor a key' })).error || ''),
    '...and a certificate that is not one');
-
-// A certificate per hostname (R175): one made here with openssl, saved for
-// one of the routes' hostnames, listed beside the default, in the compose
-// file under that hostname's path.
-{
-  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=www.example.com',
-    '-addext', 'subjectAltName=DNS:www.example.com', '-keyout', `${DIR}/ngx-k.pem`, '-out', `${DIR}/ngx-c.pem`], { stdio: 'ignore' });
-  const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
-  const own = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert_for: 'www.example.com', cert, key });
-  const v = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
-  ok(own.ok && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com' && !v.cert?.set,
-     `a certificate saved for one hostname is that hostname's own, with the default still none (${JSON.stringify(v.certs)})`);
-  await page.evaluate(() => loadNginx());
-  await page.waitForFunction(id => /www\.example\.com: www\.example\.com/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"]`)?.textContent || ''), sandbox.node, { timeout: 10000 });
-  ok(await page.$eval(sect, s => /Default: none/.test(s.textContent) && [...s.querySelectorAll('[data-ng="certfor"] option')].some(o => o.value === 'www.example.com')),
-     '...and the section lists it under the default and offers the hostname in the picker');
-  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert_for: 'www.example.com', drop_cert: true });
-  ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again');
-}
 
 // Deploy: the container is written from the routes and built on the node.
 await page.click(`${sect} [data-ngdeploy]`);
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.deployed, sandbox.node, { timeout: 20000 });
 const rec = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-sandbox'];
 const written = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
-ok(rec?.main?.source === 'file' && rec.main.node === sandbox.node && !rec.main.for
-   && /network_mode: host/.test(written.compose || '') && /www\.example\.com/.test(written.compose || '')
+ok(rec?.main?.source === 'file' && rec.main.node === sandbox.node && rec.main.for === 'System'
+   && /network_mode: host/.test(written.compose || '') && /container_name: nginx-sandbox/.test(written.compose || '') && /www\.example\.com/.test(written.compose || '')
    && /proxy_pass http:\/\/127\.0\.0\.1:8080/.test(written.compose || ''),
-   `Deploy writes nginx-sandbox on the node, for no project, its compose carrying the config inline (${JSON.stringify(rec?.main).slice(0, 80)})`);
+   `Deploy writes nginx-sandbox on the node as System's, BuilderBot's own (R180), its compose carrying the config inline (${JSON.stringify(rec?.main).slice(0, 80)})`);
+// System is the deployment's to set and nobody's to pick: the owner verb
+// refuses the word however it is asked.
+const sysPick = await api('/api/dockerctl', { action: 'owner', container: 'nginx-sandbox', owner: 'System', node: sandbox.node });
+ok(/no project called System|BuilderBot's own/.test(sysPick.error || ''),
+   `...and no picker puts a container under System (${(sysPick.error || 'allowed').slice(0, 60)})`);
 // The section is drawn after the answer lands, so its Remove is waited
 // for rather than read the moment the list moved.
 await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
@@ -99,14 +83,134 @@ ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
 
+// On the deployed form, a route typed: Save wakes, and Save keeps it and
+// rebuilds nginx; then the route list is put back as it was.
+await page.click(`${sect} [data-ngadd]`);
+await page.waitForSelector(`${sect} .ngroute:nth-child(2)`, { timeout: 5000 });
+await page.fill(`${sect} .ngroute:nth-child(2) [data-ng="host"]`, 'api.example.com');
+await page.fill(`${sect} .ngroute:nth-child(2) [data-ng="port"]`, '8081');
+ok(await page.$eval(`${sect} [data-ngsave]`, b => !b.disabled), 'a route typed wakes the section\'s Save');
+await page.click(`${sect} [data-ngsave]`);
+await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.length === 2, sandbox.node, { timeout: 15000 });
+ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.some(r => r.host === 'api.example.com' && r.port === 8081),
+   '...and Save keeps it on the controller');
+const quietRoutes = async () => { for (let i = 0; i < 180; i++){ if (!(((await api('/api/v1/jobs?active=1')).jobs) || []).some(j => j.project === 'nginx-sandbox')) return; await new Promise(r => setTimeout(r, 500)); } };
+await quietRoutes();
+await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
+await quietRoutes();
+await page.evaluate(() => loadNginx());
+
+// A certificate per domain (R175, R188): one made here with openssl is
+// kept under the domain its names say, listed with its names, used by the
+// routes its names cover, and taken off again by its key. No default.
+{
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=www.example.com',
+    '-addext', 'subjectAltName=DNS:www.example.com', '-keyout', `${DIR}/ngx-k.pem`, '-out', `${DIR}/ngx-c.pem`], { stdio: 'ignore' });
+  const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
+  const own = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert, key });
+  const v = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
+  ok(own.ok && own.host === 'www.example.com' && v.certs?.['www.example.com']?.set && v.certs['www.example.com'].subject === 'www.example.com'
+     && v.resolved?.['www.example.com'] === 'www.example.com',
+     `a pasted pair is kept under the domain its names say, and the route for that hostname resolves to it (${JSON.stringify(v.certs)})`);
+  await page.evaluate(() => loadNginx());
+  await page.waitForFunction(id => document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .name`)?.textContent === 'www.example.com', sandbox.node, { timeout: 10000 });
+  ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('.ngcert .sub').textContent)
+       && [...s.querySelectorAll('.ngroute [data-ng="cert"] option')].some(o => o.value === 'www.example.com')
+       && /443, www\.example\.com's pair/.test(s.querySelector('.ngroute [data-ng="cert"] option[value=""]').textContent)),
+     "...and the section lists it with the route that uses it, and the route's picker names it as the automatic pick");
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, drop_cert: 'www.example.com' });
+  ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again by its key');
+}
+
+
+// The image (R192): the registry's tag list read by Check now (a file here,
+// BB_NGINX_TAGS_URL), the newest release line's alpine tag kept, and the
+// deployed nginx, unpinned since nothing had been read when it was written,
+// said to be behind it on the tab, on its Docker row and in the bell;
+// Update pins the digest into its compose file and rebuilds.
+ok(await page.$eval(`${sect} .ngimgbar .state`, e => /never checked/.test(e.textContent))
+   && !(await page.$(`${sect} [data-ngupdate]`))
+   && await page.$eval(`${sect} .ngimage`, e => /nginx:1\.27-alpine, not pinned/.test(e.textContent)),
+   'before any check the Image field says never checked and unpinned, with no Update');
+writeFileSync(`${DIR}/nginx-tags.json`, JSON.stringify({ results: [
+  { name: '1.27-alpine', digest: 'sha256:' + 'a'.repeat(64) },
+  { name: '1.29-alpine-slim', digest: 'sha256:' + 'c'.repeat(64) },
+  { name: '1.29-alpine', digest: 'sha256:' + 'b'.repeat(64) },
+  { name: 'stable-alpine', digest: 'sha256:' + 'd'.repeat(64) } ] }));
+await page.click(`${sect} [data-ngcheck]`);
+await page.waitForFunction(() => nginxLatest?.tag === '1.29-alpine', { timeout: 10000 });
+await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
+ok(await page.$eval(sect, s => /Update to 1\.29-alpine/.test(s.querySelector('[data-ngupdate]').textContent)
+     && /1\.29-alpine is out/.test(s.querySelector('.ngimgbar').previousElementSibling.textContent)
+     && /checked/.test(s.querySelector('.ngimgbar .state').textContent)),
+   'Check now reads the registry: the newest line is 1.29-alpine (not -slim or stable-), and the unpinned nginx is behind it, with Update');
+// The bell's own note for it, to the nginx tab on that node.
+await page.click('#bBell');
+await page.waitForSelector('#bellPanel [data-bnginx]', { timeout: 15000 });
+ok(await page.$eval('#bellPanel', e => /nginx update on sandbox/.test(e.textContent) && /1\.29-alpine/.test(e.textContent)
+     && e.querySelector('[data-bdismiss^="nginx:"]')),
+   'the bell carries an nginx note of its own kind, with Dismiss keyed to the digest');
+await page.click('#bBell');
+// ...and the Docker row says so with Update nginx.
+await page.evaluate(() => openDocker());
+await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
+ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)),
+   'the Docker tab\'s row of a node\'s nginx says the line is out, with Update nginx');
+await page.evaluate(() => openNginxTab());
+await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
+await page.click(`${sect} [data-ngupdate]`);   // its confirm is accepted by lib.mjs's dialog handler
+await page.waitForFunction(id => !(nginxList || []).find(n => n.node === id)?.behind, sandbox.node, { timeout: 20000 });
+const pinned = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
+ok(/image: nginx:1\.29-alpine@sha256:b{64}/.test(pinned.compose || '')
+   && await page.$eval(`${sect} .ngimage`, e => /nginx:1\.29-alpine \(b{12}\)/.test(e.textContent))
+   && !(await page.$(`${sect} [data-ngupdate]`)),
+   'Update pins the digest into the compose file and rebuilds, and the node is not behind any more');
+ok((await api('/api/nginx', { action: 'update', node: sandbox.node })).same === true, 'a second Update has nothing to move to and says so');
+// Its rebuild is a job of the instance, and a compose verb is refused while
+// one runs (_submit): the Save and the Remove below wait for quiet.
+const quiet = async () => until(async () => ((await api('/api/v1/jobs?active=1')).jobs || []).some(j => j.project === 'nginx-sandbox') ? null : true, 90000, 500);
+await quiet();
+
 // Save on a deployed one rewrites the file and rebuilds.
 const two = await api('/api/nginx', { action: 'save', node: sandbox.node,
   routes: [...row.routes, { host: 'www.example.com', path: '/relay', port: 8788, tls: false }] });
 const again = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
 ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.0\.1:8788; \}/.test(again.compose || ''),
    `Save on a deployed nginx rewrites its compose file and rebuilds (${JSON.stringify(two).slice(0, 80)})`);
+// The private key goes to the node inside that file and never into a text
+// box (B656): the Docker tab's copy carries a line in its place, and saving
+// that copy back is refused, since the file is the nginx tab's to write.
+{
+  const cert = readFileSync(`${DIR}/ngx-c.pem`, 'utf8'), key = readFileSync(`${DIR}/ngx-k.pem`, 'utf8');
+  // The routes as saved above, two of them: a save carries the whole list.
+  const kept = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes;
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, cert, key });
+  const shown = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
+  ok(!/PRIVATE KEY/.test(shown.compose || '') && /tls_key_www_example_com:\n    content: \|\n      \(the private key: kept on the controller, never shown\)/.test(shown.compose || '')
+     && /BEGIN CERTIFICATE/.test(shown.compose || ''),
+     `the Docker tab's copy of nginx's compose carries the certificate and a line in place of the key`);
+  const back = await api('/api/container', { action: 'save', name: 'nginx-sandbox', compose: shown.compose, env: '' });
+  ok(/written from the nginx tab/.test(back.error || ''), `...and saving that copy back is refused (${(back.error || 'saved').slice(0, 60)})`);
+  // It is managed (the operator, 11 Oct): its env and its name are refused
+  // as its compose is, and the Edit dialog is for reading whatever its state.
+  const envSet = await api('/api/devapp', { project: 'nginx-sandbox', instance: 'main', action: 'env-set', text: 'X=1\n' });
+  const renamed = await api('/api/devapp', { project: 'nginx-sandbox', instance: 'main', action: 'rename', name: 'proxy' });
+  ok(/managed/.test(envSet.error || '') && /managed/.test(renamed.error || ''),
+     `...and so are its env and its name (${(envSet.error || 'saved').slice(0, 50)})`);
+  await page.evaluate(() => openDocker());
+  await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"]', { timeout: 20000 });
+  await page.evaluate(() => openEditContainer('nginx-sandbox'));
+  await page.waitForSelector('#cmodal:not([hidden])');
+  ok(await page.evaluate(() => document.getElementById('cName').disabled && document.getElementById('cGo').disabled
+       && document.getElementById('cEnv').readOnly && document.getElementById('cYml').readOnly
+       && /BuilderBot manages this one/.test(document.getElementById('cNameHint').textContent)),
+     '...and its Edit dialog is for reading: name, compose file and env locked, Save ghosted');
+  await page.evaluate(() => { document.getElementById('cmodal').hidden = true; openNginxTab(); });
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, drop_cert: 'www.example.com' });
+}
 
 // Remove: the container goes, the routes stay for a redeploy.
+await quiet();
 await page.click(`${sect} [data-ngremove]`);
 // A node read as quiet queues the down and keeps the row until it has
 // run (B597), which under a whole gate is a while: the record's going is

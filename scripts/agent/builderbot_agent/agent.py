@@ -9,12 +9,12 @@ import threading
 import time
 from . import AGENT_VERSION
 from .coverage import _COV_OUT, _cov_write
-from .base import BEAT_S, log, own_digest, own_path
+from .base import BEAT_S, RUNNER_DIAG_KEEP, cap_file, log, log_once, own_digest, own_path, prune_dir
 from .controller import Controller
-from .stores import save_state
+from .stores import save_state, use_scope
 from .toolchains import share_images
 from .sessnet import SessionNet
-from .runners import RunnersMixin
+from .runners import RunnersMixin, runner_dirs
 from .census import Sampler, census
 from .jobs import Job
 from .ftp import FtpServers
@@ -30,12 +30,18 @@ from . import storage
 class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin):
     def __init__(self, state):
         self.state = state
+        # Its own directory under the toolchain store, by its node id (R196),
+        # before anything reads where its toolchains are.
+        use_scope((state.get("stores") or {}).get("toolchains") or "", state.get("node_id"))
         self.ctl = Controller(state["controller"], state["token"], state.get("pin", ""))
         self.jobs = {}
         self.lock = threading.Lock()
         self.sampler = Sampler()
         self.poll = 25
         self.hello_at = 0
+        self.hello_said = False           # a hello has been answered once this process
+        self.census_asked = False         # a hello asked for again has its census on the way
+        self.census_stale = False         # ...and was asked for once more meanwhile
         self.controller_digest = ""
         self.warned_caps = False
         # The session half (roadmap #24): the two ttyd processes, the bundle
@@ -111,14 +117,34 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         is there. Returns hello's (status, answer) when one was said, and
         None while the census is still being taken. The first hello of the
         process is said at once, as it always was: nothing here should run
-        before the controller has heard from this agent."""
-        if not self.hello_at:
-            # ...and one asked for now (the clock zeroed by a refusal or a
-            # job that changed the machine) is said with a census of its
-            # own; a census still on its way from before is let go.
+        before the controller has heard from this agent.
+
+        A hello asked for again (the clock zeroed by the controller's nudge,
+        a refusal, or a job that changed the machine) is said with a census
+        of its own, a census still on its way from before the ask let go,
+        and that census is taken beside the loop too: it used to be taken
+        on the loop, a minute on a busy node with no work poll meanwhile,
+        and a controller nudging once a minute kept the node in census all
+        day while every docker ps the Docker tab sent waited its 25s out and
+        was taken back (B644, 11 Oct)."""
+        if not self.hello_at and not getattr(self, "hello_said", False):
             self.census_thread = None
             self.census_next = None
             return self.hello()
+        if not self.hello_at and not getattr(self, "census_asked", False):
+            self.census_thread = None
+            self.census_next = None
+            self.census_asked = True
+        if self.census_thread is not None and not self.census_thread.is_alive() \
+                and getattr(self, "census_stale", False):
+            # Asked for again while this one was on its way: what it found is
+            # from before the change the ask was about, so it is let go and a
+            # fresh one taken before the hello (B647's second half: the
+            # toolchain census a refusal asked for came back without the
+            # toolchain that had just been installed).
+            self.census_stale = False
+            self.census_thread = None
+            self.census_next = None
         if self.census_thread is None:
             self.census_next = None
 
@@ -133,6 +159,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         if self.census_thread.is_alive():
             return None
         self.census_thread = None
+        self.census_asked = False
         c, self.census_next = self.census_next, None
         return self.hello(taken=c) if c is not None else self.hello()
 
@@ -169,6 +196,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                                         "keep": self.keep_report()}, timeout=30)
         if st == 200:
             self.hello_at = time.monotonic()
+            self.hello_said = True           # the first is said on the loop; the rest beside it
             self.poll = int(r.get("poll") or 25)
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
             # Where toolchains land, from the controller's catalog. Kept on the
@@ -231,7 +259,26 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                                              "ctr_on": bool(sn.get("ctr_on")),
                                              "ctr": sn.get("ctr") if isinstance(sn.get("ctr"), dict) else {}}
                 save_state(self.state)
+            # Published ports bound to 127.0.0.1 by default (R190): the
+            # controller's switch, kept in node.json, and applied on every
+            # hello rather than only when it moves: apply_ports_local writes
+            # and restarts docker only when daemon.json differs, and an agent
+            # that learned a second key (B666) met a switch already on and
+            # never wrote it (draconis, 11 Oct). An older controller says
+            # nothing and nothing changes.
+            # The journal kept across boots on a managed node (R185).
+            self.keep_journal()
+            # ...and the files the node writes itself kept to their size.
+            self.cap_logs()
+            pl = r.get("ports_local")
+            if isinstance(pl, bool):
+                if pl != self.state.get("ports_local"):
+                    self.state["ports_local"] = pl
+                    save_state(self.state)
+                self.apply_ports_local(pl)
             n = r.get("node") or {}
+            # ...and again, a store the Nodes tab moved being made there too.
+            use_scope((self.state.get("stores") or {}).get("toolchains") or "", self.state.get("node_id"))
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in
             # node.json. Logged when they differ so the disagreement is
@@ -278,6 +325,33 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     self._rehello = False
         return st, r
 
+    def cap_logs(self):
+        """The node's own log files kept bounded on every hello (the
+        operator, 12 Oct): the terminal server's and the runners' in the
+        data store, this agent's own output where it goes to a file (a
+        guest's and a Mac's unit, OpenRC's), and each runner's _diag to its
+        newest RUNNER_DIAG_KEEP."""
+        data = (self.state.get("stores") or {}).get("data") or "/tmp"
+        files = [os.path.join(data, "ttyd.log"), os.path.join(data, "runner.log")]
+        with contextlib.suppress(OSError):
+            out = os.readlink("/proc/self/fd/1")
+            if out.startswith("/") and os.path.isfile(out):
+                files.append(out)
+        cut = [f for f in files if cap_file(f)]
+        trimmed = sum(prune_dir(os.path.join(d, "_diag"), RUNNER_DIAG_KEEP) for d, _ in runner_dirs())
+        if cut or trimmed:
+            log(f"logs: kept to size: {', '.join(os.path.basename(f) for f in cut) or 'nothing'} cut, "
+                f"{trimmed} old runner diagnostics removed")
+
+    def hello_again(self, why):
+        """Ask the loop for a fresh hello, saying why in the journal: a node
+        was saying hello every hundred seconds with nothing in its log to
+        say which of the dozen askers it was (B647)."""
+        log(f"hello again: {why}")
+        if getattr(self, "census_asked", False):
+            self.census_stale = True         # the one on its way predates this ask
+        self.hello_at = 0
+
     def running(self):
         with self.lock:
             return len(self.jobs)
@@ -298,7 +372,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             j.cancel()
 
     def loop(self):
-        delay = 1
+        delay = wdelay = 1
         # The hourly walk of the disks, on its own thread (storage.py).
         storage.start(lambda: self.state)
         # What is THIS process's to end, ended by it. The ttyds go: a stop of
@@ -372,7 +446,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     time.sleep(delay)
                     delay = min(delay * 2, 60)
                     continue
-                delay = 1
+                # Only an answer resets the wait: a census still on its way
+                # is not one, and reset here, a controller being rebuilt was
+                # asked every second for minutes, a journal line each time.
+                if said is not None:
+                    delay = 1
             self.session_check()
             self.session_firewall_check()
             self.session_idle_reap()
@@ -382,7 +460,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # and wakes a held poll when a job ends, so the poll is held at
             # full length whether or not anything is running. The count in
             # the sample is for the row's numbers, not for placement.
-            wait = self.poll
+            # ...except while a hello asked for again has its census on the
+            # way: the poll is held short, so the hello is said within
+            # seconds of the census landing and not a whole poll after it,
+            # which is what the retry a refusal asked for is waiting on.
+            wait = min(self.poll, 3) if getattr(self, "census_asked", False) else self.poll
             sample = self.sampler.sample(self.state, n)
             # The sessions this node runs ride the heartbeat (roadmap #24),
             # so the dashboard's Sessions card lists them beside its own.
@@ -413,6 +495,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 sample["sync_clean"] = self.wssync.done()
             st, r = self.ctl.call("work", {"sample": sample, "running": n, "wait": wait},
                                   timeout=wait + 15)
+            if st in (200, 204):
+                wdelay = 1
             if st == 204:
                 continue
             if st == 200 and r.get("cancel"):
@@ -441,21 +525,28 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # every ten minutes, which is fine for a display and too
                 # coarse for a gate. Say it again now, so the retry the
                 # operator is about to make reasons about this machine as it
-                # is rather than as it was.
-                self.hello_at = 0
+                # is rather than as it was. Logged, so a controller asking
+                # every minute is on the box's own record (B644).
+                self.hello_again("the controller asked for a fresh census")
                 continue
             if st == 200 and r.get("id"):
                 self.take(r)
                 continue
             if st == 401:
                 log(f"refused: {r.get('error')}; re-enroll with a new token")
-                self.hello_at = 0
+                self.hello_again("the work poll was refused")
                 time.sleep(300)
                 continue
-            log(f"work: {st} {r.get('error', '')}; retrying in {delay}s")
-            self.hello_at = 0                 # say hello again on the way back
-            time.sleep(delay)
-            delay = min(delay * 2, 60)
+            # Its own backoff, reset only by a work poll that worked: shared
+            # with hello's, every successful census reset it, and a
+            # controller refusing work was asked again at once each time.
+            log_once("work-poll", f"work: {st} {r.get('error', '')}; retrying, every {wdelay}s at most")
+            # A fresh census for a controller that answered and refused; one
+            # that did not answer at all (0) has nobody to hear it.
+            if st:
+                self.hello_again(f"the work poll failed ({st})")
+            time.sleep(wdelay)
+            wdelay = min(wdelay * 2, 60)
 
     def take(self, job):
         with self.lock:

@@ -157,6 +157,21 @@ def conf():
     return c
 
 
+def _repo_name(tree):
+    """The repository's name from the project's origin remote, the last part
+    of its path without .git, or "" (no remote, no git config here)."""
+    try:
+        text = open(f"{tree}/.git/config", encoding="utf-8").read()
+    except OSError:
+        return ""
+    m = re.search(r'\[remote "origin"\][^\[]*?\burl\s*=\s*(\S+)', text)
+    if not m:
+        return ""
+    name = re.split(r"[/:]", m.group(1).rstrip("/"))[-1]
+    name = name[:-4] if name.endswith(".git") else name
+    return name if re.fullmatch(r"[A-Za-z0-9._-]{1,100}", name) and not name.startswith(".") else ""
+
+
 def _real_dir(path):
     """Whether `path` is a directory itself, not a link to one."""
     try:
@@ -487,7 +502,12 @@ def plan(c, a, uid):
     # The agent's stores: what a session reads, and nothing else.
     if data and _real_dir(data):
         steps.append(("tmpfs", data, "mode=0755"))
-        for rel in ("emu", f"ci-logs/{project}"):
+        # This project's own emulator folder, not every project's (the
+        # operator, 12 Oct); and its CI logs under its name and under its
+        # repository's, which is the name the workflows file them by.
+        repo = _repo_name(f"{ws}/{project}")
+        rels = [f"emu/{project}", f"ci-logs/{project}"] + ([f"ci-logs/{repo}"] if repo and repo != project else [])
+        for rel in rels:
             if _real_dir(f"{data}/{rel}"):
                 steps.append(("bind", f"{STAGE}/data/{rel}", f"{data}/{rel}"))
     if art and _real_dir(art):

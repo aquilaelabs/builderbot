@@ -14,6 +14,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/live` | exact | `_get_live` | GET /api/live: who has a Claude session on each project and which of them are working, the two maps the status payload also carries, alone and cheap. |  |
 | GET | `/api/trace` | prefix | `_get_trace` | GET /api/trace?since=T: what this server was asked since T, grouped by endpoint (R75 step 4). |  |
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
+| GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: admin |
 | GET | `/api/findings` | prefix | `_get_findings` | GET /api/findings: findings.view, scoped to the projects this account sees, and for a session to its own. |  |
 | GET | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile tab): read on GET, saved on POST, by profiletab.py. |  |
 | GET | `/api/transcripts` | prefix | `_get_transcripts` | GET /api/transcripts?project=NAME: the signed-in account's own conversations with Claude on that project, newest first (transcripts.mine). |  |
@@ -85,7 +86,8 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/chat` | prefix | `_chat` | Read a conversation, send into one, or mark one seen: chat.converse. |  |
 | POST | `/api/layout` | prefix | `_layout` | Store this account's open tabs: layout.save_tabs. |  |
 | POST | `/api/bell` | exact | `_bell` | Put a bell note away for this account, or bring every one back (bellseen.py). |  |
-| POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
+| POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove, check and update on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
+| POST | `/api/images` | exact | `_images` | Check for updates on the Docker tab (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage tab: a node's disks walked at once (nodes.node_storage_measure). |  |
 | POST | `/api/cards` | prefix | `_cards` | Store the sidebar card arrangement: layout.save_card_order. |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |

@@ -94,7 +94,7 @@ async function dmClick(act){
       const r = document.querySelector(row), e = document.querySelector(sel);
       const list = Array.isArray(dockerList) ? dockerList : (dockerList?.instances || dockerList?.rows || []);
       const d = list.find(x => x.project === 'ep.silon') || {};
-      return { state: r?.querySelector('.state')?.textContent.trim(), title: e?.title,
+      return { state: r?.querySelector('.state')?.textContent.trim(), title: saidOf(e),
                running: d.running, exists: d.exists, missing_env: d.missing_env, job: d.job };
     }, [b, DM]);
     throw new Error(`B477: ${act} stayed disabled 45s: ${JSON.stringify(seen).slice(0, 400)}\n`
@@ -343,6 +343,23 @@ await openEdit();
 ok(await page.$eval('#cYml', e => e.value) === readFileSync(`${D}/docker-compose.yml`, 'utf8')
    && await page.$eval('#cTabForm', e => e.hidden),
    'Edit opens on the project\'s own compose file, beside its env, with no form for an image');
+// Its name is its own, not the project's (the operator, 11 Oct): live in
+// the dialog while it is down, opening on what the row calls it, and the
+// boxes and Save live with it.
+ok(await page.evaluate(() => {
+     const n = document.getElementById('cName'), row = (dockerList?.instances || []).find(d => d.instance === 'main' && d.source !== 'file' && !d.running);
+     return !n.disabled && !!row && n.value === row.name && !document.getElementById('cGo').disabled
+       && !document.getElementById('cEnv').readOnly && /Its name is its own/.test(document.getElementById('cNameHint').textContent);
+   }), 'a project\'s container that is down offers its own name to change, with its boxes and Save live');
+// ...and one that runs is for reading: Save ghosted, both boxes read-only
+// and still scrollable (the operator, 11 Oct).
+ok(await page.evaluate(() => {
+     cLock(true);
+     const ok = document.getElementById('cGo').disabled && document.getElementById('cYml').readOnly
+       && document.getElementById('cEnv').readOnly && getComputedStyle(document.getElementById('cEnv')).overflowY !== 'hidden';
+     cLock(false);
+     return ok;
+   }), '...while one that runs ghosts Save and makes both boxes read-only, still scrollable');
 await page.click('#cTabEnv');
 ok(/missing against \.env\.example: PORT/.test(await page.$eval('#cEnvHint', e => e.textContent)),
    'the env tab says which keys the example declares and this does not');
@@ -366,10 +383,7 @@ await page.waitForTimeout(1200);
 ok(!await page.$eval(`${DM} [data-dm="up"]`, b => b.disabled),
    'a filled env wakes Up: compose builds what is missing, so it would work');
 ok(/builds the image first, as compose does/.test(
-     // data-tip, not title: the manager's controls carry the page's own
-     // tooltip now, which is the same words moved off an attribute that waits
-     // a second before showing them.
-     await page.$eval(`${DM} [data-dm="up"]`, b => b.dataset.tip)),
+     await page.$eval(`${DM} [data-dm="up"]`, b => saidOf(b))),
    '...and Up says that is what it will do');
 
 // First build: build → down → up, and the argv trail proves the shape.
@@ -2106,7 +2120,7 @@ const dead = await page.evaluate(() => {
   const mk = document.getElementById('bDockerNew');
   return {
     newOff: mk?.disabled === true,
-    tip: mk?.dataset.tip || mk?.title || '',
+    tip: saidOf(mk),
     acts: q('.dmtab [data-dm="up"],.dmtab [data-dm="down"]').map(b => b.disabled),
     empty: document.querySelector('.dmtab .empty')?.textContent || '',
     refreshLive: document.getElementById('bDockerRe')?.disabled === false,
@@ -2118,9 +2132,6 @@ const dead = await page.evaluate(() => {
 });
 ok(dead.newOff && dead.acts.length > 0 && dead.acts.every(Boolean),
    'with no daemon, the controls that would drive one are disabled');
-// data-tip, not title: tipify() runs after the gate on this surface and turns
-// one into the other, which is the point: the reason is worn the way every
-// other explanation here is.
 ok(/no node with a daemon/.test(dead.tip),
    '...each carrying the reason rather than just refusing');
 ok(/no node with a daemon/.test(dead.empty),
@@ -2597,6 +2608,86 @@ await page.waitForFunction(() => document.getElementById('cmodal').hidden, null,
 ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
 await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
+// Its name is editable while it is down (the operator, 11 Oct): the Edit
+// dialog's Name field is live for a container with nothing running, and
+// the hint says what follows it; a running one keeps the name locked.
+{
+  await page.evaluate(() => openEditContainer('radarr'));
+  await page.waitForSelector('#cmodal:not([hidden])');
+  const live = await page.evaluate(() => ({ off: document.getElementById('cName').disabled,
+                                            hint: document.getElementById('cNameHint').textContent }));
+  ok(!live.off && /while it is down/.test(live.hint),
+     `Edit on a container that is down offers its name to change (${live.hint.slice(0, 60)})`);
+  await page.click('#cCancel').catch(() => page.evaluate(() => { document.getElementById('cmodal').hidden = true; }));
+  await page.waitForFunction(() => document.getElementById('cmodal').hidden, null, { timeout: 10000 });
+  const saved = await page.evaluate(async () => (await (await fetch('/api/container', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'save', name: 'radarr', rename: 'radarr', compose: 'services:\n  app:\n    image: lscr.io/x:latest\n', env: '' }) })).json()));
+  ok(!saved.error && !saved.job, `a Save with the name as it was renames nothing (${JSON.stringify(saved).slice(0, 60)})`);
+}
+// ---- a port only nginx reaches, with no route yet -------------------------
+// The first-time trap of a container moved to a VPS (11 Oct): its port is on
+// 127.0.0.1 there, so it answers nowhere until an nginx route points at it,
+// and the row says so with the way to the nginx tab; routed, it says nothing.
+{
+  const said = await page.evaluate(() => {
+    const was = dockerList;
+    const row = { owner: 'aquilaeLabs', running: true, ports: ['127.0.0.1:8380->80/tcp', '9000->9000/tcp'] };
+    dockerList = { ...(was || {}), node: 'n1', ports_local: true, nginx_ports: [] };
+    const bare = dmUnrouted(row);
+    dockerList = { ...(was || {}), node: 'n1', ports_local: true, nginx_ports: [8380] };
+    const routed = dmUnrouted(row);
+    dockerList = { ...(was || {}), node: 'n1', ports_local: false, nginx_ports: [] };
+    const elsewhere = dmUnrouted(row);
+    dockerList = was;
+    return { bare, routed, elsewhere };
+  });
+  ok(/8380 is reachable only through this node's nginx, and no route points at it yet/.test(said.bare)
+     && /data-dmnginx="n1"/.test(said.bare) && !/9000/.test(said.bare) && said.routed === '' && said.elsewhere === '',
+     `a loopback port nothing routes to says so with the way to the nginx tab, and says nothing once routed or off a hosting node (${said.bare.replace(/<[^>]+>/g, '').slice(0, 70)})`);
+}
+
+// ---- a registry image that moved (R195) ---------------------------------
+// The operator, 11 Oct: Update on any container whose image comes from a
+// registry, not nginx alone. radarr runs one (no build): the node has pulled
+// it at one digest, the registry (BB_IMAGE_DIGESTS_FILE) serves another, so
+// Check for updates finds it behind, the row says which with Update, the
+// bell carries a note of its own, and Update pulls and starts it again.
+{
+  const img = 'lscr.io/linuxserver/radarr:latest';
+  writeFileSync(`${DIR}/dockerstate/radarr.config`, JSON.stringify({ services: { app: { image: img } } }));
+  mkdirSync(`${DIR}/dockerstate/repodigests`, { recursive: true });
+  writeFileSync(`${DIR}/dockerstate/repodigests/${img.replace(/[/:]/g, '_')}`, JSON.stringify([`lscr.io/linuxserver/radarr@sha256:${'a'.repeat(64)}`]));
+  writeFileSync(`${DIR}/image-digests.json`, JSON.stringify({ [img]: `sha256:${'b'.repeat(64)}` }));
+  await page.waitForSelector('#bDockerCheck', { timeout: 15000 });
+  ok(await page.$eval('.dmimgbar .state', e => /not checked yet|checked/.test(e.textContent)),
+     'the Docker tab says when its registry images were last checked, beside Check for updates');
+  await page.click('#bDockerCheck');
+  await page.waitForSelector('.dmtab .row[data-inst="radarr|main"] .dmimages', { timeout: 20000 });
+  ok(await page.$eval('.dmtab .row[data-inst="radarr|main"]', r => /a newer lscr\.io\/linuxserver\/radarr:latest is out/.test(r.querySelector('.dmimages').textContent)
+       && !!r.querySelector('[data-dm="update"]')),
+     'Check for updates finds a registry image the registry has moved: the row says which, with Update');
+  ok(!(await page.$('.dmtab .row[data-inst^="ep.silon|"] [data-dm="update"]')),
+     '...and a container built from code is not offered it: Rebuild is what moves that');
+  await page.evaluate(() => refresh());
+  await page.click('#bBell');
+  await page.waitForSelector('#bellPanel [data-bdocker]', { timeout: 15000 });
+  ok(await page.$eval('#bellPanel', e => /container update/.test(e.textContent) && /radarr \(lscr\.io\/linuxserver\/radarr:latest\)/.test(e.textContent)
+       && !!e.querySelector('[data-bdismiss^="image:"]')),
+     'the bell carries a container-update note of its own, with Dismiss');
+  await page.click('#bBell');
+  const before = dockerLog().length;
+  await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="update"]');
+  await page.waitForFunction(() => !document.querySelector('.dmtab .row[data-inst="radarr|main"] .dmimages'), null, { timeout: 30000 });
+  const said = dockerLog().slice(before);
+  ok(/compose .*pull --ignore-buildable/.test(said) && /compose .* up -d/.test(said),
+     `Update pulls the registry images and starts it again, and the row stops saying it is behind (${said.split('\n').filter(l => /pull|up -d/.test(l)).length} lines)`);
+  rmSync(`${DIR}/dockerstate/radarr.config`, { force: true });
+  // Down again: Update started it, and the checks below edit it as it was, down.
+  rmSync(`${DIR}/dockerstate/radarr.up`, { force: true });
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => (dockerList?.instances || []).some(d => d.project === 'radarr' && !d.running), null, { timeout: 20000 });
+}
 // ---- a row on a phone (R68 step 5) ---------------------------------------
 // What a row carries is on the row at every width, never behind a fold (the
 // operator, 8 Oct: too much was hidden; the Project picker was not found).
@@ -2693,8 +2784,10 @@ await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
 await page.waitForSelector('#cmodal:not([hidden])');
 await page.waitForFunction(() => /services:/.test(document.getElementById('cYml').value),
                            { timeout: 10000 });
-ok(await page.$eval('#cName', e => e.disabled && e.value === 'radarr'),
-   'editing opens on the container, and its name is not a field any more');
+// Its name stays a field while it is down (the operator, 11 Oct: a rename
+// is the Edit dialog's, with the container down); it reads the name as is.
+ok(await page.$eval('#cName', e => !e.disabled && e.value === 'radarr'),
+   'editing opens on the container, its name in the field as it is');
 await page.fill('#cYml', 'services:\n  app:\n    image: alpine:latest\n');
 await page.click('#cGo');
 await page.waitForFunction(() => document.getElementById('cmodal').hidden,
@@ -3194,6 +3287,30 @@ ok(await page.$('#devSend'),
     const away = await asSession({ project: 'ep.silon', action: 'new', instance: 'away', node: 'nowhere-node', ship: true });
     ok(away.status === 403 && /unless the node is under Hosts its containers on/.test(away.error || ''),
        `...nor one shipped to a node its project's settings do not name, said with where to name it (${away.status})`);
+    // ...and one shipped to a node the settings DO name under Hosts its
+    // containers on keeps that node and is marked shipped: the session branch
+    // blanked the node after the gate had let it through, so the container
+    // was made, unshipped, on the project's own node (B645, 11 Oct).
+    const vps = await page.evaluate(async () => {
+      const m = await (await fetch('/api/v1/nodes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enroll', name: 'vps-host', host_only: true }) })).json();
+      const h = await (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: 'ep.silon', hosts: [m.id] }) })).json();
+      return { id: m.id, err: m.error || h.error || '' };
+    });
+    const sent = await asSession({ project: 'ep.silon', action: 'new', instance: 'shipped', node: vps.id, ship: true });
+    const shipRec = (JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['ep.silon'] || {}).shipped || {};
+    ok(!vps.err && sent.status === 200 && shipRec.node === vps.id && shipRec.ship === true,
+       `...and one shipped to a node under Hosts its containers on is bound to it and marked shipped (${vps.err || sent.error || JSON.stringify([shipRec.node, shipRec.ship])})`);
+    await asSession({ project: 'ep.silon', action: 'remove', instance: 'shipped' });
+    // ...and the hosting node goes: the Send dialog below offers every hosting
+    // node there is, and counts them.
+    await page.evaluate(async (id) => {
+      await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: 'ep.silon', hosts: [] }) });
+      await fetch('/api/v1/nodes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retire', id }) });
+    }, vps.id);
     // ...and removes one, under the same setting (the operator, 24 Sep):
     // the row goes, its env and data stay, as the tab's Remove leaves them.
     const gone = await asSession({ project: 'ep.silon', action: 'remove', instance: 'fresh' });

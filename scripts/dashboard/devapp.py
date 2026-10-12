@@ -90,6 +90,12 @@ RUN_DENIED = ("running this project's containers is the operator's: rebuilding, 
               "one are handed over in the project's settings, Claude may: Run its container")
 
 MAIN = "main"
+# The owner of a container BuilderBot deploys itself (R180): the nginx tab's
+# container is the one today. Set by the deployment that writes it and by
+# nothing else, not a person's picker and not a session, and given every
+# bridge and every published port on its node by the containers' network
+# map, since a proxy or a monitor that is nobody's has to see everybody's.
+SYSTEM = "System"
 
 
 def _slug(s):
@@ -111,6 +117,7 @@ project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 project_nodes = None  # ...and the set it works on, primary first (R82)
 all_project_nodes = None  # () -> {project: [node ids]}, every project's set
 reads_of = None           # project -> [projects it reads] (prefs.reads), set by the server
+hosts_of = None           # project -> [node ids it hosts its containers on] (prefs hosts), set by the server
 reaches_of = None         # (project, node) -> ["ADDR" or "ADDR:PORT"] its sessions there may reach (prefs.reaches_on)
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
@@ -438,19 +445,22 @@ def work_tree(project, instance):
 ROUTE_MODES = ("lan", "funnel", "public")
 
 
-def _published(ports):
+def _published(ports, local=False):
     """The published TCP ports of an instance, from either shape the two
-    listings use: "7475->7474/tcp" strings, or {published, proto} dicts."""
-    out = []
+    listings use: "7475->7474/tcp" or "127.0.0.1:7475->7474/tcp" strings,
+    or {published, proto} dicts. With `local`, the ones bound to the
+    loopback alone (R190), which no address of the node's reaches."""
+    out, loop = [], []
     for p in ports or []:
         if isinstance(p, dict):
             if str(p.get("proto", "tcp")).lower() == "tcp" and str(p.get("published") or "").isdigit():
-                out.append(int(p["published"]))
+                (loop if str(p.get("host_ip") or "").startswith("127.") else out).append(int(p["published"]))
         elif isinstance(p, str) and "->" in p and p.endswith("/tcp"):
             head = p.split("->", 1)[0]
-            if head.isdigit():
-                out.append(int(head))
-    return sorted(set(out))
+            bind, _, num = head.rpartition(":")
+            if num.isdigit():
+                (loop if bind.startswith("127.") or bind == "localhost" else out).append(int(num))
+    return sorted(set(loop)) if local else sorted(set(out) | set(loop))
 
 
 def route_view(project, instance, ports, prefer=None):
@@ -474,10 +484,16 @@ def route_view(project, instance, ports, prefer=None):
                                 and (n.get("reported") or {}).get("sandbox"))
     if mode == "lan":
         host = queue.route_host(nid) if queue is not None and nid else ""
-        if host and port:
+        # A port bound to the loopback alone (R190) has no address of the
+        # node's to be reached at: the node's nginx is what answers for it.
+        if port in _published(ports, local=True) and port not in _published([p for p in ports or [] if not (
+                isinstance(p, str) and p.split("->", 1)[0].rpartition(":")[0].startswith("127."))]):
+            out["why"] = f"published on the node alone (127.0.0.1:{port}): its nginx answers for it"
+        elif host and port:
             out["url"] = f"http://{host}:{port}/"
             out["ready"] = port in pub
-        out["why"] = "" if out["url"] else ("no published port" if not port else "no node address")
+        if not out["url"] and not out["why"]:
+            out["why"] = "no published port" if not port else "no node address"
     elif mode == "funnel":
         ts = (((n or {}).get("reported") or {}).get("services") or {}).get("tailscale") or {}
         dns = ts.get("dns") or ""
@@ -747,15 +763,17 @@ def _agent_read(n, argv, timeout):
     memo = getattr(_scope, "reads", None)
     if memo is not None and key in memo:
         return dict(memo[key])
-    if queue.job_running(n["id"]) > 0:
-        # The node is busy, and a listing kept from before its job began is
-        # handed back at once, marked as such: the manager draws it in the
-        # ghosted state and asks again on the next revision. This used to
-        # sleep up to four seconds first, hoping the job would end, from a
-        # time when a busy node could not take a read at all. It can now: a
-        # short exec goes on the light lane whatever else is running (see
-        # nodes.job_next), so the wait bought nothing and cost every draw
-        # during a build four seconds. With nothing kept, the read runs.
+    # Asked every time, busy or not (the operator, 11 Oct: the tab read
+    # "down, as last seen" whenever anything ran on the node, which on a
+    # shared node is most of the time, and through every change made from
+    # it, since the change is itself a job). A short exec goes on the light
+    # lane whatever else is running (nodes.job_next), so a busy node answers
+    # it; what was kept stands in, marked stale, only when the node did not
+    # answer at all.
+    _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
+    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
+                       forget=True)
+    if r.get("error"):
         with _reads_lock:
             hit = _last_reads.get(key)
         if hit is not None:
@@ -763,10 +781,6 @@ def _agent_read(n, argv, timeout):
             if memo is not None:
                 memo[key] = out
             return out
-    _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
-    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
-                       forget=True)
-    if r.get("error"):
         out = {"code": 1, "out": r["error"]}
     else:
         out = {"code": int(r.get("code") or 0), "out": r.get("out") or ""}
@@ -1012,6 +1026,9 @@ def forget_available():
 # `info` joins them for one reason: it is where the daemon's own labels are,
 # and a label is how this container tells a VM the provisioner made from any
 # other machine that happens to answer Docker. Also a read.
+# An image reference as compose writes one: registry, path and tag, no
+# spaces and nothing a shell or docker would read as a flag.
+_IMAGE_REF = re.compile(r"[a-z0-9][a-z0-9._/:-]{0,250}")
 _BARE_OK = {"version", "ps", "info"}
 # Acting on a container by name: the three verbs a person reaches for on a
 # list, and the log they open it to read (R68 steps 1 and 2). Held apart from
@@ -1114,6 +1131,11 @@ def _guard(argv):
     if verb == "inspect":
         if argv[2:4] == ["--format", BOOT_FORMAT] and argv[4:] and all(_CTR_NAME.match(a) for a in argv[4:]):
             return ""
+        # ...and an image's pulled digests, for the registry check
+        # (imagecheck.py, R195): one image reference, in its one shape.
+        if argv[2:6] == ["--type", "image", "--format", "{{json .RepoDigests}}"] and len(argv) == 7 \
+                and _IMAGE_REF.fullmatch(argv[6]):
+            return ""
         return "a `docker inspect` this module did not build"
     if verb == "update":
         if (argv[2:3] == ["--restart"] and len(argv) > 4 and argv[3] in ("unless-stopped", "no")
@@ -1145,6 +1167,11 @@ def _guard(argv):
     return ""
 
 
+# Set by server.py (diag.redact): an argv or an output tail can carry a
+# token, and docker.log is in the downloads.
+redact = lambda text: text   # noqa: E731
+
+
 def _docker_log(line):
     """One line into the Docker manager's own log, best effort.
 
@@ -1159,7 +1186,7 @@ def _docker_log(line):
         d = log_dir()
         d.mkdir(parents=True, exist_ok=True)
         with open(d / "docker.log", "a", encoding="utf-8") as f:
-            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {redact(line)}\n")
     except OSError:
         pass
 
@@ -1364,6 +1391,10 @@ def containers():
             "state": (c.get("State") or "").lower(),
             "status": c.get("Status", ""),
             "ports": _ports(c.get("Ports", "")),
+            # ...and the ports published on every address, for a node whose
+            # ports are meant to stay on it (R190).
+            "open": sorted(set(_published(_ports(c.get("Ports", ""))))
+                           - set(_published(_ports(c.get("Ports", "")), local=True))),
             "project": proj,
             "service": labels.get(SERVICE_LABEL, ""),
             "ours": proj in mine,
@@ -1496,8 +1527,11 @@ def _ports(raw):
         if "->" not in bit:
             continue
         host, _, rest = bit.partition("->")
-        port = host.rsplit(":", 1)[-1]
-        entry = f"{port}->{rest}"
+        bind, _, port = host.rpartition(":")
+        # Bound to the loopback, it says so (R190): that is the port only the
+        # node's own nginx reaches, and the row has to tell it from one
+        # published on every address.
+        entry = f"127.0.0.1:{port}->{rest}" if bind.startswith("127.") else f"{port}->{rest}"
         if entry not in seen:
             seen.append(entry)
     return seen
@@ -1636,8 +1670,30 @@ def pname(project, instance=MAIN):
     return _pname(project, instance)
 
 
+# A project's container named by hand (the operator, 11 Oct: a project's
+# container is named whatever its owner wants, not after the project): the
+# record's `name`, read through a table kept per store write, since _pname
+# is on the poll path and is asked in loops over every instance.
+_named = {"at": None, "map": {}}
+
+
+def _names():
+    try:
+        at = FILE.stat().st_mtime_ns
+    except (OSError, AttributeError, TypeError):
+        at = None
+    if at is None or at != _named["at"]:
+        _named["map"] = {(p, i): str(r["name"]) for p, insts in _load().items()
+                         for i, r in insts.items() if r.get("name") and r.get("source") != "file"}
+        _named["at"] = at
+    return _named["map"]
+
+
 def _pname(project, instance=MAIN):
     """The compose project name: the prefix, then what the thing is called.
+
+    A project's container renamed in the Edit dialog carries the name it was
+    given on its record (`name`), and that wins over both rules below.
 
     The PROJECT used to be in here as well, as <project>-<instance>,
     which for a project called MediaReducer-Dev with an instance named after
@@ -1649,6 +1705,9 @@ def _pname(project, instance=MAIN):
     typed a name for it: `main` is implied rather than chosen, and
     `alpha-main` was saying the same thing twice too.
     """
+    own = _names().get((project, instance))
+    if own:
+        return own
     inst = _slug(instance) or MAIN
     return _slug(project) if inst == MAIN else inst
 
@@ -2220,8 +2279,13 @@ def _build_env(project, instance=MAIN):
     """
     ref = (str(_read_rec(project, instance).get("ref") or "").strip()
            if instance else "")
-    r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", ref or "HEAD"],
-             timeout=10)
+    # A container with no project tree behind it (nginx's, one made with
+    # bb container new) has no commit to stamp: asked anyway, git said
+    # "cannot change to /workspace/nginx-draconis" in the log on every
+    # update (12 Oct), as _head and _dirty already knew not to.
+    tree = (WORKSPACE / project).is_dir()
+    r = (_run(["git", "-C", str(WORKSPACE / project), "rev-parse", ref or "HEAD"], timeout=10)
+         if tree else {"code": 1, "out": ""})
     out = {"BB_BUILD_AT": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())}
     if r["code"] == 0 and r["out"].strip():
         out["BB_BUILD_REV"] = r["out"].strip()
@@ -2469,8 +2533,14 @@ def _overview_here(picked):
             # means out of reach, said on the row (R79, the operator 25 Sep).
             whose = owner_of(project, inst, rec)
             own = nodes_of(whose) if whose else []
+            # Where it belongs too: one of the nodes the project hosts its
+            # containers on, or a node it was shipped to on purpose (R166).
+            # Its sessions reach it there by its published ports, so neither
+            # is out of place (the operator, 12 Oct: a hosting node's row
+            # said so in red).
+            hosted = picked in (hosts_of(whose) if whose and hosts_of else []) or bool(rec.get("ship"))
             out.append({
-                "astray": ", ".join(node_name(n) for n in own) if own and picked and picked not in own else "",
+                "astray": ", ".join(node_name(n) for n in own) if own and picked and picked not in own and not hosted else "",
                 "project": project, "instance": inst, "name": pn,
                 # The project it belongs to, or "" for none: whose sessions
                 # may see it and work on it, and the group it is drawn in.
@@ -2492,6 +2562,7 @@ def _overview_here(picked):
                 # compose file: what is published is what the daemon says it
                 # published, and a stopped instance publishes nothing.
                 "ports": sorted({p for c in mine for p in c["ports"]}),
+                "open_ports": sorted({p for c in mine for p in c.get("open") or []}),
                 # The same rule state() uses: a build belongs to the daemon
                 # it happened on, and a record from another names nothing here.
                 "built_rev": rec.get("rev", "") if same_daemon else "",
@@ -2832,6 +2903,8 @@ label_of = None
 
 
 def owner_label(owner):
+    if owner == SYSTEM:
+        return SYSTEM
     return (label_of(owner) if label_of and owner else owner) or ""
 
 
@@ -2839,7 +2912,7 @@ def owner_gone(owner):
     """True when a container's project is no project any more: deleted to
     the trash, its records kept under its name, so a restore gives every one
     of them back (the operator, 8 Oct)."""
-    return bool(owner) and not (WORKSPACE / owner).is_dir()
+    return bool(owner) and owner != SYSTEM and not (WORKSPACE / owner).is_dir()
 
 
 def move_instance(project, instance, to):
@@ -3032,10 +3105,16 @@ def container_net_own(node_id):
     out = {}
     for owner, comps in owned.items():
         to = set(comps)
-        for r in (reads_of(owner) if reads_of else []) or []:
+        if owner == SYSTEM:
+            # BuilderBot's own (R180): every compose project here, the ones
+            # named for an older agent and `all` for one that reads it,
+            # which covers a container nobody here knows of.
+            for other in owned.values():
+                to |= other
+        for r in (reads_of(owner) if reads_of and owner != SYSTEM else []) or []:
             to |= owned.get(r, set())
         for c in comps:
-            out[c] = {"owner": owner, "to": sorted(to)}
+            out[c] = {"owner": owner, "to": sorted(to)} | ({"all": True} if owner == SYSTEM else {})
     return dict(sorted(out.items()))
 
 
@@ -3828,6 +3907,8 @@ def _head(project, instance=None):
     still a commit this can name."""
     ref = (str(_read_rec(project, instance).get("ref") or "").strip()
            if instance else "")
+    if not (WORKSPACE / project).is_dir():
+        return ""                      # no tree to ask (B634, as _dirty)
 
     def run():
         r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
@@ -3840,6 +3921,11 @@ def _dirty(project):
     # Without taking the index lock: this is polled for the row, and git
     # status refreshing the index would hold it just as a session in the
     # same tree runs git and meets index.lock: File exists (B155).
+    # No tree, no question: a record under a written container's name that
+    # lost its source mark (one a late job wrote back after a Remove) sent
+    # git to a directory that is not there on every poll (B634).
+    if not (WORKSPACE / project).is_dir():
+        return False
     r = _run(["git", "-C", str(WORKSPACE / project), "status", "--porcelain"],
              timeout=10, env_extra={"GIT_OPTIONAL_LOCKS": "0"})
     return r["code"] == 0 and bool(r["out"].strip())

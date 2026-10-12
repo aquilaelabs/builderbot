@@ -27,12 +27,11 @@ if (process.env.BB_COVERAGE_DIR){
   process.env.BB_COVERAGE_SUITE = 'agent';
   process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot_agent';   // the copy's modules count as the tree's
 }
-// The toolchain store is scoped by platform (roadmap R19): a machine's
-// toolchains live under <store>/<os>-<arch>, so every fixture written INTO a
-// store goes there, while the store's own path (the setting) stays the
-// share.
-const SCOPE = `linux-${execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim()}`;
-const PK = `${DIR}/agenttoolchains/${SCOPE}`;
+// A node's toolchains live under <store>/<node id> (R196), so every fixture
+// written INTO a store goes there, while the store's own path (the setting)
+// stays the share. Set once the node's id is minted, below.
+let SCOPE = '';
+let PK = '';
 const NODE_JSON = `${DIR}/node.json`;
 const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 const api = async (path, body) => {
@@ -56,6 +55,8 @@ await ready(page);
 
 // ---- minting: a pending row, a one-time token -------------------------------
 const minted = await api('/api/v1/nodes', { action: 'enroll', name: 'agentbox', user: 'nobody' });
+SCOPE = minted.id;
+PK = `${DIR}/agenttoolchains/${SCOPE}`;
 // The node's boot id, once its census reports the session half.
 let nodeBoot = '';
 ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(minted.id),
@@ -636,18 +637,46 @@ second, turns = None, 0
 while second is None and turns < 100:
     time.sleep(0.05); turns += 1
     second = a.hello_step()
-# ...and a hello asked for at once (the clock zeroed) is said now, with a
-# census of its own, and a census still on its way is let go.
-a.hello_at = 0
+# ...and a hello asked for again (the clock zeroed) lets a census still on
+# its way go and takes a fresh one beside the loop too, saying hello once
+# it is there: taken on the loop, a controller nudging once a minute kept
+# the node in census all day and no job was picked up (B644).
+a.hello_said, a.hello_at = True, 0
 a.census_thread = threading.Thread(target=lambda: time.sleep(0.2)); a.census_thread.start()
 a.census_next = {'stale': True}
 now = a.hello_step()
-print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'dropped': a.census_next is None and a.census_thread is None}))
+fresh, turns = None, 0
+while fresh is None and turns < 100:
+    time.sleep(0.05); turns += 1
+    fresh = a.hello_step()
+# ...and one asked for again while that census is on its way lets it go
+# and takes a fresh one before the hello: the toolchain census a refusal
+# asked for came back without the toolchain just installed (B647).
+taken = []
+def counted():
+    time.sleep(0.3)
+    taken.append(len(taken))
+    return {'census': len(taken)}
+a.census_take = counted
+a.hello_said, a.hello_at, a.census_asked = True, 0, False
+a.hello_step()                      # the first asked census on its way
+a.hello_again('a second ask')
+twice, turns = None, 0
+while twice is None and turns < 100:
+    time.sleep(0.05); turns += 1
+    twice = a.hello_step()
+# ...while the first hello of a process is said on the loop, at once.
+a.hello_said, a.hello_at = False, 0
+first_of_process = a.hello_step()
+print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'fresh': fresh, 'twice': twice, 'taken': len(taken), 'first_of_process': first_of_process, 'dropped': a.census_next is None and a.census_thread is None}))
 `], { encoding: 'utf8' }).trim();
       const r = JSON.parse(said);
-      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 2
-         && r.said[0] && r.said[0].slow && r.now && r.said[1] === null && r.dropped,
-         `the loop's hello waits for a census taken beside it and says hello with it, and a hello asked for at once takes its own census and lets a pending one go (${said})`);
+      ok(r.twice && r.taken === 2 && r.twice[1].taken && r.twice[1].taken.census === 2,
+         `a hello asked for again while its census is on its way lets that one go and takes a fresh one before saying hello (${r.taken} taken, said with ${JSON.stringify(r.twice && r.twice[1].taken)})`);
+      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 4
+         && r.said[0] && r.said[0].slow && r.now === null && r.fresh && r.said[1] && r.said[1].slow
+         && r.first_of_process && r.said[3] === null && r.dropped,
+         `the loop's hello waits for a census taken beside it and says hello with it; one asked for again lets a pending census go and takes its own beside the loop; the process's first is said at once (${said})`);
     }
     // B167: the distribution's own root ttyd is switched off by the agent on
     // a managed node, not only by a provisioner run that may never come
@@ -901,6 +930,13 @@ print(json.dumps({
                          {'name': 'beta-db-1', 'compose': 'beta', 'ips': ['172.20.0.3'], 'bridges': ['br-bbbbbbbbbbbb'], 'ports': [5432]},
                          {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9'], 'bridges': ['br-cccccccccccc'], 'ports': [9000]}],
                         {'alpha': {'owner': 'alpha', 'to': ['alpha', 'beta']}, 'beta': {'owner': 'beta', 'to': ['beta']}}),
+  # ...and BuilderBot's own (R180): the map's 'all' gives a System-owned
+  # compose project every bridge and every published port here, the
+  # stranger's included, which the controller never named.
+  'ctrsys': m.ctrnet_reach([{'name': 'alpha-app-1', 'compose': 'alpha', 'ips': ['172.18.0.2'], 'bridges': ['br-aaaaaaaaaaaa'], 'ports': [8080]},
+                            {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9'], 'bridges': ['br-cccccccccccc'], 'ports': [9000]},
+                            {'name': 'monitor-1', 'compose': 'monitor', 'ips': ['172.22.0.2'], 'bridges': ['br-dddddddddddd'], 'ports': [3000]}],
+                           {'alpha': {'owner': 'alpha', 'to': ['alpha']}, 'monitor': {'owner': 'System', 'to': ['alpha', 'monitor'], 'all': True}}),
   'ctrfill': m.ctrnet_fill(['br-aaaaaaaaaaaa'], [('br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa')], [('br-aaaaaaaaaaaa', 8080)], [('192.168.1.15', 7680)], ['192.168.1.1']),
   'ctrtable': m.ctrnet_table(),
   'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
@@ -917,6 +953,10 @@ print(json.dumps({
          `a session's resolvers are the node's upstream ones, IPv4 and off the loopback, and none when the node names only its loopback (${JSON.stringify(sn.ns)})`);
       ok(/\nSESSION_NET=on\nSESSION_NET_CIDR=10\.231\.0\.0\/16\n$/.test(sn.on) && !/SESSION_NET/.test(sn.off),
          '...the layout file says so only when it is on, and an older bb-session reads the file it always read');
+      ok(sn.ctrsys[1].some(p => p[0] === 'br-dddddddddddd' && p[1] === 'br-cccccccccccc')
+         && sn.ctrsys[2].some(p => p[0] === 'br-dddddddddddd' && p[1] === 9000)
+         && !sn.ctrsys[1].some(p => p[0] === 'br-aaaaaaaaaaaa' && p[1] === 'br-dddddddddddd'),
+         `a System-owned compose project reaches every bridge and port here, the stranger's included, and nobody reaches it back (${JSON.stringify(sn.ctrsys[1])})`);
       ok(JSON.stringify(sn.ctr[0]) === JSON.stringify(['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb', 'br-cccccccccccc'])
          && JSON.stringify(sn.ctr[1]) === JSON.stringify([['br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa'], ['br-aaaaaaaaaaaa', 'br-bbbbbbbbbbbb'], ['br-bbbbbbbbbbbb', 'br-bbbbbbbbbbbb'], ['br-cccccccccccc', 'br-cccccccccccc']])
          && JSON.stringify(sn.ctr[2]) === JSON.stringify([['br-aaaaaaaaaaaa', 5432], ['br-aaaaaaaaaaaa', 8080], ['br-bbbbbbbbbbbb', 5432], ['br-cccccccccccc', 9000]]),
@@ -986,19 +1026,26 @@ cannot = {'conf_on': sn.conf_on, 'ready': os.path.exists(ready), 'status': dict(
 m.sessnet_can = lambda: (True, ''); sn.can_at = 0
 sn.step()
 can = {'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS), 'nft': [r for r in ran if r[0] == m.NFT_BIN]}
+# A step with nothing moved asks for no hello, with the containers' entry
+# (ctr) on the stored status beside the session's own keys (B647).
+a.hello_at = 1
+sn.step()
+still = a.hello_at
 a.state['session_net'] = {'on': False, 'own': {}}
 sn.step()
 off1 = {'conf_on': sn.conf_on, 'up': sn.up, 'ready': os.path.exists(ready)}
 sn.empty_since -= 60
 sn.step()
 off2 = {'up': sn.up, 'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS)}
-print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'refreshed': a.refreshed}))
+print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'refreshed': a.refreshed, 'still': still, 'ctr': 'ctr' in m.SESSNET_STATUS}))
 `], { encoding: 'utf8' }).trim().split('\n').pop());
       ok(st.cannot.conf_on === true && /SESSION_NET=on/.test(st.cannot.conf) && st.cannot.ready === false
          && st.cannot.status.active === false && /root/.test(st.cannot.status.why),
          `wanted and not possible is closed: the layout file says on so bb-session refuses, the ready mark is gone, and the row hears why (${JSON.stringify(st.cannot.status)})`);
       ok(st.can.ready === true && st.can.status.active === true && st.can.nft.length >= 2,
          `wanted and possible makes the table and the sets, and writes the mark last (${st.can.nft.length} nft calls)`);
+      ok(st.still === 1 && st.ctr === true,
+         `a step with nothing moved asks for no hello, the containers' entry on the stored status notwithstanding (B647: clock ${st.still}, ctr ${st.ctr})`);
       ok(st.off1.conf_on === false && st.off1.up === true && st.off2.up === false && st.off2.ready === false
          && st.refreshed === 1,
          'off takes the layout file off at once and the table down only after a half-minute with no session, since one may still be making its link');
@@ -2131,11 +2178,10 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         (await api(`/api/v1/jobs?id=${long.job}`)).state) ? true : null, 20000);
     }
     // The Docker manager's listing, the same way. Its `docker ps` is a read
-    // on the node; while the node was on a job it slept up to four seconds
-    // hoping the job would end, then gave back whatever it had. The light
-    // lane takes a short read beside a build now, so a first look runs at
-    // once, and a later look during the same job is the kept listing, marked
-    // stale, in no time at all.
+    // on the node, and the light lane takes it beside a build, so a look
+    // during a job is asked of the node and comes back fresh: it used to be
+    // the kept listing, marked stale, which on a shared node was most of the
+    // time and through every change made from the tab (B664, 11 Oct).
     {
       await api('/api/prefs', { project: 'ep.silon', node: minted.id });
       const first = await api(`/api/docker?node=${minted.id}`);
@@ -2145,8 +2191,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const again = await api(`/api/docker?node=${minted.id}`);
       const took = Date.now() - t0;
       const still = (await api(`/api/v1/jobs?id=${long.job}`)).state;
-      ok(!first.error && !again.error && again.stale === true && took < 2000 && still === 'running',
-         `the Docker manager's listing during a job is the kept one, at once and marked stale (${took}ms, stale ${
+      ok(!first.error && !again.error && !again.stale && took < 9000 && still === 'running',
+         `the Docker manager's listing during a job is asked of the node, fresh and not marked stale (${took}ms, stale ${
            again.stale}, first ${first.error || 'ok'}, the job ${still})`);
       await api('/api/v1/jobs', { action: 'cancel', id: long.job });
       await until(async () => ['succeeded', 'failed', 'canceled'].includes(
@@ -2180,8 +2226,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
       }, 30000);
       const log = ef?.log || '';
-      ok(/root=.*agenttoolchains/.test(log) && /java=.*agenttoolchains\/linux-[a-z0-9_]+\/jdk/.test(log)
-         && /android=.*agenttoolchains\/linux-[a-z0-9_]+\/android/.test(log),
+      ok(/root=.*agenttoolchains/.test(log) && /java=.*agenttoolchains\/n_[0-9a-f]+\/jdk/.test(log)
+         && /android=.*agenttoolchains\/n_[0-9a-f]+\/android/.test(log),
          `a build job gets the node's toolchain store root, JAVA_HOME and ANDROID_HOME (${
            (log.match(/root=.*/) || [''])[0].slice(0, 60)})`);
       ok(/cilog=.*agentdata\/ci-logs/.test(log),
@@ -2280,8 +2326,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            JSON.stringify(im)})`);
       ok(!im.some(x => /android-33/.test(x.id)),
          '...and an empty image directory is not one: a half-removed tree is not a bootable image');
-      ok(/path=[^\n]*agenttoolchains\/linux-[a-z0-9_]+\/jdk\/bin/.test(log)
-         && /path=[^\n]*agenttoolchains\/linux-[a-z0-9_]+\/go\/bin/.test(log),
+      ok(/path=[^\n]*agenttoolchains\/n_[0-9a-f]+\/jdk\/bin/.test(log)
+         && /path=[^\n]*agenttoolchains\/n_[0-9a-f]+\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');
       // ...composed from the catalog's layout, sent at hello, rather than
       // from a table in the agent that has to agree with three others.
@@ -2454,7 +2500,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // same bundle at start (roadmap #24), and a second unpack of the same
     // digest is exactly what the digest is for.
     ok(pfin && pfin.type === 'toolchain'
-       && (/bb .* unpacked into .*agenttoolchains\/linux-[a-z0-9_]+\/\.bb/.test(pfin.log)
+       && (/bb .* unpacked into .*agenttoolchains\/n_[0-9a-f]+\/\.bb/.test(pfin.log)
            || existsSync(`${PK}/.bb/current/scripts/bb`))
        && /== bb toolchains remove flutter/.test(pfin.log) && /not installed|unknown toolchain/.test(pfin.log),
        `the bundle lands in the toolchain store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
@@ -2491,14 +2537,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          `a node's finished toolchain job carries an errors field for the rows (${JSON.stringify(tcv?.job?.errors)})`);
       const log = [
         'toolchain', '== system packages for graphics: fonts-dejavu-core',
-        '== bb toolchains install diagrams', '[builderbot] installing diagrams into /mnt/SDK/linux-x86_64/diagrams',
+        '== bb toolchains install diagrams', '[builderbot] installing diagrams into /mnt/SDK/n_9381e721/diagrams',
         '######################################################################## 100.0%',
         '[builderbot] diagrams ready: new shells pick it up',
-        '== bb toolchains install graphics', '[builderbot] installing graphics into /mnt/SDK/linux-x86_64/graphics',
+        '== bb toolchains install graphics', '[builderbot] installing graphics into /mnt/SDK/n_9381e721/graphics',
         '#=#=#', '##O#-#',
         '##O=#  #                                                   curl: (22) The requested URL returned error: 404',
         '[builderbot] ERROR: could not download https://example.invalid/ImageMagick-gcc-x86_64.AppImage',
-        '[builderbot] WARN: install failed (exit 1); removing the partial /mnt/SDK/linux-x86_64/graphics',
+        '[builderbot] WARN: install failed (exit 1); removing the partial /mnt/SDK/n_9381e721/graphics',
         '1 of 2 did not install', ''].join('\n');
       const parsed = JSON.parse(execFileSync('python3', ['-c', `
 import json, sys, types
@@ -2767,7 +2813,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // The rest of that file is the node's job environment: without it a CI
     // job's PATH was the bare system's, and the browser suite skipped with
     // exit 0 on every run (bug B74).
-    ok(/^SDK_ROOT=.*(agenttoolchains|fakeshare\/toolchains)\/linux-[a-z0-9_]+$/m.test(renv)
+    ok(/^SDK_ROOT=.*(agenttoolchains|fakeshare\/toolchains)\/n_[0-9a-f]+$/m.test(renv)
        && /^PATH=.*(agenttoolchains|fakeshare\/toolchains)/m.test(renv)
        && /^ANDROID_HOME=.*\/android$/m.test(renv) && /^BB_CI_LOG_DIR=/m.test(renv),
        '...and carries the same toolchain environment every bb job on the node gets, so CI sees the store');
@@ -3065,6 +3111,11 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
 echo "Installing Claude Code (stub) for $USER into $HOME"
 echo "stub-installed" >> "${DIR}/claude-installer.log"
 `, { mode: 0o755 });
+    // The record says the session half is up before Install is pressed: the
+    // ttyd restart above asked for a hello, whose census is taken beside the
+    // loop now rather than before the next job is taken (B644), so for a few
+    // seconds the row is behind the machine.
+    await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
     // From the node's Toolchains tab, where Claude Code is a row (R145).
     const cu = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['claude-code'] });
     ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains tab queues the claude-update job on this node (${cu.job || cu.error})`);
@@ -3184,7 +3235,15 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       ok(made.ok && (up3.ok || up3.started) && jk && /bind directory .*\/kept \(already there, left as it is\)/.test(jk.log || ''),
          `a bind directory that exists already is left as it is, and the job says so (${jk?.state}: ${
             ((jk?.log || '').match(/bind directory [^\n]*/) || [''])[0].slice(0, 90)})`);
-      await api('/api/devapp', { project: 'ep.silon', instance: 'kept', action: 'remove' });
+      const rm = await api('/api/devapp', { project: 'ep.silon', instance: 'kept', action: 'remove' });
+      // Waited for: `main` has no record until something writes one, and
+      // instances() offers it only while the project has none, so the
+      // env-set on main below met "no instance main" whenever this remove
+      // had not yet forgotten kept (a race the step used to win, 12 Oct).
+      await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${rm.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 60000);
     }
     // A compose file that reads its settings through `env_file: .env`: the
     // project's own .env, which BuilderBot never writes. The instance's env

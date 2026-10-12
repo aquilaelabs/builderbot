@@ -156,12 +156,13 @@ for (const until = Date.now() + 20000; Date.now() < until
      && await page.evaluate(async () => { await refresh(); return pollFails; }) < 2;) await sleep(100);
 const dead = await page.evaluate(() => ({
   red: !!document.getElementById('dot')?.classList.contains('off'),
-  title: document.getElementById('dot')?.getAttribute('title') || '',
+  title: document.getElementById('dot')?.getAttribute('aria-label') || '',
+  line: document.getElementById('pollWhy')?.hidden ? '' : document.getElementById('pollWhy')?.textContent || '',
   fails: pollFails,
   loading: [...document.querySelectorAll('.card .loading')].map(e => e.textContent),
 }));
-ok(dead.red && /polls failed in a row/.test(dead.title) && dead.fails >= 2,
-   `a failing poll says so on the light, with the count and the reason (${dead.title.slice(0, 80)})`);
+ok(dead.red && /polls failed in a row/.test(dead.line) && dead.line === dead.title && dead.fails >= 2,
+   `a failing poll says so in a line under the header, with the count and the reason, and the light is named by it (${dead.line.slice(0, 80)})`);
 // ...and the case that actually bit: a page whose FIRST poll never lands, so
 // no card ever draws and every one of them keeps its initial text.
 await page.reload({ waitUntil: 'domcontentloaded' });
@@ -177,7 +178,8 @@ await page.unroute('**/api/status*');
 await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
 ok(await page.evaluate(() => !document.getElementById('dot').classList.contains('off')
-                             && !document.getElementById('dot').getAttribute('title')
+                             && !document.getElementById('dot').getAttribute('aria-label')
+                             && document.getElementById('pollWhy').hidden
                              && pollFails === 0),
    '...and it all clears the moment a poll lands again');
 
@@ -224,7 +226,7 @@ await page.evaluate(() => refresh());
 await page.waitForFunction(() => pollFails >= 2, null, { timeout: 5000 });
 await page.unroute('**/api/status*');
 const tripped = await page.evaluate(() => ({
-  title: document.getElementById('dot').getAttribute('title') || '',
+  title: document.getElementById('pollWhy').textContent || '',
   loading: [...document.querySelectorAll('.card .loading')].map(e => e.textContent),
 }));
 ok(/fails on its answer/.test(tripped.title) && /layout boom/.test(tripped.title)

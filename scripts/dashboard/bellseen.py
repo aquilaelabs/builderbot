@@ -92,6 +92,25 @@ def filter_rows(uid, rows):
             if not tools:
                 continue
             r["tools"] = tools
+        elif r.get("kind") == "relocate":
+            # To when it failed: put away until another one fails.
+            r["key"] = f"relocate:{r['id']}@{r.get('at') or 0}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
+        elif r.get("kind") == "image":
+            # To the digests it would move to (R195): put away until one moves.
+            r["key"] = f"image:{r['id']}@{r.get('digest') or ''}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
+        elif r.get("kind") == "nginx":
+            # To the digest it would move to (R192): put away until the
+            # registry moves the line again.
+            r["key"] = f"nginx:{r['id']}@{r.get('digest') or ''}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
         elif not r.get("window") and r.get("id") and r.get("to"):
             r["key"] = f"agent:{r['id']}@{r['to']}"
             if r["key"] in gone:

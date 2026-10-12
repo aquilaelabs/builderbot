@@ -115,7 +115,7 @@ function nbBugsView({$, nb, project}){
         <div><label>Severity</label>
           <select class="bfSev">${SEVS.map(x =>
             `<option value="${x}"${(b?.severity || "medium") === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
-        <div><label>Where<span class="help" data-tip="files, component, screen" tabindex="0">?</span></label>
+        <div><label>Where<span class="help" data-help="files, component, screen" tabindex="0">?</span></label>
           <textarea class="bfArea proseline" rows="1" maxlength="200"
             placeholder="scripts/dashboard/index.html, the picker">${v("area")}</textarea></div>
       </div>
@@ -130,7 +130,7 @@ function nbBugsView({$, nb, project}){
           <textarea class="bfActual proseline" rows="1" maxlength="300"
             >${v("actual")}</textarea></div>
       </div>
-      <label>Notes<span class="help" data-tip="cause, analysis, fix plan" tabindex="0">?</span></label>
+      <label>Notes<span class="help" data-help="cause, analysis, fix plan" tabindex="0">?</span></label>
       <textarea class="bfNotes" spellcheck="false"
         placeholder="what is known about why; mostly Claude's half">${v("notes")}</textarea>
       <div class="actbar">

@@ -2335,7 +2335,21 @@ def page_functions(idx):
             and "/test/" not in "/" + f]
 
 
-def q_unused(idx, path=None):
+def _decorated(f, line):
+    """Whether the python def at `line` carries a decorator: a framework
+    reaches it by registration (Flask's @app.route, @app.before_request), never
+    by a call the map could see (MediaReducer's app.py, 11 Oct)."""
+    try:
+        lines = Path(f).read_text(errors="replace").splitlines()
+    except OSError:
+        return True
+    i = line - 2
+    while i >= 0 and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
+        i -= 1
+    return i >= 0 and lines[i].lstrip().startswith("@")
+
+
+def q_unused(idx, path=None, root="."):
     called = {}
     for c in idx["calls"]:
         called[c["name"]] = called.get(c["name"], 0) + 1
@@ -2365,12 +2379,41 @@ def q_unused(idx, path=None):
             continue
         if called.get(n, 0) == 0 and refs.get(n, 0) - own.get(n, 0) <= 0:
             rows.append(d)
+    # ...and the python modules' own functions (top-level, not dunders, not
+    # the tests'), which this used to skip while answering "nothing on the
+    # page is unused" for a python file as if it had looked (11 Oct, where
+    # it hid two dead functions). A python name is reached in more ways than
+    # a call the map sees (a route table's string, getattr, a test), so one
+    # counts as unused only when its name appears nowhere in the tree but
+    # its own definition.
+    words = None
+    for f, entry in idx["files"].items():
+        if Path(f).suffix != ".py" or is_test(f) or "/unit/" in "/" + f or "/test/" in "/" + f:
+            continue
+        if path and not (f == path or f.endswith("/" + path)):
+            continue
+        for d in entry["defs"]:
+            n = d["name"]
+            if d["kind"] != "def" or d.get("parent") or n.startswith("__") \
+                    or called.get(n, 0) or refs.get(n, 0) > 1:
+                continue
+            if words is None:
+                words = {}
+                for g in idx["files"]:
+                    try:
+                        for w in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", (Path(root) / g).read_text(errors="replace")):
+                            words[w] = words.get(w, 0) + 1
+                    except OSError:
+                        pass
+            if words.get(n, 0) <= 1 and not _decorated(Path(root) / f, d.get("line") or 0):
+                rows.append(d)
     if not rows:
-        return ["nothing on the page is unused by this measure" + (f" in {path}" if path else "")]
-    out = [f"{len(rows)} page function{'s' if len(rows) != 1 else ''} nothing calls and nothing passes by name"
+        what = "python module" if path and path.endswith(".py") else "page" if path else "page or python module"
+        return [f"nothing in this {what} is unused by this measure" + (f" ({path})" if path else "")]
+    out = [f"{len(rows)} function{'s' if len(rows) != 1 else ''} nothing calls and nothing passes by name"
            " (" + GREP_FIRST.format("grep each")[1:-1] + "):"]
     for d in sorted(rows, key=lambda d: (d["file"], d["line"])):
-        out.append(f"  {d['file']}:{d['line']}  {d['name']}" + (f"  (in {d['parent']})" if d["parent"] else ""))
+        out.append(f"  {d['file']}:{d['line']}  {d['name']}" + (f"  (in {d['parent']})" if d.get("parent") else ""))
     return out
 
 
@@ -3194,7 +3237,7 @@ def main(argv):
         print(f"coverage: {len(cov['suites'])} suites on record")
         return 0
     if verb == "unused":
-        print("\n".join(q_unused(idx, rest[0] if rest else None)))
+        print("\n".join(q_unused(idx, rest[0] if rest else None, root)))
         return 0
     if verb == "coverage":
         print("\n".join(q_coverage(idx, coverage_load(root))))

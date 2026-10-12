@@ -22,6 +22,8 @@ The data travels through the controller's images store, the way a shipped
 image does, and lives there from the first job's upload to the second job's
 end. Both nodes must be agent nodes: a plan is what carries the steps.
 """
+import posixpath
+import time
 import os
 import threading
 
@@ -37,7 +39,7 @@ HELPER = "busybox:1.36"
 PACK_PY = r"""
 import json, os, subprocess, sys, tarfile
 pname, out, data, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-cdir = os.path.dirname(out)
+work = os.path.dirname(out)
 names = subprocess.run(["docker", "volume", "ls", "-q", "--filter",
                         "label=com.docker.compose.project=" + pname],
                        check=True, capture_output=True, text=True).stdout.split()
@@ -45,38 +47,42 @@ vols, parts = [], []
 for i, v in enumerate(sorted(names)):
     part = f"vol-{i}.tgz"
     print(f"packing the volume {v}", flush=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{cdir}:/o", helper,
+    subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{work}:/o", helper,
                     "tar", "czf", "/o/" + part, "-C", "/v", "."], check=True)
     vols.append({"name": v, "part": part})
     parts.append(part)
 has_data = bool(data) and os.path.isdir(data)
 if has_data:
     print(f"packing the data directory {data}", flush=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v:ro", "-v", f"{cdir}:/o", helper,
+    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v:ro", "-v", f"{work}:/o", helper,
                     "tar", "czf", "/o/data.tgz", "-C", "/v", "."], check=True)
     parts.append("data.tgz")
-with open(os.path.join(cdir, "manifest.json"), "w") as f:
+with open(os.path.join(work, "manifest.json"), "w") as f:
     json.dump({"project": pname, "volumes": vols, "data": has_data}, f)
 with tarfile.open(out, "w") as t:
     for p in ["manifest.json", *parts]:
-        t.add(os.path.join(cdir, p), arcname=p)
+        t.add(os.path.join(work, p), arcname=p)
 for p in ["manifest.json", *parts]:
-    os.remove(os.path.join(cdir, p))
+    os.remove(os.path.join(work, p))
 print(f"packed {len(vols)} volume(s)" + (" and the data directory" if has_data else ""), flush=True)
 """
 
 # Run on the new node: the volumes made again under the new instance's name
 # (labeled as compose labels its own, so compose takes them as its), filled,
-# and the data directory filled. A volume already there is refused rather
-# than written over.
+# and the data directory filled. A volume already there with anything in
+# it is refused rather than written over; an empty one (what a try that
+# failed left behind) is filled. Neither script may spell the plan's {cdir}
+# placeholder in its text: the agent rewrites that wherever it stands in
+# argv, the python included, and the helper's mount pointed at the compose
+# directory while the tar had gone into in/ (B659).
 UNPACK_PY = r"""
 import json, os, subprocess, sys, tarfile
 pname, old, src, data, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
-cdir = os.path.join(os.path.dirname(src), "in")
-os.makedirs(cdir, exist_ok=True)
+work = os.path.join(os.path.dirname(src), "in")
+os.makedirs(work, exist_ok=True)
 with tarfile.open(src) as t:
-    t.extractall(cdir, filter="data")
-m = json.load(open(os.path.join(cdir, "manifest.json")))
+    t.extractall(work, filter="data")
+m = json.load(open(os.path.join(work, "manifest.json")))
 have = set(subprocess.run(["docker", "volume", "ls", "-q"], check=True,
                           capture_output=True, text=True).stdout.split())
 for v in m.get("volumes") or []:
@@ -84,19 +90,24 @@ for v in m.get("volumes") or []:
     key = name[len(old) + 1:] if name.startswith(old + "_") else name
     new = f"{pname}_{key}" if name.startswith(old + "_") else name
     if new in have:
-        sys.exit(f"a volume called {new} is already on this node: remove it first, or pick another name")
-    print(f"making the volume {new}", flush=True)
-    subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + pname,
-                    "--label", "com.docker.compose.volume=" + key, new], check=True, capture_output=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v", "-v", f"{cdir}:/i:ro", helper,
+        held = subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v:ro", helper, "sh", "-c", "ls -A /v | head -1"],
+                              check=True, capture_output=True, text=True).stdout.strip()
+        if held:
+            sys.exit(f"a volume called {new} is already on this node with files in it: remove it first, or pick another name")
+        print(f"filling the empty volume {new} left by an earlier try", flush=True)
+    else:
+        print(f"making the volume {new}", flush=True)
+        subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + pname,
+                        "--label", "com.docker.compose.volume=" + key, new], check=True, capture_output=True)
+    subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v", "-v", f"{work}:/i:ro", helper,
                     "tar", "xzf", "/i/" + v["part"], "-C", "/v"], check=True)
 if m.get("data"):
     if not data:
         sys.exit("the old node had a data directory and this one has no place for it")
     print(f"filling the data directory {data}", flush=True)
-    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v", "-v", f"{cdir}:/i:ro", helper,
+    subprocess.run(["docker", "run", "--rm", "-v", f"{data}:/v", "-v", f"{work}:/i:ro", helper,
                     "tar", "xzf", "/i/data.tgz", "-C", "/v"], check=True)
-subprocess.run(["rm", "-rf", cdir, src])
+subprocess.run(["rm", "-rf", work, src])
 print("unpacked", flush=True)
 """
 
@@ -142,6 +153,159 @@ def _set(project, instance, **fields):
             else:
                 rec[k] = v
         devapp.write_json(devapp.FILE, d)
+    devapp._bump()
+
+# Run on the node when a written container is renamed while down (the
+# operator, 11 Oct: the name is editable in the Edit dialog once the
+# container is down): each volume of the old compose project made again
+# under the new name with compose's labels and filled through the helper,
+# the old one removed, and the data directory moved. Nothing in it spells
+# the plan's {cdir} placeholder (B659).
+RENAME_PY = r"""
+import os, subprocess, sys
+old, new, data_old, data_new, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+# The data directory first, and as root inside the helper: the appdata root
+# is root's, so the jobs account can neither make nor rename a directory in
+# it (aquilaeLabs, 11 Oct: the volume had moved and the directory could
+# not, leaving the record on the old name). A rename in place, so it is
+# instant and is put back if a volume below fails.
+moved = False
+def dmove(a, b):
+    root = os.path.dirname(a)
+    subprocess.run(["docker", "run", "--rm", "-v", root + ":/r", helper, "sh", "-c",
+                    'if [ -e "/r/$2" ]; then rmdir "/r/$2" || exit 3; fi; mv "/r/$1" "/r/$2"',
+                    "sh", os.path.basename(a), os.path.basename(b)], check=True)
+if data_old and data_new and data_old != data_new and os.path.isdir(data_old):
+    if os.path.dirname(data_old) != os.path.dirname(data_new):
+        sys.exit("the data directory would leave its root: " + data_old + " to " + data_new)
+    print("moving the data directory to " + data_new, flush=True)
+    try:
+        dmove(data_old, data_new)
+    except subprocess.CalledProcessError:
+        sys.exit(data_new + " is already there with files in it: move it away first, or pick another name")
+    moved = True
+try:
+    names = subprocess.run(["docker", "volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + old],
+                           check=True, capture_output=True, text=True).stdout.split()
+    have = set(subprocess.run(["docker", "volume", "ls", "-q"], check=True, capture_output=True, text=True).stdout.split())
+    for v in sorted(names):
+        key = v[len(old) + 1:] if v.startswith(old + "_") else v
+        target = f"{new}_{key}" if v.startswith(old + "_") else v
+        if target == v:
+            continue
+        if target in have:
+            raise SystemExit(f"a volume called {target} is already on this node: remove it first, or pick another name")
+        print(f"carrying the volume {v} to {target}", flush=True)
+        subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + new,
+                        "--label", "com.docker.compose.volume=" + key, target], check=True, capture_output=True)
+        subprocess.run(["docker", "run", "--rm", "-v", f"{v}:/v:ro", "-v", f"{target}:/w", helper,
+                        "sh", "-c", "cp -a /v/. /w/"], check=True)
+        subprocess.run(["docker", "volume", "rm", v], check=True, capture_output=True)
+except BaseException:
+    if moved:
+        print("putting the data directory back at " + data_old, flush=True)
+        dmove(data_new, data_old)
+    raise
+print("renamed", flush=True)
+"""
+
+
+def rename_job(name, new, instance=None):
+    """A container renamed while down: its volumes carried to the new
+    prefix and its data directory moved on its node, by one job; the
+    records follow in rename_done. `name` is a written container's, or with
+    `instance` the project a project's container is made from.
+    {"ok", "job"} or {"error"}."""
+    if devapp.queue is None:
+        return {"error": "no job queue is configured here"}
+    inst = devapp.MAIN if instance is None else instance
+    old = devapp._pname(name, inst)
+    nid = devapp._instance_node(name, inst)
+    n = _node_row(nid)
+    if not n or n.get("kind") != "agent" or n.get("state") != "online":
+        return {"error": "the node it is on is not an agent node that is online, and only one of those can carry its data"}
+    with devapp.on_node(nid):
+        data_old = devapp.dev_data_dir(name, inst, make=False) or ""
+        data_new = (posixpath.join(devapp.appdata_root(), new) if data_old else "")
+    step = {"name": "renaming", "argv": ["python3", "-c", RENAME_PY, old, new, data_old, data_new, HELPER],
+            "timeout": 3600}
+    spec = {"project": name, "instance": inst, "action": "rename", "name": old, "files": {},
+            "dirs": [], "gate": False, "rename": {"to": new, "own": instance is not None}, "plan": [step]}
+    _set(name, inst, renaming=new)
+    r = devapp.queue.job_add("operator", {"node": nid}, "compose", spec, name)
+    if r.get("error"):
+        _set(name, inst, renaming=None)
+        return r
+    devapp._bump()
+    return {"ok": True, "started": True, "job": r["job"], "name": new}
+
+
+def rename_done(job, state):
+    """compose_done's turn for a rename's job: the records, the compose
+    directory and the env follow the data under the new name; a failure
+    leaves everything as it was and says what the job last wrote."""
+    sp = (job or {}).get("spec") or {}
+    old = sp.get("project") or ""
+    inst = sp.get("instance") or devapp.MAIN
+    rn = sp.get("rename") or {}
+    new = str(rn.get("to") or "")
+    if not old or not new:
+        return ""
+    if state != "succeeded":
+        _set(old, inst, renaming=None)
+        said = _last_said(job)
+        return "renaming it failed" + (f": {said}" if said else "")
+    if rn.get("own"):
+        _name_instance(old, inst, new)
+    else:
+        _rename_records(old, new)
+    return ""
+
+
+def _name_instance(project, instance, new):
+    """A project's container given its own name: the record carries it
+    (devapp._pname reads it), and its env file follows; the instance keeps
+    its key, so its worktree, its jobs and bb devapp --instance are where
+    they were. A name that is the project's own default again is no name."""
+    src = devapp.env_path(project, instance)
+    with devapp._lock:
+        d = devapp._load()
+        rec = (d.get(project) or {}).get(instance)
+        if rec is None:
+            return
+        rec.pop("renaming", None)
+        default = devapp._slug(project) if instance == devapp.MAIN else devapp._slug(instance)
+        if new == default:
+            rec.pop("name", None)
+        else:
+            rec["name"] = new
+        devapp.write_json(devapp.FILE, d)
+    dst = devapp.env_path(project, instance)
+    try:
+        if src != dst and src.exists() and not dst.exists():
+            src.rename(dst)
+    except OSError as e:
+        print(f"[relocate] renaming {src} to {dst}: {e}", flush=True)
+    devapp._bump()
+
+
+def _rename_records(old, new):
+    """The written container's record under its new key, its compose file's
+    directory and its env file renamed with it; the data and the volumes
+    were carried by the node."""
+    with devapp._lock:
+        d = devapp._load()
+        if old in d and new not in d:
+            d[new] = d.pop(old)
+            (d[new].get(devapp.MAIN) or {}).pop("renaming", None)
+            devapp.write_json(devapp.FILE, d)
+    for src, dst in ((devapp.containers_dir(old), devapp.containers_dir(new)),
+                     (devapp.env_path(old, devapp.MAIN), devapp.env_path(new, devapp.MAIN))):
+        try:
+            if src.exists() and not dst.exists():
+                src.rename(dst)
+        except OSError as e:
+            print(f"[relocate] renaming {src} to {dst}: {e}", flush=True)
     devapp._bump()
 
 
@@ -289,15 +453,30 @@ def _undo(project, plan, why):
         if plan.get("stage") in ("out", "in"):
             _drop(project, dest)
         else:
-            _set(project, dest, relocating=None, relocate_why=why or None)
+            _set(project, dest, relocating=None, relocate_why=why or None,
+                 relocate_at=int(time.time()) if why else None)
         return
     old_env = devapp._read_rec(project, dest).get("relocate_env")
     if isinstance(old_env, str):
         devapp.write_env(project, old_env, dest)
     # As it was: its own node, or none when it followed its project's.
     _set(project, dest, relocating=None, relocate_env=None, node=plan.get("was_node") or None,
-         ship=True if plan.get("was_ship") else None, relocate_why=why or None)
+         ship=True if plan.get("was_ship") else None, relocate_why=why or None,
+         relocate_at=int(time.time()) if why else None)
     _queue_on(project, dest, plan["old"], "start")
+
+
+def _last_said(job):
+    """The last line a failed job wrote, for the row to carry: 'the Jobs
+    tab has why' sent a person to a tab that then showed them nothing
+    (B658), and the why is usually the log's last line (a tar's refusal, a
+    volume already there)."""
+    try:
+        text = (devapp.queue.job((job or {}).get("id"), with_log=True) or {}).get("log") or ""
+    except Exception:            # noqa: BLE001 (a missing log is no reason to lose the row's sentence)
+        text = ""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.startswith(("$ ", "    ", "Traceback"))]
+    return lines[-1][:200] if lines else ""
 
 
 def done(job, state):
@@ -312,8 +491,9 @@ def done(job, state):
     plan = {k: v for k, v in rel.items() if k not in ("stage", "out_job")}
     if stage == "out":
         if state != "succeeded" or not _data_file(project, plan["to"]).is_file():
+            said = _last_said(job)
             _undo(project, plan | {"stage": "out"}, "the data could not be packed on the old node")
-            return "packing its data on the old node failed: the Jobs tab has why"
+            return "packing its data on the old node failed" + (f": {said}" if said else "")
         r = _in_job(project, plan, job.get("id"))
         if r.get("error"):
             _undo(project, plan | {"stage": "out"}, r["error"])
@@ -322,8 +502,9 @@ def done(job, state):
     if stage == "in":
         _data_file(project, plan["to"]).unlink(missing_ok=True)
         if state != "succeeded":
+            said = _last_said(job)
             _undo(project, plan | {"stage": "in"}, "the data could not be unpacked on the new node")
-            return "unpacking its data on the new node failed: the Jobs tab has why"
+            return "unpacking its data on the new node failed" + (f": {said}" if said else "")
         if plan["mode"] == "move":
             _set(project, plan["to"], node=plan["new"], ship=True if plan["ship"] else None)
         _set(project, plan["to"], relocating=plan | {"stage": "build"})
@@ -349,7 +530,7 @@ def built(project, instance, ok):
             _queue_on(project, instance, plan["new"], "down")
         _undo(project, plan | {"stage": "build"}, "it would not build or start on the new node")
         return
-    _set(project, instance, relocating=None, relocate_env=None, relocate_why=None)
+    _set(project, instance, relocating=None, relocate_env=None, relocate_why=None, relocate_at=None)
     if plan["mode"] == "move":
         _queue_on(project, instance, plan["old"], "down")
 
@@ -360,7 +541,7 @@ def data_put(nid, q, stream, length):
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
     rel = sp.get("relocate") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or rel.get("stage") != "out":
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or rel.get("stage") != "out":
         return {"error": "no data is being sent by that job from this node"}, 403
     if length <= 0 or length > 256 * 1024 ** 3:
         return {"error": "the data is between 1 byte and 256 GB"}, 413
@@ -412,7 +593,7 @@ def data_path(nid, q):
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
     rel = sp.get("relocate") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or rel.get("stage") != "in":
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or rel.get("stage") != "in":
         return None, ({"error": "no data is being fetched by that job on this node"}, 403)
     p = _data_file(sp.get("project", ""), sp.get("instance") or "")
     if not p.is_file():
@@ -430,7 +611,32 @@ def view(project, instance):
         step = {"out": "packing its data", "in": "unpacking its data",
                 "build": "building and starting"}.get(plan.get("stage"), "")
         return {"busy": True, "line": f"{verb} to {where}: {step}" if step else f"{verb} to {where}"}
-    if rec.get("relocate_why"):
-        return {"busy": False, "line": f"the last copy or move did not happen: {rec['relocate_why']}"}
+    if rec.get("renaming"):
+        return {"busy": True, "line": f"renaming it to {rec['renaming']}: the node carries its volumes and data"}
+    # Why the last one did not happen is the bell's (attention below), where
+    # it can be put away, and not the row's for ever (the operator, 11 Oct:
+    # a failure from hours before still sat on a row renamed since).
     return None
+
+
+def started(project, instance):
+    """The instance built or started since: a failed copy or move from
+    before is history, and the bell stops carrying it."""
+    if devapp._read_rec(project, instance).get("relocate_why"):
+        _set(project, instance, relocate_why=None, relocate_at=None)
+
+
+def attention(node_name):
+    """The bell's rows: each instance whose last copy or move did not
+    happen, kind relocate, keyed by bellseen on when it failed."""
+    out = []
+    for project, insts in devapp._load().items():
+        for inst, rec in insts.items():
+            if not rec.get("relocate_why") or rec.get("relocating"):
+                continue
+            nid = devapp._instance_node(project, inst)
+            out.append({"kind": "relocate", "id": f"{project}|{inst}", "name": devapp._pname(project, inst),
+                        "project": project, "node": node_name(nid) if nid else "", "node_id": nid or "",
+                        "why": str(rec["relocate_why"]), "at": int(rec.get("relocate_at") or 0)})
+    return out
 

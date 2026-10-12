@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 from .base import (
+    daemon_json_with_ip,
     DEFAULT_STORES,
     DIAL_BACK_S,
     NEEDRESTART_DIR,
@@ -36,7 +37,15 @@ from .toolchains import extract_sandbox_tool
 from .sessnet import session_conf, session_sudoers
 from .runners import runner_dirs, runner_slot
 from .census import _os_release, export_gaps, mounts_now, network_now, services_now
-from .jobs import Job
+from .jobs import Job, pump
+
+
+# The journal kept across boots (R185) and kept to a gigabyte: journald's own
+# ceiling is a tenth of the filesystem up to 4 GB, which on a small VPS is
+# more than the machine can spare and on a large one more than anyone reads.
+# The same bytes as provision-linux.sh's keep_journal writes.
+JOURNAL_DROPIN = ("# Written by BuilderBot (R185): keep the journal across boots, and at most 1G of it.\n"
+                  "[Journal]\nStorage=persistent\nSystemMaxUse=1G\n")
 
 
 class ConfigPlaneMixin:
@@ -84,10 +93,80 @@ class ConfigPlaneMixin:
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
             rc = self._sh(job, [SANDBOX_BIN, "gpu-off"], timeout=120)
-            self.hello_at = 0
+            self.hello_again("the GPU was switched off")
             return ("succeeded", 0) if rc == 0 else ("failed", rc)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def apply_ports_local(self, on):
+        """Published ports bound to 127.0.0.1 by default on this node (R190,
+        the operator, 11 Oct: a port published on a public VPS was open to
+        the world, not only to its nginx): docker's `ip` in daemon.json, and
+        docker restarted once when the file changed (its containers come
+        back on their restart policy). Not root: said, and the census says
+        it is not in force. The hello carries the switch; the first hello
+        of a fresh hosting node applies it before anything runs there."""
+        path = "/etc/docker/daemon.json"
+        if os.geteuid() != 0 or not shutil.which("docker"):
+            # Once per run: it was said on every hello, switch on or off.
+            if not getattr(self, "_ports_said", False):
+                self._ports_said = True
+                log("published ports: this agent is not root here, or docker is not here, so the bind address is left as it is")
+            return
+        try:
+            text = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
+        except OSError as e:
+            log(f"published ports: {path} could not be read ({e})")
+            return
+        new = daemon_json_with_ip(text, on)
+        if new is None:
+            return
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path + ".new", "w", encoding="utf-8") as f:
+                f.write(new)
+            os.replace(path + ".new", path)
+        except OSError as e:
+            log(f"published ports: {path} could not be written ({e})")
+            return
+        log("docker's defaults changed (published ports bound to 127.0.0.1, container logs bounded); restarting docker" if on
+            else "docker's defaults changed (published ports bound to every address, container logs bounded); restarting docker")
+        sc = shutil.which("systemctl")
+        if sc:
+            subprocess.run([sc, "restart", "docker"], capture_output=True, timeout=180, check=False)
+        self.hello_again("published ports' bind address changed")
+
+    def keep_journal(self):
+        """The journal kept across boots (R185), as the provisioner sets it
+        on a fresh enrollment, for a node enrolled before it did: a drop-in,
+        journald restarted only when it is new. Root's; once per agent run."""
+        if getattr(self, "_journal_kept", False):
+            return
+        self._journal_kept = True
+        f = "/etc/systemd/journald.conf.d/50-builderbot.conf"
+        # A managed node only, the way the rest of upkeep tells one: root, and
+        # stamped a sandbox. A guest's journal is its owner's (R23).
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not shutil.which("journalctl"):
+            return
+        try:
+            # The provisioner's keep_journal writes the same bytes; a file
+            # that is not them (an older one, without the ceiling) is
+            # written again.
+            if os.path.isfile(f) and open(f, encoding="utf-8").read() == JOURNAL_DROPIN:
+                return
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            os.makedirs("/var/log/journal", exist_ok=True)
+            with open(f + ".new", "w", encoding="utf-8") as out:
+                out.write(JOURNAL_DROPIN)
+            os.replace(f + ".new", f)
+        except OSError as e:
+            log(f"journal: could not keep it across boots ({e})")
+            return
+        for argv in (["systemd-tmpfiles", "--create", "--prefix", "/var/log/journal"],
+                     ["systemctl", "restart", "systemd-journald"]):
+            if shutil.which(argv[0]):
+                subprocess.run(argv, capture_output=True, timeout=60, check=False)
+        log("journal: kept across boots from now")
 
     def _apply_door(self, job, cfg):
         """The door in for SSH on or off (R174): cloudflared's service
@@ -108,7 +187,7 @@ class ConfigPlaneMixin:
             code = self._sh(job, [sc, "enable" if on else "disable", "--now", "cloudflared"], timeout=120)
         else:
             code = self._sh(job, [TAILSCALE_BIN, "up", "--ssh"] if on else [TAILSCALE_BIN, "down"], timeout=120)
-        self.hello_at = 0
+        self.hello_again("the SSH door was opened or shut")
         if code != 0:
             return "failed", code
         job.say(f"the door is {'open' if on else 'shut'}: {kind}{' at ' + d['host'] if d.get('host') else ''}\n")
@@ -120,7 +199,7 @@ class ConfigPlaneMixin:
         a reboot has to follow; then a hello, so the row reads the display's
         state now rather than at the next census."""
         rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
-        self.hello_at = 0
+        self.hello_again("the GPU was set up")
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_power(self, job, what):
@@ -355,9 +434,13 @@ class ConfigPlaneMixin:
             if not started:
                 job.say(f"systemd-run would not take it ({(r.stderr or '').strip()[:120]}); starting it detached instead\n")
         if not started:
+            # Its output kept on the machine, where its owner can read why
+            # an uninstall stopped: the agent it would have reported to is
+            # what it removes.
+            out = "/var/log/builderbot-uninstall.log" if os.geteuid() == 0 else "/tmp/builderbot-uninstall.log"
             try:
-                proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                        start_new_session=True)
+                with open(out, "ab") as logf:
+                    proc = subprocess.Popen(argv, stdout=logf, stderr=logf, start_new_session=True)
             except OSError as e:
                 job.say(f"could not start the uninstall: {e}\n")
                 return "failed", 69
@@ -413,16 +496,7 @@ class ConfigPlaneMixin:
         if stopped():
             Job._kill(p)
 
-        def pump():
-            try:
-                for line in p.stdout:
-                    text = line.decode("utf-8", "replace")
-                    if text.strip():
-                        job.say(text if text.endswith("\n") else text + "\n")
-            except (OSError, ValueError):
-                pass
-        reader = threading.Thread(target=pump, daemon=True)
-        reader.start()
+        reader = pump(job, p.stdout, keep_blank=False)
         deadline, killed = time.monotonic() + timeout, False
         while reader.is_alive():
             reader.join(0.5)
@@ -478,14 +552,7 @@ class ConfigPlaneMixin:
         if job.canceled:
             job._kill(p)
 
-        def pump():
-            try:
-                for line in p.stdout:
-                    job.say(line.decode("utf-8", "replace"))
-            except (OSError, ValueError):
-                pass
-        reader = threading.Thread(target=pump, daemon=True)
-        reader.start()
+        reader = pump(job, p.stdout)
         deadline, killed = time.monotonic() + timeout, False
         while reader.is_alive():
             reader.join(0.5)

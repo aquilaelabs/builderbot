@@ -458,7 +458,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await refreshUntil(page, () => state?.reports_ok === false, { timeout: 20000 });
   ok(await page.$eval('#bFindings', b => b.disabled),
      'with no readable report the Analysis button is ghosted');
-  ok(/\/reports is not mapped in/.test(await page.$eval('#bFindings', b => b.title)),
+  ok(/\/reports is not mapped in/.test(await page.$eval('#bFindings', b => saidOf(b))),
      '...carrying which of the three reasons it is');
   // The tab is open from the tests above; the gate closes it on the next load.
   await page.reload();
@@ -475,7 +475,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   // from before the directory existed.
   await refreshUntil(page, () => state?.reports === true && state?.reports_ok === false,
                      { timeout: 20000 });
-  ok(/nothing readable/.test(await page.$eval('#bFindings', b => b.title)),
+  ok(/nothing readable/.test(await page.$eval('#bFindings', b => saidOf(b))),
      'a report that does not parse is not a report, and the button says so');
   rmSync(`${DIR}/reports/broken.sarif`, { force: true });
   writeFileSync(`${DIR}/reports/test.sarif`, keep);
@@ -665,34 +665,34 @@ print(json.dumps(out))
                            + "project's settings." });
   ok(/offline/.test(await line()),
      `a node that cannot take one puts the reason on the row (${await line()})`);
-  ok((await line()).split(' ').length <= 14 && !/Sessions run on a node and nowhere else/.test(await line()),
-     '...the first clause of it, not the paragraph: the rest is on the button');
+  ok(/Sessions run on a node and nowhere else/.test(await line()),
+     '...the whole of it, fix included: there is no tooltip to carry the rest (the operator, 11 Oct)');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline',
                       e => e.classList.contains('bad')),
      '...in red, because a dead button with no reason is what somebody stares at');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
-       b => /nowhere else/.test(b.dataset.tip || b.title || '')),
-     '...and the whole of it, fix included, is on the ghosted button, a tap on a phone, since these rows are tipified');
+       b => /nowhere else/.test(saidOf(b))),
+     '...and a screen reader hears the same words on the ghosted button');
   // A no-node project says so on the line, in red. It said nothing there
   // for a week (15 Sep: the fact beside the name was called enough); the
   // operator asked for the line back on 23 Sep after three such rows read
-  // as dead buttons, and a tooltip is nothing on a phone. The fix stays on
-  // the button, where a paragraph is free. The row names no node at all
+  // as dead buttons, and a tooltip is nothing on a phone. The fix is on
+  // the line too since there are no tooltips (11 Oct). The row names no node at all
   // since R82 (25 Sep): a project's nodes are its settings' to show.
   await plant({ session_at: '', locked: false, node_name: '',
                 session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab" });
-  ok(await line() === 'no node to run a Claude session on'
+  ok(await line() === "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab"
      && await page.$('#projects .row:has(.name:text-is("alpha")) .pnode') === null,
-     `a project with no node says so under its name, the first clause only, and nothing beside the name (${await line()})`);
+     `a project with no node says so under its name, with what to do, and nothing beside the name (${await line()})`);
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline', e => e.classList.contains('bad')),
      '...in red, since it is why the button is dead');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
-       b => /^no node to run a Claude session on: pick one/.test(b.dataset.tip || b.title || '')),
+       b => /^no node to run a Claude session on: pick one/.test(saidOf(b))),
      '...while the button carries the fix');
   // ...and a node whose agent is out of window (held) gets the same line.
   await plant({ session_at: 'shed', node_name: 'shed', session_why: '',
                 held: 'shed runs agent 0.5.0 and this controller ships 0.6.93: a different compatibility window, so nothing sent to it is promised to work. Update it from the Nodes tab' });
-  ok(await line() === 'shed runs agent 0.5.0 and this controller ships 0.6.93',
+  ok(/^shed runs agent 0\.5\.0 and this controller ships 0\.6\.93: .*Update it from the Nodes tab$/.test(await line()),
      `a node out of window says so under the name too (${await line()})`);
   await plant({ held: '' });
   await plant({ node_name: 'shed' });
@@ -1256,23 +1256,18 @@ await page.evaluate(() => setLocked('alpha', false));
 // the reason. The button stays dead here for a different one (alpha has no
 // node in this fixture and a Claude session runs on one), and that is the
 // row saying one thing at a time rather than two.
-// Read title OR data-tip here as the check below does: tipify() moves the
-// native title onto data-tip, so a wait on title alone clears on an empty
-// string while the tip still says locked, and the check reads the old words.
 await page.waitForFunction(
   () => {
     const b = document.querySelector('#projects [data-c="alpha"]');
     return !document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark')
-      && !/locked/.test(b?.title || b?.dataset.tip || '');
+      && !/locked/.test(saidOf(b));
   },
   { timeout: 15000 });
 // Not the disabled state: this fixture has a live claude-alpha session, and
 // a button that would take you to a running conversation stays usable
 // whatever the node arrangement says.
-// title OR data-tip: tipify() moves the native one onto the element as a
-// data-tip on this surface, so reading only `title` reads nothing.
 const backTitle = await page.$eval('#projects [data-c="alpha"]',
-                                   b => b.title || b.dataset.tip || '');
+                                   b => saidOf(b));
 ok(!/locked/.test(backTitle) && /no node/.test(backTitle),
    `unlocking gives the row back, and what is left to say is the node it has not got (${
       backTitle.slice(0, 60)})`);
@@ -1368,64 +1363,6 @@ ok(true, 'pinning it puts it back on the sidebar');
   await page.unroute('**/api/revs*');
 }
 
-// ---- a row's tooltips -----------------------------------------------------
-// Two failures that were the same failure, and both were reported as "the
-// tooltip gets buried". A tip in a sidebar row is measured against the ROW,
-// because 340px of column cannot hold a 280px box centered on anything in it.
-//
-// Measured on delta, which the fixture locks: a locked project's Claude button
-// is dead and carries the sentence saying why, which is what both halves of
-// this block are about. It used to be measured on the fix link a drifted
-// CLAUDE.md block put on the row, and that link went with the block itself
-// (R63 step 3). Nothing is planted or put back here: the lock is the
-// fixture's, so the poll landing mid-block redraws the same row.
-{
-  const row = '#projects .row[data-row="delta"]';
-  const btn = `${row} [data-c]`;
-  await page.waitForSelector(`${btn}[disabled]`, { timeout: 5000 });
-  await page.hover(btn);
-  const fit = await page.evaluate(sel => {
-    const b = document.querySelector(sel + ' [data-c]');
-    const s = getComputedStyle(b, '::after');
-    // The content width plus what the box adds: 8px of padding either side
-    // and a 1px border, against the row inset 10px either side, which is
-    // where the rule puts it.
-    return { box: parseFloat(s.width) + 18,
-             row: document.querySelector(sel).getBoundingClientRect().width };
-  }, row);
-  ok(Math.abs(fit.box - (fit.row - 20)) < 2,
-     `a row's tooltip is as wide as its row, so nothing can push it off the card (${
-       fit.box} in ${fit.row})`);
-  // ...and under the BUTTON, not under the row: with the row as the tip's
-  // containing block, every tip in a row landed in one place, so the one on
-  // the name read where the icons' do.
-  const where = await page.evaluate(sel => {
-    const b = document.querySelector(sel + ' [data-c]');
-    const row = document.querySelector(sel);
-    return { top: parseFloat(getComputedStyle(b, '::after').top),
-             want: b.getBoundingClientRect().bottom - row.getBoundingClientRect().top + 6,
-             rowH: row.getBoundingClientRect().height };
-  }, row);
-  ok(Math.abs(where.top - where.want) < 2 && where.top < where.rowH,
-     `...and sits under the control it explains, not under the row (${Math.round(where.top)} of ${Math.round(where.rowH)})`);
-  // ...and the tip on a DEAD control, which is the one somebody has to read,
-  // because it is the sentence saying why the control is dead. The fade on a
-  // disabled button is opacity, and opacity below 1 makes a stacking context
-  // that traps the button's own ::after inside it: half strength, painted
-  // under the next row, that row's text straight through it.
-  //
-  // Waited for rather than read at once: the swap from the opacity fade to
-  // the color one rides the same 150ms transition every other button state
-  // does, and reading it on the first frame reads the fade it is leaving.
-  await page.waitForFunction(sel => getComputedStyle(
-    document.querySelector(sel)).opacity === '1', btn, { timeout: 5000 });
-  const dead = await page.$eval(btn, b => ({ off: b.disabled,
-    op: getComputedStyle(b).opacity,
-    tip: b.dataset.tip || '' }));
-  ok(dead.off && /padlock/.test(dead.tip) && dead.op === '1',
-     `a ghosted button reading out its reason is not a layer of its own (${
-       dead.op}, ${dead.tip.slice(0, 46)}…)`);
-}
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 
@@ -1871,13 +1808,14 @@ ok(!await page.$eval('#rnDelete', e => e.hidden) && /Delete project/.test(await 
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
 }
-await page.selectOption('#rnModel', 'sonnet');
-ok(!await page.$eval('#rnModel', e => e.disabled)
-   && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
-   'with no session running it simply applies at the next start');
+await page.selectOption('#rnAsks', 'fewer');
+ok(!await page.$eval('#rnAsks', e => e.disabled) && !(await page.$('#rnModel')) && !(await page.$('#rnEffort'))
+   && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent))
+   && /picked each time a session starts, in the Claude button's menu/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+   'with no session running it simply applies at the next start; the model and effort are no longer the dialog\'s');
 // A color for the project: nine swatches, none by default, and the one
 // picked is worn by the row and by the notebook tab once saved.
-await page.selectOption('#rnModel', '');
+await page.selectOption('#rnAsks', '');
 ok(await page.$$eval('#rnColor [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
    'the dialog offers a color, with none picked for a project nobody colored');
@@ -1924,35 +1862,8 @@ await page.click('#rnCancel');
   tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
   await refreshUntil(page, () => liveSessions().has(myClaude('alpha')),
                      { timeout: 20000 });
-  // With no model set, the dialog shows what Claude's default here actually
-  // is, read from the last transcript, and picking that model is picking the
-  // default: no change, so nothing is asked and nothing restarts. "Leave as
-  // is" said nothing, and choosing the model the session was already on
-  // used to count as a change (the operator's report, 14 Sep).
-  const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
-  const tdir = `${DIR}/home/.claude/projects/${slug}`;
-  mkdirSync(tdir, { recursive: true });
-  writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
-    '{"type":"user","message":{"role":"user","content":"hi"}}\n'
-    + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.waitForFunction(() => document.getElementById('rnModel').value === 'fable', null, { timeout: 8000 });
-  ok(/Fable is Claude's own default here/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
-     'with nothing set, the picker shows the model the last session ran on and the hint says it is the default');
-  const askedBefore = page.dialogs.length;
-  ok(await page.$eval('.rnbar[data-rnbar="yours"] [data-rnsave]', b => b.disabled),
-     'with that model left where it was nothing is unsaved: its section\'s Save stays dead');
-  await page.click('#rnCancel');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
-  ok(page.dialogs.length === askedBefore, '...and closing asks nothing');
-  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))
-       && !(state?.projects || []).find(p => p.name === 'alpha')?.yours?.model),
-     '...restarts nothing, and stores nothing: the default is still the default');
-  rmSync(tdir, { recursive: true, force: true });
-  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
-  await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnModel', 'sonnet');
   await page.selectOption('#rnAsks', 'fewer');
   // Both answers are on the section's bar from the start (the operator,
   // 10 Oct): a first press that only asked saved nothing for whoever pressed
@@ -1963,14 +1874,14 @@ await page.click('#rnCancel');
     state: b.querySelector('.state').textContent, save: b.querySelector('[data-rnsave]').hidden,
     keep: b.querySelector('[data-rnkeep]').textContent, end: b.querySelector('[data-rnend]').textContent,
     others: [...document.querySelectorAll('.rnbar:not([data-rnbar="yours"]) [data-rnsave]')].every(x => x.disabled),
-    stored: (state?.projects || []).find(p => p.name === 'alpha')?.yours?.model || '' }));
+    stored: (state?.projects || []).find(p => p.name === 'alpha')?.yours?.asks || '' }));
   ok(asked.save && asked.keep === 'Save, keep it running' && asked.end === 'Save and end it'
-     && /^Model, Questions changed; its running session takes Model, Questions only when it starts$/.test(asked.state)
+     && /^Questions changed; its running session takes Questions only when it starts$/.test(asked.state)
      && asked.others && asked.stored === '' && page.dialogs.length === before,
      `with a session running, the section's bar names what it takes only at its start and offers both answers at once (${JSON.stringify(asked)})`);
   ok(!(await sectSave(page, 'yours')), '...Save, keep it running saves');
   await refreshUntil(page, () => (state?.projects || [])
-    .find(p => p.name === 'alpha')?.yours?.model === 'sonnet', { timeout: 20000 });
+    .find(p => p.name === 'alpha')?.yours?.asks === 'fewer', { timeout: 20000 });
   ok(true, '...and keeping it running still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
@@ -2013,14 +1924,7 @@ await page.click('#rnCancel');
                      { timeout: 20000 });
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
-  await page.selectOption('#rnModel', '');
-  await saveDialog(page);
-  // `|| ''` because a record back at every default is REMOVED rather than
-  // stored (the file says only what somebody chose), so the row carries no
-  // model key at all, which every reader of it defaults the same way.
-  await refreshUntil(page, () => ((state?.projects || [])
-    .find(p => p.name === 'alpha')?.yours?.model || '') === '',
-    { timeout: 20000 });
+  await page.click('#rnCancel');
 }
 
 // Ghosted where no session can start. Unlike the credential fields above there
@@ -2030,9 +1934,9 @@ await page.waitForFunction(() => (state?.projects || [])
   .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
 await page.evaluate(() => renameProject('gamma'));
 await page.waitForSelector('#rnmodal:not([hidden])');
-ok(await page.$eval('#rnModel', e => e.disabled)
-   && await page.$eval('#rnEffort', e => e.disabled),
-   'a locked project cannot be given a model: no session starts there to have one');
+ok(await page.$eval('#rnReply', e => e.disabled)
+   && await page.$eval('#rnAsks', e => e.disabled),
+   'a locked project cannot be given session settings: no session starts there to have them');
 ok(/Locked/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
@@ -2107,63 +2011,6 @@ ok(await page.evaluate(() => {
      const s = document.querySelector('.col.side');
      return s.scrollWidth <= s.clientWidth;
    }), 'the sidebar fits its column, with no sideways scroll');
-// ...and still fits while a tip is actually up, which is the case that made
-// the first fix incomplete: display:none stopped the resting overflow and left
-// the hovered one.
-// The last VISIBLE one: the row's last child is the fold control now, which
-// is display:none at this width, and hovering something hidden waits forever.
-const lastTip = page.locator('#projects .row .acts [data-tip]:visible').last();
-await lastTip.hover();
-await page.waitForTimeout(250);
-ok(await lastTip.evaluate(e => getComputedStyle(e, '::after').display) === 'block',
-   '...while a tooltip still appears on hover');
-ok(await page.evaluate(() => {
-     const s = document.querySelector('.col.side');
-     return s.scrollWidth <= s.clientWidth;
-   }), '...and the sidebar still fits with that tooltip open');
-
-// ...and not while it is pressed. Every button dips a pixel on :active, and a
-// transform makes the element the containing block for its own absolutely
-// positioned ::after, so a sidebar tip measured against the ROW suddenly
-// measures against a 32px button, wraps to one character per line and runs
-// down the whole card. Reported as "something crazy with the tooltips".
-const tipBtn = '#projects .row .acts [data-tip]';
-const tipBox = await page.$(tipBtn);
-const tb = await tipBox.boundingBox();
-await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
-await page.mouse.down();
-await page.waitForTimeout(300);
-const pressed = await page.$eval(tipBtn, e => getComputedStyle(e, '::after').display);
-await page.mouse.up();
-ok(pressed === 'none',
-   '...and goes away while the button is held, where a transform would mis-measure it');
-// ...and STAYS away with the pointer still on it. `:active` ends at the
-// release and `:hover` does not, so the tip used to come straight back and sit
-// over the next control down: the Resume button, in this strip. You have read
-// the label and acted on it; it has nothing left to tell you.
-const after = [];
-for (let i = 0; i < 4; i++){
-  await page.waitForTimeout(30);
-  after.push(await page.$eval(tipBtn, e => getComputedStyle(e, '::after').display));
-}
-ok(after.every(d => d === 'none'),
-   `...and stays away once clicked, rather than covering what is under it (${after.join(', ')})`);
-// Cleared by reaching a different control, not by a timer: this is one button's
-// label being finished with, not tooltips being switched off. Its size is the
-// other half: the press TRANSITIONS back over 100ms, and while a transform was
-// what dipped the button it went on being the containing block for its own
-// ::after after :active stopped matching, so the next tip opened one character
-// wide and ran down the whole card. Reported as "something crazy with the
-// tooltips"; these icons dim instead, so there is nothing left to be caught by.
-// The last VISIBLE one again: a hidden last child has no box to move to.
-const ob = await lastTip.boundingBox();
-await page.mouse.move(ob.x + ob.width / 2, ob.y + ob.height / 2);
-await page.waitForTimeout(250);
-const moved = await lastTip.evaluate(e => {
-  const c = getComputedStyle(e, '::after'); return [c.display, parseFloat(c.width)];
-});
-ok(moved[0] === 'block' && moved[1] > 100,
-   `...and the next control's own tip opens at its own size (${moved.join(', ')})`);
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');
@@ -2449,9 +2296,44 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
      && /^Resume: 2 h ago$/.test(menu.buttons[0].text) && menu.buttons[2].text === 'Sign in on fresh',
      `...Resume and New conversation for the node this account is signed in on, a sign-in for the one it is not, and no press for one that cannot start a session (${
         menu.buttons.map(b => b.text).join(' | ')})`);
+  // The last session here answered on Fable: the next step's Model names it
+  // on "Claude's default", read from the newest transcript.
+  const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
+  const tdir = `${DIR}/home/.claude/projects/${slug}`;
+  mkdirSync(tdir, { recursive: true });
+  writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
+    '{"type":"user","message":{"role":"user","content":"hi"}}\n'
+    + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
   await page.waitForFunction(() => { const b = document.querySelector('#resumemenu [data-n][data-node="n_ubu"]');
     if (!b) return false; b.click(); return true; }, null, { timeout: 10000 });
+  // New conversation picked: the menu turns to the model and effort to start
+  // on, with Start (the operator, 12 Oct), and starts nothing yet.
+  await page.waitForSelector('#resumemenu #rmModel', { timeout: 10000 });
+  await page.waitForFunction(() => /last session: Fable/.test(document.querySelector('#rmModel option[value=""]')?.textContent || ''),
+                             null, { timeout: 8000 });
+  const step = await page.$eval('#resumemenu', m => ({ text: m.querySelector('.sub').textContent.trim(),
+    models: [...m.querySelectorAll('#rmModel option')].map(o => o.value), efforts: [...m.querySelectorAll('#rmEffort option')].map(o => o.value),
+    buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }));
+  ok(/^A new conversation on ubu$/.test(step.text) && step.models.includes('opus') && step.models.includes('fable')
+     && step.efforts.includes('high') && step.buttons.join() === 'Back,Start'
+     && !(await page.evaluate(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'))),
+     `...New conversation turns the menu to Model and Effort with Start, naming the last session's model on the default, and starts nothing yet (${step.text}; ${step.buttons.join(' | ')})`);
+  // A poll redraws the card: the step and what was picked stay.
+  await page.selectOption('#rmModel', 'sonnet');
+  await page.selectOption('#rmEffort', 'high');
+  await page.evaluate(() => refresh());
+  await page.waitForTimeout(600);
+  ok(await page.$eval('#rmModel', e => e.value) === 'sonnet' && await page.$eval('#rmEffort', e => e.value) === 'high',
+     '...and a poll redrawing the card keeps the step and the picks');
+  await page.click('#resumemenu [data-start]');
   await page.waitForFunction(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'), null, { timeout: 10000 });
+  await refreshUntil(page, () => { const y = (state?.projects || []).find(p => p.name === 'alpha')?.yours || {};
+    return y.model === 'sonnet' && y.effort === 'high'; }, { timeout: 20000 });
+  ok(true, '...and Start saves them as this account\'s for the project, which the launcher reads, and opens the session');
+  await (await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'alpha', model: '', effort: '' }) })).json();
+  rmSync(tdir, { recursive: true, force: true });
   // The row planted again in the same evaluation as the read: a poll that
   // was already on its way when the hold went on lands whenever it lands.
   const tab = await page.evaluate(() => {

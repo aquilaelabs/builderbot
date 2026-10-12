@@ -93,12 +93,16 @@ function storageProjects(n, where){
   if (n.other) rows.push({name: "other projects", other: true, ...n.other});
   if (!rows.length) return `<div class="empty">no project's folders here yet</div>`;
   const cols = where.filter(w => rows.some(r => r[w]));
+  // Each cell says which column it is (data-k): a desk shows the head row
+  // and hides the words, a phone stacks the cells and shows each one's word
+  // beside its number, since a column of bare numbers under a name said
+  // nothing (the operator's screenshot, B655). An empty cell says so.
   const head = `<div class="row stack2 stproj sthead"><div class="grow"><div class="dim">project</div></div>${
     cols.map(w => `<div class="dim stcol">${esc(w)}</div>`).join("")}<div class="dim stcol">total</div></div>`;
   return head + rows.map(r => `<div class="row stack2 stproj${r.other ? " dim" : ""}">
       <div class="grow"><div class="name">${r.other ? "other projects <span class=\"dim\">· ones you cannot see</span>" : esc(projLabel(r.name))}</div></div>
-      ${cols.map(w => `<div class="stcol">${r[w] ? sgb(r[w]) : ""}</div>`).join("")}
-      <div class="stcol"><b>${sgb(r.total)}</b></div>
+      ${cols.map(w => `<div class="stcol" data-k="${esc(w)}">${r[w] ? sgb(r[w]) : `<span class="dim">none</span>`}</div>`).join("")}
+      <div class="stcol" data-k="total"><b>${sgb(r.total)}</b></div>
     </div>`).join("");
 }
 

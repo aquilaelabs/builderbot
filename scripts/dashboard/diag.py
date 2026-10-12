@@ -226,7 +226,10 @@ _BUILD = {"controller": controller, "images": images, "settings": settings_now,
 def report(sections=None):
     """The whole report, or the sections asked for. A section that fails says
     so in place rather than taking the rest down with it."""
-    want = [s for s in (sections or SECTIONS) if s in _BUILD] or list(SECTIONS)
+    unknown = [s for s in (sections or []) if s not in _BUILD]
+    if unknown:
+        return {"error": f"no section {', '.join(unknown)}: the sections are {', '.join(SECTIONS)}"}
+    want = [s for s in (sections or SECTIONS) if s in _BUILD]
     out = {"at": int(time.time())}
     for s in want:
         try:

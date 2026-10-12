@@ -37,7 +37,7 @@ KINDS = {
     "images": ("images", "dev-instance images on their way from the node that built them to the one they run on"),
     "gitrelay": ("gitrelay", "a bare repository per project, through which a node pushes and fetches"),
     "gitview": ("gitview", "the Git view's working area per repository"),
-    "logs": ("logs", "the logs every job, build and session writes"),
+    "logs": ("logs", "this controller's own logs (boot, dashboard, docker, terminal) and the kept CI runs; job logs are in its database"),
 }
 
 

@@ -729,7 +729,6 @@ function makeNotebook(project){
     // What the view is for, as its empty state (R119 step 4).
     $("dkList").innerHTML = (dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others))
       || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from the Artifacts tab, or pick it on a container's row on the Docker tab.</div></div>`;
-    tipify($("dkList"));
     dmWireRows($("dkList"), got);
   }
   $("dkOpen").onclick = () => openDocker();

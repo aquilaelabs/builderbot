@@ -131,7 +131,7 @@ class OtherProjects(unittest.TestCase):
             self.assertIn(("other", "(markup)"), {(c["name"], c["caller"]) for c in idx["calls"]})
             drawn = {d_["what"] for d_ in idx["draws"] if d_["kind"] == "class"}
             self.assertTrue({"ghost", "btn", "red", "blue"} <= drawn, drawn)
-            self.assertEqual(codemap.q_unused(idx), ["nothing on the page is unused by this measure"])
+            self.assertEqual(codemap.q_unused(idx), ["nothing in this page or python module is unused by this measure"])
             self.assertEqual(idx["files"]["vendor.js"]["defs"], [])
 
     def test_tests_by_their_directory_and_suites_through_an_import(self):
@@ -191,7 +191,7 @@ class Shadowing(unittest.TestCase):
             Path(d, "a.js").write_text("function load(){\n  const rowFor = (x) => {\n    return x;\n  };\n"
                                         "  return list.map(rowFor);\n}\nload();\n")
             idx = codemap.build(d)
-            self.assertEqual(codemap.q_unused(idx), ["nothing on the page is unused by this measure"])
+            self.assertEqual(codemap.q_unused(idx), ["nothing in this page or python module is unused by this measure"])
 
 
 class Fingerprint(unittest.TestCase):
@@ -218,7 +218,7 @@ class SecondPass(unittest.TestCase):
     def test_a_method_is_never_called_unused(self):
         with tempfile.TemporaryDirectory() as d:
             Path(d, "fs.js").write_text("class FS {\n  createDirectory(u) {\n    return u;\n  }\n}\nregister(new FS());\n")
-            self.assertEqual(codemap.q_unused(codemap.build(d)), ["nothing on the page is unused by this measure"])
+            self.assertEqual(codemap.q_unused(codemap.build(d)), ["nothing in this page or python module is unused by this measure"])
 
     def test_two_files_importing_one_module_are_not_each_others_suites(self):
         with tempfile.TemporaryDirectory() as d:

@@ -261,10 +261,10 @@ only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and installs are arbitrated across both.
 
-**One store, scoped by platform.** A machine's toolchains live under
-`<store>/<os>-<arch>`: `linux-x86_64` for this container and the sandbox,
-`darwin-arm64` for a Mac, so one share can serve every node whatever it
-runs, and a Linux box's binaries never land on top of a Mac's. The Android
+**One store, a directory per node.** A node's toolchains live under
+`<store>/<node id>` (R196), so one share can serve every node and no node's
+binaries land on another's, whatever distro each runs; this container keeps
+its own under `<store>/<os>-<arch>` (`linux-x86_64`). The Android
 system images, the same bytes on every host and tens of gigabytes, live once
 under `<store>/shared/android/system-images` with each platform's
 `android/system-images` a link to them, and `bb toolchains root` names the scoped
@@ -961,10 +961,10 @@ lives in its body. The cards:
   pacman, zypper, apk) and may name alternatives for a library renamed
   between releases; `tools/check-sysdeps.py` checks every name against the
   real package indexes of Ubuntu 22.04 to 26.04, Debian 12 and 13, Rocky 9
-  and 10, Fedora, Arch, openSUSE and Alpine. A recipe's system libraries are each machine's own
-  while the store is shared, so when a node lacks some for a toolchain the
-  store already holds (a node enrolled after dotnet went in, with no
-  libicu), a node BuilderBot manages installs them by itself the next time it
+  and 10, Fedora, Arch, openSUSE and Alpine. A recipe's system libraries are each machine's own,
+  outside the store, so when a node lacks some for a toolchain its store
+  already holds (a package removed since, or a machine rebuilt under its
+  store), a node BuilderBot manages installs them by itself the next time it
   reports in, once per missing set, and never while its system changes are
   locked to its console. Anywhere it cannot (a guest node, a locked one, an
   install that failed) the tab says which and **Install system packages**
@@ -1107,9 +1107,8 @@ are cleared rather than left quoting a version this daemon has never seen; the
 instances stay, since their compose file and env are this side's.
 
 **With no daemon reachable, the controls that would drive one are disabled**,
-each carrying the reason as its tooltip, and the manager tab says the same
-thing in words at the top: a tooltip is not reachable on a phone, and *"why is
-everything grayed out"* should be answered by looking. That is the node
+and the manager tab says why in words at the top: *"why is everything grayed
+out"* should be answered by looking, on a phone as at a desk. That is the node
 unset, or a sandbox VM this container
 cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
@@ -1484,9 +1483,9 @@ through Unraid's FUSE layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
 `sdk-env.sh`, whose every line is an absolute path, lives on the home volume
-for that reason. Two architectures may share one: each machine installs under
-its own `<os>-<arch>` scope in the store (R19), so an arm64 machine never
-runs an x86-64 binary another put there.
+for that reason. Any number of machines may share one: each node installs
+under its own directory in the store, named by its node id (R196), so no
+machine runs a binary another put there.
 
 **A project's node does not decide where its CI runs, and nothing can make
 it.** That setting governs BuilderBot's own queue: `bb build`, `bb test`,
@@ -1761,8 +1760,8 @@ that is not an administrator sees what belongs to its projects.
   every 30 minutes and
   re-run on demand with its ↻. Its status row wears the verdict as a dot,
   green, amber or red, beside an "all n ok" button that unfolds the detail:
-  failures and warnings as full lines, with the fix hint from `bb doctor`'s
-  own output in the tooltip, and passing checks collapsed into green chips.
+  failures and warnings as full lines, each with the fix hint from `bb
+  doctor`'s own output beside it, and passing checks collapsed into green chips.
   A verdict getting worse unfolds that detail by itself; healing folds it
   back. Only the detail: collapsing the whole card is your setting, and the
   verdict never overrides it. A plain user's card carries only the lines
@@ -2259,8 +2258,17 @@ already on a list a session may still tick, note and reword under every
 setting, and the session is told on its next turn what you decided. The
 settled ones are in `bb history` under *waiting*.
 
+**The model and effort are picked when a session starts** (the operator, 12
+Oct), not kept in the project's settings: pressing Claude opens the menu
+(the node, Resume or New conversation), and that choice turns the menu to
+Model and Effort with Start, opening on the last ones picked here and naming
+on *Claude's default* the model the last session answered on. Start keeps
+the picks as yours for the project (`claude-prefs.json`, what the launcher
+reads) and opens the session on them. A new project's first session picks
+them beside its brief instead.
+
 **Changing it while a session is running asks about that session.** Some
-settings a session takes only when it starts: the model and effort, the
+settings a session takes only when it starts: the
 author it commits as, the projects it reads and the places it sees, its
 node, and what its briefing says (replies, questions, how a test run meets
 a change, how long captures are kept). Save with one of those changed while
@@ -2696,7 +2704,7 @@ the only case for it; anything that was a real bug gets closed.
 **Send to Claude** hands one bug to the session running there, from the same
 box the roadmap opens under a step: the same note field for anything to send
 with it, opened under the report instead. Nothing is switched on the way in:
-the session is already running on the project's own model and effort.
+the session is already running on the model and effort it was started with.
 
 **A closed bug cannot be sent**: reopen it first. A closed bug is a record
 rather than work, and the three closes exist to say which kind of dealt-with
@@ -3280,7 +3288,43 @@ project to the compose projects it may reach) and the switch (config
 the session switch elsewhere); a prefs change or the switch asks for a
 hello, so a container reaches a newly read project within a poll. Nothing
 is marked: a missing table leaves Docker's own rules, and the row says not
-in force rather than a container being cut off.
+in force rather than a container being cut off. A container BuilderBot
+deploys itself is **System**'s (R180, the operator, 11 Oct): the nginx
+tab's container today, set by that deployment and by no picker, a person's
+or a session's, and given every bridge and every published port on its node
+by the map (`all`), since a proxy or a monitor that is nobody's has to see
+everybody's. nginx needs none of it yet, being on the host network; the
+owner is for the day a deployment of BuilderBot's sits on a bridge.
+
+nginx keeps up to date like the toolchains and the agent (R192, the
+operator, 11 Oct). The controller reads the registry's tag list once a week
+(Check now on the nginx tab reads it at once) and keeps the newest release
+line's alpine tag with its digest; a node's nginx is pinned to a digest when
+it is deployed or updated, written into its compose file as
+`nginx:TAG@sha256:...`, so a Save rebuilds with exactly what it had and
+nothing moves under it. A deployed nginx behind the newest line says so on
+the nginx tab's node and on its Docker tab row, each with Update, which pins
+the new digest and rebuilds; the bell carries a note of its own kind, to the
+digest, so Dismiss holds until the registry moves the line again. One
+deployed before any check had read the registry is unpinned, and behind
+whatever is newest until its first Update.
+
+Every other container's registry images keep up to date the same way (R195,
+the operator, 11 Oct). A service that runs an image by tag, with no `build:`
+(mariadb, a linuxserver image, ghcr.io/aquilaelabs/builderbot:latest), is
+compared once a week, and on Check for updates on the Docker tab: the digest
+its node pulled (`docker inspect`'s RepoDigests) against what the
+registry serves for that tag now, over the registry's v2 API with an
+anonymous token (imagecheck.py). One that differs says so on its row with
+Update, which pulls (`compose pull --ignore-buildable`) and starts it again;
+the bell carries one note per node. What is built from code is not asked:
+Rebuild is what moves that, and it is ghosted until the code has moved. An
+image pinned by digest (nginx's) is its own tab's, an image never pulled is
+pulled by Up, and a private one says the registry would not answer. A
+project's container is named whatever its owner wants: Send to Docker
+offers the project's name and the compose file's folder or variant, and the
+Edit dialog renames it while it is down, its record carrying the name while
+the instance keeps its key.
 
 **Also reaches**, under What a session sees in a project's settings, opens
 the rest by hand (the operator, 7 Oct): a machine its sessions may still
@@ -4238,8 +4282,10 @@ together: the file, the constant, the app.
 a node's runner: the JDK and the Android SDK come from the node's toolchain
 store, the same environment every `bb` job gets, on a push to `main` that
 touches `android/`, names it by `bb version --file`, drops it into
-BuilderBot's `dist/` where the runner's machine mounts the projects share,
-and uploads it as a workflow artifact. Locally, `cd android && ./gradlew
+BuilderBot's `dist/` where the runner's machine mounts the projects share.
+It is not kept as a workflow artifact: the builds worth keeping are the
+releases, whose files hang off the GitHub release, and one artifact per
+push filled the account's Actions storage in a month (B669). Locally, `cd android && ./gradlew
 assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.
 On a node the build writes under the node's own disk rather than the
 projects share (a job's cache folder, or the account's `~/.cache/builderbot/gradle`),

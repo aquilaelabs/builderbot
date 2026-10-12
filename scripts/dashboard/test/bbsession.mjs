@@ -40,7 +40,7 @@ for (const d of [join(ws, 'alpha'), join(ws, 'beta'), join(ws, 'alpha-two'),
                  join(homeRoot, '.cache', 'builderbot', 'u', me, 'project', 'gamma'),
                  join(homeRoot, '.claude'), join(homeRoot, '.ssh'), join(homeRoot, '.gradle'),
                  join(homeRoot, '.config', 'gh'), join(homeRoot, '.local', 'share', 'keyrings'),
-                 join(data, 'emu'), join(data, 'ci-logs', 'alpha'), join(data, 'ci-logs', 'beta'),
+                 join(data, 'emu', 'alpha'), join(data, 'emu', 'beta'), join(data, 'ci-logs', 'alpha'), join(data, 'ci-logs', 'beta'),
                  join(data, 'jobs'), join(data, 'compose'), join(art, 'alpha'), join(art, 'beta'),
                  join(pkg, '.bb', 'current'), join(pkg, 'jdk'), join(pkg, 'flutter', 'bin', 'cache'),
                  join(homeRoot, '.local', 'bin'),
@@ -175,10 +175,10 @@ ok(has('tmpfs', myCache, 'mode=0700,owned') && bound(join(myCache, 'u', me, 'pro
    && !bound(join(myCache, 'u', me, 'project', 'beta'))
    && has('tmpfs', rootCache, 'mode=0700,owned') && bound(join(rootCache, 'machine')) && !bound(join(rootCache, 'u', me, 'project', 'gamma')),
    'the cache keeps this project\'s folder, the account\'s and the machine\'s, so no other project\'s token or launcher is there');
-ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu')) && bound(join(data, 'ci-logs', 'alpha'))
+ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu', 'alpha')) && !bound(join(data, 'emu', 'beta')) && bound(join(data, 'ci-logs', 'alpha'))
    && !bound(join(data, 'ci-logs', 'beta')) && !bound(join(data, 'jobs')) && !bound(join(data, 'compose'))
    && bound(join(art, 'alpha')) && !bound(join(art, 'beta')) && hidden(runner) && hidden(devdata),
-   'the agent\'s stores keep the emulator, its own CI logs and artifacts; jobs, compose files, the runner and dev data are gone');
+   'the agent\'s stores keep its own emulator folder, its own CI logs and artifacts; another project\'s emulator, jobs, compose files, the runner and dev data are gone');
 ok(has('bindro', pkg, pkg) && !bound(join(pkg, 'jdk')) && !steps.some(x => x[0] === 'bindrw' && x[1] === join(pkg, 'jdk')),
    'the whole toolchain store is read-only in the view, the bundle and every toolchain, so a session cannot plant a command a job or another session runs (B157, B163)');
 const at = (...s) => steps.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
@@ -342,7 +342,7 @@ ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0]
   for (const d of [join(mws, 'alpha'), join(mws, 'beta'), join(mhome, 'users', me), join(mhome, '.local', 'bin'),
                    join(mstate, 'cache', 'beta'), join(mstate, 'agent', 'tools'), join(mstate, 'runner'), join(mstate, 'packages'),
                    join(share, 'appdata', 'beta', 'db'), join(mstore, 'jdk'), join(share, 'toolchains', 'shared', 'android'),
-                   join(share, 'toolchains', 'windows-x86_64'), join(mdata, 'emu'), join(mdata, 'ci-logs', 'alpha'),
+                   join(share, 'toolchains', 'windows-x86_64'), join(mdata, 'emu', 'alpha'), join(mdata, 'ci-logs', 'alpha'),
                    join(mart, 'alpha'), join(M, 'mnt', 'packages', 'x'), join(M, 'mnt', 'media', 'films'), join(M, 'mnt', 'media', 'private'),
                    join(M, 'auxiliary', 'x'), join(M, 'workspace-dev', 'web'), join(M, 'devdata'), join(M, 'made-by-hand'),
                    join(M, 'etc'), join(M, 'usr', 'bin'), join(M, 'opt', 'tool'), join(M, 'srv', 'www'), join(M, 'lost+found')])

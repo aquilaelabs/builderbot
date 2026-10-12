@@ -1188,38 +1188,29 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      'the Profile tab names the account and carries Save and Change password');
   ok(await page.$eval('#cardAdmin', el => !el.hidden && !!el.querySelector('#bSettings') && !!el.querySelector('#bUsers')),
      'the Administration card holds Controller settings and Users, and an administrator sees it');
-  // The ? beside a label opens on a tap as well as a hover, so a phone reads
-  // it: a click toggles it, and a tap anywhere else closes it.
+  // The ? beside a label opens its words as a line on the page under the
+  // label, at every width, and a second press folds them away (the operator,
+  // 11 Oct: no tooltips, which a pane clipped and a phone never had).
   await page.click('.profiletab .help');
-  const tipped = await page.$eval('.profiletab .help.on', el => getComputedStyle(el, '::after').content);
-  ok(/at least 8 characters|sign in with/.test(tipped),
-     `a tap on the ? shows its tooltip without a hover (${tipped.slice(0, 40)})`);
-  await page.click('.profiletab h4');
-  ok(!(await page.$('.profiletab .help.on')), '...and a tap elsewhere closes it');
-  // ...and on a phone the box stays on the screen: it is placed in viewport
-  // coordinates and pushed inside the edge, not centered on an icon at it.
+  const said = await page.$eval('.profiletab .help.on', el => {
+    const at = el.closest('label, .lbl') || el.parentElement;
+    const line = at.nextElementSibling;
+    return { line: line?.classList.contains('helptext') ? line.textContent : '', ex: el.getAttribute('aria-expanded') };
+  });
+  ok(/at least 8 characters|sign in with/.test(said.line) && said.ex === 'true',
+     `a tap on the ? opens its words as a line under its label (${said.line.slice(0, 40)})`);
+  await page.click('.profiletab .help.on');
+  ok(!(await page.$('.profiletab .help.on')) && !(await page.$('.profiletab .helptext')),
+     '...and a second tap folds them away');
+  // ...and on a phone the line is inside the screen like any other.
   await page.setViewportSize({ width: 393, height: 851 });
   await page.evaluate(() => setView('terminal'));     // a phone shows one column at a time
   await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
   await page.click('.profiletab .help');
-  // Wait for the box to have a width, not for a hundred milliseconds: the
-  // ::after is laid out a frame or two after the class lands, and on a busy
-  // box it is later than that, which read back as `auto`, came out of
-  // parseFloat as NaN, and failed a rule about placement with a number
-  // nobody could place.
-  // Measured in the same read that waits for it: a second read after the
-  // wait could meet a redrawn tooltip with no width yet, and came back NaN
-  // in a whole run (B397).
-  const fit = await (await page.waitForFunction(() => {
-    const el = document.querySelector('.profiletab .help.on');
-    if (!el) return null;
-    const cs = getComputedStyle(el, '::after');
-    const w = parseFloat(cs.width), x = parseFloat(el.style.getPropertyValue('--tipx'));
-    return w > 0 && Number.isFinite(x) ? { x, right: x + w, pos: cs.position, vw: innerWidth } : null;
-  }, null, { timeout: 10000 })).jsonValue();
-  ok(fit.pos === 'fixed' && fit.x >= 0 && fit.right <= fit.vw,
-     `on a phone the tooltip is placed inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
-  await page.click('.profiletab h4');
+  const fit = await page.$eval('.profiletab .helptext', el => { const r = el.getBoundingClientRect(); return { x: r.left, right: r.right, vw: innerWidth }; });
+  ok(fit.x >= 0 && fit.right <= fit.vw,
+     `on a phone the ?'s line is inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
+  await page.click('.profiletab .help.on');
   await page.setViewportSize({ width: 1280, height: 800 });
   // No author, no terminal and no git: an account with no name and email
   // is refused a shell as well as a session at the door, and bb git for it

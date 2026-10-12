@@ -40,6 +40,11 @@ dial = None
 users = None
 ask_rebuild = None
 net_nudge = None
+# The hosting nodes a project names (prefs.hosts), handed in by the server: a
+# session reads its project's containers there too (B649).
+project_hosts = None
+# Whether a node's published ports are meant to stay on it (nodes.ports_local_on, R190).
+ports_local = None
 
 
 def _targets(name):
@@ -287,7 +292,7 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
     # On its project's node and nowhere else (devapp.on_project_node); one
     # for no project lives on the node it was made on, which the dialog
     # names and a request that did not gets from the block it runs in.
-    if for_project:
+    if for_project and for_project != devapp.SYSTEM:
         why, node = devapp.on_project_node(for_project, node)
         if why:
             return {"error": why}
@@ -390,6 +395,61 @@ def update_container(name, compose_text, env_text):
             "note": "rebuild it to bring the change up"}
 
 
+# A private key inline in a compose file (the nginx tab's tls_key configs)
+# is for the node, never for a text box: the editor's copy shows a line in
+# its place (B656). Matched on the config's name and its content block.
+_KEY_BLOCK = re.compile(r"^(  tls_key[^\n]*:\n    content: \|\n)(?:      [^\n]*\n)+", re.M)
+
+
+def redact_keys(compose):
+    return _KEY_BLOCK.sub(r"\g<1>      (the private key: kept on the controller, never shown)\n", compose or "")
+
+
+def rename_container(name, new, instance=None):
+    """A container under a new name, while it is down (the operator, 11
+    Oct: the name is editable in the Edit dialog once the container is
+    down, and a project's container is named whatever its owner wants, not
+    after the project). `name` is a written container's, or with `instance`
+    the project a project's container is made from. The name is its compose
+    project, its data directory and its volumes' prefix, so the node
+    carries those under a job (relocate.rename_job) and the records follow
+    when it has."""
+    import relocate
+    project, inst = (name, devapp.MAIN) if instance is None else (name, instance)
+    if instance is None and not devapp.is_file_source(name):
+        return {"error": f"{name} is not a container written here"}
+    if inst not in (devapp._load().get(project) or {}):
+        return {"error": f"{project} has no container {inst}"}
+    old = devapp._pname(project, inst)
+    slug = devapp._slug(new) or ""
+    if not slug:
+        return {"error": "a name needs a letter or digit in it"}
+    if slug == old:
+        return {"ok": True, "same": True}
+    # Free: no written container's key, and no other instance answering to it.
+    if slug in devapp._load() and slug != project:
+        why = name_free(slug)
+    else:
+        why = next((f"{slug} is already {p}'s container on the Docker tab: pick another name"
+                    for p, insts in devapp._load().items() for i in insts
+                    if (p, i) != (project, inst) and devapp._pname(p, i) == slug), "")
+    if why:
+        return {"error": why}
+    if devapp.owner_of(project, inst) == devapp.SYSTEM:
+        return {"error": f"{old} is BuilderBot's own, named for its node"}
+    import devactions
+    if devactions._active_job(project, inst):
+        return {"error": "a job is running on it: wait for it, or Stop it, then rename it"}
+    if devapp._read_rec(project, inst).get("renaming"):
+        return {"error": "it is already being renamed"}
+    with devapp.on_node(devapp._instance_node(project, inst)):
+        up = [c for c in devapp.containers().get("containers") or [] if c.get("project") == old]
+    if up:
+        return {"error": f"{old} is up ({len(up)} container{'s' if len(up) != 1 else ''}): take it down first, "
+                         "since the name is its compose project and its volumes' prefix"}
+    return relocate.rename_job(project, slug, instance)
+
+
 def read_container(name):
     """What was written, for the editor to open on."""
     try:
@@ -397,7 +457,7 @@ def read_container(name):
             encoding="utf-8", errors="replace")
     except OSError:
         compose = ""
-    return {"compose": compose, "env": devapp.read_env(name, devapp.MAIN)}
+    return {"compose": redact_keys(compose), "env": devapp.read_env(name, devapp.MAIN)}
 
 
 def listed_owner(c):
@@ -423,6 +483,9 @@ def set_container_owner(name, owner):
         return {"error": f"{c.get('name')} is part of {c.get('project')}: its "
                          "project is set on that row"}
     owner = str(owner or "").strip()[:100]
+    if owner == devapp.SYSTEM:
+        return {"error": f"{devapp.SYSTEM} is BuilderBot's own: the deployment that writes a "
+                         "container sets it, and no picker does"}
     node = devapp._node_here()
     if owner:
         # Only to a project that works on this node: given to one elsewhere
@@ -430,6 +493,20 @@ def set_container_owner(name, owner):
         why, own = devapp.on_project_node(owner, node)
         if why:
             return {"error": why}
+        # ...and under a name nothing else of the project's answers to (the
+        # operator, 11 Oct): a container's name is what a session asks for
+        # (bb devapp log NAME), and one that is some instance's compose
+        # name, or a stranger already given to this project on another
+        # node, would make that ask mean two things. Renamed first.
+        cname = c.get("name") or ""
+        row = devapp.row_named(cname)
+        if row:
+            return {"error": f"{cname} is the name of {devapp.owner_of(*row) or row[0]}'s container: "
+                             "rename this one before putting it under a project"}
+        for nid, held in devapp._owners().items():
+            if nid != node and held.get(cname) == owner:
+                return {"error": f"{owner} already has a container called {cname} on "
+                                 f"{devapp.node_name(nid)}: rename this one first, so a session's ask means one thing"}
     with devapp._lock:
         d = devapp._owners()
         held = d.setdefault(node, {})
@@ -471,7 +548,18 @@ def session_verb(sess, me, act, name, req, read_only=False):
     # alone refused the project's own dev instance on its second
     # node as not its own (B268).
     c, owner, nid = None, "", devapp.project_daemon(sess)
-    for cand in (devapp.nodes_of(sess) or [nid]):
+    # ...and on every node the project names under Hosts its containers on
+    # (R166): the project is not on those, so they are not in the node set,
+    # and a session asking for the probe it had just shipped to one was told
+    # it had no containers (B649). The nodes the project names NOW, and no
+    # other: a container left on a node taken off the project stays the
+    # project's, and the session neither reads nor runs it until the node is
+    # named again or the operator moves or removes it (the operator, 11 Oct).
+    where = list(devapp.nodes_of(sess) or [nid])
+    for on in (project_hosts(sess) if project_hosts else []):
+        if on and on not in where:
+            where.append(on)
+    for cand in where:
         with devapp.on_node(cand or None):
             c, owner = owned_container(name)
         if c:
@@ -483,7 +571,7 @@ def session_verb(sess, me, act, name, req, read_only=False):
     # Only a container that is the project's, so a name another project's
     # service shares reaches nothing of theirs.
     if owner != sess:
-        for cand in (devapp.nodes_of(sess) or [nid]):
+        for cand in where:
             with devapp.on_node(cand or None):
                 got = [x for x in devapp.containers().get("containers") or []
                        if x.get("service") == name and listed_owner(x) == sess]
@@ -553,7 +641,20 @@ def tab_verb(act, name, req, seen):
     if act == "save":
         if name not in overview_names():
             return {"error": f"no container {name}"}, 400
-        return _answer(update_container(name, req.get("compose") or "", req.get("env") or ""))
+        # Not one of BuilderBot's own (System's, the nginx tab's today): its
+        # file is written from that tab, and the editor's copy has the
+        # private key redacted (read_container), so saving that copy would
+        # write the redaction over the key (B656). The tab's own Save goes
+        # through update_container directly.
+        if devapp.owner_of(name, devapp.MAIN) == devapp.SYSTEM:
+            return {"error": f"{name} is BuilderBot's own, written from the nginx tab: change it there"}, 403
+        r = update_container(name, req.get("compose") or "", req.get("env") or "")
+        # ...and a new name with it, while it is down (rename_container):
+        # the file is saved first, so what was typed is kept either way.
+        new = field(req, "rename")
+        if not r.get("error") and new and devapp._slug(new) != name:
+            r = rename_container(name, new) | ({"saved": True} if not r.get("error") else {})
+        return _answer(r)
     if act != "create":
         return {"error": f"unknown action: {act}"}, 400
     # A name that is also a project would collide in the store, which is
@@ -595,9 +696,28 @@ def manager_view(nid, seen):
     got = devapp.overview(nid or None)
     # A copy or move under way, or why the last one did not happen
     # (relocate.py): the row's line while the jobs pass it between nodes.
+    import imagecheck
+    import nginxproxy
     import relocate
+    got["images_at"] = imagecheck.last_at()
+    # A node whose ports stay on it: a row still publishing on every address
+    # (made before the node said so) says so, with what puts it right.
+    got["ports_local"] = bool(ports_local and got.get("node") and ports_local(got["node"]))
+    # ...and the ports nginx routes to there, so a row whose port only nginx
+    # reaches can say when nothing routes to it yet: the first-time trap of
+    # a container moved to a VPS that then answers nowhere (11 Oct).
+    got["nginx_ports"] = sorted({int(r.get("port") or 0) for r in (nginxproxy.record(got["node"]).get("routes") or [])}
+                                if got["ports_local"] else set())
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
+        # A node's nginx behind the newest line says so on its row, with
+        # Update (R192); "" for every other row.
+        if i.get("owner") == devapp.SYSTEM:
+            i["nginx_to"] = nginxproxy.behind_named(i.get("project", ""))
+        # ...and any other's registry images behind what the registry serves
+        # (imagecheck, R195): the row says which, with Update.
+        else:
+            i["images_behind"] = [b["image"] for b in imagecheck.of(i.get("name", "")).get("behind") or []]
     if seen is not None:
         got["instances"] = [i for i in got.get("instances") or []
                             if i.get("owner") in seen]

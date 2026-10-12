@@ -52,13 +52,14 @@ await page.waitForFunction(() => document.querySelector('#devtag')?.hidden, null
 ok(await page.$eval('.settingstab [data-group="Reset"] #setReset', b => /Reset BuilderBot/.test(b.textContent) && b.classList.contains('danger')),
    'Reset BuilderBot sits in its own section as a red verb');
 await page.click('.settingstab #setReset');
-ok(await page.$eval('.settingstab #setResetBox .dropbox .danger', b => b.disabled)
-   && await page.$eval('.settingstab #setResetBox .dropbox .hint', h => /Project files stay/.test(h.textContent)),
-   '...which opens a typed confirmation, the real button asleep, saying project files stay');
-await page.fill('.settingstab #setResetBox input', 'reset');
-ok(await page.$eval('.settingstab #setResetBox .dropbox .danger', b => !b.disabled), '...and wakes on the word');
-await page.click('.settingstab #setResetBox .stop');
-ok(await page.$('.settingstab #setResetBox .dropbox') === null, '...and Keep it closes it with nothing done');
+await page.waitForSelector('#resetmodal:not([hidden]) #resetGo', { timeout: 10000 });
+ok(await page.$eval('#resetGo', b => b.disabled)
+   && await page.$eval('#resetBody .hint.bad', h => /Project files stay/.test(h.textContent)),
+   '...which opens a dialog with a typed confirmation, the real button asleep, saying project files stay');
+await page.fill('#resetWord', 'reset');
+ok(await page.$eval('#resetGo', b => !b.disabled), '...and wakes on the word');
+await page.click('#resetKeep');
+ok(await page.$eval('#resetmodal', m => m.hidden), '...and Keep it closes it with nothing done');
 const noword = await post('/api/reset', { confirm: 'yes' });
 ok(noword.status === 400 && /type reset to confirm; nothing was changed/.test(noword.body.error || ''),
    `the endpoint refuses anything but the word (${noword.body.error})`);
@@ -164,7 +165,7 @@ ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
 // way the node row's Debug settings does: as a fold inside the group its
 // fields were saved by the group's Apply, so ticking one and pressing the
 // Apply in front of you saved a debug setting without a word about it.
-ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(b.title)),
+ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(saidOf(b))),
    'Debug settings is ghosted while debug mode is off, saying to turn it on first');
 ok(await page.$('.settingstab [data-set="offer_unvetted"]') === null
    && await page.$eval('#setdbgmodal', m => m.hidden),

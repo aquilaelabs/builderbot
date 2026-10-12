@@ -1221,6 +1221,17 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(cnOff.ok && hc2.session_net?.ctr_on === false && !Object.keys(hc2.session_net?.ctr || {}).length,
        '...and switched off, the next hello says so and carries no map');
     await napi('/api/v1/nodes', { action: 'container-net', id: minted.id, on: true });
+    // ...and its published ports bind to 127.0.0.1 by default (R190): the
+    // hello says so and the row's switch is on; switched off, the next
+    // hello says so; the census says what docker binds to.
+    ok(hc.ports_local === true && await page.$eval(`${ROW} [data-k="portslocal"]`, c => c.checked),
+       `a hosting-only node binds its published ports to 127.0.0.1 by default: the hello says so and the row's switch is on (${hc.ports_local})`);
+    const plOff = await napi('/api/v1/nodes', { action: 'ports-local', id: minted.id, on: false });
+    const hp = await (await agent('hello', { census: { ...CENSUS, docker_ip: '127.0.0.1' }, version: shipped.version, digest: shipped.digest })).json();
+    const rowNow = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+    ok(plOff.ok && hp.ports_local === false && rowNow?.reported?.docker_ip === '127.0.0.1',
+       `...and switched off, the next hello says so, and the census's bind address is on the record (${rowNow?.reported?.docker_ip})`);
+    await napi('/api/v1/nodes', { action: 'ports-local', id: minted.id, on: true });
     const codes = {};
     for (const v of ['sync', 'claude', 'sessions', 'runner-token', 'signing-key'])
       codes[v] = (await agent(v, { action: 'projects' })).status;
@@ -1231,6 +1242,16 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `everything but its own jobs is refused at the door, its own update still served (${JSON.stringify(codes)})`);
     const ex = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['true'] });
     ok(/hosts containers only, and a exec job/.test(ex.error || ''), `only container jobs go to it (${ex.error})`);
+    // ...and one docker verb about the containers it hosts, which is how
+    // the Docker tab lists them and reads a log there (B642): a bare exec
+    // of anything else is still refused.
+    const dps = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['docker', 'ps', '--all'] });
+    ok(!dps.error && dps.job, `docker ps goes to it, since that is how its containers are listed (${dps.error || dps.job})`);
+    const drun = await napi('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['docker', 'run', 'alpine'] });
+    ok(/hosts containers only, and a exec job/.test(drun.error || ''), `...and docker run does not (${drun.error})`);
+    // Taken back: nothing here picks a job up for vps-host, and a job left
+    // queued on its row changes what the checks below read.
+    if (dps.job) await napi('/api/v1/jobs', { action: 'cancel', id: dps.job });
     const bind = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
     ok(/hosts containers only/.test(bind.error || ''), `and no project may list it (${bind.error})`);
     // Disable (the operator, 11 Oct): kept and configured, off every picker
@@ -1263,7 +1284,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(!(await page.$$eval('#rnNode option', (os, id) => os.some(o => o.value === id), minted.id)),
        '...and the project settings\' node picker does not offer it');
     await page.click('#rnCancel');
-    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: b.title }));
+    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: saidOf(b) }));
     ok(/Un-enroll/.test(unro.text) && /take BuilderBot off the machine/.test(unro.title) && !(await page.$(`${ROW} [data-nd="retire"]`)),
        'Un-enroll is the one way off, cleaning the machine where it can; Remove and Uninstall are gone');
     // Its dialog: what always goes, and the three rings to tick (the stores,
@@ -1274,9 +1295,10 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const dlg = await page.evaluate(() => ({ title: document.getElementById('ndTitle').textContent,
       text: document.getElementById('ndBody').textContent,
       ticks: [...document.querySelectorAll('#ndBody input[type=checkbox]')].map(c => c.checked) }));
-    ok(/Un-enroll shed/.test(dlg.title) && /Always: the agent/.test(dlg.text) && /sessions' firewall rules/.test(dlg.text)
-       && dlg.ticks.length === 3 && dlg.ticks.every(t => !t) && /never touched/.test(dlg.text),
-       `Un-enroll opens a dialog: the agent and the isolation always go, three rings to tick, none ticked (${JSON.stringify(dlg.ticks)})`);
+    ok(/Un-enroll shed\?/.test(dlg.title) && /Are you sure\?/.test(dlg.text) && /takes off a machine/.test(dlg.text)
+       && /The agent and its service/.test(dlg.text) && /sessions' firewall rules/.test(dlg.text) && /What stays/.test(dlg.text)
+       && dlg.ticks.length === 3 && dlg.ticks.every(t => !t) && /the provisioner installed for the machine itself/.test(dlg.text),
+       `Un-enroll asks whether you are sure and says what goes and what stays, three rings to tick, none ticked (${JSON.stringify(dlg.ticks)})`);
     await page.click('#ndBody #ndUnCancel');
     await page.waitForFunction(() => document.getElementById('ndmodal').hidden, null, { timeout: 5000 });
     await page.click(`${ROW} [data-nd="enable"]`);
@@ -1332,8 +1354,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const doorRow = await page.$eval(`${ROW} .nddoor`, e => ({ text: e.textContent, on: e.querySelector('[data-nd="door"]').dataset.on,
       cmd: e.querySelector('.ndcmd')?.textContent || '' }));
     ok(/SSH door: cloudflared, open/.test(doorRow.text) && doorRow.on === '0' && /Shut it/.test(doorRow.text)
-       && /cloudflared access ssh --hostname ssh-shed\.example\.com/.test(doorRow.cmd),
-       `a node reporting its door open shows Shut it and the ssh command (${doorRow.cmd.slice(0, 90)})`);
+       && /Host shed\n\s+HostName ssh-shed\.example\.com\n\s+User \S+\n\s+ProxyCommand cloudflared access ssh --hostname %h/.test(doorRow.cmd)
+       && /ssh shed/.test(doorRow.text) && /MobaXterm/.test(doorRow.text),
+       `a node reporting its door open shows Shut it and the PC's ssh config block named for the node, with MobaXterm's way (R179) (${doorRow.cmd.replace(/\s+/g, ' ').slice(0, 90)})`);
     page.dialogs.length = 0;
     await page.click(`${ROW} .nddoor [data-nd="door"]`);
     const doorJob = await (async () => { for (let i = 0; i < 40; i++){
@@ -1430,7 +1453,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   // disabled whenever a node was picked, and a node is the only thing this
   // tab ever shows, so it could never be pressed: dead furniture with a
   // tooltip explaining why it would stay that way.
-  ok(await page.$eval('.tctab [data-tc="check"]', b => !b.disabled && /upstream/.test(b.title || '')),
+  ok(await page.$eval('.tctab [data-tc="check"]', b => !b.disabled && /upstream/.test(saidOf(b))),
      'Check for updates can be pressed on a node, and says what it does');
 
   // ---- system packages a held recipe needs (roadmap R51) ------------------
@@ -1693,13 +1716,10 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) });
     const emuApi = async () => (await fetch(base + '/api/emulator?node=' + minted.id, { headers: H })).json();
     // The Tools card ghosts the button until some node has sdkmanager and
-    // the emulator, and says why on it.
+    // the emulator, and says why in the line under its buttons.
     await page.evaluate(() => refresh());
     await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === true,
                                null, { timeout: 15000 });
-    ok(/command-line tools and the emulator/.test(
-         await page.$eval('#bEmulator', b => b.dataset.tip || '')),
-       'the Emulator button is ghosted while no node has sdkmanager and the emulator, saying so');
     ok(await page.$eval('#toolsWhy', w => !w.hidden && /^Emulator: .*command-line tools and the emulator/.test(w.textContent)),
        '...and says so on the card too, in a line a phone can read (R119 step 6)');
     // No sdkmanager here yet: the tab says what is missing, and the server
@@ -1895,7 +1915,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
        '...and Apply network with it');
     await page.evaluate(() => loadNodes());
     await page.waitForFunction(sel => /locked to its own console/.test(
-      document.querySelector(sel + ' [data-napply="storage"]')?.title || ''), ROW, { timeout: 10000 });
+      saidOf(document.querySelector(sel + ' [data-napply="storage"]'))), ROW, { timeout: 10000 });
     ok(await page.$eval(ROW + ' [data-napply="storage"]', b => b.disabled)
        && await page.$eval(ROW + ' [data-napply="network"]', b => b.disabled)
        && await page.$eval(ROW + ' [data-nd="unlock"]', b => /Unlock/.test(b.textContent)),
@@ -2311,13 +2331,21 @@ ok(await page.$eval('#ndBody .ndtoken', el => /curl -fsSL -H 'Authorization: Bea
      `...and the route hands the enroll token the provisioner itself (${r.status}, ${body.length} bytes)`);
   const no = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner');
   ok(no.status === 401, '...and nobody else');
-  // A Mac is told to run provision-macos.sh, so it gets a line that fetches
-  // that one, and the route serves it (B150).
-  const mac = await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner-macos', { headers: { Authorization: 'Bearer ' + tok } });
+  // A Mac is a dev feature until one is proven (the operator, 12 Oct): with
+  // dev features off the dialog names no Mac and the route serves no Mac
+  // provisioner; on, the route serves it (B150).
+  const macAt = URL.replace(/\/$/, '') + '/api/v1/agent/download?what=provisioner-macos';
+  const off = await fetch(macAt, { headers: { Authorization: 'Bearer ' + tok } });
+  ok(!(await page.$eval('#ndBody .ndtoken', el => /provision-macos/.test(el.textContent))) && off.status === 404,
+     `...and with dev features off, no Mac is offered and its provisioner is not served (${off.status})`);
+  const dev = on => page.evaluate(async v => { await fetch('/api/settings', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: v } }) }); }, on);
+  await dev(true);
+  const mac = await fetch(macAt, { headers: { Authorization: 'Bearer ' + tok } });
   const macBody = await mac.text();
-  ok(await page.$eval('#ndBody .ndtoken', el => /download\?what=provisioner-macos' -o provision-macos\.sh\s+bash provision-macos\.sh/.test(el.textContent))
-     && mac.status === 200 && /launchd|LaunchAgents/.test(macBody) && !/BBSANDBOX/.test(macBody),
-     `...and a Mac's line fetches the macOS provisioner, which the same route serves (${mac.status}, ${macBody.length} bytes)`);
+  await dev(false);
+  ok(mac.status === 200 && /launchd|LaunchAgents/.test(macBody) && !/BBSANDBOX/.test(macBody),
+     `...and with them on, the same route serves the macOS provisioner (${mac.status}, ${macBody.length} bytes)`);
 }
 ok(await page.evaluate(async () => { await loadNodes();
      return (nodesList.find(n => n.name === 'joesbox')?.config || {}).user; }) === 'joe',
@@ -2438,7 +2466,14 @@ await page.evaluate(async () => {
      `the waiting row shows its id, what its script was made with, Download it again and Discard (${pend.picks})`);
   await page.click(`${ROW2} [data-nd="reenroll"]`);
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  // A waiting node never ran its script, so its new one is a first
+  // enrollment in its words, not a repair "on the same machine" (B637).
+  ok(await page.$eval('#ndBody', b => /a token good once, for a day/.test(b.textContent) && !/run it again on the same machine/.test(b.textContent)),
+     'a waiting node\'s new script is worded as a first enrollment, not a repair of a machine it never had');
   const [dl5] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
+  const body5 = readFileSync(await dl5.path(), 'utf8').split('\n').slice(0, 4).join('\n');
+  ok(/enroll vpsbox as a node/.test(body5) && !/again/.test(body5.split('\n')[1]) && !/Made for the machine it enrolled from/.test(body5),
+     `...and so is the script's header (${body5.split('\n')[1]})`);
   ok(dl5.suggestedFilename() === `enroll-vpsbox-${row2.id}.sh`
      && (await napi('/api/v1/nodes')).nodes.filter(n => n.name === 'vpsbox').length === 1,
      `Download it again makes a new script for the same row, named with its id (${dl5.suggestedFilename()})`);
@@ -2967,7 +3002,7 @@ ok(page.errors.length === 0,
       package: 'nvidia-driver-595', pkg_version: '595.91.07-0ubuntu1', candidate: '595.91.07-0ubuntu1' } });
     await page.evaluate(() => loadToolchains());
     await page.waitForFunction(() => /installed, and running the card/.test(document.querySelector('.doc .tctab .tcdrv')?.textContent || ''), null, { timeout: 20000 });
-    const inst = await page.$eval('.doc .tctab .tcdrv', e => ({ dead: e.querySelector('#tcDrvSel').disabled, why: e.querySelector('#tcDrvSel').title,
+    const inst = await page.$eval('.doc .tctab .tcdrv', e => ({ dead: e.querySelector('#tcDrvSel').disabled, why: saidOf(e.querySelector('#tcDrvSel')),
       val: e.querySelector('#tcDrvSel').value, tick: [e.querySelector('#tcDrvTick').checked, e.querySelector('#tcDrvTick').disabled], rm: !!e.querySelector('[data-tcdrvrm]') }));
     ok(inst.dead && /remove it first to install another version/.test(inst.why) && inst.val === 'nvidia-driver-595' && inst.tick[0] && inst.tick[1] && inst.rm,
        `installed, its pulldown is ghosted on the installed branch and says to remove it first, with Remove beside it (${inst.val}; ${inst.why})`);

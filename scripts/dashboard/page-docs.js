@@ -207,10 +207,12 @@ function sectJump(g){
     d.scrollIntoView({block: "start", behavior: "smooth"});
   });
 }
-// Every section is open by default and several stand open, at every width
+// Every section is open by default at a desk and several stand open there
 // (the operator, 8 Oct: too much was hidden in folds); a long surface has a
-// jump bar instead (sectJump). Before, the first of a group was open, and on
-// a phone one at a time (7 Oct). Among siblings only: a section's own folds (a page's rules
+// jump bar (sectJump). On a phone one section is open at a time on every
+// folded surface, as the notebook's views do: opening one shuts the others
+// (the operator, 11 Oct, R184), so the page is never a stack of open folds
+// to scroll. Among siblings only: a section's own folds (a page's rules
 // inside Pages) take turns among themselves and never close the section
 // holding them.
 const sectLast = new WeakMap();     // a group -> the key of the section last opened in it
@@ -230,8 +232,17 @@ function soleOpen(d){
   sectLast.set(g, d.dataset.sect || "");
   // Recorded now, not when the slide ends: a repaint landing mid-slide read
   // the one sliding shut as still open and kept it over the one just opened.
-  // Several stand open at every width since 8 Oct, so nothing else shuts.
   if (d.dataset.sect) sectOpen[d.dataset.sect] = true;
+  // On a phone the others shut as this one opens (R184); a desk keeps them.
+  // Shut by the rule, not by a hand: nothing is recorded for them, so a desk
+  // this page is widened to shows them open again as it always did, and the
+  // press mark comes off so the toggle their slide fires records nothing.
+  if (!isPhone()) return;
+  for (const o of sectsOf(g)){
+    if (o === d || !o.open) continue;
+    delete o.dataset.pressed;
+    slideDetails(o, false);
+  }
 }
 // A section opened by a draw rather than by a hand (Memories, remembered
 // open): it is the one that stays, and on a phone the others shut at once,
@@ -242,16 +253,25 @@ function keepOpen(d){
   sectLast.set(g, d.dataset.sect || "");
   oneOpen(g);
 }
-// After a draw. Nothing anybody chose is moved: every section stands open
-// unless somebody shut it.
+// After a draw. At a desk nothing anybody chose is moved: every section
+// stands open unless somebody shut it. On a phone one stands open: the one
+// last opened by a hand or a draw, else the one the view is for (prime),
+// else the first; the rest are shut without a slide, since a draw is not a
+// press (R184).
 function oneOpen(g){
   if (!sectRuled(g)) return;
   const mine = sectsOf(g);
   for (const o of mine){
     if (o.hasAttribute("data-lead")){ o.removeAttribute("data-lead"); sectLast.set(g, o.dataset.sect || ""); continue; }
-    // Open unless somebody shut it, at every width (the operator, 8 Oct).
+    // Open unless somebody shut it, at a desk (the operator, 8 Oct).
     if (sectDefault(o)) o.open = true;
   }
+  if (!isPhone() || mine.length < 2) return;
+  const last = sectLast.get(g);
+  const keep = mine.find(o => last && (o.dataset.sect || "") === last)
+    || mine.find(o => o.hasAttribute("data-prime"))
+    || mine.find(o => o.open) || mine[0];
+  for (const o of mine) o.open = o === keep;
 }
 // A button that is doing something says so until the repaint replaces it:
 // grayed, and wearing the verb with an animated ellipsis. Pair with

@@ -648,6 +648,10 @@ description="${desc}"
 supervisor=supervise-daemon
 command="${cmd%% *}"
 command_args="${cmd#* }"
+# Kept, where OpenRC has no journal: supervise-daemon sent it to /dev/null.
+# The agent keeps the file to its size (cap_logs) and bb logs --node reads it.
+output_log="/var/log/${name}.log"
+error_log="/var/log/${name}.log"
 respawn_delay=5
 depend() { need net; use netmount; after docker; }
 EOF
@@ -659,7 +663,9 @@ EOF
             cat > "/etc/sv/${name}/run" <<EOF
 #!/bin/sh
 # ${desc}
-exec ${cmd} 2>&1
+# Kept, where runit has no journal and no log service here: it went to
+# runsvdir and nowhere. The agent keeps the file to its size (cap_logs).
+exec ${cmd} >> "/var/log/${name}.log" 2>&1
 EOF
             chmod 0755 "/etc/sv/${name}/run"
             ln -sfn "/etc/sv/${name}" "/var/service/${name}"
@@ -1116,6 +1122,31 @@ if stamp_daemon; then
     # and doing that on a re-run that changed nothing would be rude.
     svc_restart docker || warn "docker did not restart; restart it by hand so the label is read"
     say "stamped this daemon as BuilderBot's sandbox"
+fi
+
+# The journal kept across boots (R185): a fresh VPS keeps it in memory only,
+# so after a crash `bb logs --node NAME --crash` met "No journal boot entry
+# found for the specified boot (-1)" on draconis (11 Oct). A drop-in rather
+# than an edit of journald.conf, so the distribution's own file is left as it
+# was; journald restarted only when the drop-in is new.
+keep_journal() {
+    local f=/etc/systemd/journald.conf.d/50-builderbot.conf
+    command -v journalctl >/dev/null 2>&1 || return 1
+    # The same bytes as the agent's JOURNAL_DROPIN (configplane.py), and at
+    # most 1G of journal: an older drop-in without the ceiling is replaced.
+    local want='# Written by BuilderBot (R185): keep the journal across boots, and at most 1G of it.
+[Journal]
+Storage=persistent
+SystemMaxUse=1G'
+    [ -f "$f" ] && [ "$(cat "$f")" = "$want" ] && return 1
+    install -d -m 0755 /etc/systemd/journald.conf.d /var/log/journal
+    printf '%s\n' "$want" > "$f"
+    command -v systemd-tmpfiles >/dev/null 2>&1 && systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1
+    return 0
+}
+if keep_journal; then
+    systemctl restart systemd-journald >/dev/null 2>&1 || warn "journald did not restart; the journal is kept from the next boot"
+    say "the system journal is kept across boots from now"
 fi
 
 # One implementation of "let this account in", used for both. The validation

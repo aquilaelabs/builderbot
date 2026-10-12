@@ -1,0 +1,13 @@
+# The network probe, one service that builds from this folder: what a
+# project's container reaches on its node (R178), reported in its log.
+# NETTEST_CTL and NETTEST_NODE come from the env (.env.example beside this).
+services:
+  nettest:
+    build:
+      context: .
+    container_name: bb-nettest
+    environment:
+      NETTEST_CTL: ${NETTEST_CTL:-}
+      NETTEST_NODE: ${NETTEST_NODE:-}
+      NETTEST_PRIVATE: ${NETTEST_PRIVATE:-192.168.1.1}
+    restart: "no"

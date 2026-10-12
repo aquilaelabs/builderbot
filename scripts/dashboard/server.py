@@ -15,6 +15,7 @@ import contextlib
 from html import escape as html_escape
 import glob
 import gzip
+import datetime
 import hashlib
 import hmac
 import atexit
@@ -484,6 +485,28 @@ def compat_reap_once():
     return ended
 
 
+# The log policy on a clock (the operator, 12 Oct): the days were applied at
+# boot and at Apply only, so a controller up for weeks kept what had fallen
+# past them, and its live files grew without bound. Every hour: the earlier
+# generations and the CI runs past the days, a live file past its ceiling,
+# the job logs past theirs, the job rows and the audit past theirs.
+LOG_SWEEP_EVERY = 3600
+
+
+def log_sweep_loop():
+    while True:
+        time.sleep(LOG_SWEEP_EVERY)
+        try:
+            r = logs.sweep()
+            r["job_logs"] = nodes.prune_job_logs()
+            r["job_rows"] = nodes.prune_jobs()
+            r["audit"] = db.prune_audit()
+            if any(r.values()):
+                print(f"dashboard: log sweep: {', '.join(f'{k} {v}' for k, v in r.items() if v)}", flush=True)
+        except Exception as e:                                # noqa: BLE001 (the loop outlives one bad pass)
+            print(f"dashboard: log sweep skipped: {type(e).__name__}: {e}", flush=True)
+
+
 def _compat_loop():
     while True:
         try:
@@ -678,6 +701,68 @@ def _row_git_ready(base, over):
     return bool(g["name"] and g["email"])
 
 
+# What git says of each project, kept until what it depends on moves (R94):
+# three git forks per project on every /api/status, about sixty a poll on a
+# controller with twenty projects, and the status poll at 1.3s on average
+# (12 Oct). Keyed on what .git/HEAD says, .git/config's size and time and
+# .git's time: a branch switch rewrites HEAD and a remote change config, so
+# either asks git again; a .git that is a file (a worktree) is asked every
+# time, and nothing is kept longer than GIT_FACTS_S.
+GIT_FACTS_S = 60.0
+_git_facts_kept = {}
+
+
+def _git_stamp(d):
+    # HEAD by its contents, a few bytes that are the branch itself, since a
+    # share that keeps times to the second would not tell two switches in
+    # one second apart; config by its size and time, and .git's time.
+    g = d / ".git"
+    try:
+        if not g.is_dir():
+            return None
+        c = (g / "config").stat()
+        return ((g / "HEAD").read_bytes()[:512], c.st_size, c.st_mtime_ns, g.stat().st_mtime_ns)
+    except OSError:
+        return None
+
+
+def _git_facts(d):
+    """(git_ok, linked, fhost, forge, github, branch) for one project."""
+    stamp = _git_stamp(d)
+    hit = _git_facts_kept.get(str(d))
+    if stamp is not None and hit and hit[0] == stamp and time.time() - hit[1] < GIT_FACTS_S:
+        return hit[2]
+    branch, git_ok, linked, github, fhost, forge = None, False, True, False, "", forges.OTHER
+    if (d / ".git").exists():
+        # Asking git rather than trusting the directory's existence: a
+        # half-copied or corrupt .git looks identical from out here, and a
+        # repo git cannot read is not one anything can act on.
+        git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
+                     timeout=10)["out"].strip() == "true"
+    if git_ok:
+        # Asked of git, not read out of .git/config: a worktree or a
+        # submodule keeps its config elsewhere, and these drive visible
+        # controls (the chain on the row; the GitHub command card's
+        # ghosting), so a wrong guess here offers an action that cannot
+        # work. -v for the URLs, which is what says which host it is on.
+        remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
+        linked = bool(remotes.strip())
+        # Which forge, for the chain's own words, and `github` still on its
+        # own, because the command card runs `gh` and that is GitHub's and
+        # nobody else's.
+        fhost = _remote_host(remotes) if linked else ""
+        forge = forges.forge_of(fhost)
+        github = fhost.lower().split(":")[0] == "github.com"
+        r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"], timeout=10)
+        # `out` carries stderr too, so a detached HEAD would otherwise put a
+        # `fatal:` line where the branch name goes.
+        branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
+    facts = (git_ok, linked, fhost, forge, github, branch)
+    if stamp is not None:
+        _git_facts_kept[str(d)] = (stamp, time.time(), facts)
+    return facts
+
+
 def _projects_on_disk():
     """The directories under /workspace that are projects, each with what is
     wrong with it: the walk, the permissions, and what git says of the
@@ -767,35 +852,9 @@ def _projects_on_disk():
             except OSError:
                 pass                    # unreadable: covered by `missing` above
 
-            if (d / ".git").exists():
-                # Asking git rather than trusting the directory's existence: a
-                # half-copied or corrupt .git looks identical from out here, and
-                # a repo git cannot read is not one anything can act on.
-                git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
-                             timeout=10)["out"].strip() == "true"
+            git_ok, linked, fhost, forge, github, branch = _git_facts(d)
             if not git_ok:
                 issues.append({"level": "error", "text": "no valid git repository"})
-            else:
-                # Asked of git, not read out of .git/config: a worktree or a
-                # submodule keeps its config elsewhere, and these drive
-                # visible controls (the chain on the row; the GitHub command
-                # card's ghosting), so a wrong guess here offers an action
-                # that cannot work. -v for the URLs, which is what says which
-                # host it is on.
-                remotes = run(["git", "-C", str(d), "remote", "-v"],
-                              timeout=10)["out"]
-                linked = bool(remotes.strip())
-                # Which forge, for the chain's own words, and `github` still
-                # on its own, because the command card runs `gh` and that is
-                # GitHub's and nobody else's.
-                fhost = _remote_host(remotes) if linked else ""
-                forge = forges.forge_of(fhost)
-                github = fhost.lower().split(":")[0] == "github.com"
-                r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
-                        timeout=10)
-                # `out` carries stderr too, so a detached HEAD would otherwise
-                # put a `fatal:` line where the branch name goes.
-                branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
 
         out.append({"dir": d, "name": d.name, "issues": issues, "git": branch,
                     "git_ok": git_ok, "linked": linked, "github": github,
@@ -1138,7 +1197,15 @@ def _attention(who):
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
     rows = (([] if users.may(who, "node") else nodes.attention(where))
             + [a for a in toolchains.attention(where)
-               if not users.may_node(who, "toolchains-write", a["id"])])
+               if not users.may_node(who, "toolchains-write", a["id"])]
+            # ...and a node's nginx behind the newest line (nginxproxy.attention,
+            # R192), for whoever may act on the Docker tab, which Update is.
+            + ([] if users.may(who, "docker-write")
+               else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid))
+               # ...and a container whose registry image moved (imagecheck, R195).
+               + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)
+               # ...and a copy or move that did not happen (relocate.py).
+               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
@@ -1274,10 +1341,8 @@ def session_target(project, claude=False, node="", uid=""):
     # downstream (empty here, the node's name when a node refused), so the
     # row can say this plainly and keep red for the machine that is broken.
     no_node = {"where": "refused", "name": "",
-               # A full stop, not a dash: shortWhy() on the page cuts this
-               # at the first sentence end to put the fact on the row and
-               # leave the instruction to the tooltip, and the dash it used
-               # to cut at is gone from the page's vocabulary.
+               # The row says it whole, the fact and then what to do about
+               # it (no tooltip carries a second half any more).
                "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
                       "one on the Nodes tab"} if claude \
         else {"where": "local"}
@@ -1296,8 +1361,8 @@ def session_target(project, claude=False, node="", uid=""):
         why = (f"{name} hosts containers only, so no session runs there: pick another node in "
                f"{project}'s settings")
     elif n.get("state") == "retired":
-        # Un-enrolled (the operator, 5 Oct): the fact first, for the row, and
-        # what to do after it, for the tooltip.
+        # Un-enrolled (the operator, 5 Oct): the fact first, then what to do
+        # about it, both on the row.
         why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
                "or enroll it again")
         passing = True          # its own sentence says the way on
@@ -1572,12 +1637,51 @@ def node_tmux_sessions():
                 continue
             name = tmux_base(real) if who == owner else real
             row = {"name": name, "node_name": real, "node": nname, "node_id": nid,
-                   "attached": bool(s.get("attached")), "cwd": s.get("cwd", "")}
+                   "attached": bool(s.get("attached")), "cwd": s.get("cwd", ""),
+                   "created": int(s.get("created") or 0)}
             if tmux_base(real).startswith("claude-"):
                 state, task = claude_state(s.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
+
+
+def _image_since():
+    """When this controller's image was first seen running here, from the
+    ledger the entrypoint keeps (image-log.tsv), or this process's start:
+    a session begun before it was briefed by the build before."""
+    rev = image_stamp().get("rev") or ""
+    try:
+        for line in reversed((STATE / "image-log.tsv").read_text().splitlines()):
+            f = line.split("\t")
+            if len(f) >= 2 and rev and f[1] == rev:
+                return int(datetime.datetime.fromisoformat(f[0]).timestamp())
+    except (OSError, ValueError):
+        pass
+    return int(_STARTED)
+
+
+_STARTED = time.time()
+# Read once: the image changes only with a restart of this process.
+_IMAGE_SINCE = {}
+
+
+def session_behind(s):
+    """What changed since this session started that it does not see until
+    it is started again (the operator, 12 Oct): a toolchain installed on its
+    node that puts something on its PATH, and BuilderBot updated, whose
+    briefing a session reads once, at its start."""
+    started = int(s.get("created") or 0)
+    if not started:
+        return []
+    why = []
+    tools = toolchains.landed_since(s.get("node_id") or "", started) if s.get("node_id") else []
+    if tools:
+        why.append(f"{', '.join(tools[:3])}{' and more' if len(tools) > 3 else ''} installed on "
+                   f"{s.get('node') or 'its node'} since it started")
+    if _IMAGE_SINCE.setdefault("at", _image_since()) > started:
+        why.append("BuilderBot updated since it started: its briefing is the older build's")
+    return why
 
 
 def project_busy(name, verb):
@@ -1776,9 +1880,21 @@ def end_session(session, node=""):
 
 def uptime():
     # PID 1 started when the container did, so its elapsed time is the
-    # container's; /proc/uptime is the host's under a shared kernel.
-    r = run(["ps", "-o", "etime=", "-p", "1"], timeout=10)
-    return r["out"].strip() or "?"
+    # container's; /proc/uptime alone is the host's under a shared kernel.
+    # Read from /proc in ps's own etime shape ([[dd-]hh:]mm:ss) rather than
+    # forking ps on every status poll (R94); ps where /proc does not say.
+    try:
+        start = int(open("/proc/1/stat").read().rsplit(")", 1)[1].split()[19])
+        up = float(open("/proc/uptime").read().split()[0])
+        secs = max(0, int(up - start / os.sysconf("SC_CLK_TCK")))
+        d, rest = divmod(secs, 86400)
+        h, rest = divmod(rest, 3600)
+        m, sec = divmod(rest, 60)
+        return (f"{d}-{h:02d}:{m:02d}:{sec:02d}" if d else f"{h:02d}:{m:02d}:{sec:02d}" if h
+                else f"{m:02d}:{sec:02d}")
+    except (OSError, ValueError, IndexError):
+        r = run(["ps", "-o", "etime=", "-p", "1"], timeout=10)
+        return r["out"].strip() or "?"
 
 
 # The API surface the companion app is written against (android/). One
@@ -2076,6 +2192,56 @@ def _diag_watch(project, uid):
 
 # The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
 DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
+
+
+# A Reset that un-enrolls its nodes first: their uninstalls run, and the
+# reset follows once each node is retired. Read by GET /api/reset.
+_reset_job = {}
+_reset_lock = threading.Lock()
+RESET_WAIT_S = 20 * 60
+
+
+def _reset_after(principal):
+    """Wait for every node a Reset is un-enrolling to be retired, then reset.
+    A node that has not reported in RESET_WAIT_S, or whose uninstall failed,
+    stops it with the reason, and nothing is moved."""
+    while True:
+        rows = _reset_job.get("nodes") or []
+        for x in rows:
+            n = nodes.node(x["id"]) or {}
+            if n.get("state") == "retired" or not n:
+                x["done"] = True
+            elif x.get("job"):
+                j = nodes.job(x["job"], with_log=False) or {}
+                if j.get("state") in ("failed", "canceled"):
+                    x["error"] = f"its uninstall {j['state']}: {j.get('error') or 'no reason given'}"
+        bad = [x for x in rows if x.get("error")]
+        if bad or time.time() - _reset_job.get("started", 0) > RESET_WAIT_S:
+            _reset_job.update(running=False, error="; ".join(f"{x['name']}: {x['error']}" for x in bad)
+                              or "; ".join(f"{x['name']} has not reported its uninstall"
+                                           for x in rows if not x.get("done")) + f" in {RESET_WAIT_S // 60} minutes")
+            print(f"dashboard: reset stopped: {_reset_job['error']}", flush=True)
+            return
+        if all(x.get("done") for x in rows):
+            break
+        time.sleep(3)
+    r, status = settings.reset(STATE)
+    if status != 200:
+        _reset_job.update(running=False, error=r.get("error") or "the reset failed")
+        return
+    _reset_job.update(running=False, moved_to=r["moved_to"])
+    print(f"dashboard: {principal} reset this controller after un-enrolling "
+          f"{', '.join(x['name'] for x in _reset_job['nodes'])}; the old state is in {r['moved_to']}", flush=True)
+    threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
+
+
+def setup_node():
+    """The name of a node enrolled and answering, for Finish on the setup
+    page (R199), or ""."""
+    if nodes is None:
+        return ""
+    return next((n["name"] for n in nodes.node_list()
+                 if n.get("kind") == "agent" and n.get("state") == "online" and n.get("live")), "")
 # ...and the home tunnel's (R176), applied by tunnel.py when they change.
 TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 
@@ -2550,7 +2716,7 @@ idle.configure(state=STATE, write_json=write_json,
                changed=lambda: [nodes.ask_hello(n["id"]) for n in nodes.node_list()
                                 if n.get("kind") == "agent"])
 # On boot, because that is when a generation was just rotated in and the oldest
-# one fell off the end of the policy. Nothing else runs on a schedule here.
+# one fell off the end of the policy; then every hour (log_sweep_loop below).
 logs.prune()
 
 import prefs                                                     # noqa: E402
@@ -2591,6 +2757,8 @@ devapp.label_of = registry.label
 import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
 import nginxproxy                                                # noqa: E402
+import imagecheck                                                # noqa: E402
+import relocate                                                  # noqa: E402
 import tunnel                                                    # noqa: E402
 import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
@@ -2632,6 +2800,10 @@ try:
     # retention at all until R17 step 1. Swept once here for whatever ended
     # while this controller was down; a running one sweeps a project as its
     # own jobs end, which is when it gains a log.
+    # The one log policy (the Logs section's days) reaches the job logs,
+    # and Clear reaches them too.
+    nodes.log_days = logs.days
+    logs.clear_job_logs = nodes.clear_job_logs
     try:
         _gone = nodes.prune_job_logs()
         if _gone:
@@ -2752,7 +2924,14 @@ profiletab.configure(users=users,
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
-                 node_addr=nodes.ssh_addr_of if not NODES_OK else None,
+                 # A hosting-only node has no docker address here: the controller
+                 # holds no key to a VPS, and every `docker compose config` and
+                 # data-directory mkdir addressed at it waited out a 30s ssh
+                 # timeout, twice per nginx Save on draconis, holding the server
+                 # with it (R85 step 1, the operator, 11 Oct). With no address
+                 # the config check runs the compose plugin here, which parses
+                 # without a daemon, and the directory is the agent's to make.
+                 node_addr=(lambda nid: "" if nodes.host_only(nid) else nodes.ssh_addr_of(nid)) if not NODES_OK else None,
                  queue=nodes if not NODES_OK else None,
                  runner=jobs if not NODES_OK else None,
                  project_node=lambda p: prefs.get(p)["node"],
@@ -2772,8 +2951,11 @@ containers.dial = lambda p: prefs.get(p)["devbuild"]
 containers.users = users
 containers.ask_rebuild = phone.ask_rebuild
 containers.net_nudge = net_nudge
+containers.project_hosts = lambda p: prefs.get(p).get("hosts") or []
+containers.ports_local = nodes.ports_local_on
 # One nginx per node, from the nginx tab (R171): its records here, the
 # container through containers.py, and the node's own view of its ports.
+imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
                      node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                      taken_ports=devapp.taken_ports)
@@ -2803,6 +2985,7 @@ claudegrant.home_for = home_for
 import channel                                                   # noqa: E402
 
 channel.configure(home_for=home_for)
+channel.unvetted_ok = lambda: bool(settings.get("offer_unvetted"))   # a Mac's provisioner is a dev feature
 # A signing is a job on the project's node, of a build in its dist/ (R106).
 signing.node_of = lambda name: prefs.get(name)["node"]
 signing.node_refuses = lambda nid: nodes.agent_stale(nodes.node(nid)) if nid and not NODES_OK else ""
@@ -2907,6 +3090,7 @@ if not NODES_OK:
 projsessions.configure(sessions=lambda: tmux_sessions() + node_tmux_sessions(),
                        base=tmux_base, owner=tmux_owner, accounts=account_names,
                        owner_name=users.owner_name, end=end_session)
+projsessions.BEHIND = session_behind
 
 # The code map, built for a project the moment it exists (mapping.py): the
 # same command a session runs by hand, started in the background by the
@@ -2921,6 +3105,7 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    after_create=mapping.start)
 # The session network reaches the containers of the projects a project reads.
 devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
+devapp.hosts_of = lambda p: (prefs.get(p) or {}).get("hosts") or []
 devapp.reaches_of = prefs.reaches_on
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock
@@ -3127,10 +3312,13 @@ ftp.configure(state=STATE, workspace=WORKSPACE, write_json=write_json, users=use
               node_agent=lambda nid: "" if NODES_OK else ((nodes.node(nid) or {}).get("agent") or {}).get("version") or "",
               node_info=lambda nid: None if NODES_OK else _ftp_node(nid))
 nodes.ftp_for = ftp.for_node
+# The node's nginx container, for its log stream (R182): named only where the nginx tab put one.
+nodes.nginx_for = lambda nid: nginxproxy.container_name(nid) if nginxproxy.deployed(devapp, nid) else ""
 
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).
 import diag                                                      # noqa: E402
+devapp.redact = diag.redact       # docker.log carries argvs and output tails
 
 import reports                                                   # noqa: E402
 import files                                                     # noqa: E402
@@ -3411,7 +3599,10 @@ def snapshot(who):
         # page's heartbeat. Every Docker button on the page reads this one
         # answer rather than each finding out by failing.
         "docker": devapp.available_default(),
-        "logs": logs.payload(),
+        # An administrator's, as the Logs section that reads it is: it
+        # walks the log directory and the CI tree, which a session's poll
+        # has no use for and every poll would pay.
+        "logs": logs.payload() if users.is_admin(who) else None,
         "idle": idle.payload(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
@@ -3562,6 +3753,7 @@ GET_ROUTES = (
     ("exact", "/api/live", "_get_live"),
     ("prefix", "/api/trace", "_get_trace"),
     ("prefix", "/api/status", "_get_status"),
+    ("exact", "/api/reset", "_get_reset"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/transcripts", "_get_transcripts"),
@@ -3647,6 +3839,7 @@ POST_ROUTES = (
     ("prefix", "/api/layout", "_layout"),
     ("exact", "/api/bell", "_bell"),
     ("exact", "/api/nginx", "_nginx"),
+    ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
     ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
@@ -3895,6 +4088,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_page(r["error"], setup=True)
         print(f"dashboard: {name} claimed this container as the owner",
               flush=True)
+        # Then the rest of the setup page, which ends with a node (R199).
+        settings.set_many({"setup_done": False})
         # Straight in, rather than back to a sign-in they just proved: they
         # typed the password twice thirty seconds ago.
         self.send_response(303)
@@ -4513,8 +4708,11 @@ class Handler(BaseHTTPRequestHandler):
         query KEYS only, never values: a project's name in a query is the
         one thing here that is somebody's."""
         who = self._who()
-        if not who or not (users.is_admin(who) or who.get("session")):
-            return self._json({"error": "the trace is for an administrator or a session"}, 403)
+        # A session's only with the diagnostics grant: the trace is every
+        # request the controller answered, every project's paths among them.
+        if not who or not (users.is_admin(who) or (who.get("session") and not self._diag_why())):
+            return self._json({"error": "the trace is for an administrator, or a session whose project "
+                                        "has the diagnostics grant (its settings, Debug)"}, 403)
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         try:
             since = float((q.get("since") or ["0"])[0])
@@ -5241,6 +5439,23 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if str(req.get("confirm") or "") != "reset":
             return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
+        # The nodes to un-enroll first (the operator, 12 Oct): each uninstalled
+        # and retired before anything is moved, since the record of them is
+        # what moves, and the reset follows once every one has reported.
+        ids = [str(x) for x in (req.get("unenroll") or []) if isinstance(x, str)]
+        if ids:
+            with _reset_lock:
+                if _reset_job.get("running"):
+                    return self._json({"error": "a reset is already under way"}, 409)
+                rows = nodes.reset_unenroll(self._principal(), ids, req.get("stores") is True)
+                bad = [x for x in rows if x["error"]]
+                if bad:
+                    return self._json({"error": "; ".join(f"{x['name']}: {x['error']}" for x in bad),
+                                       "nodes": rows}, 409)
+                _reset_job.clear()
+                _reset_job.update(running=True, nodes=rows, error="", started=time.time())
+            threading.Thread(target=_reset_after, args=(self._principal(),), daemon=True).start()
+            return self._json({"ok": True, "unenrolling": rows})
         r, status = settings.reset(STATE)
         if status != 200:
             return self._json(r, status)
@@ -5260,6 +5475,10 @@ class Handler(BaseHTTPRequestHandler):
         want = req.get("set") if isinstance(req.get("set"), dict) else {}
         if any(k in DEBUG_SETTINGS and want[k] != settings.get(k) for k in want) and self._refused("debug"):
             return
+        # Finish on the setup page (R199): the first node is the one step
+        # that cannot wait, so it is checked here and not only on the page.
+        if want.get("setup_done") is True and not settings.get("setup_done") and not setup_node():
+            return self._json({"error": "enroll a node first: Finish needs one enrolled and answering"}, 409)
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
@@ -6040,7 +6259,11 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state") and session:
             on = devapp.instance_node(name, field(req, "instance"))
             mine = devapp.project_daemon(sess)
-            shipped_there = devapp._read_rec(name, devapp.instance_key(name, field(req, "instance") or devapp.MAIN)).get("ship")
+            # A shipped one is the session's while its node is still under the
+            # project's Hosts its containers on; taken off, the container stays
+            # the project's and the session loses it like any other left behind.
+            shipped_there = devapp._read_rec(name, devapp.instance_key(name, field(req, "instance") or devapp.MAIN)).get("ship") \
+                and on in (prefs.get(sess).get("hosts") or [])
             if on and mine and on != mine and not shipped_there:
                 return self._json({"error": "this dev instance is on another node: it stayed "
                                             "where it was running when this project moved, "
@@ -6067,7 +6290,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "a session creates its own project's container, "
                                                 "belonging to its own project"}, 403)
                 req.pop("owner", None)
-                req["node"] = ""
+                # ...on its own node: the node a session names is dropped,
+                # except for one it ships to, which the hosts gate above has
+                # already held to the project's Hosts its containers on.
+                # Dropped whole, a shipped new passed that gate and then
+                # landed, unshipped, on the project's own node (B645).
+                if req.get("ship") is not True:
+                    req["node"] = ""
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(me)} \
                 and self._readonly(name):
@@ -6952,23 +7181,27 @@ class Handler(BaseHTTPRequestHandler):
                                             "the Roles tab"}, 403)
         elif self._refused("debug"):
             return None
-        return self._result(nodes.log_read_named(self._principal(), asking, field(req, "node"),
-                                                 field(req, "stream"), req.get("lines"),
-                                                 bool(settings.get("debug_mode")),
-                                                 grants=prefs.get(proj)["log_from"] if proj else [],
-                                                 project=proj), 403)
+        r = nodes.log_read_named(self._principal(), asking, field(req, "node"),
+                                 field(req, "stream"), req.get("lines"),
+                                 bool(settings.get("debug_mode")),
+                                 grants=prefs.get(proj)["log_from"] if proj else [],
+                                 project=proj)
+        # Redacted for a session, as the same text read through the Jobs
+        # API already is: a machine's journal names tokens as it goes.
+        if (self._who() or {}).get("session") and isinstance(r.get("out"), str):
+            r["out"] = diag.redact(r["out"])
+        return self._result(r, 403)
 
     def _diag(self, req):
         """The controller's diagnostics (diag.py). An administrator's, and a
-        session's only when the debug switch is on, the session's node is
-        ticked for it on Debug settings, and the session's account is an
-        administrator: a node is shared, so the node's tick alone would hand
-        it to every tester whose session runs there. POST, so each read is in
-        the audit trail."""
+        session's only when the debug switch is on, its project's settings
+        grant it the diagnostics, and the session's account holds the debug
+        grant (_diag_why). POST, so each read is in the audit trail."""
         if self._diag_refused():
             return None
         want = req.get("sections") if isinstance(req.get("sections"), list) else None
-        return self._json(diag.report([str(x) for x in want] if want else None))
+        r = diag.report([str(x) for x in want] if want else None)
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _diag_why(self):
         """Why this caller may not read the controller's diagnostics, or "":
@@ -7146,9 +7379,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(nginxproxy.view(devapp, devactions.state))
 
     def _nginx(self, req):
-        """Deploy, save, certificate, remove on one node's nginx
-        (nginxproxy.py): writing a compose file and building it on a node,
-        so docker-write like a written container, and never a session's."""
+        """Deploy, save, certificate, remove, check and update on one node's
+        nginx (nginxproxy.py): writing a compose file and building it on a
+        node, so docker-write like a written container, and never a
+        session's. Check reads the registry now; update pins the newest
+        line on the node and rebuilds (R192)."""
         if (self._who() or {}).get("session"):
             return self._json({"error": "a node's proxy is a person's"}, 403)
         if self._refused("docker-write"):
@@ -7162,17 +7397,43 @@ class Handler(BaseHTTPRequestHandler):
             r = nginxproxy.save_routes(nid, req.get("routes"))
             # The certificate pasted is the node's default, or one
             # hostname's own when cert_for names it (R175).
+            saved = {}
+            # A pair pasted is kept under the key its names say, or the one
+            # cert_for names (R188); drop_cert names the key to take off.
             if not r.get("error") and isinstance(req.get("cert"), str) and req.get("cert").strip():
                 r = nginxproxy.set_cert(nid, req.get("cert"), req.get("key"), field(req, "cert_for"))
-            if not r.get("error") and req.get("drop_cert") is True:
-                r = nginxproxy.drop_cert(nid, field(req, "cert_for"))
+                if not r.get("error"):
+                    saved = {"host": r.get("host", "")}
+            drop = req.get("drop_cert")
+            if not r.get("error") and drop:
+                r = nginxproxy.drop_cert(nid, drop if isinstance(drop, str) else field(req, "cert_for"))
             if not r.get("error"):
-                r = nginxproxy.apply(nid, containers, devactions, devapp)
+                r = nginxproxy.apply(nid, containers, devactions, devapp) | saved
         elif act == "remove":
             r = nginxproxy.remove(nid, devactions, devapp)
+        elif act == "check":
+            lt = nginxproxy.check_image()
+            r = {"error": lt["error"]} if lt.get("error") else {"ok": True, "latest": lt}
+        elif act == "update":
+            r = nginxproxy.update(nid, containers, devactions, devapp)
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         return self._result(r)
+
+    def _images(self, req):
+        """Check for updates on the Docker tab (imagecheck.py, R195): every
+        container's registry images on one node, or all, asked now. A
+        person's, under docker-write, since what it leads to is an Update."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "checking for image updates is a person's"}, 403)
+        if self._refused("docker-write"):
+            return
+        if field(req, "action") != "check":
+            return self._json({"error": "unknown action"}, 400)
+        nid = field(req, "node")
+        if nid and not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        return self._result(imagecheck.check(nid or None))
 
     def _bell(self, req):
         """Put a bell note away for this account, or bring every one back
@@ -7196,7 +7457,7 @@ class Handler(BaseHTTPRequestHandler):
         What it does NOT claim: a session in ANOTHER project still reaches this
         directory through Bash. The file tools are denied on every sibling
         already, and that is the whole of the guarantee here too: locking adds
-        "no session of its own", not a sandbox. The tooltip says so.
+        "no session of its own", not a sandbox, and says no more than that.
         """
         name, on = req.get("name", ""), bool(req.get("locked"))
         # A project this account was given, and the right (B174): a lock ends
@@ -7276,6 +7537,11 @@ class Handler(BaseHTTPRequestHandler):
         # authenticates with, or with a token typed and not saved yet.
         if req.get("action") == "test":
             return self._json(*projects.auth_test(name, str(req.get("token") or "")))
+        # Its own deploy key, made or pasted beside the token (the operator,
+        # 12 Oct): the private half goes to the root-only helper and no
+        # further.
+        if str(req.get("action") or "").startswith("key-"):
+            return self._json(*projects.deploy_key(name, str(req["action"]), str(req.get("key") or "")))
         return self._json(*projects.auth_answer(name))
 
     def _project_ftp(self, req):
@@ -7323,6 +7589,14 @@ class Handler(BaseHTTPRequestHandler):
         # runs for it. By node id when the row said which, and by name alone
         # for a caller that only knows the name (a tab closing).
         return self._result(end_session(session, str(req.get("node") or "")))
+
+    def _get_reset(self):
+        """GET /api/reset: how a Reset that un-enrolls its nodes first is
+        getting on: each node, done or why not, and the error that stopped
+        it. An administrator's."""
+        if self._refused("admin"):
+            return None
+        return self._json({k: v for k, v in _reset_job.items() if k != "started"})
 
     def _get_project_sessions(self):
         """GET /api/project-sessions?project=NAME: every account's sessions on
@@ -7565,11 +7839,19 @@ def main():
     if not NODES_OK:
         claudecode.start()        # the first check soon after the start, then every six hours
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
+    threading.Thread(target=log_sweep_loop, name="log-sweep", daemon=True).start()
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     ciwatch.start()           # a project's CI, once a day (R117)
     tunnel.apply()            # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
+    # The copies the nodes hold, looked at here on a timer and announced when
+    # they moved, so a node need not keep asking (B643).
+    threading.Thread(target=wssync.look_loop, name="sync-look", daemon=True).start()
+    if imagecheck.AUTOCHECK:          # every container's registry images, weekly (R195)
+        threading.Thread(target=imagecheck.check_loop, name="image-check", daemon=True).start()
+    if nginxproxy.AUTOCHECK:          # the nginx image against the registry, weekly (R192)
+        threading.Thread(target=nginxproxy.check_loop, name="nginx-check", daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()
 
 

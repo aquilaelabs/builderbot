@@ -116,6 +116,20 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The controller can run the home tunnel itself: the Settings tab's Public hostname group takes the hostname, the tunnel's token and an optional Cloudflare API token that writes the hostname's record and the tunnel's rules; the image carries cloudflared, and Enroll node fills the hostname in. (03818ad)
 - Enroll script on a node's row makes a new script for that node, to run again on the same machine and nowhere else; it carries no secret, and the node keeps its id. (5542fba)
 - A Storage tab on the Tools card: what every node's disks hold, each filesystem as a meter, the stores and Docker's share, and each project's folders largest first, projects you cannot see counted as one line; Measure now walks a node's disks at once. Its own area, Storage. (6d600f9)
+- bb logs --node NAME --nginx reads the node's nginx log, a fourth machine log stream under the project's Debugging grant beside the agent's journal, the runner's and the terminal server's (R182) (a9dbd2b)
+- A container BuilderBot deploys itself, the nginx tab's today, is System's: an owner no picker sets, shown as its own group on the Docker tab, and given every container on its node by the containers' network map (R180). Agent 0.7.167 reads the map's all (f85be0e)
+- bb logs --node NAME --system, --kernel and --crash read this boot's journal, the kernel ring and the previous boot's last lines under the project's Debugging grant (R183) (f85be0e)
+- A certificate saved on the nginx tab for a domain covers its subdomains' routes: one wildcard or origin pair under example.com serves a.example.com and b.example.com, another domain's pair its own, and a hostname's own still wins; the For picker offers each route's parent domains (16c0aee)
+- On a hosting-only node a container's published ports bind to 127.0.0.1 unless its compose names an address, so only the node's nginx and tunnel reach them: a switch on the node's row, on by default there, applied by the agent through docker's daemon.json (R190). Agent 0.7.170 (66793af)
+- A container written on the Docker tab can be renamed from its Edit dialog while it is down: the node carries its volumes and data directory under the new name, then its record, compose file and env follow, and Build brings it up under it (the operator, 11 Oct) (87839c5)
+- A node's nginx keeps up to date like the toolchains: the registry is read weekly (or by Check now), a node is pinned to the newest line's digest when deployed or updated, and one behind says so on the nginx tab, its Docker row and the bell, each with Update (67f9d7d)
+- Every container's registry images are checked weekly against their registries (Check for updates on the Docker tab asks now): one behind says so on its row with Update, which pulls and starts it again, and the bell carries a note per node; what is built from code keeps Rebuild (e015d8a)
+- The bell flashes red twice when something new goes wrong, then settles to its red dot (7d31173)
+- A running container on a hosting node whose port no nginx route points at says so on its Docker row, with the way to the nginx tab (ee6b2b5)
+- An open cloudflared SSH door's row gives the ~/.ssh/config block for the PC, named for the node, and MobaXterm's way in (ee6b2b5)
+- A project's settings can make a deploy key or take a pasted one, beside its access token: kept root-only so sessions push with it and never read it, its public half shown with a link to the host's deploy keys page. Keys in /secrets/ssh still work (d6b61e3)
+- A first run is a setup page: after the owner, where what grows is kept, when an idle Claude session ends and a public hostname, each with its default, then a first node, which the rest of BuilderBot waits for (20c3975)
+- A project's row says under a session when it needs a restart to see what changed since it started, and why: a toolchain installed on its node, or BuilderBot updated (4909460)
 
 ### Changed
 
@@ -255,6 +269,23 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's name is taken once: a second script with it is refused; a waiting row shows its id and what its script was made with, and offers Download it again or Discard; the script is named enroll-NAME-ID.sh. (6d600f9)
 - Controller settings is sections like every other tab, each with its own Apply and Revert and a jump bar over them; the Public hostname section carries its own setup steps. (281f4ba)
 - A node's row offers Disable (kept and configured, off every picker and handed no work until Enable) and Un-enroll (BuilderBot taken off the machine and the node removed here; enrolling again starts from Enroll node), in place of Remove and Uninstall. Neither goes through while a session or a container runs on the node. Un-enroll's dialog says what always goes (the agent, every piece of the session isolation, the accounts) and asks about three rings: the stores on the disk, what the dashboard configured after enrolling, and a hosting node's doors and proxy, as `bb-sandbox uninstall --stores --configured --doors` on the machine. (25a595a)
+- The node agent's journal says why it said hello again (the controller asked, the session network moved, a job changed the machine), for B647. Agent 0.7.168 (e278190)
+- On a phone one section is open at a time on every folded surface, the controller Settings tab and the document tabs as the notebook's views: opening one shuts the others, and a desk keeps several open (R184) (1c86974)
+- The nginx tab has no default certificate: a node's pairs are a list keyed by the domain their names say, each route picks the pair it serves 443 with (its domain's when it picks none, or 80 only), and an unrouted name gets no handshake at all; a default from before is read in (R188) (c601071)
+- A container BuilderBot did not start is given to a project only under a name nothing else of that project's answers to: not an instance's compose name, not a stranger already the project's on another node; it is renamed first, so a session's ask by name means one thing (66793af)
+- A failed compose step's row says what failed and the last telling line the step wrote (No such image: mariadb:11), with the whole output in the log, where it carried the output's last 400 characters flattened to one line (B658) (f1e10bd)
+- A toolchain whose recipe cannot update in place (jdk, go, node, ffmpeg, zig, android-tools, rust) updates from the Toolchains tab like the rest: with a newer version found its box is live, and Install selected removes the old one and installs the new in one job, still refused under a running build (67f9d7d)
+- No tooltips: a dead control is ghosted and says nothing, a warning or an error is a line on the page (a failing poll under the header, a container's missing env on its row, a session's whole reason on its project row), and a ? opens its words as a line under its label (7b2120b)
+- A project's container is named whatever you want: Send to Docker offers a name per compose file, and the Edit dialog renames it while it is down; while it runs, Edit is for reading, with Save ghosted and both boxes read-only (e015d8a)
+- A copy or move that did not happen is a note in the bell, with Dismiss, instead of a line on the container's row for ever; it goes once the container builds or starts again (7d31173)
+- The nginx tab shows a node without nginx as one line and Deploy, and its routes and certificates once nginx is there (ee6b2b5)
+- A managed node keeps its journal across boots, so its crash log has the boot before to read (ee6b2b5)
+- Each node keeps its own toolchains in the store, under its node id, so nodes sharing one store never wait on or overwrite each other's installs; a retired node's directory is offered for removal on the Toolchains tab (ca8eae8)
+- Claude's model and effort are picked each time a session starts: the Claude button's menu turns, after Resume or New conversation, to Model and Effort with Start, opening on the last ones picked; the project's settings no longer hold them (ca8eae8)
+- Enrolling a Mac is a dev feature until one has been proven: the Enroll dialog names it, and the controller serves its provisioner, only with Offer dev features on in Settings (62801e7)
+- Reset BuilderBot opens a dialog that un-enrolls the nodes first, uninstalling BuilderBot from each and waiting for every one to report before anything moves, so each machine can be enrolled again; a node's Un-enroll asks the same way and says what goes and what stays (20c3975)
+- The Logs section's days now reach every log the controller keeps, job logs included, on an hourly sweep rather than only at boot; Clear takes the CI runs and finished job logs too; a running job's log, a live log file, old job rows and the audit trail are all bounded (24ab1cc)
+- A node keeps its own logs bounded and readable: job output posted as it comes with a meter as its last frame, the terminal and runner logs, runner diagnostics, container logs and the journal all capped, faults said once rather than every few seconds (1586bdc)
 
 ### Removed
 
@@ -265,6 +296,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The debug option Update Claude Code before a session starts is gone: a node's Claude Code updates when Update is pressed on the Toolchains tab, and nothing else (457ab4b)
 - A BuilderBot bug report is now a log in the diagnostics that a person reads and clears: bb report file, bb report close and a session's bb report listing are gone, since only an install that hosts BuilderBot's own project could answer one (075362f)
 - Nodes no longer mount the projects share in any form: every node holds its projects as a synced copy, a /workspace mount is refused on the Storage section and by bb-sandbox, and the enroll dialog no longer asks (279c51d)
+- The container takes four settings and nothing else: PUID, PGID, TZ and the dashboard port; SDK_ROOT, DASHBOARD_TTYD_PORT, CHOWN_HOME, CHOWN_PROJECTS and NPM_TOKEN are gone from the template, compose and the env example (a publishing token goes in the secrets folder) (2b922bc)
 
 ### Fixed
 
@@ -422,6 +454,28 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Artifacts tab offers Send for a compose file named for its service (admin.compose.yml), the container named for the service. (e97f661)
 - Install selected on the Toolchains tab takes Claude Code together with other toolchains: its own job is queued beside theirs rather than the press refused. (0c8bfe3)
 - The enroll script stops when the controller does not answer, demands a real answer from a public hostname, and closes port 22 for a door only after the node has enrolled and the door is up. (215c5b9)
+- A project's settings dialog no longer shows the model the last session ran on as if it were set: Claude's default stays picked and names it, and picking that model saves it (B639) (babe946)
+- A hosting-only node answers docker ps, inspect, logs, start, stop and restart about the containers it hosts, so the Docker tab lists them and a session reads their logs (B642) (babe946)
+- bb devapp new --node NODE from a session ships the container to the hosting node named, where it used to land unshipped on the project's own node (B645) (babe946)
+- The node agent takes a hello asked for again with its census beside the loop, so a nudge every minute no longer stops it taking jobs; the Docker and nginx tabs' docker ps jobs were waiting their 25s out (B644). Agent 0.7.166 (babe946)
+- A container shipped to a hosting node fetches its image even when the agent's first log post has not yet marked the job running; the first send to a public node was answered 403 (B648) (74ebb61)
+- A session reads and runs its project's containers on every node the project names, its hosting nodes included; one on a node taken off the project stays the project's and is the operator's from the Docker tab (B649) (5d5c097)
+- bb logs --node NAME --nginx finds the container: the nginx tab's compose names it nginx-NODE, as the Docker tab shows it; a node deployed before takes the name at its next Save (B653) (e278190)
+- On a phone the Storage tab's By project table shows each project's folders with their names beside the numbers, and says none where a folder is empty; at a desk it is a table under a head row (B655) (ea72d42)
+- The node agent no longer says hello every hundred seconds: the session network keeper read the containers' entry on its stored status as a change every step (B647). Agent 0.7.169 (d535d32)
+- A certificate pasted on the nginx tab for the node's default while another domain's default stands goes under its own domain beside it and the tab says so; only a pair for the same names replaces the default (B657) (1559204)
+- Copy or move of a container to another node unpacks its data again (the unpack script spelt the plan's {cdir} placeholder, so the helper mounted the wrong directory); an empty volume a failed try left is filled, and a failed stage's row says what the job last wrote (B659, B658) (fd5ce05)
+- A container moved or sent to another node pulls the images its compose does not build (--pull missing in place of never): the shipped tar carries the built ones alone, and a service on a registry image met 'No such image' there (B660) (896da85)
+- The Jobs tab shows a failed job's log: its own error sentence was read as a failed request and the log left out, so every failed job read '(this job wrote nothing)' (B658) (f1e10bd)
+- A hosting-only node is given no docker address on the controller: a compose file is checked here with the compose plugin and its data directory is the agent's to make, where an nginx Save on a VPS waited out two 30s ssh timeouts and held the server (R85) (87839c5)
+- A hosting node's published ports really stay on it: the agent sets the bind address every compose network takes, not only the default bridge's, and a container still published on every address says so on its Docker row in red (7d31173)
+- The Docker tab asks the node every time, so a row stops reading 'as last seen' while anything runs there; the kept listing stands in only when the node does not answer (7d31173)
+- An agent update that learns more of the published-ports setting applies it on its own, without the switch being turned off and on (07c6c68)
+- A machine log read goes beside a long job on the node instead of waiting behind it; an agent pulls a synced project every two minutes as a fallback rather than every ten seconds; a waiting node's new enroll script is worded as a first enrollment; an answered ask leaves the bell at once (ee6b2b5)
+- The status poll asks git about a project only when its repository has changed, and reads the uptime without starting a process, instead of three git commands per project and a ps on every poll (4893035)
+- Swift and other toolchains already installed update on a node: an update uses the verb that recipe has, or removes and installs again (ca8eae8)
+- A toolchain deleted from a node's store by hand reads as not installed within a hello, on the Toolchains tab and in the bell, instead of keeping the last check's current or update; a store emptied to start over offers every row for installing again (075cbca)
+- An Android package can be removed from the Toolchains tab when the Android command-line tools are not installed: its directory is deleted directly (a968c58)
 
 ### Security
 
@@ -443,6 +497,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Each project has its own emulator phone, so nothing one project installs or signs into shows up on another's; bb emu start decides whether the node has room for another emulator by its memory and load, and waits or says why not (12d30da)
 - Only BuilderBot's owner can change which other projects a project's sessions may read; administrators and users see the list, and the settings dialog says why they cannot change it (3a7a58f)
 - The new-diagnostics notice is shown only where reading the diagnostics is allowed: debug mode on, the project granted them, an account with the debug grant (b31c7ad)
+- The Docker tab's copy of the nginx container's compose file carries a line in place of the private key, and saving that copy back is refused: the file is the nginx tab's to write (B656) (ca1b299)
 
 ## 0.7.0: 2026-09-25
 

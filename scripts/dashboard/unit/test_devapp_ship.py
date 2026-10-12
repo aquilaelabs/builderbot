@@ -103,6 +103,7 @@ class Ship(unittest.TestCase):
         self.assertNotIn("building", names, "nothing is built on the instance's node")
         up = next(s for s in r["plan"] if s["name"] == "starting")["argv"]
         self.assertIn("--no-build", up)
+        self.assertEqual(up[up.index("--pull") + 1], "missing", "what the tar did not carry is pulled (B660)")
         self.assertIn("{cdir}", up, "run from its own compose directory, not a tree it does not have")
         self.assertNotIn(str(self.ws / "alpha"), " ".join(up))
 
@@ -124,6 +125,11 @@ class Ship(unittest.TestCase):
         self.assertIsNone(no)
         self.assertEqual(p.read_bytes(), body)
         self.assertTrue(str(p).startswith(str(paths.of("images"))))
+        # Handed over and not yet marked running: the fetch is the run half's
+        # first step and can reach here before the agent's first log post
+        # (B648), so an assigned job is served too.
+        self.q.jobs["j_2"]["state"] = "assigned"
+        self.assertIsNone(devactions.image_path("n2", {"job": ["j_2"]})[1], "an assigned job fetches it")
         self.q.jobs["j_2"]["state"] = "succeeded"
         self.assertIsNotNone(devactions.image_path("n2", {"job": ["j_2"]})[1], "nor once its job has ended")
 

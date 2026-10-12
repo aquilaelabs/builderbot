@@ -52,7 +52,9 @@ project's containers, those of the projects its project reads, the
 controller, DNS, the node's 80 and 443 and the internet, and not another
 project's container by the node's address. A container answers at its node's address, which
 `bb devapp status` prints beside "answers at" for the dev instance, and
-`bb devapp ls` with each container's ports.
+`bb devapp ls` with each container's ports. On a hosting-only node a
+published port binds to the loopback address unless the compose names one,
+so it is the node's nginx that answers for it.
 
 Of the node's files a session has its own project, its home, the toolchains
 and its own logs and artifacts, and the system's own directories. A share or
@@ -147,6 +149,17 @@ suite uses what the machine has without hard-coding a number.
 A `pkill -f PATTERN` run from a tool call matches the shell running that
 call, because the pattern is on its command line, and kills it: end a
 process by pid, or with `pkill -x NAME`.
+
+What ran is read rather than guessed. `bb jobs [--node NAME] [--type T]`
+lists the jobs this project may see (its own and its reads') and `bb jobs
+ID [--all]` prints one's log; `bb tests log` the last test run, `bb ci-log`
+a CI run's, `bb devapp log NAME` a container's, each with `-p NAME` for a
+project it reads. Two more are the operator's to grant on the project's
+settings, with debug mode on: the diagnostics (`bb diag [SECTION]`, the
+controller's faults, failed jobs with their ids, and the nodes' own jobs,
+toolchain installs among them, in `bb jobs`) and a node's machine logs
+(`bb logs --node NAME --agent|--runner|--terminal|--system|--kernel|--crash
+[N]`). A refusal names the grant it needs; say which in your reply.
 
 ## While tests run
 

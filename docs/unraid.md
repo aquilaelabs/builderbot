@@ -39,7 +39,7 @@ those rows. Nothing else.
 |---|---|---|---|
 | **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
 | **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the runner section of the node's row on the Nodes tab; kept root-only on the controller. Never visible to sessions |
-| **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | `/secrets/ssh/`. Loaded into a root-owned agent: usable by git, unreadable by sessions |
+| **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | Made or pasted under **Deploy key** in a project's settings (kept at `/config/deploy-keys`, root-only), or dropped into `/secrets/ssh/` by hand. Either way loaded into a root-owned agent: usable by git, unreadable by sessions |
 | **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
 **Runner scope decides the runner token's permission**, and it is the only
@@ -407,12 +407,14 @@ Pick per your taste:
 
 | Approach | Result |
 |---|---|
-| SSH key in `secrets/ssh/` | Usable *and* unreadable: the only option that gives both |
+| Deploy key made or pasted in the project's settings, or an SSH key in `secrets/ssh/` | Usable *and* unreadable: the only option that gives both |
 | Per-project token, in the clone dialog | Session-readable by design, but scoped to the one repository that names it: a token that opens one repo opens one repo |
 | `gh auth login` in a session | Same exposure, and a separate token you can revoke independently |
 
 **How the SSH shielding works:** at startup a *root-owned* `ssh-agent` loads
-every key from `secrets/ssh/`; sessions get only the agent's socket. When
+every key from `secrets/ssh/` and every deploy key a project's settings made
+or kept (`/config/deploy-keys`, through the root-only `deploy-key` helper,
+the builder account's second sudo rule); sessions get only the agent's socket. When
 Claude runs `git push`, the agent signs the authentication challenge on its
 behalf: the key *works* everywhere, but the private key bytes are never
 readable by any session, so it cannot be copied out of the container. (Keys
@@ -469,7 +471,7 @@ What happens then:
 Honest limits: container-root can always read the stash (that's what makes
 the runner and the agent work); a session can still *use* the agent to push
 while it's running (usage is the point: extraction is what's blocked); and
-`NPM_TOKEN` lands in the controller's `~/.npmrc` if you use it.
+an `NPM_TOKEN` in the secrets folder lands in the controller's `~/.npmrc`.
 Shielding covers the credentials with real blast radius: the PAT and the
 SSH private keys.
 
@@ -536,8 +538,8 @@ node, or add the image on the Emulator tab.
 
 | Target | How |
 |---|---|
-| npm | set `NPM_TOKEN`, then `npm publish` |
-| PyPI | set `UV_PUBLISH_TOKEN`, then `uv publish` |
+| npm | `NPM_TOKEN=` in an `*.env` file in the secrets folder, then `npm publish` |
+| PyPI | `UV_PUBLISH_TOKEN=` in the same file, then `uv publish` |
 | Play Store / Maven | Gradle handles it (`./gradlew publish`); signing keys belong in the home volume or CI secrets, not the image |
 | GitHub Releases | `gh release create`, after `gh auth login` in a shell |
 
@@ -558,7 +560,7 @@ not host-root.
 | Startup + runner supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
 | ...or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share, e.g. on the array, and the log moves there automatically | ✅ |
 | CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
-| A node's own logs (its agent, CI runner, terminal server) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
+| A node's own logs (its agent, CI runner, terminal server, its nginx, the system journal, the kernel ring, the previous boot) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
 
 Inside the container, `bb logs` tails the persistent startup log (`bb logs -f`
 to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing to
@@ -581,8 +583,7 @@ the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project is owned differently, fix that project once
-(`chown -R 99:100 /mnt/user/projects/FreshBoot`) or set
-`CHOWN_PROJECTS=true` to do it for all of them at every start. The container
+(`chown -R 99:100 /mnt/user/projects/FreshBoot`). The container
 never chowns the projects share itself; that folder is yours, and a container
 quietly changing the ownership of a share because it started is a surprise, not
 a repair. It warns in the log if it cannot write there, and the dashboard names

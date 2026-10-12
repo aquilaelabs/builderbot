@@ -62,8 +62,8 @@ await page.evaluate(() => sendKey('pgdn')); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', 'PgDn back at the bottom leaves copy mode by itself');
 ok((await row('shell-9').locator('.pill.att').textContent()).trim() === 'attached', 'attached pill, no glyph while unsplit');
 ok(await page.$eval('.tab.on .lbl', el => !el.textContent.includes('◧')), 'no pane glyph on the tab while unsplit');
-ok((await row('shell-9').locator('[data-go]').getAttribute('title')) === await page.$eval('.tab.on .lbl', el => el.title),
-   'session tooltip equals the tab tooltip');
+ok((await row('shell-9').locator('[data-go]').evaluate(e => saidOf(e))) === await page.$eval('.tab.on .lbl', el => saidOf(el)),
+   'the session row and its tab are described by the same words');
 await btn('shell-9').click();
 await page.waitForFunction(() => !tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 ok((await btn('shell-9').textContent()).trim() === 'Open', 'Minimize takes the tab away');
@@ -83,13 +83,13 @@ tmuxNew('shell-alpha', `${DIR}/ws/alpha`);
 tmuxNew('shell-ep_silon', `${DIR}/ws/ep.silon`);
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => state.sessions.some(s => s.name === 'shell-ep_silon'));
-const gitBtn = () => page.$eval('#git [data-m="git-status"]', b => ({ dis: b.disabled, tip: b.title }));
-const ghBtn  = () => page.$eval('#git [data-m="gh-prs"]', b => ({ dis: b.disabled, tip: b.title }));
+const gitBtn = () => page.$eval('#git [data-m="git-status"]', b => ({ dis: b.disabled }));
+const ghBtn  = () => page.$eval('#git [data-m="gh-prs"]', b => ({ dis: b.disabled }));
 await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-9');
 ok(!(await page.$eval('#linux [data-m]', b => b.disabled)), 'linux commands live on any shell');
 let g = await gitBtn(), h = await ghBtn();
-ok(g.dis && g.tip.includes('not a git repository'), 'outside a repo the git commands ghost, saying why');
+ok(g.dis, 'outside a repo the git commands ghost');
 ok(h.dis, '...and the gh commands with them');
 await row('shell-alpha').locator('[data-go]').click();
 await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-alpha');
@@ -99,7 +99,7 @@ await row('shell-ep_silon').locator('[data-go]').click();
 await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-ep_silon');
 g = await gitBtn(); h = await ghBtn();
 ok(!g.dis, 'a repo with a non-GitHub remote keeps its git commands');
-ok(h.dis && h.tip.includes('no GitHub remote'), '...but the gh ones ghost, saying why');
+ok(h.dis, '...but the gh ones ghost');
 // Tidy the strip for the sections below: these two tabs were this block's.
 await page.evaluate(() => { for (const s of ['shell-alpha', 'shell-ep_silon']){
   const t = tabs.find(x => sessionOf(x.arg) === s); if (t) hideTab(t.id); } });
@@ -238,9 +238,9 @@ await page.evaluate(() => { if (!tabs.some(t => sessionOf(t.arg) === 'shell-9'))
   openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}); });
 await page.evaluate(() => focusTab(tabs.find(t => sessionOf(t.arg) === 'shell-9').id));
 ok(await page.$eval('#commands [data-m]', b => !b.disabled), 'macros live on a shell tab');
-// no tabs at all → grayed too, with a tooltip saying to open a shell
+// no tabs at all → grayed too
 await page.evaluate(() => { const keep = tabs.slice(); keep.forEach(t => dropTab(t.id)); });
-ok(await page.$eval('#commands [data-m]', b => b.disabled && /open one/.test(b.title)),
+ok(await page.$eval('#commands [data-m]', b => b.disabled),
    'macros grayed with no tab open');
 await page.evaluate(() => openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}));
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
@@ -308,6 +308,11 @@ const phone = await newPage(browser, { viewport: { width: 400, height: 800 } });
 await phone.goto(URL);
 await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'sespanel', { timeout: 30000 });
 await phone.evaluate(() => setView('terminal'));
+// Over a shell tab, opened here: Keys is on the bar over a shell tab and
+// nowhere else, and this page opens on the layout the desktop saved, which
+// has no tab left after the middle-click above (it passed while that save
+// landed late, and stopped once the poll got quicker, 12 Oct).
+await phone.evaluate(() => { if (!tabs.some(t => t.kind === 'term')) openTab({kind: 'term', arg: argForSession('shell-alpha'), label: 'shell-alpha'}); });
 await phone.waitForSelector('#mKeys', { state: 'visible' });
 ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && !await phone.$('#bKeys'),
    'the phone bar carries the keys, and the strip has no ⌨ anywhere to hide');

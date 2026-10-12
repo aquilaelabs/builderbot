@@ -153,7 +153,16 @@ class Relocate(unittest.TestCase):
                                  "spec": {"project": "alpha", "instance": "main", "action": "rebuild"}}, "failed")
         rec = devapp._read_rec("alpha", "main")
         self.assertEqual(rec.get("node"), "n1", "back where it was")
-        self.assertIn("did not happen", relocate.view("alpha", "main")["line"])
+        # Said in the bell, where it can be put away, not on the row for ever
+        # (the operator, 11 Oct); gone once the container starts again.
+        self.assertIsNone(relocate.view("alpha", "main"), "the row says nothing of it")
+        rows = relocate.attention(lambda nid: nid)
+        self.assertEqual([(r["kind"], r["id"], r["why"]) for r in rows],
+                         [("relocate", "alpha|main", "it would not build or start on the new node")])
+        self.assertGreater(rows[0]["at"], 0)
+        devactions.compose_done({"id": "jc", "node": "n1", "state": "succeeded",
+                                 "spec": {"project": "alpha", "instance": "main", "action": "up"}}, "succeeded")
+        self.assertEqual(relocate.attention(lambda nid: nid), [], "built or started since: history")
         self.assertEqual(devapp.read_env("alpha", "main"), "PORT=1\n", "its env as it was")
         started = [j for j in self.jobs_on("n1") if j["spec"].get("action") == "start"]
         self.assertEqual(len(started), 1, "started again on the old node")

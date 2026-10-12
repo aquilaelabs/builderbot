@@ -28,6 +28,8 @@ from fields import field
 
 # The server's, set by configure(): an account's home (home_for).
 home_for = None
+# Whether dev features are offered (settings' offer_unvetted), set by server.py.
+unvetted_ok = lambda: False  # noqa: E731
 
 # The sign jobs a key has been handed to (R106): once per job, so a node
 # that asks twice is refused the second time rather than given it again.
@@ -97,6 +99,11 @@ def fetch(verb, auth, q, authed):
     # the operator's own login, for reading it in a browser.
     if auth.get("error") and not authed():
         return {"error": auth["error"]}, 401
+    # A Mac is a dev feature until one has been proven end to end (the
+    # operator, 12 Oct): its provisioner is served only with Offer dev
+    # features on, which is also when the Enroll dialog names it.
+    if what == "provisioner-macos" and not unvetted_ok():
+        return {"error": "enrolling a Mac is a dev feature: turn on Offer dev features in Settings"}, 404
     if what in ("provisioner", "provisioner-macos"):
         # The provisioner too, from the copy this image carries: the
         # Enroll dialog's command names it, and a machine with an

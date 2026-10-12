@@ -553,17 +553,28 @@ every project on the box: the thing the sandbox VM exists to prevent. At
 enterprise scale every one of these gets worse, and the fourth becomes a
 finding in somebody's report.
 
-### The toolchain store, scoped by platform
+### The toolchain store, one directory per node
 
 A node's toolchain store is the operator's setting: a share, or a directory
 of the node's own, and the node's toolchains live one level down, under
-`<store>/<os>-<arch>` (`pkg_scope()` in the agent, `sdk_scope` in
-`scripts/lib/common.sh`, both spelled as uname does: `linux-x86_64`,
-`darwin-arm64`). Everything else: the layout, the probes, the census, the
-bundle under `.bb`: is relative to that scoped root (`pkg_root()`,
-`sdk_root`), so one share serves a Linux box and a Mac at once and the old
-refusal of two architectures on one store is gone. The census reports the
-scope beside the store's path. The Android system images are guest
+`<store>/<node id>` (R196, the operator, 12 Oct: `stores.tc_scope()` in the
+agent, and `sdk_scope` in `scripts/lib/common.sh` from the `BB_SDK_SCOPE`
+the agent sets in every job's, session's and runner's environment).
+Everything else: the layout, the probes, the census, the bundle under `.bb`:
+is relative to that root (`tc_root()`, `sdk_root`); an agent with no id yet
+has no toolchain directory. A node's own directory shares nothing, so no
+session meets a toolchain another node is replacing, no two distros'
+binaries land in one place, an install on one node waits for no other, and
+a node enrolled again starts afresh under its new id. What no node runs
+from any more (a retired or unknown node's directory, `store_dirs.roots`)
+is offered for removal on the Toolchains tab (`toolchains.cleanable`).
+This controller keeps its own toolchains (Playwright's browsers for
+`bb capture shot`) under `<store>/<os>-<arch>`, which is never offered. The census reports the scope beside the store's
+path, and its listing of the directory (`store_dirs`, every hello) is the
+authority on what is installed: a toolchain deleted from the store by hand
+reads as not installed within a hello, whatever the last check said
+(`toolchains.store_known`, B671), so a store emptied to start over offers
+every row for installing again. The Android system images are guest
 artifacts, identical on every host, and live once under `<store>/shared`
 with each scope's `android/system-images` a symlink to them: kept by the
 agent on every hello (`share_images()`) and by the controller at boot
@@ -813,19 +824,15 @@ the Tools card is ghosted until some node has the tools and the emulator.
   store is a deliberate arrangement for co-located nodes with the
   one-install-at-a-time rule enforced across them or not at all.
 
-  *Where it landed (2 Sep):* enforced. Reading is automatic and always was:
-  a node's `toolchains` are a live probe of its toolchain store at every
-  census, so a node whose neighbor installed something on the shared export
-  reports it at its next `hello` (ten minutes, or at once after any job that
-  ends in one). Writing is what needed the rule: `toolchains.store_sharers`
-  identifies the nodes that share a store, by the census's mount SOURCE
-  under the store path, never by the path string, since
-  `/var/lib/builderbot/toolchains` is every node's default and a different disk
-  on each, and a toolchain job is refused while one touching the same
-  toolchain (the Android SDK counting as one) is running on any of them,
-  naming the node and the toolchain (1 Oct: it used to be any job at all,
-  which held a second node's unrelated install). The Toolchains tab says a store is shared, and
-  with whom, before anybody presses Install.
+  *Where it landed:* each node keeps its toolchains in a directory of its
+  own on the store (R196, 12 Oct), so sharing one is safe by layout rather
+  than by rule. What the machines on a share still write together is the
+  Android system images under `<store>/shared`: `toolchains.store_sharers`
+  identifies the machines on a share by the census's mount SOURCE under
+  the store path, never by the path string (`/var/lib/builderbot/toolchains`
+  is every node's default and a different disk on each), and an image job
+  waits while another machine's is running (`store_areas`, `store_busy`),
+  naming it.
 - **Disk is checked before, not discovered after.** The catalog already knows
   each toolchain's size; the census reports each store's headroom. A
   toolchain-install job is refused at placement when the store cannot hold it,
@@ -989,6 +996,10 @@ the pieces stack:
    dialog prints them) let the VPS open connections to the controller's
    port and nothing else at home; the controller in turn answers its tunnel
    address on the agent API alone.
+1a. *Its journal is kept across boots* (R185): the provisioner writes a
+   journald drop-in (`Storage=persistent`), and the agent does the same on
+   a managed node enrolled before, so `bb logs --node NAME --crash` has the
+   boot before a crash to read; a fresh VPS keeps its journal in memory.
 2. *Make it hosting only*, ticked in the Enroll dialog or later on its row
    (`nodes.host_only`): no project may list it, so no code, synced copy or
    session goes there, and its hello hands it no bb bundle, no session
@@ -1004,7 +1015,13 @@ the pieces stack:
 3. *Move the containers over* with Copy or move: each comes with its
    volumes and data, its image built on the project's own node at home and
    shipped, its env changed on the way where the VPS needs another port or
-   address.
+   address. A service that runs a registry image (mariadb) is pulled on the
+   VPS (B660). One that does not come up goes back where it was, and why is
+   a note in the bell, not a line on the row. Its name is its own and can be
+   changed in Edit while it is down, the node carrying its volumes and data
+   directory to the new one (R191). Its registry images keep up to date
+   with Check for updates and Update on the Docker tab (R195); what is
+   built from code keeps Rebuild.
 4. *Name it under Hosts its containers on*, in the project's settings
    (Where it runs, `prefs.hosts`; only a hosting-only node may be named,
    by whoever may set the project's node). The project's sessions may then
@@ -1044,16 +1061,49 @@ the pieces stack:
    the tunnel's own say (Cloudflare Access, the tailnet's ACLs). Closing
    public port 22 (`--door-close22`, an nftables rule leaving the loopback
    and the tailnet) is a separate, default-off choice, since the person
-   running the script is usually on that port.
+   running the script is usually on that port. An open cloudflared door's
+   row hands the PC an `~/.ssh/config` block named for the node (`Host
+   NAME`, `HostName`, `User`, `ProxyCommand cloudflared access ssh
+   --hostname %h`), so each server keeps its own name and saved password
+   rather than all being `localhost:22`, and says MobaXterm's way in: its
+   own SSH sessions read no ssh config, so a Shell session that runs `ssh
+   NAME` (R179).
 5. *Put nginx in front of them* (R171, the nginx tab): one reverse proxy
    per node, BuilderBot's own, listed for every node on the Tools card's
    nginx tab. Its routes (a hostname or path to a port a container
-   publishes on that node, with or without TLS) and its certificate (a
+   publishes on that node, with or without TLS) and its certificates (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
-   the controller (`nginxproxy.py`, the key 0600 and never shown back), and
-   A certificate is the node's default, for any hostname without its own,
-   or one hostname's own (R175), since an origin certificate covers one
-   zone and a node may serve sites on several; nginx picks by server name.
+   the controller (`nginxproxy.py`, the key 0600 and never shown back). A
+   node holds a list of certificate pairs, each known by the domain its
+   names say (a wildcard pair for `*.example.com` is `example.com`'s; the
+   same key again is a renewal), and every route serves 443 with the pair
+   it picks, or with the one its hostname resolves to (its own, else the
+   nearest parent domain's) when it picks none; a hostname nothing covers
+   answers on 80 alone. There is no default pair (R188, the operator, 11
+   Oct): the catch-all on 443 refuses the handshake with no certificate
+   (`ssl_reject_handshake`), and a default from before is read in as a
+   listed pair under its domain. An origin certificate covers one zone and
+   a node may serve sites on several; nginx picks by server name.
+   On a hosting-only node a container's published ports bind to
+   `127.0.0.1` by default (R190), so only the node's nginx and its tunnel
+   reach them and nothing is open to the internet by accident; a port that
+   must be public is published as `0.0.0.0:PORT:80` in the compose on
+   purpose. The agent writes two keys to `daemon.json` when the switch on
+   the node's row says so (on by default for a hosting-only node): `ip`,
+   the default bridge's, and `default-network-opts`'
+   `com.docker.network.bridge.host_binding_ipv4`, which every network
+   compose makes takes instead (B666: with `ip` alone a compose
+   container's ports answered from the internet). It checks on every
+   hello and restarts docker only when the file differs, so an agent
+   update that learns more of the setting applies it by itself (B667). A
+   network keeps the options it was made with, so a container made before
+   is bound again by a Down and Up; its Docker row says so in red while a
+   port is still published on every address.
+   nginx's image is pinned per node by digest (R192): a weekly check of the
+   registry, Check now and Update on the nginx tab, Update on its Docker
+   row, and a bell note when a newer line is out. Its Docker row's Edit is
+   for reading: name, compose file and env are the nginx tab's to write,
+   and the server refuses them from anywhere else.
    Deploy writes a container from them through the written-container path
    (`containers.create_container`), its nginx config and certificate inline
    in the compose file as compose `configs`, so the node's compose job needs
@@ -1063,7 +1113,13 @@ the pieces stack:
    takes it off the Docker tab and keeps the routes. The Enroll dialog's
    "Put nginx on it once it is enrolled" (`config.nginx`, `nodes.ON_ENROLL`)
    deploys it on the node's first hello, so a box runs the script and
-   nginx appears with whatever the tab holds for it.
+   nginx appears with whatever the tab holds for it. A node without nginx
+   shows one line and Deploy on the tab, and the routes and certificates
+   once it is there (R181); routes kept for it before (the API, the Enroll
+   tick) are said on that line and come up with it. On the Docker tab, a
+   running container on such a node whose 127.0.0.1 port no route points at
+   says so, with the way to the nginx tab: a container moved to a VPS
+   answers nowhere until a route does.
 
 What runs in those containers has no node token (it lives root-owned in
 the agent's own file) and reaches the controller, if at all, only as the
@@ -1524,7 +1580,7 @@ surface. The graduation lands with the first batch of controller settings
 be ceremony.
 
 **Project-scoped**, which node runs this project's work. One node, named in
-the project row's existing settings dialog beside model and effort (the
+the project row's existing settings dialog beside the person's own settings (the
 dialog and its poll plumbing already exist in `claude-prefs.json`, and a
 second surface for per-project settings would be a second place to look).
 Not a selector and not per-role: the operator dropped both, on 1 and 2

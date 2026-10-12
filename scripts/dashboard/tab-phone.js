@@ -58,6 +58,16 @@ const mayPhone = () => true;
 
 async function phFetch(body, probe){
   const knew = phNode;
+  // An answer leaves the list the moment it is given (B641): the server
+  // drops an allowed or denied ask at once, but this request returns only
+  // when what was allowed has run, which for a root command is minutes.
+  // The answer that comes back is the list either way.
+  if (body && (body.action === "allow" || body.action === "deny") && ph?.asks){
+    ph.asks = ph.asks.filter(a => a.id !== body.id);
+    phRev++;
+    if (tabs.some(t => ["phone", "nodes", "docker"].includes(t.kind))) drawPanes();
+    drawBell();
+  }
   try{
     const q = `?node=${encodeURIComponent(phNode)}${probe ? "&probe=1" : ""}`;
     const r = body

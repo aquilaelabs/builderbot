@@ -58,9 +58,10 @@ for name, v in d.items():
         if not v:
             print("  none installed by anybody")
     elif name == "jobs":
+        print("  (bb jobs ID prints one's log)")
         print("  last 24h: " + (", ".join(f"{k} {c}" for k, c in sorted(v.get("last_24h", {}).items())) or "none"))
         for j in v.get("failed") or []:
-            print(f"  {j['when']:>8}  {j['state']:<9} {j['type']:<6} {j['project'] or '-'} on {j['node'] or '-'}"
+            print(f"  {j['when']:>8}  {j.get('id', ''):<11} {j['state']:<9} {j['type']:<6} {j['project'] or '-'} on {j['node'] or '-'}"
                   f"{' exit ' + str(j['exit']) if j['exit'] is not None else ''}{': ' + j['error'] if j['error'] else ''}")
     elif name == "errors":
         print("\n".join(f"  {x}" for x in v) or "  nothing that looks like a fault")

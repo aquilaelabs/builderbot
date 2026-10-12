@@ -113,7 +113,8 @@ const tcWorking = (job, items) => {
   const row = (items || []).find(i => i.name === job.current);
   const what = job.action === "check" ? "for updates"
     : row?.label || (job.current || "").replace(/^android:/, "");
-  const done = (job.done || []).length + (job.failed || []).length, left = (job.queue || []).length;
+  const done = (job.done || []).length + (job.failed || []).length + (job.passed || []).length,
+        left = (job.queue || []).length;
   const of = job.action !== "check" && done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
   return `<span class="state tcworking">${esc(verb)} ${esc(what)}${of}<span class="dots"></span></span>`;
 };
@@ -155,9 +156,9 @@ function tcSystemLine(p, managed){
   return `<span class="sub tcsysd${miss.length ? " warn" : ""}">${head}: ${list}.${fix}</span>`;
 }
 
-// A toolchain this one needs that is not on this node: the store is shared,
-// so a recipe can be here while what it runs on is not. Said on the row,
-// with that row's own install one press away.
+// A toolchain this one needs that is not on this node: what it runs on was
+// removed since, or never arrived. Said on the row, with that row's own
+// install one press away.
 function tcNeedsLine(p){
   const gone = p.needs_missing || [];
   if (!gone.length) return "";
@@ -196,7 +197,9 @@ function tcRow(p, busy, job, managed){
   // still say a newer version exists (it asks upstream, not the recipe) and
   // before this the row let you tick it and then died on `bb toolchains update`'s
   // usage line, naming five toolchains you had not asked about (bug #43).
-  const noUpgrade = !mine && p.installed && !p.updatable;
+  // ...unless a check found a newer version: then the box is live, and the
+  // job removes the old one and installs the new (R193, the operator, 11 Oct).
+  const noUpgrade = !mine && p.installed && !p.updatable && p.state !== "update";
   // Three versions can be on a row and only ever two at once: what is
   // installed, what an update would move it to, and, on a row that has never
   // been installed: what Install would fetch. Only the middle one is yellow,
@@ -215,9 +218,8 @@ function tcRow(p, busy, job, managed){
   // is locked as installed, and "tick it" was an instruction it could not
   // follow (the operator, 6 Oct, on JDK 21).
   const upd = p.state === "update"
-    ? `<span class="sub upd">${noUpgrade
-        ? "update available: uninstall it with the bin, then tick it and press Install selected"
-        : "update available: tick it and press Install selected"}</span>`
+    ? `<span class="sub upd">update available: tick it and press Install selected${
+        p.updatable ? "" : "; it is removed and installed again"}</span>`
     : "";
   // What went wrong, on the row it went wrong on. This is what the scrolling
   // log at the foot of the tab was for, minus the ninety-nine lines of
@@ -240,7 +242,7 @@ function tcRow(p, busy, job, managed){
     <input type="checkbox" value="${esc(p.name)}"${
       busy || p.wrong_platform || noUpgrade ? " disabled" : ""}${
       p.wrong_platform ? ` title="this recipe is packaged for ${esc(p.wrong_platform)}: installing it here would fetch binaries that cannot run"`
-      : noUpgrade ? ` checked disabled title="installed; no update in place: remove it first for a newer version"`
+      : noUpgrade ? ` checked disabled title="installed; no update in place: a newer version, once a check finds one, is installed in its place"`
       : upToDate ? ` checked disabled title="installed and up to date"`
                : tcTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
@@ -509,11 +511,14 @@ function renderToolchainsInto(i){
       : "No toolchain store found."}</div>
     ${pstale ? `<div class="tchead warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div>` : ""}
+    ${onNode && (d.cleanable || []).length && mayToolchains() ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
+      d.cleanable.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</span><span class="sp"></span>
+      <button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button></div></div>` : ""}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
-      // R51): the store is shared, so a toolchain installed from one node is
-      // on every node, while the libraries it needs are each machine's own.
-      // One press installs the libraries and leaves the recipes alone.
+      // R51): the libraries are the machine's own, outside the store, and
+      // can go missing while the toolchain stays. One press installs the
+      // libraries and leaves the recipes alone.
       tcSandboxNow = !!(onNode && d.sandbox);
       const unmet = Object.entries((onNode && d.sysdeps?.unmet) || {});
       if (!unmet.length) return "";
@@ -568,6 +573,16 @@ function renderToolchainsInto(i){
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));
+  // What no node runs from any more, taken off the store (R196).
+  el.querySelectorAll("[data-tcclean]").forEach(b => b.onclick = async () => {
+    const dirs = (toolchains?.cleanable || []).map(c => c.dir);
+    if (!dirs.length || !confirm(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`)) return;
+    busy(b, "Removing");
+    const j = await (await postJSON("/api/toolchains", {action: "clean", node: tcNode, names: dirs})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    else notify(`taking ${j.queued.join(", ")} off the store: a job on ${toolchains?.name || "the node"}`);
+    loadToolchains();
+  });
   el.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = () => tcAct("install", [b.dataset.tcneed]));
   el.querySelectorAll("[data-tcnodes]").forEach(b => b.onclick = () => openNodesTab());
   const dsel = el.querySelector("#tcDrvSel");

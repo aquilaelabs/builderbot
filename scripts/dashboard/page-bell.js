@@ -48,6 +48,11 @@ function notify(msg, bad){
 // sitting there as a record of a decision already made.
 const NOTE_CAP = 50;
 let notes = [], notesSeen = 0, bellOpen = false;
+// The red things the bell has already flashed for, by identity, so a new
+// one flashes it twice and a redraw of the same one does not (the operator,
+// 11 Oct). null until the first draw, which flashes nothing: a reload is
+// not news.
+let bellRedSeen = null;
 
 function logNote(msg, bad){
   // `bad` is kept beside `lv` because the row's own styling and every test
@@ -79,6 +84,37 @@ function attRow(a){
       <div class="bfoot"><span>on its Toolchains tab</span>
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
           <a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`;
+  }
+  // A copy or move that did not happen: the reason, which used to sit on
+  // the container's row for ever, here where it can be put away.
+  if (a.kind === "relocate"){
+    return `<div class="bnote att bad">
+      <div class="bt">Copying or moving ${esc(a.name)} did not happen</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : "on the Docker tab"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bdocker="${esc(a.node_id)}">Docker tab</a></span></div></div>`;
+  }
+  // A container whose registry image moved (R195): one note per node, to
+  // the Docker tab on that node, where Update is on each row.
+  if (a.kind === "image"){
+    const n = a.containers.length;
+    return `<div class="bnote att">
+      <div class="bt">${n} container update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
+      <div class="bsum">${a.containers.map(c => `${esc(c.name)} (${c.images.map(esc).join(", ")})`).join(", ")}</div>
+      <div class="bfoot"><span>on its Docker tab</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bdocker="${esc(a.id)}">Docker tab</a></span></div></div>`;
+  }
+  // A node's nginx behind the newest line (R192): its own note, to the
+  // nginx tab on that node, where Update is.
+  if (a.kind === "nginx"){
+    return `<div class="bnote att">
+      <div class="bt">nginx update on ${esc(a.node)}</div>
+      <div class="bsum">runs ${esc(a.from)} and ${esc(a.to)} is out</div>
+      <div class="bfoot"><span>on its nginx tab</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bnginx="${esc(a.id)}">nginx tab</a></span></div></div>`;
   }
   return `<div class="bnote att${a.window ? " bad" : ""}">
     <div class="bt">${a.window ? `${esc(a.node)}'s agent is out of window` : `Agent update on ${esc(a.node)}`}</div>
@@ -121,7 +157,21 @@ function drawBell(){
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
   const pendingOn = asks.length + waiting.length + invites.length;
-  const attOn = att.some(a => a.window) || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
+  const attOn = att.some(a => a.window || a.kind === "relocate") || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
+  // Something new gone wrong: the bell flashes red twice and settles to the
+  // red dot, unlike an ask's amber, which keeps on until it is answered.
+  const red = new Set([
+    ...fresh.filter(n => n.lv === "bad").map(n => "note:" + n.at + ":" + n.msg),
+    ...att.filter(a => a.window || a.kind === "relocate").map(a => "att:" + (a.key || a.id + "@" + (a.at || a.to || ""))),
+    ...ciRed.map(c => "ci:" + JSON.stringify(c))]);
+  if (bellRedSeen !== null && [...red].some(k => !bellRedSeen.has(k)) && !noMotion()){
+    bell.classList.remove("flash");
+    void bell.offsetWidth;            // restart it when it is already running
+    bell.classList.add("flash");
+    // Off again when done, or it would sit over an ask's amber later.
+    bell.addEventListener("animationend", e => { if (e.animationName === "bellbad") bell.classList.remove("flash"); }, {once: true});
+  }
+  bellRedSeen = red;
   dot.hidden = !(pendingOn || att.length || ciRed.length || syncC.length || unread);
   // An ask outranks every level of record: one is a thing that happened, the
   // other is a thing that has not happened yet because it is waiting on you.
@@ -306,6 +356,19 @@ function drawBell(){
     e.preventDefault();
     toggleBell(false);
     openToolchainsOn(a.dataset.btc);
+  });
+  // ...and a container update to the Docker tab on that node.
+  panel.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    if (a.dataset.bdocker) dockerNode = a.dataset.bdocker;
+    openDocker();
+  });
+  // ...and an nginx update to the nginx tab on that node.
+  panel.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openNginxTab(a.dataset.bnginx);
   });
 }
 

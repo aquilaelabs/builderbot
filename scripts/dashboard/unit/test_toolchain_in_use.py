@@ -46,6 +46,27 @@ class InUse(unittest.TestCase):
         self.assertIn("jdk is in use by sleep", said)
         self.assertIn("Shebang-DevBoard's session", said)
 
+    def test_an_install_of_what_is_there_is_an_update_by_the_verb_that_works(self):
+        """R193 (the operator, 11 Oct), and Swift on a node (12 Oct): an
+        install of a toolchain that is there already is `update` where that
+        verb knows the recipe, and a remove and the install where it does
+        not or the recipe refuses an existing directory; one not installed,
+        or a versioned Android package, is the one verb."""
+        s = self.store
+        os.makedirs(os.path.join(s, "swift"))
+        os.makedirs(os.path.join(s, "python"))
+        self.assertEqual(agent.tc_verbs(s, "jdk", {"source": {"kind": "tarball"}}, "install"), ["remove", "install"])
+        self.assertEqual(agent.tc_verbs(s, "jdk", {"source": {"kind": "tarball"}}, "remove"), ["remove"])
+        self.assertEqual(agent.tc_verbs(s, "swift", {"updatable": True, "source": {"kind": "tarball", "fresh_only": True}}, "install"),
+                         ["update"], "updatable and fresh_only both: update knows swift (it went to install, which refused)")
+        self.assertEqual(agent.tc_verbs(s, "python", {"updatable": True, "source": {"kind": "script", "fresh_only": True}}, "install"),
+                         ["remove", "install"], "update does not know python, whatever the catalog says")
+        self.assertEqual(agent.tc_verbs(s, "node", {"source": {"kind": "tarball"}}, "install"), ["install"], "not there yet")
+        self.assertEqual(agent.tc_verbs(s, "android:emulator", {"source": {"package": "emulator"}, "updatable": True}, "install"),
+                         ["update"], "sdkmanager updates an installed android package")
+        self.assertEqual(agent.tc_verbs(s, "android:platforms", {"source": {"package": "platforms", "versioned": True}}, "install"),
+                         ["install"], "a new level installs beside the old")
+
     def test_nothing_running_from_it_is_free(self):
         self.assertEqual(agent.tc_users(os.path.join(self.store, "android", "emulator")), [])
 

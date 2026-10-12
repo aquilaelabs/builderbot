@@ -139,6 +139,22 @@ def machine_now():
     return ""
 
 
+def _docker_ip():
+    """127.0.0.1 where published ports stay on the node: both docker's `ip`
+    (the default bridge) and the networks' default bind (every network
+    compose makes), else "" (R190)."""
+    try:
+        with open("/etc/docker/daemon.json", encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(d, dict):
+        return ""
+    br = ((d.get("default-network-opts") or {}).get("bridge") or {}) if isinstance(d.get("default-network-opts"), dict) else {}
+    ip = str(d.get("ip") or "")
+    return ip if ip and br.get("com.docker.network.bridge.host_binding_ipv4") == ip else ""
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -171,6 +187,10 @@ def census(state):
         # value arrives by the route the work already takes.
         "docker_id": _run(["docker", "info", "--format", "{{.ID}}"], timeout=15)
         if shutil.which("docker") else "",
+        # The address published ports bind to by default (daemon.json's ip,
+        # R190): "127.0.0.1" where they stay on the node, "" where docker's
+        # own default (every address) holds.
+        "docker_ip": _docker_ip(),
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
         "gpu_driver": _gpu_driver(),

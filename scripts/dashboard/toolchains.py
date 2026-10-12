@@ -15,6 +15,7 @@ import contextlib
 import hashlib
 import json
 import os
+import platform
 import re
 import signal
 import sqlite3
@@ -103,6 +104,12 @@ def load_toolchains():
         # source kind, the same way platforms is (bug #43).
         if r.get("updatable"):
             row["updatable"] = True
+        # ...and the two source flags the installer's verb is chosen by
+        # (UPDATE_VERBS, the agent's tc_verbs): a recipe that refuses an
+        # existing directory, and an Android package that installs beside.
+        src = r.get("source") if isinstance(r.get("source"), dict) else {}
+        if src.get("fresh_only") or src.get("versioned"):
+            row["source"] = {k: True for k in ("fresh_only", "versioned") if src.get(k)}
         reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
         if reqs:
             row["requires"] = reqs[:4]
@@ -549,6 +556,10 @@ def job_is_automatic():
         return bool(_tc_job.get("auto"))
 
 
+# The recipes `bb toolchains update` knows, as the agent's tc_verbs has them.
+UPDATE_VERBS = ("flutter", "dotnet", "swift", "playwright")
+
+
 def _tc_worker():
     """Run the queued work one item at a time, keeping a tail of the output.
 
@@ -581,8 +592,25 @@ def _tc_worker():
             # `bb toolchains update` earned a usage line naming five toolchains the
             # operator had not asked about (bug #43); they go to install now,
             # which refuses with a sentence about the one they did.
-            verb = ("update" if _tc_path(probe) and row.get("updatable")
+            # The same rule as the agent's (tc_verbs): `update` only for a
+            # recipe that verb knows, since it dies on its usage line for the
+            # rest whatever the catalog's `updatable` says (12 Oct: thirteen
+            # recipes are updatable and fresh_only both).
+            src = row.get("source") or {}
+            has = _tc_path(probe) and not src.get("versioned")
+            verb = ("update" if has and (name in UPDATE_VERBS or name.startswith("android:"))
                     else "install")
+            # ...and one installed that cannot install over itself is
+            # removed first (R193), where install alone dies with "already
+            # installed": a remove that fails leaves the old one as it was.
+            if verb == "install" and has and (src.get("fresh_only") or not row.get("updatable")):
+                r = run([BB, "toolchains", "remove", name], timeout=1800, register=_hold_child)
+                if r["code"] != 0:
+                    with _tc_lock:
+                        _tc_job["errors"][name] = " · ".join(
+                            _job_tail(r["out"], keep=4) + [f"remove before the install failed (exit {r['code']})"])[-400:]
+                        _tc_job["failed"].append(name)
+                    continue
         with _tc_lock:
             # Whatever it said last time is about a state that no longer holds;
             # this run is the new answer.
@@ -769,6 +797,9 @@ def _node_errors(job_id, failed, verb):
         said = _job_tail("\n".join(lines), keep=4) or ([refused] if refused else [])
         out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
     _node_errors_seen[key] = out
+    # The newest few jobs' answers: it was kept for every job ever read.
+    while len(_node_errors_seen) > 64:
+        _node_errors_seen.pop(next(iter(_node_errors_seen)))
     return out
 
 
@@ -820,11 +851,28 @@ def _check_rows(job_id):
     return rows
 
 
+def store_known(n):
+    """Whether a node's listing of its store is the whole truth about it: a
+    store named, and the agent has reported what is in it (every agent
+    since store_dirs, an empty listing included). Then a toolchain not in
+    the listing is not installed whatever the last check said, and a store
+    emptied by hand reads as nothing installed rather than nothing known
+    (B671, the operator, 12 Oct: the store wiped, every row still current)."""
+    rep = (n or {}).get("reported") or {}
+    return bool(((rep.get("stores") or {}).get("toolchains") or {}).get("path")) \
+        and isinstance(rep.get("store_dirs"), dict)
+
+
 def last_check(nid):
     """What the last check on a node said, {name: {installed, latest,
     status}}, and when it ended (0 for never): the tab's state column and
-    the bell's update row read the same answer (the operator, 9 Oct)."""
+    the bell's update row read the same answer (the operator, 9 Oct). What
+    the node's own listing no longer holds is absent, whatever the check
+    or an install since it said (B671): the listing comes with every
+    hello, so a directory deleted by hand is read within one."""
     recent = nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []
+    n = nodes.node(nid) if nodes else None
+    gone = (set(p["name"] for p in TOOLCHAINS) - node_has(n)) if n and store_known(n) else set()
     for j in recent:
         if (j.get("spec") or {}).get("action") != "check":
             continue
@@ -838,7 +886,8 @@ def last_check(nid):
                  if (k.get("spec") or {}).get("action") == "install" and k.get("state") == "succeeded"
                  and int(k.get("ended") or 0) > int(j.get("ended") or 0)
                  for x in ((k.get("spec") or {}).get("names") or [])}
-        rows = {name: (dict(r, status="current") if name in since else r)
+        rows = {name: (dict(r, status="absent", installed="") if name in gone
+                       else dict(r, status="current") if name in since else r)
                 for name, r in _check_rows(j["id"]).items()}
         return rows, int(j.get("ended") or 0)
     return {}, 0
@@ -893,13 +942,16 @@ def payload_for_node(nid):
     # for the version string it happens to carry.
     top = set(((rep.get("store_dirs") or {}).get("top")) or [])
     andr = set(((rep.get("store_dirs") or {}).get("android")) or [])
-    known = bool(top or andr)
+    # An empty listing from an agent that sends one is an empty store, and
+    # every row is there to install again (B671); only a node that has not
+    # listed its store at all is unknown.
+    known = store_known(n) or bool(top or andr)
     for p in TOOLCHAINS:
         probe, name = p["probe"], p["name"]
         if probe.startswith("android:"):
             here = probe.split(":", 1)[1] in andr
         elif probe == "android-tools":
-            here = bool({"cmdline-tools", "platform-tools"} & andr)
+            here = "cmdline-tools" in andr
         else:
             here = probe in top
         if name in set((rep.get("store_dirs") or {}).get("incomplete") or []):
@@ -954,9 +1006,8 @@ def payload_for_node(nid):
         if names:
             i["system"] = {"manager": fam, "names": names,
                            "missing": list(unmet.get(i["name"]) or []) if i["installed"] else None}
-    # A toolchain another one needs, missing on this node: the store is
-    # shared, so diagrams can be installed from one node and be on every
-    # node, while the jdk it runs on was removed from this one, or never
+    # A toolchain another one needs, missing on this node: diagrams can be
+    # installed while the jdk it runs on was removed since, or never
     # arrived. The row says which, and offers that row's own install.
     here = {i["name"] for i in items if i["installed"]}
     for i in items:
@@ -973,10 +1024,19 @@ def payload_for_node(nid):
     job = None
     if nodes:
         for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1):
+            names = [DRIVER if str(x).startswith(DRIVER + ":") else str(x)
+                     for x in (j.get("spec") or {}).get("names", [])]
+            # How far through the batch it is, from the name the agent says
+            # it is on (step): the ones before it are behind it, the ones
+            # after it still to come. Every name sat in the queue for the
+            # whole job, and the tab read "1 of 10" from start to end (the
+            # operator, 12 Oct).
+            cur = j.get("step", "")
+            at = names.index(cur) if cur in names else -1
             job = {"running": True, "action": (j.get("spec") or {}).get("action", ""),
-                   "queue": [DRIVER if str(x).startswith(DRIVER + ":") else x
-                             for x in (j.get("spec") or {}).get("names", [])],
-                   "current": j.get("step", ""),
+                   "queue": names[at + 1:] if at >= 0 else names,
+                   "passed": names[:at] if at >= 0 else [],
+                   "current": cur,
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
                    "failed": [], "aborting": bool(j.get("cancel")), "node": nid, "id": j["id"]}
             break
@@ -1063,6 +1123,8 @@ def payload_for_node(nid):
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": checked, "sizing": False,
+            # What on the store no node runs from any more (R196).
+            "cleanable": cleanable(nid),
             "items": items, "job": job or {"running": False}}
 
 
@@ -1144,20 +1206,83 @@ def _store_share(n):
     return (best[1], path[len(best[0]):])
 
 
+def landed_since(nid, started):
+    """The toolchains installed or updated on this node after `started`
+    whose layout puts something on PATH or sets a variable: what a session
+    begun then does not have until it is started again (the project row's
+    restart line). Their labels, newest first."""
+    if not started:
+        return []
+    shapes = {p["name"]: p for p in TOOLCHAINS}
+    landed = _landed_at(nid)
+    out = []
+    for name, at in sorted(landed.items(), key=lambda kv: -kv[1]):
+        p = shapes.get(name) or {}
+        lay = p.get("layout") or {}
+        if at > started and (lay.get("bin") or lay.get("env")):
+            out.append(p.get("label") or name)
+    return out
+
+
 def _landed_at(nid):
     """{toolchain: when a job last installed or updated it} on this node's
-    store, which is also every node sharing it: installed from one, it is on
-    all of them, and so are the sessions it has not reached."""
+    own directory of the store."""
     out = {}
     if not nodes:
         return out
-    for x in [nid] + [o["id"] for o in store_sharers(nid)]:
-        for j in nodes.jobs_for(node_id=x, type="toolchain", n=50):
-            sp = j.get("spec") or {}
-            if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
-                continue
-            for name in sp.get("names") or []:
-                out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
+    for j in nodes.jobs_for(node_id=nid, type="toolchain", n=50):
+        sp = j.get("spec") or {}
+        if j.get("state") != "succeeded" or sp.get("action") not in ("install", "update"):
+            continue
+        for name in sp.get("names") or []:
+            out[str(name)] = max(out.get(str(name), 0), int(j.get("ended") or 0))
+    return out
+
+
+def names_in(dirs):
+    """The recipes a store listing ({top, android}, store_dirs' shape) holds,
+    by the same reading the Toolchains tab's rows make of a node's own."""
+    top = set((dirs or {}).get("top") or [])
+    andr = set((dirs or {}).get("android") or [])
+    out = []
+    for p in TOOLCHAINS:
+        probe = p["probe"]
+        if probe.startswith("android:"):
+            here = probe.split(":", 1)[1] in andr
+        elif probe == "android-tools":
+            here = "cmdline-tools" in andr
+        else:
+            here = probe in top
+        if here:
+            out.append(p["name"])
+    return out
+
+
+def cleanable(nid):
+    """[{dir, what}] at the top of this node's toolchain store that no node
+    runs from any more (R196): a directory named for a node that is retired
+    or unknown here (a node enrolled again starts afresh under its new id,
+    and leaves its old one behind). Never a live node's, and never anything
+    not named for a node: `shared`, and the controller's own <os>-<arch>."""
+    if not nodes:
+        return []
+    n = nodes.node(nid)
+    rep = (n or {}).get("reported") or {}
+    roots = list((rep.get("store_dirs") or {}).get("roots") or [])
+    if not roots:
+        return []
+    share = _store_share(n)
+    peers = [o for o in nodes.node_list(all=True) if o.get("kind") == "agent" and _store_share(o) == share] if share else [n]
+    in_use = {_scope_of(o) for o in peers if o.get("state") != "retired"}
+    names = {o["id"]: o.get("name") or o["id"] for o in nodes.node_list(all=True)}
+    retired = {o["id"] for o in nodes.node_list(all=True) if o.get("state") == "retired"}
+    out = []
+    for d in roots:
+        if d in in_use or not re.fullmatch(r"n_[0-9a-f]{4,32}", d):
+            continue
+        if d in retired or d not in names:
+            out.append({"dir": d, "what": f"{names[d]}'s, a node since retired" if d in names
+                        else "a node's no longer enrolled here"})
     return out
 
 
@@ -1170,9 +1295,23 @@ def store_sharers(node_id):
     mine = _store_share(me) if me else None
     if not mine:
         return []
+    # Each keeps its own directory in it (<store>/<node id>), so what they
+    # can collide on is what store_areas says: the Android system images.
     return [n for n in nodes.node_list()
-            if n["id"] != node_id and n["state"] != "retired"
-            and _store_share(n) == mine]
+            if n["id"] != node_id and n["state"] != "retired" and _store_share(n) == mine]
+
+
+def _scope_of(n):
+    """The directory under its toolchain store a node's toolchains are in."""
+    return str((((n or {}).get("reported") or {}).get("stores") or {}).get("toolchains", {}).get("scope") or "")
+
+
+def _dir_of(n):
+    """The directory a node's toolchain jobs write under the store: its
+    node id (R196), and this controller's own <os>-<arch>."""
+    if nodes and (n or {}).get("id") == nodes.LOCAL:
+        return f"{platform.system().lower()}-{platform.machine() or 'unknown'}"
+    return _scope_of(n) or str((n or {}).get("id") or "")
 
 
 # The census spells an arch the way uname does; the catalog uses the
@@ -1236,7 +1375,7 @@ def node_has(n):
             # the binaries, so it corroborates; where a node has reported no
             # toolchains at all there is nothing to corroborate with and the
             # directory is all there is to go on.
-            here = bool({"cmdline-tools", "platform-tools"} & andr) \
+            here = "cmdline-tools" in andr \
                 and (bool(tc.get("android-sdk")) if tc else True)
         else:
             here = probe in top
@@ -1315,11 +1454,12 @@ def _store_job_on(node_id):
     return any(nodes.jobs_for(node_id=node_id, type=t, active=True, n=1) for t in STORE_JOBS)
 
 
-def store_areas(names, action="install", plat=""):
-    """The parts of a toolchain store these names write, as (platform, area).
+def store_areas(names, action="install", where=""):
+    """The parts of a toolchain store these names write, as (directory,
+    area), the directory being the machine's own under the store (_dir_of).
 
-    Each toolchain unpacks into a directory of its own under its machine's
-    <os>-<arch> scope, so two installs collide only on the same toolchain,
+    Each toolchain unpacks into a directory of its own there, so two
+    installs collide only on the same toolchain in the same directory,
     except the Android family, which sdkmanager keeps in one SDK tree. The
     driver, the container toolkit, system packages and a check write no
     store at all: they are each machine's own, or only read."""
@@ -1330,45 +1470,42 @@ def store_areas(names, action="install", plat=""):
         x = str(x)
         if x == TOOLKIT or x == DRIVER or x.startswith(DRIVER + ":"):
             continue
-        out.add((plat, "android" if x == "android-tools" or x.startswith("android:") else x))
+        out.add((where, "android" if x == "android-tools" or x.startswith("android:") else x))
     return out
 
 
-def _image_areas(plat):
+def _image_areas(where):
     # The SDK tree an image job's sdkmanager runs in, and the system images,
-    # which every platform on the store shares (one directory, no scope).
-    return {(plat, "android"), ("", "android system images")}
+    # which every machine on the store shares (<store>/shared).
+    return {(where, "android"), ("", "android system images")}
 
 
-def _job_areas(j, plat):
+def _job_areas(j, where):
     sp = j.get("spec") or {}
     if j.get("type") == "image":
-        return _image_areas(plat)
-    return store_areas(sp.get("names") or [], sp.get("action") or "install", plat)
+        return _image_areas(where)
+    return store_areas(sp.get("names") or [], sp.get("action") or "install", where)
 
 
 def store_busy(nid, names=None, action="install"):
     """Why this node's toolchain store cannot take this job now, or "".
 
     On the node itself, one toolchain or image job at a time: its tab shows
-    one job. Across nodes that share the store, only a job touching the same
-    toolchain (the Android SDK counting as one) waits: docs/nodes.md section
-    6 names the trap, two agents unpacking into one NFS directory, and it is
-    the directory that clashes, not the share. Two installs of different
-    toolchains on two nodes used to be refused for sharing a store at all.
+    one job. Across machines that share the store, a job waits only for one
+    writing the same directory (store_areas): each keeps its toolchains in
+    its own, so that is the Android system images under <store>/shared.
     `names` None is any write to the store (an image job: the Android SDK)."""
     n = nodes.node(nid)
     if _store_job_on(nid):
         return f"a toolchain or image job is already running on {n['name']}. One at a time on a node."
-    mine = (store_areas(names, action, platform_of(n)) if names is not None
-            else _image_areas(platform_of(n)))
+    mine = (store_areas(names, action, _dir_of(n)) if names is not None
+            else _image_areas(_dir_of(n)))
     if not mine:
         return ""
     for other in store_sharers(nid):
-        plat = platform_of(other)
         for t in STORE_JOBS:
             for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
-                both = sorted(a for _, a in mine & _job_areas(j, plat))
+                both = sorted(a for _, a in mine & _job_areas(j, _dir_of(other)))
                 if both:
                     return (f"{other['name']} is installing {', '.join(both)} into the toolchain store "
                             f"it shares with {n['name']}; this waits for it, since two machines "
@@ -1379,7 +1516,7 @@ def store_busy(nid, names=None, action="install"):
     if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in store_sharers(nid)):
         local = nodes.node(nodes.LOCAL)
         theirs = store_areas(list(_tc_job["queue"]) + [_tc_job["current"]] if _tc_job["current"]
-                             else list(_tc_job["queue"]), _tc_job["action"], platform_of(local))
+                             else list(_tc_job["queue"]), _tc_job["action"], _dir_of(local))
         both = sorted(a for _, a in mine & theirs)
         if both:
             return (f"this container is installing {', '.join(both)} into the toolchain store "
@@ -1597,10 +1734,9 @@ def auto_sysdeps(nid):
     """Install the system packages a node lacks for what its store holds,
     without anybody pressing Install system packages.
 
-    The store is shared, so a toolchain installed from one node is on every
-    node that mounts it, while the libraries it needs are each machine's
-    own: the install job installs them only on the node it ran on, and every
-    other one showed a banner asking for a second press. Those packages were
+    The libraries a toolchain needs are the machine's own, outside the
+    store, so they can be missing while the toolchain is there (a package
+    removed since, a machine rebuilt under its store). Those packages were
     already chosen when the recipe was installed, so a node BuilderBot
     manages (the sandbox stamp) installs them itself when its census says
     they are missing. Not on a guest node, whose system is its owner's, and
@@ -1643,11 +1779,11 @@ def start_job(action, names, auto=False):
         if nodes:
             try:
                 me = nodes.node(nodes.LOCAL)
-                mine = store_areas(list(names), action, platform_of(me))
+                mine = store_areas(list(names), action, _dir_of(me))
                 for other in store_sharers(nodes.LOCAL):
                     for t in STORE_JOBS:
                         for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
-                            if mine & _job_areas(j, platform_of(other)):
+                            if mine & _job_areas(j, _dir_of(other)):
                                 return False
             except sqlite3.Error as e:
                 print(f"dashboard: toolchains: store sharers unread, going ahead: {e}",
@@ -1763,6 +1899,18 @@ def verb(action, req, principal):
         # headroom before a byte is downloaded.
         if nodes is None:
             return {"error": "the node store did not open"}, 500
+        if action == "clean":
+            # What the store holds that no node runs from (cleanable), taken
+            # off by a job on this node; only the names offered, never a path.
+            offered = {c["dir"] for c in cleanable(nid)}
+            want = [d for d in (req.get("names") or []) if d in offered]
+            if not want:
+                return {"error": "nothing on this store is waiting to be taken off"}, 400
+            if (why := store_busy(nid, None)):
+                return {"error": why}, 409
+            r = nodes.job_add(principal, {"node": nid}, "toolchain", {"action": "clean", "names": want,
+                                                                     "timeout": 3600})
+            return (r, 400) if r.get("error") else ({"ok": True, "job": r.get("job"), "queued": want}, 200)
         if action not in ("install", "remove", "sysdeps", "check"):
             return {"error": "a node takes install, remove, sysdeps or check"}, 400
         node = nodes.node(nid)

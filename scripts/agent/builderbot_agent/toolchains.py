@@ -35,6 +35,31 @@ def tc_dir(store, name, entry, action):
     return d if os.path.isdir(d) else ""
 
 
+# The recipes `bb toolchains update` knows (sdk.sh sdk_update); an android:*
+# package is updated by sdkmanager. Any other is updated by a remove and an
+# install, whatever its catalog says.
+UPDATE_VERBS = ("flutter", "dotnet", "swift", "playwright")
+
+
+def tc_verbs(store, name, entry, action):
+    """The bb toolchains verbs a job runs for one name, in order. An install
+    of a toolchain that is there already is an update: `update` for a recipe
+    that verb knows, and for the rest a remove and then the install (R193,
+    the operator, 11 Oct: "have it uninstall and reinstall automatically"),
+    where bb toolchains install alone dies with "already installed" on a
+    fresh_only recipe. Swift is updatable and fresh_only both, and this
+    sent it to `install` on a node, which refused it every time (12 Oct).
+    Not installed, or any other action: the one verb."""
+    src = (entry or {}).get("source") or {}
+    if action != "install" or src.get("versioned") or not tc_dir(store, name, entry, action):
+        return [action]
+    if name in UPDATE_VERBS or name.startswith("android:"):
+        return ["update"]
+    if src.get("fresh_only") or not (entry or {}).get("updatable"):
+        return ["remove", "install"]
+    return ["install"]
+
+
 def tc_users(path, limit=8):
     """The processes using anything under `path`: as their program, a
     library or a jar they have open, or the directory they run in. Each as
@@ -401,6 +426,10 @@ def sdk_env(state, who=None):
     if store:
         android = os.path.join(store, "android")
         env.update({"SDK_ROOT": store, "BUILDER_HOME": store, "BB_NODE_TOOLCHAINS": "1",
+                    # The scope bb scopes by (common.sh sdk_scope), so a bb run
+                    # here installs into and reads this node's own directory
+                    # (R196) rather than the platform's shared one.
+                    "BB_SDK_SCOPE": tc_scope(),
                     "ANDROID_HOME": android, "ANDROID_SDK_ROOT": android})
         front = []
         for entry in store_layout(state):

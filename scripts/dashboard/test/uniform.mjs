@@ -808,7 +808,7 @@ ok(seenSects.size <= 1,
   const sshy = await page.$$eval('textarea', es => es.filter(e => {
     // Each attribute is split on its own, as Bitwarden does: whole, by
     // word, and by word with the spaces taken out ("public key" is publickey).
-    const said = [e.id, e.name, e.className, e.title, e.placeholder,
+    const said = [e.id, e.name, e.className, saidOf(e), e.placeholder,
                   e.getAttribute('aria-label'), ...[...(e.labels || [])].map(l => l.textContent)]
       .filter(Boolean).map(v => v.toLowerCase().replace(/-/g, ''));
     const words = new Set(said.flatMap(v => [v, ...v.split(/[^\p{L}\d]+/u),
@@ -1202,6 +1202,10 @@ for (const kind of kinds){
 // says what to fix rather than that something is wide. The tab strip is
 // the one thing allowed past the edge: it scrolls by design.
 const sideways = () => page.evaluate(() => {
+  // Every section open for the measurement: on a phone one stands open at a
+  // time (R184), and what is folded away is not measured, so the folds are
+  // opened here and the one-at-a-time rule is held by its own check below.
+  document.querySelectorAll('details.sect').forEach(d => { d.open = true; });
   const host = document.querySelector('.doc.on');
   const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div') || host;
   const controls = [...(host?.querySelectorAll('input, select, textarea') || [])]
@@ -1277,6 +1281,39 @@ for (const kind of kinds){
       m.overflow}px over${m.widest ? `; ${m.widest.what} reaches ${m.widest.right}px` : ''})`);
     ok(m.loud.length === 0, `[${tag}] no control on a phone is inflated past the field size${
       m.loud.length ? `; inflated: ${m.loud.join(', ')}` : ''}`);
+    // One section open at a time on a phone (R184, the operator, 11 Oct):
+    // after a draw one stands open, and opening another shuts it. Measured
+    // on a surface with two or more sections in one group; the measurement
+    // above opened them all, so the draw's state is put back first.
+    const sects = await page.evaluate(() => {
+      // The sections on show: the notebook keeps every view's in the DOM,
+      // and only the view that is on has visible ones.
+      const host = document.querySelector('.doc.on');
+      const all = [...(host?.querySelectorAll('details.sect') || [])].filter(d => d.dataset.sect && d.checkVisibility());
+      const g = all[0] ? sectGroup(all[0]) : null;
+      const mine = g ? sectsOf(g) : [];
+      if (mine.length >= 2){ oneOpen(g); }
+      return { n: mine.length, open: mine.filter(d => d.open).length,
+               keys: mine.map(d => d.dataset.sect), openKeys: mine.filter(d => d.open).map(d => d.dataset.sect) };
+    });
+    if (sects.n >= 2){
+      ok(sects.open === 1, `[${tag}] a phone shows one section open after a draw (${sects.open} of ${sects.n})`);
+      const other = sects.keys.find(k => !sects.openKeys.includes(k));
+      // Pressed through the summary's own handler (wireSections' onclick), as
+      // a tap is: a pointer click waits for the summary to be in view, and a
+      // view that scrolls inside its pane kept one of them out of it.
+      await page.evaluate(k => document.querySelector(`.doc.on details.sect[data-sect="${k}"] > summary`)?.click(), other);
+      await sleep(600);
+      const after = await page.evaluate(k => {
+        const host = document.querySelector('.doc.on');
+        const all = [...(host?.querySelectorAll('details.sect') || [])].filter(d => d.dataset.sect && d.checkVisibility());
+        const g = sectGroup(all[0]);
+        const mine = sectsOf(g);
+        return { open: mine.filter(d => d.open).map(d => d.dataset.sect), want: k };
+      }, other);
+      ok(after.open.length === 1 && after.open[0] === other,
+         `[${tag}] ...and opening another shuts it: open ${JSON.stringify(after.open)}, pressed ${other}`);
+    }
   }
 }
 

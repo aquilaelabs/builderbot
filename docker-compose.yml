@@ -30,6 +30,12 @@ services:
     # BuilderBot ...` command in the docs works under either install method.
     container_name: BuilderBot
     hostname: builderbot
+    # What the container prints, kept by Docker on the host: bounded, since
+    # the json-file driver keeps all of it by default. The same output is in
+    # the logs directory under the Logs section's days (builderbot.log).
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "3"}
     restart: unless-stopped
 
     # Keeps a TTY attached so `docker exec -it builderbot claude` behaves like a
@@ -37,58 +43,16 @@ services:
     stdin_open: true
     tty: true
 
+    # Only what the container needs before BuilderBot runs; everything else
+    # is set in the dashboard (Settings, a project's settings, the Nodes tab).
     environment:
-      # --- Unraid file ownership -------------------------------------------
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
       TZ: ${TZ:-Etc/UTC}
-      # The sandbox VM the Docker manager builds on is a node now, enrolled
-      # with a token from the dashboard's Nodes tab (no key here, nothing
-      # named here) with its path mapping on its row. DOCKER_HOST and
-      # DOCKER_HOST_PATHS are gone with the ssh node kind.
-      # See docs/sandbox-vm.md.
-
-      # --- shutdown ---------------------------------------------------------
-      # How long a stop may spend deregistering the runner, powering the
-      # emulator down and ending Claude sessions. Docker kills the container
-      # after ITS timeout regardless: pass `docker stop -t` to match, or on
-      # Unraid raise Settings -> Docker -> Docker Stop Timeout.
-      # Lines of each terminal's screen kept across a restart, and how many
-      # boots' logs are kept.
-
-      # --- git identity -----------------------------------------------------
-
-      # --- toolchain store ------------------------------------------------------
-      # Where the downloadable toolchains live inside the container; pairs
-      # with the /sdk volume below.
-      SDK_ROOT: ${SDK_ROOT:-/sdk}
-
-      # --- web dashboard ----------------------------------------------------
-      # Status page plus a browser terminal. There is no password here: the
-      # first page it serves asks you to make the owner account, and it serves
-      # nothing else until you have. Open it as soon as the container is up,
-      # because this publishes an interactive shell into a container holding
-      # a loaded ssh-agent and read-write mounts of every project.
-      # Recursive chown of the home volume at startup; false when it is large
-      # and already correct.
-      CHOWN_HOME: ${CHOWN_HOME:-true}
+      # The one port: the dashboard, its API and the terminals under /term.
+      # There is no password here: the first page asks you to make the
+      # owner, so open it as soon as the container is up.
       DASHBOARD_PORT: ${DASHBOARD_PORT:-7680}
-      # Loopback only: the browser reaches terminals through the dashboard
-      # port under /term, behind the same single sign-in, so this port is
-      # never published. (DASHBOARD_TTYD_PUBLIC_PORT is gone with the second
-      # port that needed it.)
-      DASHBOARD_TTYD_PORT: ${DASHBOARD_TTYD_PORT:-7681}
-      # Ceiling on open dashboard tabs. Each terminal tab is an iframe running
-      # a full terminal emulator over its own websocket.
-      # How often the dashboard re-runs `bb doctor` in the background (seconds).
-
-      # --- publishing -------------------------------------------------------
-      NPM_TOKEN: ${NPM_TOKEN:-}
-
-      # --- optional extras --------------------------------------------------
-      # Only used with the /unraid-icons mount below: Unraid names the cached
-      # icon after the container, which nothing inside one can observe.
-      CHOWN_PROJECTS: ${CHOWN_PROJECTS:-false}
 
     volumes:
       # --- your projects ----------------------------------------------------
@@ -109,15 +73,16 @@ services:
       # for running, not for the suite.
       - .:/opt/builderbot/src
 
-      # --- the toolchain store --------------------------------------------------
-      # Android platforms, build-tools, the 800MB emulator and the multi-GB
-      # system images, plus any toolchain `bb toolchains install` adds. Outside the
-      # image on purpose: the container is rebuilt on every update, this is
-      # not, so nothing here is ever downloaded twice.
+      # --- the toolchain store --------------------------------------------
+      # This controller's own toolchains (the browsers `bb capture shot`
+      # uses), outside the image so an update never downloads them again.
+      # A node keeps its own, in a directory of its own on the store its
+      # row names.
       - ${SDK_PATH:-/mnt/user/sdk}:/sdk
 
       # --- persistent container state --------------------------------------
-      # Claude Code login, shell history, npm globals, runner registration.
+      # Each account's home on the controller, and its state: accounts,
+      # settings, notebooks, logs.
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/home:/home/builder
       # Drop your own *.sh startup hooks in here.
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/config:/config
@@ -157,11 +122,6 @@ services:
       # - /mnt/user/appdata/BuilderBot/secrets:/secrets:ro
 
       # --- host Docker access (OFF by default) ------------------------------
-      # Dev-instance volumes. Its own share
-      # rather than a folder in appdata, because Unraid exports and backs up
-      # shares and not folders; see the template's note on this setting.
-      # Only needed where the daemon is this box's: a sandbox VM mounts the
-      # share itself and makes the per-instance directory over there.
 
     # Web dashboard + browser terminals, one port: terminals are proxied
     # through it under /term, behind the same sign-in. Published on the same

@@ -25,6 +25,7 @@ import io
 import json
 import os
 import re
+import shutil
 import tarfile
 import threading
 import time
@@ -56,6 +57,16 @@ MAX_GENERATIONS = 60
 
 def configure(*, state, write_json):
     globals().update(STATE=Path(state), write_json=write_json)
+
+
+# Set by server.py: every finished job's log in the node store, for Clear.
+clear_job_logs = None
+# The live generation's ceiling. Rotation is per start, so a controller up
+# for months wrote one dashboard.log and one ttyd.log for all of it; past
+# this the sweep copies the file to its next generation and empties it in
+# place (copy-truncate: the writers hold it open with O_APPEND, so they go
+# on writing at the new end).
+LIVE_MAX_BYTES = 64 * 1024 * 1024
 
 
 def log_dir():
@@ -148,7 +159,7 @@ def payload():
         "bytes": sum(e["bytes"] for e in es) + sum(e["bytes"] for e in ci),
         # This session's own, which is what Download reaches for first.
         "session": [e["name"] for e in es if e["generation"] == 0 and e["ours"]],
-        "oldest": min((e["mtime"] for e in es), default=0),
+        "oldest": min([e["mtime"] for e in es] + [e["mtime"] for e in ci], default=0),
     }
 
 
@@ -187,7 +198,9 @@ def prune():
 
 
 def clear():
-    """Everything but this session. The live files are left in place.
+    """Everything but this session: the earlier generations, the kept CI
+    runs, and every finished job's log (their rows stay). The live files
+    are left in place.
 
     Truncating them instead was the other option and is worse: the boot log is
     an open file descriptor in the entrypoint, and cutting it out from under a
@@ -202,7 +215,41 @@ def clear():
             gone += 1
         except OSError:
             pass
-    return {"ok": True, "removed": gone}
+    for e in _ci_entries():
+        try:
+            e["path"].unlink()
+            gone += 1
+        except OSError:
+            pass
+    jobs = clear_job_logs() if clear_job_logs else 0
+    return {"ok": True, "removed": gone, "job_logs": jobs}
+
+
+def cap_live():
+    """Copy-truncate a live stream past LIVE_MAX_BYTES into its next
+    generation, shifting the older ones up. How many were cut."""
+    d, cut = log_dir(), 0
+    for name in STREAMS:
+        live = d / name
+        try:
+            if live.stat().st_size <= LIVE_MAX_BYTES:
+                continue
+            for g in range(MAX_GENERATIONS - 1, 0, -1):
+                old = d / f"{name}.{g}"
+                if old.exists():
+                    old.replace(d / f"{name}.{g + 1}")
+            shutil.copyfile(live, d / f"{name}.1")
+            with open(live, "r+b") as f:
+                f.truncate(0)
+            cut += 1
+        except OSError:
+            continue            # a file this account cannot write is left alone
+    return cut
+
+
+def sweep():
+    """The whole policy, once: what the hourly loop runs (server.py)."""
+    return {"files": prune(), "cut": cap_live()}
 
 
 # --- taking a copy ---------------------------------------------------------

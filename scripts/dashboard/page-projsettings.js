@@ -32,36 +32,11 @@ const MODELS = [["", "Claude's default"], ["opus", "Opus"], ["sonnet", "Sonnet"]
                 ["haiku", "Haiku"], ["fable", "Fable"]];
 const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
                  ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
-// What Claude's default here actually IS, read from the last transcript
-// when the dialog opens: with nothing set the picker used to read "leave
-// as is", which says nothing, and choosing the model the session was
-// already on counted as a change and asked to restart it. The picker now
-// shows that model, and picking it is picking the default.
-let rnModelNow = "";
-const rnModelPick = () => {
-  const v = $("rnModel").value;
-  return rnPrefWas.model === "" && v === rnModelNow ? "" : v;
-};
-function rnLoadModelNow(name){
-  rnModelNow = "";
-  fetch(`/api/claude-now?project=${encodeURIComponent(name)}`)
-    .then(r => r.json())
-    .then(j => {
-      if (rnFor !== name || !j.model) return;
-      rnModelNow = j.model;
-      if (rnPrefWas.model === "" && MODELS.some(([v]) => v === j.model)){
-        $("rnModel").value = j.model;
-        rnDrawPrefs();
-      }
-    })
-    .catch(() => {});
-}
-
 // What the dialog was opened showing, so Save can tell a real change from a
 // dialog that was merely looked at: the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
-let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
+let rnPrefWas = {git_name: "", git_email: "",
                  node: "", nodes: "", hosts: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
                  capture_days: "7", snapshot_days: "14", dev_keep: "3", gate: "", color: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
@@ -110,8 +85,7 @@ const rnGateNow = () => Object.fromEntries(
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
 
 function rnFillPrefs(p){
-  rnPrefWas = {model: p?.yours?.model || "", effort: p?.yours?.effort || "",
-               git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
+  rnPrefWas = {git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
                nodes: (p?.prefs?.nodes || []).join(","),
                hosts: (p?.prefs?.hosts || []).join(","),
@@ -153,7 +127,6 @@ function rnFillPrefs(p){
   rnFillPrefsRest(p);
   rnFillReads();
   rnFillDebug();
-  rnLoadModelNow(rnFor);
 }
 
 // The project's node: every node but this container, because local can
@@ -434,43 +407,20 @@ function rnFillPrefsRest(p){
     // docker-write's to change (the grant, R137 step 4), so not offered otherwise.
     el.closest("label").hidden = state?.can?.["docker-write"] === false;
   }
-  for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
-                                  ["rnEffort", EFFORTS, rnPrefWas.effort]]){
-    const el = $(id);
-    if (el.dataset.built !== "1"){
-      el.innerHTML = table.map(([v, l]) =>
-        `<option value="${v}">${esc(l)}</option>`).join("");
-      el.dataset.built = "1";
-    }
-    el.value = cur;
-  }
   rnDrawPrefs();
 }
 
 function rnDrawPrefs(){
   const p = (state?.projects || []).find(x => x.name === rnFor);
-  // Ghosted where no session can start: a locked project is the operator's to
-  // run. Setting what a session that cannot exist would launch on is a control
-  // with nothing behind it, and unlike the credential fields above, there is
-  // no typing here that would bring it back.
+  // Ghosted where no session can start: a locked project is the operator's
+  // to run. The model and effort are not here any more: a session starts on
+  // the ones picked in the Claude button's menu each time (the operator, 12
+  // Oct).
   const shut = !!p?.locked;
-  $("rnModel").disabled = $("rnEffort").disabled = shut;
-  const running = liveSessions().has(myClaude(rnFor));
-  const changed = rnModelPick() !== rnPrefWas.model
-               || $("rnEffort").value !== rnPrefWas.effort;
-  const dflt = rnPrefWas.model === "" && rnModelNow
-    ? ` ${(MODELS.find(([v]) => v === rnModelNow) || [])[1] || rnModelNow} is Claude's `
-      + `own default here.` : "";
+  $("rnReply").disabled = $("rnAsks").disabled = shut;
   $("rnPrefHint").textContent = shut
     ? "Locked; this project is yours to run, so no session starts here."
-    : running
-      ? (changed
-          ? "A session is running here: Save and end it, below, ends it now (the "
-            + "conversation resumes from the Claude button); Save, keep it running leaves it as it started."
-          : "Applies when a session starts; changing it offers to end the one running "
-            + "here." + dflt)
-      : "Applied the next time Claude starts here, and kept until you change it." + dflt;
-  $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
+    : "Applied the next time Claude starts here. The model and effort are picked each time a session starts, in the Claude button's menu.";
 }
 
 // ---- a project's settings dialog, wired ---------------------------------
@@ -600,6 +550,7 @@ function renameProject(name, mode = "all"){
   $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`;
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
+  $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
   rnLoadAuth(name);
   rnLoadSigning(name);
   rnLoadSnapshots(name);
@@ -769,7 +720,7 @@ function rnDrawFtp(){
     <label class="ndcap"><input type="checkbox" id="rnFtpEditor"${editor ? " checked" : ""}> Open them in an editor with BuilderBot for VS Code</label>
     ${editor ? `<div class="hint">Through this controller, as each person's own account: no share and no port of its own.</div>` : ""}
     ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Where it runs.</div>`}
-    <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-tip="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
+    <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-help="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
       <input id="rnFtpPort" type="number" min="1024" max="65526" step="1" inputmode="numeric" value="${esc(String(port))}" aria-label="the port its FTP server listens on">
       <span class="dim">and the ${v.span - 1} after it</span></div>
     ${status}
@@ -1125,6 +1076,7 @@ function rnLoadAuth(name){
   rnAuthNow = rnAuthPick = rnAuthOpts = null;
   rnClearToken = false;
   $("rnAuthField").hidden = true;
+  $("rnKeyField").hidden = true;
   $("rnAddrField").hidden = true;
   $("rnAddr").value = "";
   $("rnTestField").hidden = true;
@@ -1144,9 +1096,52 @@ function rnLoadAuth(name){
       $("rnAddrField").hidden = !j.url;
       $("rnTestField").hidden = !j.url;
       rnDrawAuth();
+      rnDrawKey();
       rnBars();
     })
     .catch(() => {});                          // the rename itself still works
+}
+
+// The project's own deploy key (the operator, 12 Oct): made or pasted here,
+// shown by its public half with where the host takes it, forgotten here.
+// Shown wherever the token is: a project that may push.
+function rnDrawKey(){
+  const f = $("rnKeyField");
+  if (!rnAuthOpts || $("rnTokenField").hidden){ f.hidden = true; return; }
+  f.hidden = false;
+  const k = rnAuthOpts.deploy, pasting = !$("rnKeyPaste").hidden;
+  $("rnKeyPub").hidden = !k;
+  $("rnKeyPub").textContent = k ? k.pub : "";
+  $("rnKeyMake").hidden = !!k || pasting;
+  $("rnKeyPasteBtn").hidden = !!k;
+  $("rnKeyPasteBtn").textContent = pasting ? "Keep it" : "Paste a key";
+  $("rnKeyCopy").hidden = $("rnKeyForget").hidden = !k;
+  $("rnKeyHint").innerHTML = k
+    ? `Add this on the host as a deploy key with write access${k.page ? `: <a href="${esc(k.page)}" target="_blank" rel="noopener">its deploy keys page</a>` : ""}, then pick Deploy key below and Save.`
+    : pasting ? "Paste the whole private key, without a passphrase. It is kept where sessions can push with it and never read it."
+    : "None made here. Make one, or paste one you have.";
+}
+
+async function rnKeyAct(action){
+  const name = rnFor, btn = {"key-make": "rnKeyMake", "key-store": "rnKeyPasteBtn", "key-forget": "rnKeyForget"}[action];
+  busy($(btn), action === "key-forget" ? "Forgetting" : action === "key-make" ? "Making" : "Keeping");
+  let j;
+  try{
+    j = await (await postJSON("/api/project-auth", {name, action,
+      key: action === "key-store" ? $("rnKeyPaste").value : ""})).json();
+  }catch{ j = {error: "no answer from the dashboard"}; }
+  $(btn).disabled = false;
+  $(btn).removeAttribute("aria-busy");
+  if (rnFor !== name) return;
+  const out = $("rnKeyOut");
+  out.classList.toggle("bad", !!j.error);
+  out.textContent = j.error || j.message || "";
+  out.hidden = !out.textContent;
+  if (!j.error){
+    $("rnKeyPaste").value = "";
+    $("rnKeyPaste").hidden = true;
+    rnLoadAuth(name);
+  } else rnDrawKey();
 }
 
 function rnDrawAuth(){
@@ -1324,12 +1319,12 @@ const RN_WAS = {
   gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
   devbuild: ["claude", "Claude may"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
   keys: ["claude", "Claude may"], release: ["claude", "Claude may"], version: ["claude", "Move the version"],
-  model: ["yours", "Model"], effort: ["yours", "Effort"], reply: ["yours", "Replies"], asks: ["yours", "Questions"],
+  reply: ["yours", "Replies"], asks: ["yours", "Questions"],
   git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
 };
 // What a running session takes only when it starts (the briefing, the launch
 // flags, the view it runs in); everything else is read when it is used.
-const RN_AT_START = new Set(["model", "effort", "reply", "asks", "git_name", "git_email", "node", "nodes",
+const RN_AT_START = new Set(["reply", "asks", "git_name", "git_email", "node", "nodes",
                              "reads", "sees", "test_change", "gpu", "capture_days", "snapshot_days", "dev_keep"]);
 
 // The fields as they stand, in rnPrefWas's own shape, so each compares with
@@ -1341,8 +1336,7 @@ function rnEnc(){
   const drawn = nodesList !== null;
   const node = drawn ? $("rnNode").value : rnPrefWas.node;
   const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
-  return {model: rnModelPick(), effort: $("rnEffort").value,
-          git_name: $("rnGitName").value.trim(), git_email: $("rnGitEmail").value.trim(),
+  return {git_name: $("rnGitName").value.trim(), git_email: $("rnGitEmail").value.trim(),
           node, nodes: !drawn ? rnPrefWas.nodes
             : (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : []).join(","),
           hosts: !drawn ? rnPrefWas.hosts : [...$("rnHosts").querySelectorAll("input:checked")].map(i => i.value).join(","),
@@ -1467,7 +1461,6 @@ function rnRevertSect(sect){
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGateVersion").value = w.version;
   } else if (sect === "yours"){
-    $("rnModel").value = w.model || rnModelNow; $("rnEffort").value = w.effort;
     $("rnReply").value = w.reply; $("rnAsks").value = w.asks;
     $("rnGitName").value = w.git_name; $("rnGitEmail").value = w.git_email;
     rnDrawPrefs();
@@ -1551,7 +1544,7 @@ async function rnSubmit(sect, end = false){
   try{
     if (prefsChanged){
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project: name, model: v.model, effort: v.effort, git_name: v.git_name, git_email: v.git_email,
+        body: JSON.stringify({project: name, git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
                               build: v.build, test: v.test, gate: v.gate, color: v.color, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,

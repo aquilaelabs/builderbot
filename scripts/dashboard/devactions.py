@@ -202,8 +202,12 @@ def _plan(project, instance, action, extra=None):
     # --remove-orphans on both (B592): a service the compose file no longer
     # names, renamed or dropped since it was started, was left running by
     # down and by remove, holding its ports, and the next up failed on them.
+    # A shipped instance builds nothing on its node (the image came in the
+    # tar), and pulls what it lacks: the tar carries the built images alone,
+    # and with --pull never a service on a registry image (mariadb:11) met
+    # "No such image" and the move was undone (B660, aquilaeLabs, 11 Oct).
     up = {"name": "starting", "argv": stamped + base + ["up", "-d", "--remove-orphans"]
-          + (["--no-build", "--pull", "never"] if ship else []), "timeout": 1800, "env": env}
+          + (["--no-build", "--pull", "missing"] if ship else []), "timeout": 1800, "env": env}
     down = {"name": "stopping", "argv": base + ["down", "--remove-orphans"], "timeout": 180, "env": ienv}
     build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
@@ -244,10 +248,15 @@ def _plan(project, instance, action, extra=None):
         test = [{"name": "testing", "argv": argv, "timeout": 3600, "env": ienv}]
     # Stopped and started again in place, its containers kept: what copying
     # or moving an instance's data does around reading it (relocate.py).
+    # Update (R195): the registry images pulled again, then up, so what moved
+    # upstream is what runs; nothing is built. --ignore-buildable leaves the
+    # services built from code to Rebuild.
+    pull = {"name": "pulling", "argv": base + ["pull", "--ignore-buildable"], "timeout": 1800, "env": ienv}
     stop = {"name": "stopping", "argv": base + ["stop"], "timeout": 180, "env": ienv}
     start = {"name": "starting", "argv": base + ["start"], "timeout": 300, "env": ienv}
     return {"up": [up], "down": [down], "remove": [down],
-            "rebuild": rebuild, "test": test, "stop": [stop], "start": [start]}.get(action) or []
+            "rebuild": rebuild, "test": test, "stop": [stop], "start": [start],
+            "update": [pull, up]}.get(action) or []
 
 
 # ---- an image shipped to a node that does not hold the project (R166) ------------
@@ -402,7 +411,7 @@ def image_put(nid, q, stream, length):
     that node's that is shipping, into the images store, whole or not at all."""
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or sp.get("ship") != "build":
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or sp.get("ship") != "build":
         return {"error": "no image is being shipped by that job from this node"}, 403
     if length <= 0 or length > 64 * 1024 ** 3:
         return {"error": "an image is between 1 byte and 64 GB"}, 413
@@ -428,7 +437,10 @@ def image_path(nid, q):
     for a job of that node's that is loading one."""
     j = devapp.queue.job(q.get("job", [""])[0], with_log=False) if devapp.queue else None
     sp = (j or {}).get("spec") or {}
-    if not j or j.get("node") != nid or j.get("state") != "running" or sp.get("ship") != "run":
+    # Assigned as well as running: the fetch is the run half's first step,
+    # and on a public node it reached here before the agent's first log post
+    # had marked the job running, so draconis was answered 403 (B648).
+    if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or sp.get("ship") != "run":
         return None, ({"error": "no image is being loaded by that job on this node"}, 403)
     p = _image_file(sp.get("project", ""), sp.get("instance") or devapp.MAIN)
     if not p.is_file():
@@ -456,6 +468,17 @@ def _plan_spec(project, instance, action, extra=None):
             "plan": _plan(project, instance, action, extra)}
 
 
+def last_line(text):
+    """The last line of a job's output that says something: not a command
+    echo, not compose's progress lines ("Container x Creating"), not a
+    traceback's indented frames; 200 characters at most."""
+    skip = ("$ ", "    ", "Traceback")
+    lines = [ln.strip() for ln in str(text or "").splitlines()]
+    said = [ln for ln in lines if ln and not ln.startswith(skip)
+            and not re.search(r"\b(Creating|Created|Starting|Started|Stopping|Stopped|Removing|Removed|Building|Built|Pulling|Pulled)\s*$", ln)]
+    return (said or [ln for ln in lines if ln] or [""])[-1][:200]
+
+
 def compose_done(job, state):
     """The records for an action the AGENT ran. Same bookkeeping the
     controller's own runner does, applied from the result: the node
@@ -476,11 +499,23 @@ def compose_done(job, state):
         # A relocation's own jobs (relocate.py) are its to follow on from.
         if sp.get("relocate"):
             return relocate.done(job, state)
+        # ...and a rename's (relocate.rename_job): the records follow the data.
+        if sp.get("rename"):
+            return relocate.rename_done(job, state)
         said = _compose_done(job, state)
     # ...and the rebuild that ends one: the last half of a shipped one, or
     # the only one; a ship's first half that failed ends it too.
     if sp.get("action") == "rebuild" and not (sp.get("ship") == "build" and state == "succeeded"):
         relocate.built(sp.get("project", ""), sp.get("instance") or devapp.MAIN, state == "succeeded")
+    # ...and one that built or started since a failed copy or move: that
+    # failure is history, and the bell stops carrying it.
+    if sp.get("action") in ("up", "rebuild", "update") and state == "succeeded" and not sp.get("ship") == "build":
+        relocate.started(sp.get("project", ""), sp.get("instance") or devapp.MAIN)
+    # ...and an update that pulled what was behind: nothing is, until the
+    # next check says so (R195).
+    if sp.get("action") == "update" and state == "succeeded":
+        import imagecheck
+        imagecheck.forget(devapp._pname(sp.get("project", ""), sp.get("instance") or devapp.MAIN))
     return said
 
 
@@ -539,10 +574,12 @@ def _compose_done(job, state):
                 "loading": "loading the image failed", "stopping": "stopping it failed",
                 "starting": "up failed", "testing": "the tests failed",
                 "preparing": "a bind directory could not be made on the node"}.get(step, "")
-        # The head stays whole and only the tail is cut: sliced from the end
-        # as one string, a long tail took the head with it and the row
-        # stopped saying what had failed.
-        return (head + ":\n" + tail[-400:]) if head and tail else head
+        # The row says what failed and the last line the step wrote, which
+        # is where compose and docker put the reason ("No such image:
+        # mariadb:11"); the whole tail was the row's before, newlines and
+        # all, and read as a wall (the operator, 11 Oct). The log is the
+        # Jobs tab's.
+        return (head + ": " + last_line(tail)) if head and last_line(tail) else head
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
     # Up to the operator. The row below would clear the flag, so this returns.
@@ -591,12 +628,12 @@ def _stamp(row, project, instance):
 def _kept(d, project, instance):
     """The instance's record if it is still there, None once Remove forgot
     it: what a result that lands after the removal writes to (B633), where
-    devapp._rec would make the row again. A record left with nothing but a
-    marker is not one either: Remove took the rest."""
-    rec = (d.get(project) or {}).get(instance)
-    if rec is not None and not (set(rec) - {"building_since", "await_env"}):
-        return None
-    return rec
+    devapp._rec would make the row again. Only whether it is there: a
+    record new made with nothing set is empty, and reading one with nothing
+    but a marker as a ghost (B633's second way, closed since every marker
+    goes through here too) left a first build unstamped, the row saying
+    Build over a running container (B646)."""
+    return (d.get(project) or {}).get(instance)
 
 
 def _record_build(project, instance):
@@ -1045,6 +1082,13 @@ def down(project, instance=devapp.MAIN):
     return _submit(project, instance, "down")
 
 
+@devapp._on_instance
+def update(project, instance=devapp.MAIN):
+    """Update on a row whose registry images moved (imagecheck, R195): pull
+    them again and up, nothing built."""
+    return _submit(project, instance, "update")
+
+
 _ARG = re.compile(r"[A-Za-z0-9._/:=@%+,-]{1,200}")
 
 
@@ -1129,6 +1173,18 @@ def project_dir_inside(sv, project):
     return ""
 
 
+def _job_update(project, instance, run):
+    """Update where the controller runs the job itself: pull, then up."""
+    run.step("pulling")
+    r = devapp._run(devapp._compose(project, instance, "pull", "--ignore-buildable"), timeout=1800,
+                    sink=run.line, hold=run.hold)
+    if run.canceled:
+        return {"state": "canceled", "error": "stopped before it started again"}
+    if r["code"] != 0:
+        return {"state": "failed", "error": ("could not pull its images:\n" + r["out"])[-500:]}
+    return _job_up(project, instance, run)
+
+
 def _job_down(project, instance, run):
     run.step("stopping")
     r = devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
@@ -1177,7 +1233,7 @@ def run_compose_job(job, run):
     sp = job.get("spec") or {}
     project, instance = sp.get("project", ""), sp.get("instance") or devapp.MAIN
     fn = {"up": _job_up, "down": _job_down, "rebuild": _job_rebuild,
-          "remove": _job_remove}.get(sp.get("action"))
+          "remove": _job_remove, "update": _job_update}.get(sp.get("action"))
     if fn is None:
         return {"state": "failed", "error": f"unknown compose action {sp.get('action')!r}"}
     with devapp.on_node(job.get("node") or devapp._instance_node(project, instance)):
@@ -1364,10 +1420,17 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
     # shown, not a bare yes. A compose file that gains a mount between
     # the row rendering and the button being pressed does not inherit the
     # acknowledgement of the one before it.
+    # BuilderBot's own (System, R180) is managed: its name, compose file and
+    # env are written by the surface that deployed it, never edited here
+    # (the operator, 11 Oct).
+    if action in ("env-set", "compose-set", "rename") and devapp.owner_of(project, instance) == devapp.SYSTEM:
+        return {"error": f"{devapp._pname(project, instance)} is BuilderBot's own and managed: change it where it was deployed from"}, 400
     if action == "up":
         r = up(project, instance, f(req, "ack"))
     elif action == "down":
         r = down(project, instance)
+    elif action == "update":
+        r = update(project, instance)
     elif action == "test":
         r = test(project, instance, test_cmd,
                  [str(a) for a in (req.get("args") or [])][:32])
@@ -1392,6 +1455,11 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         return {"text": cf.read_text(encoding="utf-8", errors="replace"), "file": cf.name}, 200
     elif action == "compose-set":
         r = set_compose(project, instance, req.get("text"))
+    elif action == "rename":
+        # A project's container named whatever its owner wants, while it is
+        # down (the operator, 11 Oct): the Edit dialog's Name field.
+        import containers
+        r = containers.rename_container(project, f(req, "name"), instance)
     elif action == "route":
         # How the instance is reached (docs/nodes.md §7): lan or funnel,
         # on which published port.
@@ -1459,7 +1527,7 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
     # What the others sharing this project would want to know before they
     # press the same button, naming the instance the server resolved. Reads
     # and the env editor are not news, so they are not on this list.
-    if action in ("up", "down", "rebuild", "remove", "abort"):
+    if action in ("up", "down", "rebuild", "update", "remove", "abort"):
         say(project, users.uid_of(me),
             f"{principal[len('user:'):]} ran {action} on "
             f"{project}" + (f" ({instance})" if instance != devapp.MAIN else ""))

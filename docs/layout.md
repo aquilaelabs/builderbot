@@ -18,7 +18,8 @@ unraid/builderbot.xml            Unraid Docker template (one-click updates)
 scripts/
   entrypoint.sh                  secrets shield, uid remap, hooks, ssh-agent
   supervisor.sh                  keeps the box alive; the graceful shutdown
-  mint-runner-token              root-only token helper (the one sudo command)
+  mint-runner-token              root-only token helper (one of the two sudo commands)
+  deploy-key                     root-only deploy key helper: make, keep, forget, load (the other)
   healthcheck.sh                 docker healthcheck
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
@@ -158,6 +159,7 @@ scripts/
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
     relocate.py                  copying or moving a dev instance to another node, its volumes and data directory with it: three jobs, packed on the old node, unpacked on the new, then its rebuild
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
+    imagecheck.py                every container's registry images against what their registries serve (R195): a weekly check, Check for updates on the Docker tab, Update on a row
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
@@ -247,6 +249,10 @@ tools/api-doc.py                 writes docs/api.md from server.py's route table
 tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
+test/nettest/compose.yml         the network probe (R178's proof): a container shipped to a node that tries what a project's container may and may not reach
+test/nettest/Dockerfile          its image: alpine with curl, dig and nc, running probe.sh
+test/nettest/probe.sh            the probe itself: DNS, the internet, the controller, the node's 80 and 443, and not its 22, the private ranges or IPv6; PASS/FAIL per line in the log
+test/nettest/.env.example        the two addresses it needs: the controller's and the node's
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
 tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)

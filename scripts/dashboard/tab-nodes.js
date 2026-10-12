@@ -442,6 +442,23 @@ function nodeSyncRow(n){
 // The door in for SSH (R174): what the machine reports, or what the enroll
 // script set up while it has not reported yet; the switch is a system job,
 // and the line says the ssh command to use.
+// What a PC needs to come in through a cloudflared door (R179, the
+// operator's own way in to draconis, 11 Oct): an ~/.ssh/config block named
+// for the node, so every server keeps its own name and its own saved
+// password rather than all of them being localhost:22, and `ssh NAME`.
+// MobaXterm's own SSH sessions read no ssh config, so it is said how it
+// gets there: a session that runs `ssh NAME` in its local terminal.
+function nodeDoorConfig(n, d){
+  const host = d.host || "HOST", user = n.config?.user || "bb";
+  const alias = String(n.name || "node").toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  return `<pre class="ndcmd"># in ~/.ssh/config on your PC, with cloudflared installed there
+Host ${esc(alias)}
+  HostName ${esc(host)}
+  User ${esc(user)}
+  ProxyCommand cloudflared access ssh --hostname %h</pre>
+      <div class="sub">Then <code>ssh ${esc(alias)}</code>. In MobaXterm, whose own SSH sessions read no ssh config, make a Shell session that runs <code>ssh ${esc(alias)}</code>, or type it in its local terminal.</div>`;
+}
+
 function nodeDoorRow(n){
   if (n.kind !== "agent") return "";
   const d = n.reported?.door || n.config?.door;
@@ -455,7 +472,7 @@ function nodeDoorRow(n){
       <div class="actbar"><span class="state">SSH door: ${esc(d.kind)}, ${esc(state)}${
         d.kind === "cloudflared" ? " (Cloudflare Access decides who reaches it)" : " (the tailnet's ACLs decide who reaches it)"}</span><span class="sp"></span>
         ${known && d.installed ? `<button type="button" data-nd="door" data-on="${d.active ? "0" : "1"}" ${n.live ? "" : "disabled"}>${d.active ? "Shut it" : "Open it"}</button>` : ""}</div>
-      ${known && d.installed && d.active ? `<pre class="ndcmd">${cmd}</pre>` : ""}
+      ${known && d.installed && d.active ? (d.kind === "cloudflared" ? nodeDoorConfig(n, d) : `<pre class="ndcmd">${cmd}</pre>`) : ""}
     </div>`;
 }
 
@@ -478,25 +495,48 @@ function nodeHostRow(n){
 // configured from the dashboard after enrolling, and a hosting node's
 // doors and proxy, ticked for one. Anywhere else the node is removed here
 // only, and the dialog says BuilderBot's pieces stay on the machine.
+// What un-enrolling takes off a machine and what it leaves, said the same
+// way in a node's Un-enroll and in Reset BuilderBot (the operator, 12 Oct).
+// `all`: everything goes (Reset un-enrolls with every part); otherwise the
+// parts the dialog's boxes choose are said as such.
+function unenrollWhat(all){
+  return `<div class="resetwhat">
+      <b>What un-enrolling takes off a machine BuilderBot set up</b>
+      <ul>
+        <li>The agent and its service, and the tunnel to this controller.</li>
+        <li>The sessions' firewall rules and networks, and the job and session accounts with their homes.</li>
+        <li>${all ? "" : "If ticked below: "}what was set up from the dashboard after enrolling: the mounts and their fstab lines, the CI runners, the GPU display.</li>
+        <li>${all ? "" : "If ticked below: "}what it was given as a host: the SSH door with its token, the port 22 rule, and the nginx container.</li>
+      </ul>
+      <b>What stays</b>
+      <ul>
+        <li>Docker, the system packages, and what is on the shares.</li>
+        <li>Its stores on its own disk (toolchains, caches, artifacts), unless that box is ticked.</li>
+        <li>Anything the provisioner installed for the machine itself.</li>
+      </ul>
+      The node leaves the Nodes tab and its tokens stop working; to use the machine again, enroll it again.
+      A machine that is only removed here keeps BuilderBot's pieces until <code>sudo bb-sandbox uninstall</code> is run on it.
+    </div>`;
+}
+
 function openUnenroll(n){
   const modal = document.getElementById("ndmodal"), body = document.getElementById("ndBody");
   if (!modal || !body) return;
   const clean = !!(n.live && n.reported?.sandbox);
   const host = !!n.config?.host_only;
-  document.getElementById("ndTitle").textContent = `Un-enroll ${n.name}`;
+  document.getElementById("ndTitle").textContent = `Un-enroll ${n.name}?`;
   body.innerHTML = clean ? `<div class="field">
-      <div class="hint">BuilderBot is uninstalled from the machine, then the node is removed here. To use it again, enroll it from Enroll node, here or on another controller.</div>
-      <div class="hint">Always: the agent and its unit, the sessions' firewall rules and networks, the <code>${esc(n.config?.user || "bb")}</code> and session accounts with their homes, and the tunnel to the controller. Docker, the packages and the shares' contents stay.</div>
+      <div class="hint">Are you sure? BuilderBot is uninstalled from ${esc(n.name)}, then the node is removed here. Its job account is <code>${esc(n.config?.user || "bb")}</code>.</div>
+      ${unenrollWhat(false)}
       <label class="ndcap"><input type="checkbox" id="ndUnStores"> Also delete the stores on its disk: the toolchains, the caches, the artifacts, dev instance data, and the synced project copies</label>
       <label class="ndcap"><input type="checkbox" id="ndUnConf"> Also undo what was set up from the dashboard after enrolling: the mounts and their fstab lines, the runners, the GPU display</label>
       <label class="ndcap"><input type="checkbox" id="ndUnDoors"${host ? " checked" : ""}> Also shut what it was given as a host: the SSH door with its token, the port 22 rule, and the nginx container</label>
-      <div class="hint">What the provisioner installed for the machine itself is never touched.</div>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" class="danger" id="ndUnGo">Un-enroll</button>
       <button type="button" id="ndUnCancel">Cancel</button></div>`
   : `<div class="field">
-      <div class="hint bad">The machine cannot be cleaned from here: ${n.live ? "it was not provisioned by BuilderBot" : "its agent is not dialing in"}. The node is removed here and its tokens revoked; BuilderBot's pieces stay on the machine until <code>sudo bb-sandbox uninstall</code> is run there.</div>
+      <div class="hint bad">Are you sure? The machine cannot be cleaned from here: ${n.live ? "it was not provisioned by BuilderBot" : "its agent is not dialing in"}. The node is removed here and its tokens revoked; BuilderBot's pieces stay on the machine until <code>sudo bb-sandbox uninstall</code> is run there.</div>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" class="danger" id="ndUnGo">Remove it here</button>
@@ -552,7 +592,7 @@ function nodeSessionsSection(n){
   const list = n.reported?.sessions || [];
   let status, cls, body;
   if (n.config?.host_only){
-    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodeToolsLine(n), {cls: "ok"});
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeToolsLine(n), {cls: "ok"});
   }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
@@ -581,6 +621,7 @@ function nodeSessionsSection(n){
       ${nodeSyncRow(n)}
       ${nodeSessNetRow(n)}
       ${nodeContainerNetRow(n)}
+      ${nodePortsLocalRow(n)}
       ${nodeTurnsRow(n)}`;
   }
   // ...and the node's phone and CI runner, which are tabs of their own
@@ -670,6 +711,30 @@ function nodeContainerNetRow(n){
     ${line}
     <div class="actbar"><span class="state"></span><span class="sp"></span>
       <button type="button" data-nd="ctr-net-save"${c.draft.ctrNet === on ? " disabled" : ""}>Save</button></div>
+  </div>`;
+}
+
+// Published ports bound to 127.0.0.1 by default (R190): on for a hosting-only
+// node unless switched off, since there a port on every address is open to
+// the world and not only to its nginx. The census says what docker binds to.
+function nodePortsLocalRow(n){
+  const c = nodeDraft(n);
+  const on = "ports_local" in (n.config || {}) ? !!n.config.ports_local : !!n.config?.host_only;
+  if (c.draft.portsLocal === undefined || c.draft.portsFrom !== on){
+    c.draft.portsLocal = on; c.draft.portsFrom = on;
+  }
+  const ip = n.reported?.docker_ip;
+  const line = ip === undefined ? `<div class="sub warn">Update the agent: this one does not say what docker binds published ports to.</div>`
+    : on && ip === "127.0.0.1" ? `<div class="sub">In force: a published port binds to 127.0.0.1 unless its compose names an address, so only this node's nginx and its tunnel reach it.</div>`
+    : on ? `<div class="sub dim">Setting it up: the agent writes docker's daemon.json and restarts docker once.</div>`
+    : ip === "127.0.0.1" ? `<div class="sub dim">Off, and docker still binds to 127.0.0.1 until the agent puts it back.</div>`
+    : `<div class="sub">Off: a published port binds to every address of this node, the internet's included where the node is on it.</div>`;
+  return `<div class="field">
+    <label class="ndcap"><input type="checkbox" data-k="portslocal" ${c.draft.portsLocal ? "checked" : ""}>
+      published ports stay on this node (bound to 127.0.0.1; a compose naming 0.0.0.0:PORT publishes it anyway)</label>
+    ${line}
+    <div class="actbar"><span class="state"></span><span class="sp"></span>
+      <button type="button" data-nd="ports-local-save"${c.draft.portsLocal === on ? " disabled" : ""}>Save</button></div>
   </div>`;
 }
 
@@ -1483,6 +1548,9 @@ function wireNodesTab(root){
   // its name fixed, its secrets left out (the node keeps them), and the
   // script it makes carries that node's id and runs on its machine alone.
   const mintForm = (was = {}, again = null) => {
+    // A node that has a machine (B637): a pending one never ran its script,
+    // so its new one is a first enrollment, worded and checked as one.
+    const enrolled = !!again && again.state !== "pending";
     document.getElementById("ndTitle").textContent = again ? `Enroll ${again.name} again` : "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
@@ -1533,7 +1601,7 @@ function wireNodesTab(root){
           <textarea id="ndEnWgText" rows="7" spellcheck="false" autocomplete="off"
             placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.6.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = home.example.net:51820"></textarea></div>
       </div>
-      <div class="field"><div class="hint">${again
+      <div class="field"><div class="hint">${enrolled
         ? "A new script for this node: run it again on the same machine, as root, to set it up afresh or change what it reaches the controller through. It carries no secret (the node keeps its WireGuard config and its door's); a secret pasted here replaces the node's. It refuses to run on another machine, and so does the controller."
         : "The script carries a token good once, for a day, and runs as root on a Linux machine."}</div></div>
       <div class="foot">
@@ -1615,7 +1683,7 @@ function wireNodesTab(root){
     go.onclick = () => pressing(go, async () => {
       const kept = keep();
       const conf = $b("#ndEnWgText").value;
-      if (reach.value === "wireguard" && !conf.trim() && !again){
+      if (reach.value === "wireguard" && !conf.trim() && !enrolled){
         notify("choose the WireGuard config your router made for this machine, or paste it in", true); return;
       }
       busy(go, "Making");
@@ -1681,9 +1749,10 @@ function wireNodesTab(root){
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner' -o provision-linux.sh
 sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
           m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
-        <div class="hint">On a Mac, as yourself:</div>
+${state?.settings?.settings?.offer_unvetted?.value ? `
+        <div class="hint">On a Mac, as yourself <span class="pill">dev</span>:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner-macos' -o provision-macos.sh
-bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>` : ""}
         <div class="hint">Or the agent alone, where python3 exists:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
 chmod 755 /usr/local/sbin/builderbot-agent
@@ -1856,6 +1925,18 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (k.error) notify(k.error, true);
         else notify(sw.checked ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello");
         const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.ctrNet = undefined;
+        await loadNodes();
+        return;
+      }
+      if (act === "ports-local-save"){
+        const sw = b.closest(".field")?.querySelector('[data-k="portslocal"]');
+        if (!sw) return;
+        busy(b, "Saving");
+        const k = await nodeAct({action: "ports-local", id, on: sw.checked});
+        if (k.error) notify(k.error, true);
+        else notify(sw.checked ? "published ports here bind to 127.0.0.1 from the next hello: the agent writes docker's daemon.json and restarts docker once"
+                               : "published ports here bind to every address from the next hello: docker restarts once");
+        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.portsLocal = undefined;
         await loadNodes();
         return;
       }
@@ -2117,6 +2198,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const cn = box.querySelector('[data-k="ctrnet"]');
     if (cn) cn.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.ctrNet = cn.checked;
                                   const sb = cn.closest(".field")?.querySelector('[data-nd="ctr-net-save"]'); if (sb) sb.disabled = false; };
+    const pl = box.querySelector('[data-k="portslocal"]');
+    if (pl) pl.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.portsLocal = pl.checked;
+                                  const sb = pl.closest(".field")?.querySelector('[data-nd="ports-local-save"]'); if (sb) sb.disabled = false; };
     if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked;
                                   // A hosting-only row's own Save wakes with the tick (nodeHostRootRow).
                                   const sb = ra.closest(".field")?.querySelector('[data-nd="root-asks-host"]'); if (sb) sb.disabled = false; };

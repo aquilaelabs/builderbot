@@ -41,22 +41,12 @@ function wireMacros(el){
   el.querySelectorAll("[data-m],[data-run]").forEach(b => {
     // data-need is what the button requires of the shell's directory beyond
     // being a shell at all: "git" wants a repository, "github" one with a
-    // GitHub remote. The tooltip names the first thing missing.
+    // GitHub remote.
     const need = b.dataset.need || "";
     const ok = live && (!need || (need === "git" ? ctx.git : ctx.github));
     b.disabled = !ok;
-    // The button's own tooltip is kept aside the first time through, so it
-    // comes back when the button does: the markup is no longer rebuilt on
-    // every pass, so nothing else would restore it.
-    if (!("tip" in b.dataset)) b.dataset.tip = b.title;
-    b.title = ok ? b.dataset.tip
-      : !live
-        ? (tabOf(panes[active])
-           ? "commands run in a shell tab: switch to one"
-           : "commands run in a shell tab: open one (+ or a project's Shell)")
-        : !ctx.git
-          ? "this shell's directory is not a git repository"
-          : "this repository has no GitHub remote";
+    // A dead one is ghosted and says nothing (the operator, 11 Oct: no
+    // tooltips; a reason on the page is for a warning or an error).
     b.onclick = () => b.dataset.m ? macro(b.dataset.m) : macro(null, b.dataset.run);
   });
 }

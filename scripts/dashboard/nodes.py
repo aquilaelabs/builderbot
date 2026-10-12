@@ -896,7 +896,12 @@ def enroll_script(principal, req):
     again = node(field(req, "node")) if field(req, "node") else None
     if field(req, "node") and not again:
         return {"error": "no such node to enroll again"}
-    ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=bool(again))
+    # Again for a machine only once there is one: a pending node never ran
+    # its script, so the new one is a first enrollment under the same row,
+    # its secrets asked for and carried, and its words those of a first
+    # (B637: it said "run it again on the same machine", "no secret").
+    enrolled = bool(again) and again.get("state") != "pending"
+    ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=enrolled)
     if ans.get("error"):
         return ans
     prov = AGENT_DIR.parent.parent / "nodes" / "provision-linux.sh"
@@ -909,7 +914,7 @@ def enroll_script(principal, req):
     # Through a public hostname the node is hosting only, whatever was
     # ticked (enrollscript.check): the session ports cannot be reached back.
     ho = ho or ans["reach"] == "public"
-    if again and ans["reach"] == "wireguard" and not tunnel:
+    if enrolled and ans["reach"] == "wireguard" and not tunnel:
         tunnel = ((again.get("config") or {}).get("tunnel") or None)
     m = enroll_mint(principal, field(req, "name"), req.get("capabilities"), user, tunnel=tunnel, host_only=ho,
                     nginx=req.get("nginx") is True,
@@ -924,7 +929,7 @@ def enroll_script(principal, req):
     machine = ((again or {}).get("reported") or {}).get("machine") or ""
     return m | {"script": enrollscript.build(ans, name=name, user=user, token=m["token"],
                                               expires=m["expires"], provisioner=prov.read_bytes(),
-                                              again=bool(again), machine=machine),
+                                              again=enrolled, machine=machine),
                 "filename": enrollscript.filename(name, m["id"]), "reach": ans["reach"],
                 "home": enrollscript.home_rules(ans, port),
                 "tunnel_addr": ans.get("tunnel_addr", "")}
@@ -1084,9 +1089,13 @@ def _census(c):
                          "addr": str(t["addr"]), "up": bool(t.get("up"))}
     pv = c.get("toolchain_versions") if isinstance(c.get("toolchain_versions"), dict) else {}
     out["toolchain_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
-    sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
-    out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
-                         for k in ("top", "android", "incomplete")}
+    # Kept only when the agent sent one: a listing that is there and empty
+    # is a store with nothing in it (B671), a key that is absent is a node
+    # that has not said, and the Toolchains tab reads the two apart.
+    sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else None
+    if sd is not None:
+        out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
+                             for k in ("top", "android", "incomplete", "roots")}
     # The android system images in the toolchain store, and the AVDs built on
     # each (roadmap #20). Whitelisted like store_dirs and toolchain_versions,
     # and for the same reason: a field the agent reports and this drops is a
@@ -1107,6 +1116,8 @@ def _census(c):
     tc = c.get("toolchains") if isinstance(c.get("toolchains"), dict) else {}
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}
+    # The address docker binds published ports to by default (R190).
+    out["docker_ip"] = str(c.get("docker_ip") or "")[:40]
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
@@ -1502,9 +1513,13 @@ def node_config_set(principal, node_id, cfg):
 # a stream name resolves to an argv here, and nothing else is reachable
 # through this door however it is asked for.
 LOG_STREAMS = {
+    # The journal where there is one; on an OpenRC or runit node, the file
+    # the provisioner has its service write (/var/log/builderbot-agent.log),
+    # which read nothing at all before.
     "agent": {"what": "the agent's own journal: what it did, and why a job failed",
-              "argv": ["journalctl", "-u", "builderbot-agent", "--no-pager",
-                       "-n", "{lines}"]},
+              "argv": ["sh", "-c", "if command -v journalctl >/dev/null 2>&1; "
+                       "then journalctl -u builderbot-agent --no-pager -n {lines}; "
+                       "else tail -n {lines} /var/log/builderbot-agent.log; fi"]},
     # TWO SHAPES, and the node says which it is in. Under systemd the runner
     # is a service and its output is the journal's; with no systemd the agent
     # runs run.sh itself and redirects it into runner.log under the data
@@ -1518,8 +1533,24 @@ LOG_STREAMS = {
                              "-n", "{lines}"]},
     "terminal": {"what": "the terminal server's log", "store": "data",
                  "argv": ["tail", "-n", "{lines}", "{data}/ttyd.log"]},
+    # The node's nginx (R171), where the nginx tab put one: what each request
+    # it routed met, which is what a session chasing a 502 on a route to its
+    # container wants (R182). The container's name is the node's (nginx_for).
+    "nginx": {"what": "the node's nginx: each request it routed and what the proxy met",
+              "argv": ["docker", "logs", "--tail", "{lines}", "{nginx}"], "nginx": True},
+    # The box itself (R183): this boot's whole journal, the kernel ring, and
+    # the previous boot's last lines, which is where a panic's words are.
+    "system": {"what": "the system journal of this boot, every unit",
+               "argv": ["journalctl", "--system", "--no-pager", "-n", "{lines}"]},
+    "kernel": {"what": "the kernel ring of this boot",
+               "argv": ["journalctl", "-k", "--no-pager", "-n", "{lines}"]},
+    "crash": {"what": "the previous boot's last lines: what the box said before it went",
+              "argv": ["journalctl", "-b", "-1", "--no-pager", "-n", "{lines}"]},
 }
 LOG_LINES_MAX = 2000
+# The deployed nginx container's name on a node, or "" where the nginx tab has
+# not put one there: the server hands this in (nginxproxy.container_name).
+nginx_for = lambda nid: ""  # noqa: E731
 
 
 def node_turn_limit(principal, node_id, limit):
@@ -1620,6 +1651,38 @@ def node_container_net(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
+def ports_local_on(node_id):
+    """Whether published ports on this node bind to 127.0.0.1 by default
+    (R190): the config says, and a hosting-only node has it unless switched
+    off, since that is the node reached over the internet, where a port
+    published on every address is open to the world and not only to its
+    nginx (the operator, 11 Oct). A compose that names an address
+    (0.0.0.0:PORT:80) publishes where it says, switch or no switch."""
+    n = node(node_id) or {}
+    conf = n.get("config") or {}
+    if "ports_local" in conf:
+        return bool(conf.get("ports_local"))
+    return bool(host_only(n))
+
+
+def node_ports_local(principal, node_id, on):
+    """The switch (R190), an administrator's like the rest of the config
+    plane; the next hello carries it to the agent, which writes docker's
+    daemon.json and restarts docker once."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node binds its published ports"}
+    conf = dict(n.get("config") or {})
+    conf["ports_local"] = bool(on)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-ports-local", {"on": bool(on)})
+    _bump()
+    ask_hello(node_id)
+    return {"ok": True, "on": bool(on)}
+
+
 def session_net_on(node_id):
     """Whether that is set on a node."""
     return bool(((node(node_id) or {}).get("config") or {}).get("session_net"))
@@ -1711,10 +1774,17 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     fills = {"lines": str(n_lines)}
     # The unit form when the node reported one, and then the data store is not
     # needed at all: a node whose runner is a service may keep no runner.log.
-    unit = (runners_reported(tgt) or [{}])[0].get("unit") or ""
-    if spec.get("unit_argv") and unit:
-        spec = dict(spec, argv=spec["unit_argv"], store=None)
-        fills["unit"] = str(unit)
+    # Every runner's unit, not the first one's: a node with a runner per git
+    # host showed one of them.
+    units = [str(r["unit"]) for r in runners_reported(tgt) if r.get("unit")]
+    if spec.get("unit_argv") and units:
+        spec = dict(spec, argv=["journalctl", *[x for u in units for x in ("-u", u)],
+                                "--no-pager", "-n", "{lines}"], store=None)
+    if spec.get("nginx"):
+        name = nginx_for(target_id) or ""
+        if not name:
+            return {"error": f"nginx is not deployed on {tgt['name']}: the nginx tab puts it there"}
+        fills["nginx"] = name
     if spec.get("store"):
         path = ((tgt.get("reported") or {}).get("stores") or {}).get(
             spec["store"], {}).get("path")
@@ -1725,7 +1795,9 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     argv = [x.format(**fills) for x in spec["argv"]]
     why = (f"{project or asking_id} reads {tgt['name']}'s "
            f"{stream} log, granted in its settings' Debug, not asked for here")
-    return root_wait(principal, target_id, argv, why=why, timeout=120)
+    # Light (B654): a read of a few hundred lines, beside whatever holds the
+    # node's slot, rather than behind it.
+    return root_wait(principal, target_id, argv, why=why, timeout=LIGHT_S, light=True)
 
 
 DEFAULT_RUNNER_LABELS = ("builderbot", "self-hosted", "linux")
@@ -2179,6 +2251,28 @@ def node_uninstall(principal, node_id, rings=None):
     if r.get("ok"):
         audit(principal, "node-uninstall", node_id, {"job": r["job"]})
     return r
+
+
+def reset_unenroll(principal, ids, stores=False):
+    """Un-enroll these nodes ahead of a Reset (the operator, 12 Oct), so
+    each machine is clean to enroll again afterwards: a node BuilderBot
+    provisioned and can reach is uninstalled, its job retiring it when the
+    machine reports done; any other is retired here, its tokens revoked.
+    [{id, name, how, error}], how being "uninstall" or "retired"."""
+    out = []
+    for nid in ids:
+        n = node(nid)
+        if not n or n.get("kind") != "agent" or n.get("state") == "retired":
+            continue
+        row = {"id": nid, "name": n["name"]}
+        if n.get("live") and (n.get("reported") or {}).get("sandbox"):
+            r = node_uninstall(principal, nid, {"stores": stores, "configured": True, "doors": True})
+            row.update(how="uninstall", error=r.get("error") or "", job=r.get("job") or "")
+        else:
+            r = node_state(principal, nid, "retired")
+            row.update(how="retired", error=(r or {}).get("error") or "")
+        out.append(row)
+    return out
 
 
 def node_door(principal, node_id, on):
@@ -2672,6 +2766,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             # A hosting-only node is told so, and keeps no session half, no
             # synced copy and no bb of its own (host_only).
             "host_only": host_only(nid),
+            # Published ports bound to 127.0.0.1 by default there (R190).
+            "ports_local": ports_local_on(nid),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -3071,7 +3167,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
             return {"error": "no such node"}
         if n["state"] != "online":
             return {"error": f"node is {n['state']}; it takes no new work"}
-        if host_only(n) and type not in HOST_JOBS:
+        if host_only(n) and type not in HOST_JOBS and not host_exec_ok(type, spec):
             return {"error": f"{n['name']} hosts containers only, and a {type} job is not one of those"}
         if n["kind"] == "agent" and type != "compose" and not n.get("live"):
             return {"error": "the agent on this node is not dialing in; the "
@@ -3229,7 +3325,7 @@ def tell_wait(node_id, session, text, timeout=20):
     return {"error": f"the agent on {n['name']} took the send but did not report back within {timeout}s"}
 
 
-def root_wait(principal, node_id, argv, why="", timeout=600):
+def root_wait(principal, node_id, argv, why="", timeout=600, light=False):
     """One approved command as root on a node (roadmap R38): a system job
     with `apply: root`, waited for like run_wait. The gate is node_apply's
     (an online agent node that enrolled as a sandbox, one system job at a
@@ -3249,9 +3345,9 @@ def root_wait(principal, node_id, argv, why="", timeout=600):
         return {"error": f"the node is {n['state']}; a root command goes to an online node"}
     if node_locked(n):
         return {"error": node_locked(n)}
-    if system_job_for(node_id):
+    if not light and system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
-    spec = {"apply": "root", "timeout": int(timeout),
+    spec = {"apply": "root", "timeout": int(timeout), **({"light": True} if light else {}),
             "config": {"argv": [str(a) for a in argv], "why": str(why)[:300],
                        # The person, for the log's first line; the audit row
                        # keeps the principal as it is.
@@ -3356,6 +3452,20 @@ def sync_node_ids():
 HOST_VERBS = frozenset(("hello", "beat", "work", "log", "result", "download",
                         "devimage", "devdata", "devdata-put"))
 HOST_JOBS = frozenset(("compose", "system", "self-update", "cache-clear", "storage"))
+# ...and one docker verb at a time about the containers it hosts: the Docker
+# tab's listing is a `docker ps` exec on the node (devapp._agent_read), and
+# a container's log, start, stop and restart are one exec each
+# (devapp._agent_exec). With exec refused whole, a hosting-only node's
+# containers could be sent but never listed, read or restarted (B642).
+HOST_DOCKER = frozenset(("ps", "inspect", "version", "info", "logs", "start", "stop", "restart"))
+
+
+def host_exec_ok(type, spec):
+    """Whether an exec is a docker verb a hosting-only node answers."""
+    argv = spec.get("argv") if isinstance(spec, dict) else None
+    if type != "exec" or not isinstance(argv, list) or len(argv) < 2:
+        return False
+    return str(argv[0]).rsplit("/", 1)[-1] == "docker" and str(argv[1]) in HOST_DOCKER
 
 
 def host_only(n):
@@ -3452,7 +3562,11 @@ def _light(j):
         t = int((j.get("spec") or {}).get("timeout") or 0)
     except (TypeError, ValueError):
         return False
-    return j.get("type") == "exec" and 0 < t <= LIGHT_S
+    # ...and a machine log read, a root `system` job marked light by
+    # log_read_named: a journal tail waited up to a storage measurement's
+    # fifteen minutes behind it, then was taken back (B654).
+    light = j.get("type") == "exec" or (j.get("type") == "system" and (j.get("spec") or {}).get("light") is True)
+    return light and 0 < t <= LIGHT_S
 
 
 def _light_running(node_id):
@@ -3694,6 +3808,20 @@ def job(job_id, with_log=True):
 # thirty days on a busy one can be a thousand.
 JOB_LOG_KEEP = 40          # newest jobs per project whose logs are kept
 JOB_LOG_DAYS = 30          # ...and nothing older than this, however few there are
+# ...where "this" is the operator's Days of logs kept, the one policy every
+# log here follows (logs.days, set by server.py); 30 is its default and the
+# number until it is set.
+log_days = lambda: JOB_LOG_DAYS   # noqa: E731
+# A job's log while it runs, whatever the sweep says after: a chatty build
+# stored every chunk it sent until it ended. Past this many 32 kB chunks
+# (16 MB) the middle goes and a line says how much; the start and the end
+# are what anyone reads.
+JOB_LOG_MAX_CHUNKS = 512
+JOB_LOG_HEAD_CHUNKS = 32
+# The job ROWS (spec, outputs, error): kept far longer than their logs,
+# because "did this ever run" is history, but not for ever.
+JOB_ROWS_KEEP = 2000       # newest finished jobs per project kept as rows
+JOB_ROWS_DAYS = 365
 
 
 def prune_job_logs(project=None):
@@ -3715,7 +3843,7 @@ def prune_job_logs(project=None):
             "('succeeded', 'failed', 'canceled') "
             "ORDER BY COALESCE(ended, queued) DESC LIMIT -1 OFFSET ?",
             (proj, JOB_LOG_KEEP))
-        cutoff = int(time.time()) - JOB_LOG_DAYS * 86400
+        cutoff = int(time.time()) - log_days() * 86400
         aged = _rows(
             "SELECT id FROM jobs WHERE project = ? AND state IN "
             "('succeeded', 'failed', 'canceled') AND COALESCE(ended, queued) < ?",
@@ -3725,6 +3853,54 @@ def prune_job_logs(project=None):
                 _exec("DELETE FROM job_logs WHERE job_id = ?", (jid,))
                 gone += 1
     return gone
+
+
+def prune_jobs():
+    """Drop finished job rows past JOB_ROWS_KEEP per project and older than
+    JOB_ROWS_DAYS, with whatever log they still have. How many went."""
+    gone = 0
+    cutoff = int(time.time()) - JOB_ROWS_DAYS * 86400
+    for row in _rows("SELECT DISTINCT project FROM jobs"):
+        old = _rows("SELECT id FROM jobs WHERE project = ? AND state IN ('succeeded', 'failed', 'canceled') "
+                    "AND COALESCE(ended, queued) < ? ORDER BY COALESCE(ended, queued) DESC LIMIT -1 OFFSET ?",
+                    (row["project"], cutoff, JOB_ROWS_KEEP))
+        for r in old:
+            _exec("DELETE FROM job_logs WHERE job_id = ?", (r["id"],))
+            _exec("DELETE FROM jobs WHERE id = ?", (r["id"],))
+            gone += 1
+    return gone
+
+
+def clear_job_logs():
+    """Every finished job's log, for the Logs section's Clear: the rows stay,
+    as the sweep keeps them. How many jobs lost theirs."""
+    ids = [r["job_id"] for r in _rows(
+        "SELECT DISTINCT l.job_id FROM job_logs l JOIN jobs j ON j.id = l.job_id "
+        "WHERE j.state IN ('succeeded', 'failed', 'canceled')")]
+    for jid in ids:
+        _exec("DELETE FROM job_logs WHERE job_id = ?", (jid,))
+    return len(ids)
+
+
+def _cap_job_log(job_id):
+    """Keep one job's log under JOB_LOG_MAX_CHUNKS while it runs: the first
+    JOB_LOG_HEAD_CHUNKS and the newest, with the middle replaced by one line
+    that says how much went, at the seq where the gap is."""
+    n = _rows("SELECT COUNT(*) AS n FROM job_logs WHERE job_id = ?", (job_id,))[0]["n"]
+    if n <= JOB_LOG_MAX_CHUNKS:
+        return
+    seqs = [r["seq"] for r in _rows("SELECT seq FROM job_logs WHERE job_id = ? ORDER BY seq", (job_id,))]
+    drop = seqs[JOB_LOG_HEAD_CHUNKS:len(seqs) - (JOB_LOG_MAX_CHUNKS - JOB_LOG_HEAD_CHUNKS - 1)]
+    if not drop:
+        return
+    size = sum(r["n"] for r in _rows(
+        f"SELECT LENGTH(chunk) AS n FROM job_logs WHERE job_id = ? AND seq IN ({','.join('?' * len(drop))})",
+        (job_id, *drop)))
+    _exec(f"DELETE FROM job_logs WHERE job_id = ? AND seq IN ({','.join('?' * len(drop))})", (job_id, *drop))
+    _exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES (?, ?, ?, ?)",
+          (job_id, drop[0], int(time.time()),
+           f"\n[builderbot] {size} characters of this job's output left out here: a job keeps "
+           f"its first and its newest {JOB_LOG_MAX_CHUNKS * 32 // 1024} MB at most\n"))
 
 
 def job_forget(job_id):
@@ -3795,6 +3971,8 @@ def job_log(node_id, job_id, chunks, step=None):
             _exec("INSERT INTO job_logs (job_id, seq, at, chunk) VALUES "
                   "(?, ?, ?, ?)", (job_id, seq, now, str(c.get("chunk"))[:32768]))
             n += 1
+        if n:
+            _cap_job_log(job_id)
         if got[0]["state"] == "assigned":
             _exec("UPDATE jobs SET state = 'running' WHERE id = ?", (job_id,))
         # The word the row shows, when the agent sent one with this post.
@@ -4312,6 +4490,11 @@ def verb(principal, req):
         # containers (R79). An administrator's, like the rest.
         return node_session_net(principal, nid, req.get("on") is True)
 
+    def ports_local():
+        # Whether published ports on the node bind to 127.0.0.1 by default
+        # (R190). An administrator's, like the rest.
+        return node_ports_local(principal, nid, req.get("on") is True)
+
     def root_asks():
         # Whether a session on the node may ask for a root command at
         # all. An administrator's, like the rest.
@@ -4470,7 +4653,7 @@ def verb(principal, req):
              "reboot": power, "poweroff": power, "gpu-display": gpu_display,
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
-             "test-workers": test_workers, "session-net": session_net,
+             "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
              "root-asks": root_asks, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
@@ -4637,8 +4820,13 @@ def jobs_view(jid, q, mine, system=None):
         n = min(500, max(1, int(q.get("n", ["100"])[0])))
     except ValueError:
         n = 100
+    # A node by its id or its name: `bb jobs --node bb-sandbox` is how a
+    # person or a session says it.
+    nd = q.get("node", [""])[0] or None
+    if nd and not nd.startswith("n_"):
+        nd = next((x["id"] for x in node_list(all=True) if x.get("name") == nd), nd)
     rows = jobs_for(
-        q.get("node", [""])[0] or None, n=500 if mine is not None else n,
+        nd, n=500 if mine is not None else n,
         project=q.get("project", [""])[0] or None,
         type=q.get("type", [""])[0] or None,
         active=q.get("active", [""])[0] == "1")

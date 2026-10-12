@@ -96,7 +96,14 @@ await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
 
 // ---- Allow runs that one command on the node, and the session gets the output ------
-await page.click('.ndask [data-rallow]');
+// The ask leaves the list the moment it is answered, not when the command
+// it allowed has finished running (B641): read in the same turn as the
+// press, before the request it sent could have come back.
+const immediate = await page.evaluate(() => {
+  document.querySelector('.ndask [data-rallow]').click();
+  return !(ph?.asks || []).some(a => a.kind === 'root');
+});
+ok(immediate, 'Allow takes the ask off the list in the same moment, before the command it allowed has run');
 await page.waitForFunction(() => !document.querySelector('.ndask'), null, { timeout: 30000 });
 // Allow answers at once and the command runs on a thread, so the outcome is
 // polled the way the session polls it.
@@ -250,10 +257,27 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
      `...and is read from runner.log under its data store instead (${argv || 'nothing ran'})`);
 
   // The other two streams are one shape each and have nowhere to differ.
-  ok(/^journalctl -u builderbot-agent/.test(await ranArgv(await readLog('agent'))),
-     "...the agent's own log is its journal");
+  {
+    const a = await ranArgv(await readLog('agent'));
+    ok(/journalctl -u builderbot-agent --no-pager -n 5;/.test(a) && /tail -n 5 \/var\/log\/builderbot-agent\.log/.test(a),
+       `...the agent's own log is its journal, or the file its service writes where there is none (${a.slice(0, 80)})`);
+  }
   ok(/ttyd\.log$/.test(await ranArgv(await readLog('terminal'))),
      '...and the terminal server writes a file under the data store');
+  // The node's nginx is a stream too (R182), read with docker logs where the
+  // nginx tab put one; on a node without it the refusal names the tab, and
+  // never runs a thing.
+  r = await readLog('nginx');
+  ok(/nginx is not deployed on sandbox: the nginx tab puts it there/.test(r.body.error || ''),
+     `the nginx stream on a node without nginx says where it comes from (${(r.body.error || 'ran').slice(0, 60)})`);
+  // The box itself (R183): the journal of this boot, the kernel ring, and
+  // the previous boot's last lines, each one journalctl call.
+  ok(/^journalctl --system --no-pager -n 5$/.test(await ranArgv(await readLog('system'))),
+     "the system stream is this boot's journal, every unit");
+  ok(/^journalctl -k --no-pager -n 5$/.test(await ranArgv(await readLog('kernel'))),
+     '...the kernel stream its ring');
+  ok(/^journalctl -b -1 --no-pager -n 5$/.test(await ranArgv(await readLog('crash'))),
+     "...and the crash stream the previous boot's last lines");
 
   await census(null);
   await api('/api/prefs', { project: 'alpha', log_from: [] });

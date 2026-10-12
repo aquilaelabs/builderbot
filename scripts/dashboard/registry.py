@@ -162,11 +162,6 @@ def labels():
     return {k: str(v.get("name") or k) for k, v in _load()["projects"].items()}
 
 
-def id_of(dirname):
-    r = _load()["projects"].get(str(dirname or ""))
-    return int(r["id"]) if r and r.get("id") else 0
-
-
 def clean_name(raw):
     """A shown name by GitHub's rules for a repository's: ASCII letters,
     digits, - _ and . only, each run of anything else one -, as GitHub turns

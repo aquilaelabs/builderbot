@@ -274,7 +274,7 @@ ok(await page.$$eval('#roadmapList .roadmap .go', gs => gs.every(g => g.getAttri
    'an unsaved change puts every arrow down');
 ok(/not saved/.test(await page.$eval('#roadmapHint', h => h.textContent)),
    '...and the line above the list says which, and what to do about it');
-ok((await page.$eval('#roadmapList .roadmap .go', g => g.title)).includes('save or revert'),
+ok((await page.$eval('#roadmapList .roadmap .go', g => saidOf(g))).includes('save or revert'),
    '...and so does the arrow itself');
 // dispatched rather than clicked: a real click cannot reach a disabled
 // button, and what wants proving is that even one that did lands nowhere.
@@ -1647,7 +1647,7 @@ await page.waitForFunction(id => document.querySelector(
 const drawn = await page.$$eval(`#roadmapList .roadmap[data-id="${widget.id}"]`, ts => ts.map(t => ({
   step: t.dataset.step, done: t.classList.contains('done'), sent: t.classList.contains('sent'),
   n: t.querySelector('.n')?.textContent, can: t.querySelector('.go').getAttribute('aria-disabled') !== 'true',
-  why: t.querySelector('.go').title })));
+  why: saidOf(t.querySelector('.go')) })));
 ok(drawn.find(d => d.step === '1').done && !drawn.find(d => d.step === '1').sent
    && drawn.find(d => d.step === '1').n === '✓',
    'the panel draws it struck with a tick where its number was, and not as sent');
