@@ -1206,6 +1206,24 @@ def _store_share(n):
     return (best[1], path[len(best[0]):])
 
 
+def landed_since(nid, started):
+    """The toolchains installed or updated on this node after `started`
+    whose layout puts something on PATH or sets a variable: what a session
+    begun then does not have until it is started again (the project row's
+    restart line). Their labels, newest first."""
+    if not started:
+        return []
+    shapes = {p["name"]: p for p in TOOLCHAINS}
+    landed = _landed_at(nid)
+    out = []
+    for name, at in sorted(landed.items(), key=lambda kv: -kv[1]):
+        p = shapes.get(name) or {}
+        lay = p.get("layout") or {}
+        if at > started and (lay.get("bin") or lay.get("env")):
+            out.append(p.get("label") or name)
+    return out
+
+
 def _landed_at(nid):
     """{toolchain: when a job last installed or updated it} on this node's
     own directory of the store."""

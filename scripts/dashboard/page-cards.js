@@ -234,9 +234,14 @@ function sessionRows(proj){
   const rows = agrees
     ? [...where].sort((a, b) => (a.who === state?.me) - (b.who === state?.me) || a.node.localeCompare(b.node))
     : names.map(n => ({who: n, node: "", working: busy.has(n)}));
+  // What changed since a session started that it does not see until it is
+  // started again, said under it with what for (the operator, 12 Oct): a
+  // toolchain put on its node's PATH, BuilderBot updated.
   return rows.map(r => `<div class="sessone"><span class="st ${r.working ? "working" : "waiting"}" title="${
     r.working ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(r.who)}${
-    r.who === state?.me ? " (you)" : ""}${r.node ? ` <span class="dim">(${esc(r.node)})</span>` : ""}</div>`).join("");
+    r.who === state?.me ? " (you)" : ""}${r.node ? ` <span class="dim">(${esc(r.node)})</span>` : ""}</div>${
+    (r.behind || []).length ? `<div class="sessbehind">Restart ${r.who === state?.me ? "your session" : "this session"} to use what changed: ${
+      esc(r.behind.join("; "))}.</div>` : ""}`).join("");
 }
 
 // ---- sidebar cards ---------------------------------------------------

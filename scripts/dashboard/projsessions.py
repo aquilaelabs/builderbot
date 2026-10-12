@@ -31,6 +31,11 @@ OWNER_NAME = None     # () -> the owner's account name
 END = None            # (name, node_id) -> the kill path's answer
 
 
+# Set by server.py: [why] for a session row, what changed since it started
+# that it does not see until it is started again.
+BEHIND = lambda s: []   # noqa: E731
+
+
 def configure(*, sessions, base, owner, accounts, owner_name, end):
     globals().update(SESSIONS=sessions, BASE=base, OWNER=owner,
                      ACCOUNTS=accounts, OWNER_NAME=owner_name, END=end)
@@ -144,7 +149,10 @@ def where(sessions):
         if who:
             out.setdefault(base[len("claude-"):], []).append({
                 "who": who, "node": str(s.get("node") or ""),
-                "working": (s.get("claude") or {}).get("state") == "working"})
+                "working": (s.get("claude") or {}).get("state") == "working",
+                # What changed since it started that it will not see until
+                # it is started again (the operator, 12 Oct).
+                "behind": BEHIND(s)})
     return out
 
 

@@ -15,6 +15,7 @@ import contextlib
 from html import escape as html_escape
 import glob
 import gzip
+import datetime
 import hashlib
 import hmac
 import atexit
@@ -1636,12 +1637,51 @@ def node_tmux_sessions():
                 continue
             name = tmux_base(real) if who == owner else real
             row = {"name": name, "node_name": real, "node": nname, "node_id": nid,
-                   "attached": bool(s.get("attached")), "cwd": s.get("cwd", "")}
+                   "attached": bool(s.get("attached")), "cwd": s.get("cwd", ""),
+                   "created": int(s.get("created") or 0)}
             if tmux_base(real).startswith("claude-"):
                 state, task = claude_state(s.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
+
+
+def _image_since():
+    """When this controller's image was first seen running here, from the
+    ledger the entrypoint keeps (image-log.tsv), or this process's start:
+    a session begun before it was briefed by the build before."""
+    rev = image_stamp().get("rev") or ""
+    try:
+        for line in reversed((STATE / "image-log.tsv").read_text().splitlines()):
+            f = line.split("\t")
+            if len(f) >= 2 and rev and f[1] == rev:
+                return int(datetime.datetime.fromisoformat(f[0]).timestamp())
+    except (OSError, ValueError):
+        pass
+    return int(_STARTED)
+
+
+_STARTED = time.time()
+# Read once: the image changes only with a restart of this process.
+_IMAGE_SINCE = {}
+
+
+def session_behind(s):
+    """What changed since this session started that it does not see until
+    it is started again (the operator, 12 Oct): a toolchain installed on its
+    node that puts something on its PATH, and BuilderBot updated, whose
+    briefing a session reads once, at its start."""
+    started = int(s.get("created") or 0)
+    if not started:
+        return []
+    why = []
+    tools = toolchains.landed_since(s.get("node_id") or "", started) if s.get("node_id") else []
+    if tools:
+        why.append(f"{', '.join(tools[:3])}{' and more' if len(tools) > 3 else ''} installed on "
+                   f"{s.get('node') or 'its node'} since it started")
+    if _IMAGE_SINCE.setdefault("at", _image_since()) > started:
+        why.append("BuilderBot updated since it started: its briefing is the older build's")
+    return why
 
 
 def project_busy(name, verb):
@@ -3050,6 +3090,7 @@ if not NODES_OK:
 projsessions.configure(sessions=lambda: tmux_sessions() + node_tmux_sessions(),
                        base=tmux_base, owner=tmux_owner, accounts=account_names,
                        owner_name=users.owner_name, end=end_session)
+projsessions.BEHIND = session_behind
 
 # The code map, built for a project the moment it exists (mapping.py): the
 # same command a session runs by hand, started in the background by the
