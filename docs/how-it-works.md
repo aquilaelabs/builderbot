@@ -261,10 +261,10 @@ only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and installs are arbitrated across both.
 
-**One store, scoped by platform.** A machine's toolchains live under
-`<store>/<os>-<arch>`: `linux-x86_64` for this container and the sandbox,
-`darwin-arm64` for a Mac, so one share can serve every node whatever it
-runs, and a Linux box's binaries never land on top of a Mac's. The Android
+**One store, a directory per node.** A node's toolchains live under
+`<store>/<node id>` (R196), so one share can serve every node and no node's
+binaries land on another's, whatever distro each runs; this container keeps
+its own under `<store>/<os>-<arch>` (`linux-x86_64`). The Android
 system images, the same bytes on every host and tens of gigabytes, live once
 under `<store>/shared/android/system-images` with each platform's
 `android/system-images` a link to them, and `bb toolchains root` names the scoped
@@ -1483,9 +1483,9 @@ through Unraid's FUSE layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
 `sdk-env.sh`, whose every line is an absolute path, lives on the home volume
-for that reason. Two architectures may share one: each machine installs under
-its own `<os>-<arch>` scope in the store (R19), so an arm64 machine never
-runs an x86-64 binary another put there.
+for that reason. Any number of machines may share one: each node installs
+under its own directory in the store (R196, after R19's per-platform one),
+so no machine runs a binary another put there.
 
 **A project's node does not decide where its CI runs, and nothing can make
 it.** That setting governs BuilderBot's own queue: `bb build`, `bb test`,
@@ -2258,8 +2258,17 @@ already on a list a session may still tick, note and reword under every
 setting, and the session is told on its next turn what you decided. The
 settled ones are in `bb history` under *waiting*.
 
+**The model and effort are picked when a session starts** (the operator, 12
+Oct), not kept in the project's settings: pressing Claude opens the menu
+(the node, Resume or New conversation), and that choice turns the menu to
+Model and Effort with Start, opening on the last ones picked here and naming
+on *Claude's default* the model the last session answered on. Start keeps
+the picks as yours for the project (`claude-prefs.json`, what the launcher
+reads) and opens the session on them. A new project's first session picks
+them beside its brief instead.
+
 **Changing it while a session is running asks about that session.** Some
-settings a session takes only when it starts: the model and effort, the
+settings a session takes only when it starts: the
 author it commits as, the projects it reads and the places it sees, its
 node, and what its briefing says (replies, questions, how a test run meets
 a change, how long captures are kept). Save with one of those changed while
@@ -2695,7 +2704,7 @@ the only case for it; anything that was a real bug gets closed.
 **Send to Claude** hands one bug to the session running there, from the same
 box the roadmap opens under a step: the same note field for anything to send
 with it, opened under the report instead. Nothing is switched on the way in:
-the session is already running on the project's own model and effort.
+the session is already running on the model and effort it was started with.
 
 **A closed bug cannot be sent**: reopen it first. A closed bug is a record
 rather than work, and the three closes exist to say which kind of dealt-with

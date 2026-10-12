@@ -277,6 +277,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A copy or move that did not happen is a note in the bell, with Dismiss, instead of a line on the container's row for ever; it goes once the container builds or starts again (7d31173)
 - The nginx tab shows a node without nginx as one line and Deploy, and its routes and certificates once nginx is there (ee6b2b5)
 - A managed node keeps its journal across boots, so its crash log has the boot before to read (ee6b2b5)
+- Each node keeps its own toolchains in the store, under its node id, instead of one directory shared by every machine of a platform; a node on the old shared directory installs what it had again into its own, and what no node runs from any more is offered for removal on the Toolchains tab (ca8eae8)
+- Claude's model and effort are picked each time a session starts: the Claude button's menu turns, after Resume or New conversation, to Model and Effort with Start, opening on the last ones picked; the project's settings no longer hold them (ca8eae8)
 
 ### Removed
 
@@ -463,6 +465,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - An agent update that learns more of the published-ports setting applies it on its own, without the switch being turned off and on (07c6c68)
 - A machine log read goes beside a long job on the node instead of waiting behind it; an agent pulls a synced project every two minutes as a fallback rather than every ten seconds; a waiting node's new enroll script is worded as a first enrollment; an answered ask leaves the bell at once (ee6b2b5)
 - The status poll asks git about a project only when its repository has changed, and reads the uptime without starting a process, instead of three git commands per project and a ps on every poll (4893035)
+- Swift and other toolchains already installed update on a node: an update uses the verb that recipe has, or removes and installs again (ca8eae8)
 
 ### Security
 
