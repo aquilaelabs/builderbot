@@ -1726,9 +1726,10 @@ function wireNodesTab(root){
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner' -o provision-linux.sh
 sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
           m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
-        <div class="hint">On a Mac, as yourself:</div>
+${state?.settings?.settings?.offer_unvetted?.value ? `
+        <div class="hint">On a Mac, as yourself <span class="pill">dev</span>:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner-macos' -o provision-macos.sh
-bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>` : ""}
         <div class="hint">Or the agent alone, where python3 exists:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
 chmod 755 /usr/local/sbin/builderbot-agent

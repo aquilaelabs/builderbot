@@ -280,6 +280,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A managed node keeps its journal across boots, so its crash log has the boot before to read (ee6b2b5)
 - Each node keeps its own toolchains in the store, under its node id, so nodes sharing one store never wait on or overwrite each other's installs; a retired node's directory is offered for removal on the Toolchains tab (ca8eae8)
 - Claude's model and effort are picked each time a session starts: the Claude button's menu turns, after Resume or New conversation, to Model and Effort with Start, opening on the last ones picked; the project's settings no longer hold them (ca8eae8)
+- Enrolling a Mac is a dev feature until one has been proven: the Enroll dialog names it, and the controller serves its provisioner, only with Offer dev features on in Settings (62801e7)
 
 ### Removed
 

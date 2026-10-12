@@ -2869,6 +2869,7 @@ claudegrant.home_for = home_for
 import channel                                                   # noqa: E402
 
 channel.configure(home_for=home_for)
+channel.unvetted_ok = lambda: bool(settings.get("offer_unvetted"))   # a Mac's provisioner is a dev feature
 # A signing is a job on the project's node, of a build in its dist/ (R106).
 signing.node_of = lambda name: prefs.get(name)["node"]
 signing.node_refuses = lambda nid: nodes.agent_stale(nodes.node(nid)) if nid and not NODES_OK else ""
