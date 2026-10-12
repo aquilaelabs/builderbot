@@ -816,6 +816,9 @@ print(json.dumps({"logged": logged, "report": a.keep_report()}))
 import importlib.util, json, re
 ${LOAD_AGENT}
 m = agentpkg.load()
+# An enrolled node's directory in the store, its node id (R196): with none
+# there is no toolchain directory at all.
+m.use_scope('/p', 'n_0000abcd')
 home = '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
 # A launcher line with the projects the session reads, one --reads each
@@ -2561,8 +2564,10 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // The store's own directories decide what is installed there, not the
     // census's placement summary, which named six toolchains and called four
     // installed toolchains missing on the operator's shared toolchain store.
+    // With something in each: an empty directory is no toolchain (B674).
     mkdirSync(`${PK}/zig`, { recursive: true });
-    mkdirSync(`${PK}/android/ndk`, { recursive: true });
+    writeFileSync(`${PK}/zig/zig`, '');
+    mkdirSync(`${PK}/android/ndk/30.0`, { recursive: true });
     // ...except a directory without the file that completes the toolchain:
     // playwright's browsers from before the recipe carried the module.
     mkdirSync(`${PK}/playwright/chromium-1234`, { recursive: true });
@@ -3383,8 +3388,9 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     await page.click('#ndEnTok');
     await page.waitForSelector('#ndmodal .ndtoken', { timeout: 15000 });
     const shown = await page.$eval('#ndmodal .ndtoken', e => e.textContent);
-    ok(/bbe_/.test(shown) && /provision-linux\.sh/.test(shown) && /provision-macos\.sh/.test(shown) && /--controller/.test(shown),
-       'Enroll node shows the one-time token inside the provisioner commands, Linux and Mac');
+    // Linux; a Mac's is a dev feature, named only with Offer dev features on.
+    ok(/bbe_/.test(shown) && /provision-linux\.sh/.test(shown) && !/provision-macos\.sh/.test(shown) && /--controller/.test(shown),
+       'Enroll node shows the one-time token inside the provisioner commands, and no Mac while dev features are off');
     // The backdrop does not close the one thing here shown once.
     await page.mouse.click(5, 5);
     ok(await page.$('#ndmodal .ndtoken') !== null,
@@ -3750,6 +3756,7 @@ os.environ['BUILDERBOT_BREW_BIN'] = '/nonexistent/brew'
 ${LOAD_AGENT}
 m = agentpkg.load()
 store = tempfile.mkdtemp()
+m.use_scope(store, 'n_00aa11bb')
 scope = m.tc_scope()
 for d in ('jdk/bin', 'android/system-images/android-30/google_apis/x86_64', 'android/platform-tools'):
     os.makedirs(os.path.join(store, scope, d))
@@ -3774,8 +3781,8 @@ print(json.dumps({'r1': r1, 'r2': r2, 'mac': mac, 'scope': m.tc_scope(), 'root':
      `...it says so once, and a second run says and moves nothing (${R.r1.said[0] || ''})`);
   ok(R.mac.family === 'macos' && R.mac.init === 'launchd' && /macOS 15\.1/.test(R.mac.pretty) && R.mac.network === '' && R.mac.pkg === '',
      `a Mac is its own family: macos, launchd, no network backend, and no package manager until Homebrew is there (${JSON.stringify(R.mac)})`);
-  ok(R.scope === 'darwin-arm64' && R.root === '/Volumes/SDK/darwin-arm64',
-     `...with its toolchains under the store's darwin-arm64 scope (${R.root})`);
+  ok(R.scope === 'n_00aa11bb' && R.root === '/Volumes/SDK/n_00aa11bb',
+     `...with its toolchains under its node id in the store, as every node's are (R196) (${R.root})`);
 }
 
 // ---- addresses that move ---------------------------------------------------
@@ -3798,6 +3805,7 @@ os.environ['BUILDERBOT_SESSION_BIND'] = ''
 ${LOAD_AGENT}
 m = agentpkg.load()
 m.os.geteuid = lambda: 0
+m.use_scope(d, 'n_00aa11cc')
 a = m.Agent.__new__(m.Agent)
 a.state = {'controller': 'http://127.0.0.1:1', 'stores': {'toolchains': d}}
 a.fw_checked = 0.0

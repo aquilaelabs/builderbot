@@ -2722,6 +2722,15 @@ idle.configure(state=STATE, write_json=write_json,
 logs.prune()
 
 import prefs                                                     # noqa: E402
+# Debug and dev options only on a controller started with DEBUG_MODE=1; at a
+# start without it every one of them is put back off, so turning it on
+# again starts from nothing granted (the operator, 12 Oct).
+if not settings.debug_available():
+    try:
+        if settings.reset_debug() | bool(prefs.reset_debug()):
+            print("dashboard: DEBUG_MODE is not 1, so every debug and dev option was turned off", flush=True)
+    except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
+        print(f"dashboard: debug options not reset: {e}", flush=True)
 # The briefing reads a project's own settings for its "While tests run"
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
@@ -5592,6 +5601,11 @@ class Handler(BaseHTTPRequestHandler):
         # ...and what its sessions may read for debugging (the machine logs
         # of named nodes, the controller's diagnostics): the debug grant's,
         # per project rather than per node (the operator, 6 Oct).
+        # Granted only where debug mode can be on at all (DEBUG_MODE=1); a
+        # grant taken off is always allowed.
+        if prefs.debug_changed(name, req) and not settings.debug_available() \
+                and (req.get("diag") is True or req.get("log_from")):
+            return self._json({"error": "the debug options are not available on this controller"}, 403)
         if prefs.debug_changed(name, req) and self._refused("debug"):
             return
         # ...nor is the dial that hands a session this project's container:

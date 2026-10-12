@@ -2356,10 +2356,10 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
     const m = document.getElementById('resumemenu');
     if (!m || !m.querySelector('[data-end]')) return null;
     return JSON.stringify({ lines: [...m.querySelectorAll('.sub')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
-      buttons: [...m.querySelectorAll('button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.end || b.dataset.signinNode || ''}`) });
+      buttons: [...m.querySelectorAll('button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
   }, null, { timeout: 10000 })).jsonValue());
-  ok(/your session is running here/.test(live.lines[0]) && live.buttons.join() === 'Open tab:n_ubu,End session:n_ubu,Sign in on fresh:n_new',
-     `with a session running on one node the press opens the chooser: Open tab and End session there, the other nodes still offered (${live.buttons.join(' | ')})`);
+  ok(/your session is running here/.test(live.lines[0]) && live.buttons.join() === 'Open tab:n_ubu,Restart:n_ubu,End session:n_ubu,Sign in on fresh:n_new',
+     `with a session running on one node the press opens the chooser: Open tab, Restart and End session there, the other nodes still offered (${live.buttons.join(' | ')})`);
   const ended = await page.evaluate(async () => {
     const real = endSession; let asked = null;
     window.endSession = async (name, node) => { asked = { name, node }; return { ok: true }; };

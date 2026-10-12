@@ -798,6 +798,23 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
     return {"ok": True, "project": project} | cur
 
 
+def reset_debug():
+    """Every project's Debug grants (machine logs, the diagnostics) taken
+    off, on a controller started without DEBUG_MODE=1 (settings.reset_debug).
+    How many projects had any."""
+    n = 0
+    with _lock:
+        d = _load()
+        for rec in d["projects"].values():
+            if isinstance(rec, dict) and (rec.get("log_from") or rec.get("diag")):
+                rec.pop("log_from", None)
+                rec.pop("diag", None)
+                n += 1
+        if n:
+            write_json(FILE, d)
+    return n
+
+
 def forget(project):
     """Drop a project's pair, for a project being deleted."""
     with _lock:

@@ -366,7 +366,9 @@ function settingsSections(){
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
   // The Debugging group is the debug grant's (roles.NAMED_ONLY): without it
   // the page does not show it at all (the operator, 6 Oct).
-  return SETTING_GROUPS.filter(g => !g.debug || state?.can?.debug !== false).map(g => {
+  // The Debugging group only on a controller started with DEBUG_MODE=1
+  // (settings.debug_available): without it there is nothing to turn on.
+  return SETTING_GROUPS.filter(g => !g.debug || (state?.can?.debug !== false && state?.settings?.debug_available)).map(g => {
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;

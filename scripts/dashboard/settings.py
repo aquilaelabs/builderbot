@@ -87,6 +87,33 @@ KEYS = {
 }
 
 
+# The debug and dev options exist only on a controller started with
+# DEBUG_MODE=1 (the operator, 12 Oct): a switch for those who know, kept out
+# of the env example, the template and the README on purpose. Without it the
+# two switches read off and cannot be turned on, the Settings tab offers
+# neither, and at start every option they opened (these two, and each
+# project's Debug grants) is put back off, so setting it to 1 again starts
+# from nothing granted.
+DEBUG_KEYS = ("debug_mode", "offer_unvetted")
+
+
+def debug_available():
+    return os.environ.get("DEBUG_MODE", "").strip() == "1"
+
+
+def reset_debug():
+    """Every debug and dev switch off, on a controller started without
+    DEBUG_MODE=1. Whether anything was on."""
+    with _lock:
+        d = load()
+        on = [k for k in DEBUG_KEYS if d.get(k) is True]
+        for k in DEBUG_KEYS:
+            d.pop(k, None)
+        if on:
+            write_json(FILE, d)
+    return bool(on)
+
+
 def configure(*, write_json, state):
     globals().update(write_json=write_json)
     globals()["FILE"] = Path(state) / "settings.json"
@@ -148,8 +175,11 @@ def effective():
     what the tab says beside a field that has never been saved."""
     d = load()
     out = {}
+    off = not debug_available()
     for key, spec in KEYS.items():
-        if key in d and _parse(key, d[key]) is not None:
+        if off and key in DEBUG_KEYS:
+            out[key] = {"value": False, "source": "locked"}
+        elif key in d and _parse(key, d[key]) is not None:
             out[key] = {"value": _parse(key, d[key]), "source": "settings"}
         else:
             out[key] = {"value": spec["default"], "source": "default"}
@@ -173,6 +203,8 @@ def set_many(changes):
     for key, raw in changes.items():
         if key not in KEYS:
             return {"error": f"not a setting: {key}"}
+        if key in DEBUG_KEYS and not debug_available() and _parse(key, raw) is True:
+            return {"error": "the debug and dev options are not available on this controller"}
         v = _parse(key, raw)
         if v is None:
             kind = KEYS[key]["kind"]
@@ -188,7 +220,7 @@ def set_many(changes):
 
 
 def payload():
-    return {"settings": effective(),
+    return {"settings": effective(), "debug_available": debug_available(),
             "meta": {k: {"applied": s["applied"]} for k, s in KEYS.items()}}
 
 
