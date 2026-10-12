@@ -64,9 +64,8 @@ function renderSettingsInto(i){
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
     ${sect("reset", "Reset BuilderBot", "", `<div class="row stack2" data-group="Reset">
       <div class="grow">
-        <div class="sub">Start over at Create the owner. Everything but project files is moved aside, not deleted.</div>
+        <div class="sub">Start over at the setup page, un-enrolling the nodes first if you choose. Everything but project files is moved aside, not deleted.</div>
         <div class="actbar"><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
-        <div id="setResetBox"></div>
       </div>
     </div>`)}
     ${sect("nodes", "Nodes", "", `<div class="row stack2">
@@ -92,7 +91,7 @@ function renderSettingsInto(i){
   const nd = d.el.querySelector("#setNodes");
   if (nd) nd.onclick = () => openNodesTab();
   const rs = d.el.querySelector("#setReset");
-  if (rs) rs.onclick = () => askReset(d.el);
+  if (rs) rs.onclick = () => askReset();
   const rc = d.el.querySelector("#setReportsClear");
   if (rc) rc.onclick = () => clearReports(rc);
 }
@@ -212,31 +211,108 @@ function tunnelStatus(s){
 // in a box under the button, and the red verb asleep until it matches.
 // What it moves aside is said once more here, since the thing a person
 // regrets is the thing they did not read.
-function askReset(el){
-  const box = el.querySelector("#setResetBox");
-  if (!box || box.querySelector(".dropbox")) return;
-  box.innerHTML = `<div class="dropbox"><div class="hint bad">Accounts, nodes, project settings, tokens, the notebook, memories and logs move into a dated
-      directory under the controller's config. Project files stay. Type <b>reset</b> to confirm.</div>
-    <input autocomplete="off" placeholder="reset" aria-label="type reset to confirm">
+// Reset BuilderBot (the operator, 12 Oct): a dialog that offers to
+// un-enroll every node first, so each machine is clean to enroll again
+// afterwards, then the typed word. The controller uninstalls each and waits
+// for every one to report before anything is moved (server._reset_after),
+// and this follows it to the end. A node with sessions or containers
+// running cannot be ticked: un-enrolling would end them, and that is the
+// person's to do first, as on the node's own Un-enroll.
+function resetBusy(n){
+  const rep = n.reported || {};
+  const s = (rep.sessions || []).filter(x => /^u_[0-9a-f]{8}~/.test(String(x?.name || ""))).length;
+  const c = Object.keys(rep.published || {}).length;
+  return [s ? `${s} session${s === 1 ? "" : "s"} running` : "", c ? `${c} container${c === 1 ? "" : "s"} running` : ""]
+    .filter(Boolean).join(" and ");
+}
+
+async function askReset(){
+  const modal = $("resetmodal"), body = $("resetBody");
+  if (!modal || !body) return;
+  try { await loadNodes(); } catch {}
+  const list = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  const shut = () => { modal.hidden = true; body.innerHTML = ""; };
+  body.innerHTML = `<div class="field">
+      <div class="hint bad">Accounts, nodes, project settings, tokens, the notebook, memories and logs move into a dated
+        directory under the controller's config. Project files stay. The next page is the setup page.</div>
+    </div>
+    ${list.length ? `<div class="field">
+      <label class="lbl">Un-enroll first</label>
+      <div class="hint">So each machine can be enrolled again afterwards. One BuilderBot set up is uninstalled from; any other is removed here only.</div>
+      ${unenrollWhat(true)}
+      ${list.map(n => { const busy = resetBusy(n), clean = !!(n.live && n.reported?.sandbox); return `
+        <label class="ndcap"><input type="checkbox" data-rsnode="${esc(n.id)}"${busy ? " disabled" : " checked"}> ${esc(n.name)}: ${
+          clean ? "uninstall BuilderBot from it" : "remove it here; the machine keeps BuilderBot until <code>sudo bb-sandbox uninstall</code> there"}${
+          busy ? `<div class="hint bad">${esc(busy)}: end and bring them down first, or it stays enrolled</div>` : ""}</label>`; }).join("")}
+      <label class="ndcap"><input type="checkbox" id="resetStores"> Also delete the stores on their disks: the toolchains, the caches, the artifacts</label>
+    </div>` : ""}
+    <div class="field">
+      <label class="lbl" for="resetWord">Type reset to confirm</label>
+      <input id="resetWord" autocomplete="off" placeholder="reset">
+      <div class="hint bad" id="resetWhy" hidden></div>
+    </div>
     <div class="foot"><span class="sp"></span>
-      <button type="button" class="stop">Keep it</button>
-      <button type="button" class="danger" disabled>Reset for real</button></div></div>`;
-  const input = box.querySelector("input"), go = box.querySelector(".danger");
-  input.oninput = () => { go.disabled = input.value.trim() !== "reset"; };
-  box.querySelector(".stop").onclick = () => { box.innerHTML = ""; };
-  go.onclick = async () => {
-    busy(go, "Resetting");
+      <button type="button" id="resetKeep">Keep it</button>
+      <button type="button" class="danger" id="resetGo" disabled>Reset</button></div>`;
+  modal.hidden = false;
+  const word = $("resetWord"), go = $("resetGo"), why = $("resetWhy");
+  word.oninput = () => { go.disabled = word.value.trim() !== "reset"; };
+  $("resetKeep").onclick = shut;
+  const send = async (ids) => {
+    busy(go, ids.length ? "Un-enrolling" : "Resetting");
+    why.hidden = true;
+    let j;
     try{
-      const r = await fetch("/api/reset", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({confirm: input.value.trim()})});
-      const j = await r.json();
-      if (j.error){ notify(j.error, true); unbusy(go, "Reset for real"); return; }
-      notify("reset: the dashboard is starting over; the old state is in " + j.moved_to);
-      setTimeout(() => { location.href = "/login"; }, 2500);
-    }catch(e){ notify("the reset: " + e, true); unbusy(go, "Reset for real"); }
+      j = await (await postJSON("/api/reset", {confirm: word.value.trim(), unenroll: ids,
+        stores: !!$("resetStores")?.checked})).json();
+    }catch(e){ j = {error: "no answer from the dashboard: " + e}; }
+    if (j.error){ unbusy(go, "Reset"); why.textContent = j.error; why.hidden = false; return; }
+    if (j.unenrolling) return resetFollow(body, ids, send);
+    resetGone(body, j.moved_to);
   };
-  input.focus();
+  go.onclick = () => send([...body.querySelectorAll("[data-rsnode]:checked")].map(i => i.dataset.rsnode));
+  word.focus();
+}
+
+// The un-enrolling, node by node, until the reset happens or something
+// stops it; then Reset anyway, which leaves the rest enrolled.
+function resetFollow(body, ids, send){
+  const draw = j => {
+    body.innerHTML = `<div class="field">
+        <div class="hint">Un-enrolling, then the reset. A machine reports its uninstall when it is done; this can take a few minutes.</div>
+        ${(j.nodes || []).map(x => `<div class="ndcap">${esc(x.name)}: ${
+          x.error ? `<span class="bad">${esc(x.error)}</span>` : x.done ? "done" : x.how === "uninstall" ? "uninstalling…" : "removing…"}</div>`).join("")}
+        <div class="hint bad" id="resetWhy"${j.error ? "" : " hidden"}>${esc(j.error || "")}</div>
+      </div>
+      <div class="foot"><span class="sp"></span>${j.error ? `
+        <button type="button" id="resetShut">Close</button>
+        <button type="button" class="danger" id="resetAnyway">Reset anyway</button>` : ""}</div>`;
+    if (j.error){
+      $("resetShut").onclick = () => { $("resetmodal").hidden = true; body.innerHTML = ""; };
+      $("resetAnyway").onclick = async () => {
+        let r;
+        try{ r = await (await postJSON("/api/reset", {confirm: "reset"})).json(); }
+        catch(e){ r = {error: "no answer from the dashboard: " + e}; }
+        if (r.error){ $("resetWhy").textContent = r.error; $("resetWhy").hidden = false; return; }
+        resetGone(body, r.moved_to);
+      };
+    }
+  };
+  const tick = async () => {
+    let j;
+    try{ j = await (await fetch("/api/reset")).json(); }
+    catch{ return resetGone(body, ""); }       // the controller is starting over
+    draw(j);
+    if (j.moved_to) return resetGone(body, j.moved_to);
+    if (j.running) setTimeout(tick, 3000);
+  };
+  tick();
+}
+
+function resetGone(body, moved){
+  body.innerHTML = `<div class="field"><div class="hint">Reset: the dashboard is starting over${
+    moved ? `; the old state is in ${esc(moved)}` : ""}. The setup page follows.</div></div>`;
+  setTimeout(() => { location.href = "/login"; }, 2500);
 }
 
 // The Debugging group's other half, in a dialog rather than a fold in the

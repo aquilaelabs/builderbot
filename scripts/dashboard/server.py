@@ -2130,6 +2130,56 @@ def _diag_watch(project, uid):
 
 # The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
 DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
+
+
+# A Reset that un-enrolls its nodes first: their uninstalls run, and the
+# reset follows once each node is retired. Read by GET /api/reset.
+_reset_job = {}
+_reset_lock = threading.Lock()
+RESET_WAIT_S = 20 * 60
+
+
+def _reset_after(principal):
+    """Wait for every node a Reset is un-enrolling to be retired, then reset.
+    A node that has not reported in RESET_WAIT_S, or whose uninstall failed,
+    stops it with the reason, and nothing is moved."""
+    while True:
+        rows = _reset_job.get("nodes") or []
+        for x in rows:
+            n = nodes.node(x["id"]) or {}
+            if n.get("state") == "retired" or not n:
+                x["done"] = True
+            elif x.get("job"):
+                j = nodes.job(x["job"], with_log=False) or {}
+                if j.get("state") in ("failed", "canceled"):
+                    x["error"] = f"its uninstall {j['state']}: {j.get('error') or 'no reason given'}"
+        bad = [x for x in rows if x.get("error")]
+        if bad or time.time() - _reset_job.get("started", 0) > RESET_WAIT_S:
+            _reset_job.update(running=False, error="; ".join(f"{x['name']}: {x['error']}" for x in bad)
+                              or "; ".join(f"{x['name']} has not reported its uninstall"
+                                           for x in rows if not x.get("done")) + f" in {RESET_WAIT_S // 60} minutes")
+            print(f"dashboard: reset stopped: {_reset_job['error']}", flush=True)
+            return
+        if all(x.get("done") for x in rows):
+            break
+        time.sleep(3)
+    r, status = settings.reset(STATE)
+    if status != 200:
+        _reset_job.update(running=False, error=r.get("error") or "the reset failed")
+        return
+    _reset_job.update(running=False, moved_to=r["moved_to"])
+    print(f"dashboard: {principal} reset this controller after un-enrolling "
+          f"{', '.join(x['name'] for x in _reset_job['nodes'])}; the old state is in {r['moved_to']}", flush=True)
+    threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
+
+
+def setup_node():
+    """The name of a node enrolled and answering, for Finish on the setup
+    page (R199), or ""."""
+    if nodes is None:
+        return ""
+    return next((n["name"] for n in nodes.node_list()
+                 if n.get("kind") == "agent" and n.get("state") == "online" and n.get("live")), "")
 # ...and the home tunnel's (R176), applied by tunnel.py when they change.
 TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 
@@ -3631,6 +3681,7 @@ GET_ROUTES = (
     ("exact", "/api/live", "_get_live"),
     ("prefix", "/api/trace", "_get_trace"),
     ("prefix", "/api/status", "_get_status"),
+    ("exact", "/api/reset", "_get_reset"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/transcripts", "_get_transcripts"),
@@ -3965,6 +4016,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_page(r["error"], setup=True)
         print(f"dashboard: {name} claimed this container as the owner",
               flush=True)
+        # Then the rest of the setup page, which ends with a node (R199).
+        settings.set_many({"setup_done": False})
         # Straight in, rather than back to a sign-in they just proved: they
         # typed the password twice thirty seconds ago.
         self.send_response(303)
@@ -5311,6 +5364,23 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if str(req.get("confirm") or "") != "reset":
             return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
+        # The nodes to un-enroll first (the operator, 12 Oct): each uninstalled
+        # and retired before anything is moved, since the record of them is
+        # what moves, and the reset follows once every one has reported.
+        ids = [str(x) for x in (req.get("unenroll") or []) if isinstance(x, str)]
+        if ids:
+            with _reset_lock:
+                if _reset_job.get("running"):
+                    return self._json({"error": "a reset is already under way"}, 409)
+                rows = nodes.reset_unenroll(self._principal(), ids, req.get("stores") is True)
+                bad = [x for x in rows if x["error"]]
+                if bad:
+                    return self._json({"error": "; ".join(f"{x['name']}: {x['error']}" for x in bad),
+                                       "nodes": rows}, 409)
+                _reset_job.clear()
+                _reset_job.update(running=True, nodes=rows, error="", started=time.time())
+            threading.Thread(target=_reset_after, args=(self._principal(),), daemon=True).start()
+            return self._json({"ok": True, "unenrolling": rows})
         r, status = settings.reset(STATE)
         if status != 200:
             return self._json(r, status)
@@ -5330,6 +5400,10 @@ class Handler(BaseHTTPRequestHandler):
         want = req.get("set") if isinstance(req.get("set"), dict) else {}
         if any(k in DEBUG_SETTINGS and want[k] != settings.get(k) for k in want) and self._refused("debug"):
             return
+        # Finish on the setup page (R199): the first node is the one step
+        # that cannot wait, so it is checked here and not only on the page.
+        if want.get("setup_done") is True and not settings.get("setup_done") and not setup_node():
+            return self._json({"error": "enroll a node first: Finish needs one enrolled and answering"}, 409)
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
@@ -7436,6 +7510,14 @@ class Handler(BaseHTTPRequestHandler):
         # runs for it. By node id when the row said which, and by name alone
         # for a caller that only knows the name (a tab closing).
         return self._result(end_session(session, str(req.get("node") or "")))
+
+    def _get_reset(self):
+        """GET /api/reset: how a Reset that un-enrolls its nodes first is
+        getting on: each node, done or why not, and the error that stopped
+        it. An administrator's."""
+        if self._refused("admin"):
+            return None
+        return self._json({k: v for k, v in _reset_job.items() if k != "started"})
 
     def _get_project_sessions(self):
         """GET /api/project-sessions?project=NAME: every account's sessions on

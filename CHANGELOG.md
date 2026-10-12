@@ -128,6 +128,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A running container on a hosting node whose port no nginx route points at says so on its Docker row, with the way to the nginx tab (ee6b2b5)
 - An open cloudflared SSH door's row gives the ~/.ssh/config block for the PC, named for the node, and MobaXterm's way in (ee6b2b5)
 - A project's settings can make a deploy key or take a pasted one, beside its access token: kept root-only so sessions push with it and never read it, its public half shown with a link to the host's deploy keys page. Keys in /secrets/ssh still work (d6b61e3)
+- A first run is a setup page: after the owner, where what grows is kept, when an idle Claude session ends and a public hostname, each with its default, then a first node, which the rest of BuilderBot waits for (20c3975)
 
 ### Changed
 
@@ -281,6 +282,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Each node keeps its own toolchains in the store, under its node id, so nodes sharing one store never wait on or overwrite each other's installs; a retired node's directory is offered for removal on the Toolchains tab (ca8eae8)
 - Claude's model and effort are picked each time a session starts: the Claude button's menu turns, after Resume or New conversation, to Model and Effort with Start, opening on the last ones picked; the project's settings no longer hold them (ca8eae8)
 - Enrolling a Mac is a dev feature until one has been proven: the Enroll dialog names it, and the controller serves its provisioner, only with Offer dev features on in Settings (62801e7)
+- Reset BuilderBot opens a dialog that un-enrolls the nodes first, uninstalling BuilderBot from each and waiting for every one to report before anything moves, so each machine can be enrolled again; a node's Un-enroll asks the same way and says what goes and what stays (20c3975)
 
 ### Removed
 

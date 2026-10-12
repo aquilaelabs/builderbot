@@ -63,6 +63,12 @@ KEYS = {
     # implicitly granted ITSELF, because its own journal is as much system
     # level as any other machine's.
     "debug_mode": {"default": False, "kind": "bool", "applied": "now"},
+    # First run (R199, the operator, 12 Oct): False from the moment the
+    # owner is made until Finish on the setup page, which needs a node
+    # enrolled and answering. While False the page shows only the setup
+    # panel and the Nodes tab. True by default: a controller that never
+    # went through the setup page is one already set up.
+    "setup_done": {"default": True, "kind": "bool", "applied": "now"},
     # The home tunnel the controller runs itself (R176, tunnel.py): the
     # public hostname a node off the LAN dials, the tunnel's token from
     # Zero Trust, and an API token with which the hostname's record and the

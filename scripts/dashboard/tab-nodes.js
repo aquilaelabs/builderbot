@@ -495,25 +495,48 @@ function nodeHostRow(n){
 // configured from the dashboard after enrolling, and a hosting node's
 // doors and proxy, ticked for one. Anywhere else the node is removed here
 // only, and the dialog says BuilderBot's pieces stay on the machine.
+// What un-enrolling takes off a machine and what it leaves, said the same
+// way in a node's Un-enroll and in Reset BuilderBot (the operator, 12 Oct).
+// `all`: everything goes (Reset un-enrolls with every part); otherwise the
+// parts the dialog's boxes choose are said as such.
+function unenrollWhat(all){
+  return `<div class="resetwhat">
+      <b>What un-enrolling takes off a machine BuilderBot set up</b>
+      <ul>
+        <li>The agent and its service, and the tunnel to this controller.</li>
+        <li>The sessions' firewall rules and networks, and the job and session accounts with their homes.</li>
+        <li>${all ? "" : "If ticked below: "}what was set up from the dashboard after enrolling: the mounts and their fstab lines, the CI runners, the GPU display.</li>
+        <li>${all ? "" : "If ticked below: "}what it was given as a host: the SSH door with its token, the port 22 rule, and the nginx container.</li>
+      </ul>
+      <b>What stays</b>
+      <ul>
+        <li>Docker, the system packages, and what is on the shares.</li>
+        <li>Its stores on its own disk (toolchains, caches, artifacts), unless that box is ticked.</li>
+        <li>Anything the provisioner installed for the machine itself.</li>
+      </ul>
+      The node leaves the Nodes tab and its tokens stop working; to use the machine again, enroll it again.
+      A machine that is only removed here keeps BuilderBot's pieces until <code>sudo bb-sandbox uninstall</code> is run on it.
+    </div>`;
+}
+
 function openUnenroll(n){
   const modal = document.getElementById("ndmodal"), body = document.getElementById("ndBody");
   if (!modal || !body) return;
   const clean = !!(n.live && n.reported?.sandbox);
   const host = !!n.config?.host_only;
-  document.getElementById("ndTitle").textContent = `Un-enroll ${n.name}`;
+  document.getElementById("ndTitle").textContent = `Un-enroll ${n.name}?`;
   body.innerHTML = clean ? `<div class="field">
-      <div class="hint">BuilderBot is uninstalled from the machine, then the node is removed here. To use it again, enroll it from Enroll node, here or on another controller.</div>
-      <div class="hint">Always: the agent and its unit, the sessions' firewall rules and networks, the <code>${esc(n.config?.user || "bb")}</code> and session accounts with their homes, and the tunnel to the controller. Docker, the packages and the shares' contents stay.</div>
+      <div class="hint">Are you sure? BuilderBot is uninstalled from ${esc(n.name)}, then the node is removed here. Its job account is <code>${esc(n.config?.user || "bb")}</code>.</div>
+      ${unenrollWhat(false)}
       <label class="ndcap"><input type="checkbox" id="ndUnStores"> Also delete the stores on its disk: the toolchains, the caches, the artifacts, dev instance data, and the synced project copies</label>
       <label class="ndcap"><input type="checkbox" id="ndUnConf"> Also undo what was set up from the dashboard after enrolling: the mounts and their fstab lines, the runners, the GPU display</label>
       <label class="ndcap"><input type="checkbox" id="ndUnDoors"${host ? " checked" : ""}> Also shut what it was given as a host: the SSH door with its token, the port 22 rule, and the nginx container</label>
-      <div class="hint">What the provisioner installed for the machine itself is never touched.</div>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" class="danger" id="ndUnGo">Un-enroll</button>
       <button type="button" id="ndUnCancel">Cancel</button></div>`
   : `<div class="field">
-      <div class="hint bad">The machine cannot be cleaned from here: ${n.live ? "it was not provisioned by BuilderBot" : "its agent is not dialing in"}. The node is removed here and its tokens revoked; BuilderBot's pieces stay on the machine until <code>sudo bb-sandbox uninstall</code> is run there.</div>
+      <div class="hint bad">Are you sure? The machine cannot be cleaned from here: ${n.live ? "it was not provisioned by BuilderBot" : "its agent is not dialing in"}. The node is removed here and its tokens revoked; BuilderBot's pieces stay on the machine until <code>sudo bb-sandbox uninstall</code> is run there.</div>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" class="danger" id="ndUnGo">Remove it here</button>

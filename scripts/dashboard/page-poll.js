@@ -144,6 +144,7 @@ async function refresh(){
     // The word that tells two dashboards apart: on when dev features, the
     // ones not yet vetted, are offered here, which production never has.
     $("devtag").hidden = !state.settings?.settings?.offer_unvetted?.value;
+    drawSetup();
     $("uptime").textContent = "up " + shortUptime(state.uptime);
     drawBuild(state.image);
     adoptLayout(state.layout);

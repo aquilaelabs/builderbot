@@ -2247,6 +2247,28 @@ def node_uninstall(principal, node_id, rings=None):
     return r
 
 
+def reset_unenroll(principal, ids, stores=False):
+    """Un-enroll these nodes ahead of a Reset (the operator, 12 Oct), so
+    each machine is clean to enroll again afterwards: a node BuilderBot
+    provisioned and can reach is uninstalled, its job retiring it when the
+    machine reports done; any other is retired here, its tokens revoked.
+    [{id, name, how, error}], how being "uninstall" or "retired"."""
+    out = []
+    for nid in ids:
+        n = node(nid)
+        if not n or n.get("kind") != "agent" or n.get("state") == "retired":
+            continue
+        row = {"id": nid, "name": n["name"]}
+        if n.get("live") and (n.get("reported") or {}).get("sandbox"):
+            r = node_uninstall(principal, nid, {"stores": stores, "configured": True, "doors": True})
+            row.update(how="uninstall", error=r.get("error") or "", job=r.get("job") or "")
+        else:
+            r = node_state(principal, nid, "retired")
+            row.update(how="retired", error=(r or {}).get("error") or "")
+        out.append(row)
+    return out
+
+
 def node_door(principal, node_id, on):
     """The door in for SSH on or off (R174): a system job the agent answers
     by starting or stopping the door's client (cloudflared's service, or

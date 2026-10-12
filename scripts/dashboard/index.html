@@ -777,6 +777,22 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
   body[data-view="terminal"] .col.side{display:none}
   body[data-view="dash"] .col.term{display:none}
 }
+/* First run (R199): the setup panel over the Nodes tab, and nothing else
+   until Finish: no sidebar, no tab strip, no bell, at every width. */
+body.firstrun main{grid-template-columns:1fr}
+body.firstrun .col.side, body.firstrun .switch, body.firstrun .tabstrip,
+body.firstrun .tabpicklist, body.firstrun #bBell, body.firstrun #bReport{display:none}
+body.firstrun[data-view] .col.term{display:flex}
+.setup{flex:0 1 auto;max-height:60%;overflow:auto;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r-surface);padding:12px 14px}
+.setup .setuphead h2{margin:0 0 4px;font-size:16px}
+.setup .setuphead p{margin:0 0 10px}
+/* What un-enrolling does, in the reset dialog and a node's Un-enroll: a sunk box, the
+   same ground as a public key's, so it reads as a note and not a control. */
+.resetwhat{margin:8px 0;background:var(--sunk);border:1px solid var(--line);
+  border-radius:var(--r-control);padding:8px 10px;font-size:12px;color:var(--dim)}
+.resetwhat ul{margin:4px 0 8px;padding-left:18px}
+.resetwhat b{color:var(--ink)}
 
 /* position:relative so the resume chooser, which is absolutely positioned and
    measured against this box, actually lands inside it. */
@@ -4617,6 +4633,15 @@ body.booting .pane>.loading{margin:auto}
     <div id="dlBody"></div>
   </div>
 </div>
+<!-- Reset BuilderBot (the operator, 12 Oct): which nodes to un-enroll first,
+     so each can be enrolled again afterwards, then the word that confirms.
+     tab-settings.js draws it and follows the un-enrolling to the reset. -->
+<div id="resetmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="resetTitle">
+  <div class="box">
+    <h3 id="resetTitle">Reset BuilderBot</h3>
+    <div id="resetBody"></div>
+  </div>
+</div>
 <div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
   <div class="box">
     <h3 id="setdbgTitle">Debug settings</h3>
@@ -5042,6 +5067,9 @@ body.booting .pane>.loading{margin:auto}
   </div>
 
   <div class="col term">
+    <!-- First run (R199): the setup page, over the Nodes tab, until Finish.
+         page-setup.js draws it. -->
+    <div class="setup" id="setupPanel" hidden></div>
     <div class="tabstrip">
       <!-- On a phone the strip is this: the tab on show, and the rest in a
            list under it (R119 step 5). Drawn by drawTabPick. -->
@@ -5155,6 +5183,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-macros.js"></script>
 <script src="page-layout.js"></script>
 <script src="page-poll.js"></script>
+<script src="page-setup.js"></script>
 <script src="page-badge.js"></script>
 <script src="page-docs.js"></script>
 

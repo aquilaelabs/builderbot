@@ -1295,9 +1295,10 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const dlg = await page.evaluate(() => ({ title: document.getElementById('ndTitle').textContent,
       text: document.getElementById('ndBody').textContent,
       ticks: [...document.querySelectorAll('#ndBody input[type=checkbox]')].map(c => c.checked) }));
-    ok(/Un-enroll shed/.test(dlg.title) && /Always: the agent/.test(dlg.text) && /sessions' firewall rules/.test(dlg.text)
-       && dlg.ticks.length === 3 && dlg.ticks.every(t => !t) && /never touched/.test(dlg.text),
-       `Un-enroll opens a dialog: the agent and the isolation always go, three rings to tick, none ticked (${JSON.stringify(dlg.ticks)})`);
+    ok(/Un-enroll shed\?/.test(dlg.title) && /Are you sure\?/.test(dlg.text) && /takes off a machine/.test(dlg.text)
+       && /The agent and its service/.test(dlg.text) && /sessions' firewall rules/.test(dlg.text) && /What stays/.test(dlg.text)
+       && dlg.ticks.length === 3 && dlg.ticks.every(t => !t) && /the provisioner installed for the machine itself/.test(dlg.text),
+       `Un-enroll asks whether you are sure and says what goes and what stays, three rings to tick, none ticked (${JSON.stringify(dlg.ticks)})`);
     await page.click('#ndBody #ndUnCancel');
     await page.waitForFunction(() => document.getElementById('ndmodal').hidden, null, { timeout: 5000 });
     await page.click(`${ROW} [data-nd="enable"]`);
