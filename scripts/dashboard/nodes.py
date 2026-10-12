@@ -1513,9 +1513,13 @@ def node_config_set(principal, node_id, cfg):
 # a stream name resolves to an argv here, and nothing else is reachable
 # through this door however it is asked for.
 LOG_STREAMS = {
+    # The journal where there is one; on an OpenRC or runit node, the file
+    # the provisioner has its service write (/var/log/builderbot-agent.log),
+    # which read nothing at all before.
     "agent": {"what": "the agent's own journal: what it did, and why a job failed",
-              "argv": ["journalctl", "-u", "builderbot-agent", "--no-pager",
-                       "-n", "{lines}"]},
+              "argv": ["sh", "-c", "if command -v journalctl >/dev/null 2>&1; "
+                       "then journalctl -u builderbot-agent --no-pager -n {lines}; "
+                       "else tail -n {lines} /var/log/builderbot-agent.log; fi"]},
     # TWO SHAPES, and the node says which it is in. Under systemd the runner
     # is a service and its output is the journal's; with no systemd the agent
     # runs run.sh itself and redirects it into runner.log under the data
@@ -1770,10 +1774,12 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     fills = {"lines": str(n_lines)}
     # The unit form when the node reported one, and then the data store is not
     # needed at all: a node whose runner is a service may keep no runner.log.
-    unit = (runners_reported(tgt) or [{}])[0].get("unit") or ""
-    if spec.get("unit_argv") and unit:
-        spec = dict(spec, argv=spec["unit_argv"], store=None)
-        fills["unit"] = str(unit)
+    # Every runner's unit, not the first one's: a node with a runner per git
+    # host showed one of them.
+    units = [str(r["unit"]) for r in runners_reported(tgt) if r.get("unit")]
+    if spec.get("unit_argv") and units:
+        spec = dict(spec, argv=["journalctl", *[x for u in units for x in ("-u", u)],
+                                "--no-pager", "-n", "{lines}"], store=None)
     if spec.get("nginx"):
         name = nginx_for(target_id) or ""
         if not name:

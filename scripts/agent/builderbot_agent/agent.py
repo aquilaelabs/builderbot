@@ -9,12 +9,12 @@ import threading
 import time
 from . import AGENT_VERSION
 from .coverage import _COV_OUT, _cov_write
-from .base import BEAT_S, log, own_digest, own_path
+from .base import BEAT_S, RUNNER_DIAG_KEEP, cap_file, log, log_once, own_digest, own_path, prune_dir
 from .controller import Controller
 from .stores import save_state, use_scope
 from .toolchains import share_images
 from .sessnet import SessionNet
-from .runners import RunnersMixin
+from .runners import RunnersMixin, runner_dirs
 from .census import Sampler, census
 from .jobs import Job
 from .ftp import FtpServers
@@ -268,6 +268,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # nothing and nothing changes.
             # The journal kept across boots on a managed node (R185).
             self.keep_journal()
+            # ...and the files the node writes itself kept to their size.
+            self.cap_logs()
             pl = r.get("ports_local")
             if isinstance(pl, bool):
                 if pl != self.state.get("ports_local"):
@@ -323,6 +325,24 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     self._rehello = False
         return st, r
 
+    def cap_logs(self):
+        """The node's own log files kept bounded on every hello (the
+        operator, 12 Oct): the terminal server's and the runners' in the
+        data store, this agent's own output where it goes to a file (a
+        guest's and a Mac's unit, OpenRC's), and each runner's _diag to its
+        newest RUNNER_DIAG_KEEP."""
+        data = (self.state.get("stores") or {}).get("data") or "/tmp"
+        files = [os.path.join(data, "ttyd.log"), os.path.join(data, "runner.log")]
+        with contextlib.suppress(OSError):
+            out = os.readlink("/proc/self/fd/1")
+            if out.startswith("/") and os.path.isfile(out):
+                files.append(out)
+        cut = [f for f in files if cap_file(f)]
+        trimmed = sum(prune_dir(os.path.join(d, "_diag"), RUNNER_DIAG_KEEP) for d, _ in runner_dirs())
+        if cut or trimmed:
+            log(f"logs: kept to size: {', '.join(os.path.basename(f) for f in cut) or 'nothing'} cut, "
+                f"{trimmed} old runner diagnostics removed")
+
     def hello_again(self, why):
         """Ask the loop for a fresh hello, saying why in the journal: a node
         was saying hello every hundred seconds with nothing in its log to
@@ -352,7 +372,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             j.cancel()
 
     def loop(self):
-        delay = 1
+        delay = wdelay = 1
         # The hourly walk of the disks, on its own thread (storage.py).
         storage.start(lambda: self.state)
         # What is THIS process's to end, ended by it. The ttyds go: a stop of
@@ -475,6 +495,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 sample["sync_clean"] = self.wssync.done()
             st, r = self.ctl.call("work", {"sample": sample, "running": n, "wait": wait},
                                   timeout=wait + 15)
+            if st in (200, 204):
+                wdelay = 1
             if st == 204:
                 continue
             if st == 200 and r.get("cancel"):
@@ -515,13 +537,16 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 self.hello_again("the work poll was refused")
                 time.sleep(300)
                 continue
-            log(f"work: {st} {r.get('error', '')}; retrying in {delay}s")
+            # Its own backoff, reset only by a work poll that worked: shared
+            # with hello's, every successful census reset it, and a
+            # controller refusing work was asked again at once each time.
+            log_once("work-poll", f"work: {st} {r.get('error', '')}; retrying, every {wdelay}s at most")
             # A fresh census for a controller that answered and refused; one
             # that did not answer at all (0) has nobody to hear it.
             if st:
                 self.hello_again(f"the work poll failed ({st})")
-            time.sleep(delay)
-            delay = min(delay * 2, 60)
+            time.sleep(wdelay)
+            wdelay = min(wdelay * 2, 60)
 
     def take(self, job):
         with self.lock:

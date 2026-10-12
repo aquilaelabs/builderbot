@@ -257,8 +257,11 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
      `...and is read from runner.log under its data store instead (${argv || 'nothing ran'})`);
 
   // The other two streams are one shape each and have nowhere to differ.
-  ok(/^journalctl -u builderbot-agent/.test(await ranArgv(await readLog('agent'))),
-     "...the agent's own log is its journal");
+  {
+    const a = await ranArgv(await readLog('agent'));
+    ok(/journalctl -u builderbot-agent --no-pager -n 5;/.test(a) && /tail -n 5 \/var\/log\/builderbot-agent\.log/.test(a),
+       `...the agent's own log is its journal, or the file its service writes where there is none (${a.slice(0, 80)})`);
+  }
   ok(/ttyd\.log$/.test(await ranArgv(await readLog('terminal'))),
      '...and the terminal server writes a file under the data store');
   // The node's nginx is a stream too (R182), read with docker logs where the

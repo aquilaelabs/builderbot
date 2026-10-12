@@ -150,9 +150,10 @@ jobs:
       - name: Close the log
         if: always()
         # Written whatever happened: "it failed and said nothing" is the case
-        # this exists for. The last twenty runs are kept.
+        # this exists for. The last sixty runs are kept, shared by every
+        # workflow that files under this repository.
         run: |
           [ -n "${CI_LOG:-}" ] || exit 0
           printf '\nresult: %s\nclosed: %s\n' "${{ job.status }}" "$(date -Is)" >> "$CI_LOG"
           find "$CI_LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
-            | sort -rn | tail -n +21 | cut -d' ' -f2- | xargs -r rm -f
+            | sort -rn | tail -n +61 | cut -d' ' -f2- | xargs -r rm -f

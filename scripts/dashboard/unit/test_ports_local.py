@@ -19,8 +19,9 @@ class DaemonJson(unittest.TestCase):
         f = self.m.base.daemon_json_with_ip
         both = json.loads(f("", True))
         self.assertEqual(both, {"ip": "127.0.0.1", "default-network-opts": {"bridge": {
-            "com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}},
-            "the default bridge's and every network compose makes (draconis, 11 Oct)")
+            "com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}},
+            "log-opts": {"max-size": "20m", "max-file": "3"}},
+            "the default bridge's and every network compose makes (draconis, 11 Oct), and bounded container logs")
         kept = f('{"labels": ["builderbot.sandbox=1"], "log-driver": "json-file"}', True)
         self.assertIn('"labels"', kept)
         self.assertIn('"ip": "127.0.0.1"', kept)
@@ -34,7 +35,12 @@ class DaemonJson(unittest.TestCase):
         mixed = f('{"default-network-opts": {"bridge": {"com.docker.network.bridge.mtu": "1400"}}}', True)
         self.assertIn("mtu", mixed, "another bridge option is kept")
         self.assertIn("mtu", f(mixed, False))
-        self.assertIsNone(f("", False), "never set: nothing to take off")
+        self.assertEqual(json.loads(f("", False)), {"log-opts": {"max-size": "20m", "max-file": "3"}},
+                         "never set: nothing to take off, and the container logs bounded")
+        self.assertIsNone(f(f("", False), False), "and then nothing more to write")
+        mine = '{"log-opts": {"max-size": "100m"}}'
+        self.assertEqual(json.loads(f(mine, True))["log-opts"], {"max-size": "100m"}, "a node's own log options are kept")
+        self.assertNotIn("log-opts", json.loads(f('{"log-driver": "journald"}', True)), "and its own driver")
         self.assertIsNone(f("not json {", True), "a file that is not JSON is left alone")
 
 

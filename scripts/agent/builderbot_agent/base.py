@@ -1,10 +1,13 @@
 """What every part of the agent shares: the constants naming the node's paths and tools, the log, and the small runners of a command."""
+import contextlib
 import json
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 
 
 # Where the enrollment lands. Overridable for tests, which run a throwaway
@@ -230,6 +233,23 @@ def log(msg):
     print(f"[builderbot-agent] {msg}", file=sys.stderr, flush=True)
 
 
+_said = {}
+
+
+def log_once(key, msg, every=3600):
+    """log(), but the same `msg` under `key` at most once per `every`
+    seconds, with how many times it came up meanwhile. For a loop that
+    meets the same fault on every tick: a sync step failing every five
+    seconds was 17,000 identical journal lines a day (the operator, 12 Oct)."""
+    now = time.monotonic()
+    last, n, was = _said.get(key, (-1e9, 0, None))
+    if msg == was and now - last < every:
+        _said[key] = (last, n + 1, was)
+        return
+    log(msg + (f" (and {n} more times since)" if n and msg == was else ""))
+    _said[key] = (now, 0, msg)
+
+
 def hello_again(agent, why):
     """Ask the agent for a fresh hello with its reason in the journal
     (Agent.hello_again); a stand-in driven in a test has only the clock."""
@@ -239,6 +259,45 @@ def hello_again(agent, why):
     else:
         agent.hello_at = 0
 
+
+# The files a node writes itself, each kept to this and one earlier
+# generation (cap_file): the terminal server's and the runners' were
+# appended to for the life of the machine.
+NODE_LOG_MAX = 16 * 1024 * 1024
+RUNNER_DIAG_KEEP = 20       # newest files in a runner's _diag
+
+
+def cap_file(path, limit=NODE_LOG_MAX):
+    """Copy-truncate `path` into `path`.1 once it passes `limit`: the
+    writers hold it open with O_APPEND, so they go on at the new end. True
+    when it was cut."""
+    try:
+        if os.path.getsize(path) <= limit:
+            return False
+        shutil.copyfile(path, path + ".1")
+        with open(path, "r+b") as f:
+            f.truncate(0)
+        return True
+    except OSError:
+        return False
+
+
+def prune_dir(d, keep):
+    """The newest `keep` files directly in `d`, the rest removed. How many."""
+    try:
+        files = sorted((e for e in os.scandir(d) if e.is_file()), key=lambda e: e.stat().st_mtime, reverse=True)
+    except OSError:
+        return 0
+    gone = 0
+    for e in files[keep:]:
+        with contextlib.suppress(OSError):
+            os.unlink(e.path)
+            gone += 1
+    return gone
+
+
+# Docker's json-file logs on a node, per container: three files of 20 MB.
+CONTAINER_LOG_OPTS = {"max-size": "20m", "max-file": "3"}
 
 # The bridge driver's option for a network's default bind address.
 HOST_BINDING = "com.docker.network.bridge.host_binding_ipv4"
@@ -277,6 +336,12 @@ def daemon_json_with_ip(text, on):
         d["default-network-opts"] = opts
     else:
         d.pop("default-network-opts", None)
+    # ...and every container's log bounded (the operator, 12 Oct): the
+    # json-file driver keeps all of it by default, so a chatty container
+    # filled the disk under /var/lib/docker. Only where nobody chose a
+    # driver or its options: a node's own logging arrangement is kept.
+    if d.get("log-driver", "json-file") == "json-file" and "log-opts" not in d:
+        d["log-opts"] = dict(CONTAINER_LOG_OPTS)
     if json.dumps(d, sort_keys=True) == before:
         return None
     return json.dumps(d, indent=2) + "\n"

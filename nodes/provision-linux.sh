@@ -648,6 +648,10 @@ description="${desc}"
 supervisor=supervise-daemon
 command="${cmd%% *}"
 command_args="${cmd#* }"
+# Kept, where OpenRC has no journal: supervise-daemon sent it to /dev/null.
+# The agent keeps the file to its size (cap_logs) and bb logs --node reads it.
+output_log="/var/log/${name}.log"
+error_log="/var/log/${name}.log"
 respawn_delay=5
 depend() { need net; use netmount; after docker; }
 EOF
@@ -659,7 +663,9 @@ EOF
             cat > "/etc/sv/${name}/run" <<EOF
 #!/bin/sh
 # ${desc}
-exec ${cmd} 2>&1
+# Kept, where runit has no journal and no log service here: it went to
+# runsvdir and nowhere. The agent keeps the file to its size (cap_logs).
+exec ${cmd} >> "/var/log/${name}.log" 2>&1
 EOF
             chmod 0755 "/etc/sv/${name}/run"
             ln -sfn "/etc/sv/${name}" "/var/service/${name}"
@@ -1126,9 +1132,15 @@ fi
 keep_journal() {
     local f=/etc/systemd/journald.conf.d/50-builderbot.conf
     command -v journalctl >/dev/null 2>&1 || return 1
-    [ -f "$f" ] && grep -q '^Storage=persistent' "$f" && return 1
+    # The same bytes as the agent's JOURNAL_DROPIN (configplane.py), and at
+    # most 1G of journal: an older drop-in without the ceiling is replaced.
+    local want='# Written by BuilderBot (R185): keep the journal across boots, and at most 1G of it.
+[Journal]
+Storage=persistent
+SystemMaxUse=1G'
+    [ -f "$f" ] && [ "$(cat "$f")" = "$want" ] && return 1
     install -d -m 0755 /etc/systemd/journald.conf.d /var/log/journal
-    printf '# Written by BuilderBot (R185): keep the journal across boots.\n[Journal]\nStorage=persistent\n' > "$f"
+    printf '%s\n' "$want" > "$f"
     command -v systemd-tmpfiles >/dev/null 2>&1 && systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1
     return 0
 }

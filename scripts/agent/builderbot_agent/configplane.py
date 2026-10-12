@@ -37,7 +37,15 @@ from .toolchains import extract_sandbox_tool
 from .sessnet import session_conf, session_sudoers
 from .runners import runner_dirs, runner_slot
 from .census import _os_release, export_gaps, mounts_now, network_now, services_now
-from .jobs import Job
+from .jobs import Job, pump
+
+
+# The journal kept across boots (R185) and kept to a gigabyte: journald's own
+# ceiling is a tenth of the filesystem up to 4 GB, which on a small VPS is
+# more than the machine can spare and on a large one more than anyone reads.
+# The same bytes as provision-linux.sh's keep_journal writes.
+JOURNAL_DROPIN = ("# Written by BuilderBot (R185): keep the journal across boots, and at most 1G of it.\n"
+                  "[Journal]\nStorage=persistent\nSystemMaxUse=1G\n")
 
 
 class ConfigPlaneMixin:
@@ -100,7 +108,10 @@ class ConfigPlaneMixin:
         of a fresh hosting node applies it before anything runs there."""
         path = "/etc/docker/daemon.json"
         if os.geteuid() != 0 or not shutil.which("docker"):
-            log("published ports: this agent is not root here, or docker is not here, so the bind address is left as it is")
+            # Once per run: it was said on every hello, switch on or off.
+            if not getattr(self, "_ports_said", False):
+                self._ports_said = True
+                log("published ports: this agent is not root here, or docker is not here, so the bind address is left as it is")
             return
         try:
             text = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
@@ -118,8 +129,8 @@ class ConfigPlaneMixin:
         except OSError as e:
             log(f"published ports: {path} could not be written ({e})")
             return
-        log("published ports: bound to 127.0.0.1 by default from now; restarting docker" if on
-            else "published ports: bound to every address by default from now; restarting docker")
+        log("docker's defaults changed (published ports bound to 127.0.0.1, container logs bounded); restarting docker" if on
+            else "docker's defaults changed (published ports bound to every address, container logs bounded); restarting docker")
         sc = shutil.which("systemctl")
         if sc:
             subprocess.run([sc, "restart", "docker"], capture_output=True, timeout=180, check=False)
@@ -138,12 +149,15 @@ class ConfigPlaneMixin:
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not shutil.which("journalctl"):
             return
         try:
-            if os.path.isfile(f) and "Storage=persistent" in open(f, encoding="utf-8").read():
+            # The provisioner's keep_journal writes the same bytes; a file
+            # that is not them (an older one, without the ceiling) is
+            # written again.
+            if os.path.isfile(f) and open(f, encoding="utf-8").read() == JOURNAL_DROPIN:
                 return
             os.makedirs(os.path.dirname(f), exist_ok=True)
             os.makedirs("/var/log/journal", exist_ok=True)
             with open(f + ".new", "w", encoding="utf-8") as out:
-                out.write("# Written by BuilderBot (R185): keep the journal across boots.\n[Journal]\nStorage=persistent\n")
+                out.write(JOURNAL_DROPIN)
             os.replace(f + ".new", f)
         except OSError as e:
             log(f"journal: could not keep it across boots ({e})")
@@ -420,9 +434,13 @@ class ConfigPlaneMixin:
             if not started:
                 job.say(f"systemd-run would not take it ({(r.stderr or '').strip()[:120]}); starting it detached instead\n")
         if not started:
+            # Its output kept on the machine, where its owner can read why
+            # an uninstall stopped: the agent it would have reported to is
+            # what it removes.
+            out = "/var/log/builderbot-uninstall.log" if os.geteuid() == 0 else "/tmp/builderbot-uninstall.log"
             try:
-                proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                        start_new_session=True)
+                with open(out, "ab") as logf:
+                    proc = subprocess.Popen(argv, stdout=logf, stderr=logf, start_new_session=True)
             except OSError as e:
                 job.say(f"could not start the uninstall: {e}\n")
                 return "failed", 69
@@ -478,16 +496,7 @@ class ConfigPlaneMixin:
         if stopped():
             Job._kill(p)
 
-        def pump():
-            try:
-                for line in p.stdout:
-                    text = line.decode("utf-8", "replace")
-                    if text.strip():
-                        job.say(text if text.endswith("\n") else text + "\n")
-            except (OSError, ValueError):
-                pass
-        reader = threading.Thread(target=pump, daemon=True)
-        reader.start()
+        reader = pump(job, p.stdout, keep_blank=False)
         deadline, killed = time.monotonic() + timeout, False
         while reader.is_alive():
             reader.join(0.5)
@@ -543,14 +552,7 @@ class ConfigPlaneMixin:
         if job.canceled:
             job._kill(p)
 
-        def pump():
-            try:
-                for line in p.stdout:
-                    job.say(line.decode("utf-8", "replace"))
-            except (OSError, ValueError):
-                pass
-        reader = threading.Thread(target=pump, daemon=True)
-        reader.start()
+        reader = pump(job, p.stdout)
         deadline, killed = time.monotonic() + timeout, False
         while reader.is_alive():
             reader.join(0.5)

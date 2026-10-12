@@ -18,6 +18,42 @@ from .toolchains import sdk_env
 # ---------------------------------------------------------------------------
 # jobs
 
+def pump(job, stream, keep_blank=True):
+    """Read a child's output into a job's log on a thread of its own, and
+    return the thread. The one reader every job uses (the operator, 12 Oct:
+    four had diverged): lines split on newlines, a line a meter redrew in
+    place kept as the frame it ended on, and a meter that never prints a
+    newline posted as its last frame once it passes 64 kB, rather than
+    held in memory until the child exits."""
+    def run():
+        buf = b""
+        try:
+            while True:
+                chunk = os.read(stream.fileno(), 65536)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    text = _last_frame(line.decode("utf-8", "replace") + "\n")
+                    if keep_blank or text.strip():
+                        job.say(text)
+                if len(buf) > 65536:
+                    text = _last_frame(buf.decode("utf-8", "replace"))
+                    buf = b""
+                    if text.strip():
+                        job.say(text + "\n")
+            if buf:
+                text = _last_frame(buf.decode("utf-8", "replace"))
+                if keep_blank or text.strip():
+                    job.say(text + "\n")
+        except (OSError, ValueError):
+            pass                      # the pipe went with the process
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t
+
+
 def _last_frame(line):
     """A line a progress meter redrew in place (frames joined by carriage
     returns) as the frame it ended on. Every frame used to go into the log:
@@ -91,13 +127,16 @@ class Job(threading.Thread):
                 self.pending.append({"seq": self.seq, "chunk": text[i:i + 32 * 1024]})
             held = sum(len(c["chunk"]) for c in self.pending)
             if held > self.PENDING_CAP:
-                dropped = 0
+                dropped, at = 0, None
                 while self.pending and held > self.PENDING_CAP // 2:
                     gone = self.pending.pop(0)
+                    at = gone["seq"] if at is None else at
                     dropped += len(gone["chunk"])
                     held -= len(gone["chunk"])
-                self.seq += 1
-                self.pending.insert(0, {"seq": self.seq, "chunk": f"[{dropped} bytes of output dropped: "
+                # At the seq of the first chunk that went, which the
+                # controller orders by: with a new one it read as after the
+                # chunks that were kept, not where the gap is.
+                self.pending.insert(0, {"seq": at, "chunk": f"[{dropped} bytes of output dropped here: "
                                         "the controller was unreachable and this job kept talking]\n"})
 
     BATCH = 40 * 1024      # under the controller's 64KB body cap, with headroom
@@ -149,9 +188,10 @@ class Job(threading.Thread):
             # forever, and every self-update failed "busy" (B519). Dropped,
             # and the result goes on to be refused in its turn.
             if st in (400, 401, 403, 404, 413):
-                log(f"{self.job['id']}: log refused ({st}); dropping {len(batch)} chunk(s)")
                 with self.lock:
+                    left = len(self.pending)
                     self.pending = []
+                log(f"{self.job['id']}: log refused ({st}); dropping {len(batch) + left} chunk(s)")
                 return True
             if st != 200:
                 with self.lock:
@@ -556,14 +596,7 @@ class Job(threading.Thread):
         # and then worked in silence never posted the line (readline blocked
         # until the next one), so the row sat at "assigned" with nothing in
         # its log, and a cancel sent on the log reply could not arrive.
-        def pump():
-            try:
-                for line in p.stdout:
-                    self.say(_last_frame(line.decode("utf-8", "replace")))
-            except (OSError, ValueError):
-                pass                      # the pipe went with the process
-        reader = threading.Thread(target=pump, daemon=True)
-        reader.start()
+        reader = pump(self, p.stdout)
         deadline = time.monotonic() + timeout
         killed = False
         while reader.is_alive():

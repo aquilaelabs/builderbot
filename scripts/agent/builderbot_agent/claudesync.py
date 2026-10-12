@@ -30,7 +30,7 @@ import re
 import threading
 import time
 import urllib.parse
-from .base import log
+from .base import log, log_once
 
 TICK = 5.0
 LIST_EVERY = 30.0
@@ -146,7 +146,7 @@ class ClaudeMirror:
             try:
                 self.step()
             except Exception as e:                       # noqa: BLE001 (the loop must live)
-                log(f"claudesync: {type(e).__name__}: {e}")
+                log_once("claudesync-step", f"claudesync: {type(e).__name__}: {e}")
             time.sleep(TICK)
 
     # -- where --------------------------------------------------------------------------
@@ -261,7 +261,7 @@ class ClaudeMirror:
             try:
                 getattr(self, "do_" + act.replace("-", "_"))(key, local.get(key), self.ctl.get(key))
             except OSError as e:
-                log(f"claudesync: {act} {key}: {e}")
+                log_once(f"claudesync {act} {key}", f"claudesync: {act} {key}: {e}")
         if json.dumps(rec, sort_keys=True) != before:
             self.save()
         self.left = sum(1 for k, v in self.walk(held).items() if not same(v, rec.get(k)))

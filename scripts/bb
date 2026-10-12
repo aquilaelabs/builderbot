@@ -1259,7 +1259,10 @@ cmd_emu() {
             local serial="" epid="" waited=0 tries=0 why="" booted=""
             while :; do
                 tries=$((tries + 1))
-                if [ -s "$HOME/.android/emulator.log" ]; then
+                # The previous run's log kept once, on the first try only: a
+                # retry rotated it again, and a failed first try overwrote
+                # the post-mortem `bb emu log -p` exists to keep.
+                if [ "$tries" = 1 ] && [ -s "$HOME/.android/emulator.log" ]; then
                     mv -f "$HOME/.android/emulator.log" "$HOME/.android/emulator.log.1"
                 fi
                 log "starting AVD '${avd}' headless, -gpu ${gpu}${propargs:+, hwui ${hwui}} (log: bb emu log)"
@@ -1469,6 +1472,13 @@ cmd_ci_log() {
             || die "not inside a project under ${WORKSPACE}; cd into one, or pass --project NAME"
     fi
     local d="$dir/$proj"
+    # The workflows file a run under the REPOSITORY's name (GITHUB_REPOSITORY),
+    # which is the project's only when nobody named it otherwise.
+    if [ ! -d "$d" ]; then
+        local repo
+        repo="$(git -C "$WORKSPACE/$proj" remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#.*[/:]##')"
+        [ -n "$repo" ] && [ -d "$dir/$repo" ] && d="$dir/$repo"
+    fi
     if [ ! -d "$d" ] || [ -z "$(find "$d" -maxdepth 1 -name '*.log' -print -quit 2>/dev/null)" ]; then
         # Nothing here means the job ran somewhere else, which since the lint
         # and dashboard workflows moved onto a node is the ordinary case. The
@@ -1489,8 +1499,11 @@ cmd_ci_log() {
             # runs: quoted for it, and a run is named by its id, not a path.
             case "$want" in */*|.*) die "bb ci-log RUN: a run is named by its id, not a path" ;; esac
             local remote
+            local repo
+            repo="$(git -C "$WORKSPACE/$proj" remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#.*[/:]##')"
             remote='d="${BB_CI_LOG_DIR:-}"; [ -n "$d" ] || { [ -w /config ] \
-                && d=/config/ci-logs || d="$HOME/ci-logs"; }; d="$d/"'"$(printf %q "$proj")"
+                && d=/config/ci-logs || d="$HOME/ci-logs"; }; b="$d"; d="$d/"'"$(printf %q "$proj")"'
+                [ -d "$d" ] || [ ! -d "$b/"'"$(printf %q "${repo:-$proj}")"' ] || d="$b/"'"$(printf %q "${repo:-$proj}")"
             if [ "$list" = 1 ]; then
                 cmd_run --timeout 300 -- sh -c "$remote"'
                     [ -d "$d" ] || { echo "no CI logs kept on this node either"; exit 0; }

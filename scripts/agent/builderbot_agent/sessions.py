@@ -8,6 +8,7 @@ import signal
 import subprocess
 import threading
 import time
+from .jobs import pump
 from .base import (
     CLAUDE_DIR,
     DOCKER_BIN,
@@ -26,6 +27,7 @@ from .base import (
     _run,
     _zombie,
     log,
+    log_once,
 )
 from .stores import tc_root
 from .backends import _have
@@ -54,7 +56,7 @@ class SessionWatch:
             try:
                 self.step()
             except Exception as e:                                # noqa: BLE001 (the loop must outlive one bad step; the journal has it)
-                log(f"sessions: {e}")
+                log_once("sessions-step", f"sessions: {type(e).__name__}: {e}")
             time.sleep(2)
 
     def step(self):
@@ -444,11 +446,12 @@ class SessionsMixin:
         except (OSError, subprocess.SubprocessError, RuntimeError) as e:
             log(f"sessions: tmux {argv[0]}: {e}")
             return None
-        if p.returncode != 0 and argv[0] != "list-panes":
-            # list-panes fails whenever no server is up, which is the normal
-            # state of a node nobody has opened a terminal on; anything else
-            # failing is worth a line.
-            log(f"sessions: tmux {' '.join(argv)}: {(p.stderr or '').strip()[:120]}")
+        if p.returncode != 0 and argv[0] != "list-panes" and "no server running" not in (p.stderr or ""):
+            # No server up is the normal state of a node nobody has opened a
+            # terminal on, whichever verb met it: list-sessions from the idle
+            # reaper said so once a minute, all day. Anything else failing is
+            # worth a line, once an hour while it keeps failing the same way.
+            log_once(f"tmux {argv[0]}", f"sessions: tmux {' '.join(argv)}: {(p.stderr or '').strip()[:120]}")
         return p.stdout if p.returncode == 0 else None
 
     def sessions_now(self):
@@ -704,8 +707,14 @@ class SessionsMixin:
             job.say(f"could not start the installer: {e}\n")
             return "failed", 70
         deadline = time.monotonic() + int(spec.get("timeout") or 900)
-        for line in iter(job.proc.stdout.readline, b""):
-            job.say(line.decode("utf-8", "replace"))
+        # Posted as it goes and timed by the clock, not by the next line: it
+        # read on this thread, so nothing was posted until the end and a
+        # silent hang never reached its deadline.
+        reader = pump(job, job.proc.stdout)
+        while reader.is_alive():
+            reader.join(0.5)
+            if job.pending:
+                job.flush()
             if time.monotonic() > deadline:
                 job.say("the installer did not finish in time\n")
                 job.cancel()

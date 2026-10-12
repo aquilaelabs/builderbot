@@ -34,7 +34,7 @@ import tarfile
 import threading
 import time
 import urllib.parse
-from .base import hello_again, SHARE, log
+from .base import hello_again, SHARE, log, log_once
 
 # What is not synced, the same set as the controller's (wssync.SKIP_DIRS
 # there; the unit tier holds the two equal).
@@ -290,7 +290,7 @@ class WorkspaceSync:
             try:
                 self.step()
             except Exception as e:                       # noqa: BLE001 (the loop must live)
-                log(f"sync: {type(e).__name__}: {e}")
+                log_once("sync-step", f"sync: {type(e).__name__}: {e}")
                 time.sleep(5)
             self.wake.wait(TICK)
             self.wake.clear()
