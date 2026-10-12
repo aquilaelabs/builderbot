@@ -29,8 +29,8 @@ verb_help() {
 }
 
 usage() {
-    # The one owner of the bb reference: README.md's block is written from
-    # this by tools/readme-bb-ref.sh, and bb lint fails when the two differ
+    # The one owner of the bb reference: docs/reference.md's block is written
+    # from this by tools/bb-ref.sh, and bb lint fails when the two differ
     # (R91 step 5). Column 0 for a verb, 19 in for a line that continues it.
     cat <<'EOF'
 bb: BuilderBot helper
@@ -4004,7 +4004,7 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
             # GitHub points it at that day (R116): a note in any project, a
             # failure in this one, whose image build must not move under it.
             local strict=""
-            [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md && strict="--strict"
+            [ -f scripts/bb ] && [ -f docs/reference.md ] && grep -q '^bb status ' docs/reference.md && strict="--strict"
             python3 "$BB_LIB/lint-checks.py" hosted $strict || rc=1
         fi
     else
@@ -4051,10 +4051,10 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
     fi
 
     # Only where both halves exist, which is this repo: `bb help` and the
-    # README's command list are two copies of one thing, and the copy nobody
+    # reference's command list are two copies of one thing, and the copy nobody
     # runs is the one that goes stale: `bb toolchains migrate` outlived its code in
     # the README because nothing compared them.
-    if [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md; then
+    if [ -f scripts/bb ] && [ -f docs/reference.md ] && grep -q '^bb status ' docs/reference.md; then
         # The agent's version is the one number in this tree a person moves
         # by hand, and a node compares the file while the row names the
         # number (B221): tools/agent-version.sh holds the two together, here
@@ -4066,29 +4066,29 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
             echo "  [skip] tools/agent-version.sh is not in this tree"
         fi
 
-        section "docs (bb help vs README)"
-        # The README's reference block is written from bb help by
-        # tools/readme-bb-ref.sh (R91 step 5): one owner, and the two held
+        section "docs (bb help vs docs/reference.md)"
+        # The reference's bb block is written from bb help by
+        # tools/bb-ref.sh (R91 step 5): one owner, and the two held
         # equal here rather than by hand.
-        if diff -q <(tools/readme-bb-ref.sh --print) <(bash scripts/bb help | sed '1,2d') >/dev/null 2>&1; then
-            echo "  [ok]   the README's bb reference is bb help, word for word"
+        if diff -q <(tools/bb-ref.sh --print) <(bash scripts/bb help | sed '1,2d') >/dev/null 2>&1; then
+            echo "  [ok]   the reference's bb block is bb help, word for word"
         else
-            echo "  [FAIL] the README's bb reference differs from bb help: tools/readme-bb-ref.sh rewrites it"
-            diff <(tools/readme-bb-ref.sh --print) <(bash scripts/bb help | sed '1,2d') | head -12 | sed 's/^/         /'
+            echo "  [FAIL] the reference's bb block differs from bb help: tools/bb-ref.sh rewrites it"
+            diff <(tools/bb-ref.sh --print) <(bash scripts/bb help | sed '1,2d') | head -12 | sed 's/^/         /'
             rc=1
         fi
     fi
 
     # The container's settings live in five places (.env.example, the
-    # compose file, the Unraid template, the README's reference, and
+    # compose file, the Unraid template, docs/reference.md, and
     # docs/unraid.md for host setup), and the copies nobody runs drift: on 18
     # Sep ANTHROPIC_API_KEY was still offered in four of them, though nothing
     # on a controller had read it since Claude moved to the nodes (R47). So
     # what compose passes
     # into the container is held against the other three, by name and by
     # default, and every template path against its compose volume.
-    if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f unraid/builderbot.xml ] && [ -f README.md ]; then
-        section "settings (compose, .env.example, Unraid template, README)"
+    if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f unraid/builderbot.xml ] && [ -f docs/reference.md ]; then
+        section "settings (compose, .env.example, Unraid template, reference)"
         python3 "$BB_LIB/lint-checks.py" settings || rc=1
     fi
 

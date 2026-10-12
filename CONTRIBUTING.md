@@ -35,7 +35,7 @@ notebook verbs do not, since they relay to a controller.
 
 - `bb lint` runs shellcheck, hadolint, ruff, actionlint, compose validation,
   XML well-formedness, and the checks that hold the docs to the tree (bb
-  help against the README, the settings across their five places,
+  help against `docs/reference.md`, the settings across their five places,
   `docs/layout.md` against `git ls-files`, the agent's version against its
   file). CI runs the same set on a pull request.
 - `bb tests run` runs the dashboard's Playwright suite, isolated: its own
@@ -71,7 +71,9 @@ Changed, Deprecated, Removed, Fixed or Security.
 
 ## Where things are explained
 
-`README.md` is the front page and the reference; `docs/architecture.md` the
-map; `docs/how-it-works.md` the prose behind each part; `docs/decisions.md`
-the design decisions with their dates and reasons; `docs/layout.md` the
-file-by-file list; `docs/nodes.md` the design record for nodes.
+`README.md` is the front page; `docs/README.md` the index of the docs;
+`docs/reference.md` the configuration and `bb` reference;
+`docs/architecture.md` the map; `docs/how-it-works.md` the prose behind each
+part; `docs/decisions.md` the design decisions with their dates and reasons;
+`docs/layout.md` the file-by-file list; `docs/nodes.md` the design record for
+nodes.

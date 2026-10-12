@@ -12,12 +12,12 @@ The design decisions behind what is described here, with their dates and reasons
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
 | **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are recipes on the Toolchains tab, installed with the node picked, and the system images the emulator boots are on the Emulator tab |
 | **Git** | git, git-lfs, `gh` CLI |
-| **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
+| **Docker** | CLI + compose/buildx plugins; no daemon and no host socket here, so containers run on a node |
 | **Search** | ripgrep, fd, fzf, jq, yq |
 | **Build** | build-essential, cmake, pkg-config |
 | **Lint** | shellcheck, hadolint, actionlint, ruff, node --check: `bb lint` runs the right ones over a repo |
 | **Media** | ffmpeg, imagemagick |
-| **Runner** | latest `actions/runner`, ephemeral by default |
+| **Runner** | Not in the image: CI runners are a node's, added on the Nodes tab |
 | **Versioning** | `mise` for per-project tool pinning (gradle, go, rust, on demand) |
 
 Slimmer builds: `--build-arg INSTALL_PLAYWRIGHT=false`, `INSTALL_ANDROID=false`.
@@ -28,16 +28,18 @@ update cannot touch. See [the toolchain store lives outside the image](#the-tool
 ## Security model, in short
 
 - **Repo mounts** expose only those trees; writes land as `nobody:users`.
-- **No Docker socket by default**, with it absent, reaching the host
+- **No Docker socket**: nothing mounts the host's, so reaching the host
   requires a kernel exploit.
-- **Secrets shielding**: PAT scrubbed from session env + root-only sudo
-  helper for runner tokens, whose store is a named volume of the daemon's
+- **Secrets shielding**: publishing tokens always scrubbed from session env +
+  root-only sudo helper for runner tokens, whose store is a named volume of the daemon's
   rather than a directory under `/config`, so it stays root-owned even
   when appdata is a squashed NFS share; SSH keys usable via root-owned
   agent but not readable; logs redacted (patterns + literal values).
 - **No passwords, no general sudo**: `root` and `builder` are locked
-  accounts; brute-forcing has no target. Builder may sudo exactly one
-  command (`mint-runner-token`), which only emits 1-hour tokens.
+  accounts; brute-forcing has no target. Builder may sudo exactly two
+  commands: `mint-runner-token`, which only emits 1-hour tokens, and
+  `deploy-key`, which keeps a project's deploy key root-only and loads it
+  into the agent.
 - **Your root door** is host-side: `docker exec -it -u 0 BuilderBot bash`.
 - Don't attach the runner to public repos; treat container-produced commits
   and packages with normal review.
@@ -52,8 +54,8 @@ then executes hooks and drops privileges:
 
 | Hook | Does |
 |---|---|
-| `30-git-and-auth.sh` | git identity, GitHub host keys, `gh` auth (unshielded mode only) |
-| `35-publishing.sh` | npm publish auth, ghcr docker login (socket + PAT present) |
+| `30-git-and-auth.sh` | git defaults and GitHub's host keys; no commit identity and no container-wide token |
+| `35-publishing.sh` | npm publish auth, when an `NPM_TOKEN` is in the secrets folder |
 | `40-projects.sh` | project report, optional per-project bootstrap |
 
 Your own hooks go in `config/startup.d/` on the share: `*.root.sh` runs as
@@ -259,7 +261,7 @@ and with none enrolled it says so. The controller's own store: the SDK
 share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
 only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
-share is recognized as sharing it, and installs are arbitrated across both.
+share is recognized as sharing it, and each keeps its own directory there.
 
 **One store, a directory per node.** A node's toolchains live under
 `<store>/<node id>` (R196), so one share can serve every node and no node's
@@ -821,20 +823,7 @@ lives in its body. The cards:
   way to spend an afternoon debugging a bug that was already fixed. `unstamped`
   means the image was built outside CI. `bb status` prints the same line first,
   and `bb drift` is the other half: what a checkout has changed that the
-  running container is not serving. Also runner state: registered, listening, **running a job**
-  (with the job's name and how long it has been going), **waiting for GitHub
-  to release the last session**, or **failing to connect**. The middle one is
-  amber rather than red on purpose: GitHub holds a runner's session for a
-  minute or two after the process that had it goes away, so every container
-  restart and every finished job on an ephemeral runner spends a moment being
-  refused its own name. It clears itself, and a self-clearing state wearing
-  the same red as an outage sends you hunting for a fault that is the design
-  working. That last one matters: a runner retries a rejected connection
-  forever without exiting, so the process being up is not evidence that it is
-  reachable. (Progress within a job is as far as it goes: a runner long-polls
-  for one job at a time and is never told what else is queued, and how far
-  through its own work a job is (tests passed, steps left) is known only to
-  the tool inside the step.)
+  running container is not serving.
 - every project under `/workspace` with its branch, and one-click **Claude**
   and **Shell** per project. Anything with a problem is folded away behind
   **Show projects with errors**, in red, a directory the container user
@@ -1078,11 +1067,10 @@ project has no container and on `<project>-2`, `-3` after, so another one is
 the same press, and a Claude session sends its project the same way with `bb
 devapp new`, under the project's **Run its container** setting.
 
-**The daemon is a node.** The sandbox VM is added on the Nodes tab: its
-address, with `ssh://` and the `bb` account filled in, and what this
-container's paths are called over there is set on the node's row, because
-the daemon resolves a compose file's bind sources on its own filesystem. The
-manager tab says which node it is on (*"on a sandbox VM at ssh://…"*) and
+**The daemon is a node.** The sandbox VM is enrolled on the Nodes tab like
+any other node, and what this container's paths are called over there is set
+on the node's row, because the daemon resolves a compose file's bind sources
+on its own filesystem. The manager tab names the node it is on and
 `bb doctor` prints the same line from the same function, so the two cannot
 disagree about which daemon is live. (`DOCKER_HOST` and `DOCKER_HOST_PATHS`
 named that machine in earlier releases; both are gone, with the `ssh` node
@@ -1090,8 +1078,8 @@ kind they belonged to.)
 
 **A daemon has to say it is the sandbox before anything is driven on it.**
 `nodes/provision-linux.sh` writes a `builderbot.sandbox` label into the VM's
-`/etc/docker/daemon.json`; the dashboard reads it back with `docker info` over
-the ssh connection it already has, and a daemon without it is refused exactly
+`/etc/docker/daemon.json`; the node's agent reports it in its census, and a
+daemon without it is refused exactly
 like an unreachable one: named as the reason, with the command to fix it. An
 ssh address only proves somebody typed one, and every one-shot container the
 manager runs is root on the far side: what makes that reasonable is the far
@@ -1149,8 +1137,7 @@ on. This container is not among them; it runs no work, takes no toolchains,
 and has nothing any section here configures, so with nothing enrolled the tab
 says so and offers the one thing there is to do. (It does keep a node record
 of its own, which is how a share it mounts is recognized as the same store a
-node mounts and installs are arbitrated across the pair; that is plumbing, not
-a row.) The tab shows one node, picked at the
+node mounts; that is plumbing, not a row.) The tab shows one node, picked at the
 top: a header with its state, and where it dials in from, which is the address of its
 last hello, so a node whose address moves is followed within a minute, its
 terminals rebound onto the new address by its agent and the session-ports
@@ -1179,7 +1166,8 @@ only, saying BuilderBot's pieces stay on the machine. Neither Disable nor
 Un-enroll goes through while a Claude session or a container is running on
 the node: the refusal counts them and says where to end them (the Sessions
 card, Down on the Docker tab). Un-enroll opens a dialog, since what goes is
-in rings (the operator, 11 Oct). Always: the runners deregistered on their
+in rings (the operator, 11 Oct), with a box saying what un-enrolling takes
+off a machine and what it leaves, the same one Reset BuilderBot shows. Always: the runners deregistered on their
 forges, then the agent and its unit, the sessions' firewall rules and their
 own networks (nothing of the isolation outlives the agent), the `bb` and
 `builder` accounts with their homes, `/etc/builderbot` with the tunnel to
@@ -1241,8 +1229,8 @@ heartbeat onto the Sessions card with an "on <node>" pill, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,
 and the Toolchains tab's node picker is where more are added. (Underneath, the
-node still refuses a job asking for something it did not enrol with: the
-enforcement of docs/nodes.md §15 door 7, but every node now enrols with the
+node still refuses a job asking for something it did not enroll with: the
+enforcement of docs/nodes.md §15 door 7, but every node now enrolls with the
 full set, so it is a mechanism rather than a setting.)
 
 **Create sandbox VM** is the step before all of this when there is no
@@ -1336,14 +1324,13 @@ travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
 
-Two nodes may point `toolchains` at the same NFS export deliberately, and then
-they are one store, and what is installed on either is installed for both: a
-node's toolchains are read from the store at every census, so its neighbor's
-install shows up within the census interval. What that arrangement needs is a
-lock, and it has one: an install is refused while a toolchain job is running on
-any node sharing that store, naming which, and the Toolchains tab says the store
-is shared before you press. Sharing is recognized by the mount's source, not
-by the path, since every node's default path is the same string.
+Two nodes may point `toolchains` at the same NFS export deliberately. Each
+still installs into its own directory there, named by its node id, so what is
+installed on one is not installed for the other; the Android system images
+under `<store>/shared` are the one thing they have in common, and a system
+image job waits while one is running on any node sharing that store, naming
+which. Sharing is recognized by the mount's source, not by the path, since
+every node's default path is the same string.
 
 **Four stores per node**, each a directory of its own: `data` (job
 workspaces and AVDs), `toolchains` (the toolchains installed there: what a
@@ -1443,9 +1430,7 @@ project's nodes does not have is passed over there.
 Rebuild and Remove are executed by the agent with the node's own docker: the
 dashboard sends the plan and the compose file, the node runs it. So an
 enrolled node needs nothing but the token it enrolled with: no ssh key, no
-open daemon port, nothing dialling in. (A node added as a plain `ssh` docker
-host, the arrangement from before the agent, still runs compose from here
-over ssh.)
+open daemon port, nothing dialing in.
 
 **CI runners per node, one per git host.** The same fold lists the node's
 runners and adds one with its host, address and token (kept root-only on
@@ -1455,8 +1440,8 @@ name>` plus any extra, so a workflow's `runs-on` names the node it should
 land on whichever host its repository is on. Each row says whether its
 runner is listening or busy; Remove deregisters it first. `bb ci-labels` lists every label the registry knows
 and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
-checks `runs-on` against runners that exist. The container's own runner
-stays until a node runner has taken a real job.
+checks `runs-on` against runners that exist. This container runs no runner
+of its own.
 
 **A toolchain that needs another says so, and the missing one is installed
 first.** `android-tools` drives `sdkmanager`, which is a Java program:
@@ -1472,11 +1457,12 @@ driving a browser through Playwright, which declares it.
 pair.** An NFS export mounted by the controller and by a node is one
 directory, and two machines unpacking one toolchain into it at once is a
 broken install nobody can debug, so a job waits for one on a machine that
-shares the store only when both touch the same toolchain (the Android SDK,
-one tree that sdkmanager keeps, counting as one), in both directions; two
-different toolchains install on two machines side by side, and a check, the
-NVIDIA driver, the container toolkit and system packages, which write no
-store, wait for nothing there. One machine still runs one toolchain job at a
+shares the store only when both write the same directory, in both
+directions. Each machine's toolchains are in a directory of its own, so in
+practice that is the Android system images under `<store>/shared`; toolchains
+install on two machines side by side, and a check, the NVIDIA driver, the
+container toolkit and system packages, which write no store, wait for
+nothing there. One machine still runs one toolchain job at a
 time. What identifies the pair is a marker file
 inside the store itself, not the mount: this container reaches the toolchain store
 through Unraid's FUSE layer while a node reaches the same bytes over NFS,
@@ -1582,14 +1568,15 @@ once as its row allows; the rest wait in order. **Cancel** on a row stops one
 where it is: a queued job never starts, a running one is killed and the row
 moves when the runner reports that it did, and nothing edits a job after the
 fact. The checkbox in the bar narrows the list to what is running or waiting.
-`bb jobs` prints the same list read-only, so a session can see what became of
-the work it asked for, and `bb jobs j_1a2b3c4d` prints one job's log. **Both
-are the whole queue, not one project's.** That is deliberate and worth
-knowing: the tab and the API scope a job to projects the account may see, and
-these read the store directly, so a session can be asked to look at why
-something failed on another project, which is the situation somebody is in
-when they ask for help. The log is the only copy: a node buffers it and posts
-it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
+`bb jobs [--node NAME] [--type T]` prints the same list read-only, so a
+session can see what became of the work it asked for, and `bb jobs ID
+[--all]` prints one job's log. Both ask the controller as the caller, so
+they are narrowed the way the tab is: a session sees its own project's jobs
+and its reads', and the nodes' own jobs (a toolchain install, a system
+change) only where the project's settings grant it the diagnostics, which is
+also what `bb diag` needs; a node's machine logs (`bb logs --node NAME`) are
+a grant of their own. The log is the only copy:
+a node buffers it and posts it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
 the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ### The Settings tab
@@ -1651,11 +1638,15 @@ header says *dev*, so the two dashboards are never confused. Each catalog
 entry carries the evidence that vetted it (`forges.py`, `vmtemplate.py`,
 the provisioner's family list), and an entry crosses over when a lab suite
 or a real run proves it. At its foot, **Reset BuilderBot** starts the
-controller over at *Create the owner*: accounts, node enrolments, project
+controller over at the setup page: accounts, node enrollments, project
 settings, git tokens, the notebook, memories and logs are moved into a dated
 `.reset-…` directory under `/config`, never deleted, and project files are
-not touched; it asks for the word `reset` typed, and the dashboard
-re-executes itself. Projects are trashed from the Projects tab, one at a
+not touched. Its dialog first offers to un-enroll every node, so each machine
+can be enrolled again afterwards, with the same box the Nodes tab's
+Un-enroll shows saying what un-enrolling takes off a machine and what it
+leaves; a node with a session or a container running cannot be ticked until
+they are ended. It asks for the word `reset` typed, waits for each node it
+un-enrolls to report, and the dashboard re-executes itself. Projects are trashed from the Projects tab, one at a
 time, the way they always were. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
@@ -1734,9 +1725,10 @@ that is not an administrator sees what belongs to its projects.
   a *locked* one is not in that category, and the report says how many
   findings that held back
   rather than quietly shrinking
-- a **Stop / Start** toggle for the runner, showing whichever one applies.
-  Stopping waits for GitHub to release the runner's session rather than
-  reporting success and leaving a listener behind
+- the **Runner** card: the nodes' CI runners (this container runs none),
+  each with its state (listening, running a job, installing, failed) and the
+  `runs-on` line that pins a job to its node; a row opens that node's CI
+  runner tab, where one is installed, started or removed
 - every `bb` command as a button, pinnable, typed into the terminal you are
   looking at, and a second card for **your own** command lists. Every such
   button grays out while the tab on screen is a Claude session or a document:
@@ -2234,12 +2226,12 @@ written for, and finding it still sitting there on the next step is how it
 gets sent twice.
 
 **Model and effort** are not questions in that box and are not applied by it.
-They are the project's own setting, at the bottom of its **settings dialog**
-(the gear on its row, which also gives the project a **color**: a bar down
-the left of its row and its notebook tab, so several open notebooks tell
-apart without reading each label), and `bb-tty` passes them as `--model` and `--effort`
-when it starts a session there, so a session that is up is already on them
-and a send is only ever the send.
+They are picked when the session starts (below), and `bb-tty` passes them as
+`--model` and `--effort`, so a session that is up is already on them and a
+send is only ever the send. The project's **settings dialog** (the gear on
+its row) gives the project a **color**: a bar down the left of its row and
+its notebook tab, so several open notebooks tell apart without reading each
+label.
 
 **How much of what a session adds lands on its own** is the last row of the
 same dialog: *Claude may* add to the roadmap, file bugs, add rules and fill
@@ -2265,7 +2257,13 @@ Model and Effort with Start, opening on the last ones picked here and naming
 on *Claude's default* the model the last session answered on. Start keeps
 the picks as yours for the project (`claude-prefs.json`, what the launcher
 reads) and opens the session on them. A new project's first session picks
-them beside its brief instead.
+them beside its brief instead. While a session of yours is running, the menu
+offers a red **Restart** beside Open tab and End session, which ends it and
+turns to the same Model and Effort before resuming the conversation; and
+the project's row says, under that session in the warning color, what has
+changed since it started that it will not see until it is started again (a
+toolchain installed on its node that puts something on `PATH`, or
+BuilderBot updated, whose briefing a session reads once), and why.
 
 **Changing it while a session is running asks about that session.** Some
 settings a session takes only when it starts: the
@@ -2280,8 +2278,7 @@ started with until you end it yourself. The setting lands either way;
 only the interruption is asked about. Anything mid-turn is lost when it is
 ended, which is the whole reason it asks. Everything else in the dialog
 (the build and test commands, the dials, where tests run) is read when it
-is used, so those save without a question. *Leave as is* passes no flag,
-and claude uses its own default.
+is used, so those save without a question.
 
 A group's own arrow **stands for its next step**: picking either lights both,
 because they are one choice. A crossed-off line cannot be sent at all; put it
@@ -2767,8 +2764,8 @@ fold cannot quietly stop describing what sessions get. Shut by default, since
 it is a thing to check rather than to read every time.
 
 Two settings shape that string without touching what you read in the
-notebook. Each person's **Replies** pick on a project, beside model and
-effort, says how wordy Claude's replies to them are there, and their
+notebook. Each person's **Replies** pick in a project's settings says how
+wordy Claude's replies to them are there, and their
 **Questions** pick how often Claude asks them, more, fewer or rarely; both
 ride the block as its own part and
 govern the replies and the asks only, so the notebook, commits and files are
@@ -3296,6 +3293,12 @@ by the map (`all`), since a proxy or a monitor that is nobody's has to see
 everybody's. nginx needs none of it yet, being on the host network; the
 owner is for the day a deployment of BuilderBot's sits on a bridge.
 
+The nginx tab keeps one list of public **Hostnames**, shared by every node's
+nginx (the operator, 12 Oct): a name is added once and shows where it is
+routed, and is deleted only when nothing routes it, the refusal saying
+where it is. A route's hostname is picked from that list, so several routes,
+nodes and projects' containers use one name without typing it again.
+
 nginx keeps up to date like the toolchains and the agent (R192, the
 operator, 11 Oct). The controller reads the registry's tag list once a week
 (Check now on the nginx tab reads it at once) and keeps the newest release
@@ -3387,6 +3390,16 @@ on its row, including one that pushes with a **deploy key**. Setting one there
 does not switch anything by itself: git never asks a credential helper about an
 ssh remote, so a project with an `ssh://` or `git@` origin goes on using its
 key however many tokens are stored for it.
+
+The same section holds the project's **deploy key**, beside the token:
+**Make a key** makes one and **Paste a key** keeps one you already have. The
+private half goes on stdin to a root-only helper (`deploy-key`, the builder
+account's second sudo rule), which keeps it under `/config/deploy-keys` and
+loads it into the shielded agent, so a session pushes with it and never
+reads it. The public half is shown with **Copy public key** and a link to
+the host's deploy-keys page, the key becomes the ssh remote to switch to,
+and a key in use is not forgotten out from under the push. A key dropped
+into the secrets folder's `ssh/` by hand works as before.
 
 None of this is GitHub's alone. The same dialog, the same file and the same
 switch serve a Gitea, a Forgejo, a GitLab or anything else git can reach; only
@@ -3746,6 +3759,14 @@ another project can still reach this directory through Bash.
 to make the **owner** account, and it is the only page it serves until you
 have; nothing else is reachable, signed in or not. So open it as soon as the
 container is up: until somebody claims it, whoever can reach the port can.
+The setup page follows (R199): the controller's basics, where what grows is
+kept and when an idle Claude session ends, each with its default shown and
+staying under the Settings tab afterwards, and then a first node, which
+cannot wait. **Create sandbox VM** or **Enroll node** on the Nodes tab under
+the page makes it, and **Finish** stays shut, on the server too, until a
+node is enrolled, answering and running sessions: a hosting-only node holds
+no code, so a project would have nowhere to work or build. A public hostname
+and hosting-only nodes come later, from Settings and Enroll node.
 
 Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped
@@ -3782,8 +3803,11 @@ offers neither, with the reason on the row.
 
 **A project's Claude button knows which node it is about.** Where this
 account's session is already running, the press opens the chooser rather
-than jumping to the tab: **Open tab** and **End session** for the node it
-runs on, and the project's other nodes offered beside it, so a session on a
+than jumping to the tab: **Open tab**, a red **Restart** and **End session**
+for the node it runs on (Restart ends the session, asks the model and effort
+as Resume and New conversation do, and resumes the same conversation, so it
+starts fresh on whatever changed since), and the project's other nodes
+offered beside it, so a session on a
 second node can be started from the same place. Where this account is
 signed in on the project's node, the press starts the session or opens the
 chooser with Resume and New conversation, as it always has. Where
@@ -4118,7 +4142,8 @@ an agent from another window, and the Nodes tab's Update is what clears it.
   gigabytes and a node's own disk may not have them.
 - **Publishing**: from a session, whatever the project's own credentials
   allow on its node (`gh release create`, Gradle publish tasks); from a shell
-  on the controller, `npm publish` with `NPM_TOKEN`. An Android build is
+  on the controller, `npm publish` with an `NPM_TOKEN` from an `*.env` file
+  in the secrets folder. An Android build is
   signed with `bb sign`, on the node, with a key the session never sees;
   any other signing key belongs in CI secrets, never the image.
 
@@ -4142,22 +4167,27 @@ All of them persist across updates, are secret-redacted, and move together to
 the `/logs` mount if you map one.
 
 **Kept for a number of days, not a number of boots.** Thirty by default, set
-in the dashboard's settings menu: the gear, beside the color schemes. A
+as **Days of logs kept** in the Logs section of the Settings tab, and one
+policy for everything the controller keeps: these generations, the archived
+CI runs and the jobs' logs. It runs every hour as well as on Apply, and a
+live file past 64 MB is moved to its next generation then. A
 count was the wrong unit for the question anybody has (*was that this week?*)
 and a container in a crash loop can burn five generations in a minute;
-a ceiling of sixty generations survives for exactly that case.
+a ceiling of sixty generations survives for exactly that case. A running
+job's log keeps its first megabyte and its newest, 16 MB in all, with one
+line where the middle went.
 
 **Apply crops.** Lowering the number deletes what it already excludes, then
-and there, rather than waiting for the next boot, which is why it is a button
+and there, rather than waiting for the next sweep, which is why it is a button
 and not a field that saves itself: a number input fires `change` on its way
 through every value the keyboard passes, so typing `30` over `300` would have
 pruned at `3` in passing. Pressing it without changing anything is a
-crop-now, which is the other thing you sometimes want. The same menu
+crop-now, which is the other thing you sometimes want. The same section
 downloads this session's logs as one file, or everything kept as a `.tar.gz`,
 or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
 the reports sessions made about BuilderBot among it, redacted and on the audit
-trail), and clears the kept generations without touching the ones being
-written. Below it, **Clear reports** deletes every report sessions made about
+trail), and **Clear** deletes the kept generations, the archived CI runs and
+every finished job's log without touching the ones being written. Below it, **Clear reports** deletes every report sessions made about
 BuilderBot, after a confirmation that says how many; the numbers carry on, so a bug that names report #3 never meets a
 second one, and a session cannot clear them.
 
@@ -4173,6 +4203,11 @@ the same retention now.
 
 ## A Mac as a node
 
+Enrolling a Mac is a dev feature: Enroll node offers it, tagged *(dev)*, and
+the controller serves `provision-macos.sh`, only while *Offer dev features*
+is on, since the Mac path has not been proven end to end; a node that is
+already a Mac keeps working either way.
+
 `nodes/provision-macos.sh` enrolls a Mac as a **guest** node (bare, it prints
 its help; the command to run is the one **Enroll node** gives you): one
 directory
@@ -4185,7 +4220,7 @@ tools, python3, Homebrew, Xcode, room, and whether the controller answers.
 What a Mac node is for is what only a Mac builds: iOS, macOS, the Apple
 half of a Flutter app. `--toolchains /Volumes/SDK` points its toolchain store at
 the same share the Linux nodes use, mounted over SMB; its toolchains land under
-`darwin-arm64` (or `darwin-x86_64`) in it and nobody else's are touched. The
+its own directory in it, named by its node id, and nobody else's are touched. The
 Toolchains tab shows the node as a Mac and offers what the catalog packages for
 `darwin`: the JDK, Node, Go and Flutter resolve their macOS downloads
 through the same recipes, and `xcodes` installs and switches Xcode versions

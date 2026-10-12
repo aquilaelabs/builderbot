@@ -289,6 +289,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node keeps its own logs bounded and readable: job output posted as it comes with a meter as its last frame, the terminal and runner logs, runner diagnostics, container logs and the journal all capped, faults said once rather than every few seconds (1586bdc)
 - The Claude button's menu no longer blinks or loses a press while the page updates, and offers Restart beside End session: the session ends and resumes the same conversation, starting fresh so it sees what changed (9b745b7)
 - A node's Toolchains tab lists only the toolchains its platform can have; the Not for this node fold is gone (0202f34)
+- The README is a front page (what BuilderBot is, what it does, pictures, where the docs are), and the settings, the bb command list and Android signing are in docs/reference.md, with docs/README.md as the index (9ed3126)
 
 ### Removed
 

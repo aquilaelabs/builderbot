@@ -1,7 +1,7 @@
 """Behind three of `bb lint`'s own checks (cmd_lint in bb): whether this
 project's workflows pin its node's runner, whether an XML file is
 well-formed, and whether the container's settings agree across compose,
-.env.example, the Unraid template and the README.
+.env.example, the Unraid template and docs/reference.md.
 
 The first argument is the check. `runner` takes nodes.py's path and the
 project's node, with DASHBOARD_STATE saying where the store is; `xml`
@@ -151,7 +151,7 @@ def settings():
     paths = {c.get("Target"): c.get("Default") or "" for c in root.iter("Config") if c.get("Type") == "Path"}
     # A row may name two at once, `PUID` / `PGID` | `99` / `100`, paired in order.
     readme = {}
-    for m in re.finditer(r"^\|\s*((?:`[A-Z][A-Z0-9_]+`(?:\s*/\s*)?)+)\s*\|\s*([^|]*)\|", open("README.md").read(), re.M):
+    for m in re.finditer(r"^\|\s*((?:`[A-Z][A-Z0-9_]+`(?:\s*/\s*)?)+)\s*\|\s*([^|]*)\|", open("docs/reference.md").read(), re.M):
         names = re.findall(r"`([A-Z][A-Z0-9_]+)`", m.group(1))
         defs = [x.strip().strip("`") for x in m.group(2).split(" / ")] if len(names) > 1 else [m.group(2).strip().strip("`")]
         for i, n in enumerate(names):
@@ -167,9 +167,9 @@ def settings():
         elif tmpl[v] != d:
             bad.append(f"{v}: compose defaults to {d!r}, the Unraid template to {tmpl[v]!r}")
         if v not in readme:
-            bad.append(f"{v} is passed by compose and missing from the README's reference")
+            bad.append(f"{v} is passed by compose and missing from docs/reference.md")
         elif readme[v] != d and not (d == "" and readme[v] in ("*(none)*", "*(empty)*")):
-            bad.append(f"{v}: compose defaults to {d!r}, the README to {readme[v]!r}")
+            bad.append(f"{v}: compose defaults to {d!r}, docs/reference.md to {readme[v]!r}")
     for v in sorted(set(tmpl) - set(env)):
         bad.append(f"{v} is in the Unraid template and compose does not pass it")
     for target, d in sorted(paths.items()):
@@ -183,7 +183,7 @@ def settings():
     for b in bad:
         print(f"  [FAIL] {b}")
     if not bad:
-        print(f"  [ok]   {len(env)} settings and {len(paths)} paths agree across compose, .env.example, the template and the README")
+        print(f"  [ok]   {len(env)} settings and {len(paths)} paths agree across compose, .env.example, the template and the reference")
     sys.exit(1 if bad else 0)
 
 

@@ -58,7 +58,8 @@ shipped as one zip that python runs as it would a script), which dials into the 
 (`channel.py` on that side: enroll, hello, work, result) and needs no port
 of its own; the controller keeps the registry and the job queue in
 `nodes.py`. `nodes/provision-linux.sh` makes a Linux machine a node,
-`nodes/provision-macos.sh` a Mac, `nodes/bb-session` is the root helper
+`nodes/provision-macos.sh` a Mac (a dev feature, offered only with Offer dev
+features on), `nodes/bb-session` is the root helper
 that gives a session its own view of its project. The design record is
 `docs/nodes.md`; the walkthroughs `docs/sandbox-vm.md` and `docs/unraid.md`.
 
@@ -80,8 +81,10 @@ a project's sessions about this environment*.
 The controller's state is `/config`: SQLite (`db.py`, with
 `scripts/dashboard/migrations/`) for the registry and the queue, and one
 JSON file per feature beside it, written through `statefile.py`. A node's
-big downloads live on the toolchain store, outside the image, managed by
-`scripts/lib/sdk.sh` from `config/toolchains.json`. Explained in
+big downloads live on the toolchain store, outside the image, in a directory
+of the node's own (`<store>/<node id>`; only the Android system images are
+shared, at `<store>/shared`), managed by `scripts/lib/sdk.sh` from
+`config/toolchains.json`. Explained in
 how-it-works.md under *The toolchain store lives outside the image*.
 
 ## The asks
@@ -96,8 +99,9 @@ before touching it* and *The dev instance and the Docker manager*.
 
 ## Where the rest is
 
-- `README.md`: the front page, the configuration reference, the bb
-  reference (written from `bb help`).
+- `README.md`: the front page; `docs/README.md` the index of the docs.
+- `docs/reference.md`: the configuration reference, the bb reference
+  (written from `bb help` by `tools/bb-ref.sh`), and Android signing.
 - `docs/decisions.md`: the design decisions with their dates and reasons.
 - `docs/layout.md`: every file, held to the tree by `bb lint`.
 - `docs/users.md`: accounts, roles, what each may reach.

@@ -40,7 +40,7 @@ those rows. Nothing else.
 | **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
 | **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the runner section of the node's row on the Nodes tab; kept root-only on the controller. Never visible to sessions |
 | **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | Made or pasted under **Deploy key** in a project's settings (kept at `/config/deploy-keys`, root-only), or dropped into `/secrets/ssh/` by hand. Either way loaded into a root-owned agent: usable by git, unreadable by sessions |
-| **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
+| **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog or the project's settings, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
 **Runner scope decides the runner token's permission**, and it is the only
 one that token needs:
@@ -69,10 +69,9 @@ changes is the blast radius rather than the exposure: it is scoped to one
 repository and named by that repository's `.git/config`, so a token that opens
 one repo opens one repo.
 
-**Pushing images from inside** needs the (off-by-default) Docker socket *and*
-a classic token with `write:packages`; fine-grained tokens don't cover GitHub
-Packages. Enabling the socket is root-equivalent on the host; see the notes
-at the end before doing it.
+**Pushing images** needs a classic token with `write:packages`;
+fine-grained tokens don't cover GitHub Packages. Images are built on a node,
+never in this container: it has no Docker socket (see the notes at the end).
 
 ## Shared step 2: log the Unraid host into GHCR
 
@@ -105,9 +104,10 @@ Create the appdata directories:
 mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 
-# The toolchain store: Android platforms/emulator/system images and any toolchain
-# you install later. On a normal share rather than appdata; it is bulk data,
-# it is not written constantly, and keeping it out of the image is the point.
+# The controller's toolchain store: the browsers `bb capture shot` uses. A node
+# keeps its own toolchains, in a directory of its own on the store its row
+# names. On a normal share rather than appdata; it is bulk data, it is not
+# written constantly, and keeping it out of the image is the point.
 mkdir -p /mnt/user/sdk
 chown 99:100 /mnt/user/sdk
 ```
@@ -242,9 +242,9 @@ The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
 on a project runs on that project's node, whose toolchain store holds the
 emulator (Toolchains tab) and its images (Emulator tab) and whose own
 `/dev/kvm` and card do the work. A node is a machine you enroll from the
-Nodes tab: `nodes/provision-linux.sh` on a VM or a spare box,
-`provision-macos.sh` on a Mac. Nothing here needs a device or a runtime flag
-for it.
+Nodes tab (**Enroll node**, or **Create sandbox VM**) on a VM or a spare
+Linux box; a Mac is offered only with **Offer dev features** on in Settings.
+Nothing here needs a device or a runtime flag for it.
 
 ### Web dashboard
 
@@ -264,6 +264,11 @@ notebook context.
    until somebody claims the container, whoever can reach the port can. After
    that, `bb users passwd <name>` changes a password and the Users tab adds
    everyone else
+4. **Finish the setup page.** It shows the controller's basics with their
+   defaults, then asks for the first node (**Enroll node** or **Create
+   sandbox VM** on the Nodes tab beneath it). The rest of the dashboard opens
+   once a node that runs sessions (not a hosting-only one) is enrolled and
+   answering: nothing runs without one
 
 You get container status and every node's runner, a rendered report of whatever SARIF your
 scanner drops in `/reports`, every `bb` command as a button that types into the
@@ -279,12 +284,12 @@ no Claude button, since a session cannot start there; a *locked* one keeps its
 button, ghosted, and a closed padlock after the name.
 A directory with a `.bbignore` file in it is not treated as a project: the
 container marks its own paths that way (the toolchain store, if you put it inside
-the projects share, as the default does), and you can drop the same file into
+the projects share), and you can drop the same file into
 anything you would rather the card ignored.
 
 **New project…** at the foot of the card creates one: a fresh local repo built
 from the name and description you give it, or a clone of a GitHub repository
-the container's deploy key or PAT can already reach, which needs only the URL:
+a deploy key or token can already reach, which needs only the URL:
 the name comes from the repository and the `CLAUDE.md` is drafted from its own
 README and build files.
 
@@ -324,12 +329,11 @@ What was *running* in them does not come back; that went down with the
 container. A Claude session is not the container's to lose: it is in its
 node's tmux and is still there when the dashboard comes back.
 
-**Both ports have to be reachable from your browser.** The page is served by
-one and the terminal websocket by the other; the terminal is a separate service
-rather than something the page proxies.
+**One port carries everything.** The page, its API and the terminal
+websocket are all on the dashboard port: the terminals are proxied under
+`/term`, behind the same sign-in, so there is no second port to open.
 
-**On the credential.** This is the same class of decision as the Docker socket.
-The terminal is a writable shell inside a container that holds your loaded
+**On the credential.** The terminal is a writable shell inside a container that holds your loaded
 ssh-agent and read-write mounts of every project, so anyone reaching it can
 push to your repos. On a trusted LAN with a real password that is a reasonable
 trade; exposed to the internet it is not, and no password makes it one.
@@ -408,7 +412,7 @@ Pick per your taste:
 | Approach | Result |
 |---|---|
 | Deploy key made or pasted in the project's settings, or an SSH key in `secrets/ssh/` | Usable *and* unreadable: the only option that gives both |
-| Per-project token, in the clone dialog | Session-readable by design, but scoped to the one repository that names it: a token that opens one repo opens one repo |
+| Per-project token, in the clone dialog or the project's settings | Session-readable by design, but scoped to the one repository that names it: a token that opens one repo opens one repo |
 | `gh auth login` in a session | Same exposure, and a separate token you can revoke independently |
 
 **How the SSH shielding works:** at startup a *root-owned* `ssh-agent` loads
@@ -427,9 +431,10 @@ form does that for you: it lists the loaded keys (their public halves,
 straight from the agent), and picking one writes the selector and alias
 and clones through them: the
 same picker also shows the public key to paste into the repo's
-**Settings → Deploy keys** on GitHub. Adding a *new* key is still the
-host-side flow above: drop the private key in `secrets/ssh/` and restart
-the container so the agent picks it up.
+**Settings → Deploy keys** on GitHub. A *new* key is made or pasted under
+**Deploy key** in the project's settings, or added host-side: drop the
+private key in `secrets/ssh/` and restart the container so the agent picks
+it up.
 
 The same picker appears when **linking** a local repo to GitHub (the chain
 icon on a project row that has no remote): pick the key, or none if a PAT
@@ -464,9 +469,9 @@ What happens then:
   isn't there to do it). Git works through the shielded agent keys; run
   `gh auth login` manually if you also want the API CLI.
 
-`bb doctor` shows which mode you're in: `runner credential: shielded` vs
-`in environment`, and `github ssh auth works (shielded agent key)` vs
-`(~/.ssh key file)`.
+`bb doctor` shows which mode you're in: `github ssh auth works (shielded
+agent key)` vs `(key file in ~/.ssh)`, and one line per stored runner token
+saying whether its host still accepts it.
 
 Honest limits: container-root can always read the stash (that's what makes
 the runner and the agent work); a session can still *use* the agent to push
@@ -557,7 +562,7 @@ not host-root.
 
 | Log | Where | Survives image updates? |
 |---|---|---|
-| Startup + runner supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
+| Startup + supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
 | ...or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share, e.g. on the array, and the log moves there automatically | ✅ |
 | CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
 | A node's own logs (its agent, CI runner, terminal server, its nginx, the system journal, the kernel ring, the previous boot) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
@@ -577,9 +582,10 @@ bb logs -p         # the previous boot
 bb logs -p 3       # three boots back
 ```
 
-Sixty generations at most are kept. A container stuck in a restart loop
-burns through them quickly, if that happens, raise it or grab the files off
-the share before restarting again.
+How long logs are kept is one policy for everything, **Days of logs kept**
+in Settings (30 by default), swept hourly. Sixty generations is only a
+ceiling: a container stuck in a restart loop burns through them quickly, so
+if that happens, grab the files off the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project is owned differently, fix that project once
@@ -596,8 +602,9 @@ Mixing direct-disk and user-share paths for the same data corrupts files.
 who can open a PR could run code on that machine.
 
 **Stopping cleanly.** Stop from the Docker tab (or `docker stop`) sends
-SIGTERM; the emulator is powered down and Claude sessions close their turn.
-A node's runner is unaffected: nodes do not stop with this container.
+SIGTERM and the open terminal tabs are saved. Claude sessions, emulators and
+runners are unaffected: they are on nodes, and nodes do not stop with this
+container.
 
 **Image size.** Nothing large is baked in any more: no JDK, no Android SDK,
 and the Playwright browsers live on the toolchain store, so a pull is well under
