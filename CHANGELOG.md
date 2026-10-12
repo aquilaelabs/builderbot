@@ -474,6 +474,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The status poll asks git about a project only when its repository has changed, and reads the uptime without starting a process, instead of three git commands per project and a ps on every poll (4893035)
 - Swift and other toolchains already installed update on a node: an update uses the verb that recipe has, or removes and installs again (ca8eae8)
 - A toolchain deleted from a node's store by hand reads as not installed within a hello, on the Toolchains tab and in the bell, instead of keeping the last check's current or update; a store emptied to start over offers every row for installing again (075cbca)
+- An Android package can be removed from the Toolchains tab when the Android command-line tools are not installed: its directory is deleted directly (a968c58)
 
 ### Security
 

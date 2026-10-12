@@ -82,6 +82,19 @@ sdkmgr() {
     # Every install goes past the licenses first; see below for why that is
     # here rather than at each call site.
     if [ "${1:-}" = --install ]; then sdk_android_licenses; fi
+    # Taking a package off needs no sdkmanager: without the command-line
+    # tools (removed, or never installed) the trash bin on an Android row
+    # could not remove it (the operator, 12 Oct). Its directory is the
+    # package; deleted directly.
+    if [ "${1:-}" = --uninstall ] && ! command -v sdkmanager >/dev/null 2>&1; then
+        local root d
+        root="${ANDROID_HOME:-$(sdk_dir android)}"
+        d="$root/${2//;//}"
+        case "$d" in */../*|*/..) die "not a package path: ${2:-}" ;; esac
+        log "no sdkmanager here (the Android command-line tools are not installed): removing ${d} directly"
+        rm -rf "${d:?}"
+        return 0
+    fi
     sdkmanager "$(sdk_root_flag)" "$@"
 }
 
@@ -1398,11 +1411,9 @@ sdk_remove() {
     fi
     case "$kind" in
         sdkmanager)
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here: every android:*
-   toolchain installs through it, and it comes from android-tools. On a node, tick
-   Android command-line tools on the Tools tab with that node picked; an android:*
-   toolchain should bring it along, and if it did not then this store has a
-   cmdline-tools directory with nothing in it, which is not the same thing."
+            # No refusal here without sdkmanager: removing needs only the
+            # package's directory, which sdkmgr deletes itself when the
+            # command-line tools are not there.
             local pkg="${what#android:}" v image="" rest
             if rest="$(sdk_image_flavor "$what")"; then
                 image="${rest%%	*}"; pkg="$image"
