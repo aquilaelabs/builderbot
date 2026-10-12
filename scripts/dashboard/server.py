@@ -2733,6 +2733,7 @@ if not NODES_OK:
     # where the module that queued it finishes it (roadmap #18).
     nodes.on_done("compose", devactions.compose_done)
     nodes.on_done(claudecode.JOB, claudecode.update_done)
+    nodes.on_done("toolchain", toolchains.node_job_done)
 # What Allow on a rebuild request actually starts (the Docker row's `ask`).
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.

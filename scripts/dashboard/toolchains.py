@@ -15,6 +15,7 @@ import contextlib
 import hashlib
 import json
 import os
+import platform
 import re
 import signal
 import sqlite3
@@ -103,6 +104,12 @@ def load_toolchains():
         # source kind, the same way platforms is (bug #43).
         if r.get("updatable"):
             row["updatable"] = True
+        # ...and the two source flags the installer's verb is chosen by
+        # (UPDATE_VERBS, the agent's tc_verbs): a recipe that refuses an
+        # existing directory, and an Android package that installs beside.
+        src = r.get("source") if isinstance(r.get("source"), dict) else {}
+        if src.get("fresh_only") or src.get("versioned"):
+            row["source"] = {k: True for k in ("fresh_only", "versioned") if src.get(k)}
         reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
         if reqs:
             row["requires"] = reqs[:4]
@@ -549,6 +556,10 @@ def job_is_automatic():
         return bool(_tc_job.get("auto"))
 
 
+# The recipes `bb toolchains update` knows, as the agent's tc_verbs has them.
+UPDATE_VERBS = ("flutter", "dotnet", "swift", "playwright")
+
+
 def _tc_worker():
     """Run the queued work one item at a time, keeping a tail of the output.
 
@@ -581,12 +592,18 @@ def _tc_worker():
             # `bb toolchains update` earned a usage line naming five toolchains the
             # operator had not asked about (bug #43); they go to install now,
             # which refuses with a sentence about the one they did.
-            verb = ("update" if _tc_path(probe) and row.get("updatable")
+            # The same rule as the agent's (tc_verbs): `update` only for a
+            # recipe that verb knows, since it dies on its usage line for the
+            # rest whatever the catalog's `updatable` says (12 Oct: thirteen
+            # recipes are updatable and fresh_only both).
+            src = row.get("source") or {}
+            has = _tc_path(probe) and not src.get("versioned")
+            verb = ("update" if has and (name in UPDATE_VERBS or name.startswith("android:"))
                     else "install")
-            # ...and one installed whose recipe cannot update in place is
+            # ...and one installed that cannot install over itself is
             # removed first (R193), where install alone dies with "already
             # installed": a remove that fails leaves the old one as it was.
-            if verb == "install" and _tc_path(probe) and not row.get("updatable"):
+            if verb == "install" and has and (src.get("fresh_only") or not row.get("updatable")):
                 r = run([BB, "toolchains", "remove", name], timeout=1800, register=_hold_child)
                 if r["code"] != 0:
                     with _tc_lock:
@@ -1074,7 +1091,50 @@ def payload_for_node(nid):
             "root": (store.get("path") or "") + ("/" + store["scope"] if store.get("scope") else ""),
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": checked, "sizing": False,
+            # What a node sharing this store is installing into it now: an
+            # install here waits for it (store_busy), so the tab ghosts
+            # Install selected and says why before the press, not after (the
+            # operator, 12 Oct).
+            "store_busy": sharers_busy(nid),
+            # Its move off the shared directory, while that job runs, and
+            # what on the store no node runs from any more (R196).
+            "moving": moving(nid), "cleanable": cleanable(nid),
             "items": items, "job": job or {"running": False}}
+
+
+def sharers_busy(nid):
+    """[{node, action, names}] for each toolchain or image job running on a
+    node that shares this one's store, and this container's own installer
+    where it shares it too."""
+    out = []
+    if not nodes:
+        return out
+    for other in store_sharers(nid):
+        if other["id"] == nodes.LOCAL:
+            if _tc_job["running"]:
+                out.append({"node": "this controller", "action": _tc_job["action"],
+                            "names": [x for x in [_tc_job["current"], *_tc_job["queue"]] if x]})
+            continue
+        for t in STORE_JOBS:
+            for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
+                sp = j.get("spec") or {}
+                out.append({"node": other.get("name") or other["id"], "action": sp.get("action") or t,
+                            "names": [str(x) for x in (sp.get("names") or [])][:8]})
+    return out
+
+
+def node_job_done(job, state):
+    """A toolchain job ended on a node: every node sharing its store asks
+    for a fresh census too, so its rows say what is in the store now rather
+    than at its next hello, ten minutes on (the operator, 12 Oct: the box
+    ticked on bb-sandbox-redhat and not on bb-sandbox, one share between)."""
+    nid = (job or {}).get("node") or ""
+    if not nodes or not nid:
+        return ""
+    for other in store_sharers(nid):
+        if other["id"] != nodes.LOCAL:
+            nodes.ask_hello(other["id"])
+    return ""
 
 
 DRIVER = "nvidia-driver"
@@ -1172,6 +1232,123 @@ def _landed_at(nid):
     return out
 
 
+def names_in(dirs):
+    """The recipes a store listing ({top, android}, store_dirs' shape) holds,
+    by the same reading the Toolchains tab's rows make of a node's own."""
+    top = set((dirs or {}).get("top") or [])
+    andr = set((dirs or {}).get("android") or [])
+    out = []
+    for p in TOOLCHAINS:
+        probe = p["probe"]
+        if probe.startswith("android:"):
+            here = probe.split(":", 1)[1] in andr
+        elif probe == "android-tools":
+            here = bool({"cmdline-tools", "platform-tools"} & andr)
+        else:
+            here = probe in top
+        if here:
+            out.append(p["name"])
+    return out
+
+
+# Each node's move off the shared <os>-<arch> directory (R196, the operator,
+# 12 Oct: reinstall per node, so every binary is built for its own distro):
+# one install job of what the old directory holds, queued once per node and
+# remembered here, so a move that failed is the Toolchains tab's to retry
+# rather than a job queued again every five minutes.
+
+def _moves():
+    try:
+        d = json.loads(Path(STATE / "toolchain-moves.json").read_text())
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def node_moves_due():
+    """Queue the move for each live node that has its own directory and an
+    old shared one still holding toolchains it has not got. The node ids
+    queued."""
+    if not nodes or not TOOLCHAINS:
+        return []
+    done, queued = _moves(), []
+    for n in nodes.node_list():
+        if n.get("kind") != "agent" or n.get("state") != "online" or not n.get("live") or n["id"] in done:
+            continue
+        rep = n.get("reported") or {}
+        dirs = rep.get("store_dirs") or {}
+        if "legacy" not in dirs or not _scope_of(n).startswith("n_"):
+            continue
+        plat = platform_of(n)
+        mine = set(names_in(dirs))
+        want = [x for x in names_in(dirs["legacy"]) if x not in mine
+                and supports(next((p for p in TOOLCHAINS if p["name"] == x), {}), plat)]
+        if any(j.get("state") in ("queued", "assigned", "running")
+               for j in nodes.jobs_for(node_id=n["id"], type="toolchain", n=5) or []):
+            continue
+        if want:
+            r = node_job("system", n["id"], "install", want)
+            if r.get("error"):
+                print(f"[toolchains] moving {n['name']}'s toolchains into its own directory: {r['error']}", flush=True)
+                continue
+            queued.append(n["id"])
+        done[n["id"]] = {"at": int(time.time()), "names": want}
+        write_json(STATE / "toolchain-moves.json", done)
+    return queued
+
+
+def cleanable(nid):
+    """[{dir, what}] at the top of this node's toolchain store that no node
+    runs from any more (R196): the old shared <os>-<arch> once every node on
+    the share has its own directory and has moved, and a directory named for
+    a node that is retired or unknown here (a node enrolled again starts
+    afresh under its new id, and leaves its old one behind). Never `shared`,
+    never a live node's."""
+    if not nodes:
+        return []
+    n = nodes.node(nid)
+    rep = (n or {}).get("reported") or {}
+    roots = list((rep.get("store_dirs") or {}).get("roots") or [])
+    if not roots:
+        return []
+    share = _store_share(n)
+    peers = [o for o in nodes.node_list(all=True) if o.get("kind") == "agent" and _store_share(o) == share] if share else [n]
+    live = [o for o in peers if o.get("state") != "retired"]
+    # ...and this controller's own, where it keeps Playwright's browsers for
+    # bb capture shot: its <os>-<arch> under the same share, which is the
+    # directory the nodes used to share, so it is never offered while the
+    # controller's store is this share.
+    mine = nodes.node(nodes.LOCAL) if getattr(nodes, "LOCAL", "") else None
+    own = {f"{platform.system().lower()}-{platform.machine() or 'unknown'}"} if mine and _store_share(mine) == share else set()
+    in_use = {_scope_of(o) for o in live} | {"shared"} | own
+    names = {o["id"]: o.get("name") or o["id"] for o in nodes.node_list(all=True)}
+    retired = {o["id"] for o in nodes.node_list(all=True) if o.get("state") == "retired"}
+    moves = _moves()
+    unmoved = [o for o in live if "legacy" in ((o.get("reported") or {}).get("store_dirs") or {})
+               and (o["id"] not in moves or moving(o["id"]))]
+    out = []
+    for d in roots:
+        if d in in_use:
+            continue
+        if re.fullmatch(r"[a-z]+-[a-z0-9_]+", d) and not d.startswith("n_"):
+            if not unmoved and all(_scope_of(o).startswith("n_") for o in live):
+                out.append({"dir": d, "what": "the directory every node shared before each had its own"})
+        elif re.fullmatch(r"n_[0-9a-f]{4,32}", d) and (d in retired or d not in names):
+            out.append({"dir": d, "what": f"{names[d]}'s, a node since retired" if d in names
+                        else "a node's no longer enrolled here"})
+    return out
+
+
+def moving(nid):
+    """What this node's move off the shared directory installs, while its
+    job runs, for the Toolchains tab's line; [] otherwise."""
+    m = _moves().get(nid) or {}
+    if not m.get("names") or not nodes:
+        return []
+    running = [j for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1) or []]
+    return list(m["names"]) if running else []
+
+
 def store_sharers(node_id):
     """Every other node whose toolchain store is the same share as this
     one's. Empty for the ordinary arrangement, one store per node."""
@@ -1181,9 +1358,20 @@ def store_sharers(node_id):
     mine = _store_share(me) if me else None
     if not mine:
         return []
+    # ...and the same directory in it: since R196 each node keeps its own
+    # (<store>/<node id>), so nodes on one share share nothing but the
+    # Android system images, and an install on one waits for none on
+    # another. A node not on R196 yet reports the old <os>-<arch> scope,
+    # and two of those still share it.
+    scope = _scope_of(me)
     return [n for n in nodes.node_list()
             if n["id"] != node_id and n["state"] != "retired"
-            and _store_share(n) == mine]
+            and _store_share(n) == mine and _scope_of(n) == scope]
+
+
+def _scope_of(n):
+    """The directory under its toolchain store a node's toolchains are in."""
+    return str((((n or {}).get("reported") or {}).get("stores") or {}).get("toolchains", {}).get("scope") or "")
 
 
 # The census spells an arch the way uname does; the catalog uses the
@@ -1716,6 +1904,8 @@ def versions_loop():
                 due = time.time() + TC_CHECK_EVERY
         with contextlib.suppress(Exception):
             node_checks_due()
+        with contextlib.suppress(Exception):
+            node_moves_due()
         time.sleep(300)
 
 
@@ -1774,6 +1964,18 @@ def verb(action, req, principal):
         # headroom before a byte is downloaded.
         if nodes is None:
             return {"error": "the node store did not open"}, 500
+        if action == "clean":
+            # What the store holds that no node runs from (cleanable), taken
+            # off by a job on this node; only the names offered, never a path.
+            offered = {c["dir"] for c in cleanable(nid)}
+            want = [d for d in (req.get("names") or []) if d in offered]
+            if not want:
+                return {"error": "nothing on this store is waiting to be taken off"}, 400
+            if (why := store_busy(nid, None)):
+                return {"error": why}, 409
+            r = nodes.job_add(principal, {"node": nid}, "toolchain", {"action": "clean", "names": want,
+                                                                     "timeout": 3600})
+            return (r, 400) if r.get("error") else ({"ok": True, "job": r.get("job"), "queued": want}, 200)
         if action not in ("install", "remove", "sysdeps", "check"):
             return {"error": "a node takes install, remove, sysdeps or check"}, 400
         node = nodes.node(nid)

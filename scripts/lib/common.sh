@@ -131,7 +131,13 @@ sdk_store_root() {
 # Windows machine only if their binaries do not land on top of each other,
 # so everything installed lives one level down from the share (roadmap
 # R19); the agent on a node keeps the same rule, in the same words.
-sdk_scope() { printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname -m)"; }
+# On a node the agent names it (BB_SDK_SCOPE): since R196 each node keeps its
+# own directory, its node id, and a platform's name is only the fallback for
+# this container and a node whose agent predates that.
+sdk_scope() {
+    if [ -n "${BB_SDK_SCOPE:-}" ]; then printf '%s' "$BB_SDK_SCOPE"; return; fi
+    printf '%s-%s' "$(uname -s | tr '[:upper:]' '[:lower:]')" "$(uname -m)"
+}
 
 # sdk_root: where THIS machine's toolchains are, the store's scope directory.
 # Every install, probe and PATH entry is relative to this.

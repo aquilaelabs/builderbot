@@ -2,6 +2,7 @@
 import contextlib
 import json
 import os
+import re
 import platform
 import subprocess
 from .base import DEFAULT_STORES, NODE_JSON, STORE_DENY_EXACT, STORE_DENY_UNDER, _run, log
@@ -146,9 +147,41 @@ STORE_ID_FILE = ".bb-store-id"
 # flat store into its scope ran on 9 Sep 2026 and was taken out again.)
 
 
-def tc_scope():
-    """This machine's scope directory name: <os>-<arch> as uname spells them."""
+# This node's own directory under the toolchain store (R196, the operator, 12
+# Oct): its node id, so no two machines share a directory of toolchains, and
+# an id is never renamed or reused, so nothing ever moves. It was <os>-<arch>,
+# one directory for every machine of a platform, and a session on one node
+# met a toolchain another node was replacing, with two distros' binaries in
+# one place. Set by the agent from its state at start (use_scope); the
+# platform's name stands in only for a node not enrolled yet.
+_SCOPE = {"name": ""}
+_ID = re.compile(r"n_[0-9a-f]{4,32}")
+
+
+def legacy_scope():
+    """The directory every machine of this platform shared before R196."""
     return f"{platform.system().lower()}-{platform.machine() or 'unknown'}"
+
+
+def tc_scope():
+    """This machine's scope directory name under the toolchain store: the
+    node's id once known, the old shared <os>-<arch> before that."""
+    return _SCOPE["name"] or legacy_scope()
+
+
+def use_scope(store, node_id):
+    """Make <store>/<node id> this node's directory. Returns the name in use."""
+    node_id = str(node_id or "")
+    if not _ID.fullmatch(node_id):
+        return tc_scope()
+    if store and os.path.isdir(store):
+        try:
+            os.makedirs(os.path.join(store, node_id), exist_ok=True)
+        except OSError as e:
+            log(f"toolchains: could not make {os.path.join(store, node_id)} ({e}); staying with {tc_scope()}")
+            return tc_scope()
+    _SCOPE["name"] = node_id
+    return node_id
 
 
 def tc_root(state):
@@ -302,6 +335,26 @@ def store_dirs(state):
         d = os.path.join(store, entry["dir"])
         if os.path.isdir(d) and not os.path.exists(os.path.join(d, need)):
             out.setdefault("incomplete", []).append(entry["name"])
+    # ...and what is still in the directory every machine of this platform
+    # shared before R196, while this node has its own: the controller moves
+    # those into this node's directory by installing them again here.
+    base = (state.get("stores") or {}).get("toolchains") or ""
+    old = os.path.join(base, legacy_scope()) if base and tc_scope() != legacy_scope() else ""
+    if old and os.path.isdir(old):
+        leg = {"top": [], "android": []}
+        with contextlib.suppress(OSError):
+            leg["top"] = sorted(x for x in os.listdir(old) if not x.startswith("."))[:64]
+        with contextlib.suppress(OSError):
+            leg["android"] = sorted(os.listdir(os.path.join(old, "android")))[:64]
+        out["legacy"] = leg
+    # ...and the directories at the top of the store, whose names say whose
+    # they are: a node's id, the old shared one, `shared`: what is there
+    # that no node runs from any more is the controller's to offer for
+    # removal (R196).
+    if base and tc_scope() != legacy_scope():
+        with contextlib.suppress(OSError):
+            out["roots"] = sorted(x for x in os.listdir(base)
+                                  if not x.startswith(".") and os.path.isdir(os.path.join(base, x)))[:64]
     return out
 
 

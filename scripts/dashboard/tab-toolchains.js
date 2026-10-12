@@ -488,6 +488,10 @@ function renderToolchainsInto(i){
     <span class="sp"></span>
     <button type="button" id="tcRefresh"
       title="read this store again: what is installed, and how big it is">Refresh</button>`);
+  // What a node sharing this store is doing in it now (the operator, 12
+  // Oct): an install here would wait for it, so Install selected is ghosted
+  // and the line above says who and what, while it lasts and no longer.
+  const sbusy = (onNode && d.store_busy) || [];
   surf.list.innerHTML = `
     <div class="tchead">${onNode
       ? (d.root
@@ -510,6 +514,15 @@ function renderToolchainsInto(i){
       : "No toolchain store found."}</div>
     ${pstale ? `<div class="tchead warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div>` : ""}
+    ${onNode && (d.moving || []).length ? `<div class="tchead tcmoving">Moving its toolchains into its own directory on the store: ${
+      esc(d.moving.join(", "))} ${d.moving.length === 1 ? "is" : "are"} being installed again for this node, from the directory every node shared before.</div>` : ""}
+    ${onNode && (d.cleanable || []).length && mayToolchains() ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
+      d.cleanable.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</span><span class="sp"></span>
+      <button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button></div></div>` : ""}
+    ${sbusy.length ? `<div class="tchead warn tcshared">${sbusy.map(b => `${esc(b.node)} is ${
+      b.action === "remove" ? "removing" : b.action === "check" ? "checking" : "installing"} ${
+      esc((b.names || []).join(", ") || "toolchains")}`).join("; ")} in the toolchain store this node shares: an install here waits until ${
+      sbusy.length === 1 ? "it is" : "they are"} done.</div>` : ""}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
       // R51): the store is shared, so a toolchain installed from one node is
@@ -544,7 +557,7 @@ function renderToolchainsInto(i){
     })()}
     <div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
-      ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
+      ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale || sbusy.length ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >Install selected</button>`}
       ${busy && mayToolchains() ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
@@ -569,6 +582,16 @@ function renderToolchainsInto(i){
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));
+  // What no node runs from any more, taken off the store (R196).
+  el.querySelectorAll("[data-tcclean]").forEach(b => b.onclick = async () => {
+    const dirs = (toolchains?.cleanable || []).map(c => c.dir);
+    if (!dirs.length || !confirm(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`)) return;
+    busy(b, "Removing");
+    const j = await (await postJSON("/api/toolchains", {action: "clean", node: tcNode, names: dirs})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    else notify(`taking ${j.queued.join(", ")} off the store: a job on ${toolchains?.name || "the node"}`);
+    loadToolchains();
+  });
   el.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = () => tcAct("install", [b.dataset.tcneed]));
   el.querySelectorAll("[data-tcnodes]").forEach(b => b.onclick = () => openNodesTab());
   const dsel = el.querySelector("#tcDrvSel");

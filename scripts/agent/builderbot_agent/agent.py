@@ -11,7 +11,7 @@ from . import AGENT_VERSION
 from .coverage import _COV_OUT, _cov_write
 from .base import BEAT_S, log, own_digest, own_path
 from .controller import Controller
-from .stores import save_state
+from .stores import save_state, use_scope
 from .toolchains import share_images
 from .sessnet import SessionNet
 from .runners import RunnersMixin
@@ -30,6 +30,9 @@ from . import storage
 class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin):
     def __init__(self, state):
         self.state = state
+        # Its own directory under the toolchain store, by its node id (R196),
+        # before anything reads where its toolchains are.
+        use_scope((state.get("stores") or {}).get("toolchains") or "", state.get("node_id"))
         self.ctl = Controller(state["controller"], state["token"], state.get("pin", ""))
         self.jobs = {}
         self.lock = threading.Lock()
@@ -272,6 +275,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     save_state(self.state)
                 self.apply_ports_local(pl)
             n = r.get("node") or {}
+            # ...and again, a store the Nodes tab moved being made there too.
+            use_scope((self.state.get("stores") or {}).get("toolchains") or "", self.state.get("node_id"))
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in
             # node.json. Logged when they differ so the disagreement is

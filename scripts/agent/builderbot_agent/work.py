@@ -12,7 +12,7 @@ import urllib.request
 import zipfile
 from . import storage
 from .base import DRIVER, SANDBOX_BIN, TOOLKIT
-from .stores import tc_root
+from .stores import tc_root, tc_scope
 from .backends import pkg_backend
 from .toolchains import held_recipes, read_catalog, sdk_env, sysdeps_missing, tc_dir, tc_users, tc_users_said, tc_verbs
 from .gpu import DRIVER_PKG, _gpu_card
@@ -258,6 +258,35 @@ class WorkMixin:
         # ...and the container toolkit beside it, the machine's as well.
         ctk = [n for n in names if n == TOOLKIT]
         names = [n for n in names if n not in drv and n not in ctk]
+        if action == "clean":
+            # What the store holds that no node runs from (R196): the old
+            # shared <os>-<arch> directory, or a retired node's. The
+            # controller offered these names; each is checked again here: a
+            # plain name at the top of the store, never this node's own,
+            # never `shared`, and nothing running from it.
+            base = (self.state.get("stores") or {}).get("toolchains") or ""
+            bad = 0
+            for name in names:
+                job.step(name)
+                d = os.path.join(base, name)
+                if (not base or "/" in name or name.startswith(".") or name in ("shared", tc_scope())
+                        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) or not os.path.isdir(d)):
+                    job.say(f"refused: {name} is not a directory this node may take off the store\n")
+                    bad += 1
+                    continue
+                users = tc_users(d)
+                if users:
+                    job.say(tc_users_said(name, users))
+                    bad += 1
+                    continue
+                job.say(f"== taking {d} off the store\n")
+                try:
+                    shutil.rmtree(d)
+                except OSError as e:
+                    job.say(f"could not take {d} off: {e}\n")
+                    bad += 1
+            self.hello()
+            return ("failed", 1) if bad else ("succeeded", 0)
         if action == "check":
             # apt's lists brought current first, as root, so the census after
             # the check says what the driver would update to.

@@ -27,12 +27,12 @@ if (process.env.BB_COVERAGE_DIR){
   process.env.BB_COVERAGE_SUITE = 'agent';
   process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot_agent';   // the copy's modules count as the tree's
 }
-// The toolchain store is scoped by platform (roadmap R19): a machine's
-// toolchains live under <store>/<os>-<arch>, so every fixture written INTO a
-// store goes there, while the store's own path (the setting) stays the
-// share.
-const SCOPE = `linux-${execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim()}`;
-const PK = `${DIR}/agenttoolchains/${SCOPE}`;
+// A node's toolchains live under <store>/<node id> (R196; <store>/<os>-<arch>
+// before it, R19), so every fixture written INTO a store goes there, while
+// the store's own path (the setting) stays the share. Set once the node's id
+// is minted, below.
+let SCOPE = `linux-${execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim()}`;
+let PK = `${DIR}/agenttoolchains/${SCOPE}`;
 const NODE_JSON = `${DIR}/node.json`;
 const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 const api = async (path, body) => {
@@ -56,6 +56,8 @@ await ready(page);
 
 // ---- minting: a pending row, a one-time token -------------------------------
 const minted = await api('/api/v1/nodes', { action: 'enroll', name: 'agentbox', user: 'nobody' });
+SCOPE = minted.id;
+PK = `${DIR}/agenttoolchains/${SCOPE}`;
 // The node's boot id, once its census reports the session half.
 let nodeBoot = '';
 ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(minted.id),
@@ -2225,8 +2227,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
       }, 30000);
       const log = ef?.log || '';
-      ok(/root=.*agenttoolchains/.test(log) && /java=.*agenttoolchains\/linux-[a-z0-9_]+\/jdk/.test(log)
-         && /android=.*agenttoolchains\/linux-[a-z0-9_]+\/android/.test(log),
+      ok(/root=.*agenttoolchains/.test(log) && /java=.*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/jdk/.test(log)
+         && /android=.*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/android/.test(log),
          `a build job gets the node's toolchain store root, JAVA_HOME and ANDROID_HOME (${
            (log.match(/root=.*/) || [''])[0].slice(0, 60)})`);
       ok(/cilog=.*agentdata\/ci-logs/.test(log),
@@ -2325,8 +2327,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            JSON.stringify(im)})`);
       ok(!im.some(x => /android-33/.test(x.id)),
          '...and an empty image directory is not one: a half-removed tree is not a bootable image');
-      ok(/path=[^\n]*agenttoolchains\/linux-[a-z0-9_]+\/jdk\/bin/.test(log)
-         && /path=[^\n]*agenttoolchains\/linux-[a-z0-9_]+\/go\/bin/.test(log),
+      ok(/path=[^\n]*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/jdk\/bin/.test(log)
+         && /path=[^\n]*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');
       // ...composed from the catalog's layout, sent at hello, rather than
       // from a table in the agent that has to agree with three others.
@@ -2499,7 +2501,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // same bundle at start (roadmap #24), and a second unpack of the same
     // digest is exactly what the digest is for.
     ok(pfin && pfin.type === 'toolchain'
-       && (/bb .* unpacked into .*agenttoolchains\/linux-[a-z0-9_]+\/\.bb/.test(pfin.log)
+       && (/bb .* unpacked into .*agenttoolchains\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)\/\.bb/.test(pfin.log)
            || existsSync(`${PK}/.bb/current/scripts/bb`))
        && /== bb toolchains remove flutter/.test(pfin.log) && /not installed|unknown toolchain/.test(pfin.log),
        `the bundle lands in the toolchain store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
@@ -2812,7 +2814,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // The rest of that file is the node's job environment: without it a CI
     // job's PATH was the bare system's, and the browser suite skipped with
     // exit 0 on every run (bug B74).
-    ok(/^SDK_ROOT=.*(agenttoolchains|fakeshare\/toolchains)\/linux-[a-z0-9_]+$/m.test(renv)
+    ok(/^SDK_ROOT=.*(agenttoolchains|fakeshare\/toolchains)\/(?:linux-[a-z0-9_]+|n_[0-9a-f]+)$/m.test(renv)
        && /^PATH=.*(agenttoolchains|fakeshare\/toolchains)/m.test(renv)
        && /^ANDROID_HOME=.*\/android$/m.test(renv) && /^BB_CI_LOG_DIR=/m.test(renv),
        '...and carries the same toolchain environment every bb job on the node gets, so CI sees the store');
@@ -3234,7 +3236,15 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       ok(made.ok && (up3.ok || up3.started) && jk && /bind directory .*\/kept \(already there, left as it is\)/.test(jk.log || ''),
          `a bind directory that exists already is left as it is, and the job says so (${jk?.state}: ${
             ((jk?.log || '').match(/bind directory [^\n]*/) || [''])[0].slice(0, 90)})`);
-      await api('/api/devapp', { project: 'ep.silon', instance: 'kept', action: 'remove' });
+      const rm = await api('/api/devapp', { project: 'ep.silon', instance: 'kept', action: 'remove' });
+      // Waited for: `main` has no record until something writes one, and
+      // instances() offers it only while the project has none, so the
+      // env-set on main below met "no instance main" whenever this remove
+      // had not yet forgotten kept (a race the step used to win, 12 Oct).
+      await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${rm.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 60000);
     }
     // A compose file that reads its settings through `env_file: .env`: the
     // project's own .env, which BuilderBot never writes. The instance's env

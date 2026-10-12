@@ -830,4 +830,43 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   ok(nv('', '', '') === '' && kit() === '', '...and nothing at all on a machine with no NVIDIA card');
 }
 
+// A node sharing this store is installing into it (the operator, 12 Oct):
+// the tab says who and what at the top and ghosts Install selected, before
+// the press rather than refusing after it; nothing is said otherwise.
+{
+  await page.evaluate(() => {
+    if (!tabs.some(t => t.kind === 'toolchains')) openToolchains();
+    focusTab(tabs.find(t => t.kind === 'toolchains').id);
+  });
+  // Its own load landed first: planting the payload before that let the
+  // load wipe it, and the pane read "loading".
+  await page.waitForFunction(() => toolchains && tabOf(panes[active])?.kind === 'toolchains' && !!document.querySelector('.pane .doc.on .tctab'), null, { timeout: 15000 });
+  const seen = await page.evaluate(() => {
+    const was = { tcNode, toolchains };
+    const fake = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', items: [], machine: [],
+                   job: { running: false }, store_busy: [{ node: 'redhatbox', action: 'install', names: ['swift'] }] };
+    tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
+    const doc = document.querySelector('.pane .doc.on') || document;
+    const line = doc.querySelector('.tcshared')?.textContent.replace(/\s+/g, ' ') || '';
+    const dead = !!doc.querySelector('[data-tc="install"]')?.disabled;
+    toolchains = { ...fake, store_busy: [] }; tcRev++; drawPanes();
+    const quiet = !document.querySelector('.tcshared');
+    // Its move off the shared directory, and what no node runs from (R196).
+    toolchains = { ...fake, store_busy: [], moving: ['jdk', 'swift'],
+                   cleanable: [{ dir: 'linux-x86_64', what: 'the directory every node shared before each had its own' }] };
+    tcRev++; drawPanes();
+    const moveLine = document.querySelector('.tcmoving')?.textContent.replace(/\s+/g, ' ') || '';
+    const clean = document.querySelector('.tcclean')?.textContent.replace(/\s+/g, ' ') || '';
+    const rm = !!document.querySelector('.tcclean [data-tcclean].danger');
+    tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
+    return { line, dead, quiet, moveLine, clean, rm };
+  });
+  ok(/Moving its toolchains into its own directory on the store: jdk, swift are being installed again for this node/.test(seen.moveLine)
+     && /On this store and used by no node: linux-x86_64 \(the directory every node shared/.test(seen.clean) && seen.rm,
+     `a node's move into its own directory is said while it runs, and what no node runs from is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
+  ok(/redhatbox is installing swift in the toolchain store this node shares: an install here waits until it is done/.test(seen.line)
+     && seen.dead && seen.quiet,
+     `a sharing node's install is said at the top and ghosts Install selected, and nothing is said once it is done (${seen.line.slice(0, 70)})`);
+}
+
 await done(browser);

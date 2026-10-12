@@ -553,17 +553,27 @@ every project on the box: the thing the sandbox VM exists to prevent. At
 enterprise scale every one of these gets worse, and the fourth becomes a
 finding in somebody's report.
 
-### The toolchain store, scoped by platform
+### The toolchain store, one directory per node
 
 A node's toolchain store is the operator's setting: a share, or a directory
 of the node's own, and the node's toolchains live one level down, under
-`<store>/<os>-<arch>` (`pkg_scope()` in the agent, `sdk_scope` in
-`scripts/lib/common.sh`, both spelled as uname does: `linux-x86_64`,
-`darwin-arm64`). Everything else: the layout, the probes, the census, the
-bundle under `.bb`: is relative to that scoped root (`pkg_root()`,
-`sdk_root`), so one share serves a Linux box and a Mac at once and the old
-refusal of two architectures on one store is gone. The census reports the
-scope beside the store's path. The Android system images are guest
+`<store>/<node id>` (R196, the operator, 12 Oct: `stores.tc_scope()` in the
+agent, and `sdk_scope` in `scripts/lib/common.sh` from the `BB_SDK_SCOPE`
+the agent sets in every job's, session's and runner's environment).
+Everything else: the layout, the probes, the census, the bundle under `.bb`:
+is relative to that root (`tc_root()`, `sdk_root`). It was `<os>-<arch>`, one
+directory for every machine of a platform, and a session on one node met a
+toolchain another node was replacing, with two distros' binaries in one
+place; a node's own directory shares nothing, so an install on one waits for
+no other, and a node enrolled again starts afresh under its new id. A node
+moving off the old shared directory reports what is still in it
+(`store_dirs.legacy`) and the controller installs those again into the
+node's own, once per node (`toolchains.node_moves_due`). What no node runs
+from any more (a retired node's directory, and the old shared one once every
+node on the share has moved) is offered for removal on the Toolchains tab,
+never `shared` and never the controller's own `<os>-<arch>`, where it keeps
+Playwright's browsers. The census reports the scope beside the store's
+path. The Android system images are guest
 artifacts, identical on every host, and live once under `<store>/shared`
 with each scope's `android/system-images` a symlink to them: kept by the
 agent on every hello (`share_images()`) and by the controller at boot
@@ -1573,7 +1583,7 @@ surface. The graduation lands with the first batch of controller settings
 be ceremony.
 
 **Project-scoped**, which node runs this project's work. One node, named in
-the project row's existing settings dialog beside model and effort (the
+the project row's existing settings dialog beside the person's own settings (the
 dialog and its poll plumbing already exist in `claude-prefs.json`, and a
 second surface for per-project settings would be a second place to look).
 Not a selector and not per-role: the operator dropped both, on 1 and 2
