@@ -172,6 +172,15 @@ await page.click('#bBell');
 // ...and the Docker row says so with Update, the word every row's update uses.
 await page.evaluate(() => openDocker());
 await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
+// System's row keeps what a person needs and loses what the nginx tab owns
+// (the operator, 13 Oct; R207): Up, Down, Remove and the update, no Edit,
+// Rebuild or Copy or move, and a line saying where its settings are.
+const sysBtns = await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => ({
+  has: [...r.querySelectorAll('.dmacts [data-dm]')].map(b => b.dataset.dm), rel: !!r.querySelector('[data-dmrel]'),
+  line: r.querySelector('.dmmanaged')?.textContent || '' }));
+ok(['up', 'down', 'remove', 'nginx-update'].every(b => sysBtns.has.includes(b)) && !sysBtns.has.includes('edit') && !sysBtns.has.includes('rebuild') && !sysBtns.rel
+   && /nginx tab/.test(sysBtns.line),
+   `BuilderBot's nginx row keeps Up, Down, Remove and the update and loses Edit, Rebuild and Copy or move (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
 ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
      && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),
    'the Docker tab\'s row of a node\'s nginx says the line is out, with Update as on every row');

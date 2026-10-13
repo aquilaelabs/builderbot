@@ -1313,6 +1313,11 @@ function dmRowsHtml(ins, job, blind){
     // forever.
     const mine = job && job.project === d.project && job.instance === d.instance;
     const busy = !!(mine && job.running);
+    // BuilderBot's own nginx (System's, R180): what a person changes about
+    // it is the nginx tab's, and Deploy there makes it again, so its row
+    // keeps Up, Down, Remove and the image update and loses Edit, Rebuild
+    // and Copy or move (the operator, 13 Oct; R207).
+    const managed = d.owner === "System";
     // A one-shot that ran and exited 0 (a seed, a migration) has done its
     // job: it is neither up nor down, and counting it as down said an
     // instance was partly up when nothing was wrong (B147).
@@ -1347,6 +1352,7 @@ function dmRowsHtml(ins, job, blind){
           `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
             esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
+        ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: its routes and certificates are the nginx tab's, and Deploy there makes it again</div>` : ""}
         ${d.compose_path ? `<div class="sub dim dmfrom">made from <code>${esc(d.compose_path)}</code></div>` : ""}
         ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : "bad"} dmreloc">${esc(d.relocating.line)}${
           d.relocating.busy ? '<span class="dots"></span>' : ""}</div>` : ""}
@@ -1376,9 +1382,9 @@ function dmRowsHtml(ins, job, blind){
               : "Start it: docker compose up -d"}">Up</button>
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
           title="Stop it and remove its containers: docker compose down">Down</button>
-        <button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
+        ${managed ? "" : `<button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
           title="${d.source === "file" ? "edit this container's compose file and env"
-                  : "edit the project's compose file and this container's env"}">Edit</button>
+                  : "edit the project's compose file and this container's env"}">Edit</button>`}
         ${(d.images_behind || []).length && !busy ? `<button type="button" data-dm="update"
           title="pull the newer images and start it again: docker compose pull, then up -d">Update</button>` : ""}
         ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
@@ -1388,7 +1394,7 @@ function dmRowsHtml(ins, job, blind){
             job.aborting ? "disabled" : ""}
             title="stop this build; what is already built is kept"
             >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-        <button type="button" data-dm="rebuild" ${
+        ${managed ? "" : `<button type="button" data-dm="rebuild" ${
           // A button that refuses is not information. This slept whenever the
           // build matched the code, which is defensible and was read as
           // broken: the operator pinned an instance to a branch, pressed
@@ -1404,8 +1410,8 @@ function dmRowsHtml(ins, job, blind){
               : (mine && job.error)
                 ? "run it again: the last attempt did not finish"
                 : "the last build is current; this builds it again anyway"}">${
-          d.built_rev ? "Rebuild" : "Build"}</button>
-        ${!mayDocker() ? "" : `<button type="button" data-dmrel ${busy || d.relocating?.busy ? "disabled" : ""}
+          d.built_rev ? "Rebuild" : "Build"}</button>`}
+        ${!mayDocker() || managed ? "" : `<button type="button" data-dmrel ${busy || d.relocating?.busy ? "disabled" : ""}
             title="to another node, its data with it: a copy beside it, or this one moved">Copy or move…</button>`}
         ${!mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
             busy ? "disabled" : ""}
