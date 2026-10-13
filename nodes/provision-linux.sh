@@ -1532,8 +1532,13 @@ mount_one() {
     # second onboarding walk, 16 Sep). Its exit is not an answer here; its
     # line count is.
     n="$({ findmnt -rno SOURCE -- "$path" 2>/dev/null || true; } | wc -l)"
+    # mount's own words are kept for the refusal below: swallowed, a mount
+    # the server would not allow this host read the same as a client that
+    # was not there, and a RedHat node's first Storage apply said only
+    # that nothing mounted (B704).
+    said=""
     if [ "$n" -eq 0 ]; then
-        mount "$path" 2>/dev/null || true
+        said="$(mount "$path" 2>&1 >/dev/null || true)"
         n="$({ findmnt -rno SOURCE -- "$path" 2>/dev/null || true; } | wc -l)"
     fi
     # One line PER mount at this path. The last is the one on top, and the
@@ -1557,6 +1562,7 @@ mount_one() {
         return 1
     fi
     warn "$path did NOT mount, and nofail means nothing said so."
+    [ -n "$said" ] && printf '   mount said: %s\n' "$(printf '%s' "$said" | tail -3 | tr '\n' ' ')"
     held="$(stores_under "$path")"
     [ -n "$held" ] && printf '   %s sits inside it, so that store is on the root disk until it mounts.\n' \
         "$(printf '%s' "$held" | tr '\n' ' ')"
