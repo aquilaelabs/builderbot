@@ -300,6 +300,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The README is a front page (what BuilderBot is, what it does, pictures, where the docs are), and the settings, the bb command list and Android signing are in docs/reference.md, with docs/README.md as the index (9ed3126)
 - What a session is handed opens with a short core of what holds every time, then the house rules, then the project's own lines and an index of the rest of the briefing as topics, each read whole with bb help TOPIC when the work reaches it; the roadmap and the bugs are a count and the verbs, and the items and bugs a prompt names, by number or by words shared with the title, arrive on that prompt, once a conversation (R202)
 - Every tab's corner button reads Refresh, the Storage and nginx tabs' Reload among them, and the button itself says Refreshing while the answer is on its way, where the Phone and Docker tabs said it beside the button (9297925)
+- The Settings tab's Public hostname group is Reach from outside, and its status line names the nodes that come in through the controller's tunnel; each node's row says how it reaches the controller (over the LAN, over WireGuard, or through the public hostname), as it was enrolled (326947e)
 
 ### Removed
 

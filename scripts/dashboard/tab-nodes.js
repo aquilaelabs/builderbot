@@ -459,6 +459,18 @@ Host ${esc(alias)}
       <div class="sub">Then <code>ssh ${esc(alias)}</code>. In MobaXterm, whose own SSH sessions read no ssh config, make a Shell session that runs <code>ssh ${esc(alias)}</code>, or type it in its local terminal.</div>`;
 }
 
+// How the node reaches the controller, chosen in Enroll node and kept on
+// its record (the operator, 13 Oct: what is the node's reads on its row;
+// the controller's own tunnel stays in Settings). Read-only: changing it
+// is enrolling again.
+function nodeReachRow(n){
+  if (n.kind !== "agent") return "";
+  const t = n.config?.tunnel;
+  const how = !t ? "over the LAN" : t.kind === "wireguard" ? `over WireGuard, as ${esc(t.addr || "its tunnel address")}`
+    : `through ${esc(t.host || "the public hostname")}, the controller's tunnel`;
+  return `<div class="field ndreach"><span class="state">Reaches the controller ${how}; set when it was enrolled.</span></div>`;
+}
+
 function nodeDoorRow(n){
   if (n.kind !== "agent") return "";
   const d = n.reported?.door || n.config?.door;
@@ -592,7 +604,7 @@ function nodeSessionsSection(n){
   const list = n.reported?.sessions || [];
   let status, cls, body;
   if (n.config?.host_only){
-    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeToolsLine(n), {cls: "ok"});
+    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeToolsLine(n), {cls: "ok"});
   }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
@@ -628,7 +640,7 @@ function nodeSessionsSection(n){
   // (R121): a line at the foot of this section opens them. It was a band
   // between sections, which read as part of Sessions yet stayed when Sessions
   // folded, and sat without the section's inset (the operator, 7 Oct).
-  return docSection("nodes", "sessions", "Sessions", status, body + nodeHostRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls});
+  return docSection("nodes", "sessions", "Sessions", status, body + nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls});
 }
 
 // Claude Code on this node: this account's sign-in here (a login is one

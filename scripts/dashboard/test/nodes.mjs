@@ -1351,6 +1351,8 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: true } });
     await page.evaluate(async () => { await refresh(); await loadNodes(); });
     await page.waitForSelector(`${ROW} .nddoor [data-nd="door"]`, { timeout: 10000 });
+    ok(/Reaches the controller (over the LAN|over WireGuard|through )/.test(await page.$eval(`${ROW} .ndreach`, e => e.textContent)),
+       'the row says how the node reaches the controller, as it was enrolled, above its door');
     const doorRow = await page.$eval(`${ROW} .nddoor`, e => ({ text: e.textContent, on: e.querySelector('[data-nd="door"]').dataset.on,
       cmd: e.querySelector('.ndcmd')?.textContent || '' }));
     ok(/SSH door: cloudflared, open/.test(doorRow.text) && doorRow.on === '0' && /Shut it/.test(doorRow.text)

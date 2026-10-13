@@ -1617,7 +1617,7 @@ where each kind of thing that grows (project snapshots, job snapshots, the
 git relay's repositories, the Git view's working area, the logs) is kept,
 moved to a new empty path on Apply and switched once all of it is there,
 while the records, the database, the signing keys and the git credentials
-stay in the state directory (`paths.py`); its **Public hostname** group,
+stay in the state directory (`paths.py`); its **Reach from outside** group,
 where the controller runs the home tunnel itself (R176, `tunnel.py`): the
 hostname a node off the LAN dials, the tunnel's token from Zero Trust
 (a secret, said to be set and never shown back), and an optional Cloudflare
