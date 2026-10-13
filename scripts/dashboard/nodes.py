@@ -1584,6 +1584,12 @@ def node_session_net(principal, node_id, on):
         return {"error": "no such node"}
     if n["kind"] != "agent":
         return {"error": "only an agent node runs sessions"}
+    # A node whose agent says it cannot (firewalld owning the firewall, on
+    # Rocky) keeps the switch off: on, the launcher refused every session
+    # there while the row alone said why (B709, the dev pair, 13 Oct).
+    sn = ((n.get("reported") or {}).get("session_net") or {})
+    if on and sn.get("can") is False:
+        return {"error": f"this node cannot keep sessions to their own network: {sn.get('why') or 'its agent says it cannot'}"}
     conf = dict(n.get("config") or {})
     conf["session_net"] = bool(on)
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
