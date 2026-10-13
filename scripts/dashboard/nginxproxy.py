@@ -318,7 +318,7 @@ def set_cert(nid, cert, key, host=""):
         return got
     host = host or domain_of(got.get("names") or got.get("subject") or "")
     if not host:
-        return {"error": "that pair names no hostname: say what it is for under Known as"}
+        return {"error": "that pair names no hostname: say which domain it is for under Filed under"}
     d = _cert_dir(nid, host)
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name, text in (("cert.pem", cert), ("key.pem", key)):

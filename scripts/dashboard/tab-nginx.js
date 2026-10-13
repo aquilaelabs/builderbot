@@ -243,9 +243,9 @@ function nginxBody(n){
       <textarea id="ngKey" data-ng="key" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
     </div>
     <div class="field">
-      ${lbl("ngCertFor", "Known as")}
-      <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="the domain its names say, unless you name one" autocomplete="off" spellcheck="false">
-      <div class="hint">Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), which is what its routes resolve to; type a name only to file it under another. The same name again is a renewal.</div>
+      ${lbl("ngCertFor", "Filed under")}
+      <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="from the certificate's names" autocomplete="off" spellcheck="false">
+      <div class="hint">Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), and the routes under that domain find it. Name one only for a pair whose names say no domain (an address, localhost), or to file it under another.</div>
     </div>
     ${image}
     ${clash}
