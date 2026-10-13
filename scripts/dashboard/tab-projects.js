@@ -39,7 +39,7 @@ async function drawTrash(){
           title="${t.taken
             ? "a directory of that name is back under /workspace: move it first"
             : "move it back to /workspace, as " + esc(t.was || t.name)}">Put back</button>
-        <button type="button" class="danger" data-tpurge="${esc(t.name)}"
+        <button type="button" class="ic danger" data-tpurge="${esc(t.name)}" aria-label="delete for good"
           title="delete it and every file in it, for good">${BIN}</button>
       </span></div>`).join("");
   el.querySelectorAll("[data-trestore]").forEach(b => b.onclick = async () => {
