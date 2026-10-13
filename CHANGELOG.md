@@ -546,7 +546,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Toolchains
 
-- The Toolchains tab also lists what a project's build needs without pinning it: the build-tools its Android Gradle plugin version defaults to, and an emulator image for the level it compiles against (dce3331)
+- The Toolchains tab also lists the build-tools a project's Android Gradle plugin version defaults to when none is pinned, and the Emulator tab says which level its projects compile against with no image of it here, naming the image to pick (dce3331)
 
 ## 0.7.0: 2026-09-25
 

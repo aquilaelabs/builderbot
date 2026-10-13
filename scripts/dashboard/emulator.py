@@ -14,6 +14,7 @@ node HAS is its census (the agent walks its store); which images EXIST is
 Google's index, read here once an hour: an image is the same bytes on every
 host, so a node needs no network of its own to be offered one.
 """
+import re
 import threading
 import time
 from typing import Any
@@ -202,6 +203,32 @@ def _job(nid):
     return {"running": False}
 
 
+def level_of(image_id):
+    """The API level an image id is of: android-36, android-36.1 and
+    android-36-ext18 are all level 36."""
+    m = re.match(r"system-images;android-(\d+)", image_id or "")
+    return m.group(1) if m else ""
+
+
+def needed(n, imgs, rows):
+    """[{level, projects, pick}]: each level a project on this node compiles
+    against (compileSdk) that no image here is of, with the image to pick:
+    the index's plain google_apis image of that level (android-N, else the
+    newest android-N.x), or "" while the index has none."""
+    held = {level_of(i.get("id", "")) for i in imgs}
+    out = []
+    for level, who in sorted(toolchains.levels_needed(n["id"]).items(), key=lambda kv: -int(kv[0])):
+        if level in held:
+            continue
+        mine = [r["id"] for r in rows
+                if level_of(r["id"]) == level and r.get("kind") == "google_apis"
+                and re.fullmatch(r"system-images;android-\d+(\.\d+)?;google_apis;x86_64", r["id"])]
+        plain = [i for i in mine if "." not in i.split(";")[1]]
+        pick = plain[0] if plain else (sorted(mine, key=lambda i: i.split(";")[1])[-1] if mine else "")
+        out.append({"level": level, "projects": sorted({p for p, _ in who}), "pick": pick})
+    return out
+
+
 def payload(nid):
     n = nodes.node(nid) if nodes else None
     if not n or n["kind"] != "agent":
@@ -222,6 +249,10 @@ def payload(nid):
             # An agent too old to report its images is not a node with none.
             "known": "images" in rep,
             "missing": missing(n),
+            # The levels this node's projects compile against with no image
+            # of that level here (R215), each with the index's plain image
+            # of it in the rootable flavor to pick, where the index has one.
+            "needed": needed(n, imgs, c["rows"]),
             # A node that can never have them, and what they are packaged for:
             # said instead of a link to Toolchains, where both rows sit behind
             # "Not for this node".
@@ -234,17 +265,12 @@ def payload(nid):
             "job": _job(nid)}
 
 
-def node_job(principal, nid, action, image_id, offered=False):
+def node_job(principal, nid, action, image_id):
     """Queue an image add or removal on a node. Refused, with the reason,
     when the node cannot take it: no sdkmanager there, an id this server did
     not hand out, no room, or the store busy with another job. An add may
     name several (a list: the tab's Install selected, R121), one job adding
-    each in turn. `offered` is the Toolchains tab vouching for an id it
-    composed itself (the image a project's compileSdk implies, R215): still
-    a string this server handed out, drawn before the Emulator tab's index
-    was ever read, so the index is not asked about it; what it weighs is
-    unknown until then, and an image Google does not publish fails on the
-    node with sdkmanager's own words."""
+    each in turn."""
     ids = list(dict.fromkeys(image_id if isinstance(image_id, list) else [image_id]))
     if not ids or len(ids) > 20 or not all(isinstance(i, str) and i for i in ids) \
             or (action == "remove" and len(ids) != 1):
@@ -265,7 +291,7 @@ def node_job(principal, nid, action, image_id, offered=False):
                          "is what installs an image: install them from Toolchains first"}
     # What reaches a command line is a string this server handed out: an add
     # names one the picker was drawn from, a removal one THIS node reported.
-    if not ((action == "add" and (offered or all(is_choosable(i) for i in ids)))
+    if not ((action == "add" and all(is_choosable(i) for i in ids))
             or (action == "remove" and is_node_image(n, ids[0]))):
         return {"error": "not an image this server offered for that"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("toolchains") or {}

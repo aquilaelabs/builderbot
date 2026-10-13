@@ -185,6 +185,9 @@ function renderEmulatorInto(i){
       : (d.missing || []).length ? `<div class="tchead warn emneed">${esc(d.name)} has no ${
       esc(d.missing.join(" or "))} yet: <a href="#" id="emuToTc">install ${
       d.missing.length === 1 ? "it" : "them"} from Toolchains</a>.</div>` : ""}
+    ${(d.needed || []).map(nd => `<div class="tchead warn emlevel">${esc(nd.projects.join(", "))} compile${
+      nd.projects.length === 1 ? "s" : ""} against ${esc(nd.level)} and no image of that level is here${
+      nd.pick ? `: ${esc(nd.pick)} below is the plain one` : ""}.</div>`).join("")}
     ${job.state === "failed" && job.error ? `<div class="tchead bad">${
       job.action === "remove" ? "Removing" : "Adding"} ${esc(job.image)} failed: ${esc(job.error)}.
       The Jobs tab has its log.</div>` : ""}

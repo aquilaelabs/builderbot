@@ -1818,6 +1818,27 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       await hello(ANDROID);
     }
 
+    // A level a project compiles against with no image of it here is said
+    // on this tab, with the index's plain image of that level to pick (B720:
+    // the Toolchains tab had guessed the id and failed the job with it).
+    {
+      const { writeFileSync, mkdirSync, rmSync } = await import('node:fs');
+      mkdirSync(`${DIR}/ws/alpha/app`, { recursive: true });
+      writeFileSync(`${DIR}/ws/alpha/app/build.gradle.kts`, 'android {\n    compileSdk = 31\n}\n');
+      await napi('/api/prefs', { project: 'alpha', node: minted.id });
+      const lv = await emuApi();
+      const need = (lv.needed || []).find(x => x.level === '31');
+      ok(need && need.projects.includes('alpha') && need.pick === 'system-images;android-31;google_apis;x86_64',
+         `a level a project compiles against with no image of it here is said, with the index's plain image to pick (${
+           JSON.stringify(lv.needed)})`);
+      await page.evaluate(() => { emu = null; loadEmulator(); });
+      await page.waitForFunction(() => /alpha compiles against 31 and no image of that level is here: system-images;android-31/.test(
+        document.querySelector('.emutab .emlevel')?.textContent || ''), null, { timeout: 15000 });
+      ok(true, '...and the tab says so above the picker, naming the image');
+      await napi('/api/prefs', { project: 'alpha', node: '' });
+      rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });
+    }
+
     // An agent too old to report the field at all is not a node with no
     // images: the tab would otherwise say "no image" for a node never asked.
     const noField = { ...ANDROID }; delete noField.images;

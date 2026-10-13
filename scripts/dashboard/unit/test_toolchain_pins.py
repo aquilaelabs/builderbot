@@ -125,39 +125,70 @@ class Implied(unittest.TestCase):
         self.catalog('[versions]\nagp = "9.4.1"\n[plugins]\n'
                      'android-application = { id = "com.android.application", version.ref = "agp" }\n')
         self.assertEqual(toolchains.gradle_needs(self.proj), {
-            "build-tools;36.0.0": ["gradle/libs.versions.toml: the Android Gradle plugin 9.4.1 defaults to it"],
-            "system-images;android-37;google_apis;x86_64": ["app/build.gradle.kts: compileSdk 37"]})
+            "build-tools;36.0.0": ["gradle/libs.versions.toml: the Android Gradle plugin 9.4.1 defaults to it"]})
+        # The level it compiles against is the Emulator tab's question (B720).
+        self.assertEqual(toolchains.levels_needed("n_1"), {"37": [("shebang", "app/build.gradle.kts")]})
+        self.assertEqual(toolchains.levels_needed("n_2"), {})
         # A pinned buildToolsVersion is the project's own answer.
         (self.proj / "app" / "build.gradle.kts").write_text(
             'android {\n    compileSdk = 37\n    buildToolsVersion = "37.0.0"\n}\n')
         self.assertNotIn("build-tools;36.0.0", toolchains.gradle_needs(self.proj))
 
-    def test_the_rows_say_what_implies_them_and_whether_the_store_holds_it(self):
+    def test_the_row_says_what_implies_it_and_whether_the_store_holds_it(self):
         self.catalog('[versions]\nagp = "9.4.1"\n[plugins]\n'
                      'android-application = { id = "com.android.application", version.ref = "agp" }\n')
         rep = {"store_dirs": {"versions": {"build-tools": ["37.0.0"], "platforms": ["android-37.0"]}},
                "images": [{"id": "system-images;android-36;google_apis_playstore;x86_64", "api": "36"}]}
         rows = {r["name"]: r for r in toolchains.pin_rows("n_1", rep)}
-        self.assertEqual(sorted(rows), ["android:build-tools;36.0.0", "android:platforms;android-37",
-                                        "android:system-images;android-37;google_apis;x86_64"])
+        self.assertEqual(sorted(rows), ["android:build-tools;36.0.0", "android:platforms;android-37"],
+                         "no image row: an image is the Emulator tab's to pick (B720)")
         bt = rows["android:build-tools;36.0.0"]
         self.assertFalse(bt["installed"])
         self.assertEqual(bt["label"], "Android SDK Build-Tools 36.0.0")
         self.assertIn("the Android Gradle plugin 9.4.1 defaults to it", bt["about"])
         self.assertIn("lacks it", bt["about"])
-        im = rows["android:system-images;android-37;google_apis;x86_64"]
-        self.assertFalse(im["installed"], "a 36 image is not a 37 one")
-        self.assertEqual(im["label"], "Android emulator image 37")
-        self.assertIn("compileSdk 37", im["about"])
-        self.assertIn("lacks one", im["about"])
-        # Any flavor of the level counts as held.
-        rep["images"].append({"id": "system-images;android-37;google_apis_playstore;x86_64", "api": "37"})
-        rows = {r["name"]: r for r in toolchains.pin_rows("n_1", rep)}
-        self.assertTrue(rows["android:system-images;android-37;google_apis;x86_64"]["installed"])
-        # An agent that reports no images cannot say a level is missing.
-        del rep["images"]
-        self.assertNotIn("android:system-images;android-37;google_apis;x86_64",
-                         {r["name"] for r in toolchains.pin_rows("n_1", rep)})
+
+
+class EmulatorNeeds(unittest.TestCase):
+    """The Emulator tab says which level a node's projects compile against
+    with no image of it here, naming the index's plain image to pick."""
+    def setUp(self):
+        import emulator
+        self.emulator = emulator
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ws = Path(self.tmp.name)
+        for proj, level in (("shebang", 37), ("droid", 35), ("old", 34)):
+            (self.ws / proj / "app").mkdir(parents=True)
+            (self.ws / proj / "app" / "build.gradle.kts").write_text(f"android {{\n    compileSdk = {level}\n}}\n")
+        self.was = (toolchains.project_nodes, toolchains.WORKSPACE)
+        toolchains.project_nodes = lambda: {"shebang": "n_1", "droid": "n_1", "old": "n_1"}
+        toolchains.WORKSPACE = self.ws
+
+    def tearDown(self):
+        toolchains.project_nodes, toolchains.WORKSPACE = self.was
+        self.tmp.cleanup()
+
+    def test_an_image_is_of_its_level_whatever_its_minor_or_extension(self):
+        for iid, level in (("system-images;android-36;google_apis;x86_64", "36"),
+                           ("system-images;android-36.1;google_apis;x86_64", "36"),
+                           ("system-images;android-36-ext18;google_apis;x86_64", "36"),
+                           ("system-images;android-37.0;google_apis;x86_64", "37"), ("", "")):
+            self.assertEqual(self.emulator.level_of(iid), level, iid)
+
+    def test_the_levels_with_no_image_here_and_what_to_pick(self):
+        # API 37 is published as android-37.0 only; 35 has a plain image and
+        # an extension; 34 is held by a Play Store image, which counts.
+        rows = [{"id": "system-images;android-37.0;google_apis;x86_64", "kind": "google_apis"},
+                {"id": "system-images;android-37.0;google_apis_playstore;x86_64", "kind": "google_apis_playstore"},
+                {"id": "system-images;android-35-ext15;google_apis;x86_64", "kind": "google_apis"},
+                {"id": "system-images;android-35;google_apis;x86_64", "kind": "google_apis"}]
+        imgs = [{"id": "system-images;android-34;google_apis_playstore;x86_64"}]
+        got = self.emulator.needed({"id": "n_1"}, imgs, rows)
+        self.assertEqual(got, [
+            {"level": "37", "projects": ["shebang"], "pick": "system-images;android-37.0;google_apis;x86_64"},
+            {"level": "35", "projects": ["droid"], "pick": "system-images;android-35;google_apis;x86_64"}])
+        # While the index has not loaded, the level is still named, with nothing to pick.
+        self.assertEqual(self.emulator.needed({"id": "n_1"}, imgs, [])[0]["pick"], "")
 
 
 class CensusKeepsVersions(unittest.TestCase):

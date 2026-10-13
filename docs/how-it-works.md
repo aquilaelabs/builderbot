@@ -303,11 +303,12 @@ build-tools 36, with nothing on the tab to tick. Two more rows come from
 what a build needs with no line pinning it: the build-tools its Android
 Gradle plugin version defaults to when no `buildToolsVersion` says
 otherwise (read from the version catalog, a plugins block or the old
-classpath, against the table in the plugin's release notes), and an
-emulator image for each level a project compiles against, in the rootable
-flavor, which any flavor of that level satisfies; ticked here it runs as
-the Emulator tab's job, since sdkmanager puts it under the image tree the
-emulator reads. A project with no
+classpath, against the table in the plugin's release notes). The level a
+project compiles against is the Emulator tab's question instead: it says
+which of its node's projects compile against a level no image here is of,
+and names the index's plain Google APIs image of that level to pick, since
+an image exists at every level in several flavors under names only
+Google's index knows (API 37 is `android-37.0`). A project with no
 build-tools pinned had failed at the plugin's default with nothing on the
 tab naming it (diag #105 to #107).
 
