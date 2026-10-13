@@ -468,7 +468,7 @@ function nodeReachRow(n){
   const t = n.config?.tunnel;
   const how = !t ? "over the LAN" : t.kind === "wireguard" ? `over WireGuard, as ${esc(t.addr || "its tunnel address")}`
     : `through ${esc(t.host || "the public hostname")}, the controller's tunnel`;
-  return `<div class="field ndreach"><span class="state">Reaches the controller ${how}; set when it was enrolled.</span></div>`;
+  return `<div class="field ndreach"><div class="hint">Reaches the controller ${how}; set when it was enrolled.</div></div>`;
 }
 
 function nodeDoorRow(n){
