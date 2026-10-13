@@ -295,6 +295,11 @@ write the store, so the Android Gradle plugin cannot fetch a missing
 platform itself: a project wanting a level the store lacks names it, and
 the operator ticks the row. Before these two rows, a platform arrived only
 with an emulator image of its level, and platform 37 never arrived at all.
+What a project pins by number in its Gradle files (`ndkVersion`,
+`buildToolsVersion`, `compileSdk`) is a row of its own on the tab of the
+node it builds on, named for the project, installed or not: a store remade
+at the newest versions only had stranded a project pinning NDK 29 and
+build-tools 36, with nothing on the tab to tick.
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
 census names an NVIDIA card, the Toolchains tab shows the driver as a row of

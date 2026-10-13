@@ -2360,7 +2360,9 @@ def claude_auth(home=""):
 # needs and otherwise knows nothing about this file.
 import toolchains                                                  # noqa: E402
 
-toolchains.configure(run=run, write_json=write_json, state=STATE)
+toolchains.configure(run=run, write_json=write_json, state=STATE,
+                     project_nodes=lambda: {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()},
+                     workspace=WORKSPACE)
 # The Android system images on each node's store, behind the Emulator tab:
 # kept on the toolchain store without being toolchains (emulator.py).
 import emulator                                                  # noqa: E402

@@ -593,7 +593,10 @@ path, and its listing of the directory (`store_dirs`, every hello) is the
 authority on what is installed: a toolchain deleted from the store by hand
 reads as not installed within a hello, whatever the last check said
 (`toolchains.store_known`, B671), so a store emptied to start over offers
-every row for installing again. The Android system images are guest
+every row for installing again. The listing names the versions under the
+Android families too (`store_dirs.versions`: ndk, build-tools, platforms,
+cmake), which is what a version a project pins is read against
+(`toolchains.pin_rows`, B712). The Android system images are guest
 artifacts, identical on every host, and live once under `<store>/shared`
 with each scope's `android/system-images` a symlink to them: kept by the
 agent on every hello (`share_images()`) and by the controller at boot

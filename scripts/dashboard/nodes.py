@@ -1099,6 +1099,14 @@ def _census(c):
     if sd is not None:
         out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                              for k in ("top", "android", "incomplete", "roots")}
+        # ...and the versions under android's families (B712), kept only
+        # when the agent lists them (0.7.190 on): the Toolchains tab reads a
+        # version a project pins against this, and an agent that cannot say
+        # must not read as a store that lacks it.
+        if isinstance(sd.get("versions"), dict):
+            out["store_dirs"]["versions"] = {
+                str(k)[:20]: [str(x)[:60] for x in (v or [])[:64]]
+                for k, v in list(sd["versions"].items())[:8] if isinstance(v, list)}
     # The android system images in the toolchain store, and the AVDs built on
     # each (roadmap #20). Whitelisted like store_dirs and toolchain_versions,
     # and for the same reason: a field the agent reports and this drops is a

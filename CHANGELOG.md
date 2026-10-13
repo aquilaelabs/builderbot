@@ -506,6 +506,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Deleted projects dialog's delete-for-good button shows its bin icon (9297925)
 - A rule that refuses a command matches the program's name, not any word of the line: reading the test runner with sed is no longer refused as running it, and bb tests preflight --dry runs in the foreground (9297925)
 - Un-enrolling a node from its row retires it when the uninstall has stopped the agent: the job read canceled and the row stayed, quiet and empty (4a547c6)
+- A version a project pins in its Gradle files (ndkVersion, buildToolsVersion, compileSdk) is a row of its own on its node's Toolchains tab, named for the project, so a store that holds only the newest NDK or build-tools no longer strands it (4ca99b5)
 
 ### Security
 
