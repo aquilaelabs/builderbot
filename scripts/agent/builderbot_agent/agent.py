@@ -400,9 +400,16 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # few seconds each; a controller that is away hears it at the
             # next hello's reconcile instead.
             for j in running:
+                # The uninstall is the one job whose work is this stop: it
+                # ends as done, not canceled, or the controller kept the
+                # node's row for a machine with nothing left on it (B703).
+                own = (j.job.get("spec") or {}).get("apply") == "uninstall"
                 try:
-                    self.ctl.call("result", {"job": j.job["id"], "state": "canceled", "exit": None,
-                                             "error": "canceled: the agent was stopped", "outputs": []},
+                    self.ctl.call("result", {"job": j.job["id"],
+                                             "state": "succeeded" if own else "canceled",
+                                             "exit": 0 if own else None,
+                                             "error": "" if own else "canceled: the agent was stopped",
+                                             "outputs": []},
                                   timeout=5)
                 except Exception as e:                               # noqa: BLE001
                     log(f"{j.job['id']}: could not say it was stopped: {e}")

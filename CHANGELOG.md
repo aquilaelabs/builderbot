@@ -499,6 +499,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Doctor card no longer reads red on a controller whose ssh agent holds no key: only an agent that cannot be reached is a fault (9297925)
 - The Deleted projects dialog's delete-for-good button shows its bin icon (9297925)
 - A rule that refuses a command matches the program's name, not any word of the line: reading the test runner with sed is no longer refused as running it, and bb tests preflight --dry runs in the foreground (9297925)
+- Un-enrolling a node from its row retires it when the uninstall has stopped the agent: the job read canceled and the row stayed, quiet and empty (4a547c6)
 
 ### Security
 
