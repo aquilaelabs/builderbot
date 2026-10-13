@@ -583,12 +583,18 @@ export const nbGone = (page) =>
 // behind … at every width (R119, 4 Oct): a check that presses one of the
 // others opens the fold first, the way a person would.
 export async function unfold(page, project){
-  await page.evaluate(name => {
-    const row = document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)?.closest('.row');
-    if (row && !row.classList.contains('moreon')) row.querySelector('[data-more]').click();
-  }, project);
-  await page.waitForFunction(name => document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)
-    ?.closest('.row')?.classList.contains('moreon') ?? true, project, { timeout: 5000 }).catch(() => {});
+  // Pressed again when a redraw between the press and the read drew the
+  // row folded (sessions.mjs's lock click met a hidden button in a whole
+  // gate, 13 Oct): three tries, each waited for, before giving up quietly.
+  for (let i = 0; i < 3; i++){
+    await page.evaluate(name => {
+      const row = document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)?.closest('.row');
+      if (row && !row.classList.contains('moreon')) row.querySelector('[data-more]').click();
+    }, project);
+    const open = await page.waitForFunction(name => document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)
+      ?.closest('.row')?.classList.contains('moreon') ?? true, project, { timeout: 3000 }).then(() => true, () => false);
+    if (open) return;
+  }
 }
 
 // The owner takes a project on (R135): a suite that drops a project

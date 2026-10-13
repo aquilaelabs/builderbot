@@ -202,8 +202,15 @@ await page.click('.phask [data-allow]:not([data-session])');
 await page.waitForFunction(() => !document.querySelector('.phask'), null, { timeout: 20000 });
 await page.waitForFunction(() => document.title === 'BuilderBot', null, { timeout: 15000 });
 ok(true, '...and the badge clears when nothing is waiting');
-const done1 = await api('/api/phone', { action: 'outcome', id: asked.body.id });
-ok(done1.body.state === 'done', 'Allow runs it: on the node, not in the session');
+// The command runs on the node as a job once Allow is pressed, so its
+// outcome is waited for, not read the instant the badge clears: read at
+// once it was still running in two whole gates of 13 Oct and passed alone.
+let done1 = await api('/api/phone', { action: 'outcome', id: asked.body.id });
+for (let i = 0; i < 40 && done1.body.state !== 'done'; i++){
+  await new Promise(r => setTimeout(r, 250));
+  done1 = await api('/api/phone', { action: 'outcome', id: asked.body.id });
+}
+ok(done1.body.state === 'done', `Allow runs it: on the node, not in the session (${done1.body.state})`);
 const denied = await api('/api/phone', { action: 'ask', why: 'wipe something',
                                          cmd: ['shell', 'rm', '-rf', '/sdcard/x'], project: 'alpha' });
 await page.evaluate(() => phFetch());

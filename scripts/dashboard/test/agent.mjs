@@ -487,10 +487,19 @@ try {
     ok(typeof sess?.workspace === 'boolean' && /^sha256:/.test(sess?.bundle || ''),
        '...saying whether /workspace is there and which bb bundle bb-tty runs from');
     // This node's two; the container node enrolled above started its own.
-    const runs = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id);
+    // Waited for: the census says up once the first is, and the twin's
+    // record can land a moment later on a loaded box (two whole gates of
+    // 13 Oct read one and passed alone).
+    // ...and only the live ones: the agent starts the pair again when its
+    // first start is judged down (a loaded box, 13 Oct: four records, the
+    // first pair ended), and a record outlives its ttyd.
+    const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    const mine = () => ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id && alive(r.pid));
+    const runs = (await until(async () => { const r = mine(); return r.length >= 2 ? r : null; })) || mine();
     ok(runs.length === 2 && runs.some(r => r.argv.includes('--writable'))
        && runs.some(r => !r.argv.includes('--writable')),
-       'two ttyds: the writable one and the read-only twin an account without a shell is shown');
+       `two ttyds: the writable one and the read-only twin an account without a shell is shown (${
+         runs.length} records: ${runs.map(r => `${r.argv.includes('--writable') ? 'rw' : 'ro'}:${r.pid}`).join(' ')})`);
     const bbtty = runs[0]?.argv.at(-1) || '';
     ok(/\/\.bb\/[0-9a-f]{16}\/scripts\/dashboard\/bb-tty$/.test(bbtty) && existsSync(bbtty),
        `...both running bb-tty out of the bundle unpacked in the toolchain store (${bbtty.replace(DIR, '…')})`);
