@@ -68,6 +68,19 @@ ok(true, '...and the undeployed node says Deploy will bring that route up');
   await page.waitForFunction(id => /1 route/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''),
     sandbox.node, { timeout: 15000 });
 }
+// A hostname typed in the route row (the operator, 13 Oct): the last choice
+// of the pick turns it into a box, and the name saved joins Hostnames.
+{
+  const typed = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [...row.routes, { host: 'typed.example.com', path: '/', port: 8082, tls: false }] });
+  ok(typed.ok && (await api('/api/nginx')).hostnames.some(h => h.name === 'typed.example.com'),
+     'a route saved with a name not on the list puts it there');
+  // Before Deploy the section draws no route rows, so the pick is read as
+  // its function draws it.
+  ok(await page.evaluate(() => /value="__type"[^>]*>type a hostname/.test(nginxHostPick({ host: '' }))),
+     '...and the hostname pick offers to type one');
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
+  await api('/api/nginx', { action: 'host-remove', name: 'typed.example.com' });
+}
 ok(/a port on the node/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [{ host: 'x.example.com', port: 'eighty' }] })).error || ''),
    'a route with no port is refused by name');
 ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert: 'not a cert', key: 'nor a key' })).error || ''),

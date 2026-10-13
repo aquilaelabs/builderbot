@@ -576,12 +576,16 @@ function dmNginxLine(d){
   if (!ports.length) return "";
   const key = `${d.project}|${d.instance}`;
   // Add route is an action, not a setting: it writes the route on the press.
+  // The hostname box starts on the certificate's own domain and takes a
+  // subdomain under it (the operator, 13 Oct); empty with no certificate
+  // means any name on 80.
   return `<div class="setcell dmnginxroute">${lbl("dmng-" + key, "Route through nginx",
-      "A route on this node's nginx tab to one of this container's published ports, at the hostname the certificate is filed under, "
-      + "or at any hostname on 80 alone with no certificate. One route per port; the rest of a route is changed on the nginx tab.")}
+      "A route on this node's nginx tab to one of this container's published ports, at the hostname typed (a subdomain of the "
+      + "certificate's domain), or at any hostname on 80 alone with no certificate. One route per port; the rest of a route is changed on the nginx tab.")}
     <div class="ctl"><select id="${esc("dmng-" + key)}" data-dmngcert="${esc(key)}" aria-label="which certificate the route serves under">
       <option value="">no certificate: any hostname, 80 alone</option>${
       (ng.certs || []).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select>
+    <input data-dmnghost="${esc(key)}" placeholder="app.example.com" aria-label="the hostname the route serves" autocomplete="off" spellcheck="false">
     <select data-dmngport="${esc(key)}" aria-label="which port the route goes to">${
       ports.map(p => `<option value="${p}"${open.includes(p) ? "" : " disabled"}>${p}${open.includes(p) ? "" : " (routed)"}</option>`).join("")}</select>
     <button type="button" data-dmngadd="${esc(key)}"${open.length ? "" : " disabled"} title="${
@@ -1501,12 +1505,19 @@ function dmWireRows(el, list = dockerList){
   // setting, not the instance's.
   // Staged on the pick, written by Apply: the same shape as the route line
   // above it, and as every other setting on the page.
+  // The hostname box follows the certificate pick until it is typed in:
+  // the pair's domain, which a subdomain is typed under.
+  el.querySelectorAll("[data-dmngcert]").forEach(sel => sel.onchange = () => {
+    const box = el.querySelector(`[data-dmnghost="${CSS.escape(sel.dataset.dmngcert)}"]`);
+    if (box && (!box.value || box.value === box.dataset.was)) box.value = box.dataset.was = sel.value;
+  });
   el.querySelectorAll("[data-dmngadd]").forEach(b => b.onclick = async () => {
     const key = b.dataset.dmngadd;
     const cert = el.querySelector(`[data-dmngcert="${CSS.escape(key)}"]`)?.value || "";
+    const host = el.querySelector(`[data-dmnghost="${CSS.escape(key)}"]`)?.value.trim() || "";
     const port = el.querySelector(`[data-dmngport="${CSS.escape(key)}"]`)?.value || "";
     busy(b, "Adding");
-    const j = await (await postJSON("/api/nginx", {action: "route-add", node: dockerList?.node || dockerNode || "", cert, port})).json().catch(() => ({error: "no answer"}));
+    const j = await (await postJSON("/api/nginx", {action: "route-add", node: dockerList?.node || dockerNode || "", cert, host, port})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
     else notify(`routed ${j.route?.host || "*"} to ${port} on this node's nginx${j.deployed === false ? " (applied once it is deployed)" : ""}`);
     dockerList = null; dockerRev++; loadDocker();

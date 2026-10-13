@@ -35,6 +35,25 @@ class Routes(unittest.TestCase):
         self.assertEqual(npx.record("n1")["routes"], r["routes"])
         self.assertEqual(npx.container_name("n1"), "nginx-vps-box")
 
+    def test_a_route_from_a_row_takes_a_hostname_the_pair_covers(self):
+        # The Docker row's Add route with a hostname (the operator, 13 Oct):
+        # a subdomain under the pair's domain, refused outside it, and the
+        # name joins the shared Hostnames list.
+        was = npx.apply
+        npx.apply = lambda nid, *a: {"ok": True}
+        self.addCleanup(setattr, npx, "apply", was)
+        with npx._lock:
+            st = npx._load(); st["n1"] = {"certs": {"example.com": {"set": True}}}; npx._save(st)
+        bad = npx.add_route("n1", 8080, "example.com", None, None, None, host="other.org")
+        self.assertIn("does not cover other.org", bad["error"])
+        r = npx.add_route("n1", 8080, "example.com", None, None, None, host="App.Example.com")
+        self.assertEqual(r["route"], {"host": "app.example.com", "path": "/", "port": 8080, "tls": True, "cert": "example.com"})
+        self.assertIn("app.example.com", [h["name"] for h in npx.hostnames()], "typed once, offered everywhere after")
+        plain = npx.add_route("n1", 8081, "", None, None, None, host="plain.example.org")
+        self.assertEqual((plain["route"]["host"], plain["route"]["tls"]), ("plain.example.org", False), "a name with no pair is 80 alone")
+        none = npx.add_route("n1", 8082, "example.com", None, None, None)
+        self.assertEqual(none["route"]["host"], "example.com", "no hostname typed: the pair's own domain, as before")
+
     def test_the_config_has_a_server_per_host_and_closes_the_rest(self):
         routes = npx.clean_routes([{"host": "www.example.com", "path": "/", "port": 8080},
                                    {"host": "www.example.com", "path": "/relay", "port": 8788, "tls": False}])

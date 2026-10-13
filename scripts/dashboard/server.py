@@ -7470,7 +7470,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "route-add":
             # From a container's row on the Docker tab (R209): a port of the
             # container and the certificate the route serves under.
-            r = nginxproxy.add_route(nid, req.get("port"), field(req, "cert"), containers, devactions, devapp)
+            r = nginxproxy.add_route(nid, req.get("port"), field(req, "cert"), containers, devactions, devapp,
+                                     host=field(req, "host"))
         elif act == "save":
             r = nginxproxy.save_routes(nid, req.get("routes"))
             # The certificate pasted is the node's default, or one

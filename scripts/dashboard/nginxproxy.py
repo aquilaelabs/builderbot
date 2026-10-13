@@ -651,6 +651,12 @@ def save_routes(nid, routes):
     got = clean_routes(routes)
     if isinstance(got, dict):
         return got
+    # A hostname typed into a route row (the operator, 13 Oct: the pulldown
+    # offered no subdomain) joins the shared list, so every node's rows
+    # offer it from now on.
+    for r in got:
+        if r["host"] != "*" and r["host"] not in _hosts_saved():
+            add_hostname(r["host"])
     with _lock:
         st = _load()
         st.setdefault(str(nid), {})["routes"] = got
@@ -658,12 +664,15 @@ def save_routes(nid, routes):
     return {"ok": True, "routes": got}
 
 
-def add_route(nid, port, cert, containers, devactions, devapp):
+def add_route(nid, port, cert, containers, devactions, devapp, host=""):
     """A route written from a container's row on the Docker tab (R209): to
-    `port` on the node, at the hostname the certificate is filed under
-    (its domain), with that pair, or at any hostname on 80 alone with no
-    certificate; applied at once. A port that already has a route is
-    refused by name: one route per port, the rest is the nginx tab's."""
+    `port` on the node, at `host` (a subdomain, the operator, 13 Oct) or
+    else at the hostname the certificate is filed under (its domain), with
+    that pair, or at any hostname on 80 alone with no certificate; applied
+    at once. A hostname the chosen pair does not cover is refused by name
+    (cert_for's rule: a pair covers its domain and the names under it). A
+    port that already has a route is refused by name: one route per port,
+    the rest is the nginx tab's."""
     try:
         port = int(str(port).strip())
     except (TypeError, ValueError):
@@ -675,12 +684,21 @@ def add_route(nid, port, cert, containers, devactions, devapp):
     cert = str(cert or "").strip().lower()
     if cert and not (certs.get(cert) or {}).get("set"):
         return {"error": f"this node holds no certificate filed under {cert}: paste it on the nginx tab first"}
+    host = str(host or "").strip().lower()
+    if host and host != "*" and not HOST_RE.match(host):
+        return {"error": f"a hostname is a name like app.example.com: not {host}"}
+    if host and cert and cert_for(rec, host) != cert:
+        return {"error": f"the pair filed under {cert} does not cover {host}: pick a pair filed under its domain, "
+                         "or paste one on the nginx tab"}
+    host = host or cert or "*"
+    if host != "*" and host not in _hosts_saved():
+        add_hostname(host)
     routes = list(rec.get("routes") or [])
     for r in routes:
         if int(r.get("port") or 0) == port:
             where = f"{r.get('host') or '*'}{r.get('path') or '/'}"
             return {"error": f"port {port} already has a route: {where} on this node's nginx; change it on the nginx tab"}
-    routes.append({"host": cert or "*", "path": "/", "port": port, "tls": bool(cert), "cert": cert})
+    routes.append({"host": host, "path": "/", "port": port, "tls": bool(cert), "cert": cert})
     saved = save_routes(nid, routes)
     if saved.get("error"):
         return saved

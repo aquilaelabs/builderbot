@@ -1101,7 +1101,9 @@ the pieces stack:
    A container's row on the Docker tab writes a route too (R209): the
    certificate it serves under, one of its published ports, Add route; a
    port that has a route already is refused by name.
-   (Hostnames on the tab, the operator, 12 Oct): a name is added once and
+   (Hostnames on the tab, the operator, 12 Oct; or typed into a route row
+   with "type a hostname…", or into a Docker row's Route through nginx,
+   and put on the list by the save): a name is added once and
    any route on any node, for any project's container, picks it, and one a
    route still uses cannot be deleted. A
    node holds a list of certificate pairs, each known by the domain its

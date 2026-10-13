@@ -4628,6 +4628,14 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   const bad = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'route-add', node: n, cert: 'nope.example.com', port: 9 }) })).json()), nodeId);
   ok(/holds no certificate filed under nope.example.com/.test(bad.error || ''), `a certificate the node does not hold is refused by name (${bad.error})`);
+  // A hostname typed on the row (the operator, 13 Oct): the route serves
+  // that name, and the name joins the shared Hostnames list.
+  ok(await page.$(`${DM} .dmnginxroute [data-dmnghost]`) !== null, 'the row offers a hostname box beside the certificate');
+  const named = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'route-add', node: n, cert: '', host: 'app.example.com', port: 9 }) })).json()), nodeId);
+  const hosts = (await page.evaluate(async () => (await (await fetch('/api/nginx')).json()).hostnames)).map(h => h.name);
+  ok(named.route?.host === 'app.example.com' && hosts.includes('app.example.com'),
+     `a hostname typed on the row is the route's, and is on the Hostnames list after (${named.error || named.route?.host}; ${hosts.join(',')})`);
 }
 
 await done(browser);
