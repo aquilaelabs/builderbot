@@ -627,7 +627,20 @@ def admin_verb(act, name, nid, under):
             return _answer(r)
         if act == "logs":
             return container_logs(name), 200
+        # The two prunes the Images and volumes section offers (R216):
+        # `name` is which, images or volumes, and nothing is named.
+        if act == "prune":
+            if name not in ("images", "volumes"):
+                return {"error": "prune images or volumes"}, 400
+            return _answer(devapp.prune(name))
         return _answer(container_ctl(name, act))
+
+
+def images_view(nid):
+    """The daemon's images and volumes on node `nid` (R216), as
+    devapp.images_view reads them, under that node's address."""
+    with devapp.on_node(nid or None):
+        return {"node": nid, **devapp.images_view()}
 
 
 def tab_verb(act, name, req, seen):
@@ -680,6 +693,25 @@ def tab_verb(act, name, req, seen):
     if not r.get("error") and under:
         net_nudge()
     return _answer(r)
+
+
+def stats_view(nid, seen):
+    """What the containers on `nid`'s daemon are using now (R216), by
+    name: the page asks for it beside the list, never inside it. `seen` as
+    manager_view takes it: an administrator reads every container, anybody
+    else the containers of the instances of their projects."""
+    import contextlib
+    with contextlib.ExitStack() as ctx:
+        ctx.enter_context(devapp.read_scope())
+        if nid:
+            ctx.enter_context(devapp.on_node(nid))
+        got = devapp.stats()
+    if seen is not None:
+        mine = {devapp._pname(p, i) for p, insts in devapp._load().items() if p in seen for i in insts}
+        got = {"error": got.get("error", ""),
+               "stats": {n: v for n, v in (got.get("stats") or {}).items()
+                         if any(n == pn or n.startswith(pn + "-") or n.startswith(pn + "_") for pn in mine)}}
+    return {"node": nid, **got}
 
 
 def manager_view(nid, seen):

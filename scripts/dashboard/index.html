@@ -167,6 +167,9 @@
      everything around it grew. */
   --f-data:12px/1.4 var(--mono);
   --f-pill:11px/1 var(--mono);
+  /* A tile's number (R216): the one voice above --f-sect, for a figure a
+     tab is about, read from across the room. */
+  --f-stat:600 22px/1.1 system-ui,sans-serif;
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
      "reference" and "na" stop looking like the same family. */
@@ -192,6 +195,7 @@
     --f-sect:600 15px/1.4 system-ui,sans-serif;
     --f-data:13px/1.4 var(--mono);
     --f-pill:12px/1 var(--mono);
+    --f-stat:600 26px/1.1 system-ui,sans-serif;
   }
 }
 /* The cap. A lightness ceiling rather than more black, because "more black"
@@ -2613,6 +2617,48 @@ pre.diff .d-ctx{color:var(--dim)}
   box-shadow:inset 4px 0 0 0 var(--gc);
   border-bottom:1px solid color-mix(in srgb, var(--gc) 50%, var(--line))}
 .dmtab .dmgroup.none{--gc:var(--line)}
+/* ---- tiles, facts and chips (R216) --------------------------------------
+   The 2.0 shapes, one definition each, read by every tab that draws them
+   (page-docs.js statTiles, factGrid, chipBar). A tile is a number the tab
+   is about, large, with its label under it; a facts grid is what a row
+   knows as labels and values; a chip narrows a list. Each is held by the
+   design's rule of the same name and measured by test/uniform.mjs. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:var(--field-gap)}
+@media(max-width:900px){ .tiles{grid-template-columns:repeat(2,1fr)} }
+.tile{background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control);
+  padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tile .tv{font:var(--f-stat);font-variant-numeric:tabular-nums;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .tv .tu{font:var(--f-ui);color:var(--dim);margin-left:4px}
+.tile .tl{font:var(--f-note);color:var(--dim)}
+.tile .ts{font:var(--f-note);color:var(--dim);opacity:.85}
+.tile.ok .tv{color:var(--accent)}
+.tile.warn .tv{color:var(--warn)}
+.tile.bad .tv{color:var(--bad)}
+/* The strip on a row (what a container uses now): the same tile, smaller,
+   its number in the section voice, four across at a desk and two on a phone. */
+.tiles.mini{grid-template-columns:repeat(auto-fit,minmax(7rem,1fr));margin-top:6px}
+@media(max-width:900px){ .tiles.mini{grid-template-columns:repeat(2,1fr)} }
+.tiles.mini .tile{padding:6px 9px}
+.tiles.mini .tv{font:var(--f-sect);font-variant-numeric:tabular-nums}
+/* The row's Log fold: each container's tail under its name, the whole no
+   taller than a screen, and the Follow switch on its action bar. */
+.dmlogbox .dmlogsvc + .dmlogsvc{margin-top:8px}
+.dmlogbox pre.dmlog{max-height:40vh;overflow:auto;margin:4px 0 0}
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
+@media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
+.facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}
+.facts dt{font:var(--f-note);color:var(--dim);margin:0;white-space:nowrap}
+.facts dd{font:var(--f-data);color:var(--ink);margin:0;min-width:0;overflow-wrap:anywhere}
+.facts dd code{font:inherit}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  padding-bottom:2px;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
+.chips::-webkit-scrollbar{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto;
+  font:var(--f-ui);padding:0 10px;min-height:var(--ctl);border-radius:99px}
+.chip .pill{font:var(--f-tag);padding:2px 6px}
+.chip.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
+.chip.on .pill{color:var(--on-fill);border-color:color-mix(in srgb, var(--on-fill) 40%, transparent)}
 .dmtab .dmgroup b{color:var(--ink);font-weight:700;font-size:1.1em;letter-spacing:.02em}
 .dmtab .row + .dmgroup{margin-top:14px}
 /* The small text areas in the container form: a few lines each, not the
@@ -2789,8 +2835,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
     grid-template-columns:minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.1fr);
     align-items:start;column-gap:14px;row-gap:2px}
   .dmtab .row.stack2 .grow > *,.dkrows .row.stack2 .grow > *{grid-column:1 / -1}
-  .dmtab .row.stack2 .dmid,.dkrows .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
-  .dmtab .row.stack2 .dmports,.dkrows .row.stack2 .dmports{grid-column:2 / -1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmid,.dkrows .row.stack2 .dmid   {grid-column:1 / -1;grid-row:1;min-width:0}
   .dmtab .row.stack2 .dmid .sub{margin:0}
 
   /* The fold's two halves, likewise: ports on the left, mounts on the right.
@@ -3294,6 +3339,10 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
    the action bar's status line and `.st` the session dot. */
 .row .name .pill.stat{font:var(--f-tag);text-transform:uppercase;letter-spacing:.5px;
   vertical-align:2px;margin-left:6px;margin-bottom:0}
+/* ...with a dot of its color before the word (R216): the state is read at
+   a glance down a list, before the word is. */
+.row .name .pill.stat::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:currentColor;margin-right:5px;vertical-align:1px}
 .row .name .pill.stat.off{color:var(--purple);border-color:var(--purple-edge)}
 .pill.ok{color:var(--accent);border-color:var(--green2-edge)}
 .pill.bad{color:var(--bad);border-color:var(--red2-edge)}

@@ -1142,6 +1142,32 @@ def _guard(argv):
                 and all(_CTR_NAME.match(a) for a in argv[4:])):
             return ""
         return "a `docker update` this module did not build"
+    # The reads the Docker tab's 2.0 surfaces make (R216), each in the one
+    # shape this module builds: what every container uses now, the images
+    # and the volumes on the daemon and what they weigh.
+    if verb == "stats":
+        if argv[2:] == ["--no-stream", "--format", "{{json .}}"]:
+            return ""
+        return "a `docker stats` this module did not build"
+    if verb == "images":
+        if argv[2:] == ["--format", "{{json .}}"]:
+            return ""
+        return "a `docker images` this module did not build"
+    # ...and the two prunes the view offers, dangling images and unused
+    # volumes, each the one flag and nothing named: a prune that takes a
+    # filter or `-a` would reach what a running container still needs.
+    if verb == "image":
+        if argv[2:] == ["prune", "-f"]:
+            return ""
+        return "a `docker image` this module did not build"
+    if verb == "volume":
+        if argv[2:] in (["ls", "--format", "{{json .}}"], ["prune", "-f"]):
+            return ""
+        return "a `docker volume` this module did not build"
+    if verb == "system":
+        if argv[2:] == ["df", "--format", "{{json .}}"]:
+            return ""
+        return "a `docker system` this module did not build"
     if verb == "logs":
         if (len(argv) == 6 and argv[2] == "--tail" and argv[3].isdigit()
                 and argv[4] == "--timestamps" and _CTR_NAME.match(argv[5])):
@@ -1219,8 +1245,11 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # DOCKER_HOST=ssh:// was the one call left dialing it and the one that
     # failed on every fresh deploy (B134). Streamed calls are builds and
     # never reach here on an agent node; _submit ships those whole.
+    # ...and the 2.0 reads the same way (R216): what the containers use,
+    # the images, the volumes and what they weigh.
     if sink is None and hold is None and argv[:1] == [DOCKER] \
-            and len(argv) > 1 and (argv[1] in _BARE_OK or argv[1] == "inspect"):
+            and len(argv) > 1 and (argv[1] in _BARE_OK | {"inspect", "stats", "images"}
+                                   or argv[1:3] in (["volume", "ls"], ["system", "df"])):
         n = _agent_here()
         if n:
             return _agent_read(n, argv, timeout)
@@ -1231,7 +1260,8 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # for, so a session's bb devapp log on the dev pair met "Host key
     # verification failed" from the VM (B312).
     if sink is None and hold is None and argv[:1] == [DOCKER] \
-            and len(argv) > 1 and argv[1] in _CTL_OK | {"logs", "update"}:
+            and len(argv) > 1 and (argv[1] in _CTL_OK | {"logs", "update"}
+                                   or argv[1:3] in (["image", "prune"], ["volume", "prune"])):
         n = _agent_here()
         if n:
             return _agent_exec(n, argv, timeout)
@@ -1339,6 +1369,155 @@ def _kill_group(p):
 # anything, so a container's name need not resemble its project's.
 COMPOSE_LABEL = "com.docker.compose.project"
 SERVICE_LABEL = "com.docker.compose.service"
+
+
+# What each container is using now (R216): one `docker stats` per ask,
+# memoised a few seconds per daemon, so a page that redraws often does not
+# sample the daemon on every redraw. Read beside the list, never inside it:
+# stats takes a second or two to sample and the list must not wait on it.
+STATS_TTL = 8
+_stats = {}
+_stats_lock = threading.Lock()
+
+
+def _size_bytes(text):
+    """'12.7MiB' or '1.2kB' as bytes, 0 for anything else."""
+    m = re.match(r"\s*([0-9.]+)\s*([kKMGT]?i?B)", text or "")
+    if not m:
+        return 0
+    n = float(m.group(1))
+    unit = m.group(2)
+    base = 1024 if "i" in unit else 1000
+    power = "BKMGT".index(unit[0].upper()) if unit[0].upper() in "BKMGT" else 0
+    return int(n * (base ** power))
+
+
+def parse_stats(text):
+    """{container name: {cpu, mem, mem_limit, mem_pct, rx, tx, pids}} from
+    `docker stats --no-stream --format {{json .}}`: percentages as numbers,
+    sizes as bytes."""
+    out = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            c = json.loads(line)
+        except ValueError:
+            continue
+        name = c.get("Name") or ""
+        if not name:
+            continue
+        mem = str(c.get("MemUsage") or "").split("/")
+        net = str(c.get("NetIO") or "").split("/")
+        pct = lambda v: float(str(v or "0").rstrip("%") or 0)  # noqa: E731
+        out[name] = {"cpu": pct(c.get("CPUPerc")), "mem": _size_bytes(mem[0]),
+                     "mem_limit": _size_bytes(mem[1]) if len(mem) > 1 else 0,
+                     "mem_pct": pct(c.get("MemPerc")), "rx": _size_bytes(net[0]),
+                     "tx": _size_bytes(net[1]) if len(net) > 1 else 0,
+                     "pids": int(str(c.get("PIDs") or "0").strip() or 0)}
+    return out
+
+
+def stats():
+    """The running containers' use now, by name, memoised STATS_TTL seconds
+    per daemon; {"error": why} when the daemon did not answer."""
+    key = getattr(_node_ctx, "addr", None) or ""
+    now = time.time()
+    with _stats_lock:
+        ent = _stats.get(key)
+        if ent and now - ent["when"] < STATS_TTL:
+            return ent["val"]
+    r = _run([DOCKER, "stats", "--no-stream", "--format", "{{json .}}"], timeout=20)
+    val = {"error": _why_not(r["out"]), "stats": {}} if r["code"] != 0 else {"error": "", "stats": parse_stats(r["out"])}
+    with _stats_lock:
+        _stats[key] = {"when": now, "val": val}
+    return val
+
+
+def images_view():
+    """The daemon's images and volumes (R216): each image with its size and
+    age and whether a container here uses it, each volume with its driver,
+    and what the daemon says the lot weighs and what a prune would give
+    back. One listing each, memoised like stats."""
+    key = "img:" + (getattr(_node_ctx, "addr", None) or "")
+    now = time.time()
+    with _stats_lock:
+        ent = _stats.get(key)
+        if ent and now - ent["when"] < STATS_TTL:
+            return ent["val"]
+    out = {"error": "", "images": [], "volumes": [], "df": []}
+    # The three listings one after another, on this thread: the node a
+    # call is addressed at is thread-local (on_node), so a pool of threads
+    # would have asked the controller's own daemon instead.
+    got = {k: _run(argv, timeout=20) for k, argv in (
+        ("images", [DOCKER, "images", "--format", "{{json .}}"]),
+        ("volumes", [DOCKER, "volume", "ls", "--format", "{{json .}}"]),
+        ("df", [DOCKER, "system", "df", "--format", "{{json .}}"]))}
+    r = got["images"]
+    if r["code"] != 0:
+        out["error"] = _why_not(r["out"])
+    else:
+        used = {c["image"] for c in (containers().get("containers") or [])}
+        for line in r["out"].splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                c = json.loads(line)
+            except ValueError:
+                continue
+            repo, tag = c.get("Repository", ""), c.get("Tag", "")
+            iid = str(c.get("ID") or "").split(":")[-1][:12]
+            # In use by the name a container was started from: repo:tag, the
+            # bare repo for :latest, or the id.
+            names = {f"{repo}:{tag}", iid} | ({repo} if tag == "latest" else set())
+            out["images"].append({
+                "repo": repo, "tag": tag, "id": iid,
+                "size": _size_bytes(c.get("Size", "")), "created": c.get("CreatedSince", ""),
+                "used": bool(names & used) or any(u.split(":")[-1][:12] == iid for u in used if u.startswith("sha256:")),
+                "dangling": c.get("Repository") == "<none>" or c.get("Tag") == "<none>"})
+    r = got["volumes"]
+    if r["code"] == 0:
+        for line in r["out"].splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                c = json.loads(line)
+            except ValueError:
+                continue
+            out["volumes"].append({"name": c.get("Name", ""), "driver": c.get("Driver", "")})
+    r = got["df"]
+    if r["code"] == 0:
+        for line in r["out"].splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                c = json.loads(line)
+            except ValueError:
+                continue
+            out["df"].append({"kind": c.get("Type", ""), "count": int(str(c.get("TotalCount") or 0) or 0),
+                              "active": int(str(c.get("Active") or 0) or 0), "size": _size_bytes(c.get("Size", "")),
+                              "reclaimable": _size_bytes(str(c.get("Reclaimable", "")).split(" ")[0])})
+    out["images"].sort(key=lambda i: (i["used"], -i["size"]))
+    with _stats_lock:
+        _stats[key] = {"when": now, "val": out}
+    return out
+
+
+def prune(kind):
+    """`docker image prune -f` or `docker volume prune -f`: dangling images,
+    or volumes no container uses. {"ok", "out"} with docker's own account of
+    what went, or {"error"}."""
+    argv = [DOCKER, "image", "prune", "-f"] if kind == "images" else [DOCKER, "volume", "prune", "-f"]
+    r = _run(argv, timeout=120)
+    with _stats_lock:
+        _stats.pop("img:" + (getattr(_node_ctx, "addr", None) or ""), None)
+    if r["code"] != 0:
+        return {"error": _why_not(r["out"])}
+    return {"ok": True, "out": r["out"].strip()[-2000:]}
 
 
 def containers():

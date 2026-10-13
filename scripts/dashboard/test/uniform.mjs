@@ -359,7 +359,7 @@ async function spanning(){
     const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
-    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .setcell .ctl, .setfoot, .imgadd, .tcnode, .ndpaths';
+    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .setcell .ctl, .setfoot, .imgadd, .tcnode, .ndpaths, .chips';
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).
@@ -510,6 +510,38 @@ async function unwrapped(){
     return { tall };
   });
 }
+// ---- tiles and facts (R216) --------------------------------------------------
+// A row of tiles is one height with its numbers in the stat voice, and a
+// facts grid is labels in the note voice over values in mono: the two
+// shapes every tab draws the same way or not at all.
+async function glance(){
+  return page.evaluate(() => {
+    const box = document.querySelector('.pane .doc.on .doctab, .pane .doc.on .nb');
+    if (!box) return { err: 'no document' };
+    const px = s => parseFloat(s) || 0;
+    const stat = getComputedStyle(document.documentElement).getPropertyValue('--f-stat');
+    const bad = [];
+    for (const row of box.querySelectorAll('.tiles')){
+      const ts = [...row.querySelectorAll('.tile')].filter(t => t.offsetHeight);
+      const hs = ts.map(t => Math.round(t.getBoundingClientRect().height));
+      if (ts.length && Math.max(...hs) - Math.min(...hs) > 1) bad.push(`tiles of ${hs.join('/')}px`);
+      for (const t of ts){
+        const v = t.querySelector('.tv');
+        if (!v || px(getComputedStyle(v).fontSize) < 20) bad.push(`a tile's number at ${v ? getComputedStyle(v).fontSize : 'none'}`);
+        if (!t.querySelector('.tl')?.textContent.trim()) bad.push('a tile with no label');
+      }
+      if (ts.length > 6) bad.push(`${ts.length} tiles in one row`);
+    }
+    for (const dl of box.querySelectorAll('dl.facts')){
+      const dt = dl.querySelector('dt'), dd = dl.querySelector('dd');
+      if (!dt || !dd) continue;
+      if (!/monospace|Mono|Menlo|Consolas/i.test(getComputedStyle(dd).fontFamily)) bad.push('a fact value not in mono');
+      if (px(getComputedStyle(dt).fontSize) > px(getComputedStyle(dd).fontSize)) bad.push('a fact label larger than its value');
+    }
+    return { bad, tiles: box.querySelectorAll('.tiles .tile').length, facts: box.querySelectorAll('dl.facts').length, stat: stat.trim() };
+  });
+}
+
 // ---- one walk over every kind, at a desk ---------------------------------
 // The four readings that change nothing on the page (the box and its bands,
 // the button language, what spans, what lines up) are taken on ONE visit to
@@ -570,6 +602,11 @@ for (const kind of kinds){
   ok(!U.err && U.sizes.length === 0,
      `[${kind}] every control on a line is one height${
        U.err ? ` (${U.err})` : U.sizes.length ? `: ${U.sizes.join('; ')}` : ''}`);
+  const G = await glance();
+  if (!G.err && (G.tiles || G.facts))
+    ok(G.bad.length === 0,
+       `[${kind}] its tiles are one height in the stat voice and its facts labels over mono values (${G.tiles} tiles, ${G.facts} grids${
+         G.bad.length ? `; ${G.bad.join(', ')}` : ''})`);
 }
 ok(seenBars.size <= 1,
    `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);

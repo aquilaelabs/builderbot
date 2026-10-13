@@ -5091,6 +5091,20 @@ class Handler(BaseHTTPRequestHandler):
         # read (R152 step 3).
         if seen is not None and not sess and not users.is_admin(me):
             seen = {p for p in seen if roles.level_of(me, "containers", p, users.may_work)}
+        # /api/docker/stats: what the containers are using now, asked
+        # beside the list once it has landed (R216), so the list never
+        # waits on a sample of the daemon. A path of its own rather than a
+        # query, since the page's open-once rule counts endpoints by path.
+        sub = self.path.partition("?")[0].rstrip("/").rsplit("/", 1)[-1]
+        if sub == "stats" or q.get("stats", [""])[0]:
+            return self._json(containers.stats_view(nid, seen))
+        # /api/docker/images: the daemon's images and volumes, an
+        # administrator's like every daemon-wide thing here (R216).
+        if sub == "images" or q.get("images", [""])[0]:
+            if sess or not users.is_admin(me):
+                return self._json({"error": "an administrator reads the daemon's images and volumes",
+                                   "images": [], "volumes": [], "df": []}, 403)
+            return self._json(containers.images_view(nid))
         return self._json(containers.manager_view(nid, seen))
 
     def _get_containers(self):

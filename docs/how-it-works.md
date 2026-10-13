@@ -1089,6 +1089,15 @@ project has no container and on `<project>-2`, `-3` after, so another one is
 the same press, and a Claude session sends its project the same way with `bb
 devapp new`, under the project's **Run its container** setting.
 
+**The tab at a glance.** Under the bar, a row of tiles says how many
+containers run of how many are here, how many have an update due, how many
+projects they belong to, and how many on the daemon nobody here started; a
+row of chips narrows the list to one project (All puts it back, and nothing
+is saved). A container's row is its name and a state pill with a dot of its
+color, a facts grid (image, ports, containers, what it was built from, its
+compose file), its notices, its settings with one Apply, then its action
+bar.
+
 **The daemon is a node.** The sandbox VM is enrolled on the Nodes tab like
 any other node, and what this container's paths are called over there is set
 on the node's row, because the daemon resolves a compose file's bind sources

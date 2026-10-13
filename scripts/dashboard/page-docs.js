@@ -325,3 +325,48 @@ function unbusy(btn, word){
   btn.removeAttribute("aria-busy");
   btn.textContent = word;
 }
+
+// ---- tiles, facts and chips (R216, the 2.0 language) ----------------------
+// Three shapes every document tab draws the same way, held by the design's
+// rules tiles, facts and chips and measured by uniform.mjs.
+
+// A row of tiles under a tab's bar: each a number the tab is about, with
+// its label under it and, when the number itself is news, a tone. Facts
+// to look at, never pressed; a tile for a number that is always the same
+// is not drawn, which is what the `omit` flag is for.
+function statTiles(tiles){
+  const rows = (tiles || []).filter(t => t && !t.omit);
+  if (!rows.length) return "";
+  return `<div class="field"><div class="tiles">${rows.map(t => `
+    <div class="tile${t.tone ? " " + esc(t.tone) : ""}"${t.title ? ` title="${esc(t.title)}"` : ""}>
+      <div class="tv">${esc(String(t.value ?? "–"))}${t.unit ? `<span class="tu">${esc(t.unit)}</span>` : ""}</div>
+      <div class="tl">${esc(t.label || "")}</div>
+      ${t.sub ? `<div class="ts">${esc(t.sub)}</div>` : ""}
+    </div>`).join("")}</div></div>`;
+}
+
+// What a row knows, as labels and values: two columns at a desk, one on a
+// phone. A pair whose value is empty is left out, so a caller lists what
+// it has and the grid says what there is. `html` on a pair means the value
+// is already markup (a code span, a link); otherwise it is escaped, and
+// `cls` names the value's element for a suite that reads one.
+function factGrid(pairs, cls = ""){
+  const rows = (pairs || []).filter(p => p && p[1] !== undefined && p[1] !== null && String(p[1]).trim() !== "");
+  if (!rows.length) return "";
+  return `<dl class="facts${cls ? " " + esc(cls) : ""}">${rows.map(([k, v, opt]) => `
+    <div class="fact"><dt>${esc(k)}</dt><dd${opt && opt.cls ? ` class="${esc(opt.cls)}"` : ""}>${opt && opt.html ? v : esc(String(v))}</dd></div>`).join("")}</dl>`;
+}
+
+// A row of chips narrowing a list: All first, then one per group with its
+// count, the one in force wearing `.on`. A chip is a view, never a setting:
+// the caller keeps which is on for the page's life and nothing is saved.
+// `groups` is [{key, label, count}], `on` the key in force ("" for All).
+function chipBar(groups, on, attr){
+  const gs = (groups || []).filter(g => g && g.count);
+  if (gs.length < 2) return "";
+  const total = gs.reduce((n, g) => n + g.count, 0);
+  const chip = (key, label, count) => `<button type="button" class="chip${(on || "") === key ? " on" : ""}"
+    ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}<span class="pill">${count}</span></button>`;
+  return `<div class="field"><div class="chips">${chip("", "All", total)}${
+    gs.map(g => chip(g.key, g.label, g.count)).join("")}</div></div>`;
+}

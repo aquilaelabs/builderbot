@@ -944,6 +944,24 @@ Applies to: scripts/dashboard/index.html, scripts/dashboard/tab-*.js, scripts/da
 
 Three things live under a row's name, and each has a voice of its own (R210; the operator, 13 Oct: facts, warnings and settings all wore the same dim mono and read as one gray block). **Facts** are one line of `--f-data` mono in `var(--dim)`: where it came from, its ports, a path, a revision, separated by ` · `. **A notice** is what is wrong or what to know, one sentence, in `--f-ui` sans in the level's color behind a 3px bar of that color, no wider than a paragraph: `.sub.warn`, `.sub.bad`, `.sub.note` under a row, `.notice` where there is no row; a problem the page can fix is a link in the same color. **A state** is a pill on the name line, `.pill.stat` (`.state` is the action bar's status line, `.st` the session dot), a word in `--f-tag` caps: `.ok` (running) in the accent, `.warn` (partly up) in gold, `.off` (stopped, down) in purple, and no class for one nobody asked (state unknown); never a parenthesis in the facts' mono. Settings are the grid the settings rule describes. `test/uniform.mjs` measures a notice's font and bar.
 
+### tiles
+
+Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/dashboard/index.html; tile, tiles, stat, count, number, summary, glance
+
+**A number a tab is about is a tile (R216).** Where a surface has a few numbers that say its state at a glance (containers running of all, updates due, jobs waiting, images held, routes), they sit in one row of tiles under the bar: `statTiles([{label, value, sub, tone}])` in page-docs.js, `.tiles` a grid of `.tile`s that wraps to two columns on a phone. A tile is the value in `--f-stat` (the one voice larger than `--f-sect`, 600 and tabular figures), its label under it in `--f-note` dim, and an optional line of what the number is of; its tone is the number's color, `ok`, `warn` or `bad`, only when the number itself is news (two updates due is amber; six containers is ink). Tiles are facts: pressing one does nothing, and a tile is never drawn for a number that is always the same. One row per surface, at most six; more than that is a table.
+
+### facts
+
+Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js, scripts/dashboard/index.html; fact, facts, grid, label, value, key, pairs
+
+**What a row knows is a facts grid, not a sentence of dots (R216).** A row with more than two facts about one thing (image, ports, where it was built from, the compose file it came from, its containers) lays them out as `factGrid([[label, value], ...])`: a `dl.facts` of `dt` labels in `--f-note` dim and `dd` values in `--f-data` mono, two columns at a desk and one on a phone, each value wrapping on its own line. The ` · ` run-on line stays for two facts or fewer, and for the one line under a name that says where a thing came from. A value that is a path or an id is mono; a value that is a sentence is not a fact and goes in a notice (the voices rule).
+
+### chips
+
+Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/dashboard/index.html; chip, chips, filter, narrow, group, groups
+
+**A long list is narrowed by chips, not by a second list (R216).** Where a list is grouped (containers by project, jobs by node, toolchains by kind) a row of `.chip` buttons under the bar narrows it: All first with the whole count, then one chip per group with its count in a small pill, the one in force wearing `.on` in the accent. One chip at a time; All puts everything back; a chip for an empty group is not drawn. Chips are a view, never a setting: nothing is saved, and the list is whole again on the next open. The row scrolls sideways on a phone rather than wrapping into a block.
+
 ## Pages
 
 Each page is a layout of labeled blocks on a frame, named for what it is for, on the platform it is built for.
@@ -1245,6 +1263,7 @@ Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Bla
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
   The nginx tab (R171) is a node-scoped tab of the Toolchains shape (the node-switcher rule): one node at a time, picked in the bar, a state row first (nginx on NAME, its pill not deployed, deployed or deployed, down, and under it the container's name and route count); then the form, route rows (hostname, path, port, 443 too, remove) with Add route on their action bar, the certificates' lines (each name and when it ends; a key is never shown back), the hostname picker, the certificate and the key each a full-width PEM box under its label (the operator, 11 Oct: side by side on desktop read as broken), the clash in red since nginx holds 80 and 443 on the host, and Save, Revert then Deploy or Remove on the action bar at the foot, the destructive one last.
+  2.0 (R216, the operator, 13 Oct): under the bar, a row of tiles (containers running of all, updates due, projects) and a row of chips narrowing the list to one project. A container's row is its name and a state pill with a dot (running, stopped, partly up, down), a facts grid (image, ports, built from, compose file, containers), its notices, then the settings grid with one Apply, then its action bar. Nothing a person acts on moves into a fold.
 
 ### the Nodes tab (Web app)
 

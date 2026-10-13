@@ -540,6 +540,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 - The New project and Link dialogs ask for the repository's address first and read the git host from it on a row under it; a server nobody has answered for is the one case the row is a question (286127b)
 - Dark, Light or System beside the color scheme in the gear: every one of the thirteen schemes has a light half now, kept with the scheme in the browser and on the account (7af2b7b)
+- The Docker tab at a glance: tiles for what runs of what is here, updates due and projects; chips that narrow the list to one project; a container's row as a facts grid with a dotted state pill (ff1afb7)
+- A running container's row carries a strip of what it uses now: CPU, memory, network in and out, processes, sampled beside the list (ff1afb7)
+- A container's row has a Log fold: the last lines of each of its containers, read when opened, again on request, and every few seconds with Follow ticked (ff1afb7)
+- The Docker tab has an Images and volumes section: what the daemon holds and what a prune would give back, each image in use or not, each volume, and Prune images or Prune volumes for an administrator (ff1afb7)
 
 ### Sessions
 

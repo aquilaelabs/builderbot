@@ -2591,6 +2591,82 @@ const both = await page.$$eval('.dmtab .row[data-inst^="ep.silon|"]',
   rs => rs.map(r => r.dataset.inst));
 ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
    '...beside the one the project already had');
+// The tab at a glance (R216): tiles under the bar count what runs of what
+// is here, and a container's row carries its facts as a grid with a
+// dotted state pill rather than a run-on line.
+{
+  const tiles = await page.$$eval('.dmtab .tiles:not(.mini) .tile', ts => ts.map(t => ({
+    v: t.querySelector('.tv')?.textContent.trim(), l: t.querySelector('.tl')?.textContent.trim(),
+    s: t.querySelector('.ts')?.textContent.trim() || '', h: t.getBoundingClientRect().height })));
+  const run = tiles.find(t => t.l === 'running');
+  ok(run && +run.v >= 1 && /^of \d+ containers?$/.test(run.s) && tiles.every(t => Math.abs(t.h - tiles[0].h) <= 1),
+     `tiles say how many run of how many are here, in one row of one height (${JSON.stringify(tiles.map(t => [t.v, t.l, t.s]))})`);
+  const facts = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] dl.facts',
+    dl => [...dl.querySelectorAll('dt')].map(d => d.textContent.trim()));
+  ok(facts.includes('Image') && facts.includes('Ports'),
+     `...and a row's facts are a grid of labels and values (${facts.join(', ')})`);
+  ok(await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill',
+       e => getComputedStyle(e, '::before').content === '""' && getComputedStyle(e, '::before').width === '6px'),
+     '...the state pill wearing a dot of its color');
+  // What it uses now, asked beside the list once it landed and drawn as a
+  // strip on the running row: the fixture's docker answers stats with
+  // fixed figures.
+  await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile', { timeout: 15000 });
+  const strip = await page.$$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile',
+    ts => ts.map(t => `${t.querySelector('.tv')?.textContent.trim()} ${t.querySelector('.tl')?.textContent.trim()}`));
+  ok(strip.length === 4 && /^1\.3 ?% CPU$/.test(strip[0].replace(/\s+/g, ' ')) && /memory of/.test(strip[1]) && /process/.test(strip[3]),
+     `...and a running row carries a strip of what it uses: CPU, memory, network, processes (${strip.join(' | ')})`);
+  // Its log, in a fold under the row, read when the fold opens, with Follow.
+  const logSect = '.dmtab .row[data-inst="ep.silon|staging-two"] details[data-sect="docker:logs:ep.silon|staging-two"]';
+  await page.click(`${logSect} > summary`);
+  await page.waitForFunction(sel => {
+    const b = document.querySelector(sel + ' .dmlogbox'); return b && !/reading…/.test(b.textContent) && b.querySelector('[data-dmfollow]');
+  }, logSect, { timeout: 15000 });
+  const logged = await page.$eval(`${logSect} .dmlogbox`, b => ({
+    pre: !!b.querySelector('pre.dmlog'), none: /printed nothing/.test(b.textContent),
+    follow: !!b.querySelector('[data-dmfollow]'), again: !!b.querySelector('[data-dmlogagain]') }));
+  ok((logged.pre || logged.none) && logged.follow && logged.again,
+     `a row's Log fold reads the container's tail when opened, with Follow and Read again (${JSON.stringify(logged)})`);
+  await page.click(`${logSect} > summary`);
+  // The daemon's images and volumes, in a section at the foot: tiles of
+  // what it holds, each image in use or not, each volume, and the two
+  // prunes that touch nothing a container uses (the fixture answers all
+  // three listings and records a prune).
+  const imgSect = '.dmtab details[data-sect="docker:images"]';
+  await page.click(`${imgSect} > summary`);
+  await page.waitForFunction(sel => document.querySelector(sel + ' .dmimg'), imgSect, { timeout: 60000 });
+  const imgs = await page.evaluate(sel => ({
+    tiles: [...document.querySelectorAll(sel + ' .tiles:not(.mini) .tile')].map(t => `${t.querySelector('.tv')?.textContent.trim()} ${t.querySelector('.tl')?.textContent.trim()}`),
+    rows: [...document.querySelectorAll(sel + ' .dmimg')].map(r => `${r.querySelector('.name')?.textContent.trim()}`),
+    vols: [...document.querySelectorAll(sel + ' .dmvol .name')].map(e => e.textContent.trim()),
+    status: document.querySelector(sel + ' > summary .sst')?.textContent.trim(),
+    prunes: document.querySelectorAll(sel + ' [data-dmprune]').length }), imgSect);
+  ok(imgs.tiles.some(t => /^2 images/.test(t)) && imgs.rows.some(r => /ep-silon-img:latest.*in use/i.test(r)) && imgs.rows.some(r => /dangling.*unused/i.test(r))
+     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 2,
+     `the Images and volumes section lists the daemon's images in use or not, its volumes, and offers the two prunes (${JSON.stringify(imgs)})`);
+  // The confirmation is accepted by the page's own dialog handler (lib.mjs).
+  await page.click(`${imgSect} [data-dmprune="volumes"]`);
+  await page.waitForFunction(() => /pruned volumes/.test(document.body.textContent), null, { timeout: 15000 });
+  ok(/volume prune -f/.test(readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8')),
+     '...and Prune volumes runs docker volume prune with -f and nothing named, saying what it gave back');
+  await page.click(`${imgSect} > summary`);
+  // Chips narrow the list to one project, when there is more than one.
+  const chips = await page.$$eval('.dmtab .chips .chip', cs => cs.map(c => c.dataset.dmchip));
+  if (chips.length){
+    const mine = await page.$$eval('.dmtab .chips .chip', cs => cs.find(c => c.dataset.dmchip === 'ep.silon')?.textContent || '');
+    ok(chips[0] === '' && /ep\.silon/.test(mine), `the chips start with All and count each project (${chips.join('|')})`);
+    await page.click('.dmtab .chips .chip[data-dmchip="ep.silon"]');
+    await page.waitForFunction(() => document.querySelector('.dmtab .chip.on')?.dataset.dmchip === 'ep.silon', null, { timeout: 5000 });
+    const shown = await page.$$eval('.dmtab .dmgroup b', bs => bs.map(b => b.textContent.trim()));
+    ok(shown.length === 1 && /ep\.silon|epsilon/i.test(shown[0]),
+       `...a chip narrows the list to that project's group alone (${shown.join('|')})`);
+    await page.click('.dmtab .chips .chip[data-dmchip=""]');
+    await page.waitForFunction(() => document.querySelector('.dmtab .chip.on')?.dataset.dmchip === '', null, { timeout: 5000 });
+    ok(await page.$$eval('.dmtab .dmgroup', gs => gs.length) > 1, '...and All puts every group back');
+  } else {
+    ok(true, 'one project here, so no chips: a chip row of one is not drawn');
+  }
+}
 // The failed Up earlier is a JOB that failed: the request that queued it was
 // accepted, and the failure landed on the row. Before the queue it answered
 // 400, which the browser logged as a failed resource load, and this counted
@@ -3008,8 +3084,9 @@ ok(await page.$('#devSend'),
   ok(line.includes(`--project-directory ${D}/site `) && /web:/.test(text) && !/app:/.test(text),
      `...and its build runs compose in that file's folder, on that file (${line.slice(0, 120)}; ${text.replace(/\s+/g, ' ').slice(0, 40)})`);
   await dmRefresh();
-  ok(/made from site\/compose\.yml/.test(await page.$eval('.dmtab .row[data-inst="ep.silon|ep-silon-site"]', r => r.textContent)),
-     '...and its Docker row says which file made it');
+  ok(await page.$$eval('.dmtab .row[data-inst="ep.silon|ep-silon-site"] dl.facts .fact', fs =>
+       fs.some(f => f.querySelector('dt')?.textContent === 'Compose file' && /site\/compose\.yml/.test(f.querySelector('dd')?.textContent || ''))),
+     '...and its Docker row says which file made it, as a fact on the row');
   const again = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'stray', compose: 'docker-compose.override.yml' }) })).json()));
