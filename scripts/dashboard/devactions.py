@@ -324,7 +324,12 @@ def _ship_build_spec(project, instance, job_id):
     send it up. Never starts anything there."""
     spec = _plan_spec(project, instance, "rebuild")
     pname = devapp._pname(project, instance)
-    pdir = str(devapp.WORKSPACE / project / devapp.compose_sub(project, instance)).rstrip("/")
+    # The project directory the build resolves paths against: the tree for
+    # a project's instance, the data directory for a written one (as _plan
+    # has it), on the node that builds.
+    pdir = ((devapp.dev_data_dir(project, instance, make=False) or str(Path(devapp.appdata_root()) / pname))
+            if devapp.is_file_source(project, instance)
+            else str(devapp.WORKSPACE / project / devapp.compose_sub(project, instance)).rstrip("/"))
     base = [devapp.DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
     if "instance.env" in spec["files"]:
@@ -352,9 +357,12 @@ def _ship_run_spec(project, instance, job_id):
 def _ship_submit(project, instance, target):
     """A shipped instance's rebuild: the build node's job now, the instance
     node's when it succeeds (ship_next, from compose_done)."""
-    own = devapp.nodes_of(project) or []
+    # A written container builds on its owner's node, where the context its
+    # compose file names is (B716); a project's on its own.
+    owner = devapp.owner_of(project, instance) or project
+    own = devapp.nodes_of(owner) or []
     if not own:
-        return {"error": f"{project} has no node of its own to build its image on: set one in its settings"}
+        return {"error": f"{owner} has no node of its own to build its image on: set one in its settings"}
     builder, _ = devapp.queue.first_up(own) if hasattr(devapp.queue, "first_up") else (own[0], "")
     builder = builder or own[0]
     held = {"project": project, "instance": instance, "action": "rebuild", "hold": True,

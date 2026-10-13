@@ -77,6 +77,26 @@ class Relocate(unittest.TestCase):
         j["state"] = state
         return devactions.compose_done(j, state)
 
+    def test_a_written_container_that_builds_an_image_ships_too(self):
+        # A container written on the Docker tab for alpha, building an image
+        # (B716): moved to n2, which is not alpha's, its image is built on
+        # alpha's node and shipped, never built on n2, which holds no code.
+        d = devapp._load()
+        d["web"] = {"main": {"source": "file", "for": "alpha", "node": "n1"}}
+        d["pulls"] = {"main": {"source": "file", "for": "alpha", "node": "n1"}}
+        write_json(devapp.FILE, d)
+        for name, text in (("web", "services:\n  app:\n    build: .\n"), ("pulls", "services:\n  db:\n    image: mariadb:11\n")):
+            devapp.containers_dir(name).mkdir(parents=True, exist_ok=True)
+            (devapp.containers_dir(name) / "docker-compose.yml").write_text(text)
+        self.assertTrue(relocate.builds_image("web", "main"))
+        self.assertFalse(relocate.builds_image("pulls", "main"))
+        r = relocate.start("web", "main", "move", "n2")
+        self.assertTrue(r.get("ok"), r)
+        self.assertTrue(r.get("ship"), "a written container that builds ships, its image from alpha's node")
+        r2 = relocate.start("pulls", "main", "move", "n2")
+        self.assertTrue(r2.get("ok"), r2)
+        self.assertFalse(r2.get("ship"), "one that only pulls images rebuilds where it lands")
+
     def test_a_copy_is_a_new_container_on_the_other_node_with_the_env_given(self):
         r = relocate.start("alpha", "main", "copy", "n2", "alpha-web", "PORT=2\n")
         self.assertTrue(r.get("ok"), r)

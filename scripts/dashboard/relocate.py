@@ -22,6 +22,7 @@ The data travels through the controller's images store, the way a shipped
 image does, and lives there from the first job's upload to the second job's
 end. Both nodes must be agent nodes: a plan is what carries the steps.
 """
+import re
 import posixpath
 import time
 import os
@@ -309,6 +310,18 @@ def _rename_records(old, new):
     devapp._bump()
 
 
+def builds_image(project, instance):
+    """Whether a written container's compose file builds an image (a `build:`
+    under a service), read off the file itself: compose resolves a build
+    context against the project directory, so the answer needs no node."""
+    f = devapp.compose_file(project, instance)
+    try:
+        text = f.read_text() if f else ""
+    except OSError:
+        return False
+    return bool(re.search(r"^\s+build:", text, re.M))
+
+
 def start(project, instance, mode, node, name="", env=None):
     """Copy (mode "copy", into a new instance called `name`) or move (mode
     "move", the same instance) an instance to `node`, its data with it, its
@@ -336,7 +349,13 @@ def start(project, instance, mode, node, name="", env=None):
     if rec.get("relocating"):
         return {"error": "it is already being copied or moved"}
     owner = rec.get("for") or project
-    ship = rec.get("source") != "file" and target not in (devapp.nodes_of(owner) or [])
+    # A container written on the Docker tab ships too when its compose file
+    # builds an image: the build needs the context the file names, which is
+    # on the node it was written for and never on a hosting node. Built on
+    # arrival instead, BuildKit refused the context on a node with no code
+    # and the move went back with both down (turinglens, B716). One that
+    # only pulls images still rebuilds wherever it lands.
+    ship = target not in (devapp.nodes_of(owner) or []) and (rec.get("source") != "file" or builds_image(project, instance))
     if mode == "copy":
         dest = devapp.instance_key(project, name or "")
         if not dest:

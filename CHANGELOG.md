@@ -510,6 +510,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A version a project pins in its Gradle files (ndkVersion, buildToolsVersion, compileSdk) is a row of its own on its node's Toolchains tab, named for the project, so a store that holds only the newest NDK or build-tools no longer strands it (4ca99b5)
 - The nginx tab re-reads when a route or certificate is written from elsewhere: a container row's Add route, bb or another browser, within a poll rather than at its next Refresh (b59527f)
 - The Toolchains tab no longer offers an update a toolchain already has when the two sides write the same release differently (Swift 6.4 against 6.4.0): trailing zeros are ignored in the comparison (b59527f)
+- Copy or move of a container written on the Docker tab whose compose builds an image ships the image from its project's node, as a project's own instances do, instead of building on the node it lands on, which a hosting node cannot (332a95c)
 
 ### Security
 

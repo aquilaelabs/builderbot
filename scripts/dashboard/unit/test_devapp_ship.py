@@ -76,6 +76,21 @@ class Ship(unittest.TestCase):
     def make(self, node="n2", ship=True):
         return devapp.create_instance("alpha", "web", node, ship=ship)
 
+    def test_a_written_container_builds_on_its_owners_node(self):
+        # The written container's owner is alpha, whose node is n1: the
+        # shipped build runs there, against its data directory, not against
+        # a tree the container does not have (B716).
+        write_json(devapp.FILE, {"web": {"main": {"source": "file", "for": "alpha", "node": "n2", "ship": True}}})
+        devapp.containers_dir("web").mkdir(parents=True, exist_ok=True)
+        (devapp.containers_dir("web") / "docker-compose.yml").write_text("services:\n  app:\n    build: .\n")
+        r = devactions._ship_submit("web", "main", "n2")
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(self.q.jobs[r["job"]]["node"], "n1", "built on the owner's node, not the container's own name's")
+        b = devactions._ship_build_spec("web", "main", "j_9")
+        argv = " ".join(b["plan"][0]["argv"])
+        self.assertNotIn(str(self.ws / "web"), argv, "no tree of its own is named as the project directory")
+        self.assertIn("web", argv[argv.index("--project-directory"):], "its own data directory is")
+
     def test_only_on_purpose(self):
         r = self.make(ship=False)
         self.assertIn("out of reach of its sessions", r.get("error", ""), "a node outside the set, not asked to ship")
