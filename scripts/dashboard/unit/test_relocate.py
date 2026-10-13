@@ -172,7 +172,6 @@ class Relocate(unittest.TestCase):
         # last stage: build, down, and no up (R208, the operator, 13 Oct).
         import importlib
         real = importlib.import_module("devactions")
-        rec = devapp._read_rec("alpha", "main")
         plain = [st["name"] for st in real._plan("alpha", "main", "rebuild")]
         self.assertEqual(plain, ["building", "stopping", "starting"], "a rebuild at home comes up")
         relocate._set("alpha", "main", relocating={"mode": "move", "to": "main", "old": "n1", "new": "n3", "stage": "build"})
