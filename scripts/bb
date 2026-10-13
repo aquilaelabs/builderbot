@@ -327,7 +327,9 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.
                    Two services are known. A Gitea: the `gitea` service of BuilderBot's own dev
                    stack, under its compose file's `lab` profile, brought up from the Docker tab
-                   like any project's stack (`BB_LAB_GITEA`, the local one by default). A real node,
+                   like any project's stack (`BB_LAB_GITEA`, the local one by default), and
+                   a Forgejo beside it (`BB_LAB_FORGEJO`, port 3001), which the forge suite
+                   runs against a second time under its own catalog entry. A real node,
                    through the controller it is enrolled on: `BB_LAB_CONTROLLER` (that dashboard's
                    address), `BB_LAB_TOKEN` (`user:password` for an administrator there, the lab's
                    own) and `BB_LAB_NODE` (the node by name or id). A job runs on that node, so name
@@ -2457,12 +2459,21 @@ cmd_tests() {
         else
             unset BB_LAB_GITEA          # absent, so the forge suites skip
         fi
+        # ...and the lab's Forgejo, one port along, which the forge suite runs
+        # against a second time under its own catalog entry.
+        local ok_forgejo=""
+        BB_LAB_FORGEJO="${BB_LAB_FORGEJO:-http://127.0.0.1:3001}"
+        if curl -fs "$BB_LAB_FORGEJO/api/healthz" >/dev/null 2>&1; then
+            ok_forgejo="$BB_LAB_FORGEJO"
+        else
+            unset BB_LAB_FORGEJO
+        fi
         if [ -n "${BB_LAB_CONTROLLER:-}" ] && [ -n "${BB_LAB_NODE:-}" ] \
            && [ -n "${BB_LAB_TOKEN:-}" ]; then
             export BB_LAB_CONTROLLER BB_LAB_NODE BB_LAB_TOKEN
             ok_ctl="$BB_LAB_CONTROLLER ($BB_LAB_NODE)"
         fi
-        echo "lab services: gitea=${ok_gitea:-none} controller=${ok_ctl:-none}"
+        echo "lab services: gitea=${ok_gitea:-none} forgejo=${ok_forgejo:-none} controller=${ok_ctl:-none}"
         if [ -z "$ok_gitea" ] && [ -z "$ok_ctl" ]; then
             echo "lab: nothing answers, so every suite will skip and that is not a failure."
             echo "     A Gitea comes from the dev stack with COMPOSE_PROFILES=lab in its env"
@@ -2476,7 +2487,13 @@ cmd_tests() {
         local f
         for f in "$tdir"/lab-*.mjs; do [ -e "$f" ] && labs+=("$(basename "$f" .mjs)"); done
         [ "${#labs[@]}" -gt 0 ] || die "no lab suites (test/lab-*.mjs) in this checkout"
-        exec "$tdir/run.sh" "${labs[@]}"
+        local rc=0
+        bash "$tdir/run.sh" "${labs[@]}" || rc=$?
+        if [ -n "$ok_forgejo" ]; then
+            echo "lab: the forge suite again, against Forgejo at $ok_forgejo"
+            BB_LAB_GITEA="$ok_forgejo" BB_LAB_FORGE=forgejo bash "$tdir/run.sh" lab-forge || rc=$?
+        fi
+        return "$rc"
     fi
     local proj="${BB_TESTS_PROJECT:-}"
     if [ -z "$proj" ]; then

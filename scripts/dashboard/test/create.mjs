@@ -38,7 +38,9 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
 {
   const hosts = async () => (await page.evaluate(async () => (await (await fetch('/api/pubkeys')).json()))).forges || [];
   const off = await hosts();
-  ok(off.map(f => f.name).join(', ') === 'Gitea, GitHub, Another git host' && off.every(f => !f.dev),
+  // Forgejo joined the proven ones on 13 Oct (lab-forge.mjs against the
+  // lab's Forgejo, a runner registered with it from bb-dev-sandbox).
+  ok(off.map(f => f.name).join(', ') === 'Forgejo, Gitea, GitHub, Another git host' && off.every(f => !f.dev),
      `with unvetted features off, the hosts offered are the proven ones and the catch-all (${off.map(f => f.name).join(', ')})`);
   const refused = await postJson({ mode: 'clone', url: 'https://gitlab.com/group/thing', forge: 'gitlab', name: 'thing' });
   ok(refused.status === 400 && /GitLab is dev, not yet vetted/.test(refused.body.error || '')
@@ -46,9 +48,9 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
      `a clone naming an unvetted host is refused, and the sentence names the switch (${refused.body.error})`);
   await postJson({ set: { offer_unvetted: true } }, '/api/settings');
   const on = await hosts();
-  ok(on.length === 7 && on.filter(f => f.dev).map(f => f.name).join(', ') === 'Bitbucket, Codeberg, Forgejo, GitLab'
+  ok(on.length === 7 && on.filter(f => f.dev).map(f => f.name).join(', ') === 'Bitbucket, Codeberg, GitLab'
      && on[on.length - 1].name === 'Another git host',
-     `on, every host is offered, the unproven four tagged dev, the catch-all still last (${on.map(f => f.name + (f.dev ? '*' : '')).join(', ')})`);
+     `on, every host is offered, the unproven three tagged dev, the catch-all still last (${on.map(f => f.name + (f.dev ? '*' : '')).join(', ')})`);
   await postJson({ set: { offer_unvetted: false } }, '/api/settings');
 }
 
