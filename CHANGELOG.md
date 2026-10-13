@@ -540,6 +540,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 - The New project and Link dialogs ask for the repository's address first and read the git host from it on a row under it; a server nobody has answered for is the one case the row is a question (286127b)
 
+### Sessions
+
+- A session's tool calls are no longer refused as 'BuilderBot is restarting' while the controller is merely slow to answer: the gate tells a busy controller from one that is down (6c27b71)
+
 ## 0.7.0: 2026-09-25
 
 ### Added
