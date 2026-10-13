@@ -100,7 +100,17 @@ async function dmClick(act){
     throw new Error(`B477: ${act} stayed disabled 45s: ${JSON.stringify(seen).slice(0, 400)}\n`
       + dockerLog().split('\n').filter(l => /ep-silon /.test(l)).slice(-12).join('\n'));
   }
-  await page.click(b);
+  await pressIn(b);
+}
+// A press on a bar's button, behind More when it is there (R210): the menu
+// is opened first, as a thumb would.
+async function pressIn(sel){
+  const folded = await page.$eval(sel, e => { const m = e.closest('.actmenu'); return !!(m && m.hidden); }).catch(() => false);
+  if (folded){
+    await page.$eval(sel, e => e.closest('.more').querySelector(':scope > button').click());
+    await page.waitForFunction(s => { const e = document.querySelector(s); return e && !e.closest('.actmenu').hidden; }, sel, { timeout: 10000 });
+  }
+  await page.click(sel);
 }
 async function dmDisabled(act){
   await openManager();
@@ -2157,7 +2167,7 @@ const dead = await page.evaluate(() => {
     newOff: mk?.disabled === true,
     tip: saidOf(mk),
     acts: q('.dmtab [data-dm="up"],.dmtab [data-dm="down"]').map(b => b.disabled),
-    empty: document.querySelector('.dmtab .empty')?.textContent || '',
+    empty: document.querySelector('.dmtab .dmnote, .dmtab .empty')?.textContent || '',
     refreshLive: document.getElementById('bDockerRe')?.disabled === false,
     files: q('.dmtab [data-dm="edit"],.dmtab [data-dm="env"]').map(b => b.disabled),
     removes: q('.dmtab [data-dm="remove"]').map(b => b.disabled),
@@ -2313,7 +2323,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
         state.docker = { on: true, why: '', node: id };
         dockerList = raw; dockerRev++; drawPanes();
         return { ups: [...document.querySelectorAll('.dmtab [data-dm="up"]')].map(b => b.disabled),
-                 empty: document.querySelector('.dmtab .empty')?.textContent || '' };
+                 empty: document.querySelector('.dmtab .dmnote, .dmtab .empty')?.textContent || '' };
       }
       await new Promise(r => setTimeout(r, 250));
     }
@@ -2428,13 +2438,13 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   // Waited for rather than assumed: the repaint is synchronous but the tab
   // has to be the one on screen, and an earlier file leaving another
   // document in the pane is enough to lose the race.
-  await page.waitForSelector('.dmtab .empty', { timeout: 15000 });
-  ok(/not a BuilderBot sandbox/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+  await page.waitForSelector('.dmtab .dmnote', { timeout: 15000 });
+  ok(/not a BuilderBot sandbox/.test(await page.$eval('.dmtab .dmnote', e => e.textContent)),
      'a daemon with no provisioner stamp is refused, and named as the reason');
   // The provisioner's own name, which is provision-linux.sh since there is a
   // macos one beside it. `provision\.sh` matched the name it had before that
   // and nothing since.
-  ok(/provision-linux\.sh/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+  ok(/provision-linux\.sh/.test(await page.$eval('.dmtab .dmnote', e => e.textContent)),
      '...saying what to run on the VM, since re-running it is the whole fix');
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   await page.evaluate(async (id) => {
@@ -2815,7 +2825,7 @@ ok(/written here: this dashboard holds its compose file/.test(await page.$eval(
    '...and the manager says which kind it is on the row, under No project, since none was picked');
 // Editing one: what it is changes far more often than it is created, and
 // without this the only way to move a port was to remove it and retype it.
-await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
+await pressIn('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
 await page.waitForSelector('#cmodal:not([hidden])');
 await page.waitForFunction(() => /services:/.test(document.getElementById('cYml').value),
                            { timeout: 10000 });
@@ -2831,7 +2841,7 @@ ok(/alpine:latest/.test(readFileSync(`${DIR}/state/containers/radarr/docker-comp
    '...and Save writes the new compose file');
 // One that will not parse leaves the old file where it was.
 writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
-await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
+await pressIn('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
 await page.waitForSelector('#cmodal:not([hidden])');
 await page.waitForFunction(() => /alpine/.test(document.getElementById('cYml').value),
                            { timeout: 10000 });
@@ -2869,7 +2879,7 @@ ok(!existsSync(`${DIR}/state/containers/ep-silon`),
    '...and nothing is written for it');
 await page.click('#cCancel');
 await openManager();
-await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="remove"]');
+await pressIn('.dmtab .row[data-inst="radarr|main"] [data-dm="remove"]');
 await page.waitForFunction(() =>
   !document.querySelector('.dmtab .row[data-inst="radarr|main"]'), { timeout: 20000 });
 ok(!existsSync(`${DIR}/state/containers/radarr`),
@@ -2891,7 +2901,7 @@ await page.click('#dnCancel');
 // Removing takes it down and drops it from the list, and the project's
 // Artifacts tab is untouched, which is where it comes back from.
 await openManager();
-await page.click('.dmtab .row[data-inst="ep.silon|staging-two"] [data-dm="remove"]');
+await pressIn('.dmtab .row[data-inst="ep.silon|staging-two"] [data-dm="remove"]');
 await page.waitForFunction(() =>
   !document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"]'),
   { timeout: 20000 });
@@ -2909,7 +2919,7 @@ ok(await page.$('#devSend'),
 // one node.
 {
   await openManager();
-  await page.click(`${DM} [data-dmrel]`);
+  await pressIn(`${DM} [data-dmrel]`);
   await page.waitForSelector('#rlmodal:not([hidden])');
   await page.waitForFunction(() => !/reading/.test(document.getElementById('rlEnvHint').textContent), null,
                              { timeout: patience(10000) }).catch(() => {});
@@ -2998,7 +3008,7 @@ ok(await page.$('#devSend'),
   ok(/has no compose file docker-compose\.override\.yml/.test(again.error || ''),
      `a file that is not one of its compose files is refused by name (${again.error})`);
   await idle(60000);
-  await page.click('.dmtab .row[data-inst="ep.silon|ep-silon-site"] [data-dm="remove"]');
+  await pressIn('.dmtab .row[data-inst="ep.silon|ep-silon-site"] [data-dm="remove"]');
   await page.waitForFunction(() => !document.querySelector('.dmtab .row[data-inst="ep.silon|ep-silon-site"]'),
                              null, { timeout: patience(20000) });
   rmSync(`${D}/site`, { recursive: true, force: true });
@@ -3977,19 +3987,21 @@ print(json.dumps(out))
        JSON.stringify(g)})`);
   // ...and the project is a setting on the row, staged and applied.
   const R = '.dmtab .row[data-ctr="someone-elses"]';
-  ok(await page.$eval(`${R} [data-dmownapply]`, b => b.disabled)
+  ok(await page.$eval(`${R} [data-dmapply]`, b => b.disabled)
      && await page.$eval(`${R} [data-dmown]`, e => e.value === '' && [...e.options].some(o => o.value === 'ep.silon')),
      'a container somebody else started carries a Project setting, on no project, with Apply asleep');
   await page.selectOption(`${R} [data-dmown]`, 'ep.silon');
-  ok(!await page.$eval(`${R} [data-dmownapply]`, b => b.disabled), '...which a pick wakes');
-  await page.click(`${R} [data-dmownapply]`);
+  ok(!await page.$eval(`${R} [data-dmapply]`, b => b.disabled), '...which a pick wakes');
+  await page.click(`${R} [data-dmapply]`);
   await page.waitForFunction(() => {
     const row = document.querySelector('.dmtab .row[data-ctr="someone-elses"]');
     const heads = [...document.querySelectorAll('.dmtab .dmgroup')]
       .filter(h => row && (h.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING));
     return heads.pop()?.querySelector('b')?.textContent === 'ep.silon';
   }, null, { timeout: 20000 });
-  ok(/ep\.silon's Claude may/.test(await page.$eval(R, r => r.textContent)),
+  // The label ("ep.silon's Claude") and the words under it are two lines
+  // of a settings cell now (R210), so any whitespace between them.
+  ok(/ep\.silon's Claude\s+may/.test(await page.$eval(R, r => r.textContent)),
      "...and Apply moves it under that project, saying what the project's sessions may do with it");
   ok(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8'))
        && Object.values(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8')))
@@ -4257,9 +4269,13 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   const broken = await draw({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (1) 5 hours ago' });
   // The pill may carry ", as last seen" when the daemon's answer is slow
   // under load (B346); the check is about the one-shot's words, not that.
-  ok(/\(running(, as last seen)?\)/.test(seeded) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
+  // The state is a pill on the name line, read on its own (R210).
+  const pillOf = async svc => page.evaluate(r => { const el = document.createElement('div');
+    el.innerHTML = dmRowsHtml([r], null, false); return el.querySelector('.dmpill')?.textContent.trim(); }, row(svc));
+  const seededPill = await pillOf({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (0) 5 hours ago' });
+  ok(/^running(, as last seen)?$/.test(seededPill) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
      `a one-shot that exited 0 leaves the row running and reads finished, while one that failed still reads partly up (${
-       (seeded.match(/\([^)]*\)/) || [''])[0]} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
+       seededPill} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
 }
 
 // ---- where a new container goes: one of its project's nodes -------------

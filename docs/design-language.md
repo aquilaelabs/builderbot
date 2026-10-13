@@ -305,6 +305,8 @@ note and low blue.
 A section's heading is `--f-sect` (600 14px system sans, 13px for a section
 inside a section), the one voice above a row's. What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
 
+**One step up at a desk (R210).** The sizes above are the phone's, set against a thumb's width; at a desk, `@media(min-width:901px)`, every voice is one pixel larger (`--f-note` 12, `--f-ui` 13, `--f-row` 14, `--f-field` 12 mono, `--f-sect` 15) so the ladder between them is the same ladder at both sizes. A row's mono facts are `--f-data` (12px, 13 at a desk) and a pill's text `--f-pill`; a button speaks in `--f-ui`, never the browser's default (B711). Nothing retypes a size: a voice is named once on `:root` and once in the desk block.
+
 ### space
 
 Applies to: scripts/dashboard/index.html; padding, spacing, gap, inset, margin
@@ -485,6 +487,8 @@ swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
 
+**A row's settings are a grid with one Apply (R210).** `.setgrid` holds a `.setcell` per setting, the label above its control as every field is (`lbl`), in columns where there is room and one column on a phone; a read-only cell (`.ro`) says a setting kept elsewhere with the way there; an action that belongs beside a setting (Add route) sits in the cell's `.ctl` and acts on the press. The one Apply is in `.setfoot`, asleep until a control differs from what is saved, and writes every staged setting in turn. A container row was five settings each with its own Apply or Move (the operator, 13 Oct).
+
 ### files
 
 Applies to: scripts/dashboard/index.html; script, module, file, load
@@ -536,6 +540,8 @@ row. The destructive verb wears `.danger` and comes last, so nothing safe
 sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
+
+**At most five buttons on a bar, and the rest behind More (R210).** A row's bar holds its primary verbs (Up, Down, the build, an Update that is due) and `actMore([...])` draws the rest behind one More button, whose menu opens under it as the gear's does, anything else closes it, Escape too; a single leftover is drawn inline, since a menu of one is a detour. The destructive verb is last in the menu as it was last on the bar. Seven buttons wrapped to two lines on a phone with Remove alone on the second (the operator, 13 Oct); `test/uniform.mjs` counts a bar's buttons at phone width.
 
 ### rows-you-open
 
@@ -747,6 +753,12 @@ Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/page-docs.js; node, pi
 A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner, the Docker manager) picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the left of the tab's bar (`.docbarrow`) with its verbs at the right, Refresh last, listing the agent nodes by name; a node that cannot be picked for this tab is in the list, disabled, its reason after its name (`sandbox: no adb`), and a quiet one says so. A tip in that bar opens under it, anchored to its right edge, so the rightmost one never hangs past a phone's pane.
 
 What is installed on the node is a list of ticked rows (`label.tc`): an installed thing is a set, dead tick with its bin at the right, a thing to add is a tick, and one **Install selected** in the action bar at the foot does them all in one job; Toolchains and the Emulator are both this, the Emulator's rows to add narrowed to one flavor picked above them. A thing the node runs (the Phone, the CI runner) opens on a state row, `.row.toolstate`: "Phone on sandbox" or "CI runners on sandbox" with its state as a pill and one sentence under it; then its controls and its add band (inset in a `.field`), and at the foot a `.field.toolfoot` hint saying how a session or a workflow reaches it. A new node-scoped tab starts from one of these two shapes, never from a picker or a layout of its own (R121, the operator 4 Oct).
+
+### voices
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; notice, notices, state, pill, facts, voice, voices, warning
+
+Three things live under a row's name, and each has a voice of its own (R210; the operator, 13 Oct: facts, warnings and settings all wore the same dim mono and read as one gray block). **Facts** are one line of `--f-data` mono in `var(--dim)`: where it came from, its ports, a path, a revision, separated by ` · `. **A notice** is what is wrong or what to know, one sentence, in `--f-ui` sans in the level's color behind a 3px bar of that color, no wider than a paragraph: `.sub.warn`, `.sub.bad`, `.sub.note` under a row, `.notice` where there is no row; a problem the page can fix is a link in the same color. **A state** is a pill on the name line, `.pill.stat` (`.state` is the action bar's status line, `.st` the session dot), a word in `--f-tag` caps: `.ok` (running) in the accent, `.warn` (partly up) in gold, `.off` (stopped, down) in purple, and no class for one nobody asked (state unknown); never a parenthesis in the facts' mono. Settings are the grid the settings rule describes. `test/uniform.mjs` measures a notice's font and bar.
 
 ## Pages
 

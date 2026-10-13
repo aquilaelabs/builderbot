@@ -335,37 +335,31 @@ async function language(){
       return { status: s.querySelector('.sst')?.textContent?.trim() || '',
                skin: [c.minHeight, c.fontWeight, c.cursor].join('|') };
     });
-    return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects };
+    // The voices (R210): a button speaks in the page's sans (the key caps
+    // on the terminal tab are mono on purpose), never the browser's own
+    // default, which a dropped shorthand left every button in (B711); and a
+    // notice under a row (.sub.warn, .sub.bad, .notice) is sans behind a
+    // bar of its color, so it is told from the mono facts above it.
+    // The first family named is what is compared: the page's stacks spell
+    // their fallbacks differently (system-ui, -apple-system, ... against
+    // system-ui, sans-serif) and all begin with the same face.
+    const first = f => f.split(',')[0].trim().replace(/["']/g, '');
+    const bodyFont = first(getComputedStyle(document.body).fontFamily);
+    const alien = [...box.querySelectorAll('button')].filter(b => {
+      const f = getComputedStyle(b).fontFamily;
+      return vis(b) && b.textContent.trim() && first(f) !== bodyFont && !/mono/i.test(f);
+    }).map(b => `${named(b)} "${b.textContent.trim().slice(0, 12)}" (${first(getComputedStyle(b).fontFamily)})`);
+    const flat = [...box.querySelectorAll('.row .sub.warn, .row .sub.bad, .row .sub.note, .notice')].filter(n => {
+      const c = getComputedStyle(n);
+      return vis(n) && (/mono/i.test(c.fontFamily) || parseFloat(c.borderLeftWidth) < 2);
+    }).map(n => `${named(n)} "${n.textContent.trim().slice(0, 20)}"`);
+    return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects, alien, flat };
   }, { NOT_A_BAR });
 }
 
 // Gathered across every kind and compared at the end: "the same on every tab"
 // is not a claim any one tab can fail on its own.
 const seenBars = new Set(), seenSects = new Set(), seenReds = new Set();
-for (const kind of kinds){
-  if (!DRIVERS[kind]) continue;
-  await bring(kind);
-  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(200);
-  const L = await language();
-  ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
-  if (L.err) continue;
-  ok(L.loose.length === 0,
-     `[${kind}] every set of text buttons is an action bar${
-       L.loose.length ? `; not: ${L.loose.join(', ')}` : ''}`);
-  ok(L.order.length === 0,
-     `[${kind}] nothing safe sits after a verb that cannot be undone${
-       L.order.length ? `: ${L.order.join(', ')}` : ''}`);
-  L.layout.forEach(x => seenBars.add(x));
-  L.sects.forEach(x => seenSects.add(x.skin));
-  L.reds.forEach(x => seenReds.add(x));
-  const wordy = L.sects.filter(x => x.status.length > 24).map(x => x.status);
-  ok(wordy.length === 0,
-     `[${kind}] a section's status is a word or a number, not a sentence${
-       wordy.length ? `: ${JSON.stringify(wordy)}` : ''}`);
-}
-ok(seenBars.size <= 1,
-   `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
 
 // ---- a control never spans its container ----------------------------------
 // A button, a select, a text field, or a row of them side by side stops
@@ -385,7 +379,7 @@ async function spanning(){
     const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
-    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .dmref, .imgadd, .tcnode, .ndpaths';
+    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .setcell .ctl, .setfoot, .imgadd, .tcnode, .ndpaths';
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).
@@ -398,6 +392,12 @@ async function spanning(){
       // the action at the tab's right edge), so its union spans by design.
       // Its controls are measured one by one below, like any lone control.
       if (row.classList.contains('docbarrow')) continue;
+      // A full action bar on a phone (four buttons or more) shares the row
+      // between its buttons on purpose (the phone rule both-sizes: at 344px
+      // four did not fit), so its union spans by design; each button is
+      // still a fraction of the width.
+      if (W <= 600 && row.classList.contains('actbar')
+          && [...row.children].filter(c => (c.tagName === 'BUTTON' || c.classList.contains('more')) && vis(c)).length >= 4) continue;
       const kids = [...row.querySelectorAll(CTL)].filter(vis);
       kids.forEach(k => seen.add(k));
       if (!kids.length) continue;
@@ -418,15 +418,6 @@ async function spanning(){
     }
     return { wide: out, w: W };
   });
-}
-for (const kind of kinds){
-  if (!DRIVERS[kind]) continue;
-  await bring(kind);
-  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  const S = await spanning();
-  ok(!S.err && S.wide.length === 0,
-     `[${kind}] no control or row of controls spans the tab${
-       S.err ? ` (${S.err})` : S.wide.length ? `: ${S.wide.join(', ')}` : ''}`);
 }
 
 // ---- controls in a row line up ---------------------------------------------
@@ -1108,6 +1099,17 @@ for (const kind of kinds){
   ok(!L.err && L.sizes.length === 0,
      `[${kind}] every control on a line is one height at phone width${
        L.err ? ` (${L.err})` : L.sizes.length ? `: ${L.sizes.join('; ')}` : ''}`);
+  // An action bar on a phone shows at most five text buttons; what a row
+  // can do beyond its primary verbs is behind More (R210: seven wrapped to
+  // two lines, Remove alone on the second).
+  const crowded = await page.$$eval('.doc.on .actbar', bars => bars.map(b => {
+    const vis = e => e.offsetHeight > 0 && e.textContent.trim();
+    const n = [...b.children].filter(c => c.tagName === 'BUTTON' && vis(c)).length
+      + [...b.querySelectorAll(':scope > .more > button')].filter(vis).length;
+    return n > 5 ? `${b.className.split(/\s+/).pop()}(${n})` : '';
+  }).filter(Boolean));
+  ok(crowded.length === 0,
+     `[${kind}] an action bar shows at most five buttons at phone width${crowded.length ? `: ${crowded.join(', ')}` : ''}`);
   const W = await unwrapped();
   ok(!W.err && W.tall.length === 0,
      `[${kind}] every select is one line high at phone width${

@@ -149,6 +149,11 @@
      the rows under it are about. It was --f-ui at 600, a step below the
      rows it headed, and read as small (the operator, 7 Oct). */
   --f-sect:600 14px/1.4 system-ui,sans-serif;
+  /* A ROW'S FACTS: the mono line under a name (ports, a path, a revision),
+     named so it moves with the scale below rather than staying 12px while
+     everything around it grew. */
+  --f-data:12px/1.4 var(--mono);
+  --f-pill:11px/1 var(--mono);
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
      "reference" and "na" stop looking like the same family. */
@@ -157,6 +162,24 @@
   --blue2:#77b7e8;  --blue2-edge:#1e3a4a;
   --gold:#d8b25c;   --gold-edge:#4a3c1e;
   --red2:#e0796f;   --red2-edge:#94423d;
+}
+/* ONE STEP UP AT A DESK (the operator, 13 Oct: "a lot of text looks too
+   small on desktop in a lot of places"). The phone keeps the sizes above,
+   which were set against a thumb's width; a desk reads from further away
+   and had the same 11px explainers and 12px mono facts. Every voice moves
+   together, by one pixel, so the ladder between them (note under ui under
+   row under sect) is the same ladder at both sizes. The breakpoint is the
+   layout's own (the sidebar folds under 901px). */
+@media(min-width:901px){
+  :root{
+    --f-note:12px/1.5 system-ui,sans-serif;
+    --f-ui:13px/1.5 system-ui,sans-serif;
+    --f-row:14px/1.45 system-ui,sans-serif;
+    --f-field:12px/1.5 var(--mono);
+    --f-sect:600 15px/1.4 system-ui,sans-serif;
+    --f-data:13px/1.4 var(--mono);
+    --f-pill:12px/1 var(--mono);
+  }
 }
 /* The cap. A lightness ceiling rather than more black, because "more black"
    is the wrong knob: it darkens the schemes that were already fine into mud
@@ -612,7 +635,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    field. */
 .setrow.col>input:not([type=checkbox]):not([type=number]),.setrow.col>select{width:100%;flex:0 0 auto}
 .setrow.col>input[type=number]{width:7em;flex:0 0 auto}
-.lbl{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);margin:0}
+.lbl{display:block;font:var(--f-ui);color:var(--dim);margin:0}
 .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
   margin-left:5px;border-radius:50%;border:1px solid var(--line);color:var(--dim);
   font:11px/1 system-ui,sans-serif;vertical-align:middle;cursor:help;
@@ -833,15 +856,29 @@ body.dragging .side .card h2{cursor:grabbing}
    should look like one before you press anything. The buttons inside carry
    :disabled's own fade on top of this, which is the intended reading: the row
    is inert and its controls doubly so. */
-.row.off{opacity:.62}
+/* The row's PARTS are dimmed, not the row: a More menu opened on a dimmed
+   row is drawn inside it, and an opacity on the row made the menu see-through
+   over the next row's words (R210). */
+.row.off > :not(.actbar),.row.off > .actbar > :not(.more),.row.off > .actbar > .more > button{opacity:.62}
 /* A directory name can be one long unbroken token; it wraps rather than
    handing the whole sidebar a sideways scroll. */
 .row .name{font-weight:600;overflow-wrap:anywhere}
 .row .name.go{cursor:pointer}
-.row .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
-.row .sub.bad{color:var(--bad)}
-/* A problem the page can fix is a link in the color of its own warning. */
-.row .sub.warn{color:var(--warn)}
+.row .sub{color:var(--dim);font:var(--f-data);overflow-wrap:anywhere}
+/* A NOTICE: what is wrong or what to know, under a row, in a voice of its
+   own (the operator, 13 Oct: facts, warnings and settings all wore the same
+   dim mono and read as one gray block). Sans, in the level's color, behind
+   a bar of that color, and no wider than a paragraph: the eye finds it
+   without reading the facts around it. `.notice` is the same thing where
+   there is no row (a tab's own line at the top). A problem the page can fix
+   is a link in the color of its own warning. */
+.row .sub.bad,.row .sub.warn,.row .sub.note,.notice{
+  font:var(--f-ui);padding:2px 0 2px 10px;border-left:3px solid var(--warn);
+  margin:4px 0;max-width:78ch;overflow-wrap:anywhere}
+.row .sub.warn,.notice,.notice.warn{color:var(--warn)}
+.row .sub.bad,.notice.bad{color:var(--bad);border-left-color:var(--bad)}
+.row .sub.note,.notice.note{color:var(--note);border-left-color:var(--note)}
+.notice a,.row .sub.warn a,.row .sub.bad a{color:inherit}
 /* Locked is a decision, not a fault: stated plainly rather than alarming.
    Nothing about the row is dimmed for it: a locked project is one the operator
    is actively running, and graying it out would say the opposite. */
@@ -2889,8 +2926,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
   max-width:min(var(--ctl-w),88%)}
+/* The grid itself is capped as a whole, so its cells share the surface's
+   control width and do not stretch across a wide tab. */
+:is(.doctab,.nb) .setgrid{max-width:min(calc(var(--ctl-w) * 2),100%)}
 /* A prose editor in the notebook (a memory's body, a rule, a bug's repro)
    is a page, not a control: it keeps the reading width. */
 .nb textarea{max-width:none}
@@ -2909,7 +2949,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -2922,7 +2962,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
+  .imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
   .ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
@@ -2942,13 +2982,39 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    not the field-that-owns-its-row width the skin gives a select. */
 .actbar select{width:auto;flex:0 0 auto}
 .actbar input{width:auto;flex:0 1 12em;min-width:0}
+/* MORE: a bar keeps its primary verbs and folds the rest behind one button
+   (R210; the operator, 13 Oct: seven buttons wrapped to two lines on a phone
+   and Remove sat alone on the second). The menu opens under the button, as
+   the gear's does, anything else closes it, and its items are the bar's
+   own buttons, so the destructive one is still last. `actMore()` draws it
+   and `wireMore()` wires it; a single leftover is drawn inline instead. */
+.actbar .more{position:relative;display:inline-flex;flex:0 0 auto}
+.actmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:40;
+  min-width:11em;width:max-content;max-width:calc(100vw - 32px);
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+  box-shadow:0 8px 22px rgba(0,0,0,.45);padding:6px;
+  display:flex;flex-direction:column;gap:4px;
+  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+.actmenu>button{width:100%;min-height:var(--tap);justify-content:flex-start;text-align:left;flex:0 0 auto}
 @media(max-width:600px){
   /* The finger height, and nothing of the width: a phone's action bar used
      to share the row between its buttons, which made every set of two span
      the screen edge to edge: the shape the width rule above forbids. The
      buttons keep their own size and sit at the right, as on a desktop. */
   .actbar button,.actbar select{flex:0 0 auto;min-height:var(--tap)}
+  /* ...except a FULL bar, four buttons SHOWING or more (a hidden one does
+     not count, and More counts as one): those share the width rather than each taking its text's, so
+     the last is never pushed to a line of its own (the phone rule
+     both-sizes: at 344px four did not fit; R210: More sat alone under Up,
+     Down, Update and Rebuild). */
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)){gap:6px}
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > :is(button,.more){flex:1 1 0;min-width:0;padding-left:5px;padding-right:5px}
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > .more > button{width:100%;padding-left:5px;padding-right:5px}
 }
+/* The row whose More menu is open stacks above the rows after it: a dimmed
+   row (opacity) is a stacking context of its own, and the menu, z-indexed
+   inside it, drew under the next row's words. */
+.row:has(.actmenu:not([hidden])){position:relative;z-index:41}
 /* A ROW ON A PHONE, measured: a project row was 140px against 98 on a
    desktop, on a screen a third as wide: six rows to a screen where a
    desktop gets nine, and a third of each row was its six icon buttons.
@@ -3015,27 +3081,31 @@ button[aria-busy="true"]{opacity:.75}
 /* The mapping's row is an action bar (its field, then Save and Check), so
    it lays out like every other bar; the input takes the room before them. */
 .ndpaths input,.ndname input{flex:1 1 auto;min-width:0}
-.dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.dmroute select{width:auto;max-width:100%}
-/* The settings a container row carries, as one block rather than loose
-   lines: they are read together (whose it is, which branch, and who may
-   build it), and a phone was stacking them with the row's own line spacing
-   between, so they looked like unrelated strays. */
-/* Their controls line up at the bottom, as every row of controls does: a
-   select stands taller than its Apply here, and centering them left the two
-   bottoms four pixels apart. The label stays centered on the select. */
-.dmgrant,.dmref,.dmowner{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;
-  margin:2px 0}
-.dmref + .dmgrant{margin-top:0}
-.dmgrant select,.dmref select,.dmowner select{width:auto;max-width:100%}
-.dmgrant label,.dmref label,.dmowner label{color:var(--dim);flex:0 0 auto;align-self:center}
-.dmgrant select{width:auto;max-width:100%}
-/* The row's three settings (build from, Claude may rebuild, Claude tests)
-   on one line where there is room, wrapping on a phone: three stacked
-   pickers read as three forms above five buttons (R58). */
-.dmsettings{display:flex;flex-wrap:wrap;gap:2px 18px;align-items:flex-start}
-.dmsettings:empty{display:none}
-.dmsettings>.sub{margin-top:4px}
+/* A ROW'S SETTINGS are a grid of labeled cells with ONE Apply at its foot
+   (R210; the settings rule: one Apply per group). Each cell is a label
+   above its control, as every field on the page is (`lbl`), in columns
+   where there is room and one column on a phone; a read-only cell (`.ro`)
+   says a setting kept elsewhere, with the way there. A select takes its
+   cell. An action that belongs with a setting (Add route) sits beside its
+   controls in `.ctl` and acts on the press, as actions do. Before this a
+   container row was five settings each with its own Apply or Move, wrapping
+   into a form of their own on a phone (the operator, 13 Oct). */
+.setgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(15em,1fr));
+  gap:8px 16px;align-items:end;margin:6px 0 2px}
+.setgrid:empty{display:none}
+.setgrid .setcell{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0}
+.setgrid .setcell .val{font:var(--f-ui);color:var(--ink);min-height:var(--ctl);
+  display:flex;align-items:center;overflow-wrap:anywhere}
+.setgrid .setcell .val a{color:var(--accent);white-space:nowrap}
+.setgrid .setcell .ctl{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
+.setgrid .setcell .ctl>select{flex:1 1 8em;min-width:0}
+.setgrid .setcell .ctl>button{flex:0 0 auto}
+/* A select takes its cell, short of the control cap (the controls rule: no
+   control spans the screen at any width). */
+.setgrid .setcell>select,.setgrid .setcell .ctl{width:100%;min-width:0;max-width:min(var(--ctl-w),88%)}
+.setgrid .setcell .ndcap{min-height:var(--ctl);display:flex;align-items:center}
+.setgrid .setfoot{grid-column:1 / -1;display:flex;justify-content:flex-end}
+@media(max-width:600px){ .setgrid{grid-template-columns:1fr} }
 .jbouts a{color:var(--accent)}
 /* A kept workspace is a long path, and .row code is nowrap; on a phone it
    wraps here rather than running off the row. Written with the row in the
@@ -3142,8 +3212,14 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 .doctor .chips .pill{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   max-width:100%}
 
-.pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
+.pill{font:var(--f-pill);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}
+/* A STATE on a row's name line is a pill, not a parenthesis: running, stopped,
+   down, partly up, unknown, each in the level's color (R210). `.stat`: `.state` is
+   the action bar's status line and `.st` the session dot. */
+.row .name .pill.stat{font:var(--f-tag);text-transform:uppercase;letter-spacing:.5px;
+  vertical-align:2px;margin-left:6px;margin-bottom:0}
+.row .name .pill.stat.off{color:var(--purple);border-color:var(--purple-edge)}
 .pill.ok{color:var(--accent);border-color:var(--green2-edge)}
 .pill.bad{color:var(--bad);border-color:var(--red2-edge)}
 .pill.warn{color:var(--warn);border-color:var(--gold-edge)}
@@ -3189,7 +3265,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 #toast.bad{border-color:var(--red2-edge);color:var(--bad)}
 #toast.warn{border-color:var(--warn);color:var(--warn)}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none} }
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.pane .doc.on{animation:none} .tab,.help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.pane .doc.on{animation:none} .tab,.help{transition:none} }
 
 .tabbar .newtab{border:1px solid var(--line);border-radius:var(--r-control);font-size:15px;
   line-height:1;padding:5px 9px;color:var(--dim)}
@@ -5358,8 +5434,11 @@ window.addEventListener("resize", updateArrows);
 $("tabPick").onclick = e => { e.stopPropagation(); tabPickShow(!tabPickOpen); };
 document.addEventListener("click", e => {
   if (tabPickOpen && !e.target.closest("#tabPickList, #tabPick")) tabPickShow(false);
+  // An action bar's More menu: a press anywhere but on its button shuts it,
+  // its own items included, since each has done its work by then.
+  if (!e.target.closest(".actbar .more > button")) closeMore();
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && tabPickOpen) tabPickShow(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape"){ if (tabPickOpen) tabPickShow(false); closeMore(); } });
 
 // ---- panes -----------------------------------------------------------
 // Its declarations are page-panes.js; what runs at load is below.

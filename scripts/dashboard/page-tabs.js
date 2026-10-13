@@ -417,11 +417,17 @@ function openMenu(){
 let menuTimer = null;
 // Whether `root` must be left alone for now; with no root, whether anything
 // must. Saying yes is also a promise to come back, which is the timer.
+// ...and an action bar's More menu (R210) holds a redraw the same way: a
+// repaint while it is open drew the row again with the menu shut, under
+// the finger that had just opened it.
+function openPopup(){
+  return openMenu() || document.querySelector(".actmenu:not([hidden])");
+}
 function menuHolds(root){
-  const m = openMenu();
+  const m = openPopup();
   if (!m || (root && !root.contains(m))) return false;
   if (!menuTimer) menuTimer = setInterval(() => {
-    if (openMenu()) return;
+    if (openPopup()) return;
     clearInterval(menuTimer); menuTimer = null;
     // Everything that was skipped, from its own source: the status poll
     // repaints the cards and the panes, the revisions poll fires the watches.

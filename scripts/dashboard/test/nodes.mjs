@@ -452,7 +452,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // Waited for and read in one go: the tab repaints from the poll, and this
   // read used to land between two draws about one run in several.
   const emptyWhy = await page.waitForFunction(() => {
-    const e = document.querySelector('.dmtab .empty');
+    const e = document.querySelector('.dmtab .dmnote, .dmtab .empty');
     return e && e.textContent.trim() ? e.textContent : false;
   }, null, { timeout: 15000 }).then(h => h.jsonValue());
   // FOUR refusals, not three. The fixture kills the host, and which of

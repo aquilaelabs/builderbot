@@ -276,6 +276,34 @@ function oneOpen(g){
 // A button that is doing something says so until the repaint replaces it:
 // grayed, and wearing the verb with an animated ellipsis. Pair with
 // pressing(): that disables for the round trip, this says what for.
+// An action bar's More (R210): the primary verbs stay on the bar and the
+// rest go behind one button, whose menu opens under it. `items` are the
+// bar's own button strings in their order, destructive last; an empty one is
+// skipped, a single leftover is drawn inline (a menu of one is a detour),
+// and two or more make the menu. wireMore() wires the button; the page's
+// one click listener (index.html) shuts every open menu.
+function actMore(items){
+  const have = items.filter(Boolean);
+  if (have.length < 2) return have.join("");
+  return `<span class="more"><button type="button" aria-haspopup="menu" aria-expanded="false"
+      title="the rest of what can be done to it">More</button>
+    <div class="actmenu" hidden role="menu">${have.join("")}</div></span>`;
+}
+function wireMore(root){
+  root.querySelectorAll(".actbar .more > button").forEach(b => b.onclick = () => {
+    const m = b.nextElementSibling;
+    const open = m.hidden;
+    closeMore();
+    if (open){ m.hidden = false; b.setAttribute("aria-expanded", "true"); }
+  });
+}
+function closeMore(){
+  document.querySelectorAll(".actmenu:not([hidden])").forEach(m => {
+    m.hidden = true;
+    m.previousElementSibling?.setAttribute("aria-expanded", "false");
+  });
+}
+
 function busy(btn, word){
   if (!btn) return;
   btn.disabled = true;
