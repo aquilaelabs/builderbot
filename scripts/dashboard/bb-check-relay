@@ -125,10 +125,9 @@ def main():
             pass
         return
     tail = out.strip()[-1500:]
-    print(json.dumps({"decision": "block",
-                      "reason": ("A house rule's check failed on what you changed. Fix it, or "
-                                 "say plainly why it cannot pass, before handing this back:\n"
-                                 + tail)}))
+    reason = ("A house rule's check failed on what you changed. Fix it, or "
+              "say plainly why it cannot pass, before handing this back:\n" + tail)
+    print(json.dumps({"decision": "block", "reason": reason}))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ claude_scope():
 
     bb-rule-hook guard PROJECT SESSION    # PreToolUse, on Bash
     bb-rule-hook recall PROJECT SESSION   # SessionStart, after a compaction
+    bb-rule-hook map PROJECT SESSION      # PreToolUse, on Grep
 
 GUARD refuses a Bash call that runs a command a rule refuses (rules.py,
 `refuse`: the shipped ask-do-not-install, the operator's own, and the
@@ -16,6 +17,14 @@ controller's list is fetched on the hook trip and kept a minute
 cannot be had, any failure of this script: the call goes ahead, since a
 guard that cannot run is not worth a turn, and bb-gate already holds
 every call while the controller is not answering.
+
+MAP, and GUARD on a call it lets through: a search for where a name is
+defined or called (grep for `def NAME`, `function NAME`, `NAME(`, or the
+Grep tool's pattern) is handed `bb map find NAME`'s answer beside it, a
+few lines, so a session that reached for grep out of habit still gets the
+one-call answer and does not spend the reads it would have saved (the
+operator, 12 Oct). The search runs either way; a name the map does not
+know adds nothing.
 
 RECALL runs when Claude Code has summarized a long conversation. The
 briefing and the standing rules are in the system prompt and survive
@@ -70,14 +79,51 @@ def guards(project):
     return have
 
 
+def map_first(req, patterns):
+    """`bb map find` for the names these search patterns look up, said
+    beside the search; nothing when there is none or the map knows none."""
+    names = []
+    for p in patterns:
+        names += [n for n in rulehook.symbols(p) if n not in names]
+    names = names[:rulehook.MAP_NAMES]
+    if not names:
+        return
+    import subprocess
+    bb = os.path.join(HERE, "..", "bb")
+    said = []
+    for n in names:
+        try:
+            r = subprocess.run(["bash", bb, "map", "find", n], capture_output=True, text=True, timeout=10,
+                               cwd=req.get("cwd") or None)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        out = (r.stdout or "").strip()
+        if r.returncode or not out or out.startswith("nothing defines"):
+            continue
+        lines = out.splitlines()
+        said.append(f"$ bb map find {n}\n" + "\n".join(lines[:rulehook.MAP_LINES])
+                    + (f"\n({len(lines) - rulehook.MAP_LINES} more lines)" if len(lines) > rulehook.MAP_LINES else ""))
+    if not said:
+        return
+    text = ("The code map answers this lookup in one call; its answer, beside your search "
+            "(bb map who-calls NAME gives the callers):\n" + "\n".join(said))
+    json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}, sys.stdout)
+
+
+def grep_tool(project, req):
+    map_first(req, [str((req.get("tool_input") or {}).get("pattern") or "")])
+
+
 def guard(project, req):
     if req.get("tool_name") not in (None, "Bash"):
         return
     command = str((req.get("tool_input") or {}).get("command") or "")
     if not command.strip():
         return
-    hit = rulehook.refused(guards(project), command)
+    background = bool((req.get("tool_input") or {}).get("run_in_background"))
+    hit = rulehook.refused(guards(project), command, background)
     if not hit:
+        map_first(req, rulehook.search_patterns(command))
         return
     json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                       "permissionDecision": "deny",
@@ -100,7 +146,7 @@ def recall(project, req):
 
 def main():
     verb, project = (sys.argv[1:3] + ["", ""])[:2]
-    if not project or verb not in ("guard", "recall"):
+    if not project or verb not in ("guard", "recall", "map"):
         return
     try:
         req = json.load(sys.stdin)
@@ -108,7 +154,7 @@ def main():
         return
     if not isinstance(req, dict):
         return
-    (guard if verb == "guard" else recall)(project, req)
+    {"guard": guard, "recall": recall, "map": grep_tool}[verb](project, req)
 
 
 if __name__ == "__main__":

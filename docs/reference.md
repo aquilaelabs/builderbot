@@ -339,6 +339,7 @@ bb rules show NAME one of them in full: what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
                    [--refuse "CMD, CMD"]: commands it refuses outright when a session runs one
                    [--replaces RULE]: the global rule it takes the place of in this project
+                   [--why "..."]: the reason behind it, kept for show and the tab, never sent
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you
@@ -346,6 +347,9 @@ bb rules pending   rules a session added that are waiting for your approval
 bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
                    refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb help TOPIC      one topic of the session briefing in full (start, where, map, build, tidy,
+                   speed, capture, asks, notebook, versions, git, android, gpu, containers);
+                   bb help topics lists them, bb help VERB one verb's lines
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started
 bb design          what this project looks like, from the notebook's Design view:

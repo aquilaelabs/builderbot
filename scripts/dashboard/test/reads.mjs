@@ -145,9 +145,10 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   ok(gbad.status === 400 && /gpu is one of on, off/.test(gbad.error || ''), `a value that is neither is refused (${gbad.error})`);
   await api('/api/prefs', { project: 'alpha', gpu: 'on' });
   const said = (await api('/api/preamble?project=alpha')).text;
+  const where = (await api('/api/preamble?project=alpha&topic=where')).text || '';
   ok(/Of the shares and disks mounted on its node, this project is shown \/mnt\/media, \/srv\/samples, as the node has each/.test(said)
-     && /A share or\s+a disk mounted on the node, another project's build cache or container data,\s+and the home of the account sessions run as are not in its view/.test(said),
-     'the briefing says what of the node a session has, that a share is not in its view, and which ones this project is shown');
+     && /a share or disk mounted on the\s+node, another project's build cache or container data, and the home of the\s+account sessions run as are not in its view/.test(where),
+     'the block says which shares this project is shown, and the where topic that the rest of the node is not in its view');
   const shown = execFileSync('bash', [`${REPO}/scripts/bb`, 'settings'],
     { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`,
       WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } });
@@ -260,9 +261,10 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
 
 // ---- the briefing names them ------------------------------------------------------------
 const pre = await api('/api/preamble?project=alpha');
+const whereTopic = (await api('/api/preamble?project=alpha&topic=where')).text || '';
 ok(/This project reads beta: each is at \/workspace\/NAME, read-only, and `bb -p NAME` in front/.test(pre.text)
-   && /its containers answer from here on this project's nodes/.test(pre.text) && /Nothing there is yours to change/.test(pre.text) && /beyond the ones it reads/.test(pre.text),
-   'the briefing says which projects the session reads, that nothing there is its to change, and to look for context nowhere else');
+   && /its containers answer from here on this project's nodes/.test(pre.text) && /Nothing there is yours to change/.test(pre.text) && /beyond the ones it reads/.test(whereTopic),
+   'the block says which projects the session reads and that nothing there is its to change; the where topic, to look for context nowhere else');
 await api('/api/prefs', { project: 'alpha', reads: [] });
 ok(!/This project reads/.test((await api('/api/preamble?project=alpha')).text),
    '...and says nothing about reads when there are none');

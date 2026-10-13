@@ -49,7 +49,6 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import ids  # noqa: E402
-import share  # noqa: E402
 from fields import field, field_list  # noqa: E402
 import pending  # noqa: E402
 import time
@@ -112,13 +111,12 @@ def replay(project, verb, args):
 _lock = statefile.on(lambda: FILE)
 
 # What is kept and what a session is sent are two things (the operator, 29
-# Sep): the list keeps what there is to do, and its block in a session's
-# prompt keeps to a share (fitted, share.py). The limit was 30 with the
-# parked ones counted, and this project met it with 17 open. It is on the
-# open ones now, and is what a list still is rather than what a prompt holds.
+# Sep): the list keeps what there is to do, and a session's prompt carries
+# a count of it (brief) with the items a prompt names (preamble.mentioned).
+# The limit is on the open ones, and is what a list still is rather than
+# what a prompt holds.
 MAX_OPEN = 200
-# What a title is cut to where the list is over its share.
-TITLE_SHORT = 160
+# What a title is cut to.
 MAX_TEXT = 500
 
 # A line may be several lines. A step is one thing to hand over, and one thing
@@ -1457,117 +1455,38 @@ _AFTER = (
             "not restate it to them: they can see it.")
 
 
-def fitted(project, budget=None):
-    """(the block bb-tty appends to a session's system prompt, what it left
-    out of it to keep to `budget`).
-
-    Open items only, and plain text: this is read once at the start of a
-    conversation, and a session that spends its first act parsing a data
-    structure has already lost the point of it. Empty when there is nothing,
-    so a project with no list adds nothing to any prompt.
-
-    WHAT IS HERE AND WHAT IS NOT. The list says what exists: the number, the
-    title and the steps still to do. The DETAILS do not come with it, and
-    that is the whole of what makes this cheap: `bb roadmap show R4` prints
-    one in full, which is one cheap call at the moment it is worth making.
-    A step that is done is counted and not printed (on this project 19 of
-    the 34 steps in the block were done, the operator's question of 29 Sep):
-    the plan's past is a `bb roadmap show` away and its future is what a
-    session acts on.
-
-    A shelved item is one line under a heading of its own. The operator has
-    parked it, so what a session needs is to know it exists and to leave it
-    alone.
-
-    THE LIST ONLY GROWS, so it keeps to a share of the prompt (share.py) by
-    saying less per item before it leaves one out: the items with their
-    open steps, then the titles alone, then the titles cut short with the
-    parked ones as a count, then as many as fit in the operator's own
-    order with the rest as a count. What was left out is said in the text.
-    """
+def brief(project):
+    """The roadmap's lines in a session's block (R202): how much there is
+    and the verbs, in place of the list. A session read two hundred titles
+    cut short on every conversation and used few; the items a prompt names
+    arrive on that prompt (preamble.mentioned) and `bb roadmap show` prints
+    one whole. Empty when there is nothing."""
     rows = items(project)
     if not rows:
-        return "", ""
+        return ""
     live = [r for r in rows if not r.get("shelved")]
-    parked = [r for r in rows if r.get("shelved")]
-
-    def item(r, steps, cap):
-        label = ids.label("roadmap", r["id"])
-        sts = r.get("steps") or []
-        done = sum(1 for st in sts if st.get("done"))
-        # Numbered, because a session that wants to talk about one of these
-        # has to be able to name it, and the name has to be the one the
-        # operator sees on the row and the one `bb roadmap done` takes.
-        out = [f"- {label}  {share.clip(r['text'], cap) if cap else r['text']}"
-               + (f"  ({len(sts) - done} of {len(sts)} steps open)" if sts and not steps else "")
-               + ("  *" if r.get("by") == "claude" and not cap else "")]
-        if steps and sts:
-            if done == len(sts):
-                out.append("    its one step is done" if done == 1 else f"    all {done} steps are done")
-            elif done:
-                out.append(f"    {done} of {len(sts)} steps done; still open:")
-            # A step keeps its own number, the one `bb roadmap step done`
-            # takes, whatever was done before it. One already sent is one
-            # that has been asked for.
-            out += [f"    {n + 1}. {st['text']}" + ("  (already sent to a session)" if st.get("sent") else "")
-                    for n, st in enumerate(sts) if not st.get("done")]
-        # Said once per item, and only where there is something to fetch, so
-        # the pointer is information rather than furniture.
-        if steps and (r.get("info") or any(st.get("info") for st in sts)):
-            out.append(f"    (details: `bb roadmap show {label}`)")
-        return "\n".join(out)
-
-    def whole(body, parked_said, left):
-        return ("The operator keeps a shared to-do list for this project, and this "
-                "is what is on it" + (" (* marks one a session added)"
-                                      if any(r.get("by") == "claude" for r in live) else "")
-                + ":\n\n" + body + parked_said + "\n\n"
-                + (f"The list is longer than its share of your prompt, so this leaves out {left}: "
-                   "`bb roadmap` prints all of it and `bb roadmap show R4` one item whole. "
-                   if left else "")
-                + _AFTER), left
-
-    def parked_titles(cap=0):
-        if not parked:
-            return ""
-        return ("\n\nParked by the operator, which is why they carry no detail "
-                "here, and theirs to unpark whatever a request sounds like: not "
-                "worked on, read for or drafted for until `bb roadmap unshelve N "
-                "WHY` is approved.\n"
-                + "\n".join(f"- {ids.label('roadmap', r['id'])}  "
-                            f"{share.clip(r['text'], cap) if cap else r['text']}" for r in parked))
-
-    parked_count = (f"\n\n{len(parked)} more {'is' if len(parked) == 1 else 'are'} parked by the operator, "
-                    "and the operator's to unpark whatever a request sounds like: not worked on, "
-                    "read for or drafted for until `bb roadmap unshelve N WHY` is approved."
-                    if parked else "")
-    short = "every step, the ends of the long titles and the parked items' titles"
-
-    def some():
-        # What room there is, filled in the operator's own order.
-        lines = [item(r, False, TITLE_SHORT) for r in live]
-        rest = "\nand {n} more open."
-        # Measured with the most the words around the list can come to, so
-        # what is filled is what is left.
-        most = whole("", parked_count, f"{len(live)} of its {len(live)} open items, {short}")[0]
-        room = (budget or 0) - share.size(most) - share.size(rest.format(n=len(live)))
-        n = share.filled(lines, room)
-        gone = len(live) - n
-        body = "\n".join(lines[:n]) + (rest.format(n=gone) if gone else "")
-        return whole(body.lstrip("\n"), parked_count,
-                     (f"{gone} of its {len(live)} open items, " if gone else "") + short)
-
-    return share.fitted([
-        lambda: whole("\n".join(item(r, True, 0) for r in live), parked_titles(), ""),
-        lambda: whole("\n".join(item(r, False, 0) for r in live), parked_titles(),
-                      "the steps of its items"),
-        lambda: whole("\n".join(item(r, False, TITLE_SHORT) for r in live), parked_count, short),
-        some], budget)
+    parked = len(rows) - len(live)
+    mine = sum(1 for r in live if r.get("by") == "claude")
+    n = len(live)
+    return (f"The operator keeps a shared to-do list for this project: {n} open item{'s' if n != 1 else ''}"
+            + (f", {mine} of them a session added" if mine else "")
+            + (f", and {parked} parked by the operator" if parked else "")
+            + ". `bb roadmap` lists them by number (R4, the operator's too, which never changes) and "
+              "`bb roadmap show R4` prints one whole, with the files, functions and decisions behind it: "
+              "read that before starting on one, never work from the title. The items a prompt names "
+              "arrive with it. Work on one when asked, or when it is plainly part of what was asked; "
+              "`bb roadmap done N` ticks one off, `bb roadmap step done N STEP` one step, "
+              "`bb roadmap add \"...\"` adds what is worth doing and out of scope, and "
+              "`bb roadmap info N [STEP] \"...\"` attaches the files and approach to a plan you write, so "
+              "whoever works it does not start from a cold grep. A parked item is the operator's to "
+              "unpark: `bb roadmap unshelve N WHY` asks, and nothing is read for or drafted until they "
+              "approve. Every change is logged where the operator reads it, so correct the list rather "
+              "than working around it, and do not restate it to them.")
 
 
 def prompt(project):
-    """The roadmap's block with nothing left out: `bb roadmap --prompt`."""
-    return fitted(project)[0]
+    """The roadmap's lines in a session's block: `bb roadmap --prompt`."""
+    return brief(project)
 
 
 

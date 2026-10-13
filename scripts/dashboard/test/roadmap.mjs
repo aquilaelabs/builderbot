@@ -300,32 +300,13 @@ ok((await open()).some(i => i.can),
    '...so the arrows are live again');
 
 // ---- what a session is told --------------------------------------------
+// Counts and the verbs (R202): the list itself is a `bb roadmap` away, and
+// the items a prompt names arrive on that prompt (preamble.mjs).
 const prompt = execFileSync(BB, ['roadmap', '--prompt'],
   { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
-ok(prompt.includes('make the picker wrap properly'),
-   'the block a session is started with carries the open items');
-ok(prompt.includes('delete a project from the dashboard'),
-   '...including one already sent, because sent is not done');
-ok(/already sent to a session/.test(
-     execFileSync(BB, ['roadmap', '--prompt'],
-       { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha',
-                DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).toString()
-     + prompt) || true,
-   '...and a group\'s steps come with it in order');
-ok(/bb roadmap add/.test(prompt) && /bb roadmap done/.test(prompt),
-   '...and tells it how to add and tick, since that is the half it has to do');
-// Numbered in the prompt too: a session that says "R2" and an operator
-// looking at the panel have to be talking about the same row, and the
-// alternative is a session shelling out to `bb roadmap` to find out.
-ok(/^- R\d+ /m.test(prompt),
-   '...with each item under the number that is on its row');
-
-const empty = execFileSync(BB, ['roadmap', '--prompt'],
-  { env: { ...process.env, BB_ROADMAP_PROJECT: 'beta', DASHBOARD_STATE: `${DIR}/state`,
-           WORKSPACE: `${DIR}/ws` } }).toString();
-ok(empty === '',
-   'a project with an empty list adds nothing to a prompt at all');
+ok(/\d+ open items?/.test(prompt) && /bb roadmap show R4/.test(prompt) && !prompt.includes('make the picker wrap properly'),
+   'the block a session is started with counts the open items and says how to read one, and carries no list');
 
 // ---- an order that matters ---------------------------------------------
 // A change needing three things done in sequence is one item with steps, not
@@ -460,9 +441,8 @@ const unwritable = execFileSync(BB, ['roadmap'],
            WORKSPACE: `${DIR}/ws` }, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 ok(!/Traceback|PermissionError/.test(unwritable),
    'bb roadmap on a state dir it cannot write prints the list and exits clean');
-ok(/Parked by the operator/.test(shelvedPrompt)
-   && new RegExp(`- R${c1.id}  rework the picker`).test(shelvedPrompt),
-   '...and a session is told it is parked, under a heading of its own, rather than left to wonder');
+ok(/and \d+ parked by the operator/.test(shelvedPrompt) && !/rework the picker/.test(shelvedPrompt),
+   '...and a session is told how many are parked, and never a parked title (R202)');
 const up = await post({ action: 'move', project: 'alpha', id: Number(c1.id), dir: -1 });
 ok(up.status === 400 && /stay at the bottom/.test(up.body.error),
    '...and it cannot be shuffled back up among the live ones');
@@ -1172,8 +1152,7 @@ ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].info
 // conversation paid for whether or not it touched the roadmap.
 {
   const block = bbRoadmapEarly('--prompt');
-  ok(!/lives in scripts\/dashboard\/roadmap\.py/.test(block)
-     && new RegExp(`\\(details: \`bb roadmap show R${plainId}\``).test(block),
+  ok(!/lives in scripts\/dashboard\/roadmap\.py/.test(block) && /`bb roadmap show R4` prints one whole/.test(block),
      'the prompt names where the details are rather than carrying them');
   ok(/lives in scripts\/dashboard\/roadmap\.py/.test(bbRoadmapEarly('show', plainId)),
      '...and that command prints them in full');
@@ -1633,8 +1612,8 @@ ok(new RegExp(`R${widget.id}  ship the widget`).test(bbRoadmapEarly('show', `r${
 ok(/B\d+ is a bug; a roadmap item is R\d+/.test((() => {
      try { return bbRoadmapEarly('done', `B${widget.id}`); } catch (e) { return e.stderr.toString(); } })()),
    '...and the bug tracker\'s letter is refused, naming both tabs');
-ok(new RegExp(`- R${widget.id}  ship the widget`).test(bbRoadmapEarly('--prompt')),
-   'the prompt block names an item with its letter');
+ok(new RegExp(`R${widget.id}`).test(bbRoadmapEarly()) && !/ship the widget/.test(bbRoadmapEarly('--prompt')),
+   'the list names an item with its letter, and the prompt block carries no item');
 ok(await page.$eval(`#roadmapList .roadmap[data-id="${widget.id}"] .n.id`,
                     (el, id) => el.textContent === 'R' + id, widget.id),
    '...and so does the row in the notebook');
@@ -1656,8 +1635,8 @@ ok(drawn.find(d => d.step === '0').can && !drawn.find(d => d.step === '2').can
    '...the frontier is still step 1, and step 3 waits on it, not on the done one');
 ok(drawn.find(d => d.step === '1').can && /finished this/.test(drawn.find(d => d.step === '1').why),
    '...and the done step stays sendable, worded as the override it would be');
-ok(/1 of \d+ steps done; still open:/.test(bbRoadmapEarly('--prompt')) && !/2\. fit the widget/.test(bbRoadmapEarly('--prompt')),
-   'the session prompt counts it as done and no longer prints it, sent or not');
+ok(/2\. fit the widget  \(done\)/.test(bbRoadmapEarly('show', widget.id)) && !/fit the widget/.test(bbRoadmapEarly('--prompt')),
+   'show marks it done rather than sent, and the session prompt carries no step');
 ok(/done-step.*step 2 of R\d+  fit the widget/.test(bbRoadmapEarly('history', '-n', '3'))
    && /why: told in chat/.test(bbRoadmapEarly('history', '-n', '3')),
    '...and the log records who finished what, with the note');

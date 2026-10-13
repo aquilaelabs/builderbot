@@ -1351,6 +1351,8 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: true } });
     await page.evaluate(async () => { await refresh(); await loadNodes(); });
     await page.waitForSelector(`${ROW} .nddoor [data-nd="door"]`, { timeout: 10000 });
+    ok(/Reaches the controller (over the LAN|over WireGuard|through )/.test(await page.$eval(`${ROW} .ndreach`, e => e.textContent)),
+       'the row says how the node reaches the controller, as it was enrolled, above its door');
     const doorRow = await page.$eval(`${ROW} .nddoor`, e => ({ text: e.textContent, on: e.querySelector('[data-nd="door"]').dataset.on,
       cmd: e.querySelector('.ndcmd')?.textContent || '' }));
     ok(/SSH door: cloudflared, open/.test(doorRow.text) && doorRow.on === '0' && /Shut it/.test(doorRow.text)
@@ -2884,8 +2886,9 @@ ok(page.errors.length === 0,
     await napi('/api/prefs', { project: 'delta', node: shed.id });
     const withCard = (await napi('/api/preamble?project=delta')).text || '';
     await napi('/api/prefs', { project: 'delta', node: '' });
-    ok(!/## The GPU/.test(without) && /## The GPU/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(withCard),
-       'the briefing carries its GPU section for a project whose node has a card, and for no other');
+    const gpuTopic = (await napi('/api/preamble?project=delta&topic=gpu')).text || '';
+    ok(!/- gpu: /.test(without) && /- gpu: the card/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(gpuTopic),
+       'the briefing names its GPU topic for a project whose node has a card, and for no other; the topic answers either way');
   }
   // The sound a node has (R107): the census's cards and server, cleaned on
   // the way in, and a line on the row in words.

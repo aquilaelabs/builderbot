@@ -80,7 +80,6 @@ import share  # noqa: E402
 _lib = os.path.join(os.path.dirname(_here), "lib")
 if _lib not in sys.path:
     sys.path.insert(0, _lib)
-import cmdmatch  # noqa: E402
 import rulehook  # noqa: E402
 from pathlib import Path  # noqa: E402
 
@@ -116,12 +115,13 @@ def replay(project, verb, args):
         return add(project, args.get("name", ""), args.get("text", ""),
                    paths=args.get("paths", ""), words=args.get("words", ""), by="claude",
                    doc=args.get("doc", ""), check=args.get("check", ""),
-                   refuse=args.get("refuse", ""), replaces=args.get("replaces", ""))
+                   refuse=args.get("refuse", ""), replaces=args.get("replaces", ""),
+                   why=args.get("why", ""))
     if verb == "edit":
         return edit(project, args.get("name", ""), text=args.get("text"),
                     paths=args.get("paths"), words=args.get("words"), by="claude",
                     doc=args.get("doc"), check=args.get("check"),
-                    refuse=args.get("refuse"), replaces=args.get("replaces"))
+                    refuse=args.get("refuse"), replaces=args.get("replaces"), why=args.get("why"))
     return {"error": f"not a rules change that can be replayed: {verb}"}
 
 
@@ -215,6 +215,18 @@ ALWAYS = [
              " emulator binary: bb picks the GPU, waits for the boot, keeps the log and saves its"
              " state on stop.",
      "refuse": ["emulator -avd", "emulator @*"]},
+    # Only a call that is not in the background (`foreground`): a run started
+    # with run_in_background is what the line asks for (the operator, 12 Oct:
+    # a run held every reply, so a new ask could never cut into it).
+    {"name": "tests-in-the-background",
+     "text": "Start a test run in the background (run_in_background) and wait on its"
+             " notification, answering meanwhile: a run in the foreground holds every reply until"
+             " it ends, so a new ask cannot cut into it the way the project's While a test runs"
+             " setting says. The unit tier (bb tests unit) is quick enough to run either way.",
+     "refuse": ["bb test", "bb tests run", "bb tests preflight", "bb tests lab", "bb tests coverage",
+                "bb dashboard test", "*/dashboard/test/run.sh",
+                "!bb tests preflight* --dry*"],          # the plan only: nothing runs (B698)
+     "foreground": True},
     {"name": "identity-is-given",
      "text": "Your commit identity arrives as git's environment, so a commit that cannot find an"
              " author is a fault to report with `bb report`, not one to fix with git config"
@@ -387,6 +399,10 @@ def _clean(r, i):
             "words": [w.lower() for w in bits(r.get("words"))],
             "doc": doc,
             "check": " ".join(str(r.get("check") or "").split())[:300],
+            # Why the rule is what it is, kept for `bb rules show` and the
+            # tab, never sent in the block (R202): a reason read at a rule's
+            # volume dilutes the rule.
+            "why": str(r.get("why") or "").strip()[:MAX_TEXT],
             # Commands it refuses outright (R200 step 3), each the start of a
             # command as typed; commas between them, since one has spaces.
             "refuse": _refusals(r.get("refuse")),
@@ -549,7 +565,7 @@ def history(project, limit=None, since=None, find=None):
     return rows[:limit] if limit else rows
 
 
-def add(project, name, text, paths="", words="", by="claude", doc="", check="", refuse="", replaces=""):
+def add(project, name, text, paths="", words="", by="claude", doc="", check="", refuse="", replaces="", why=""):
     """One rule, appended. The session's verb; the tab replaces the list.
 
     A session's rule is marked as its own, which is what lets it change one
@@ -572,11 +588,11 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check="", 
         if g == "ask":
             r = _clean({"name": name, "text": text, "paths": paths,
                         "words": words, "by": by, "doc": doc, "check": check,
-                        "refuse": refuse, "replaces": replaces}, 0)
+                        "refuse": refuse, "replaces": replaces, "why": why}, 0)
             return pending.hold(project, "rules", "add",
                                 {"name": r["name"], "text": text,
                                  "paths": paths, "words": words, "doc": doc, "check": check,
-                                 "refuse": r["refuse"], "replaces": r["replaces"]},
+                                 "refuse": r["refuse"], "replaces": r["replaces"], "why": r["why"]},
                                 summary=f"{r['name']}: {r['text']}", number=r["name"])
     with _lock:
         d = load()
@@ -584,7 +600,7 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check="", 
         rs = p.setdefault("rules", [])
         r = _clean({"name": name, "text": text, "paths": paths,
                     "words": words, "by": by, "doc": doc, "check": check,
-                    "refuse": refuse, "replaces": replaces}, len(rs))
+                    "refuse": refuse, "replaces": replaces, "why": why}, len(rs))
         over = _over(rs + [r])
         if over:
             return {"error": over}
@@ -678,7 +694,7 @@ def _mine(rs, name, by):
 
 
 def edit(project, name, *, text=None, paths=None, words=None, by="claude",
-         doc=None, check=None, refuse=None, replaces=None):
+         doc=None, check=None, refuse=None, replaces=None, why=None):
     if project == GLOBAL and by == "claude":
         return {"error": _NOT_YOURS}
     if project == GLOBAL and str(name or "").strip().lower() in _builtin_names():
@@ -691,13 +707,14 @@ def edit(project, name, *, text=None, paths=None, words=None, by="claude",
         d = load()
         p = _project(d, project)
         rs = p.setdefault("rules", [])
-        i, why = _mine(rs, str(name or "").strip().lower(), by)
-        if why:
-            return {"error": why}
+        i, bad = _mine(rs, str(name or "").strip().lower(), by)
+        if bad:
+            return {"error": bad}
         was = dict(rs[i])
         merged = dict(was)
         for k, v in (("text", text), ("paths", paths), ("words", words),
-                     ("doc", doc), ("check", check), ("refuse", refuse), ("replaces", replaces)):
+                     ("doc", doc), ("check", check), ("refuse", refuse), ("replaces", replaces),
+                     ("why", why)):
             if v is not None:
                 merged[k] = v
         rs[i] = _clean(merged, i)
@@ -908,10 +925,10 @@ def guards(project):
     return out + [dict(g, by="builderbot") for g in ALWAYS]
 
 
-def refusing(project, command):
+def refusing(project, command, background=False):
     """(the guard that refuses this shell line, the command as read) or
     None, over what is in effect here."""
-    return rulehook.refused(guards(project), command)
+    return rulehook.refused(guards(project), command, background)
 
 
 def by_names(project, names):

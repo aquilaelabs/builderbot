@@ -1183,6 +1183,12 @@ await page.click('#bTrash');
 await page.waitForSelector('#tmodal:not([hidden])', { timeout: 10000 });
 await page.waitForFunction(() => document.querySelector('#tList .trow'),
                            { timeout: 10000 });
+// The delete-for-good button draws its bin: an svg in a button without the
+// icon class got the browser's fill:black/stroke:none and was an empty red
+// square (B699).
+ok(await page.$eval('#tList .trow [data-tpurge] svg', s => {
+     const c = getComputedStyle(s); return c.stroke !== 'none' && c.fill === 'none' && c.width === '16px'; }),
+   'the delete-for-good button beside Put back draws its bin icon');
 ok(await page.$eval('#tList .trow', r => r.dataset.t) === 'oldproj',
    'the bin lists what was deleted, which nothing else on the page could show');
 

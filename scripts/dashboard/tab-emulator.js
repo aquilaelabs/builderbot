@@ -154,7 +154,7 @@ function renderEmulatorInto(i){
     surf.setBar(`<span class="sp"></span><button type="button" id="emuRefresh">Refresh</button>`);
     surf.list.innerHTML = `<div class="empty">The emulator runs on a node, and none is
       enrolled: the Nodes tab's <b>Enroll node</b> makes one.</div>`;
-    el.querySelector("#emuRefresh").onclick = () => { nodesList = null; loadEmulator(); };
+    el.querySelector("#emuRefresh").onclick = e => { busy(e.currentTarget, "Refreshing"); nodesList = null; loadEmulator(); };
     return;
   }
   const pnodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
@@ -211,7 +211,7 @@ function renderEmulatorInto(i){
   if (sel) sel.onchange = () => { emuNode = sel.value; emu = null; emuTicked.clear();
                                   try{ localStorage.setItem("bb.emunode", emuNode); }catch(e){ /* private */ }
                                   emuRev++; drawPanes(); loadEmulator(); };
-  el.querySelector("#emuRefresh").onclick = () => loadEmulator();
+  el.querySelector("#emuRefresh").onclick = e => { busy(e.currentTarget, "Refreshing"); loadEmulator(); };
   const toTc = el.querySelector("#emuToTc");
   if (toTc) toTc.onclick = e => { e.preventDefault(); tcNode = emuNode; openToolchains(); };
   const fl = el.querySelector("#imgFlavor");

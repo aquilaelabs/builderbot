@@ -46,8 +46,8 @@ notebook verbs do not, since they relay to a controller.
   which suites reach it, and runs those with the lint, voice and design
   checks. Run it before a push.
 - `bb map` answers "where would I look" from an index over the tree
-  (`who-calls`, `find`, `draws`, `suites`, `sections`, `state`); ask it
-  before grepping.
+  (`find`, `who-calls`, `draws`, `suites`, `sections`, `state`): where a
+  name is defined or called is its question; grep is for text.
 
 ## The house rules
 
@@ -68,6 +68,43 @@ hosted job, on a push that touches its inputs, and `:latest` does not move
 until that build passes. What a change means for the person using the
 product goes in `CHANGELOG.md` through `bb changelog add`, under Added,
 Changed, Deprecated, Removed, Fixed or Security.
+
+## Why the harness is shaped the way it is
+
+The house rule `tests` says what to do; this is why each clause is there.
+Every run is from a copy of the tree because the page loads its scripts
+from disk on every reload while its server keeps the python it started
+with, so a run in a tree edited meanwhile was a run of neither version
+(B616, 10 Oct 2026; `BB_TEST_INPLACE=1` still runs in place). One run at a
+time because three suites side by side was the reproducer of bug 13, which
+is what the lock is for; a lock a canceled CI job left is taken over on the
+next run, since the directory is world-writable and not sticky. A run is
+ended by the pid in its lock because `pkill -f` and `pgrep -f` match your
+own prompt's command line. A run is waited on with `run_in_background` and
+its notification because a loop over a log that a dead command was supposed
+to write never ends (eight such loops were found alive at once, the oldest
+at 10h54m). A whole run doubles every wait, and a wait that runs out while
+the page still has requests in flight or the box is saturated is given the
+same time again, three times at most, because four workers on four cores
+timed out a dozen checks a day that passed alone (27 Sep 2026). Inside tmux
+the client ignores `TMUX_TMPDIR`, so an ad-hoc harness that makes a session
+lands it on the real server. And `run.sh` called by hand once tested a
+whole day's work on the node while the container it was meant to prove sat
+untouched (R65), which is why `bb tests run` goes through `bb test`.
+
+The `dashboard tests` workflow is separate from `lint` because the suite is
+timing-sensitive and the runner shares its box with everything else: while
+it was a step in the lint job it took the linters' verdict with it (bug 19).
+The image is built on a hosted runner because building it on the box that
+runs it is circular: a bad image would take down the runner that has to
+build the fix (R116). `bb ci-log` exists because the runner keeps no
+console output, and without it the only evidence of a red run was the
+runner's `_diag` directory, which names the failing step and nothing it
+said; that cost a round trip through the operator once. The preflight
+exists because the one suite skipped by hand before a push was the one that
+would have caught it. The map is rebuilt by its own fingerprint because a
+scanner changed without a hand-bumped number once left every index
+answering from the old reading (8 Oct 2026).
 
 ## Where things are explained
 

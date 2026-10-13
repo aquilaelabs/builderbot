@@ -1820,6 +1820,8 @@ ok(await page.$$eval('#rnColor [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
    'the dialog offers a color, with none picked for a project nobody colored');
 await page.click('#rnColor [data-color="teal"]');
+// The bars wake on a 0 ms timer after the click (B691): read them after it.
+await page.waitForFunction(() => !document.querySelector('.rnbar[data-rnbar="project"] [data-rnsave]')?.disabled, null, { timeout: 5000 });
 ok(await page.$eval('.rnbar[data-rnbar="project"] [data-rnsave]', b => !b.disabled)
    && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
    'a change wakes its own section\'s Save and no other');
@@ -2177,9 +2179,11 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   await page.click('.settingstab #logApply');
   await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
                              { timeout: 10000 });
-  const back = await page.evaluate(() =>
-    fetch('/api/status').then(r => r.json()).then(j => j.logs.days));
-  ok(back === 30, '...and raising it again is just a setting, with nothing to crop');
+  // The status answer follows the setting within a poll, not the instant
+  // Apply re-enables: asked until it says so.
+  await page.waitForFunction(async () => (await (await fetch('/api/status')).json()).logs?.days === 30,
+                             null, { timeout: 10000, polling: 500 });
+  ok(true, '...and raising it again is just a setting, with nothing to crop');
   await page.evaluate(() => { const t = tabs.find(x => x.kind === 'settings');
                               if (t) hideTab(t.id); });
 
@@ -2373,6 +2377,47 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   ok(/End your Claude session on alpha on ubu\?/.test(page.dialogs.at(-1) || '') && ended.asked?.node === 'n_ubu'
      && ended.asked?.name === await page.evaluate(() => myClaude('alpha')) && ended.dropped === 1 && !ended.tab && !ended.open,
      `End session asks first, ends that node's session and drops its tab (${JSON.stringify(ended)})`);
+  // Restart (the operator, 12 Oct): the model and effort first, then the
+  // question, and only then the session ended and started again. Asked
+  // first and ended at once, it left a person picking a model with no
+  // session running, and a start racing the end needed a second press.
+  {
+    await page.waitForFunction(() => {
+      state.projects.find(x => x.name === 'alpha').session_nodes = [
+        { id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' }];
+      state.sessions = [...(state.sessions || []).filter(s => s.name !== myClaude('alpha')),
+                        { name: myClaude('alpha'), node_id: 'n_ubu', attached: false }];
+      resumeFor = null; resumePick = null; openClaude('alpha');
+      return !!document.querySelector('#resumemenu [data-restart]');
+    }, null, { timeout: 10000 });
+    const d0 = page.dialogs.length;
+    const first = await page.evaluate(async () => {
+      window.bbRestartLog = [];
+      window.realEnd = endSession; window.realStart = startClaude;
+      window.endSession = async (name, node) => {
+        bbRestartLog.push(['end', node]);
+        state.sessions = (state.sessions || []).filter(s => s.name !== name);
+        return { ok: true };
+      };
+      window.startClaude = (name, sid, node) => { bbRestartLog.push(['start', node]); resumePick = null; resumeFor = null; };
+      document.querySelector('#resumemenu [data-restart]').click();
+      await new Promise(r => setTimeout(r, 300));
+      const go = document.querySelector('#resumemenu [data-start]');
+      return { label: go?.textContent.trim(), danger: !!go?.classList.contains('danger'),
+               model: !!document.querySelector('#rmModel'), log: [...bbRestartLog] };
+    });
+    ok(page.dialogs.length === d0 && first.label === 'Restart' && first.danger && first.model && first.log.length === 0,
+       `Restart turns the menu to the model and effort first, asking nothing and ending nothing yet (${JSON.stringify(first)})`);
+    const done = await page.evaluate(async () => {
+      document.querySelector('#resumemenu [data-start]').click();
+      for (let i = 0; i < 50 && !bbRestartLog.some(x => x[0] === 'start'); i++) await new Promise(r => setTimeout(r, 100));
+      window.endSession = realEnd; window.startClaude = realStart;
+      return bbRestartLog;
+    });
+    ok(/Restart your Claude session on alpha on ubu\?/.test(page.dialogs.at(-1) || '') && page.dialogs.length === d0 + 1
+       && JSON.stringify(done) === JSON.stringify([['end', 'n_ubu'], ['start', '']]),
+       `...then its Restart asks, ends the session and only then starts it again (${JSON.stringify(done)})`);
+  }
   // A project on one node: its chooser names that node with what it has,
   // as each of several gets.
   const one = await page.evaluate(() => {
@@ -2427,6 +2472,9 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   ok(reads.room > 0 && reads.down && !reads.up && /inset/.test(reads.shadow) && readsEnd[0] && !readsEnd[1],
      `a list that scrolls, the project's Reads, darkens the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
   await page.$eval(box, b => { b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll')); });
+  // The classes follow the scroll on the page's next frame: read them once they have.
+  await page.waitForFunction(sel => { const l = document.querySelector(sel);
+    return l && l.classList.contains('scrollup') && !l.classList.contains('scrolldown'); }, box, { timeout: 5000 }).catch(() => {});
   const b = await cls();
   ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down })})`);
   await page.evaluate(() => closeRename());

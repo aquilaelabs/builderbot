@@ -273,7 +273,7 @@ function renderNginxInto(i){
   const n = nginxPick();
   const pnodes = nginxList.map(x => ({id: x.node, name: x.name, live: x.live}));
   d.setBar(`${nodePick("ngNodeSel", pnodes, nginxNode)}
-    <span class="sp"></span><button type="button" id="ngReload" title="read the nodes again">Reload</button>`);
+    <span class="sp"></span><button type="button" id="ngReload" title="read the nodes again">Refresh</button>`);
   d.list.innerHTML = n ? nginxBody(n)
     : `<div class="empty">no node to put nginx on yet: enroll one on the Nodes tab</div>`;
   d.setFoot(`One nginx per node, written from here: edit its routes and certificates here, never its file. Deploy and Save build it on the node; its build is on the Docker tab.`);
@@ -301,7 +301,7 @@ function nginxReadDraft(sect, n){
 
 function wireNginxTab(root){
   const rl = root.querySelector("#ngReload");
-  if (rl) rl.onclick = () => { busy(rl, "Reading"); loadNginx(); };
+  if (rl) rl.onclick = () => { busy(rl, "Refreshing"); loadNginx(); };
   const psel = root.querySelector("#ngNodeSel");
   if (psel) psel.onchange = () => { nginxNode = psel.value;
                                     try{ localStorage.setItem("bb.ngnode", nginxNode); }catch(e){ /* private */ }

@@ -454,7 +454,7 @@ function renderToolchainsInto(i){
     surf.list.innerHTML = `<div class="empty tcnone">No node yet. Toolchains install on a node:
         enroll one from the Nodes tab.</div>`;
     const pre = el.querySelector("#tcRefresh");
-    if (pre) pre.onclick = () => { nodesList = null; toolchains = null; tcRev++; drawPanes(); loadToolchains(); };
+    if (pre) pre.onclick = () => { busy(pre, "Refreshing"); nodesList = null; toolchains = null; loadToolchains(); };
     return;
   }
 
@@ -555,7 +555,7 @@ function renderToolchainsInto(i){
                                     try{ localStorage.setItem("bb.tcnode", tcNode); }catch(e){ /* private */ }
                                     tcRev++; drawPanes(); loadToolchains(); };
   const pre = el.querySelector("#tcRefresh");
-  if (pre) pre.onclick = () => loadToolchains();
+  if (pre) pre.onclick = () => { busy(pre, "Refreshing"); loadToolchains(); };
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));

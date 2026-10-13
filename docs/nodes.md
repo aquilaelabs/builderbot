@@ -992,7 +992,7 @@ the pieces stack:
    (`bb.example.com`), forwarding `/api/v1/agent/` and answering
    everything else 404 (the dialog prints the rule, with cloudflared's
    config as the example; or the controller runs that tunnel itself from
-   the Settings tab's Public hostname group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
+   the Settings tab's Reach from outside group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
    token, nothing on the router changes, and the VPS never learns the home
    address, since it only ever talks to the tunnel's edge; the controller
    answers that hostname on the agent API alone (`tunnel_refuses`, by the

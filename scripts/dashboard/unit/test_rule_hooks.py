@@ -57,6 +57,22 @@ class Reading(unittest.TestCase):
             self.assertIsNone(self.hit(line), line)
 
 
+class MapFirst(unittest.TestCase):
+    def test_a_definition_or_a_call_is_a_lookup_and_text_is_not(self):
+        import rulehook
+        for pat, want in [("def claudeRestart", ["claudeRestart"]), ("^def _clean\\b", ["_clean"]),
+                          ("function startClaude", ["startClaude"]), ("claudeLiveOn\\(", ["claudeLiveOn"]),
+                          ("class Foo|def bar_baz", ["Foo", "bar_baz"]),
+                          ("TODO", []), ("apt install", []), ("resumePick", [])]:
+            self.assertEqual(rulehook.symbols(pat), want, pat)
+
+    def test_the_searches_a_shell_line_runs(self):
+        import rulehook
+        self.assertEqual(rulehook.search_patterns(
+            'grep -rn "function startClaude" scripts | head; rg -e "def _clean" .; git grep -n "x(" ; ls'),
+            ["function startClaude", "def _clean", "x("])
+
+
 class Store(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -88,6 +104,43 @@ class Store(unittest.TestCase):
         self.assertIsNotNone(rules.refusing("alpha", "apt-get install -y nvidia-driver-595"))
         self.assertIsNone(rules.refusing("alpha", "git config user.email t@t"))
         self.assertIsNotNone(rules.refusing("alpha", "git config --global user.email me@x"))
+
+    def test_a_test_run_is_refused_only_in_the_foreground(self):
+        for line in ("bb tests run", "bash scripts/bb tests preflight --base HEAD",
+                     "cd /workspace/BuilderBot && timeout 900 bash scripts/bb dashboard test cards 2>&1 | tail",
+                     "bash scripts/dashboard/test/run.sh cards"):
+            g = rules.refusing("alpha", line)
+            self.assertEqual(g and g[0]["name"], "tests-in-the-background", line)
+            self.assertIsNone(rules.refusing("alpha", line, background=True), line)
+        for line in ("bb tests unit", "bb tests log", "./run.sh", "bash run.sh", "bb dashboard trace 30",
+                     "bb tests preflight --dry", "bb tests preflight --files a.py --dry 2>&1 | tail",
+                     "sed -n 1,5p scripts/dashboard/test/run.sh",         # reading the runner is not running it (B700)
+                     "grep -n slow scripts/dashboard/test/run.sh | head"):
+            self.assertIsNone(rules.refusing("alpha", line), line)     # --dry is the plan alone (B698)
+
+    def test_what_claude_is_told_is_context_alone(self):
+        rules.add("alpha", "agent-compat", "Add, do not change.", by="you", words="agent")
+        out = json.loads(self.hook("bb-prompt-relay", "alpha", "u_t",
+                                   stdin={"prompt": "the agent", "session_id": "c"}))
+        self.assertIn("Add, do not change.", out["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(set(out), {"hookSpecificOutput"})
+        self.assertEqual(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
+                                   stdin={"tool_name": "Bash", "tool_input": {"command": "bb tests run",
+                                                                              "run_in_background": True}}), "")
+
+    def test_a_rule_keeps_its_why_and_never_sends_it(self):
+        r = rules.add("alpha", "tidy", "Run bb tidy after a task.", by="you",
+                      why="A session left an emulator running for a day once.")
+        self.assertEqual(r["rule"]["why"], "A session left an emulator running for a day once.")
+        self.assertIn("Run bb tidy after a task.", rules.block("alpha"))
+        self.assertNotIn("emulator running for a day", rules.block("alpha"))
+        self.assertNotIn("emulator running for a day", rules.said(rules.by_names("alpha", ["tidy"])))
+        # An edit stores a new why, and one that says nothing about it keeps the old (B694).
+        r = rules.edit("alpha", "tidy", text="Run bb tidy when a task is done.", by="you",
+                       why="The emulator ran for a day.")
+        self.assertEqual(r["rule"]["why"], "The emulator ran for a day.")
+        r = rules.edit("alpha", "tidy", text="Run bb tidy when a batch is done.", by="you")
+        self.assertEqual(r["rule"]["why"], "The emulator ran for a day.")
 
     def test_turned_off_it_refuses_nothing_and_the_briefing_lines_still_do(self):
         rules.set_project_off("alpha", ["ask-do-not-install"])
@@ -124,6 +177,18 @@ class Store(unittest.TestCase):
         self.assertEqual(self.hook("bb-rule-hook", "recall", "alpha", "u_t",
                                    stdin={"source": "compact", "session_id": "conv-2"}), "")
 
+    def test_a_rule_is_said_once_a_conversation_and_never_for_machinery(self):
+        rules.add("alpha", "agent-compat", "Add, do not change.", by="you", words="agent")
+        first = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={"prompt": "the agent", "session_id": "k1"})
+        again = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={"prompt": "the agent again", "session_id": "k1"})
+        other = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={"prompt": "the agent", "session_id": "k2"})
+        self.assertIn("Add, do not change.", first)
+        self.assertNotIn("Add, do not change.", again)
+        self.assertIn("Add, do not change.", other)
+        quiet = self.hook("bb-prompt-relay", "alpha", "u_t", stdin={
+            "prompt": "<task-notification>the agent output-file</task-notification>", "session_id": "k3"})
+        self.assertNotIn("Add, do not change.", quiet)
+
     def test_the_node_endpoint_carries_the_rules(self):
         rules.add("alpha", "agent-compat", "Add, do not change.", by="you",
                   words="agent", paths="scripts/agent")
@@ -139,13 +204,18 @@ class Store(unittest.TestCase):
             catchup = staticmethod(lambda *a: "")
             settled_line = staticmethod(lambda *a: "")
 
-        hooks.configure(users=Users, rules=rules, overlap=Overlap, roadmap=Quiet, pending=Quiet,
+        class Pre:
+            mentioned = staticmethod(lambda *a: ("", []))
+
+        hooks.configure(users=Users, rules=rules, preamble=Pre, overlap=Overlap, roadmap=Quiet, pending=Quiet,
                         seen_note=lambda *a, **k: "")
         got, _ = hooks.verb("note", {"path": "scripts/agent/x.py"}, {}, "u_t", "alpha")
         self.assertIn("Add, do not change.", got["rules"])
         self.assertEqual(got["names"], ["agent-compat"])
         got, _ = hooks.verb("seen", {"prompt": "the agent again"}, {}, "u_t", "alpha")
         self.assertEqual(got["names"], ["agent-compat"])
+        got, _ = hooks.verb("seen", {"prompt": "the agent again", "told": ["agent-compat"]}, {}, "u_t", "alpha")
+        self.assertEqual(got["names"], [])
         got, _ = hooks.verb("guards", {}, {}, "u_t", "alpha")
         self.assertIn("pkill-by-pid", [g["name"] for g in got["guards"]])
         got, _ = hooks.verb("recall", {"names": ["agent-compat"]}, {}, "u_t", "alpha")

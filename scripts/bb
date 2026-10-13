@@ -339,6 +339,7 @@ bb rules show NAME one of them in full: what a conditional rule says
 bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
                    [--refuse "CMD, CMD"]: commands it refuses outright when a session runs one
                    [--replaces RULE]: the global rule it takes the place of in this project
+                   [--why "..."]: the reason behind it, kept for show and the tab, never sent
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
 bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you
@@ -346,6 +347,9 @@ bb rules pending   rules a session added that are waiting for your approval
 bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
                    refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb help TOPIC      one topic of the session briefing in full (start, where, map, build, tidy,
+                   speed, capture, asks, notebook, versions, git, android, gpu, containers);
+                   bb help topics lists them, bb help VERB one verb's lines
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started
 bb design          what this project looks like, from the notebook's Design view:
@@ -2254,7 +2258,18 @@ cmd_preamble() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
-    python3 "$BB_LIB/preamble-verbs.py" "$dir" "$proj" "${1:-}"
+    python3 "$BB_LIB/preamble-verbs.py" "$dir" "$proj" "${1:-}" "${2:-}"
+}
+
+# bb help [VERB|TOPIC]: the list; one verb's lines; or one topic of the
+# session briefing (R202), which a node relays like the rest of bb preamble.
+cmd_help() {
+    [ -n "${1:-}" ] || { usage; return 0; }
+    verb_help "$1" 2>/dev/null && return 0
+    case "$1" in
+        topics) bash "$0" preamble --topics ;;
+        *) bash "$0" preamble --topic "$1" ;;
+    esac
 }
 
 cmd_rules() {
@@ -4120,6 +4135,14 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         python3 "$BB_LIB/lint-checks.py" layout || rc=1
     fi
 
+    # The instruction channels, each saying its own (R202): CLAUDE.md the
+    # tree, the briefing the machine, the shipped rules the obligations, and
+    # no history in what a session is handed.
+    if [ -f CLAUDE.md ] && [ -f config/templates/briefing.md ] && [ -f scripts/dashboard/rules.py ]; then
+        section "channels (CLAUDE.md, the briefing, the shipped rules)"
+        python3 "$BB_LIB/lint-checks.py" channels || rc=1
+    fi
+
     echo
     if [ "$rc" -ne 0 ]; then
         echo "lint: FAILURES above"
@@ -5210,15 +5233,19 @@ cmd_doctor() {
                 ok=1
             fi ;;
     esac
-    local ssh_src=""
-    if ssh-add -l >/dev/null 2>&1; then
+    local ssh_src="" ssh_rc=0
+    ssh-add -l >/dev/null 2>&1 || ssh_rc=$?
+    if [ "$ssh_rc" = 0 ]; then
         ssh_src="shielded agent key"
     elif compgen -G "$HOME/.ssh/id_*" >/dev/null; then
         ssh_src="key file in ~/.ssh"
     fi
     # Distinguish "no key" from "key loaded but the agent is unreachable from
     # this uid", which is otherwise indistinguishable and very confusing.
-    if [ -z "$ssh_src" ] && [ -S "${SSH_AUTH_SOCK:-/run/ssh-agent.sock}" ]; then
+    # ssh-add exits 2 when it cannot reach the agent and 1 when the agent
+    # holds no key: an empty agent (the entrypoint starts one whether or not
+    # a key is ever added) is not a fault (B685).
+    if [ -z "$ssh_src" ] && [ "$ssh_rc" = 2 ] && [ -S "${SSH_AUTH_SOCK:-/run/ssh-agent.sock}" ]; then
         printf '  [FAIL] an agent socket exists but this user cannot use it; see: bb logs | grep ssh\n'
         ok=1
     fi
@@ -5507,7 +5534,7 @@ case "${1:-help}" in
     capture)  shift; dist_ignored; cmd_capture "$@" ;;
     tool)     shift; dist_ignored; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
-    -h|--help|help) usage ;;
+    -h|--help|help) cmd_help "${@:2}" ;;
     *) usage; exit 1 ;;
 esac
 exit

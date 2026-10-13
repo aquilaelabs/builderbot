@@ -247,6 +247,11 @@ def render(uid, project, sid, tz=None):
 
 AUDIT_DAYS = 7
 _EXAMPLES = 3
+# How much of one transcript the audit reads, from its end: a day-long
+# conversation is hundreds of megabytes (the block rides on every turn), on
+# the share, and reading all of it timed out the verb (B689). The newest
+# part is what the number is about; a file cut is said as `partial`.
+AUDIT_MAX_BYTES = 48 * 1024 * 1024
 
 
 def _simple_commands(command):
@@ -267,11 +272,11 @@ def audit(uid, project, judge, days=AUDIT_DAYS):
     refuses (or would have, before it refused anything), by the guard's
     name with a few of the commands; how many calls asked `bb map` against
     how many searched the code (grep -r, rg, git grep, the Grep and Glob
-    tools); and how many calls the guard did refuse. `judge(command)` is the
+    tools); and how many calls the guard did refuse. `judge(command, background)` is the
     guard's name for a shell line or "". A turn a person can read is
     counted, never Claude's reasoning; nothing here leaves the account."""
     since = time.time() - max(1, int(days)) * 86400
-    out = {"days": int(days), "conversations": 0, "bash": 0, "guards": {}, "examples": {},
+    out = {"days": int(days), "conversations": 0, "partial": 0, "bash": 0, "guards": {}, "examples": {},
            "map": 0, "grep": 0, "refused": 0}
     # A transcript writes one call into more than one record (a resumed or
     # summarized conversation carries its history again): counted once, by
@@ -285,11 +290,20 @@ def audit(uid, project, judge, days=AUDIT_DAYS):
         for f in files:
             out["conversations"] += 1
             try:
-                src = f.open(encoding="utf-8", errors="replace")
+                src = f.open("rb")
             except OSError:
                 continue
             with src:
-                for line in src:
+                try:
+                    size = f.stat().st_size
+                except OSError:
+                    size = 0
+                if size > AUDIT_MAX_BYTES:
+                    src.seek(size - AUDIT_MAX_BYTES)
+                    src.readline()                     # to the next whole record
+                    out["partial"] += 1
+                for raw in src:
+                    line = raw.decode("utf-8", "replace")
                     # Most of a transcript is text and the briefing again;
                     # only a line with a tool in it is worth parsing.
                     if '"tool_use"' not in line and "Refused by" not in line:
@@ -332,7 +346,7 @@ def audit(uid, project, judge, days=AUDIT_DAYS):
                                 searched = True
                         out["map"] += mapped
                         out["grep"] += searched
-                        hit = judge(cmd)
+                        hit = judge(cmd, bool((b.get("input") or {}).get("run_in_background")))
                         if hit:
                             out["guards"][hit] = out["guards"].get(hit, 0) + 1
                             ex = out["examples"].setdefault(hit, [])

@@ -1540,9 +1540,10 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
           { name: 'zebra', text: 'ZEBRARULE keep the stripes', paths: ['src/striped'], words: ['zebrafish'] }] }));
         const noted = rhook('bb-work-note', ['alpha', 'ignored'],
           { session_id: 'conv-node', tool_input: { file_path: '/workspace/alpha/src/striped/a.py', old_string: 'x' } });
-        const asked2 = rhook('bb-prompt-relay', ['alpha', 'ignored'], { session_id: 'conv-node', prompt: 'the zebrafish again' });
-        ok(/ZEBRARULE/.test(noted) && /ZEBRARULE/.test(asked2) && !was.error,
-           `a named rule reaches a session on a node, on the edit of a file it covers and on a prompt naming its word (${
+        const asked2 = rhook('bb-prompt-relay', ['alpha', 'ignored'], { session_id: 'conv-node-2', prompt: 'the zebrafish again' });
+        const twice = rhook('bb-prompt-relay', ['alpha', 'ignored'], { session_id: 'conv-node-2', prompt: 'and the zebrafish once more' });
+        ok(/ZEBRARULE/.test(noted) && /ZEBRARULE/.test(asked2) && !/ZEBRARULE/.test(twice) && !was.error,
+           `a named rule reaches a session on a node, on the edit of a file it covers and on a prompt naming its word, once a conversation (${
              noted.slice(0, 80)} | ${asked2.trim().slice(0, 80)})`);
         const again = rhook('bb-rule-hook', ['recall', 'alpha', 'ignored'], { source: 'compact', session_id: 'conv-node' });
         ok(/summarized/.test(again) && /ZEBRARULE/.test(again)

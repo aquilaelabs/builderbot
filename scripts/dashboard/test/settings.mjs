@@ -84,7 +84,7 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Claude sessions|Storage|Public hostname|Debugging|Reset',
+ok(groups.join('|') === 'Logs|Claude sessions|Storage|Reach from outside|Debugging|Reset',
    `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the home tunnel the controller runs itself (R176), debugging, and the reset (${groups.join(', ')})`);
 // Sections like every other tab's (the operator, 11 Oct): a fold each, a
 // jump bar over them, and Revert beside each Apply putting the section's
@@ -98,21 +98,21 @@ ok(groups.join('|') === 'Logs|Claude sessions|Storage|Public hostname|Debugging|
   await page.click('.settingstab [data-group="Claude sessions"] [data-srevert]');
   await page.waitForFunction(w => document.getElementById('idleMin')?.value === w, was, { timeout: 10000 });
   ok(true, 'Revert on a section puts its field back to what is saved');
-  ok(await page.$eval('.settingstab [data-group="Public hostname"] .setsteps', ol => ol.querySelectorAll('li').length === 4 && /localhost:\d+/.test(ol.textContent)),
-     'the Public hostname section carries its own setup steps, with the controller\'s port in them');
+  ok(await page.$eval('.settingstab [data-group="Reach from outside"] .setsteps', ol => ol.querySelectorAll('li').length === 4 && /localhost:\d+/.test(ol.textContent)),
+     'the Reach from outside section carries its own setup steps, with the controller\'s port in them');
 }
 
 // The home tunnel (R176): a hostname, two secrets never shown back, and the
 // controller running cloudflared itself (the harness's stub) from them, with
 // the group's line reading the process. The token is nowhere in the page.
 {
-  const G = '.settingstab [data-group="Public hostname"]';
+  const G = '.settingstab [data-group="Reach from outside"]';
   const f = await page.$eval(G, g => ({ host: g.querySelector('[data-set="tunnel_host"]')?.type,
     tok: g.querySelector('[data-set="tunnel_token"]')?.type, api: g.querySelector('[data-set="cf_api_token"]')?.type,
     pills: [...g.querySelectorAll('.pill')].map(p => p.textContent), state: g.querySelector('.actbar .state').textContent }));
   ok(f.host === 'text' && f.tok === 'password' && f.api === 'password' && f.pills.filter(p => p === 'not set').length === 2
      && /off: paste a tunnel token/.test(f.state),
-     `the Public hostname group asks for the hostname and two secrets, typed blind, and says the tunnel is off (${JSON.stringify(f)})`);
+     `the Reach from outside group asks for the hostname and two secrets, typed blind, and says the tunnel is off (${JSON.stringify(f)})`);
   const TOKEN = Buffer.from(JSON.stringify({ a: 'a'.repeat(32), t: '12345678-1234-1234-1234-123456789abc', s: 'x' })).toString('base64');
   await page.fill(`${G} [data-set="tunnel_host"]`, 'not a host');
   await page.click(`${G} .setApply`);
@@ -333,8 +333,8 @@ ok(elsewhere.git_name === 'T. Person',
   ok((await globals()).find(r => r.name === first)?.disabled === true
      && !(await pre('beta')).includes((await globals()).find(r => r.name === first).text.slice(0, 40)),
      `an administrator turns a shipped rule off for every project from there (${first})`);
-  ok(/Never write a credential into a repository/.test(await pre('beta')) && /Report what happened, not what\s+should have/.test(await pre('beta')),
-     'what nobody would turn off is in the briefing instead: no credential in a repository, a true report');
+  ok(/never write a credential into a repository/.test(await pre('beta')) && /never a success you did not see/.test(await pre('beta')),
+     'what nobody would turn off is in the briefing\'s core instead: no credential in a repository, a true report');
   // Put back as they were.
   await fetch(URL.replace(/\/$/, '') + '/api/global-rules', { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'save', rules: [], disabled: [] }) });

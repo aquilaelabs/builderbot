@@ -135,6 +135,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - After Claude Code summarizes a long conversation, the named house rules it had been told are said again in full (9981b52)
 - bb rules audit [DAYS] counts, over your own conversations on a project, the commands a rule refuses that were run or tried, and how often the code map was asked against a grep of the code (9981b52)
 - A house rule can refuse commands outright (Commands it refuses, bb rules add --refuse): a session's shell call that runs one is stopped with the rule as the reason. ask-do-not-install refuses the package managers; pkill -f and the emulator binary are refused everywhere (9981b52)
+- A search for where a name is defined or called (grep for def NAME, function NAME, NAME( or the Grep tool) is handed bb map find's answer beside it, so a session reaching for grep still gets the one-call answer (8553fdb)
+- A test suite started in the foreground of a session is refused with the reason: it holds every reply, so a new ask could not cut in as the While a test runs setting says (8553fdb)
+- A house rule carries its why (Why on the Briefing view, bb rules add --why), kept for bb rules show and the tab and never sent to a session, so the block carries the instruction alone (b7cab78)
+- bb lint checks the instruction channels: CLAUDE.md describes the tree, the briefing the machine, the shipped rules the obligations, a sentence shared between them or a date, bug number or attribution in either is a finding (b7cab78)
 
 ### Changed
 
@@ -294,7 +298,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Claude button's menu no longer blinks or loses a press while the page updates, and offers Restart beside End session: the session ends and resumes the same conversation, starting fresh so it sees what changed (9b745b7)
 - A node's Toolchains tab lists only the toolchains its platform can have; the Not for this node fold is gone (0202f34)
 - The README is a front page (what BuilderBot is, what it does, pictures, where the docs are), and the settings, the bb command list and Android signing are in docs/reference.md, with docs/README.md as the index (9ed3126)
-- What a session is handed opens with a short core of what holds every time, then the house rules, then the rest of the briefing; the roadmap and bug lists take a smaller share of it (9981b52)
+- What a session is handed opens with a short core of what holds every time, then the house rules, then the project's own lines and an index of the rest of the briefing as topics, each read whole with bb help TOPIC when the work reaches it; the roadmap and the bugs are a count and the verbs, and the items and bugs a prompt names, by number or by words shared with the title, arrive on that prompt, once a conversation (R202)
+- Every tab's corner button reads Refresh, the Storage and nginx tabs' Reload among them, and the button itself says Refreshing while the answer is on its way, where the Phone and Docker tabs said it beside the button (9297925)
+- The Settings tab's Public hostname group is Reach from outside, and its status line names the nodes that come in through the controller's tunnel; each node's row says how it reaches the controller (over the LAN, over WireGuard, or through the public hostname), as it was enrolled (326947e)
 
 ### Removed
 
@@ -489,6 +495,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Install selected on a node installs every ticked toolchain, not the first eight (8a77d93)
 - Aborting a toolchain install no longer leaves half a toolchain reading installed, or calls the toolchains it never reached failed (6d24de5)
 - A named house rule reaches a session on a node: its text arrives on the turn the session edits one of its files or is asked about one of its words, where on a node (every session) it never arrived (B686) (9981b52)
+- A session on a project your account has a worktree of starts on a synced node: it waited for a copy that was there all along, because the node's report lost the slashes in the worktree's name (d33089b)
+- The Doctor card no longer reads red on a controller whose ssh agent holds no key: only an agent that cannot be reached is a fault (9297925)
+- The Deleted projects dialog's delete-for-good button shows its bin icon (9297925)
+- A rule that refuses a command matches the program's name, not any word of the line: reading the test runner with sed is no longer refused as running it, and bb tests preflight --dry runs in the foreground (9297925)
 
 ### Security
 

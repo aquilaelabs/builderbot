@@ -1617,7 +1617,7 @@ where each kind of thing that grows (project snapshots, job snapshots, the
 git relay's repositories, the Git view's working area, the logs) is kept,
 moved to a new empty path on Apply and switched once all of it is there,
 while the records, the database, the signing keys and the git credentials
-stay in the state directory (`paths.py`); its **Public hostname** group,
+stay in the state directory (`paths.py`); its **Reach from outside** group,
 where the controller runs the home tunnel itself (R176, `tunnel.py`): the
 hostname a node off the LAN dials, the tunnel's token from Zero Trust
 (a secret, said to be set and never shown back), and an optional Cloudflare
@@ -2741,25 +2741,22 @@ longer one with `command too long` and nothing else.
 grows, and every conversation pays for the block. So the notebook keeps what
 there is (two hundred open roadmap items, the parked ones not counted; two
 hundred open bugs; forty standing rules and two hundred named ones), and the
-block is an index into it. Each part that grows has a share of a session's
-prompt: 16 KB for the rules, 8 KB for the roadmap, 6 KB for the bugs. A part
-over its share says less per row before it leaves a row out. The roadmap gives
-its items with their open steps, then their titles with the steps as a count,
-then the titles cut short with the parked ones as a count, then as many as fit
-in your own order with the rest as a count. The tracker gives every title,
-then the titles cut short, then as many as fit, the worst first, with the rest
-counted by severity. The rules keep every standing rule whole, since that is
-what a session is held to, and give the named ones without what calls for
-each. What a part left out is said in the part, where the session reading it
-sees it, with the verb that prints all of it; and every part is always there,
-whatever the others hold.
+block is an index into it. The rules have a share of a session's prompt,
+16 KB: every standing rule whole, since that is what a session is held to,
+and over the share the named ones without what calls for each. The roadmap
+and the bugs are a count and the verbs: `bb roadmap` and `bb bug` list them,
+`show` prints one whole, and the items and bugs a prompt names, by their
+number or by words shared with the title, arrive on that prompt through the
+same hook that brings a named rule, once a conversation. What a part left out
+is said in the part, where the session reading it sees it; and every part is
+always there, whatever the others hold.
 
 **And you can read the whole of it.** The Briefing tab's last fold, *What a
 session is sent*, holds the exact string a session started here is handed: the
-briefing's core, the house rules, the rest of the briefing, then the open
-roadmap and the open bugs, with its size on the
-heading and each part's size under it against its share, so a part that has
-started saying less is seen there before a session meets it. It is the same string, not a rendering
+briefing's core, the house rules, the project's lines and the index of
+topics, then the roadmap and the tracker as counts, with its size on the
+heading and each part's size under it, the rules against their share, so a
+part that has started saying less is seen there before a session meets it. It is the same string, not a rendering
 of the same idea: the tab and `bb-tty` both ask `bb preamble` for it, so the
 fold cannot quietly stop describing what sessions get. Shut by default, since
 it is a thing to check rather than to read every time.
@@ -4080,10 +4077,17 @@ away and honest about being a shell.
 
 Every session is handed one block of text before it types anything, assembled
 by the controller at the moment the session starts: a short core of what
-holds every time, then the house rules in effect, then the rest of how this
-machine works, then the open roadmap and the open bugs. What a session is held
-to comes first and short, because a rule read after five thousand words of
-how-to is read at the same weight as the how-to. The Briefing tab shows a
+holds every time, then the house rules in effect, then the project's own
+lines (what it reads, what a new ask does during a test run, its design) and
+an index of the rest of how this machine works, then the open roadmap and
+the open bugs. The rest is **topics**: each section of the briefing after the
+core (start, where, map, build, tidy, speed, capture, asks, notebook,
+versions, git, android, gpu, containers) is named in the index with a gist
+and read whole with `bb help TOPIC` when the work reaches it, so a session
+pays for the manual only where it needs it, and what it is held to comes
+first and short, because a rule read after five thousand words of how-to is
+read at the same weight as the how-to. A topic the tree gates out (Android on
+a project with none) is not in the index and still answers when asked for. The Briefing tab shows a
 person exactly that string, byte for byte, because it is the same assembly
 rather than another rendering of it.
 
@@ -4111,6 +4115,15 @@ checked are checked as well as said:
 - **A project rule replaces a global one by name.** *In place of* (`bb rules
   add --replaces NAME`) takes a global rule out of that project's block, so
   a session reads one rule rather than two and an instruction to prefer one.
+- **The map first.** A search for where a name is defined or called (a grep
+  for `def NAME`, `function NAME` or `NAME(`, or the Grep tool's) is handed
+  `bb map find NAME`'s answer beside it, a few lines, so the reads the map
+  saves are not spent; the search still runs, and a name the map does not
+  know adds nothing.
+- **Test runs in the background.** A suite started in the foreground is
+  refused, since it holds every reply until it ends and a new ask could
+  never cut into it the way the project's *While a test runs* setting
+  says; the unit tier runs either way.
 - **And it can be counted.** `bb rules audit [DAYS]` reads the account's
   own conversations on the project and counts the commands a rule refuses,
   run or tried, and how often the code map was asked against a grep of the

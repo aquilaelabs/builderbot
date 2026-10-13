@@ -187,4 +187,60 @@ def settings():
     sys.exit(1 if bad else 0)
 
 
-{"runner": runner, "xml": xml_, "settings": settings, "layout": layout, "hosted": hosted}[verb]()
+def _words(text):
+    return re.findall(r"[a-z0-9][a-z0-9'-]*", text.lower())
+
+
+def _shingles(text, n=8):
+    w = _words(text)
+    return {" ".join(w[i:i + n]) for i in range(max(0, len(w) - n + 1))}
+
+
+# History in an instruction: a date, a bug or roadmap number of two digits
+# or more (R4 and B7 are the examples the verbs are shown with), "bug 13",
+# or an attribution to the operator. The why lives in docs/decisions.md
+# and bb rules show; the prompt carries the instruction.
+HISTORY = re.compile(r"\b\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b"
+                     r"|\b[BR]\d{2,4}\b|\b(?:bug|roadmap|issue) #?\d+\b|\(the operator,|\bthe operator, \d")
+SHINGLE = 8
+
+
+def channels():
+    """CLAUDE.md describes the tree, the briefing the machine and the shipped
+    rules the obligations (R202): a sentence CLAUDE.md shares with the
+    briefing or a shipped rule reaches every session twice, and history in
+    either is paid for on every conversation."""
+    bad = []
+    claude = open("CLAUDE.md").read()
+    brief = re.sub(r"<!--.*?-->", "", open("config/templates/briefing.md").read(), flags=re.S)
+    # The tree being linted, not the copy of bb this runs from: on a node
+    # that copy is the bundle, which carries no rules.py (B696).
+    sys.path.insert(0, os.path.join(os.getcwd(), "scripts", "dashboard"))
+    import rules                                                    # noqa: E402
+    sources = [("the briefing", brief)] + [(f"the shipped rule {r['name']}", r["text"])
+                                           for r in rules.BUILTIN + rules.ALWAYS]
+    said = {}
+    for name, text in sources:
+        for s in _shingles(text):
+            said.setdefault(s, name)
+    seen = set()
+    for i, line in enumerate(claude.split("\n"), 1):
+        for s in _shingles(line):
+            if s in said and i not in seen:
+                seen.add(i)
+                bad.append(f"CLAUDE.md:{i} says what {said[s]} says: \"{s}...\"")
+                break
+    for path, text in (("CLAUDE.md", claude), ("config/templates/briefing.md", brief)):
+        for i, line in enumerate(text.split("\n"), 1):
+            m = HISTORY.search(line)
+            if m:
+                bad.append(f"{path}:{i} carries history in an instruction ({m.group(0)!r}): it belongs in docs/decisions.md or a rule's why")
+    for b in bad:
+        print(f"  [FAIL] {b}")
+    if not bad:
+        print("  [ok]   CLAUDE.md, the briefing and the shipped rules each say their own, with no history in the prompt")
+    sys.exit(1 if bad else 0)
+
+
+{"runner": runner, "xml": xml_, "settings": settings, "layout": layout, "hosted": hosted,
+ "channels": channels}[verb]()

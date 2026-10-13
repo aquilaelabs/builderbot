@@ -58,7 +58,10 @@ MAX = 800
 WRAPPERS = ("task-notification", "system-reminder", "command-name",
             "command-message", "command-args", "local-command-stdout",
             "local-command-stderr", "function_results", "function_calls",
-            "user-prompt-submit-hook")
+            "user-prompt-submit-hook",
+            # A subagent's hand-back names every topic it touched: one
+            # fired ten rules at once, 26 KB, as if a person had asked.
+            "agent-message")
 
 
 def human_part(text):
@@ -88,7 +91,7 @@ def post_hook(body):
                       auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10) or {}
 
 
-def catchup(project, session, prompt=""):
+def catchup(project, session, prompt="", told=()):
     """(one sentence about what has moved in the notebook since this session
     was last told, or "", and told, so the next prompt does not repeat it;
     on a node, the rules the prompt raises and their names, which ride on
@@ -99,8 +102,9 @@ def catchup(project, session, prompt=""):
     """
     try:
         if on_node():
-            r = post_hook({"kind": "seen", "prompt": prompt[:20000]})
-            return (str(r.get("line") or ""), str(r.get("rules") or ""),
+            r = post_hook({"kind": "seen", "prompt": prompt[:20000], "told": list(told)[:200]})
+            return (str(r.get("line") or ""),
+                    "\n\n".join(x for x in (str(r.get("rules") or ""), str(r.get("related") or "")) if x),
                     [str(n) for n in r.get("names") or []])
         here = os.path.dirname(os.path.abspath(__file__))
         sys.path.insert(0, here)
@@ -113,8 +117,16 @@ def catchup(project, session, prompt=""):
         line = " ".join(x for x in (str(roadmap.catchup(project, session) or ""),
                                     str(pending.settled_line(project) or ""))
                         if x)
-        said, names = rules_firing(project, prompt=prompt)
-        return line, said, names
+        said, names = rules_firing(project, prompt=prompt, told=told)
+        # ...and the open items and bugs the prompt names (R202).
+        import bugs                                          # noqa: E402
+        import preamble                                      # noqa: E402
+        import rules                                         # noqa: E402
+        bugs.configure(state=os.environ.get("DASHBOARD_STATE", "/config"), write_json=_write_json)
+        rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"), write_json=_write_json)
+        preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
+        related, rnames = preamble.mentioned(project, prompt, told)
+        return line, "\n\n".join(x for x in (said, related) if x), names + rnames
     except Exception:                     # noqa: BLE001  (never cost a turn)
         return "", "", []
 
@@ -126,7 +138,7 @@ def _write_json(p, d):
     os.replace(tmp, p)
 
 
-def rules_firing(project, *, prompt="", path=""):
+def rules_firing(project, *, prompt="", path="", told=()):
     """(what to say, the names) for the conditional rules this prompt or
     path fires, read from the store here, on the controller. A node asks
     the controller on the `seen` trip every prompt already makes (B686: it
@@ -143,7 +155,7 @@ def rules_firing(project, *, prompt="", path=""):
         import rules                                          # noqa: E402
         rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                         write_json=_write_json)
-        hit = rules.matching(project, prompt=prompt, path=path)
+        hit = [r for r in rules.matching(project, prompt=prompt, path=path) if r["name"] not in set(told)]
         return rules.said(hit), [r["name"] for r in hit]
     except Exception:                     # noqa: BLE001  (never cost a turn)
         return "", []
@@ -172,19 +184,23 @@ def main():
         # ...with any house rule this prompt fires (roadmap #7). A conditional
         # rule is named in the standing block and not quoted there, so this is
         # where its text actually arrives: on the turn somebody asks about the
-        # thing it is about. The full prompt, not human_part, because a rule
-        # keyed to "agent" should fire whether the word came from the operator
-        # or from a task notification about one.
-        say, fired, names = catchup(project, session, str(req.get("prompt") or ""))
-        if say:
-            print(say)
+        # thing it is about. What a person typed (human_part), not the
+        # machinery around it: a task notification's "output-file" sent the
+        # files rule whole on every background run's end (the operator, 12 Oct,
+        # cutting tokens). And once a conversation: the rules it was told are
+        # not said again until a summary drops them (bb-rule-hook recall).
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+        import rulehook                                       # noqa: E402
+        told = rulehook.fired(project, req.get("session_id"))
+        say, fired, names = catchup(project, session, text, told)
         if fired:
-            print(fired)
             # Remembered for this conversation, so a summary does not drop
             # it (bb-rule-hook recall).
-            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-            import rulehook                                   # noqa: E402
             rulehook.remember(project, req.get("session_id"), names)
+        told = "\n\n".join(x for x in (say, fired) if x)
+        if told:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                                                     "additionalContext": told}}))
     if not text or not project:
         return
     if len(text) > MAX:

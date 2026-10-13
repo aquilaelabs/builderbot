@@ -2817,6 +2817,21 @@ def beat(nid):
           (int(time.time()), nid))
 
 
+def sync_rows(sent):
+    """Each synced unit's state as the node sent it, whitelisted. A unit is
+    a project, or an account's worktree of one named .worktrees/P/u_x, so
+    the slashes stay: stripped, the session gate looked the worktree's unit
+    up under its real name, never found it ready, and a session on a
+    project the account has a worktree of waited for a copy that was there
+    all along (B693)."""
+    return {re.sub(r"[^A-Za-z0-9._/-]", "", str(k))[:100]: {
+        "ready": bool((v or {}).get("ready")), "rev": int((v or {}).get("rev") or 0),
+        "pending": max(0, min(10**7, int((v or {}).get("pending") or 0))),
+        "copying": max(0, min(10**7, int((v or {}).get("copying") or 0))),
+        "error": str((v or {}).get("error") or "")[:200]}
+        for k, v in list(sent.items())[:64] if isinstance(v, dict)}
+
+
 def heartbeat(nid, sample, addr, running=0):
     """One sample per poll: the numbers the operator actually wants to see,
     riding the channel that exists anyway. Written to the row (current
@@ -2887,12 +2902,7 @@ def heartbeat(nid, sample, addr, running=0):
     # Each synced project's state on the node (R162): whether its first
     # copy is done, what is waiting to go up, and why not when it cannot.
     if isinstance(s.get("sync"), dict):
-        rep["sync"] = {re.sub(r"[^A-Za-z0-9._-]", "", str(k))[:100]: {
-            "ready": bool((v or {}).get("ready")), "rev": int((v or {}).get("rev") or 0),
-            "pending": max(0, min(10**7, int((v or {}).get("pending") or 0))),
-            "copying": max(0, min(10**7, int((v or {}).get("copying") or 0))),
-            "error": str((v or {}).get("error") or "")[:200]}
-            for k, v in list(s["sync"].items())[:64] if isinstance(v, dict)}
+        rep["sync"] = sync_rows(s["sync"])
     # ...leaving it (R164): what is still to go up; absent when not leaving.
     if isinstance(s.get("sync_drain"), dict):
         d = s["sync_drain"]

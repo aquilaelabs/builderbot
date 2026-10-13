@@ -32,6 +32,7 @@ from fields import field
 # limit its turns count against (turn_scope).
 users = None
 rules = None
+preamble = None
 overlap = None
 chat = None
 roadmap = None
@@ -58,7 +59,8 @@ def verb(kind, req, me, uid, project):
         others = overlap.others_touching(project, uid, path)
         overlap.note(project, uid, path, str(req.get("symbol") or "")[:120])
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
-        hit = rules.matching(project, path=path)
+        told = set(req.get("told") or []) if isinstance(req.get("told"), list) else set()
+        hit = [r for r in rules.matching(project, path=path) if r["name"] not in told]
         return {"ok": True, "others": [by_uid.get(o, o) for o in others],
                 "rules": rules.said(hit, path=path), "names": [r["name"] for r in hit]}, 200
     if kind == "asked":
@@ -82,9 +84,16 @@ def verb(kind, req, me, uid, project):
                                     pending.settled_line(project),
                                     seen_note(project, uid, field(req, "node"), who=me)) if x)
         # ...and the rules the prompt raises, on the trip already being made.
-        hit = rules.matching(project, prompt=str(req.get("prompt") or "")[:20000])
-        return {"ok": True, "line": line, "rules": rules.said(hit),
-                "names": [r["name"] for r in hit]}, 200
+        # ...less the ones this conversation was told already (`told`):
+        # each named rule is said once a conversation, and again only
+        # after a summary (recall), not on every prompt that names it.
+        told = set(req.get("told") or []) if isinstance(req.get("told"), list) else set()
+        prompt = str(req.get("prompt") or "")[:20000]
+        hit = [r for r in rules.matching(project, prompt=prompt) if r["name"] not in told]
+        # ...and the open items and bugs the prompt names (R202), the same way.
+        related, rnames = preamble.mentioned(project, prompt, told)
+        return {"ok": True, "line": line, "rules": rules.said(hit), "related": related,
+                "names": [r["name"] for r in hit] + rnames}, 200
     if kind == "guards":
         return {"ok": True, "guards": rules.guards(project)}, 200
     if kind == "recall":

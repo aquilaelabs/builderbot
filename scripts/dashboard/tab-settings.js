@@ -149,7 +149,10 @@ const SETTING_GROUPS = [
   // a node off the LAN dials, the tunnel's token, and an API token that
   // writes the hostname's record and the tunnel's rules rather than having
   // them clicked. The two tokens are secrets: never shown back.
-  {key: "tunnel", title: "Public hostname", status: tunnelStatus, intro: tunnelSteps,
+  // Named for what it is for, not for its field (the operator, 13 Oct):
+  // "Public hostname" read as a node's or a route's, and those are on the
+  // node's row and the nginx tab.
+  {key: "tunnel", title: "Reach from outside", status: tunnelStatus, intro: tunnelSteps,
    heading: s => !s?.tunnel ? "" : s.tunnel.connected ? "connected" : s.tunnel.configured ? (s.tunnel.running ? "starting" : "stopped") : "off",
    headingCls: s => s?.tunnel?.connected ? "ok" : "",
    fields: [
@@ -203,8 +206,17 @@ function tunnelStatus(s){
   // Registered is not routed (the operator, 11 Oct): the server asks the
   // name itself, and says so when the answer is somebody else's.
   if (t.route?.ok === false) return `connected, but ${t.route.said}`;
-  if (t.route?.ok === true) return `connected: ${t.host || "the tunnel"} reaches this controller`;
+  if (t.route?.ok === true) return `connected: ${t.host || "the tunnel"} reaches this controller${tunnelNodes()}`;
   return `connected; checking that ${t.host || "the name"} reaches this controller`;
+}
+
+// Which nodes come in through the tunnel, on the same line: the route is
+// each node's (chosen in Enroll node, kept on its record), and this is the
+// one place the controller's side of it is set.
+function tunnelNodes(){
+  if (nodesList === null){ loadNodes(); return ""; }
+  const via = (nodesList || []).filter(n => n.config?.tunnel?.kind === "public").map(n => n.name);
+  return via.length ? `; ${via.join(", ")} come${via.length === 1 ? "s" : ""} in through it` : "; no node comes in through it yet";
 }
 
 // The reset's confirmation, the way a project's purge asks: the word typed

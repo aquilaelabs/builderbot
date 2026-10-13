@@ -408,6 +408,11 @@ export async function sectSave(page, sect, { end = false, timeout = 15000 } = {}
 // says no, leaving its bar's sentence on screen for the suite to read, and
 // returns it.
 export async function saveDialog(page, { end = false, timeout = 15000 } = {}){
+  // The dialog wakes its bars on a 0 ms timer after a change (index.html's
+  // rnmodal wiring), and a check that has just resolved is in the same tick:
+  // read the bars after the page's own timers have run, or a change made
+  // this instant reads as nothing to save (B691).
+  await page.evaluate(() => new Promise(r => setTimeout(r, 0)));
   for (let i = 0; i < 12; i++){
     const sect = await page.evaluate(() => [...document.querySelectorAll('.rnbar')]
       .find(b => !b.dataset.busy && [...b.querySelectorAll('button:not([data-rnrevert])')].some(x => !x.hidden && !x.disabled))

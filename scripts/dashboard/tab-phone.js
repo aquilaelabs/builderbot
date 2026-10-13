@@ -20,7 +20,7 @@
 
 "use strict";
 
-let ph = null, phBusy = "", phRev = 0, phFetching = false;
+let ph = null, phBusy = "", phRev = 0, phFetching = false, phRefreshing = false;
 let phNode = "";                 // the picked node's id; "" until the first answer
 // Held outside the render, because the tab is rebuilt whole on every draw and
 // a field that emptied itself mid-sentence would be unusable.
@@ -79,7 +79,7 @@ async function phFetch(body, probe){
     if (j.error){ notify(j.error, true); if (!ph) return; }
     else ph = j;
   }catch(e){ notify("phone: " + e, true); }
-  phBusy = "";
+  phBusy = ""; phRefreshing = false;
   if (ph && !ph.nodes.some(n => n.id === phNode)) phNode = ph.nodes[0]?.id || "";
   // A probe asked for before any node was known went nowhere: now one is,
   // ask it once.
@@ -274,7 +274,10 @@ function wirePhoneTab(root){
   const pick = $$("phPick");
   if (pick) pick.onchange = () => { phNode = pick.value; phIp = ""; phFetch(null, true); };
   const rf = $$("phRefresh");
-  if (rf) rf.onclick = () => { phBusy = "asking the node"; phRev++; drawPanes(); phFetch(null, true); };
+  // Refresh says so on the button itself, like every other tab's (the
+  // operator, 13 Oct); the pill is for what the phone is being asked to do.
+  if (rf) rf.onclick = () => { phRefreshing = true; busy(rf, "Refreshing"); phFetch(null, true); };
+  if (rf && phRefreshing) busy(rf, "Refreshing");
   // The fields keep what is in them across a redraw.
   const keep = (id, set) => { const el = $$(id); if (el) el.oninput = e => set(e.target.value); };
   keep("phIp", v => phIp = v);

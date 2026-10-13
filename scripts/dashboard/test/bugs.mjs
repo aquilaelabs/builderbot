@@ -85,8 +85,8 @@ ok(/file list is built from names/.test(read()[1].notes || ''),
    'bb bug note appends what a session learned, dated, without replacing what was there');
 
 const prompt = bbBug('--prompt');
-ok(/B1 \[high\] the picker loses/.test(prompt) && /B2 \[low\]/.test(prompt),
-   'the prompt block carries the open bugs, severity first');
+ok(/bug tracker with 2 open \(1 high, 1 low\)/.test(prompt) && !/the picker loses/.test(prompt),
+   'the prompt block counts the open bugs by severity and carries no list (R202)');
 ok(/bb bug show B7/.test(prompt) && /bb bug add/.test(prompt),
    '...and tells a session how to read one and how to file one');
 
@@ -120,8 +120,8 @@ ok(!/picker loses/.test(bbBug()), '...and it leaves the open list');
      '...and Delete is last, being the one that cannot be undone');
 }
 ok(/\[fixed\]/.test(bbBug('all')), '...but never the tracker: bb bug all still has it');
-ok(!/B1 /.test(bbBug('--prompt')),
-   '...and the next session is not handed a bug that is already fixed');
+ok(/bug tracker with 1 open \(1 low\)/.test(bbBug('--prompt')),
+   '...and the next session is not told of a bug that is already fixed');
 
 // Closed sinks below open, however new it is.
 ok(await page.$$eval('#bugList .bug', ds => ds.map(d => d.dataset.id)).then(
@@ -315,8 +315,8 @@ await page.waitForFunction(n => document.querySelector(
 const naBug = read().find(b => String(b.id) === naId);
 ok(naBug.status === 'na' && naBug.status_note === 'the picker was removed entirely',
    'Not applicable closes it with what stopped it applying');
-ok(!/picker drops focus/.test(bbBug('--prompt')),
-   '...and it leaves the block a session starts with, like any other closure');
+ok(!/picker drops focus/.test(bbBug('--prompt')) && /bug tracker with \d+ open/.test(bbBug('--prompt')),
+   '...and it leaves the count a session starts with, like any other closure');
 ok(/\[na\]/.test(bbBug('all')), '...but stays in the tracker, as its own kind of closed');
 bbBug('reopen', naId);
 bbBug('na', naId, 'removed again in the CLI');
