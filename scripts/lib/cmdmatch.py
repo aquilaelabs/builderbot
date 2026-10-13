@@ -141,9 +141,15 @@ def _fits(words, pattern):
     pat = " ".join(str(pattern).split())
     if not pat:
         return False
+    # The pattern's first word names the program: it has to fit the command's
+    # first word on its own, so a star there cannot cross into the arguments
+    # (`*/test/run.sh` once refused `sed -n 1,5p scripts/.../test/run.sh`, B700).
+    head = pat.split(" ", 1)[0]
+    base = os.path.basename(words[0])
+    if not (fnmatch.fnmatchcase(words[0], head) or fnmatch.fnmatchcase(base, head)):
+        return False
     if fnmatch.fnmatchcase(said, pat) or fnmatch.fnmatchcase(said, pat + " *"):
         return True
-    base = os.path.basename(words[0])
     if base != words[0]:
         said = " ".join([base] + words[1:])
         return fnmatch.fnmatchcase(said, pat) or fnmatch.fnmatchcase(said, pat + " *")
