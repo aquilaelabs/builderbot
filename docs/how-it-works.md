@@ -299,7 +299,17 @@ What a project pins by number in its Gradle files (`ndkVersion`,
 `buildToolsVersion`, `compileSdk`) is a row of its own on the tab of the
 node it builds on, named for the project, installed or not: a store remade
 at the newest versions only had stranded a project pinning NDK 29 and
-build-tools 36, with nothing on the tab to tick.
+build-tools 36, with nothing on the tab to tick. Two more rows come from
+what a build needs with no line pinning it: the build-tools its Android
+Gradle plugin version defaults to when no `buildToolsVersion` says
+otherwise (read from the version catalog, a plugins block or the old
+classpath, against the table in the plugin's release notes), and an
+emulator image for each level a project compiles against, in the rootable
+flavor, which any flavor of that level satisfies; ticked here it runs as
+the Emulator tab's job, since sdkmanager puts it under the image tree the
+emulator reads. A project with no
+build-tools pinned had failed at the plugin's default with nothing on the
+tab naming it (diag #105 to #107).
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
 census names an NVIDIA card, the Toolchains tab shows the driver as a row of

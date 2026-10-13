@@ -2864,6 +2864,7 @@ if not NODES_OK:
     jobs.configure(nodes_module=nodes)
     toolchains.nodes = nodes
     toolchains.claudecode = claudecode
+    toolchains.emulator = emulator
     emulator.nodes = nodes
     phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is

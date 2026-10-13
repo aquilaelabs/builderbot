@@ -858,8 +858,12 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   writeFileSync(`${DIR}/ws/alpha/app/build.gradle.kts`,
     'android {\n    compileSdk = 37\n    ndkVersion = "29.0.14206865"\n    buildToolsVersion = "36.0.0"\n}\n');
   writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ store_dirs: {
-    top: [], android: ['ndk', 'build-tools', 'platforms'],
-    versions: { ndk: ['30.0.16248370'], 'build-tools': ['37.0.0'], platforms: ['android-37.0'] } } }));
+    // cmdline-tools, corroborated by the census's sdkmanager: an image add
+    // below needs it on the node.
+    top: [], android: ['cmdline-tools', 'ndk', 'build-tools', 'platforms'],
+    versions: { ndk: ['30.0.16248370'], 'build-tools': ['37.0.0'], platforms: ['android-37.0'] } },
+    toolchains: { 'android-sdk': 'present' },
+    images: [{ id: 'system-images;android-36;google_apis;x86_64', api: '36', kind: 'google_apis', avds: [] }] }));
   let got = {};
   for (let i = 0; i < 60; i++){
     got = await api(`/api/toolchains?node=${sb.id}`);
@@ -868,13 +872,18 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   }
   const by = Object.fromEntries((got.items || []).map(r => [r.name, r]));
   const ndk = by['android:ndk;29.0.14206865'], bt = by['android:build-tools;36.0.0'], plat = by['android:platforms;android-37'];
-  ok(ndk && !ndk.installed && /^Pinned by alpha \(app\/build\.gradle\.kts\)/.test(ndk.about) && /lacks it/.test(ndk.about)
+  ok(ndk && !ndk.installed && /^Needed by alpha \(app\/build\.gradle\.kts\)/.test(ndk.about) && /lacks it/.test(ndk.about)
      && ndk.label === 'Android NDK 29.0.14206865' && ndk.terms.length,
      `an NDK a project pins and the store lacks is a row to install, named for the project (${JSON.stringify(ndk || got).slice(0, 160)})`);
   ok(bt && !bt.installed && bt.label === 'Android SDK Build-Tools 36.0.0',
      `...and so is a build-tools version (${bt?.label})`);
   ok(plat && plat.installed && plat.label === 'Android SDK Platform 37' && /holds it/.test(plat.about),
      `...while a compileSdk the store holds (android-37.0) reads installed (${plat?.about?.slice(-30)})`);
+  // What the build needs with no line pinning it (R215): an emulator image
+  // for the level it compiles against, which the node's 36 image is not.
+  const im = by['android:system-images;android-37;google_apis;x86_64'];
+  ok(im && !im.installed && im.label === 'Android emulator image 37' && /compileSdk 37/.test(im.about) && /lacks one/.test(im.about),
+     `...and compileSdk 37 implies an emulator image of that level, a row when the node has none (${JSON.stringify(im || '').slice(0, 120)})`);
   const drawn = await page.evaluate(async id => { tcNode = id; toolchains = null; tcRev++; drawPanes(); await loadToolchains();
     return [...document.querySelectorAll('.doc .tc')].map(e => e.querySelector('input')?.value).filter(v => /;/.test(v || '')); }, sb.id);
   ok(drawn.includes('android:ndk;29.0.14206865') && drawn.includes('android:build-tools;36.0.0'),
@@ -886,6 +895,27 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   const stray = await api('/api/toolchains', { action: 'install', names: ['android:ndk;1.2.3'], node: sb.id });
   ok(/nothing selected/.test(stray.error || ''), `...and a version nobody pins is still refused (${stray.error})`);
   await api('/api/toolchains', { action: 'abort', node: sb.id });
+  // An emulator image a project's level implies installs from this tab as
+  // the Emulator tab's job (R215): sdkmanager puts it under the shared image
+  // tree, which the toolchain path refuses. Level 31 is one the fake index
+  // offers; the ticked row's answer names the image job beside the
+  // recipes' job, or is that job alone when nothing else is ticked.
+  mkdirSync(`${DIR}/ws/alpha/lib`, { recursive: true });
+  writeFileSync(`${DIR}/ws/alpha/lib/build.gradle.kts`, 'android {\n    compileSdk = 31\n}\n');
+  const IMG = 'android:system-images;android-31;google_apis;x86_64';
+  for (let i = 0; i < 60; i++){
+    got = await api(`/api/toolchains?node=${sb.id}`);
+    if ((got.items || []).some(r => r.name === IMG) && !(got.job || {}).running) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  const imrow = (got.items || []).find(r => r.name === IMG);
+  ok(imrow && !imrow.installed && /Emulator tab's job/.test(imrow.about),
+     `compileSdk 31 implies the image row for its level, saying whose job it is (${imrow?.about?.slice(-60)})`);
+  const imq = await api('/api/toolchains', { action: 'install', names: [IMG], node: sb.id });
+  const imjob = ((await api('/api/v1/jobs')).jobs || []).find(j => j.id === imq.job) || {};
+  ok(imq.ok && /^j_/.test(imq.job || '') && imjob.type === 'image',
+     `...and Install on it queues an image job, not a toolchain one (${imq.job || imq.error}: ${imjob.type})`);
+  rmSync(`${DIR}/ws/alpha/lib`, { recursive: true, force: true });
   rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   await api('/api/prefs', { project: 'alpha', node: '' });

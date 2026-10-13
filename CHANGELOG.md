@@ -544,6 +544,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 - A session's tool calls are no longer refused as 'BuilderBot is restarting' while the controller is merely slow to answer: the gate tells a busy controller from one that is down (6c27b71)
 
+### Toolchains
+
+- The Toolchains tab also lists what a project's build needs without pinning it: the build-tools its Android Gradle plugin version defaults to, and an emulator image for the level it compiles against (dce3331)
+
 ## 0.7.0: 2026-09-25
 
 ### Added

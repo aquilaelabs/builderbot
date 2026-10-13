@@ -40,6 +40,7 @@ write_json = None
 STATE = None
 nodes = None          # the node store, once the server has opened it (phase 6)
 claudecode = None     # claudecode.py, set by the server: Claude Code as a node's toolchain (R145)
+emulator = None       # emulator.py, set by the server: an image a project's level implies installs as its job (R215)
 CLAUDE = "claude-code"
 
 
@@ -956,8 +957,101 @@ PIN_RE = {
     "build-tools": re.compile(r"""\bbuildToolsVersion\s*=?\s*["']([0-9][\w.]*)["']"""),
     "platforms": re.compile(r"""\bcompileSdk(?:Version)?\s*=?\s*(\d{2,3})\b"""),
 }
-PIN_LABEL = {"ndk": "Android NDK", "build-tools": "Android SDK Build-Tools", "platforms": "Android SDK Platform"}
+PIN_LABEL = {"ndk": "Android NDK", "build-tools": "Android SDK Build-Tools", "platforms": "Android SDK Platform",
+             "system-images": "Android emulator image"}
 PIN_SKIP = {"build", ".gradle", ".git", "node_modules", ".idea"}
+
+# What the Android Gradle plugin needs without a line in the project saying
+# so (R215): each release defaults to one build-tools version, and a project
+# with no buildToolsVersion builds with that one, which only the plugin's
+# release notes name. Newest first; the first entry the plugin's version
+# reaches is its default. Read off the notes on 13 Oct 2026: every 9.x is
+# 36.0.0, 8.7 through 8.13 are 35.0.0, 8.2 raised it to 34.0.0, 8.0 to
+# 33.0.1, 7.1 to 30.0.3 and 7.0 to 30.0.2. A plugin older than that, or one
+# newer than the table, is left alone rather than guessed.
+AGP_BUILD_TOOLS = (((9, 0), "36.0.0"), ((8, 7), "35.0.0"), ((8, 2), "34.0.0"),
+                   ((8, 0), "33.0.1"), ((7, 1), "30.0.3"), ((7, 0), "30.0.2"))
+AGP_NEWEST = (9, 99)
+# Where a project names its plugin version: the version catalog's plugin
+# entry (inline or by reference into [versions]), a plugins block with a
+# version, or the old buildscript classpath.
+AGP_RE = {
+    "catalog-ref": re.compile(r"""com\.android\.(?:application|library)["']\s*,\s*version\.ref\s*=\s*["']([\w.-]+)["']"""),
+    "catalog-inline": re.compile(r"""com\.android\.(?:application|library)["']\s*,\s*version\s*=\s*["']([0-9][\w.-]*)["']"""),
+    "plugins": re.compile(r"""id\s*\(?\s*["']com\.android\.(?:application|library)["']\s*\)?\s*version\s*\(?\s*["']([0-9][\w.-]*)["']"""),
+    "classpath": re.compile(r"""["']com\.android\.tools\.build:gradle:([0-9][\w.-]*)["']"""),
+}
+AGP_FILES = ("gradle/libs.versions.toml", "settings.gradle.kts", "settings.gradle",
+             "build.gradle.kts", "build.gradle")
+# The image a build's compileSdk level implies: the emulator the app it
+# compiles is tried on, in the catalog's rootable flavor on the one abi an
+# x86_64 host runs at speed. Any flavor of the level counts as held.
+IMAGE_FLAVOR = "google_apis"
+IMAGE_ABI = "x86_64"
+
+
+def agp_version(tree):
+    """(version, file) for the Android Gradle plugin a project builds with,
+    or ("", "") when no file names one. The version catalog first, since a
+    plugins block that reads it carries no number of its own."""
+    root = Path(tree)
+    for rel in AGP_FILES:
+        try:
+            text = (root / rel).read_text(errors="replace")[:200000]
+        except OSError:
+            continue
+        if rel.endswith(".toml"):
+            m = AGP_RE["catalog-inline"].search(text)
+            if m:
+                return m.group(1), rel
+            m = AGP_RE["catalog-ref"].search(text)
+            if m:
+                ref = re.search(r"""^\s*%s\s*=\s*["']([0-9][\w.-]*)["']""" % re.escape(m.group(1)), text, re.M)
+                if ref:
+                    return ref.group(1), rel
+            continue
+        for key in ("plugins", "classpath"):
+            m = AGP_RE[key].search(text)
+            if m:
+                return m.group(1), rel
+    return "", ""
+
+
+def agp_build_tools(version):
+    """The build-tools version this plugin version defaults to, or "" for one
+    the table does not reach (older than 7.0, or newer than it knows)."""
+    m = re.match(r"(\d+)\.(\d+)", version or "")
+    if not m:
+        return ""
+    v = (int(m.group(1)), int(m.group(2)))
+    if v > AGP_NEWEST:
+        return ""
+    for floor, bt in AGP_BUILD_TOOLS:
+        if v >= floor:
+            return bt
+    return ""
+
+
+def gradle_needs(tree):
+    """{sdkmanager id: [note, ...]}: what a project's build needs that no line
+    of it pins (R215). The build-tools its Android Gradle plugin defaults to,
+    when no buildToolsVersion says otherwise, and an emulator image for each
+    level it compiles against. Each note says which file implies it, the way
+    gradle_pins names the file that pins."""
+    out = {}
+    pins = gradle_pins(tree)
+    if not any(p.startswith("build-tools;") for p in pins):
+        ver, rel = agp_version(tree)
+        bt = agp_build_tools(ver)
+        if bt:
+            out.setdefault(f"build-tools;{bt}", []).append(
+                f"{rel}: the Android Gradle plugin {ver} defaults to it")
+    for pid, files in pins.items():
+        if pid.startswith("platforms;android-"):
+            level = pid[len("platforms;android-"):]
+            out.setdefault(f"system-images;android-{level};{IMAGE_FLAVOR};{IMAGE_ABI}", []).extend(
+                f"{f}: compileSdk {level}" for f in files)
+    return out
 
 
 def gradle_pins(tree, depth=3):
@@ -1013,24 +1107,45 @@ def pin_rows(nid, rep):
         return []
     pins = {}
     for proj in mine:
-        for pid, files in gradle_pins(WORKSPACE / proj).items():
+        needs = gradle_pins(WORKSPACE / proj)
+        for pid, notes in gradle_needs(WORKSPACE / proj).items():
+            needs.setdefault(pid, []).extend(notes)
+        for pid, files in needs.items():
             pins.setdefault(pid, []).append((proj, files))
+    # The images a node holds are its own report (census: images), and an
+    # agent that does not report them cannot say a level is missing.
+    images = rep.get("images") if isinstance(rep.get("images"), list) else None
     terms = {p["probe"]: p.get("terms") or [] for p in TOOLCHAINS}
     rows = []
     for pid in sorted(pins):
         kind, _, v = pid.partition(";")
         if kind not in PIN_LABEL:
             continue
+        if kind == "system-images":
+            if images is None:
+                continue
+            level = v.split(";")[0]
+            held = any(f";{level};" in str(im.get("id", "")) for im in images if isinstance(im, dict))
+            shown = level[len("android-"):]
+        else:
+            held = pin_held(pid, vers)
+            shown = v[len("android-"):] if kind == "platforms" else v
         who = pins[pid]
-        held = pin_held(pid, vers)
         names = ", ".join(f"{proj} ({', '.join(files[:2])})" for proj, files in who)
         rows.append({
             "name": f"android:{pid}",
-            "label": f"{PIN_LABEL[kind]} {v[len('android-'):] if kind == 'platforms' else v}",
-            "about": f"Pinned by {names}: its build fails without this version, and the Android Gradle "
-                     f"plugin cannot fetch it into a store a session cannot write. "
-                     + ("The store holds it." if held else "The store lacks it: tick it and Install."),
-            "terms": terms.get(f"android:{kind}") or [],
+            "label": f"{PIN_LABEL[kind]} {shown}",
+            "about": (f"Needed by {names}: an emulator for the level it compiles against, in the "
+                      f"rootable flavor; any flavor of that level counts. "
+                      + ("The store holds one." if held else
+                         "The store lacks one: tick it and Install, and it runs as the Emulator tab's job.")
+                      if kind == "system-images" else
+                      f"Needed by {names}: its build fails without this version, and the Android Gradle "
+                      f"plugin cannot fetch it into a store a session cannot write. "
+                      + ("The store holds it." if held else "The store lacks it: tick it and Install.")),
+            # An image accepts the same terms the emulator did.
+            "terms": terms.get(f"android:{kind}")
+                     or (terms.get("android:emulator") or [] if kind == "system-images" else []),
             "tool": "", "updatable": False, "wrong_platform": "",
             "installed": held, "unknown": False, "pinned_by": [proj for proj, _ in who],
             "path": "", "version": v if held else "", "size": "", "size_from": "",
@@ -2103,6 +2218,21 @@ def verb(action, req, principal):
             if not rest or claude_r.get("error"):
                 return claude_r, (400 if claude_r.get("error") else 200)
             req = dict(req, names=rest)
+        # An emulator image a project's level implies (R215) is a row on
+        # this tab and the Emulator tab's job: sdkmanager puts it under the
+        # shared image tree the emulator reads, which the toolchain path
+        # refuses as "a system image, not a toolchain". Queued beside the
+        # recipes' job, as Claude Code is, and said together.
+        image_r = None
+        images = [x[len("android:"):] for x in (req.get("names") or [])
+                  if isinstance(x, str) and x.startswith("android:system-images;") and x in known]
+        if images and action in ("install", "remove") and emulator:
+            image_r = emulator.node_job(principal, nid, "add" if action == "install" else "remove", images,
+                                        offered=action == "install")
+            rest = [x for x in (req.get("names") or []) if not str(x).startswith("android:system-images;")]
+            if not rest or image_r.get("error"):
+                return image_r, (400 if image_r.get("error") else 200)
+            req = dict(req, names=rest)
         # A press of Check for updates asks Claude Code's latest too, in the
         # same answer, like the store's recipes (R145).
         claude_said = claudecode.check() if action == "check" and claudecode else None
@@ -2132,6 +2262,8 @@ def verb(action, req, principal):
         if claude_r is not None:
             # Both jobs queued: the recipes' and Claude Code's, said together.
             r = r | {"claude_job": claude_r.get("job") or "", "note": "Claude Code is its own job beside this one"}
+        if image_r is not None:
+            r = r | {"image_job": image_r.get("job") or "", "note": "the emulator image is its own job beside this one"}
         return r, (400 if r.get("error") else 200)
     if action == "abort":
         return {"ok": abort_job()}, 200

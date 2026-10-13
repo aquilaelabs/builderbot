@@ -234,12 +234,17 @@ def payload(nid):
             "job": _job(nid)}
 
 
-def node_job(principal, nid, action, image_id):
+def node_job(principal, nid, action, image_id, offered=False):
     """Queue an image add or removal on a node. Refused, with the reason,
     when the node cannot take it: no sdkmanager there, an id this server did
     not hand out, no room, or the store busy with another job. An add may
     name several (a list: the tab's Install selected, R121), one job adding
-    each in turn."""
+    each in turn. `offered` is the Toolchains tab vouching for an id it
+    composed itself (the image a project's compileSdk implies, R215): still
+    a string this server handed out, drawn before the Emulator tab's index
+    was ever read, so the index is not asked about it; what it weighs is
+    unknown until then, and an image Google does not publish fails on the
+    node with sdkmanager's own words."""
     ids = list(dict.fromkeys(image_id if isinstance(image_id, list) else [image_id]))
     if not ids or len(ids) > 20 or not all(isinstance(i, str) and i for i in ids) \
             or (action == "remove" and len(ids) != 1):
@@ -260,7 +265,7 @@ def node_job(principal, nid, action, image_id):
                          "is what installs an image: install them from Toolchains first"}
     # What reaches a command line is a string this server handed out: an add
     # names one the picker was drawn from, a removal one THIS node reported.
-    if not ((action == "add" and all(is_choosable(i) for i in ids))
+    if not ((action == "add" and (offered or all(is_choosable(i) for i in ids)))
             or (action == "remove" and is_node_image(n, ids[0]))):
         return {"error": "not an image this server offered for that"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("toolchains") or {}
