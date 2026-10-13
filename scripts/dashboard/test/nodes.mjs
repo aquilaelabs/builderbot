@@ -2275,11 +2275,17 @@ await page.evaluate(() => nodeAct({ action: 'paths', id: nodesList.find(n => n.n
 // Retire what this file made, the way agent.mjs does: the store outlives a
 // suite, and a node left online here becomes the DEFAULT node for the files
 // after it, which sent devapp's compose at a machine that does not exist.
+// ...and a node that leaves re-runs the Doctor (B710): its cached verdict
+// named the node's daemon for up to half an hour after the row was gone.
+const docBefore = await page.evaluate(() => state.doctor?.when || 0);
 for (const n of (await (await fetch(URL.replace(/\/$/, '') + '/api/v1/nodes',
      { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json()).nodes){
   if (n.kind !== 'local' && n.name !== 'sandbox')
     await page.evaluate(id => nodeAct({ action: 'retire', id }), n.id);
 }
+await page.waitForFunction(t => (state.doctor?.when || 0) > t, docBefore, { timeout: 60000 }).catch(() => {});
+ok(await page.evaluate(t => (state.doctor?.when || 0) > t, docBefore),
+   'retiring a node re-runs the Doctor, so its verdict stops naming the node');
 
 // ---- a machine to enroll, before there is one -------------------------------
 // The Nodes tab renders the domain XML for a sandbox VM rather than asking

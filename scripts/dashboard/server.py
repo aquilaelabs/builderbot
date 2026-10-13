@@ -5644,7 +5644,13 @@ class Handler(BaseHTTPRequestHandler):
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
-        return self._json(*nodes.verb(self._principal(), req))
+        got = nodes.verb(self._principal(), req)
+        # A node that left is a node the Doctor's cached verdict may still
+        # name, for up to its half hour: the next run starts now, on its own
+        # thread, so the card stops saying a daemon nobody can reach (B710).
+        if req.get("action") in ("retire", "discard", "uninstall") and isinstance(got[0], dict) and got[0].get("ok"):
+            threading.Thread(target=doctor.refresh, name="doctor-after-node", daemon=True).start()
+        return self._json(*got)
 
     def _jobs(self, req):
         """The Jobs tab's one verb, and where `bb run`, `bb build`, `bb test`
