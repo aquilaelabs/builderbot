@@ -528,7 +528,7 @@ def built(project, instance, ok):
     if not ok:
         if plan["mode"] == "move":
             _queue_on(project, instance, plan["new"], "down")
-        _undo(project, plan | {"stage": "build"}, "it would not build or start on the new node")
+        _undo(project, plan | {"stage": "build"}, "it would not build on the new node")
         return
     _set(project, instance, relocating=None, relocate_env=None, relocate_why=None, relocate_at=None)
     if plan["mode"] == "move":
@@ -609,7 +609,7 @@ def view(project, instance):
         verb = "copying" if plan.get("mode") == "copy" else "moving"
         where = devapp.node_name(plan.get("new") or "")
         step = {"out": "packing its data", "in": "unpacking its data",
-                "build": "building and starting"}.get(plan.get("stage"), "")
+                "build": "building"}.get(plan.get("stage"), "")
         return {"busy": True, "line": f"{verb} to {where}: {step}" if step else f"{verb} to {where}"}
     if rec.get("renaming"):
         return {"busy": True, "line": f"renaming it to {rec['renaming']}: the node carries its volumes and data"}

@@ -221,7 +221,13 @@ def _plan(project, instance, action, extra=None):
     # because neither the build nor the down touches .env.example or the
     # instance env. What it must NOT do is send `up` anyway and gate
     # afterwards: that is the broken start the gate exists to prevent.
-    rebuild = [build, down] if devapp.missing_env(project, instance) else [build, down, up]
+    # ...and one arriving on another node (relocate.py's last stage) builds
+    # and stays down: the person decides when it serves there, and a move
+    # takes the old node's down once the build lands (the operator, 13 Oct;
+    # R208).
+    rel = devapp._read_rec(project, instance).get("relocating")
+    arriving = isinstance(rel, dict) and rel.get("stage") == "build"
+    rebuild = [build, down] if devapp.missing_env(project, instance) or arriving else [build, down, up]
     # The project's own test command, inside its running instance (roadmap
     # R48): `exec` into the service the project builds, with the command the
     # settings dialog recorded and nothing else, and the caller's arguments

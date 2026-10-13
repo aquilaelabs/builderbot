@@ -304,6 +304,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Settings tab's Public hostname group is Reach from outside, and its status line names the nodes that come in through the controller's tunnel; each node's row says how it reaches the controller (over the LAN, over WireGuard, or through the public hostname), as it was enrolled (326947e)
 - The Docker tab's row for the nginx BuilderBot deployed keeps Up, Down, Remove and the image update, and loses Edit, Rebuild and Copy or move: what a person changes about it is the nginx tab's, where Deploy makes it again (c926aee)
 - The nginx tab's certificate field is Filed under, with its placeholder saying the certificate's own names decide and its hint saying when to type one (57a2fcf)
+- A container copied or moved to another node arrives built and down, with Up on its row there; a move still takes the old node's down once the build lands (71d49c1)
 
 ### Removed
 

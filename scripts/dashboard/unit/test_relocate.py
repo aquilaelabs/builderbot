@@ -140,7 +140,7 @@ class Relocate(unittest.TestCase):
         devactions.compose_done({"id": "jb", "node": "n3", "state": "succeeded",
                                  "spec": {"project": "alpha", "instance": "main", "action": "rebuild"}}, "succeeded")
         down = [j for j in self.jobs_on("n1") if j["spec"].get("action") == "down"]
-        self.assertEqual(len(down), 1, "the old node's containers come down once it is up")
+        self.assertEqual(len(down), 1, "the old node's containers come down once the build lands")
         self.assertNotIn("relocating", devapp._read_rec("alpha", "main"))
 
     def test_a_move_that_does_not_come_up_goes_back_and_starts_there(self):
@@ -158,7 +158,7 @@ class Relocate(unittest.TestCase):
         self.assertIsNone(relocate.view("alpha", "main"), "the row says nothing of it")
         rows = relocate.attention(lambda nid: nid)
         self.assertEqual([(r["kind"], r["id"], r["why"]) for r in rows],
-                         [("relocate", "alpha|main", "it would not build or start on the new node")])
+                         [("relocate", "alpha|main", "it would not build on the new node")])
         self.assertGreater(rows[0]["at"], 0)
         devactions.compose_done({"id": "jc", "node": "n1", "state": "succeeded",
                                  "spec": {"project": "alpha", "instance": "main", "action": "up"}}, "succeeded")
@@ -166,6 +166,19 @@ class Relocate(unittest.TestCase):
         self.assertEqual(devapp.read_env("alpha", "main"), "PORT=1\n", "its env as it was")
         started = [j for j in self.jobs_on("n1") if j["spec"].get("action") == "start"]
         self.assertEqual(len(started), 1, "started again on the old node")
+
+    def test_an_arriving_container_builds_and_stays_down(self):
+        # The real plan (devactions._plan), with the record at the move's
+        # last stage: build, down, and no up (R208, the operator, 13 Oct).
+        import importlib
+        real = importlib.import_module("devactions")
+        rec = devapp._read_rec("alpha", "main")
+        plain = [st["name"] for st in real._plan("alpha", "main", "rebuild")]
+        self.assertEqual(plain, ["building", "stopping", "starting"], "a rebuild at home comes up")
+        relocate._set("alpha", "main", relocating={"mode": "move", "to": "main", "old": "n1", "new": "n3", "stage": "build"})
+        arriving = [st["name"] for st in real._plan("alpha", "main", "rebuild")]
+        self.assertEqual(arriving, ["building", "stopping"], "on arrival it builds and stays down")
+        relocate._set("alpha", "main", relocating=None)
 
     def test_a_copy_that_fails_to_pack_leaves_only_the_original(self):
         r = relocate.start("alpha", "main", "copy", "n2", "alpha-web")
