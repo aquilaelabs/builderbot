@@ -5233,15 +5233,19 @@ cmd_doctor() {
                 ok=1
             fi ;;
     esac
-    local ssh_src=""
-    if ssh-add -l >/dev/null 2>&1; then
+    local ssh_src="" ssh_rc=0
+    ssh-add -l >/dev/null 2>&1 || ssh_rc=$?
+    if [ "$ssh_rc" = 0 ]; then
         ssh_src="shielded agent key"
     elif compgen -G "$HOME/.ssh/id_*" >/dev/null; then
         ssh_src="key file in ~/.ssh"
     fi
     # Distinguish "no key" from "key loaded but the agent is unreachable from
     # this uid", which is otherwise indistinguishable and very confusing.
-    if [ -z "$ssh_src" ] && [ -S "${SSH_AUTH_SOCK:-/run/ssh-agent.sock}" ]; then
+    # ssh-add exits 2 when it cannot reach the agent and 1 when the agent
+    # holds no key: an empty agent (the entrypoint starts one whether or not
+    # a key is ever added) is not a fault (B685).
+    if [ -z "$ssh_src" ] && [ "$ssh_rc" = 2 ] && [ -S "${SSH_AUTH_SOCK:-/run/ssh-agent.sock}" ]; then
         printf '  [FAIL] an agent socket exists but this user cannot use it; see: bb logs | grep ssh\n'
         ok=1
     fi
