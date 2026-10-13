@@ -708,6 +708,14 @@ def manager_view(nid, seen):
     # a container moved to a VPS that then answers nowhere (11 Oct).
     got["nginx_ports"] = sorted({int(r.get("port") or 0) for r in (nginxproxy.record(got["node"]).get("routes") or [])}
                                 if got["ports_local"] else set())
+    # ...and the node's nginx as a row would route through it (R209): whether
+    # it is deployed, the certificates it holds (by the domain each is filed
+    # under) and the ports its routes already point at, whatever the node's
+    # port setting.
+    nrec = nginxproxy.record(got["node"]) if got.get("node") else {}
+    got["nginx"] = {"deployed": bool(got.get("node")) and nginxproxy.deployed(devapp, got["node"]),
+                    "certs": sorted(k for k, v in (nrec.get("certs") or {}).items() if (v or {}).get("set")),
+                    "routed": sorted({int(r.get("port") or 0) for r in (nrec.get("routes") or [])})}
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
         # A node's nginx behind the newest line says so on its row, with

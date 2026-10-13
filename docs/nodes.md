@@ -1094,6 +1094,9 @@ the pieces stack:
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back). A
    route's hostname is picked from one list every node's nginx shares
+   A container's row on the Docker tab writes a route too (R209): the
+   certificate it serves under, one of its published ports, Add route; a
+   port that has a route already is refused by name.
    (Hostnames on the tab, the operator, 12 Oct): a name is added once and
    any route on any node, for any project's container, picks it, and one a
    route still uses cannot be deleted. A

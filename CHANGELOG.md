@@ -140,6 +140,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A house rule carries its why (Why on the Briefing view, bb rules add --why), kept for bb rules show and the tab and never sent to a session, so the block carries the instruction alone (b7cab78)
 - bb lint checks the instruction channels: CLAUDE.md describes the tree, the briefing the machine, the shipped rules the obligations, a sentence shared between them or a date, bug number or attribution in either is a finding (b7cab78)
 - Enroll node asks which system the machine runs, from a pulldown of the systems walked on a node (Ubuntu, Rocky Linux; the rest behind Offer dev features, tagged dev), and the script it makes carries that system's provisioner family and refuses a machine of another family by name (416aad8)
+- A container's row on the Docker tab routes it through the node's nginx: a certificate (its domain the hostname; none for 80 alone) and one of its published ports, written to the nginx tab and applied; a port with a route already is refused by name (d415a02)
 
 ### Changed
 

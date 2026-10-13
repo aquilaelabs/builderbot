@@ -635,6 +635,38 @@ def save_routes(nid, routes):
     return {"ok": True, "routes": got}
 
 
+def add_route(nid, port, cert, containers, devactions, devapp):
+    """A route written from a container's row on the Docker tab (R209): to
+    `port` on the node, at the hostname the certificate is filed under
+    (its domain), with that pair, or at any hostname on 80 alone with no
+    certificate; applied at once. A port that already has a route is
+    refused by name: one route per port, the rest is the nginx tab's."""
+    try:
+        port = int(str(port).strip())
+    except (TypeError, ValueError):
+        return {"error": "which port? one the container publishes on this node"}
+    if not 1 <= port <= 65535:
+        return {"error": f"not a port: {port}"}
+    rec = record(nid)
+    certs = rec.get("certs") or {}
+    cert = str(cert or "").strip().lower()
+    if cert and not (certs.get(cert) or {}).get("set"):
+        return {"error": f"this node holds no certificate filed under {cert}: paste it on the nginx tab first"}
+    routes = list(rec.get("routes") or [])
+    for r in routes:
+        if int(r.get("port") or 0) == port:
+            where = f"{r.get('host') or '*'}{r.get('path') or '/'}"
+            return {"error": f"port {port} already has a route: {where} on this node's nginx; change it on the nginx tab"}
+    routes.append({"host": cert or "*", "path": "/", "port": port, "tls": bool(cert), "cert": cert})
+    saved = save_routes(nid, routes)
+    if saved.get("error"):
+        return saved
+    r = apply(nid, containers, devactions, devapp)
+    if r.get("error"):
+        return r
+    return r | {"route": routes[-1]}
+
+
 def deploy(nid, containers, devactions, devapp):
     """The container made on the node from the generated compose file, then
     built: Deploy on a node without one, and the enroll dialog's tick once

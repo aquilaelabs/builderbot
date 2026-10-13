@@ -563,6 +563,29 @@ function dmRouteLine(d){
 // Staged and applied like the route above it, because it is a setting.
 const dmRefDraft = {};
 
+// A route to this container through the node's nginx, from its row (R209,
+// the operator, 13 Oct): the certificate the route serves under (its
+// domain is the hostname; none means any hostname on 80 alone) and one of
+// the container's published ports, each port once.
+function dmNginxLine(d){
+  const ng = dockerList?.nginx;
+  if (!ng?.deployed || d.owner === "System" || !mayDocker()) return "";
+  const ports = [...new Set((d.ports || []).map(p => /:(\d+)->/.exec(p)?.[1] || /^(\d+)->/.exec(p)?.[1]).filter(Boolean).map(Number))];
+  const open = ports.filter(p => !(ng.routed || []).includes(p));
+  if (!ports.length) return "";
+  const key = `${d.project}|${d.instance}`;
+  return `<div class="sub dmnginxroute"><label for="${esc("dmng-" + key)}">Route through nginx${
+      helpIcon("A route on this node's nginx tab to one of this container's published ports, at the hostname the certificate is filed under, "
+        + "or at any hostname on 80 alone with no certificate. One route per port; the rest of a route is changed on the nginx tab.")}</label>
+    <select id="${esc("dmng-" + key)}" data-dmngcert="${esc(key)}" aria-label="which certificate the route serves under">
+      <option value="">no certificate: any hostname, 80 alone</option>${
+      (ng.certs || []).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select>
+    <select data-dmngport="${esc(key)}" aria-label="which port the route goes to">${
+      ports.map(p => `<option value="${p}"${open.includes(p) ? "" : " disabled"}>${p}${open.includes(p) ? "" : " (routed)"}</option>`).join("")}</select>
+    <button type="button" data-dmngadd="${esc(key)}"${open.length ? "" : " disabled"} title="${
+      open.length ? "write the route on the nginx tab and apply it" : "every published port has a route already"}">Add route</button></div>`;
+}
+
 function dmRefLine(d){
   if (d.source === "file" || !mayDocker()) return "";
   const refs = dockerList?.refs?.[d.project] || [];
@@ -1359,7 +1382,7 @@ function dmRowsHtml(ins, job, blind){
         ${d.astray ? `<div class="sub warn">On this node, while ${esc(projLabel(d.owner || d.project))} works on ${
           esc(d.astray)} and does not host its containers here, so its sessions cannot reach it. To keep it here, add this node to the project's Hosts its containers on; to move it, Remove it and Send to Docker again.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${dmMoveLine(d)}${
-          dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
+          dmRefLine(d)}${dmNginxLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
           ? dmBootLine(d.name, !!d.boot) : ""}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
           : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
@@ -1454,6 +1477,16 @@ function dmWireRows(el, list = dockerList){
   // setting, not the instance's.
   // Staged on the pick, written by Apply: the same shape as the route line
   // above it, and as every other setting on the page.
+  el.querySelectorAll("[data-dmngadd]").forEach(b => b.onclick = async () => {
+    const key = b.dataset.dmngadd;
+    const cert = el.querySelector(`[data-dmngcert="${CSS.escape(key)}"]`)?.value || "";
+    const port = el.querySelector(`[data-dmngport="${CSS.escape(key)}"]`)?.value || "";
+    busy(b, "Adding");
+    const j = await (await postJSON("/api/nginx", {action: "route-add", node: dockerList?.node || dockerNode || "", cert, port})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    else notify(`routed ${j.route?.host || "*"} to ${port} on this node's nginx${j.deployed === false ? " (applied once it is deployed)" : ""}`);
+    dockerList = null; dockerRev++; loadDocker();
+  });
   el.querySelectorAll("[data-dmref]").forEach(sel => sel.onchange = () => {
     const key = sel.dataset.dmref;
     const row = sel.closest("[data-inst]");

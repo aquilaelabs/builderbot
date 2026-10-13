@@ -4561,4 +4561,49 @@ print(json.dumps(out))`], { encoding: 'utf8' });
      `a fold repeated once per row makes no jump bar, and a surface's own sections still do (${JSON.stringify(shape)})`);
 }
 
+// ---- a route through the node's nginx, from the row (R209, 13 Oct) ----------
+// With BuilderBot's nginx deployed on the node, a container's row offers a
+// certificate (none: any hostname on 80) and one of its published ports, and
+// Add route writes the route on the nginx tab and applies it; the same port
+// again is refused by name, and the port reads as routed in the pulldown.
+{
+  // The fixture's compose went with the cleanup above, so the container the
+  // row is for is put back: a stack with one published port, up on the stub.
+  writeFileSync(`${D}/docker-compose.yml`,
+    'services:\n  app:\n    image: delta-dev\n    build: .\n    ports:\n      - "7475:7474"\n');
+  writeFileSync(`${DIR}/dockerstate/ep-silon.up`, '');
+  writeFileSync(`${DIR}/dockerstate/ep-silon.svcs`, 'app 7475 7474\n');
+  const api = (body) => page.evaluate(async b => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json()), body);
+  // Made with `new`, as at the top: the manager lists what was sent to it,
+  // and an up or a build on an instance with no record writes none (B633).
+  await api({ project: 'ep.silon', instance: 'main', action: 'new' });
+  await api({ project: 'ep.silon', instance: 'main', action: 'up' });
+  const nodeId = await page.evaluate(() => dockerList?.node || dockerNode || '');
+  const dep = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'deploy', node: n }) })).json()), nodeId);
+  ok(dep.ok === true || /already on the Docker tab/.test(dep.error || ''), `nginx is deployed on the node for the row to route through (${JSON.stringify(dep).slice(0, 80)})`);
+  await openManager();
+  for (let i = 0; i < 40 && !(await page.$(`${DM} .dmnginxroute [data-dmngadd]`)); i++){ await dmRefresh(); await sleep(1000); }
+  await page.waitForSelector(`${DM} .dmnginxroute [data-dmngadd]`, { timeout: 20000 });
+  const line = await page.$eval(`${DM} .dmnginxroute`, e => ({ certs: [...e.querySelectorAll('[data-dmngcert] option')].map(o => o.value),
+    ports: [...e.querySelectorAll('[data-dmngport] option')].map(o => `${o.value}${o.disabled ? '!' : ''}`), add: !e.querySelector('[data-dmngadd]').disabled }));
+  ok(line.certs[0] === '' && line.ports.length >= 1 && !line.ports[0].endsWith('!') && line.add,
+     `the row offers a certificate (none first), the container's published ports, and Add route (${JSON.stringify(line)})`);
+  const port = Number(line.ports[0].replace('!', ''));
+  await page.click(`${DM} .dmnginxroute [data-dmngadd]`);
+  await page.waitForFunction(p => (dockerList?.nginx?.routed || []).includes(p), port, { timeout: 30000 });
+  const got = await page.evaluate(async n => (await (await fetch('/api/nginx')).json()).nodes.find(x => x.node === n).routes, nodeId);
+  ok(got.some(r => r.port === port && r.host === '*' && r.cert === '' && r.tls === false),
+     `Add route wrote the route on the nginx tab: any hostname, 80 alone, to port ${port} (${JSON.stringify(got)})`);
+  const again = await page.evaluate(async ([n, p]) => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'route-add', node: n, cert: '', port: p }) })).json()), [nodeId, port]);
+  ok(/already has a route: \*\//.test(again.error || ''), `the same port again is refused by name (${again.error})`);
+  await page.waitForFunction(p => [...document.querySelectorAll('.dmtab [data-dmngport] option')].some(o => Number(o.value) === p && o.disabled), port, { timeout: 15000 });
+  ok(true, '...and the pulldown reads that port as routed');
+  const bad = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'route-add', node: n, cert: 'nope.example.com', port: 9 }) })).json()), nodeId);
+  ok(/holds no certificate filed under nope.example.com/.test(bad.error || ''), `a certificate the node does not hold is refused by name (${bad.error})`);
+}
+
 await done(browser);
