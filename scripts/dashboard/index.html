@@ -854,8 +854,11 @@ body.dragging .side .card h2{cursor:grabbing}
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .grow{flex:1;min-width:120px}
 
+/* The page's own secondary voice, not the browser's: `font:12px/1 inherit`
+   is not valid shorthand (inherit cannot ride inside it), so the whole
+   declaration was dropped and every button wore 13.3px Arial (B711). */
 button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
-  border-radius:var(--r-control);padding:6px 10px;font:12px/1 inherit;cursor:pointer;
+  border-radius:var(--r-control);padding:6px 10px;font:var(--f-ui);cursor:pointer;
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
 /* Hover, only where there is a pointer that hovers. On a touch screen a tap
