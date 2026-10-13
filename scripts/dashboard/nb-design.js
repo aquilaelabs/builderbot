@@ -372,7 +372,27 @@ function nbDesignView({$, nb, project, root}){
         <button type="button" data-dstcadd ${(t.colors || []).length >= (P.colors_max || 40) ? "disabled" : ""}>Add color</button>
         ${i === 0 ? "" : `<button type="button" data-dstdefault title="the app starts on this theme">Make default</button>`}
         <button type="button" class="danger" data-dstrm title="take this theme out">Remove theme</button></div></div>
+      ${lightHalf(t, i)}
     </div>`;
+  }
+
+  // The theme's other half (R216): the same tokens for the opposite mode,
+  // so one name is one scheme with a dark half and a light one, and the
+  // app's mode switch picks the half. Started from the colors above, names
+  // and meanings kept, hexes to be set; removed whole.
+  function lightHalf(t, i){
+    const other = t.mode === "light" ? "dark" : "light";
+    if (!(t.light || []).length)
+      return `<div class="field"><div class="actbar"><span class="state">one palette: the app has no ${other} half of ${esc(t.name.trim() || "this theme")} to switch to</span>
+        <button type="button" data-dstladd ${(t.colors || []).length ? "" : "disabled"}>Add a ${other} half</button></div></div>`;
+    return `<div class="field">${lbl("", `The ${other} half`, `the same tokens for ${other} mode; the app's Dark / Light switch picks the half`)}
+      <div class="dscolors">${t.light.map((c, j) => `
+        <div class="dsrow" data-dstl="${j}">
+          ${ctl(`dstl-${i}-name-${j}`, "Name", "", `<input id="dstl-${i}-name-${j}" data-dslm="name" maxlength="40" autocomplete="off" value="${esc(c.name)}">`)}
+          ${ctl(`dstl-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(c.hex)}"></span><input id="dstl-${i}-hex-${j}" data-dslm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
+        </div>`).join("")}</div></div>
+      <div class="field"><div class="actbar"><span class="state">${t.light.length} of ${(t.colors || []).length} tokens</span>
+        <button type="button" class="danger" data-dstlrm title="take the ${other} half out">Remove the ${other} half</button></div></div>`;
   }
 
   // The pages: the add bar (a platform, a template, Add page), a pulldown
@@ -893,6 +913,19 @@ function nbDesignView({$, nb, project, root}){
       t.colors.push({name: "", hex: paint("accent"), means: ""}); touched(); drawDesign();
       root.querySelector(`#dst-${i}-name-${t.colors.length - 1}`)?.focus();
     };
+    band.querySelector("[data-dstladd]")?.addEventListener("click", () => {
+      t.light = t.colors.map(c => ({name: c.name, hex: c.hex, means: c.means})); touched(); drawDesign();
+    });
+    band.querySelector("[data-dstlrm]")?.addEventListener("click", () => { t.light = []; touched(); drawDesign(); });
+    band.querySelectorAll("[data-dstl]").forEach(row => {
+      const c = (t.light || [])[+row.dataset.dstl]; if (!c) return;
+      row.querySelector('[data-dslm="name"]').oninput = e => { c.name = e.target.value; touched(); };
+      row.querySelector('[data-dslm="hex"]').oninput = e => {
+        const v = e.target.value.trim().toLowerCase();
+        if (!/^#[0-9a-f]{6}$/.test(v)) return;
+        c.hex = v; e.target.previousElementSibling.style.background = v; touched();
+      };
+    });
     band.querySelector("[data-dstdefault]")?.addEventListener("click", () => {
       L.themes.splice(i, 1); L.themes.unshift(t); nb.dsShow.theme = 0; touched(); drawDesign();
     });

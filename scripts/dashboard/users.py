@@ -1101,6 +1101,10 @@ def own_prefs(name, want):
     theme = str(want.get("theme") or "")
     if re.fullmatch(r"[a-z]{2,12}", theme):
         keep["theme"] = theme
+    # Dark, light or the device's own (R216): the scheme's other half, kept
+    # beside it for the same reason.
+    if want.get("mode") in ("dark", "light", "system"):
+        keep["mode"] = want["mode"]
     # The welcome panel's two marks: the getting-started guide has
     # been read, and which image's changelog was acknowledged.
     if isinstance(want.get("welcome_seen"), bool):

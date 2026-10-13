@@ -946,9 +946,14 @@ for (const kind of kinds){
                    'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash'];
   const AA = 4.5;
   const bad = [];
-  for (const t of SCHEMES) {
-    await page.evaluate(th => { document.documentElement.dataset.theme = th; }, t);
-    await sleep(120);
+  // ...in both halves of each (R216): the light half writes white on the
+  // same darkened accent, and its icons the same.
+  for (const [t, mode] of SCHEMES.flatMap(t => [[t, ''], [t, 'light']])) {
+    await page.evaluate(([th, m]) => { document.documentElement.dataset.theme = th;
+      if (m) document.documentElement.dataset.mode = m; else delete document.documentElement.dataset.mode; }, [t, mode]);
+    // Past the tab's own 150ms background transition: a dark half measured
+    // 120ms after a light one read a blend of the two.
+    await sleep(220);
     const r = await page.evaluate(() => {
       const el = document.querySelector('.tab.on');
       if (!el) return { err: 'no active tab' };
@@ -966,14 +971,15 @@ for (const kind of kinds){
                           return k ? +R(getComputedStyle(k).color, bg).toFixed(2) : null; };
       return { label: at('.lbl'), icon: at('.ic') };
     });
-    if (r.err) { bad.push(`${t}: ${r.err}`); continue; }
-    if (!(r.label >= AA)) bad.push(`${t} label ${r.label}`);
-    if (r.icon !== null && !(r.icon >= AA)) bad.push(`${t} icons ${r.icon}`);
+    const name = mode ? `${t} (light)` : t;
+    if (r.err) { bad.push(`${name}: ${r.err}`); continue; }
+    if (!(r.label >= AA)) bad.push(`${name} label ${r.label}`);
+    if (r.icon !== null && !(r.icon >= AA)) bad.push(`${name} icons ${r.icon}`);
   }
-  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+  await page.evaluate(() => { delete document.documentElement.dataset.theme; delete document.documentElement.dataset.mode; });
   await sleep(120);
   ok(bad.length === 0,
-     `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes${
+     `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes, dark and light${
        bad.length ? `; under ${AA}:1: ${bad.join(', ')}` : ''}`);
 }
 

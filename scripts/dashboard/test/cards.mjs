@@ -897,6 +897,32 @@ ok(await fieldBg() !== nosField,
    '...and a text field is painted from the scheme, not from a hardcoded hex');
 ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefined,
    'Default carries no attribute at all, so :root is simply left to stand');
+// The scheme's other half (R216): Dark, Light or System beside the swatches,
+// applied on the press like a scheme, kept in the browser and on the
+// account, and the swatches show the half that is on.
+{
+  const pageBg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const darkBg = await pageBg();
+  ok(await page.$eval('#uiMenu [data-mode="dark"]', b => b.classList.contains('on')),
+     'the gear offers Dark, Light and System, on Dark to begin with');
+  await page.click('#uiMenu [data-mode="light"]');
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => document.documentElement.dataset.mode) === 'light'
+     && await pageBg() !== darkBg,
+     'Light repaints the page on the press, the light half of the same scheme');
+  ok(await page.evaluate(() => { try { return localStorage.getItem('bb.mode'); } catch (e) { return 'no storage'; } }) === 'light',
+     '...and the browser keeps it, as it keeps the scheme');
+  const swLight = await page.$eval('#uiMenu .sw[data-theme="nostromo"]', b => getComputedStyle(b).backgroundColor);
+  ok(await page.$eval('.tab.on .lbl', e => getComputedStyle(e).color) === 'rgb(255, 255, 255)',
+     'a filled accent carries white in the light half, where the ink is dark');
+  await page.click('#uiMenu [data-mode="dark"]');
+  // Past the crossfade, which a loaded box stretches.
+  await page.waitForFunction(bg => getComputedStyle(document.body).backgroundColor === bg, darkBg, { timeout: 5000 });
+  ok(await page.evaluate(() => document.documentElement.dataset.mode) === undefined && await pageBg() === darkBg,
+     '...and Dark puts it back, carrying no attribute at all');
+  ok(swLight !== await page.$eval('#uiMenu .sw[data-theme="nostromo"]', b => getComputedStyle(b).backgroundColor),
+     '...the swatches having shown the light half while it was on');
+}
 
 // Escape shuts it, like the bell panel it sits beside.
 await page.keyboard.press('Escape');

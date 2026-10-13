@@ -39,12 +39,12 @@ import { dirname, join } from 'node:path';
 // what it prints. Do not hand-edit it into agreement without looking at why
 // it moved.
 const SURFACE = [
-  'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
+  'adoptCards', 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyCards', 'applyMode', 'applyNow', 'applyTheme',
   'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'cardDropIndex', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
-  'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
+  'currentMode', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'openPopup', 'menuHolds', 'actMore', 'wireMore', 'closeMore', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'attRow', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
   'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',

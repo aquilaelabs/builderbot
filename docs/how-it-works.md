@@ -799,9 +799,13 @@ arrangement and it survives restarts and image updates. The **▤** button in
 the top bar opens the appearance menu, whose first item puts it all back:
 default order (Doctor on top) with every card expanded.
 
-**Under it, twelve color schemes**, all dark, because this page is read in a
-dim room beside a terminal and a light one would be a different design rather
-than a recolor of this one. A scheme is nine custom properties: every rule in
+**Under it, Dark, Light or System, and thirteen color schemes**, each with
+a dark half and a light one. Dark is the page read in a dim room beside a
+terminal; Light is the same scheme with the page near white, the ink dark
+and the accent pulled down to read on it; System follows the device as it
+changes. The switch is applied on the press like a scheme, kept in the
+browser so the first paint is right, and on the account so a browser that
+has never seen it starts the same way. A scheme is nine custom properties: every rule in
 the stylesheet draws from them, and the button and accent families are mixed
 from the scheme's own panel and accent (`color-mix`, with flat fallbacks), so
 a recolor reaches the tabs, the primaries and the active states rather than

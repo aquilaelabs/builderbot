@@ -3757,6 +3757,7 @@ def snapshot(who):
         # This account's color scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
+        "mode": users.prefs(who).get("mode", ""),
         # Whether this account has read the getting-started guide, and
         # which image's changelog it acknowledged: the welcome panel opens
         # itself once for each (the guide on a first sign-in, the changelog

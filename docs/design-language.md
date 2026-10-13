@@ -22,6 +22,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#f8524a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#58a6ff` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f1f4f7` |
+| `--panel` | `#fcfeff` |
+| `--ink` | `#242729` |
+| `--dim` | `#5e646a` |
+| `--line` | `#c9d2dd` |
+| `--accent` | `#007c05` |
+| `--warn` | `#996200` |
+| `--bad` | `#c3131b` |
+| `--note` | `#0863b6` |
+
 ### Abyss (dark)
 
 | token | value | for |
@@ -35,6 +49,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#d7ab4c` | a warning, and the amber marks |
 | `--bad` | `#ef6a63` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#6fb3e0` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#eff5f6` |
+| `--panel` | `#fbfeff` |
+| `--ink` | `#212829` |
+| `--dim` | `#5a6667` |
+| `--line` | `#c3d5d9` |
+| `--accent` | `#007480` |
+| `--warn` | `#906700` |
+| `--bad` | `#b53433` |
+| `--note` | `#236a93` |
 
 ### Ash (dark)
 
@@ -50,6 +78,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#e26d60` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#82a7b8` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f3f3f3` |
+| `--panel` | `#fdfdfd` |
+| `--ink` | `#262725` |
+| `--dim` | `#626461` |
+| `--line` | `#cfd2cf` |
+| `--accent` | `#5d6945` |
+| `--warn` | `#8d6800` |
+| `--bad` | `#ae3e34` |
+| `--note` | `#466979` |
+
 ### Carbon (dark)
 
 | token | value | for |
@@ -63,6 +105,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ff6b6b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7aa2f7` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f3f3f5` |
+| `--panel` | `#fdfdfe` |
+| `--ink` | `#262627` |
+| `--dim` | `#636367` |
+| `--line` | `#d0d0d5` |
+| `--accent` | `#b6192c` |
+| `--warn` | `#905e00` |
+| `--bad` | `#bb2933` |
+| `--note` | `#3c5fae` |
 
 ### Ember (dark)
 
@@ -78,6 +134,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#ef5f52` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#8fb4d9` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f6f3f1` |
+| `--panel` | `#fffdfb` |
+| `--ink` | `#2b2520` |
+| `--dim` | `#6a6159` |
+| `--line` | `#dbcfc3` |
+| `--accent` | `#a34100` |
+| `--warn` | `#8b6100` |
+| `--bad` | `#ba2c25` |
+| `--note` | `#446688` |
+
 ### Ice (dark)
 
 | token | value | for |
@@ -91,6 +161,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#d3ab52` | a warning, and the amber marks |
 | `--bad` | `#ee6a68` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cc0ff` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f0f4f6` |
+| `--panel` | `#fbfeff` |
+| `--ink` | `#23272b` |
+| `--dim` | `#5d6568` |
+| `--line` | `#c7d3dd` |
+| `--accent` | `#00708f` |
+| `--warn` | `#886200` |
+| `--bad` | `#b43439` |
+| `--note` | `#2167a0` |
 
 ### Moss (dark)
 
@@ -106,6 +190,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#e8695f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#74b3d8` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f0f5f3` |
+| `--panel` | `#fbfefc` |
+| `--ink` | `#232823` |
+| `--dim` | `#5e6660` |
+| `--line` | `#c8d5cb` |
+| `--accent` | `#00783f` |
+| `--warn` | `#8e6800` |
+| `--bad` | `#b33833` |
+| `--note` | `#2b6a8c` |
+
 ### Nocturne (dark)
 
 | token | value | for |
@@ -120,6 +218,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#f2637b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cb0ff` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f2f3f9` |
+| `--panel` | `#fdfdff` |
+| `--ink` | `#26252e` |
+| `--dim` | `#626173` |
+| `--line` | `#cecfe6` |
+| `--accent` | `#6a44c2` |
+| `--warn` | `#916600` |
+| `--bad` | `#b72b4c` |
+| `--note` | `#3262aa` |
+
 ### Nostromo (dark)
 
 | token | value | for |
@@ -133,6 +245,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#ffd166` | a warning, and the amber marks |
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9ad07a` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f1f4f2` |
+| `--panel` | `#fbfefc` |
+| `--ink` | `#23291c` |
+| `--dim` | `#5e6657` |
+| `--line` | `#c7d6c2` |
+| `--accent` | `#974f00` |
+| `--warn` | `#8b6100` |
+| `--bad` | `#c11d00` |
+| `--note` | `#41721b` |
 
 Nostromo differs from the default in:
 
@@ -179,6 +305,20 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--bad` | `#ee6183` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#83aee8` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f6f2f8` |
+| `--panel` | `#fffcff` |
+| `--ink` | `#2a242c` |
+| `--dim` | `#695f6e` |
+| `--line` | `#d9cbe1` |
+| `--accent` | `#8c3a9b` |
+| `--warn` | `#936500` |
+| `--bad` | `#b62b55` |
+| `--note` | `#3d6499` |
+
 ### Rust (dark)
 
 | token | value | for |
@@ -192,6 +332,20 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#e8544a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fa8c9` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f7f2f1` |
+| `--panel` | `#fffdfc` |
+| `--ink` | `#2b2523` |
+| `--dim` | `#6a615f` |
+| `--line` | `#ddcdca` |
+| `--accent` | `#a14123` |
+| `--warn` | `#905e00` |
+| `--bad` | `#bc2825` |
+| `--note` | `#416886` |
 
 ### Sepia (dark)
 
@@ -207,6 +361,20 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--bad` | `#e0705f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9db98c` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f5f3f0` |
+| `--panel` | `#fffdfb` |
+| `--ink` | `#2b261c` |
+| `--dim` | `#6a6256` |
+| `--line` | `#d7d0c3` |
+| `--accent` | `#835c00` |
+| `--warn` | `#8a6900` |
+| `--bad` | `#ac4133` |
+| `--note` | `#536c43` |
+
 ### Slate (dark)
 
 | token | value | for |
@@ -220,6 +388,20 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ef6f6c` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fb8ff` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f1f3f7` |
+| `--panel` | `#fcfdff` |
+| `--ink` | `#24272a` |
+| `--dim` | `#606468` |
+| `--line` | `#cbd2da` |
+| `--accent` | `#2a61b1` |
+| `--warn` | `#905e00` |
+| `--bad` | `#b2373a` |
+| `--note` | `#2e64a5` |
 
 ## Type
 
@@ -275,6 +457,8 @@ field-label helper, so it arrived wearing the quiet color meant for "Your
 email" above a text box, on an accent fill, at 2.51:1.
 
 The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mid`: the accent darkened by 14%, between the accent and `--accent-deep`.
+
+**Every scheme has a light half (R216).** The same nine tokens, hue for hue, with the page near white, the ink dark and the accent and the marks pulled down to AA against the page; `html[data-mode="light"]` is the switch, set by the gear's Dark / Light / System beside the swatches, before first paint from localStorage and on the account. What the dark half derives by lightening the light half derives by darkening (`--btn`, `--sunk`), the purple family and its edges flip with it, and a filled accent carries `--on-fill` (the ink in the dark half, white in the light) rather than the ink itself. Never a hex in a component in either half.
 
 ### shape
 

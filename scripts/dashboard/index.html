@@ -30,6 +30,11 @@
     const t = localStorage.getItem("bb.theme");
     if (t && t !== "default" && /^[a-z]{2,12}$/.test(t))
       document.documentElement.dataset.theme = t;
+    // ...and whether it is the dark or the light half of it (R216): "system"
+    // follows the device, resolved here so the first paint is already right.
+    const m = localStorage.getItem("bb.mode");
+    if (m === "light" || (m === "system" && matchMedia("(prefers-color-scheme: light)").matches))
+      document.documentElement.dataset.mode = "light";
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
 
 </script>
@@ -60,6 +65,14 @@
   --btn-hi:#2b3540;     --btn-hi:color-mix(in srgb, var(--panel), #ffffff 9%);
   --accent-mid:#2ea043; --accent-mid:color-mix(in srgb, var(--accent), #000000 14%);
   --accent-deep:#1f6f36;--accent-deep:color-mix(in srgb, var(--accent), #000000 40%);
+  /* What is written on a filled accent: the ink in a dark scheme, where the
+     ink is light; white in a light one, where the ink is dark and the fill
+     is still the darkened accent (R216). */
+  --on-fill:var(--ink);
+  /* The shade at a scrolling edge (more below, more above): a deep one on a
+     dark page, a faint one on a light page, where the same shade read as a
+     smear of soot (the light half, 13 Oct). */
+  --edge-hint:rgba(0,0,0,.75);
   /* ...and capped below, in the block under this one. Every filled accent
      surface on the page draws --ink on --accent-deep: the active tab, a
      primary button, a view bar's current tab, an open select's chosen row,
@@ -200,9 +213,8 @@
   }
 }
 /* ---- color schemes ----------------------------------------------------
-   Twelve, all dark: this page is looked at in a dim room beside a terminal,
-   and a light one would be a different design rather than a recolor of this
-   one. A scheme is nine custom properties and nothing else: every rule in
+   Thirteen, each with a dark half and a light one (the light halves follow,
+   under their own switch). A scheme is nine custom properties and nothing else: every rule in
    the sheet already draws from them, which is what makes a recolor cheap and
    a new one three lines.
 
@@ -250,6 +262,69 @@ html[data-theme="sepia"],.sw[data-theme="sepia"]{
 html[data-theme="ash"],.sw[data-theme="ash"]{
   --bg:#1b1b1b; --panel:#222322; --line:#555955; --ink:#e2e4e0;
   --dim:#a1a59f; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
+/* ---- the light half (R216) -----------------------------------------------
+   Every scheme has a light half: the same hue family token for token, with
+   the page near white, the ink dark, and the accent and the marks pulled
+   down to read on it (each at AA against --bg or better; the generator and
+   its ratios are in the commit that added them). html[data-mode="light"] is
+   the switch, set by the gear beside the scheme and before first paint from
+   localStorage, so a swatch in the gear shows the half that is on. What the
+   dark half derives by lightening (a button's ground, the sunk field) the
+   light half derives by darkening, and a filled accent carries white rather
+   than the ink. The purple family and its edges, the shades a few badges
+   wear, flip with it. */
+html[data-mode="light"]{
+  color-scheme:light;
+  --on-fill:#ffffff;
+  --edge-hint:rgba(0,0,0,.16);
+  --btn:#f0f2f5;        --btn:color-mix(in srgb, var(--panel), #000000 4%);
+  --btn-hi:#e6e9ee;     --btn-hi:color-mix(in srgb, var(--panel), #000000 8%);
+  --sunk:#f3f5f8;       --sunk:color-mix(in srgb, var(--panel), #000000 5%);
+  --purple:#6b45a8; --purple-edge:#dcd0f0;
+  --green2:#2f7a3e; --green2-edge:#cfe8d4;
+  --blue2:#2b6fa8;  --blue2-edge:#d3e4f3;
+  --gold:#8a6a1c;   --gold-edge:#efe3bf;
+  --red2:#b03a30;   --red2-edge:#f3cdc9;
+}
+html[data-mode="light"],html[data-mode="light"] .sw[data-theme="default"]{
+  --bg:#f1f4f7; --panel:#fcfeff; --line:#c9d2dd; --ink:#242729;
+  --dim:#5e646a; --accent:#007c05; --warn:#996200; --bad:#c3131b; --note:#0863b6}
+html[data-mode="light"][data-theme="nostromo"],html[data-mode="light"] .sw[data-theme="nostromo"]{
+  --bg:#f1f4f2; --panel:#fbfefc; --line:#c7d6c2; --ink:#23291c;
+  --dim:#5e6657; --accent:#974f00; --warn:#8b6100; --bad:#c11d00; --note:#41721b}
+html[data-mode="light"][data-theme="slate"],html[data-mode="light"] .sw[data-theme="slate"]{
+  --bg:#f1f3f7; --panel:#fcfdff; --line:#cbd2da; --ink:#24272a;
+  --dim:#606468; --accent:#2a61b1; --warn:#905e00; --bad:#b2373a; --note:#2e64a5}
+html[data-mode="light"][data-theme="carbon"],html[data-mode="light"] .sw[data-theme="carbon"]{
+  --bg:#f3f3f5; --panel:#fdfdfe; --line:#d0d0d5; --ink:#262627;
+  --dim:#636367; --accent:#b6192c; --warn:#905e00; --bad:#bb2933; --note:#3c5fae}
+html[data-mode="light"][data-theme="nocturne"],html[data-mode="light"] .sw[data-theme="nocturne"]{
+  --bg:#f2f3f9; --panel:#fdfdff; --line:#cecfe6; --ink:#26252e;
+  --dim:#626173; --accent:#6a44c2; --warn:#916600; --bad:#b72b4c; --note:#3262aa}
+html[data-mode="light"][data-theme="moss"],html[data-mode="light"] .sw[data-theme="moss"]{
+  --bg:#f0f5f3; --panel:#fbfefc; --line:#c8d5cb; --ink:#232823;
+  --dim:#5e6660; --accent:#00783f; --warn:#8e6800; --bad:#b33833; --note:#2b6a8c}
+html[data-mode="light"][data-theme="ember"],html[data-mode="light"] .sw[data-theme="ember"]{
+  --bg:#f6f3f1; --panel:#fffdfb; --line:#dbcfc3; --ink:#2b2520;
+  --dim:#6a6159; --accent:#a34100; --warn:#8b6100; --bad:#ba2c25; --note:#446688}
+html[data-mode="light"][data-theme="abyss"],html[data-mode="light"] .sw[data-theme="abyss"]{
+  --bg:#eff5f6; --panel:#fbfeff; --line:#c3d5d9; --ink:#212829;
+  --dim:#5a6667; --accent:#007480; --warn:#906700; --bad:#b53433; --note:#236a93}
+html[data-mode="light"][data-theme="plum"],html[data-mode="light"] .sw[data-theme="plum"]{
+  --bg:#f6f2f8; --panel:#fffcff; --line:#d9cbe1; --ink:#2a242c;
+  --dim:#695f6e; --accent:#8c3a9b; --warn:#936500; --bad:#b62b55; --note:#3d6499}
+html[data-mode="light"][data-theme="rust"],html[data-mode="light"] .sw[data-theme="rust"]{
+  --bg:#f7f2f1; --panel:#fffdfc; --line:#ddcdca; --ink:#2b2523;
+  --dim:#6a615f; --accent:#a14123; --warn:#905e00; --bad:#bc2825; --note:#416886}
+html[data-mode="light"][data-theme="ice"],html[data-mode="light"] .sw[data-theme="ice"]{
+  --bg:#f0f4f6; --panel:#fbfeff; --line:#c7d3dd; --ink:#23272b;
+  --dim:#5d6568; --accent:#00708f; --warn:#886200; --bad:#b43439; --note:#2167a0}
+html[data-mode="light"][data-theme="sepia"],html[data-mode="light"] .sw[data-theme="sepia"]{
+  --bg:#f5f3f0; --panel:#fffdfb; --line:#d7d0c3; --ink:#2b261c;
+  --dim:#6a6256; --accent:#835c00; --warn:#8a6900; --bad:#ac4133; --note:#536c43}
+html[data-mode="light"][data-theme="ash"],html[data-mode="light"] .sw[data-theme="ash"]{
+  --bg:#f3f3f3; --panel:#fdfdfd; --line:#cfd2cf; --ink:#262725;
+  --dim:#626461; --accent:#5d6945; --warn:#8d6800; --bad:#ae3e34; --note:#466979}
 
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolor. Amber phosphor on a green-black
@@ -432,7 +507,7 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
    nobody can place, where in the scheme's own accent it reads as what it
    is. Both halves declared, because a background with no color beside it
    inherits the text color it happens to land on. */
-::selection{background:var(--accent-deep);color:var(--ink)}
+::selection{background:var(--accent-deep);color:var(--on-fill)}
 
 header{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;
@@ -1031,7 +1106,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
     min-height:var(--tap);padding:6px 9px;border-radius:var(--r-control);
     background:none;color:var(--ink)}
   select option:hover,select option:focus{background:var(--sunk)}
-  select option:checked{background:var(--accent-deep);color:var(--ink)}
+  select option:checked{background:var(--accent-deep);color:var(--on-fill)}
   select option:disabled{color:var(--dim);background:none}
   select option::checkmark{flex:0 0 auto;color:var(--accent)}
 }
@@ -1039,8 +1114,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
   select::picker-icon{transition:none}
   select::picker(select){animation:none}
 }
-button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
-button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
+button.primary{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
+button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
 /* A ghosted tool's reason, under the card's buttons and on their inset. */
 .toolwhy{padding:0 10px 9px;margin:0;font:12px/1.4 var(--mono);color:var(--bad);overflow-wrap:anywhere}
@@ -1246,7 +1321,7 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
    each edge with more past it, a darkening as a shadow falls (the operator,
    30 Sep), and a thin scrollbar where the platform draws one. */
 .modal .box,.modal .sheetslot,.pane .doc,.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap{
-  --hint:rgba(0,0,0,.75);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  --hint:var(--edge-hint);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 .modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -34px 26px -24px var(--hint)}
 .modal .box.scrollup{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 34px 26px -24px var(--hint)}
 /* ...and never on a box shown inline (the notebook's Settings view borrows
@@ -2273,7 +2348,7 @@ pre.diff .d-ctx{color:var(--dim)}
    section put above the head on one tab is how it was broken once. */
 .nb .vbar{display:flex;gap:8px;align-items:center}
 .nb .vbar .sp{flex:1}
-.nb .vbar button.on{background:var(--accent-deep);border-color:var(--accent-mid);
+.nb .vbar button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill);
   color:color-mix(in srgb, var(--accent), #ffffff 72%)}
 .nb .vbar button{flex:0 0 auto}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
@@ -3285,7 +3360,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .tab{display:flex;align-items:center;gap:0;border:1px solid var(--line);
   border-radius:var(--r-control);overflow:hidden;background:var(--btn);
   transition:background-color .15s ease,border-color .15s ease}
-.tab.on{background:var(--accent-deep);border-color:var(--accent-mid)}
+.tab.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
 /* The tab and the command chip clip their contents, which would clip the
    focus ring off a button inside; drawn inside the edge instead. */
@@ -3310,7 +3385,7 @@ body.dragging .tab .lbl{cursor:grabbing}
    
    Only on the ACTIVE one. An inactive tab is quieter on purpose and its dim
    sits on --btn, where it reads. */
-.tab.on .lbl,.tab.on .ic{color:var(--ink)}
+.tab.on .lbl,.tab.on .ic{color:var(--on-fill)}
 @media(max-width:900px){ .tab button{min-height:var(--tap)} }
 .tabbar .sep{flex:1}
 .tabstrip{display:flex;align-items:stretch}
@@ -3566,7 +3641,7 @@ body.booting .pane>.loading{margin:auto}
 .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
   border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface)}
 .mobar button{min-height:var(--tap)}
-.mobar button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
+.mobar button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
 /* flex-shrink 1, unlike the strip and the bar: on a phone held sideways the
    fixed chrome plus a flyout can be taller than the screen, and since the
