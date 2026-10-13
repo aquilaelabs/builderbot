@@ -2009,6 +2009,11 @@ def trace_note(handler, ms=0):
     try:
         path, _, query = handler.path.partition("?")
         keys = "&".join(sorted(k for k in urllib.parse.parse_qs(query, keep_blank_values=True)))
+        # ...and what a handler chose to add (the devapp action, B717): a
+        # POST keyed by its path alone could not say which verb was slow.
+        extra = getattr(handler, "trace_extra", "")
+        if extra:
+            keys = f"{keys}&{extra}" if keys else extra
         ua = (handler.headers.get("User-Agent") or "")[:40]
         who = getattr(_writing, "who", None) or {}
         by = ("session" if who.get("session") else "agent" if path.startswith("/api/v1/agent")
@@ -6201,6 +6206,9 @@ class Handler(BaseHTTPRequestHandler):
                 and name not in containers.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
+        # The verb onto this request's trace row (B717): a POST keyed by its
+        # path alone could not say which devapp action was the slow one.
+        self.trace_extra = f"action={act}" if isinstance(act, str) and act.replace("-", "").isalnum() else ""
         # WHOSE IT IS, before anything else is asked: an account that is not
         # an administrator reaches what belongs to its projects, and a
         # session what belongs to its own one (the operator, 24 Sep). The
