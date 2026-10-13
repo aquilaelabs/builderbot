@@ -145,7 +145,7 @@ function renderStorageInto(i){
   const n = storagePick();
   const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
   d.setBar(`${nodePick("stNodeSel", pnodes, storageNode)}
-    <span class="sp"></span><button type="button" id="stReload" title="read the nodes again">Reload</button>`);
+    <span class="sp"></span><button type="button" id="stReload" title="read the nodes again">Refresh</button>`);
   d.list.innerHTML = n ? storageBody(n, where)
     : `<div class="empty">no node to measure yet: enroll one on the Nodes tab</div>`;
   d.setFoot(`The agent walks each node's disks once an hour at the lowest priority. A project you cannot see is counted under other projects.`);
@@ -154,7 +154,7 @@ function renderStorageInto(i){
 
 function wireStorageTab(root){
   const rl = root.querySelector("#stReload");
-  if (rl) rl.onclick = () => { busy(rl, "Reading"); loadStorage(); };
+  if (rl) rl.onclick = () => { busy(rl, "Refreshing"); loadStorage(); };
   const psel = root.querySelector("#stNodeSel");
   if (psel) psel.onchange = () => { storageNode = psel.value;
                                     try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }

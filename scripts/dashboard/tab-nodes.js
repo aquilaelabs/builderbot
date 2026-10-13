@@ -1472,7 +1472,7 @@ function renderRunnerInto(i){
   const pick = d.el.querySelector("#rnrPick");
   if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
   const rf = d.el.querySelector("#rnrRefresh");
-  if (rf) rf.onclick = () => { busy(rf, "Reading"); loadNodes(); };
+  if (rf) rf.onclick = () => { busy(rf, "Refreshing"); loadNodes(); };
 }
 
 // An account that does not administer sees a node's settings and changes

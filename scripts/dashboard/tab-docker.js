@@ -140,7 +140,7 @@ let dockerFetching = false;        // an answer is on its way: the tab says so
 // each of them blinked at the foot of the tab through every build. Under this
 // long, nothing is said: an answer that arrives at once needs no announcing.
 const DM_SLOW_MS = 600;
-let dmSlowTimer = null, dmSlow = false;
+let dmSlowTimer = null, dmSlow = false, dmPressed = false;
 async function loadDocker(){
   const asked = dockerNode;
   const ask = ++dockerAsk;
@@ -158,7 +158,7 @@ async function loadDocker(){
   // repaint the view it no longer belongs to; it lands in that node's cache
   // and nothing else.
   dockerSeen[got.node || asked || ""] = got;
-  if (ask === dockerAsk){ dockerFetching = false; dmSlow = false; clearTimeout(dmSlowTimer); }
+  if (ask === dockerAsk){ dockerFetching = false; dmSlow = false; dmPressed = false; clearTimeout(dmSlowTimer); }
   if (asked !== dockerNode) return;
   // A newer ask is in flight or has landed: Refresh under a revision reload,
   // or a reload under Refresh. This answer is about an earlier moment, and a
@@ -1784,8 +1784,7 @@ function renderDockerInto(i){
   if (nodesList === null) loadNodes();
   const picker = `<div class="field histbar docbarrow dmpick">${
       nodePick("dmNode", dnodes, dockerNode || dnodes[0]?.id)}<span class="sp"></span>
-      <button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button>${
-      slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div>${
+      <button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button></div>${
       // Adding at the top, in the add band every view adds with, where a
       // phone finds it without scrolling past every container (R119 step 5).
       mayDocker() ? `<div class="field"><div class="addbar" data-add="container">
@@ -1833,7 +1832,10 @@ function renderDockerInto(i){
   el.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   const b = el.querySelector("#bDockerRe");
-  if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  if (b) b.onclick = () => { dmPressed = true; busy(b, "Refreshing"); dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  // The button itself says so (the operator, 13 Oct): for a press, until
+  // the answer lands, and for any fetch slow enough that the rows dimmed.
+  if (b && dockerFetching && (dmSlow || dmPressed)) busy(b, "Refreshing");
   const ck = el.querySelector("#bDockerCheck");
   if (ck) ck.onclick = async () => {
     busy(ck, "Checking");

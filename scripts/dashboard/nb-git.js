@@ -530,7 +530,7 @@ function nbGitView({$, nb, project}){
     box.scrollIntoView({block: "start"});
   }
   const rf = $("gitRefresh");
-  if (rf) rf.onclick = () => { busy(rf, "Reading"); loadGit().finally(() => { if (rf.isConnected) unbusy(rf, "Refresh"); }); };
+  if (rf) rf.onclick = () => { busy(rf, "Refreshing"); loadGit().finally(() => { if (rf.isConnected) unbusy(rf, "Refresh"); }); };
 
   return {loadGit};
 }

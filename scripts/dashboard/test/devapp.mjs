@@ -224,7 +224,7 @@ const pillIs = async (want) => {
   const runs = await page.evaluate(async () => {
     const out = [];
     let said = false;
-    const mo = new MutationObserver(() => { if (document.querySelector('.dmfresh')) said = true; });
+    const mo = new MutationObserver(() => { if (document.querySelector('#bDockerRe[aria-busy="true"]')) said = true; });
     mo.observe(document.querySelector('.dmtab').parentElement, { childList: true, subtree: true });
     for (let i = 0; i < 4; i++){
       said = false;
@@ -245,13 +245,13 @@ const pillIs = async (want) => {
       ? new Promise(r => setTimeout(() => r(f(...a)), DM_SLOW_MS + 400)) : f(...a);
     const p = loadDocker();
     await new Promise(r => setTimeout(r, DM_SLOW_MS + 200));
-    const during = { word: !!document.querySelector('.dmfresh'), dim: !!document.querySelector('.dmtab.dmstale') };
+    const during = { word: !!document.querySelector('#bDockerRe[aria-busy="true"]'), dim: !!document.querySelector('.dmtab.dmstale') };
     await p; window.fetch = f;
     // A revision reload that started under the slowed fetch is itself still
     // slowed and still in flight; the word it is entitled to is not this
     // test's. Wait for the tab to have nothing on its way.
     for (let i = 0; i < 40 && dockerFetching; i++) await new Promise(r => setTimeout(r, 100));
-    return { ...during, after: !!document.querySelector('.dmfresh') };
+    return { ...during, after: !!document.querySelector('#bDockerRe[aria-busy="true"]') };
   });
   ok(slow.word && slow.dim && !slow.after,
      `...and one that is slow says so, with the rows dimmed, until it lands (${JSON.stringify(slow)})`);
@@ -668,18 +668,32 @@ ok(true, 'a commit unghosts Rebuild: the code has moved since the build');
 // the output itself is the Jobs tab's and the shell's, not a box on the row
 // that redrew for every line of it.
 writeFileSync(`${DIR}/dockerstate/build.slow`, '1');
+// What the press asked and was answered, for the miss below (B684).
+const asked = [];
+const onResp = async r => { if (/\/api\/devapp/.test(r.url())) asked.push(`${r.status()} ${(await r.text().catch(() => '')).slice(0, 200)}`); };
+page.on('response', onResp);
 await dmClick('rebuild');
-await page.waitForFunction(sel => {
-  const e = document.querySelector(sel + ' .state');
-  return e && /building|pulling|starting|working|queued/i.test(e.textContent);
-}, DM, { timeout: 20000 }).catch(async e => {
-  // What the row said instead, and what the daemon was asked, so a miss here
-  // names its cause rather than only its line.
-  const said = await page.$eval(DM, r => ({ state: r.querySelector('.state')?.textContent.trim(),
-    buttons: [...r.querySelectorAll('[data-dm]')].map(b => `${b.dataset.dm}${b.disabled ? '(off)' : ''}`) })).catch(() => null);
-  throw new Error(`the row never said it was building: ${JSON.stringify(said)}; dialogs ${JSON.stringify(page.dialogs.slice(-2))}\n`
-    + dockerLog().split('\n').filter(l => /ep-silon /.test(l)).slice(-6).join('\n') + `\n${e.message}`);
-});
+{
+  // Sampled rather than waited for, so a miss says what the row said second
+  // by second and what the jobs list held, not only its line (B684).
+  const t0 = Date.now(), said = [];
+  let seen = false;
+  while (Date.now() - t0 < 40000){
+    const s = await page.$eval(DM, r => `${r.querySelector('.state')?.textContent.trim()} [${
+      [...r.querySelectorAll('[data-dm]')].map(b => `${b.dataset.dm}${b.disabled ? '(off)' : ''}`).join(' ')}]`).catch(() => '(no row)');
+    if (!said.length || said[said.length - 1].slice(said[said.length - 1].indexOf(' ') + 1) !== s)
+      said.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`);
+    if (/building|pulling|starting|working|queued/i.test(s)){ seen = true; break; }
+    await page.waitForTimeout(250);
+  }
+  if (!seen){
+    const toast = await page.$eval('#toast', e => e.textContent).catch(() => '');
+    throw new Error(`the row never said it was building; what it said: ${said.join(' | ')}; dialogs ${JSON.stringify(page.dialogs.slice(-2))}\n`
+      + `asked: ${JSON.stringify(asked)}; toast: ${JSON.stringify(toast)}\n`
+      + dockerLog().split('\n').filter(l => /ep-silon /.test(l)).slice(-6).join('\n'));
+  }
+  page.off('response', onResp);
+}
 ok(await page.$(`${DM} .dmlog`) === null, "the row carries the job's phase and no tail of its output");
 ok(await page.$(`${DM} [data-dm="abort"]`) !== null,
    '...with an Abort beside it, which a build never had');
