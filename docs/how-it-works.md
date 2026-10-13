@@ -902,13 +902,15 @@ lives in its body. The cards:
   [An access token for one project](#an-access-token-for-one-project),
   [A new address for the same repository](#a-new-address-for-the-same-repository) and
   [Unlinking](#unlinking).
-  Linking asks **which host**: GitHub, Gitea, Forgejo, Codeberg, GitLab,
-  Bitbucket, or another git host, because a hostname does not say what is
-  running on it, and only the person who set the server up knows. A public
-  one names itself; a self-hosted one asks for its address, and the answer is
-  remembered against that host, so the second project on the same server is
-  not asked again.
-  Then it asks for the URL and how the push authenticates: a **deploy key**
+  Linking looks like the bottom of the clone form: the repository's address
+  first, and under it a **Host** row that reads the address back: GitHub,
+  Gitea, Forgejo, Codeberg, GitLab, Bitbucket, or another git host. A public
+  host names itself and the row says so, locked. A server nobody has
+  answered for is the one case where the row is a question, because a
+  hostname does not say what is running on it and only the person who set
+  the server up knows; the answer is remembered against that host, so the
+  second project on the same server is read back rather than asked again.
+  Then it asks how the push authenticates: a **deploy key**
   the agent holds, or an **access token** for this project alone, checked
   with the host where the host has an API to ask, stored under `/config` and
   read by git's helper. It sets `origin`, records the project as able to

@@ -536,6 +536,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The new-diagnostics notice is shown only where reading the diagnostics is allowed: debug mode on, the project granted them, an account with the debug grant (b31c7ad)
 - The Docker tab's copy of the nginx container's compose file carries a line in place of the private key, and saving that copy back is refused: the file is the nginx tab's to write (B656) (ca1b299)
 
+### Dashboard
+
+- The New project and Link dialogs ask for the repository's address first and read the git host from it on a row under it; a server nobody has answered for is the one case the row is a question (286127b)
+
 ## 0.7.0: 2026-09-25
 
 ### Added

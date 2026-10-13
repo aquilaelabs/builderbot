@@ -4900,29 +4900,24 @@ body.booting .pane>.loading{margin:auto}
         <span class="dim" id="pArchiveName">none picked</span></div>
       <div class="hint">zip or tar; a single top-level folder is dropped.</div>
     </div>
-    <!-- Which host, because a hostname does not say what is running on it: a
-         Gitea at git.example.com looks exactly like a Forgejo or a bare git
-         daemon until somebody says which, and only the person who set it up
-         knows. Picked once per host and remembered against the host, so the
-         second project on the same server is not asked again. -->
-    <div class="field" id="pForgeField" hidden>
-      <label for="pForge">Host<span class="help" data-help="what the server runs" tabindex="0">?</span></label>
-      <!-- One question, so one label and one hint: which host, and where it
-           is. Both controls take the row's width like every other field in
-           this dialog, so the pair reads as one answer being given. -->
-      <div class="prefrow">
-        <select id="pForge" aria-label="which git host this is"></select>
-        <input id="pForgeHost" autocomplete="off" spellcheck="false" hidden
-               aria-label="the address you reach it on"
-               placeholder="git.example.com">
-      </div>
-      <div class="hint" id="pForgeHint"></div>
-    </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
       <input id="pUrl" autocomplete="off" spellcheck="false"
              placeholder="git@github.com:owner/repo.git">
       <div class="hint" id="pUrlHint"></div>
+    </div>
+    <!-- Which host, under the address it is read from, in both modes: a
+         hostname does not say what software runs on it, and a Gitea at
+         git.example.com looks exactly like a Forgejo or a bare git daemon
+         until somebody says which, and only the person who set it up knows.
+         The row is always there so nothing appears as the address is typed:
+         it reads the address back (a public host names itself, a server
+         answered for before is remembered against its host) and is a
+         question only for a server nobody has answered for. -->
+    <div class="field" id="pForgeField" hidden>
+      <label for="pForge">Host<span class="help" data-help="what the server runs" tabindex="0">?</span></label>
+      <select id="pForge" aria-label="which git host this is"></select>
+      <div class="hint" id="pForgeHint"></div>
     </div>
     <!-- Deploy keys: the shielded agent's public halves, straight from
          ssh-add -L. Picking one makes the server write the .pub selector and
@@ -5700,9 +5695,6 @@ $("pLinkKey").onclick = () => { pLinkAuth = "key"; pDraw(); };
 $("pLinkToken").onclick = () => { pLinkAuth = "token"; pDraw(); };
 $("pKey").onchange = pShowKey;
 $("pForge").onchange = () => { pForgeId = $("pForge").value; pDraw(); };
-// The address box follows what is typed here, so the shape being asked for
-// keeps up with the server being named.
-$("pForgeHost").addEventListener("input", pDrawForge);
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
   // falls back to the selection route, which works everywhere a click does.
@@ -5725,10 +5717,10 @@ $("pUrl").oninput = () => {
   pNameShow();
 };
 // ...and when a name HAS been typed, the URL still decides nothing, but the
-// warning has to keep up with a URL edited afterwards. So does the question
-// about the host, which appears and goes as the address is typed.
+// warning has to keep up with a URL edited afterwards. So does the Host row
+// under the address, which reads it back as it is typed, in both modes.
 $("pUrl").addEventListener("input", pNameShow);
-$("pUrl").addEventListener("input", () => { if (pMode === "clone") pDraw(); });
+$("pUrl").addEventListener("input", () => { if (pMode !== "init") pDraw(); });
 
 // ---- the container dialogs: New container, and Send to Docker -----------
 $("cTabForm").onclick = () => cSwitch("form");
