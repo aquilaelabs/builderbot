@@ -105,10 +105,18 @@ async function dmClick(act){
 // A press on a bar's button, behind More when it is there (R210): the menu
 // is opened first, as a thumb would.
 async function pressIn(sel){
-  const folded = await page.$eval(sel, e => { const m = e.closest('.actmenu'); return !!(m && m.hidden); }).catch(() => false);
-  if (folded){
-    await page.$eval(sel, e => e.closest('.more').querySelector(':scope > button').click());
-    await page.waitForFunction(s => { const e = document.querySelector(s); return e && !e.closest('.actmenu').hidden; }, sel, { timeout: 10000 });
+  // Pressed again when a redraw shuts it: a poll landing between the press
+  // and the look drew the row again with its menu hidden, and one press
+  // then waited out its budget in a loaded whole run (B713).
+  for (let i = 0; i < 40; i++){
+    const st = await page.$eval(sel, e => {
+      const m = e.closest('.actmenu');
+      if (!m || !m.hidden) return 'open';
+      e.closest('.more').querySelector(':scope > button').click();
+      return 'pressed';
+    }).catch(() => 'missing');
+    if (st === 'open') break;
+    await sleep(150);
   }
   await page.click(sel);
 }
