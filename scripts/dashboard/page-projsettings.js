@@ -85,6 +85,10 @@ const rnGateNow = () => Object.fromEntries(
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
 
 function rnFillPrefs(p){
+  // A fresh open draws the node list from what is saved, not from the ticks
+  // the last project's dialog left in it (the merged list, 13 Oct).
+  const nm = $("rnNodesMore");
+  if (nm) delete nm.dataset.drawn;
   rnPrefWas = {git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
                nodes: (p?.prefs?.nodes || []).join(","),
@@ -183,24 +187,16 @@ function rnFillNode(){
     // ...and the field shows for it even when no other node is enrolled.
     if (gone) wrap.hidden = $("rnSeesField").hidden = $("rnReachField").hidden = rnMode === "git";
     rnFillNodesMore();
-    rnFillHosts();
 }
 
-// The hosting-only nodes its containers may also go to (prefs.hosts): every
-// such node, a listbox row each, ticked for the ones named. Read-only
-// without the `node` grant, like the node picker above.
-function rnFillHosts(){
-  const box = $("rnHosts");
-  if (!box) return;
-  const was = new Set(rnPrefWas.hosts.split(",").filter(Boolean));
-  const hosts = (nodesList || []).filter(n => n.config?.host_only && n.state !== "retired" && n.state !== "disabled");
-  // A named node that is gone or no longer hosting-only stays, ticked, so
-  // Save does not drop it without anybody seeing.
-  const gone = [...was].filter(id => !hosts.some(n => n.id === id));
-  box.hidden = $("rnHostsLabel").hidden = $("rnHostsHint").hidden = rnMode === "git" || !(hosts.length || gone.length);
-  box.innerHTML = hosts.map(n => lrow(n.id, n.name, `${n.state}${n.live === false ? ", quiet" : ""}`, was.has(n.id))).join("")
-    + gone.map(id => lrow(id, id, "not a hosting node now", true)).join("");
-  if (state?.can?.node === false) box.querySelectorAll("input").forEach(i => { i.disabled = true; });
+// Which of the rows under Also works on are hosting-only nodes (prefs.hosts
+// rather than prefs.nodes): the ones the node list marks so, and a named
+// one that is gone or no longer hosting-only, kept ticked so Save does not
+// drop it without anybody seeing.
+function rnHostIds(){
+  const was = rnPrefWas.hosts.split(",").filter(Boolean);
+  const marked = (nodesList || []).filter(n => n.config?.host_only).map(n => n.id);
+  return new Set([...marked, ...was.filter(id => !(nodesList || []).some(n => n.id === id && !n.config?.host_only))]);
 }
 
 // Also reaches (the operator, 7 Oct): addresses a session here may still
@@ -211,7 +207,9 @@ let rnReachDraft = [];
 
 function rnReachNodes(){
   const primary = $("rnNode").value;
-  const more = [...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value);
+  // The nodes a session may run on: a hosting-only row holds no session.
+  const hosts = rnHostIds();
+  const more = [...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value).filter(id => !hosts.has(id));
   const ids = primary ? [primary, ...more.filter(x => x !== primary)] : [];
   return ids.map(id => (nodesList || []).find(n => n.id === id) || {id, name: id});
 }
@@ -272,20 +270,31 @@ function rnReachNow(){
 const lrow = (value, name, sub, on) => `<label class="lrow"><input type="checkbox" value="${esc(value)}"${
     on ? " checked" : ""}><span>${esc(name)}</span>${sub ? `<span class="lsub">${esc(sub)}</span>` : ""}</label>`;
 
-// The rest of the set (R82): every node but the primary, a listbox row each,
-// ticked for the ones the project also works on. Redrawn when the primary
+// The rest of the set (R82) and the hosting-only nodes (prefs.hosts) in one
+// list (the operator, 13 Oct): every node but the primary, a listbox row
+// each, a hosting-only one marked so in its name, ticked for the ones the
+// project also works on or hosts containers on. Redrawn when the primary
 // changes, since the primary is never offered twice.
 function rnFillNodesMore(){
   const box = $("rnNodesMore"), hint = $("rnNodesMoreHint"), label = $("rnNodesLabel");
   if (!box) return;
   const primary = $("rnNode").value;
-  const was = new Set(rnPrefWas.nodes.split(",").filter(Boolean));
+  const was = new Set([...rnPrefWas.nodes.split(","), ...rnPrefWas.hosts.split(",")].filter(Boolean));
   const checked = new Set([...box.querySelectorAll("input:checked")].map(i => i.value));
   const first = !box.dataset.drawn;
-  const others = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && n.id !== primary);
-  box.hidden = hint.hidden = label.hidden = rnMode === "git" || !primary || !others.length;
-  box.innerHTML = others.map(n => lrow(n.id, n.name, `${n.kind}, ${n.state}${n.live === false ? ", quiet" : ""}`,
-                                       first ? was.has(n.id) : checked.has(n.id))).join("");
+  // Without a primary there is nothing for a session to also work on, but
+  // a hosting-only node still takes the project's containers, so those
+  // rows stay on offer.
+  const others = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && n.id !== primary
+                                            && (primary || n.config?.host_only));
+  // A hosting node named but gone, or no longer hosting-only, stays ticked
+  // so Save does not drop it without anybody seeing.
+  const gone = rnPrefWas.hosts.split(",").filter(id => id && !others.some(n => n.id === id) && id !== primary);
+  box.hidden = hint.hidden = label.hidden = rnMode === "git" || !(others.length || gone.length);
+  box.innerHTML = others.map(n => lrow(n.id, n.config?.host_only ? `${n.name} (Hosting only)` : n.name,
+                                       `${n.config?.host_only ? "containers" : n.kind}, ${n.state}${n.live === false ? ", quiet" : ""}`,
+                                       first ? was.has(n.id) : checked.has(n.id))).join("")
+    + gone.map(id => lrow(id, `${id} (Hosting only)`, "not a hosting node now", first ? true : checked.has(id))).join("");
   // Read-only without the `node` grant, like the primary above (R137 step 4).
   if (state?.can?.node === false) box.querySelectorAll("input").forEach(i => { i.disabled = true; });
   box.dataset.drawn = "1";
@@ -1344,8 +1353,10 @@ function rnEnc(){
   const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
   return {git_name: $("rnGitName").value.trim(), git_email: $("rnGitEmail").value.trim(),
           node, nodes: !drawn ? rnPrefWas.nodes
-            : (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : []).join(","),
-          hosts: !drawn ? rnPrefWas.hosts : [...$("rnHosts").querySelectorAll("input:checked")].map(i => i.value).join(","),
+            : (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value).filter(id => !rnHostIds().has(id))] : []).join(","),
+          // The ticked rows marked Hosting only are prefs.hosts, the rest
+          // prefs.nodes: one list on screen, two settings underneath.
+          hosts: !drawn ? rnPrefWas.hosts : [...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value).filter(id => rnHostIds().has(id)).join(","),
           reads: [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value).join(","),
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),

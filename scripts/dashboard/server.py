@@ -6298,8 +6298,9 @@ class Handler(BaseHTTPRequestHandler):
             # is a person's.
             if session and (name != sess or str(req.get("node") or "") not in (prefs.get(sess).get("hosts") or [])):
                 return self._json({"error": "sending a project's container to a node it is not on is a "
-                                            "person's, unless the node is under Hosts its containers on in "
-                                            "the project's settings: it puts the project's image on another machine"}, 403)
+                                            "person's, unless the node is ticked under Also works on in the "
+                                            "project's settings (a hosting-only node takes containers alone): "
+                                            "it puts the project's image on another machine"}, 403)
             if not session and self._refused("node", name):
                 return None
         if act not in ("starter", "state") and session:

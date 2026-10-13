@@ -1044,9 +1044,10 @@ the pieces stack:
    directory to the new one (R191). Its registry images keep up to date
    with Check for updates and Update on the Docker tab (R195); what is
    built from code keeps Rebuild.
-4. *Name it under Hosts its containers on*, in the project's settings
-   (Where it runs, `prefs.hosts`; only a hosting-only node may be named,
-   by whoever may set the project's node). The project's sessions may then
+4. *Tick it under Also works on*, in the project's settings, where it is
+   marked Hosting only (Where it runs; one list on screen, `prefs.hosts`
+   underneath for the hosting-only rows and `prefs.nodes` for the rest; a
+   hosting-only node may be ticked by whoever may set the project's node). The project's sessions may then
    make a container there (`bb devapp new --node NAME`, built on the
    project's own node and shipped) and rebuild and remove the ones there,
    under its Claude may: Run its container, as on its own node; a node not

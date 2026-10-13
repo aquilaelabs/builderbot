@@ -3338,7 +3338,7 @@ ok(await page.$('#devSend'),
     // ...nor one sent to a node its project does not name under Hosts its
     // containers on (prefs.hosts, the operator, 10 Oct): that is a person's.
     const away = await asSession({ project: 'ep.silon', action: 'new', instance: 'away', node: 'nowhere-node', ship: true });
-    ok(away.status === 403 && /unless the node is under Hosts its containers on/.test(away.error || ''),
+    ok(away.status === 403 && /unless the node is ticked under Also works on/.test(away.error || ''),
        `...nor one shipped to a node its project's settings do not name, said with where to name it (${away.status})`);
     // ...and one shipped to a node the settings DO name under Hosts its
     // containers on keeps that node and is marked shipped: the session branch

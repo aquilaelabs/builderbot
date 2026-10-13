@@ -1400,7 +1400,7 @@ function dmRowsHtml(ins, job, blind){
         // The notices, each a line (the words rule): what is wrong and the
         // one thing to do about it.
         d.astray ? `<div class="sub warn dmastray">Out of reach: ${esc(projLabel(d.owner || d.project))}'s sessions run on ${
-          esc(d.astray)}, which does not host its containers. Add this node under the project's Hosts its containers on, or Remove it and send it again.</div>` : ""}
+          esc(d.astray)}, which does not host its containers. Tick this node under the project's Also works on, or Remove it and send it again.</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
           : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}

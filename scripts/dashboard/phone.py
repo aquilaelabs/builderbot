@@ -1648,8 +1648,8 @@ def verb(action, req, who, fresh):
                 hosts = list(project_hosts(proj) or []) if project_hosts is not None and proj else []
                 if rn["id"] != pnid and rn["id"] not in hosts:
                     return {"error": f"{rn['name']} is not {proj or 'this project'}'s: root is asked for on the "
-                                     f"project's node or on a node it hosts its containers on (its settings' "
-                                     f"Hosts its containers on)"}, 400
+                                     f"project's node or on a hosting node ticked under its settings' "
+                                     f"Also works on"}, 400
             r = ask_root(field(req, "why"), req.get("cmd"), rn["id"] if rn else "",
                          rn["name"] if rn else "", proj,
                          bool(((rn or {}).get("reported") or {}).get("sandbox")),

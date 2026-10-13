@@ -307,6 +307,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The nginx tab's certificate field is Filed under, with its placeholder saying the certificate's own names decide and its hint saying when to type one (57a2fcf)
 - A container copied or moved to another node arrives built and down, with Up on its row there; a move still takes the old node's down once the build lands (71d49c1)
 - A design pass (R210): text a step larger at a desk, buttons in the page's font, and under each row a state pill, one mono line of facts and notices behind a colored bar; a container's settings are one grid with one Apply, and its bar keeps Up, Down and the build with the rest behind More (c3f03a7)
+- A project's settings offer one list of nodes under Also works on, a hosting-only node marked Hosting only in it, in place of a second Hosts its containers on list; a hosting node left unticked stays yours to copy to and rebuild on (b59527f)
 
 ### Removed
 

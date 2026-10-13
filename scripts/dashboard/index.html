@@ -4235,16 +4235,13 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnNode">Node<span class="help" data-help="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
+      <!-- One list for the rest of the set and the hosting-only nodes (the
+           operator, 13 Oct): a node marked Hosting only is prefs.hosts (its
+           containers alone, built on the project's node and shipped there),
+           the rest prefs.nodes. Drawn by rnFillNodesMore. -->
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
-      <!-- The hosting-only nodes its containers may also go to (prefs.hosts,
-           the operator, 10 Oct): built on its own node and shipped there,
-           and its sessions may make, rebuild and remove them under Run its
-           container. Drawn by rnFillHosts; hidden with no hosting node. -->
-      <label id="rnHostsLabel" hidden>Hosts its containers on</label>
-      <div class="lbox" id="rnHosts" role="group" aria-labelledby="rnHostsLabel" hidden></div>
-      <div class="hint" id="rnHostsHint" hidden>Hosting-only nodes: no code or session goes there. Its containers there are built on its own node and sent, and its sessions may make, rebuild and remove them under Claude may: Run its container.</div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Claude may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
       <div class="prefrow">

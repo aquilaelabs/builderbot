@@ -224,9 +224,9 @@ bb devapp new [NAME] [--branch REF] [--compose FILE] [--node NODE] [--env FILE] 
                    an env that sets them with --env. --branch builds it
                    from that branch; --compose names another of its compose
                    files (site/compose.yml), the root's own by default. --node
-                   puts it on a hosting node the project's settings name under
-                   Hosts its containers on: built on the project's own node and
-                   shipped there. On ask, one request carries all of it and
+                   puts it on a hosting node ticked under the project's Also
+                   works on (marked Hosting only): built on the project's own
+                   node and shipped there. On ask, one request carries all of it and
                    Allow makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;

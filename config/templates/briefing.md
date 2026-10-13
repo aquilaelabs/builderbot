@@ -504,9 +504,9 @@ a file in the tree: `bb devapp env` prints it, a compose line `env_file:
 project is expected. A compose file in a folder starts from its own folder's
 `.env.example`, never the root's, and a variable the file requires
 (`${NAME:?...}`) is set in the env before the first build, or the build
-stops at the gate asking for it. A project may also name hosting-only nodes
-(Hosts its containers on, in its settings), which hold no code and no
-session: `bb devapp new --node NODE` builds one here and ships it there, and
+stops at the gate asking for it. A project may also tick hosting-only nodes
+(marked Hosting only under Also works on, in its settings), which hold no
+code and no session: `bb devapp new --node NODE` builds one here and ships it there, and
 rebuild and remove reach it; sending a container to any other node, and
 copying or moving one with its data, is a person's on the Docker tab. A
 build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION` (the commit,

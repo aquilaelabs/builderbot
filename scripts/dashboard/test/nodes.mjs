@@ -1323,11 +1323,11 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(!hosted.error && hostsNow.join() === minted.id,
        `...but a project may name it under Hosts its containers on (${hosted.error || hostsNow.join()})`);
     await page.evaluate(n => renameProject(n), 'gamma');
-    await page.waitForSelector('#rnHosts:not([hidden]) input:checked', { timeout: 10000 });
-    ok(await page.$eval('#rnHostsLabel', e => e.textContent) === 'Hosts its containers on'
+    await page.waitForSelector(`#rnNodesMore:not([hidden]) input[value="${minted.id}"]:checked`, { timeout: 10000 });
+    ok(/\(Hosting only\)$/.test(await page.$eval(`#rnNodesMore input[value="${minted.id}"]`, i => i.parentElement.querySelector('span').textContent))
        && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
-       '...shown ticked in the project\'s Where it runs, nothing unsaved');
-    await page.click('#rnHosts input:checked');
+       '...shown ticked under Also works on, marked Hosting only, nothing unsaved');
+    await page.click(`#rnNodesMore input[value="${minted.id}"]`);
     const unErr = await sectSave(page, 'runs');
     const left = (await gammaHosts('')).length;
     ok(!unErr && left === 0, `...and unticked there and saved, it is taken off (${unErr || left})`);
