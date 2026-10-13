@@ -213,7 +213,9 @@ class WorkspaceMixin:
             with tarfile.open(tar_path) as tar:
                 for m in tar.getmembers():
                     rel = m.name.lstrip("./")
-                    if rel not in ROOT_TOOLS or not m.isfile():
+                    # ...and the provisioner's family files (R204), which it
+                    # sources from beside itself.
+                    if (rel not in ROOT_TOOLS and not rel.startswith("nodes/families/")) or not m.isfile():
                         continue
                     dest = os.path.join(into, rel)
                     os.makedirs(os.path.dirname(dest), mode=0o700, exist_ok=True)

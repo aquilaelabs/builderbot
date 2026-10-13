@@ -17,6 +17,7 @@ let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
 let nodesDefault = "";           // the node work nobody bound to one lands on
+let nodesSystems = [];           // what Enroll node's System pulldown offers (R204)
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
 // The configuration plane's editor state, per node (docs/nodes.md §12): the
 // fold's open flag and the DRAFT the operator is typing. Kept here and not in
@@ -55,6 +56,7 @@ async function loadNodes(){
     nodesList = j.nodes || [];
     nodesAgent = j.agent || null;
     nodesDefault = j.default || "";
+    nodesSystems = Array.isArray(j.systems) ? j.systems : [];
   }catch(e){
     nodesErr = String(e);
     nodesList = nodesList || [];
@@ -1573,6 +1575,10 @@ function wireNodesTab(root){
             "the account the provisioner makes and every job runs as. bb unless that name is taken on the machine")}
             <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
               value="bb"></div>
+          <div class="setrow col">${lbl("ndEnSystem", "System",
+            "what the machine runs. The script is built for it and refuses another machine by name; a system marked dev has not been walked on a node yet, and is offered with Offer dev features on")}
+            <select id="ndEnSystem">${(nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
+              .map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.vetted ? "" : " (dev)"}</option>`).join("")}</select></div>
         </div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
@@ -1683,10 +1689,11 @@ function wireNodesTab(root){
       // The account rides along, so the row says the right one before the
       // machine exists and the command below carries it. The record follows
       // whatever the agent reports at enrollment either way.
-      user: $b("#ndEnUser").value.trim() || "bb"});
+      user: $b("#ndEnUser").value.trim() || "bb",
+      system: $b("#ndEnSystem")?.value || "ubuntu"});
     // What was typed comes back after a refusal: a redraw to its defaults
     // lost the name and the account on every one (B331's shape).
-    const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value,
+    const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value, "#ndEnSystem": $b("#ndEnSystem")?.value,
       "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnNginx": ngx.checked,
       "#ndEnDoor": door.value, "#ndEnDoorHost": $b("#ndEnDoorHost").value, "#ndEnDoorClose": $b("#ndEnDoorClose").checked,
       "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,

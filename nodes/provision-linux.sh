@@ -484,6 +484,7 @@ fi
 [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
 ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CODENAME=""
 [ -r /etc/os-release ] && . /etc/os-release
+: "$VERSION_ID" "$VERSION_CODENAME" "$UBUNTU_CODENAME"   # the family file's to read
 # --- the machine's own tools -------------------------------------------------
 # One script, many distributions. Everything BuilderBot's own (the accounts,
 # the stores, fstab, the agent) is the same on all of them, because none of
@@ -534,213 +535,46 @@ case "$_ids" in
             FAMILY_WHY="${PRETTY_NAME:-$ID} is not a family this knows (ID=${ID} ID_LIKE=${ID_LIKE:-none}). It handles the Debian, RHEL, Arch and SUSE families, and Alpine, Void and Gentoo; a derivative of one of those is recognized by its ID_LIKE. A new family is a case in this script's 'the machine's own tools' block."
         fi ;;
 esac
+# The family's own file: the one beside this script, which the enroll script
+# built from the dashboard puts there for the system picked there (R204),
+# else this repository's for the detected family, for a hand run from a
+# checkout. A picked family that is not this machine's is refused by name:
+# a script built for Ubuntu does nothing to a Rocky machine but say so.
+_here="$(cd "$(dirname "$0")" && pwd)"
+FAMILY_PICKED=""; FAMILY_NAME=""; FAMILY_IDS=""; FAMILY_NEED=""
+if [ -f "$_here/provision-family.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$_here/provision-family.sh"
+elif [ -n "$FAMILY" ] && [ -f "$_here/families/$FAMILY.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$_here/families/$FAMILY.sh"
+fi
+# The family file says which os-release IDs it is for; the machine's ID and
+# ID_LIKE must name one of them. A match makes it the family whatever the
+# table above said (a derivative the table has not met); a miss is refused.
+if [ -n "$FAMILY_PICKED" ]; then
+    _mine=0
+    for _i in ${ID:-} ${ID_LIKE:-}; do
+        case " $FAMILY_IDS " in *" $_i "*) _mine=1 ;; esac
+    done
+    if [ "$_mine" = 1 ]; then
+        FAMILY="$FAMILY_PICKED"; FAMILY_WHY=""
+    else
+        FAMILY_WHY="this script was built for ${FAMILY_NAME}, and this machine is ${PRETTY_NAME:-${ID:-unknown}}${FAMILY:+ (the ${FAMILY} family)}: build it again from Enroll node with the machine's system picked"
+        FAMILY=""
+    fi
+elif [ -n "$FAMILY" ]; then
+    FAMILY_WHY="no family file for ${FAMILY} is beside this script (nodes/families/${FAMILY}.sh): a script built from Enroll node carries it"
+    FAMILY=""
+fi
 INIT=""
 if [ -d /run/systemd/system ]; then INIT=systemd
 elif command -v rc-service >/dev/null 2>&1; then INIT=openrc
 elif [ -d /etc/sv ] && command -v sv >/dev/null 2>&1; then INIT=runit
 fi
 
-# pkg_refresh: the package index, once, before the first install.
-pkg_refresh() {
-    case "$FAMILY" in
-        deb)    export DEBIAN_FRONTEND=noninteractive; apt-get update -qq ;;
-        rhel)   dnf -y -q makecache >/dev/null 2>&1 || true ;;
-        # A partial upgrade is what breaks an Arch machine, so the index is
-        # refreshed WITH the upgrade, the way Arch expects a fresh install
-        # to begin; -Sy alone and a later -S is the mistake.
-        arch)   pacman -Syu --noconfirm --needed >/dev/null ;;
-        suse)   zypper -n -q refresh >/dev/null 2>&1 || true ;;
-        alpine) apk update -q ;;
-        void)   xbps-install -Sy -q >/dev/null 2>&1 || true ;;
-        gentoo) : ;;   # emerge --sync takes minutes; the tree the machine has is used
-    esac
-}
-# pkg NAME...: install what is named, quietly, with the manager the family
-# has. The names are the family's own where they differ (nfs-common against
-# nfs-utils against nfs-client), given by the caller.
-pkg() {
-    case "$FAMILY" in
-        # No pty for dpkg and no needrestart dialog: run under a pseudo-
-        # terminal with its output on a pipe (ssh -t ... | tee), apt-get
-        # stopped on SIGTTOU and sat for eleven minutes (measured 15 Sep).
-        deb)    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
-                apt-get -o Dpkg::Use-Pty=0 install -y -qq "$@" ;;
-        rhel)   dnf -y -q install "$@" ;;
-        arch)   pacman -S --noconfirm --needed --quiet "$@" >/dev/null ;;
-        suse)   zypper -n -q install -y "$@" >/dev/null ;;
-        alpine) apk add -q "$@" ;;
-        void)   xbps-install -y "$@" >/dev/null ;;
-        gentoo) emerge --quiet --noreplace "$@" ;;
-    esac
-}
-# svc_enable NAME: a service the DISTRIBUTION ships (docker, the guest
-# agent), started now and at boot, whichever init runs this machine.
-svc_enable() {
-    case "$INIT" in
-        systemd) systemctl enable --now "$1" ;;
-        openrc)  rc-update add "$1" default >/dev/null 2>&1 || true; rc-service "$1" start >/dev/null 2>&1 || rc-service "$1" restart ;;
-        runit)   [ -d "/etc/sv/$1" ] || { echo "no runit service /etc/sv/$1" >&2; return 1; }
-                 ln -sfn "/etc/sv/$1" "/var/service/$1"
-                 # runsvdir scans /var/service every five seconds; until it
-                 # has, sv cannot reach the service and every verb fails.
-                 for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
-                     [ -e "/var/service/$1/supervise/ok" ] && break; sleep 1
-                 done
-                 sv start "$1" >/dev/null 2>&1 || true ;;
-    esac
-}
-svc_restart() {
-    case "$INIT" in
-        systemd) systemctl restart "$1" ;;
-        openrc)  rc-service "$1" restart ;;
-        runit)   sv restart "$1" ;;
-    esac
-}
-svc_stop() {
-    case "$INIT" in
-        systemd) systemctl stop "$1" 2>/dev/null || true ;;
-        openrc)  rc-service "$1" stop 2>/dev/null || true ;;
-        runit)   sv stop "$1" 2>/dev/null || true ;;
-    esac
-}
-svc_active() {
-    case "$INIT" in
-        systemd) systemctl is-active --quiet "$1" ;;
-        openrc)  rc-service "$1" status >/dev/null 2>&1 ;;
-        runit)   sv status "$1" 2>/dev/null | grep -q '^run' ;;
-    esac
-}
-# svc_install NAME DESCRIPTION COMMAND: a service of OUR OWN (the agent),
-# written the way this init wants one: a unit, an OpenRC script under
-# supervise-daemon, or a runit directory. Rewritten on every run, then
-# enabled and (re)started. Ordered after the network mounts (remote-fs,
-# netmount): a store on a share is there before the agent's first census.
-# svc_install NAME DESC CMD [EXTRA]: the service, whichever init this is.
-# EXTRA is extra [Service] lines for systemd, where a unit's settings decide
-# what a stop reaches; the other inits take the command and nothing else.
-svc_install() {
-    local name="$1" desc="$2" cmd="$3" extra="${4:-}"
-    case "$INIT" in
-        systemd)
-            cat > "/etc/systemd/system/${name}.service" <<EOF
-[Unit]
-Description=${desc}
-After=network-online.target remote-fs.target docker.service
-Wants=network-online.target
-
-[Service]
-ExecStart=${cmd}
-Restart=always
-RestartSec=5
-${extra}
-
-[Install]
-WantedBy=multi-user.target
-EOF
-            systemctl daemon-reload
-            systemctl enable "$name" >/dev/null 2>&1
-            systemctl restart "$name" ;;
-        openrc)
-            cat > "/etc/init.d/${name}" <<EOF
-#!/sbin/openrc-run
-# ${desc}
-description="${desc}"
-supervisor=supervise-daemon
-command="${cmd%% *}"
-command_args="${cmd#* }"
-# Kept, where OpenRC has no journal: supervise-daemon sent it to /dev/null.
-# The agent keeps the file to its size (cap_logs) and bb logs --node reads it.
-output_log="/var/log/${name}.log"
-error_log="/var/log/${name}.log"
-respawn_delay=5
-depend() { need net; use netmount; after docker; }
-EOF
-            chmod 0755 "/etc/init.d/${name}"
-            rc-update add "$name" default >/dev/null 2>&1 || true
-            rc-service "$name" restart >/dev/null 2>&1 || rc-service "$name" start ;;
-        runit)
-            install -d -m 0755 "/etc/sv/${name}"
-            cat > "/etc/sv/${name}/run" <<EOF
-#!/bin/sh
-# ${desc}
-# Kept, where runit has no journal and no log service here: it went to
-# runsvdir and nowhere. The agent keeps the file to its size (cap_logs).
-exec ${cmd} >> "/var/log/${name}.log" 2>&1
-EOF
-            chmod 0755 "/etc/sv/${name}/run"
-            ln -sfn "/etc/sv/${name}" "/var/service/${name}"
-            sv restart "$name" >/dev/null 2>&1 || sv start "$name" >/dev/null 2>&1 || true ;;
-    esac
-}
-# The machine's own address, for the line to paste: hostname -I is a GNU
-# extension busybox lacks, so the route table is the fallback.
-my_ip() {
-    # Never non-zero: an offline node has no route and still gets its
-    # summary; the caller prints a placeholder for an empty answer.
-    hostname -I 2>/dev/null | awk '{print $1}' | grep . \
-        || ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -1 \
-        || true
-}
-is_vm() {
-    if command -v systemd-detect-virt >/dev/null 2>&1; then systemd-detect-virt --quiet --vm
-    else grep -qi hypervisor /proc/cpuinfo 2>/dev/null; fi
-}
-# What a package is called here, for the handful this script installs
-# itself: the family's name for the NFS client, GnuPG, python, and what a
-# session needs. A recipe's system packages are the recipe's business, per
-# family, in config/toolchains.json.
-pkg_names() {
-    case "$1:$FAMILY" in
-        base:deb)     echo "ca-certificates curl gnupg nfs-common" ;;
-        # No curl: EL9 and Fedora ship curl-minimal, which conflicts with
-        # the curl package and does everything this script asks of it.
-        base:rhel)    echo "ca-certificates gnupg2 nfs-utils" ;;
-        base:arch)    echo "ca-certificates curl gnupg nfs-utils" ;;
-        base:suse)    echo "ca-certificates curl gpg2 nfs-client" ;;
-        # busybox has no useradd (shadow), no bash, and no findmnt or
-        # setpriv (util-linux subpackages), which bb-sandbox reads mounts
-        # and drops privileges with.
-        base:alpine)  echo "ca-certificates curl gnupg nfs-utils bash shadow findmnt setpriv" ;;
-        base:void)    echo "ca-certificates curl gnupg nfs-utils" ;;
-        base:gentoo)  echo "app-misc/ca-certificates net-misc/curl app-crypt/gnupg net-fs/nfs-utils" ;;
-        guest:void)   echo "qemu-ga" ;;
-        guest:*)      echo "qemu-guest-agent" ;;
-        # ...and the service is not always named for the package.
-        guestsvc:void|guestsvc:suse) echo "qemu-ga" ;;
-        guestsvc:*)   echo "qemu-guest-agent" ;;
-        python:arch)  echo "python" ;;
-        python:gentoo) echo "dev-lang/python" ;;
-        python:*)     echo "python3" ;;
-        session:gentoo) echo "app-misc/tmux app-misc/jq dev-vcs/git" ;;
-        session:*)    echo "tmux jq git" ;;
-        # ttyd from the distribution where it packages it; the RHEL family,
-        # SUSE Leap and Gentoo do not, and get the release binary below.
-        ttyd:deb|ttyd:arch|ttyd:alpine|ttyd:void) echo "ttyd" ;;
-        ttyd:suse)    case "${ID:-}" in *tumbleweed*) echo "ttyd" ;; *) echo "" ;; esac ;;
-        ttyd:*)       echo "" ;;
-        # A display a session can record and drive (bb capture reel, R95): a server
-        # install has no X server, so Xvfb for one, xdotool to work it and
-        # xdpyinfo to measure it. The RHEL family's xdotool is EPEL's.
-        reel:deb)     echo "xvfb xdotool x11-utils" ;;
-        reel:rhel)    echo "xorg-x11-server-Xvfb xdotool xorg-x11-utils" ;;
-        reel:arch)    echo "xorg-server-xvfb xdotool xorg-xdpyinfo" ;;
-        reel:suse)    echo "xorg-x11-server-Xvfb xdotool xdpyinfo" ;;
-        reel:alpine)  echo "xvfb xdotool xdpyinfo" ;;
-        reel:void)    echo "xorg-server-xvfb xdotool xdpyinfo" ;;
-        reel:gentoo)  echo "x11-base/xorg-server x11-misc/xdotool x11-apps/xdpyinfo" ;;
-        wg:gentoo)    echo "net-vpn/wireguard-tools" ;;
-        wg:*)         echo "wireguard-tools" ;;
-        nft:deb)      echo "nftables" ;;
-        nft:gentoo)   echo "net-firewall/nftables" ;;
-        nft:*)        echo "nftables" ;;
-        docker:arch)  echo "docker docker-buildx docker-compose" ;;
-        docker:suse)  echo "docker docker-buildx docker-compose" ;;
-        docker:alpine) echo "docker docker-cli-buildx docker-cli-compose" ;;
-        docker:void)  echo "docker docker-buildx docker-compose" ;;
-        docker:gentoo) echo "app-containers/docker app-containers/docker-cli app-containers/docker-buildx app-containers/docker-compose" ;;
-        docker:*)     echo "docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" ;;
-    esac
-}
+# pkg_refresh, pkg and pkg_names are the family's (nodes/families/*.sh),
+# sourced below once the machine's family is known.
 
 # --- pre-flight: is this machine one this script can provision? -------------
 # Before a single package lands. The family says what the machine CLAIMS to
@@ -768,11 +602,7 @@ else chk fail "$FAMILY_WHY"; fi
 #    parent whose package manager it replaced (Ubuntu Core has no apt;
 #    Silverblue's dnf is a stub that refuses)
 if [ -n "$FAMILY" ]; then
-    case "$FAMILY" in
-        deb)    need="apt-get dpkg" ;; rhel) need="dnf rpm" ;; arch) need="pacman" ;;
-        suse)   need="zypper rpm" ;; alpine) need="apk" ;; void) need="xbps-install xbps-query" ;;
-        gentoo) need="emerge" ;;
-    esac
+    need="$FAMILY_NEED"
     missing=""
     for t in $need; do command -v "$t" >/dev/null 2>&1 || missing="${missing} ${t}"; done
     if [ -z "$missing" ]; then chk ok "package manager: ${need%% *}"
@@ -1025,54 +855,7 @@ docker_suite() {
 }
 
 if ! command -v docker >/dev/null 2>&1; then
-    case "$FAMILY" in
-        deb)
-            # Which of Docker's two Debian-family repositories, and which
-            # suite in it. A derivative uses its parent's: Mint and Pop!_OS
-            # carry UBUNTU_CODENAME for exactly this; Kali's own codename
-            # is nothing Docker publishes, and Raspberry Pi OS is Debian's
-            # stable; both fall through docker_suite to it.
-            case " ${ID} ${ID_LIKE:-} " in
-                *" ubuntu "*) DOCKER_DEB=ubuntu; code="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"; fall="noble jammy" ;;
-                *)            DOCKER_DEB=debian; code="${VERSION_CODENAME:-}"; fall="bookworm bullseye" ;;
-            esac
-            # shellcheck disable=SC2086  # the fallbacks are meant to split
-            suite="$(docker_suite "$code" $fall)" || true
-            [ -n "${suite:-}" ] || {
-                echo "docker publishes nothing this machine can use (tried ${code:-no codename}, ${fall})" >&2
-                exit 1
-            }
-            [ "$suite" = "$code" ] \
-                || echo "note: docker has no ${code:-$ID} suite; using ${suite}, which is the same build"
-            install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL "https://download.docker.com/linux/${DOCKER_DEB}/gpg" \
-                | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-            chmod a+r /etc/apt/keyrings/docker.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]" \
-                 "https://download.docker.com/linux/${DOCKER_DEB} ${suite} stable" \
-                > /etc/apt/sources.list.d/docker.list
-            apt-get update -qq
-            # shellcheck disable=SC2046
-            pkg $(pkg_names docker) ;;
-        rhel)
-            # Docker's own repository here too: fedora's, rhel's, and the
-            # centos one that serves CentOS Stream, Rocky and Alma alike.
-            # The repo file is fetched as a file rather than through `dnf
-            # config-manager`, which dnf4 and dnf5 spell differently; the
-            # file is the same for both. podman-docker, if the image came
-            # with it, would answer `docker` with podman: taken out.
-            case "$ID" in fedora) repo=fedora ;; rhel) repo=rhel ;; *) repo=centos ;; esac
-            dnf -y -q remove podman-docker >/dev/null 2>&1 || true
-            curl -fsSL "https://download.docker.com/linux/${repo}/docker-ce.repo" -o /etc/yum.repos.d/docker-ce.repo
-            # shellcheck disable=SC2046
-            pkg $(pkg_names docker) ;;
-        *)
-            # Arch, SUSE, Alpine, Void and Gentoo package a current Docker
-            # themselves, which is the point of using theirs.
-            # shellcheck disable=SC2046
-            pkg $(pkg_names docker) \
-                || warn "docker did not install from the distribution's packages, so this machine is not a Docker host until it does" ;;
-    esac
+    docker_install
 fi
 command -v docker >/dev/null 2>&1 && svc_enable docker
 

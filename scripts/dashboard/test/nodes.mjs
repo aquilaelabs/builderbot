@@ -2301,6 +2301,11 @@ await page.waitForSelector('.nodestab #ndVm', { timeout: 20000 });
 // somebody having to remember the flag.
 await page.click('.nodestab #ndEnroll');
 await page.waitForSelector('#ndBody #ndEnUser', { timeout: 10000 });
+// The machine's system (R204): the vetted ones by name, nothing tagged dev
+// while Offer dev features is off, Ubuntu first as the default.
+const sysOpts = await page.$$eval('#ndBody #ndEnSystem option', os => os.map(o => `${o.value}:${o.textContent}`));
+ok(sysOpts.length >= 2 && sysOpts[0].startsWith('ubuntu:') && sysOpts.some(o => o.startsWith('rocky:')) && !sysOpts.some(o => /\(dev\)/.test(o)),
+   `the dialog asks which system the machine runs, the walked ones only (${sysOpts.join(', ')})`);
 ok(await page.$eval('#ndBody #ndEnUser', i => i.value) === 'bb',
    'Enroll node opens on bb as the account jobs run as');
 await page.fill('#ndBody #ndEnName', 'joesbox');
@@ -2400,6 +2405,10 @@ await page.evaluate(async () => {
   const prov = readFileSync(`${REPO}/nodes/provision-linux.sh`, 'utf8');
   ok(/^enroll-cloudbox-n_[0-9a-f]+\.sh$/.test(file) && script.startsWith('#!/usr/bin/env bash') && part('PROVISIONER') === prov,
      `Make the script saves ${file}, named with the row's id, the provisioner this controller ships inside it`);
+  // ...and the picked system's family file beside it (R204): Ubuntu's is the
+  // Debian family's, sourced by the core from $dir/provision-family.sh.
+  ok(part('FAMILY') === readFileSync(`${REPO}/nodes/families/deb.sh`, 'utf8') && /base64 -d > "\$dir\/provision-family\.sh"/.test(script),
+     'the script carries the picked system\'s provisioner family beside the core');
   const conf = part('WGCONF');
   ok(/AllowedIPs = 192\.168\.1\.16\/32/.test(conf) && !/0\.0\.0\.0\/0|DNS/.test(conf) && /PersistentKeepalive = 25/.test(conf),
      `...with the router's config routing the controller alone (${conf.split('\n').filter(l => /Allowed|Keep/.test(l)).join('; ')})`);

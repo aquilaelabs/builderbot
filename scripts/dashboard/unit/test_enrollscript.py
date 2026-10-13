@@ -71,6 +71,29 @@ class Script(unittest.TestCase):
         return ans, es.build(ans, name="cloudbox", user="joe", token="bbe_tok'en",
                              expires=1_800_000_000, provisioner=b"#!/usr/bin/env bash\necho provision\n")
 
+    def test_the_system_picked_rides_with_its_family_file(self):
+        import systems
+        ans = es.check(answers())
+        self.assertEqual(ans["system"], "ubuntu", "the default system when the dialog names none")
+        self.assertEqual(es.check(answers(system="rocky"))["system"], "rocky")
+        self.assertIn("no such system", es.check(answers(system="haiku"))["error"])
+        # A system nobody has walked is offered behind Offer dev features alone.
+        import forges
+        was = forges.unvetted_ok
+        try:
+            forges.unvetted_ok = lambda: False
+            self.assertIn("Offer dev features", es.check(answers(system="arch"))["error"])
+            forges.unvetted_ok = lambda: True
+            self.assertEqual(es.check(answers(system="arch"))["system"], "arch")
+        finally:
+            forges.unvetted_ok = was
+        self.assertEqual(systems.family_file("rocky").name, "rhel.sh")
+        self.assertTrue(systems.family_file("rocky").is_file())
+        s = es.build(ans, name="cloudbox", user="joe", token="t", expires=1_800_000_000,
+                     provisioner=b"#!/usr/bin/env bash\necho provision\n", family=b"FAMILY_PICKED=deb\n")
+        self.assertEqual(section(s, "FAMILY"), b"FAMILY_PICKED=deb\n")
+        self.assertIn('base64 -d > "$dir/provision-family.sh"', s)
+
     def test_the_script_carries_the_provisioner_the_config_and_the_answers(self):
         ans, s = self.build(sessions=False)
         self.assertTrue(s.startswith("#!/usr/bin/env bash\n"))

@@ -434,9 +434,15 @@ would use if a deployment ever wants one: the shape is there, unbuilt.
    fails closed, showing offline with "credential revoked".
 
 **Enroll node is one script (R161, 9 Oct).** The dialog asks the name, the
-account jobs run as, whether sessions run there, how the machine reaches the
-controller and at what address, and answers with a file: the provisioner with
-those answers and the token inside, built on the press and kept nowhere.
+account jobs run as, which system the machine runs (R204: a pulldown of the
+systems walked on a node, Ubuntu and Rocky Linux, the rest behind Offer dev
+features and tagged dev; `scripts/dashboard/systems.py` is the list and its
+vetting), whether sessions run there, how the machine reaches the controller
+and at what address, and answers with a file: the provisioner core with the
+picked system's family file (`nodes/families/`) beside it, those answers and
+the token inside, built on the press and kept nowhere. The core sources the
+family file and refuses a machine whose os-release names another family, by
+name.
 Behind WireGuard the config the person's router made goes in too, narrowed
 to route the controller's address alone, with its own commands (PostUp) and
 resolver dropped and a keepalive added; the provisioner brings it up as
