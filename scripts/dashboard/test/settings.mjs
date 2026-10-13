@@ -389,6 +389,20 @@ ok(elsewhere.git_name === 'T. Person',
     bars: [...document.querySelectorAll('.nbsettings .rnbar')].filter(b => b.checkVisibility()).length }));
   ok(inView.name === 'alpha' && inView.modal && inView.close && inView.shown && inView.bars >= 5,
      `the notebook's Settings view holds the form, the dialog shut, each section with its own Save and Revert (${JSON.stringify(inView)})`);
+  // The box borrowed from the dialog brings no dialog shadow into the view
+  // (B702): the scroll-hint class it wore in the dialog is dropped on the way
+  // in, and an inline box gets no shadow from that class however it arrives.
+  const shade = await page.evaluate(() => {
+    const dlg = document.querySelector('#rnmodal > .box') || document.querySelector('.nbsettings > .box');
+    dlg.classList.add('scrolldown');
+    settingsOut(); settingsInto('alpha', document.querySelector('.nbview[data-view="settings"] .nbsettings'));
+    const b = document.querySelector('.nbsettings > .box');
+    const moved = { cls: b.className, shadow: getComputedStyle(b).boxShadow };
+    b.classList.add('scrolldown');
+    return { moved, forced: getComputedStyle(b).boxShadow };
+  });
+  ok(!/scroll(up|down)/.test(shade.moved.cls) && shade.moved.shadow === 'none' && shade.forced === 'none',
+     `...and wears no dialog shadow, with or without the dialog's scroll-hint class (${JSON.stringify(shade)})`);
   // A section's Save writes that section alone, and what is typed in another
   // stays typed (the operator, 10 Oct: one Save for eleven sections).
   await page.fill('#rnBuildCmd', 'make one');

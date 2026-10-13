@@ -479,6 +479,10 @@ function settingsInto(name, host){
   renameProject(name);
   $("rnmodal").hidden = true;
   const box = $("rnmodal").querySelector(":scope > .box");
+  // The scroll hints mark a dialog's box that can scroll, and the class
+  // came along with the box into the view, where nothing scrolls and the
+  // hint's rule re-drew the dialog's drop shadow around the form (B702).
+  if (box) box.classList.remove("scrollup", "scrolldown");
   if (box) host.appendChild(box);
   // A view, never a dialog to shut: whatever hid it is undone here.
   host.removeAttribute("hidden");
