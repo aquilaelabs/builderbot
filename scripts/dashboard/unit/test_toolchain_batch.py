@@ -70,12 +70,26 @@ class NoCut(unittest.TestCase):
 
 
 class SameRelease(unittest.TestCase):
+    def verdict(self, inst, latest):
+        # The check's own line, run against sdk.sh's own normalizer.
+        sh = (f'source {REPO}/scripts/lib/sdk.sh 2>/dev/null; inst={inst}; latest={latest}; '
+              'if [ "$(sdk_vnorm "${inst%%+*}")" = "$(sdk_vnorm "${latest%%+*}")" ]; then echo current; else echo update; fi')
+        return subprocess.run(["bash", "-c", sh], capture_output=True, text=True).stdout.strip()
+
     def test_a_build_suffix_is_the_same_release(self):
-        sh = ('inst=21.0.12.1; latest=21.0.12.1+1; '
-              'if [ "${inst%%+*}" = "${latest%%+*}" ]; then echo current; else echo update; fi')
-        self.assertEqual(subprocess.run(["bash", "-c", sh], capture_output=True, text=True).stdout.strip(), "current")
+        self.assertEqual(self.verdict("21.0.12.1", "21.0.12.1+1"), "current")
         src = open(os.path.join(REPO, "scripts", "lib", "sdk.sh")).read()
-        self.assertIn('[ "${inst%%+*}" = "${latest%%+*}" ]', src, "the check compares the release, not the build")
+        self.assertIn('[ "$(sdk_vnorm "${inst%%+*}")" = "$(sdk_vnorm "${latest%%+*}")" ]', src,
+                      "the check compares the release, not the build, with trailing zeros off")
+
+    def test_a_trailing_zero_is_the_same_release(self):
+        # Swift 6.4 as the compiler prints it, against swift-6.4.0-RELEASE as
+        # the resolver reads the tag: the row offered that update forever (B715).
+        self.assertEqual(self.verdict("6.4", "6.4.0"), "current")
+        self.assertEqual(self.verdict("6.4.0", "6.4"), "current")
+        self.assertEqual(self.verdict("6.4", "6.4.1"), "update")
+        self.assertEqual(self.verdict("6.40", "6.4"), "update")
+        self.assertEqual(self.verdict("1.0.0", "1"), "current")
 
 
 if __name__ == "__main__":

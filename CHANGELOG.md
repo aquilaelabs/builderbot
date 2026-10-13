@@ -508,6 +508,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Un-enrolling a node from its row retires it when the uninstall has stopped the agent: the job read canceled and the row stayed, quiet and empty (4a547c6)
 - A version a project pins in its Gradle files (ndkVersion, buildToolsVersion, compileSdk) is a row of its own on its node's Toolchains tab, named for the project, so a store that holds only the newest NDK or build-tools no longer strands it (4ca99b5)
 - The nginx tab re-reads when a route or certificate is written from elsewhere: a container row's Add route, bb or another browser, within a poll rather than at its next Refresh (b59527f)
+- The Toolchains tab no longer offers an update a toolchain already has when the two sides write the same release differently (Swift 6.4 against 6.4.0): trailing zeros are ignored in the comparison (b59527f)
 
 ### Security
 
