@@ -3468,6 +3468,9 @@ def revisions(who=None, projects=None):
         # Node and job data never joins the status payload (docs/nodes.md
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),
+        # The nginx tab's record and hostnames (B714): a route written from
+        # a Docker row, bb or another browser.
+        "nginx": nginxproxy.rev(),
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
         # Who has a session where, and whether it is working: the project
         # rows fetch /api/live when this moves.

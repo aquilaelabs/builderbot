@@ -5962,6 +5962,14 @@ onRev("emulator", () => {
 // The node registry moved: a mutation here, or another browser's. Open
 // views refetch; node data deliberately never rides the status poll
 // (docs/nodes.md §13).
+// The nginx record moved: a route or certificate saved here, from a
+// container's row on the Docker tab (R209), by bb or by another browser
+// (B714). An open nginx tab re-reads around its draft; an open Docker tab
+// re-reads too, since its rows say which ports are routed.
+onRev("nginx", () => {
+  if (tabs.some(t => t.kind === "nginx")) loadNginx();
+  if (tabs.some(t => t.kind === "docker")){ dockerList = null; dockerRev++; loadDocker(); }
+});
 onRev("nodes", () => {
   if (tabs.some(t => t.kind === "nodes")) loadNodes();
   // A node's census carries its images: refetched only when they moved.

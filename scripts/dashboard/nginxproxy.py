@@ -75,8 +75,26 @@ def _load():
         return {}
 
 
+# The token the nginx tab watches (/api/revs `nginx`, B714): moved by every
+# write of the record and of the hostnames, so a route added from a Docker
+# row, from bb or from another browser reaches an open tab within a poll
+# rather than at its next Refresh. A counter, not an mtime: the tab stages
+# a draft per node and redraws around it.
+_rev = 0
+
+
+def _bump():
+    global _rev
+    _rev += 1
+
+
+def rev():
+    return _rev
+
+
 def _save(d):
     write_json(_file(), d)
+    _bump()
 
 
 def _cert_dir(nid, host=""):
@@ -381,7 +399,10 @@ def _migrate(nid):
                     (src / name).replace(dst / name)
             rec.setdefault("certs", {}).setdefault(key, cur)
         rec.pop("cert", None)
-        _save(st)
+        # Written without moving the tab's token: this runs on a READ (the
+        # Docker list reads the record for its rows), and a token moved by
+        # a read had the Docker tab re-reading itself (uniform.mjs, 13 Oct).
+        write_json(_file(), st)
 
 
 # ---- the tab's verbs ----------------------------------------------------------
@@ -608,6 +629,7 @@ def add_hostname(name):
         have = _hosts_saved()
         if h not in have:
             write_json(_hosts_file(), sorted(have + [h]))
+            _bump()
     return {"ok": True, "hostnames": hostnames()}
 
 
@@ -621,6 +643,7 @@ def remove_hostname(name):
                          "take those routes off first"}
     with _lock:
         write_json(_hosts_file(), [x for x in _hosts_saved() if x != h])
+        _bump()
     return {"ok": True, "hostnames": hostnames()}
 
 
