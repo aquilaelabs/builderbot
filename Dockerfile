@@ -302,6 +302,7 @@ COPY nodes/unraid-vm.xml /opt/builderbot/nodes/unraid-vm.xml
 # In the bundle a node fetches, so the agent can refresh the machine's
 # bb-sandbox (embedded in it) when a system job needs a newer verb.
 COPY nodes/provision-linux.sh /opt/builderbot/nodes/provision-linux.sh
+COPY nodes/families/ /opt/builderbot/nodes/families/
 # ...and the Mac's, which the Enroll dialog fetches from here the same way.
 COPY nodes/provision-macos.sh /opt/builderbot/nodes/provision-macos.sh
 # The root helper that builds a session's view, in the bundle a node fetches;
