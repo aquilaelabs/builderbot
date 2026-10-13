@@ -49,6 +49,22 @@ export const done = async browser => {
   process.exit(fail ? 1 : 0);
 };
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
+// The page's requests have landed and nothing new has been asked for
+// `quiet` ms: what a fixed sleep after opening a tab or a view was standing
+// in for. A sleep of 400ms paid 400ms whether the fetch took 30ms or 300,
+// and uniform.mjs paid it on every one of its 27 kinds in every section
+// (R211). Capped, because a page that keeps asking (a poll in flight) is
+// still a page to measure.
+export async function settled(page, { quiet = 150, cap = 3000 } = {}){
+  const t0 = Date.now();
+  for (;;){
+    const { n, lastDone } = page.inFlight ? page.inFlight() : { n: 0, lastDone: 0 };
+    const since = Date.now() - Math.max(lastDone, t0);
+    if (n === 0 && since >= quiet) return;
+    if (Date.now() - t0 > cap) return;
+    await sleep(n ? 40 : Math.max(10, quiet - since));
+  }
+}
 
 // A window says it has left its notebooks before it goes (B144). A person's
 // browser does this itself, on pagehide, with its session cookie; a harness
@@ -113,9 +129,11 @@ export async function newPage(browser, opts = {}){
   // What the page has in flight, for the wrapper below: a wait that runs
   // out while the page is still asking the server is a slow page, not an
   // absent element.
-  let inFlight = 0;
+  let inFlight = 0, lastDone = Date.now();
   page.on("request", () => { inFlight++; });
-  for (const ev of ["requestfinished", "requestfailed"]) page.on(ev, () => { inFlight = Math.max(0, inFlight - 1); });
+  for (const ev of ["requestfinished", "requestfailed"]) page.on(ev, () => { inFlight = Math.max(0, inFlight - 1); lastDone = Date.now(); });
+  // For settled() below: what is in flight, and when the last answer came.
+  page.inFlight = () => ({ n: inFlight, lastDone });
   for (const m of ["waitForFunction", "waitForSelector"]){
     const real = page[m].bind(page);
     page[m] = async (...args) => {

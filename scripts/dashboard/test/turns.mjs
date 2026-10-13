@@ -302,6 +302,8 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   const t0 = Date.now();
   let out;
   try {
+    // Five, not less: the gate asks every four seconds (ASK_EVERY), so a
+    // shorter wait is no wait at all and the check below has nothing to time.
     execFileSync('python3', [join(HERE, 'bb-gate'), ...gate, '--wait', '5'],
       { input: '{"prompt":"go"}', encoding: 'utf8', env, stdio: ['pipe', 'pipe', 'pipe'] });
     out = { code: 0, err: '' };
@@ -315,8 +317,12 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   const child = spawn('python3', [join(HERE, 'bb-gate'), ...gate, '--wait', '60'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.end('{"prompt":"go"}');
   const ended = new Promise(res => child.on('exit', code => res({ code, at: Date.now() })));
-  await sleep(2500);
-  const waiting = (await call('/api/v1/nodes')).nodes.find(n => n.id === minted.id).turns.waiting;
+  // Until the queue holds it, rather than a fixed two and a half seconds.
+  let waiting = 0;
+  for (let i = 0; i < 50 && !waiting; i++){
+    waiting = (await call('/api/v1/nodes')).nodes.find(n => n.id === minted.id).turns.waiting;
+    if (!waiting) await sleep(100);
+  }
   const freed = Date.now();
   await hook(0, 'turn-done');
   const e = await Promise.race([ended, sleep(15000).then(() => ({ code: 'still waiting' }))]);

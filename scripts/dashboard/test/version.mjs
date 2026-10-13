@@ -1192,7 +1192,10 @@ let paneText = "";
 // CI runs it beside everything else this machine does (bug #13).
 for (let t = 0; t < 50 * SLOW; t++){
   paneText = await page.$eval(`${NB} .verlogpane`, e => e.textContent).catch(() => "");
-  if (/no CHANGELOG\.md here yet/.test(paneText)) break;
+  // The pane's own words (nb-artifacts.js): "here" was never in them, so
+  // this polled the whole ten seconds (twenty under BB_TEST_SLOW) every run
+  // and then passed on the line below.
+  if (/no CHANGELOG\.md yet/.test(paneText)) break;
   await sleep(200);
 }
 ok(/no CHANGELOG\.md yet/.test(paneText),

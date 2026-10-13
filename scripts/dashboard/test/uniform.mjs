@@ -17,7 +17,7 @@
 //
 // What is deliberately NOT here: per-kind content checks. Those live in each
 // kind's own suite. This file only holds the language every kind shares.
-import { URL, DIR, launch, newPage, ok, done, ready, sleep, animatedDuring } from './lib.mjs';
+import { URL, DIR, launch, newPage, ok, done, ready, sleep, settled, animatedDuring } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -232,40 +232,20 @@ async function bring(kind){
     if (view){
       await page.evaluate(w => getNotebook('alpha').view(w), view);
       await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-      await sleep(400);                   // the view's own fetch lands
+      await settled(page);                // the view's own fetch lands
     }
     return;
   }
   // A fresh open settles before it is measured: a proseline sizes itself to
   // its text once the view's data has landed, a beat after the band shows.
+  // Waited for (lib.mjs settled: the requests landed and a quiet beat),
+  // not slept: a fixed half second here was paid on every kind in every
+  // section of this file (R211).
   await DRIVERS[kind].open();
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(500);
+  await settled(page, { quiet: 250 });
 }
 
-for (const kind of kinds){
-  if (!DRIVERS[kind]) continue;
-  await bring(kind);
-  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(150);                       // entrance animation settles
-  const m = await measure(kind);
-  ok(!m.err, `[${kind}] a document box exists (${m.err || 'ok'})`);
-  ok((m.ragged || []).length === 0,
-     `[${kind}] every stack of meters has tracks of one width (${m.stacks || 0} stack${m.stacks === 1 ? '' : 's'}${
-       m.ragged?.length ? `; ragged: ${m.ragged.map(w => w.join('/')).join('; ')}` : ''})`);
-  if (m.err) continue;
-  if (m.jump) ok(m.jump.dir === 'row' && !m.jump.stacked, `[${kind}] its jump bar's chips sit in a row (${m.jump.dir}${m.jump.stacked ? ', stacked' : ''})`);
-  ok(m.flush, `[${kind}] fills its pane flush, like every document`);
-  ok(m.maxw === '1080px',
-     `[${kind}] caps at the document width (got ${m.maxw})`);
-  ok(m.bands > 0 && m.lefts.length === 1,
-     `[${kind}] every band starts at one x (${m.bands} bands at ${
-       JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
-  ok(m.offskin.length === 0,
-     `[${kind}] every control wears the field skin${
-       m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
-       m.controls} checked)`);
-}
 
 // ---- the section and action-bar language -----------------------------------
 // The other half of the document language, and the half that drifts: it is
@@ -530,19 +510,69 @@ async function unwrapped(){
     return { tall };
   });
 }
+// ---- one walk over every kind, at a desk ---------------------------------
+// The four readings that change nothing on the page (the box and its bands,
+// the button language, what spans, what lines up) are taken on ONE visit to
+// each kind. They were four walks over 26 kinds, each paying the bring and
+// the settle again (R211: 0.5 to 0.8 s a visit, four times over).
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(250);              // the last band to arrive is part of the row
-  const L = await lineup();
-  ok(!L.err && L.off.length === 0,
+  await sleep(250);   // the entrance animation settles, and the last band to arrive is part of the row
+  const m = await measure(kind);
+  ok(!m.err, `[${kind}] a document box exists (${m.err || 'ok'})`);
+  ok((m.ragged || []).length === 0,
+     `[${kind}] every stack of meters has tracks of one width (${m.stacks || 0} stack${m.stacks === 1 ? '' : 's'}${
+       m.ragged?.length ? `; ragged: ${m.ragged.map(w => w.join('/')).join('; ')}` : ''})`);
+  if (!m.err){
+  if (m.jump) ok(m.jump.dir === 'row' && !m.jump.stacked, `[${kind}] its jump bar's chips sit in a row (${m.jump.dir}${m.jump.stacked ? ', stacked' : ''})`);
+  ok(m.flush, `[${kind}] fills its pane flush, like every document`);
+  ok(m.maxw === '1080px',
+     `[${kind}] caps at the document width (got ${m.maxw})`);
+  ok(m.bands > 0 && m.lefts.length === 1,
+     `[${kind}] every band starts at one x (${m.bands} bands at ${
+       JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
+  ok(m.offskin.length === 0,
+     `[${kind}] every control wears the field skin${
+       m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
+       m.controls} checked)`);
+  }
+  const L = await language();
+  ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
+  if (!L.err){
+  ok(L.loose.length === 0,
+     `[${kind}] every set of text buttons is an action bar${
+       L.loose.length ? `; not: ${L.loose.join(', ')}` : ''}`);
+  ok(L.order.length === 0,
+     `[${kind}] nothing safe sits after a verb that cannot be undone${
+       L.order.length ? `: ${L.order.join(', ')}` : ''}`);
+  ok(L.alien.length === 0,
+     `[${kind}] every button speaks in the page's font${L.alien.length ? `; not: ${L.alien.slice(0, 6).join(', ')}` : ''}`);
+  ok(L.flat.length === 0,
+     `[${kind}] a notice is sans behind a bar of its color${L.flat.length ? `; not: ${L.flat.slice(0, 6).join(', ')}` : ''}`);
+  L.layout.forEach(x => seenBars.add(x));
+  L.sects.forEach(x => seenSects.add(x.skin));
+  L.reds.forEach(x => seenReds.add(x));
+  const wordy = L.sects.filter(x => x.status.length > 24).map(x => x.status);
+  ok(wordy.length === 0,
+     `[${kind}] a section's status is a word or a number, not a sentence${
+       wordy.length ? `: ${JSON.stringify(wordy)}` : ''}`);
+  }
+  const S = await spanning();
+  ok(!S.err && S.wide.length === 0,
+     `[${kind}] no control or row of controls spans the tab${
+       S.err ? ` (${S.err})` : S.wide.length ? `: ${S.wide.join(', ')}` : ''}`);
+  const U = await lineup();
+  ok(!U.err && U.off.length === 0,
      `[${kind}] every control on a line ends at the same height${
-       L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
-  ok(!L.err && L.sizes.length === 0,
+       U.err ? ` (${U.err})` : U.off.length ? `: ${U.off.join('; ')}` : ''}`);
+  ok(!U.err && U.sizes.length === 0,
      `[${kind}] every control on a line is one height${
-       L.err ? ` (${L.err})` : L.sizes.length ? `: ${L.sizes.join('; ')}` : ''}`);
+       U.err ? ` (${U.err})` : U.sizes.length ? `: ${U.sizes.join('; ')}` : ''}`);
 }
+ok(seenBars.size <= 1,
+   `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
 
 // ---- one loading line and one empty state -----------------------------------
 // docs/design-language.md, Document tabs: `.loading` while it waits and
@@ -706,11 +736,16 @@ for (const kind of kinds){
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
                                v, { timeout: 20000 });
     // The notebook on screen, not the first in the DOM: a second project's
-    // notebook may be parked before it.
-    // Waited on, since a view draws its sections when it is first shown.
-    foots[v] = await page.waitForFunction(w => !!([...document.querySelectorAll('.nb')]
-      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`)), v, { timeout: ["bugs", "analysis", "tests", "git"].includes(v) ? 3000 : 15000 })
-      .then(() => true, () => false);
+    // notebook may be parked before it. Waited on until the view has drawn
+    // (its head row is there), then read once: proving a foot ABSENT by
+    // waiting a timeout out cost three seconds a view, four views a run.
+    const nbSel = w => `.nbview[data-view="${w}"]`;
+    await page.waitForFunction(w => !![...document.querySelectorAll('.nb')].find(n => n.checkVisibility())
+      ?.querySelector(`.nbview[data-view="${w}"] .nbhead`), v, { timeout: 15000 });
+    await sleep(150);
+    foots[v] = await page.evaluate(w => !![...document.querySelectorAll('.nb')]
+      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`), v);
+    void nbSel;
   }
   // Artifacts carries one only where a Version can stage a bump, which this
   // fixture's alpha, with no commits, cannot (version.mjs holds that one).
