@@ -277,6 +277,7 @@ const ndx = page.dialogs.length;
 // Code; a running session is never reaped on that any more.
 await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
+await page.waitForSelector('#projects [data-k="ep.silon"]', { state: 'visible', timeout: 10000 });
 await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the sessions
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };

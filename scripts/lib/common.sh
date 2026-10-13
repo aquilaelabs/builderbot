@@ -111,7 +111,12 @@ sdk_store_root() {
     if [ "$(basename "$root")" = "$(sdk_scope)" ] && [ ! -d "$root/$(sdk_scope)" ]; then
         root="$(dirname "$root")"
     fi
-    if [ -d "$root" ] && [ -w "$root" ]; then
+    # The store itself, or this machine's own directory in it: on a node the
+    # store is the agent's (root's) and the jobs account writes only its
+    # node's directory, so judged on the store alone a local store read as
+    # unwritable and every install went under BUILDER_HOME/.sdk, scoped
+    # again, where nothing looked (B705, Rocky Linux on the dev pair).
+    if [ -d "$root" ] && { [ -w "$root" ] || [ -w "$root/$(sdk_scope)" ]; }; then
         # /sdk is the image's own default and exists in the image whether or
         # not anybody mapped a share there, so it has to prove it is a mount
         # before anything large is written to it. Any other path is one the
