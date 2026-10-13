@@ -30,6 +30,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -288,6 +289,31 @@ def _extra_stamp():
         return 0
 
 
+running = set()
+
+
+def run_job(j):
+    try:
+        if j.get("type") == "compose":
+            state, code, outputs = compose(j)
+        elif j.get("type") == "exec":
+            state, code, outputs = run_exec(j)
+        elif j.get("type") == "system":
+            state, code, outputs = run_system(j)
+        else:
+            state, code, outputs = "failed", 1, []
+    except Exception as e:                       # a stub bug is a failed job
+        state, code, outputs = "failed", 1, []
+        call("log", {"job": j["id"],
+                     "chunks": [{"seq": 99, "chunk": f"stub agent: {e}\n"}]})
+    call("result", {"job": j["id"], "state": state, "exit": code,
+                    "outputs": outputs,
+                    "error": "" if state == "succeeded"
+                    else "stopped" if state == "canceled"
+                    else f"exit {code}"})
+    running.discard(j["id"])
+
+
 def main():
     call("hello", {"census": census_now(), "version": "harness", "running": []})
     last_hello = time.time()
@@ -296,27 +322,17 @@ def main():
         # Long-polled, so a queued job is picked up at once and an idle loop
         # costs one held request rather than a spin.
         j = call("work", {"sample": {"cpu_pct": 1, "mem_mb": 8192,
-                                     "mem_used_mb": 2048}, "running": [],
+                                     "mem_used_mb": 2048}, "running": len(running),
                           "wait": 5}, timeout=30)
         if isinstance(j, dict) and j.get("id"):
-            try:
-                if j.get("type") == "compose":
-                    state, code, outputs = compose(j)
-                elif j.get("type") == "exec":
-                    state, code, outputs = run_exec(j)
-                elif j.get("type") == "system":
-                    state, code, outputs = run_system(j)
-                else:
-                    state, code, outputs = "failed", 1, []
-            except Exception as e:                       # a stub bug is a failed job
-                state, code, outputs = "failed", 1, []
-                call("log", {"job": j["id"],
-                             "chunks": [{"seq": 99, "chunk": f"stub agent: {e}\n"}]})
-            call("result", {"job": j["id"], "state": state, "exit": code,
-                            "outputs": outputs,
-                            "error": "" if state == "succeeded"
-                            else "stopped" if state == "canceled"
-                            else f"exit {code}"})
+            # On a thread, as the shipped agent runs one (jobs.py), and the
+            # poll says how many run, as the agent's does: the loop keeps
+            # answering the controller while a build runs. Run inline, a 30s
+            # build left every poll unmade, so the light-lane exec that reads
+            # the instance's containers back for a Rebuild's answer waited
+            # for the build, and the row never said building (B684).
+            running.add(j["id"])
+            threading.Thread(target=run_job, args=(j,), daemon=True).start()
         # The census only rides hello, and the row goes stale without it;
         # a test that has just rewritten the overlay is waiting for one,
         # so a changed file sends it now rather than in two minutes.

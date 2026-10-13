@@ -669,8 +669,14 @@ ok(true, 'a commit unghosts Rebuild: the code has moved since the build');
 // that redrew for every line of it.
 writeFileSync(`${DIR}/dockerstate/build.slow`, '1');
 // What the press asked and was answered, for the miss below (B684).
-const asked = [];
-const onResp = async r => { if (/\/api\/devapp/.test(r.url())) asked.push(`${r.status()} ${(await r.text().catch(() => '')).slice(0, 200)}`); };
+const asked = [], tA = Date.now();
+const onResp = async r => {
+  const u = r.url();
+  const at = `${((Date.now() - tA) / 1000).toFixed(1)}s `;
+  if (/\/api\/devapp/.test(u)) asked.push(at + `${r.status()} ${(await r.text().catch(() => '')).slice(0, 60)}`);
+  else if (/\/api\/docker/.test(u)) asked.push(at + `docker: ${JSON.stringify((await r.json().catch(() => ({}))).job || null).slice(0, 160)}`);
+  else if (/\/api\/revs/.test(u)){ const j = await r.json().catch(() => ({})); asked.push(at + `revs.devapp=${JSON.stringify(j.revs?.devapp ?? j.devapp)}`); }
+};
 page.on('response', onResp);
 await dmClick('rebuild');
 {
@@ -681,15 +687,23 @@ await dmClick('rebuild');
   while (Date.now() - t0 < 40000){
     const s = await page.$eval(DM, r => `${r.querySelector('.state')?.textContent.trim()} [${
       [...r.querySelectorAll('[data-dm]')].map(b => `${b.dataset.dm}${b.disabled ? '(off)' : ''}`).join(' ')}]`).catch(() => '(no row)');
-    if (!said.length || said[said.length - 1].slice(said[said.length - 1].indexOf(' ') + 1) !== s)
-      said.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`);
+    // ...and what the daemon was asked meanwhile, by the second, so a build
+    // that ignored its slow marker shows as down and up landing at once.
+    const asked = dockerLog().split('\n').filter(l => /ep-silon /.test(l)).map(l => l.replace(/.* (config|build|up|down|ps|exec)\b.*/, '$1'));
+    const line = `${s} daemon:${asked.length}:${asked.slice(-3).join(',')}`;
+    if (!said.length || said[said.length - 1].slice(said[said.length - 1].indexOf(' ') + 1) !== line)
+      said.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${line}`);
     if (/building|pulling|starting|working|queued/i.test(s)){ seen = true; break; }
     await page.waitForTimeout(250);
   }
   if (!seen){
     const toast = await page.$eval('#toast', e => e.textContent).catch(() => '');
+    const jobs = await page.evaluate(async () => { const j = await (await fetch('/api/v1/jobs?project=ep.silon')).json();
+      return JSON.stringify((j.jobs || []).slice(0, 4).map(x => ({ id: x.id, type: x.type, state: x.state, project: x.project, node: x.node,
+        queued: x.queued, ended: x.ended, sp: `${x.spec?.project}/${x.spec?.instance}/${x.spec?.action}/hold=${x.spec?.hold}` }))); }).catch(e => String(e));
+
     throw new Error(`the row never said it was building; what it said: ${said.join(' | ')}; dialogs ${JSON.stringify(page.dialogs.slice(-2))}\n`
-      + `asked: ${JSON.stringify(asked)}; toast: ${JSON.stringify(toast)}\n`
+      + `asked: ${JSON.stringify(asked)}; toast: ${JSON.stringify(toast)}\njobs now: ${jobs}\n`
       + dockerLog().split('\n').filter(l => /ep-silon /.test(l)).slice(-6).join('\n'));
   }
   page.off('response', onResp);
