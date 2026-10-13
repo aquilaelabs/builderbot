@@ -1,9 +1,7 @@
-"""An uninstall from the Nodes tab retires the node when its job ends, and
-the job's end comes two ways: the agent reports it done, or the agent's own
-stop handler reports it canceled because the agent was stopped, which is
-the uninstall having removed the agent's unit inside the seconds the agent
-watches it (B703, the operator, 13 Oct). Both retire; a cancel for any
-other reason does not."""
+"""An uninstall from the Nodes tab retires the node when its job ends done,
+which the agent reports from its own stop handler, since the uninstall
+removes the agent's unit inside the seconds the agent watches it (B703).
+A cancel does not retire: the machine may still be whole."""
 import os
 import sys
 import tempfile
@@ -34,11 +32,8 @@ class UninstallRetires(unittest.TestCase):
     def test_done_retires(self):
         self.assertEqual(self.ended("succeeded", ""), "retired")
 
-    def test_the_agents_own_stop_retires(self):
-        self.assertEqual(self.ended("canceled", "canceled: the agent was stopped"), "retired")
-
-    def test_any_other_cancel_keeps_the_row(self):
-        self.assertNotEqual(self.ended("canceled", "canceled: the operator pressed Stop"), "retired")
+    def test_a_cancel_keeps_the_row(self):
+        self.assertNotEqual(self.ended("canceled", "canceled: the agent was stopped"), "retired")
 
 
 if __name__ == "__main__":

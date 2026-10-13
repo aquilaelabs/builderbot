@@ -4084,13 +4084,9 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         print(f"dashboard: nodes: job log sweep after {job_id} skipped: {e}",
               file=sys.stderr, flush=True)
     # An uninstall that ran retires the node: the agent is gone with it, so
-    # the row leaves every list now rather than after a stale timeout.
-    # ...and one the agent's stop handler reported as canceled because the
-    # agent was stopped: the uninstall removes the agent's unit inside the
-    # seconds the agent watches it, and that last word is the job done, not
-    # undone; read as a cancel it left the row, quiet and empty (B703).
-    if got[0]["type"] == "system" and (state == "succeeded"
-                                       or (state == "canceled" and "agent was stopped" in err)):
+    # the row leaves every list now rather than after a stale timeout. The
+    # agent reports its own uninstall as done from its stop handler (B703).
+    if got[0]["type"] == "system" and state == "succeeded":
         spec = (job(job_id, with_log=False) or {}).get("spec") or {}
         if spec.get("apply") == "uninstall":
             node_state(f"node:{node_id}", node_id, "retired")
