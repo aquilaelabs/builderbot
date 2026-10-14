@@ -1480,6 +1480,30 @@ function openRunnerTab(nid){
   if (nid) runnerNode = nid;
   openTab({kind: "runner", arg: "__runner", label: "CI runner"});
 }
+// Every node's runner, one row each, above the chosen node's section: which
+// is busy, idle or quiet across the install, a question the per-node section
+// cannot answer (the sidebar's Runner card's, until R218 step 3). A runner
+// job in flight comes first, a failure carries its time, and a row picks
+// its node.
+function runnerRows(){
+  const rows = state?.node_runners || [];
+  if (!rows.length) return "";
+  const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
+  return `<div class="runnersall">${rows.map(n => {
+    const [word, cls] = !n.live ? ["quiet: the node has not dialed in lately", "warn"]
+      : n.installing ? ["installing now", "warn"]
+      : n.removing ? ["removing now", "warn"]
+      : n.busy ? ["running a job", "ok"]
+      : n.listening ? ["listening, idle", "ok"]
+      : n.installed ? ["installed, not listening", "bad"]
+      : n.failed ? [`install failed ${when(n.failed.ended)}: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
+      : ["install asked for; not reported yet", "warn"];
+    return `<button type="button" class="row${n.id === runnerNode ? " on" : ""}" data-runnode="${esc(n.id || "")}"><span class="grow"><b>${esc(n.node)}</b>${
+      n.url ? ` <span class="dim">${esc(n.url.replace(/^https?:\/\//, ""))}</span>` : ""}
+      <span class="sub ${cls}">${esc(word)}</span></span></button>`;
+  }).join("")}</div>`;
+}
+
 function renderRunnerInto(i){
   const d = docSurface(i, "runner");
   if (!d) return;
@@ -1491,9 +1515,10 @@ function renderRunnerInto(i){
   d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>
     <button type="button" id="rnrRefresh" title="read the nodes again">Refresh</button>`);
   d.list.innerHTML = n
-    ? `<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
+    ? `${runnerRows()}<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
     : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
+  d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
   const pick = d.el.querySelector("#rnrPick");
   if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
   const rf = d.el.querySelector("#rnrRefresh");

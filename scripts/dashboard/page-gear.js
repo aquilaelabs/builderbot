@@ -194,9 +194,7 @@ function drawUiMenu(){
   if (!el || el.hidden) return;
   const cur = currentTheme();
   const mode = currentMode();
-  el.innerHTML = `<h4>Layout</h4>
-    <button type="button" id="uiReset">Reset the sidebar cards</button>
-    <h4>Appearance</h4>
+  el.innerHTML = `<h4>Appearance</h4>
     <div class="pseg modeseg" role="group" aria-label="dark or light">${MODES.map(([id, label]) => `
       <button type="button" data-mode="${id}" class="${id === mode ? "on" : ""}"
         role="menuitemradio" aria-checked="${id === mode}">${esc(label)}</button>`).join("")}</div>
@@ -211,7 +209,6 @@ function drawUiMenu(){
       </button>`).join("")}</div>
     <h4>Account</h4>
     <button type="button" id="uiProfile">Profile</button>`;
-  el.querySelector("#uiReset").onclick = resetCards;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
   el.querySelectorAll("[data-mode]").forEach(b =>
@@ -328,29 +325,4 @@ function toggleUiMenu(open){
                      {opacity: 0, transform: "translateY(-10px)"}],
                     {duration: 120, easing: "ease"}).onfinish = hide;
   }
-}
-
-// The gear's oldest job, one item in the menu it opens: back to the default
-// order, everything open. Confirmed because an arrangement is minutes of
-// fiddling and one stray tap.
-async function resetCards(){
-  if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
-  toggleUiMenu(false);
-  const shut = cards.closed.slice();
-  // An empty order, which the server heals into its default and answers
-  // with, so what comes back is the default as this image defines it.
-  cardsChangedAt = performance.now();
-  try{
-    const r = await postJSON("/api/cards", {order: [], closed: []});
-    const j = await r.json();
-    if (j.error){ notify(j.error, true); return; }
-    cards = j.cards;
-  }catch(e){ notify("could not reset the cards: " + e, true); return; }
-  // Reset means every card open, on a phone as at a desk: the phone's own
-  // folds are opened and kept open here, since the default there is folded.
-  cardEls().forEach(el => phoneOpen.add(el.dataset.card));
-  keepPhoneOpen();
-  // Folded cards unfold with the same tween as a click; the rest slide home.
-  cardEls().forEach(el => { if (el.classList.contains("closed")) slideCard(el, false); });
-  applyCards(true);
 }

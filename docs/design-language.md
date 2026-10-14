@@ -250,8 +250,7 @@ Nostromo differs from the default in:
 
 - Shape, as the rule corners says:
 -   This scheme squares all three corner tokens; the pills and the dots stay round, as everywhere.
-- Motion, as the rule fold says:
--   This scheme asks for the fade fold with `--fold: fade` on the card: its smoked glass sliding into the title bar read as a bug, so the body fades where it stands, then the gap closes, and the cards below still ride the height.
+- Motion: as the design's own rules say.
 
 #### Rules of Nostromo's own
 
@@ -264,12 +263,6 @@ served by the page's allow-list): hull plating behind the page, ribbing in
 the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
 none moves the layout: a texture lives in space the page already leaves
 empty. The same suite measures the contrast with them in place. Its panels, the bar of a pane and the ground under a document are `--glass`: the panel color at 70% over the hull, so the plating shows through.
-
-##### nostromo/fold
-
-Applies to: scripts/dashboard/page-motion.js, scripts/dashboard/index.html; fold, fade, card
-
-This scheme asks for the fade fold with `--fold: fade` on the card: its smoked glass sliding into the title bar read as a bug, so the body fades where it stands, then the gap closes, and the cards below still ride the height.
 
 ##### nostromo/corners
 
@@ -511,8 +504,7 @@ Applies to: scripts/dashboard/index.html; padding, spacing, gap, inset, margin
 
 A band of a document surface is inset `var(--row-y) var(--row-x)`, 11px 14px,
 and `.field` applies it, so a band is a `.field` rather than a local padding.
-A field inside a field does not inset again. The sidebar is denser on
-purpose (rows 7px 10px, quiet states 9px 11px); nothing else is. Four
+A field inside a field does not inset again. Four
 different left edges in one tab is what retyped padding produces.
 
 **Down a dialog there are two gaps and no others**: `var(--field-gap)` (10px)
@@ -564,8 +556,7 @@ each other were 35, 35, 38 and 30px (the operator, 29 Sep): now every
 input, select, proseline and button in a document, a notebook or a dialog
 takes `min-height: var(--ctl)`, the color swatches alone keeping their
 circle, and `test/uniform.mjs` fails a line of controls that are not one
-height. The sidebar's cards and the header keep their own smaller buttons,
-which sit beside no field.
+height. The header keeps its own smaller buttons, which sit beside no field.
 
 **Controls on a row line up at their bottom edge.** A row mixes fields that
 carry a label above them with bare controls (a select, a button, a remove)
@@ -696,8 +687,8 @@ runs at load) and classic scripts beside it, loaded before its own
 script: `tab-*.js` for a document tab, `nb-*.js` for a notebook view
 (`nb-core.js` is the notebook itself, the frame the views draw into), and
 `page-*.js` for a part of the page that is neither: the state and the
-helpers everything reaches for, the tabs and their strip, the panes, the
-sidebar, a project's settings, the polls, the bell, and so on.
+helpers everything reaches for, the tabs, the panes and the dock, a project's
+rows, a project's settings, the doctor, the polls, the bell, and so on.
 Each is pure declarations and starts with `"use strict"`, as the page's
 own script does, since it runs before the page and its helpers exist;
 wiring that must run at load stays in `index.html` under the section's
@@ -722,9 +713,7 @@ section is open at a time on every folded surface, as the notebook's views do: o
 one shuts the others (the operator, 11 Oct), so the page is never a stack of open folds
 to scroll. A surface of four
 or more sections carries a jump bar (sectJump): their names in a line at the top, each
-scrolling to its own. A status is a word or a number, never a sentence. The sidebar's cards
-are the one arrangement that is stored, at a desk in the arrangement the server holds, and on
-a phone on the device itself. Reset opens every card on both.
+scrolling to its own. A status is a word or a number, never a sentence.
 
 `hidden` means hidden. `[hidden]{display:none !important}` is global,
 because any class that sets `display` otherwise beats the attribute: a fold
@@ -807,15 +796,14 @@ Everything that appears, leaves, opens or changes state moves: a panel or
 menu arrives (`menuIn`), a document brought to the front fades in over its
 own ground (`docIn`, contentIn's frames under a name of its own, so a
 document that already wears contentIn from its first paint still fades when
-it comes forward), a section or card folds over its height
+it comes forward), a section folds over its height
 (`slideBody`, the section tween), a button or tab eases its color, a
 toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that
 snaps is a change the eye has to find. Every one of them is off under
-`prefers-reduced-motion`. A scheme may ask for a different fold with
-`--fold: fade` on the card; a scheme that does says why in its own rules (Nostromo does).
+`prefers-reduced-motion`.
 
 **What fades is what is drawn, never the ground under it.** A document's
 ground (the page color, the panel color, nostromo's glass and scanlines)
@@ -991,18 +979,20 @@ Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App 
   3. Content (the main reading or working area): the page on show: one of the nine groups or a project, each with its own address, on the right, columns 2 to 12 of 12, rows 2 to 7 of 8
   4. Footer (the band at the foot): the dock: the open terminals and the Claude chat as tabs, one line when shut, half the screen when pulled up, on the right, columns 2 to 12 of 12, row 8 of 8
 Notes:
-  The page is an app shell (R218, the operator, 14 Oct): one rail of groups, one page on show, one dock. What was a strip of tool tabs is the rail; what was a strip of document tabs is a page (a project) and the dock (terminals, chat); what was two panes side by side is a page with the dock pulled up. Every page is the same reading surface a document tab was (docSurface: a bar band, the band list, a quiet footer), with an address, so a reload and a shared link land on it. The page an account was on is remembered per account, as the strip was (R131). Until R218 step 2 lands, what runs is the earlier frame: the sidebar of project cards, the tab strip of tools and documents, two panes on a wide desk, the bottom bar of Commands, Sessions and Chat; the document-tabs rule below is that frame's. Home (R218 step 5): Home is the landing page and the one single-screen view: lead with the big numbers, five or six tiles, white space, and paths into every page (R218 step 5). It is a glance, not a place to act: a tile is a link, a row opens its page. Nothing on Home is a setting. As built (step 4, 14 Oct): the dock is the second pane at the page's foot (page-dock.js): a terminal goes to it and anything else is the page (dockPlace); dockSettle repairs a layout the strip saved; its bar is the line (.dockline: each terminal a .dtab with its session dot and −, Chat with its unread mark, +, the pop-out and the chevron); up is the grid row --dock-h (half the area to begin with, kept per browser as bb.dock and bb.dock.h, a drag on the line sets it); on a phone up is a sheet over the page and opening a page puts it down; the foot bar keeps Keys and Commands for a terminal in front and is not drawn without one; the strip, its picker and the split are gone (page-tabstrip.js went; paint and newShell are page-paint.js).
+  The page is an app shell (R218, the operator, 14 Oct): one rail of groups, one page on show, one dock. What was a strip of tool tabs is the rail; what was a strip of document tabs is a page (a project) and the dock (terminals, chat); what was two panes side by side is a page with the dock pulled up. Every page is the same reading surface a document tab was (docSurface: a bar band, the band list, a quiet footer), with an address, so a reload and a shared link land on it. The page an account was on is remembered per account, as the strip was (R131). Home (R218 step 5): Home is the landing page and the one single-screen view: lead with the big numbers, five or six tiles, white space, and paths into every page (R218 step 5). It is a glance, not a place to act: a tile is a link, a row opens its page. Nothing on Home is a setting. As built (step 4, 14 Oct): the dock is the second pane at the page's foot (page-dock.js): a terminal goes to it and anything else is the page (dockPlace); dockSettle repairs a layout the strip saved; its bar is the line (.dockline: each terminal a .dtab with its session dot and −, Chat with its unread mark, +, the pop-out and the chevron); up is the grid row --dock-h (half the area to begin with, kept per browser as bb.dock and bb.dock.h, a drag on the line sets it); on a phone up is a sheet over the page and opening a page puts it down; the foot bar keeps Keys and Commands for a terminal in front and is not drawn without one; the strip, its picker and the split are gone (page-tabstrip.js went; paint and newShell are page-paint.js).
 This page's own rules:
   the-dashboard/document-tabs: scripts/dashboard/tab-*.js; tab, document, docsurface, bar (`bb design show the-dashboard/document-tabs` reads it)
   the-dashboard/rail: Nine groups, in this order, each one press: Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build (Toolchains, Emulator, Phone, CI runner), Jobs, Sessions, People (Users, Roles), Settings (Controller settings, Profile). A group with several tools opens on the first and carries the rest as its page's sub-nav. The rail is one column of icons at the left edge, 56px wide, labels under the icons from 1280px up; the group on show wears the accent as a bar on its left edge and the label in --ink, the rest in --dim. A group a grant forbids is not drawn (the Nodes tab's rule, kept). Hovering shows the label on a narrow screen as a tooltip, never as the only way to read it: the labels are drawn at a desk. On a phone (under 900px) the rail is a bottom bar of five, Home, Projects, Containers, Jobs and More, sharing the width, More opening a sheet of the other four; the bar sits above the safe area and the dock's shut line sits above the bar.
 
-As built (R218 step 2, on claude/design-2-0, 14 Oct): Home opens the Projects page until Home is built (step 5); Sessions opens the panel the pane's Sessions button opens until the dock (step 4); Analysis sits under Projects. A group a grant forbids is read off the Tools and Administration cards' own buttons, which are still drawn until step 3 takes the sidebar. On a phone the More sheet also carries Open tabs, which is the terminal view with the strip's picker, since the documents stay there until the dock.
-  the-dashboard/top-bar: One row over the page, 48px: the brand at the left, then search, then at the right the bell, the doctor dot, the version as plain text and the gear. Search is a field that jumps: a page by its name, a project, a container, a node, each a row with its icon and where it lives, the first on Enter; it does not search inside notebooks (later, its own item). The bell, the doctor dot and the gear are the ones the page has (the bell's drawer, the doctor's card, the gear's menu), unchanged. The build stamp and uptime that stood in the header go to Settings: the top bar carries what is pressed or watched.
+As built (R218 step 2, on claude/design-2-0, 14 Oct): Home opens the Projects page until Home is built (step 5); Sessions opens the panel the pane's Sessions button opens until the dock (step 4); Analysis sits under Projects. A group a grant forbids is read off the account's areas (railAllows), since the sidebar went with step 3.
+  the-dashboard/top-bar: One row over the page, 48px: the brand at the left, then search, then at the right the bell, the doctor dot, the version as plain text and the gear. Search is a field that jumps: a page by its name, a project, a container, a node, each a row with its icon and where it lives, the first on Enter; it does not search inside notebooks (later, its own item). The bell, the doctor dot and the gear are the ones the page has (the bell's drawer, the doctor's panel, the gear's menu). The build stamp and uptime that stood in the header go to Settings: the top bar carries what is pressed or watched.
+
+As built (R218 step 3, 14 Oct): the doctor dot (#bDocDot) sits after the bell in the bell's manners, its color the worst check's (accent, --warn, --bad; --line before a verdict), and opens #docPanel shaped like the bell's: Doctor, when it last ran and ↻ on one line, the problems as lines in their level's color with what the check said under each, the passing checks as chips. Anything else closes it, Escape closes it.
   the-dashboard/pages: A page is what a document tab was: a reading surface built by docSurface (the bar band, the band list, the quiet footer), capped at --doc-w and centered in the content area, with the bar's rule kept (what the page is about at the left, the action on it at the right). Each page has an address under #/ (#/containers, #/projects/web/roadmap, #/machines/nodes/n_12ab) and the address is the page: a reload, a shared link and the back button all land on it, and openDocker() and its siblings route to it. A page subscribes to its own revision tokens on the one revisions poll (when-a-view-re-reads) and fetches what it draws from the status read split by page, nothing for the pages not on show; the poll backs off to five seconds after a minute with nothing moved and to thirty while the page is hidden. There is no strip and no second pane: two things side by side are a page and the dock.
 
 As built (step 2): a page is still a tab in the page's tab model, kept out of the strip (isToolKind), so the panes, the per-account layout and every opener work as before; its bar is the group's sub-nav (a .pseg of the tools) or the group's word, with no close. The address is #/group, #/group/tool or #/projects/NAME, replaced on each draw and pushed on a rail press; the status read's split waits for step 3.
   the-dashboard/dock: The dock is the foot of every page: one line when shut, naming the open terminals and the chat as tabs with their session dots, and the page keeps its full height; pulled up it takes half the screen (a drag on its edge or a press on a tab) and the page scrolls above it. Its tabs are what the tab strip's terminals and the Sessions and Chat buttons were: a Claude session, a shell, the chat, each closed from its tab the way a terminal tab closed, and a session's end closes its tab as before. A Shell on a container's row opens docker exec in a dock tab, gated by the project's Run its container dial. On a phone the dock is a sheet from the bottom edge, full height when open, its line above the bottom bar when shut. Which tabs are open is the account's, as the strip was; which is in front and whether the dock is up are the browser's.
-  the-dashboard/home: Five or six tiles across the top (the tiles rule), each a number across the whole install with its label under it, a tone when the number itself is news (failed jobs in --bad when any, updates due in --warn), and each a link into the page that holds the number: nodes online of enrolled, containers running of all, jobs running and failed today, sessions open, updates due (toolchains, images, nginx, the agent), CI red. Under them two cards side by side at a desk, stacked on a phone: Attention (the bell's rows, put away there as on the bell) and Last jobs (ten rows, state pill, when, the Jobs page's row on press). Under those, Projects at a glance: a small card per pinned project with its session dot, its branch and the one notice the sidebar carried (no node, restart to use what changed), the full card on the project's page. Home reads on open and on the tokens the tiles depend on; nothing on it polls on its own.
+  the-dashboard/home: Five or six tiles across the top (the tiles rule), each a number across the whole install with its label under it, a tone when the number itself is news (failed jobs in --bad when any, updates due in --warn), and each a link into the page that holds the number: nodes online of enrolled, containers running of all, jobs running and failed today, sessions open, updates due (toolchains, images, nginx, the agent), CI red. Under them two cards side by side at a desk, stacked on a phone: Attention (the bell's rows, put away there as on the bell) and Last jobs (ten rows, state pill, when, the Jobs page's row on press). Under those, Projects at a glance: a small card per pinned project with its session dot, its branch and the one notice a project's card carries (no node, restart to use what changed), the full card on the project's page. Home reads on open and on the tokens the tiles depend on; nothing on it polls on its own.
 
 #### Rules of the dashboard's own
 
@@ -1042,11 +1032,13 @@ was (R131).
 
 Nine groups, in this order, each one press: Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build (Toolchains, Emulator, Phone, CI runner), Jobs, Sessions, People (Users, Roles), Settings (Controller settings, Profile). A group with several tools opens on the first and carries the rest as its page's sub-nav. The rail is one column of icons at the left edge, 56px wide, labels under the icons from 1280px up; the group on show wears the accent as a bar on its left edge and the label in --ink, the rest in --dim. A group a grant forbids is not drawn (the Nodes tab's rule, kept). Hovering shows the label on a narrow screen as a tooltip, never as the only way to read it: the labels are drawn at a desk. On a phone (under 900px) the rail is a bottom bar of five, Home, Projects, Containers, Jobs and More, sharing the width, More opening a sheet of the other four; the bar sits above the safe area and the dock's shut line sits above the bar.
 
-As built (R218 step 2, on claude/design-2-0, 14 Oct): Home opens the Projects page until Home is built (step 5); Sessions opens the panel the pane's Sessions button opens until the dock (step 4); Analysis sits under Projects. A group a grant forbids is read off the Tools and Administration cards' own buttons, which are still drawn until step 3 takes the sidebar. On a phone the More sheet also carries Open tabs, which is the terminal view with the strip's picker, since the documents stay there until the dock.
+As built (R218 step 2, on claude/design-2-0, 14 Oct): Home opens the Projects page until Home is built (step 5); Sessions opens the panel the pane's Sessions button opens until the dock (step 4); Analysis sits under Projects. A group a grant forbids is read off the account's areas (railAllows), since the sidebar went with step 3.
 
 ##### the-dashboard/top-bar
 
-One row over the page, 48px: the brand at the left, then search, then at the right the bell, the doctor dot, the version as plain text and the gear. Search is a field that jumps: a page by its name, a project, a container, a node, each a row with its icon and where it lives, the first on Enter; it does not search inside notebooks (later, its own item). The bell, the doctor dot and the gear are the ones the page has (the bell's drawer, the doctor's card, the gear's menu), unchanged. The build stamp and uptime that stood in the header go to Settings: the top bar carries what is pressed or watched.
+One row over the page, 48px: the brand at the left, then search, then at the right the bell, the doctor dot, the version as plain text and the gear. Search is a field that jumps: a page by its name, a project, a container, a node, each a row with its icon and where it lives, the first on Enter; it does not search inside notebooks (later, its own item). The bell, the doctor dot and the gear are the ones the page has (the bell's drawer, the doctor's panel, the gear's menu). The build stamp and uptime that stood in the header go to Settings: the top bar carries what is pressed or watched.
+
+As built (R218 step 3, 14 Oct): the doctor dot (#bDocDot) sits after the bell in the bell's manners, its color the worst check's (accent, --warn, --bad; --line before a verdict), and opens #docPanel shaped like the bell's: Doctor, when it last ran and ↻ on one line, the problems as lines in their level's color with what the check said under each, the passing checks as chips. Anything else closes it, Escape closes it.
 
 ##### the-dashboard/pages
 
@@ -1060,7 +1052,7 @@ The dock is the foot of every page: one line when shut, naming the open terminal
 
 ##### the-dashboard/home
 
-Five or six tiles across the top (the tiles rule), each a number across the whole install with its label under it, a tone when the number itself is news (failed jobs in --bad when any, updates due in --warn), and each a link into the page that holds the number: nodes online of enrolled, containers running of all, jobs running and failed today, sessions open, updates due (toolchains, images, nginx, the agent), CI red. Under them two cards side by side at a desk, stacked on a phone: Attention (the bell's rows, put away there as on the bell) and Last jobs (ten rows, state pill, when, the Jobs page's row on press). Under those, Projects at a glance: a small card per pinned project with its session dot, its branch and the one notice the sidebar carried (no node, restart to use what changed), the full card on the project's page. Home reads on open and on the tokens the tiles depend on; nothing on it polls on its own.
+Five or six tiles across the top (the tiles rule), each a number across the whole install with its label under it, a tone when the number itself is news (failed jobs in --bad when any, updates due in --warn), and each a link into the page that holds the number: nodes online of enrolled, containers running of all, jobs running and failed today, sessions open, updates due (toolchains, images, nginx, the agent), CI red. Under them two cards side by side at a desk, stacked on a phone: Attention (the bell's rows, put away there as on the bell) and Last jobs (ten rows, state pill, when, the Jobs page's row on press). Under those, Projects at a glance: a small card per pinned project with its session dot, its branch and the one notice a project's card carries (no node, restart to use what changed), the full card on the project's page. Home reads on open and on the tokens the tiles depend on; nothing on it polls on its own.
 
 ### a notebook (Web app)
 
@@ -1075,7 +1067,7 @@ Notes:
   A project is a page (R218 step 3): the notebook's views are its sub-nav and the project's card is its header. Until R218 step 3 lands, the notebook is a document tab with the views as its strip; after it, this page is 'a project'. The Projects page is the grid: a card per project with its session dot, branch, node and the one notice that matters, searchable, pinned first, the rest folded under All projects; New project and Link a project are its bar's actions. Before: One notebook per project, a clone of one template. Every view opens with the same head row at one height. A row with detail behind it is a fold that opens to be read, never as a form. As built (step 3, 14 Oct): the pane's bar is the header (projectHeader in nb-core.js: .phead with .pname, .pfacts, .pstate, the .sp spacer, Open Claude, Shell and the .more menu; the one notice as .pnote under it); the Claude chooser is drawn in the pane it was asked from (syncResumeMenu); the view strip is the sub-nav with Overview first; the address names the view (#/projects/NAME/VIEW, overview for the Briefing view). A roadmap line opens by its caret to its workings and Shelve, Reword and Drop (R223); the Roadmap's Save and Revert appear only with something staged (R224, the one section whose bar is absent rather than dead); the Roadmap's head row carries when a session last read it (R222); the Tests view's output button comes with the first run (R225); a finding's rule is a row that opens (R234); the wiki's narrow layout follows the pane's own width under 620px (B728).
 This page's own rules:
   a-notebook/views: scripts/dashboard/nb-*.js; notebook, view, head, row, strip (`bb design show a-notebook/views` reads it)
-  a-notebook/project-page: The header is one band: the name large, the branch and the node in --f-data beside it, the session's state as the dot and a word, and at the right the actions the sidebar's row carried: Open Claude (the chooser under it as before), Shell, and the … menu (link, phone, report, lock, pin, settings). The sub-nav under it is the notebook's view strip under its own rule (views): one row at a desk, wrapped into rows of equal tabs on a phone, every view visible at every width; Overview is the Briefing view under its new name and first. The view below opens with its head row as every notebook view does. The address names the view (#/projects/web/bugs), so a link to a bug's list lands on it.
+  a-notebook/project-page: The header is one band: the name large, the branch and the node in --f-data beside it, the session's state as the dot and a word, and at the right the actions a project's card carries: Open Claude (the chooser under it as before), Shell, and the … menu (link, phone, report, lock, pin, settings). The sub-nav under it is the notebook's view strip under its own rule (views): one row at a desk, wrapped into rows of equal tabs on a phone, every view visible at every width; Overview is the Briefing view under its new name and first. The view below opens with its head row as every notebook view does. The address names the view (#/projects/web/bugs), so a link to a bug's list lands on it.
 
 #### Rules of a notebook's own
 
@@ -1179,7 +1171,7 @@ The Roadmap's exception (R224): its section bar is absent, not dead, while nothi
 
 ##### a-notebook/project-page
 
-The header is one band: the name large, the branch and the node in --f-data beside it, the session's state as the dot and a word, and at the right the actions the sidebar's row carried: Open Claude (the chooser under it as before), Shell, and the … menu (link, phone, report, lock, pin, settings). The sub-nav under it is the notebook's view strip under its own rule (views): one row at a desk, wrapped into rows of equal tabs on a phone, every view visible at every width; Overview is the Briefing view under its new name and first. The view below opens with its head row as every notebook view does. The address names the view (#/projects/web/bugs), so a link to a bug's list lands on it.
+The header is one band: the name large, the branch and the node in --f-data beside it, the session's state as the dot and a word, and at the right the actions a project's card carries: Open Claude (the chooser under it as before), Shell, and the … menu (link, phone, report, lock, pin, settings). The sub-nav under it is the notebook's view strip under its own rule (views): one row at a desk, wrapped into rows of equal tabs on a phone, every view visible at every width; Overview is the Briefing view under its new name and first. The view below opens with its head row as every notebook view does. The address names the view (#/projects/web/bugs), so a link to a bug's list lands on it.
 
 ### the dashboard on a phone (Web app)
 
@@ -1411,7 +1403,7 @@ Layout of the Projects tab on a desktop frame (12 columns by 8 rows), from the B
   2. List (rows of like things): every project the account may see, across the bottom, rows 2 to 8 of 8
   3. Card (a box holding one thing): a project: its color, branch, the session's dot, Claude, shell, lock, pin, delete; what is wrong in red under it, across the middle, row 3 of 8, inside block 2 (List: every project the account may see)
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The pin on a row puts the project on the sidebar's card or takes it off, and the card's rows carry it too, so a project is unpinned from either (30 Sep): the sidebar shows the ones you work on, this tab all of them. Lock warns which sessions are running and ends them all; a user's account cannot lock or unlock. As built (R218 step 3, 14 Oct): a searchable grid of cards (.pgrid, .pcard in tab-projects.js): the project's color down the card's edge, the name a press opens the page with, the branch and the node in --f-data, the session's dot and word, the one notice, and Claude and Shell with the rest (link, phone, report, lock, pin, settings, delete) behind one menu (R238). The bar is the search (name, branch or node), New project and the trash. Until the sidebar's card goes, the pin still decides the sidebar; after Home (step 5) it decides the glance there.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Lock warns which sessions are running and ends them all; a user's account cannot lock or unlock. As built (R218 step 3, 14 Oct): a searchable grid of cards (.pgrid, .pcard in tab-projects.js): the project's color down the card's edge, the name a press opens the page with, the branch and the node in --f-data, the session's dot and word, the one notice, and Claude and Shell with the rest (link, phone, report, lock, pin, settings, delete) behind one menu (R238). The bar is the search (name, branch or node), New project and the trash. The pin is in a card's menu and decides Home's glance (step 5).
 
 ### a notebook: Briefing (Web app)
 
@@ -1683,4 +1675,4 @@ Layout of the Roles tab on a desktop frame (12 columns by 8 rows), from the Blan
   3. Form (fields a person fills in): Roles: a role picker and Add role; Scope; what it is for; Read and Write per area; Revert, Save, Remove, across the middle, rows 5 to 7 of 8
   4. Footer (the band at the foot): roles add up; Write needs Read, and an area without Read is not shown, across the bottom, row 8 of 8
 Notes:
-  Under the Administration card, beside Users, and from the People field of a project's settings for its owner (R152, the operator, 7 Oct). owner and admin are built in and read as every area, with nothing to change and no Save; the owner's account reads as fixed in People. A project's owner who is not an administrator sees only the projects they own and the roles on the user's projects. In Roles, Write waits for Read, and the global areas are off for a role on the user's projects; Remove comes last. In People, a project's roles show only once its tick is on, and Global roles are an administrator's to give. A Global role that is not built in shows On these nodes, a tick per node, under its scope: Nodes, Toolchains, Jobs and New projects hold on the ticked nodes, none ticked being every node.
+  Under People on the rail, beside Users, and from the People field of a project's settings for its owner (R152, the operator, 7 Oct). owner and admin are built in and read as every area, with nothing to change and no Save; the owner's account reads as fixed in People. A project's owner who is not an administrator sees only the projects they own and the roles on the user's projects. In Roles, Write waits for Read, and the global areas are off for a role on the user's projects; Remove comes last. In People, a project's roles show only once its tick is on, and Global roles are an administrator's to give. A Global role that is not built in shows On these nodes, a tick per node, under its scope: Nodes, Toolchains, Jobs and New projects hold on the ticked nodes, none ticked being every node.

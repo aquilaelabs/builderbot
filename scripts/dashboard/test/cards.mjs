@@ -1,6 +1,7 @@
-// Sidebar cards: universal collapse with a height tween, header-only
-// controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
-// per-project findings, valid-projects filter, and server-side persistence.
+// The page's frame and what hangs off it: the doctor's dot and panel, the
+// Projects page's cards, the Analysis tab and its gate, which build this is,
+// the welcome panel, polls that do not stack, themes, the gear's logs, a
+// project on several nodes, and dialogs that scroll.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
          holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold, registerProject,
          saveDialog, sectSave } from './lib.mjs';
@@ -20,168 +21,37 @@ const pjMenu = async name => {
   await page.waitForTimeout(150);
 };await page.goto(URL);
 await ready(page);
-const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.dataset.card));
-
-// headers are title + chevron only; doctor sits first
-// A card whose body repaints WHILE it folds. contentIn starts at opacity 0
-// and lasts 180ms, the same as the fold, so an entrance animation landing on
-// a collapsing card blanked its body at full height and faded it back in as
-// the card shut: the flicker seen on Runner and Projects, the two cards
-// whose bodies redraw from the poll and so the two a fold can collide with.
-{
-  const trace = await page.evaluate(async () => {
-    const el = document.querySelector('.card[data-card="runner"]');
-    const body = el.querySelector('#runner');
-    const out = [];
-    const sample = () => out.push({
-      h: el.offsetHeight,
-      op: Number(getComputedStyle(body).opacity).toFixed(2),
-      shown: getComputedStyle(body).display,
-    });
-    // The real order: a poll repaints the body, and the click lands inside
-    // the 180ms the entrance animation takes.
-    painted.delete(body);            // make the next paint an ARRIVING one
-    paint(body, '<div class="row"><span class="pill ok">running a job</span></div>');
-    await new Promise(r => requestAnimationFrame(r));
-    sample();
-    el.querySelector('h2').click();
-    for (let i = 0; i < 13; i++){
-      await new Promise(r => requestAnimationFrame(r));
-      sample();
-    }
-    return out;
-  });
-  const mid = trace.slice(1, -2);
-  ok(mid.every(f => f.op === '1.00'),
-     'a repaint while a card folds does not blank its body: the fold is the motion that matters');
-  ok(trace[0].h > trace[trace.length - 1].h
-     && mid.some(f => f.shown === 'block' && f.h < trace[0].h && f.h > trace[trace.length - 1].h),
-     '...and the body stays visible while the height comes down, rather than after it');
-  // Put it back: the tests below this one drag this card and read its folded
-  // state, and a card left shut by a probe is a probe changing their subject.
-  await page.click('.card[data-card="runner"] h2');
-  await page.waitForFunction(() => {
-    const c = document.querySelector('.card[data-card="runner"]');
-    return !c.classList.contains('closed') && !c.getAnimations().length;
-  }, null, { timeout: 8000 });
-}
-
-// The nostromo theme's stencil tick is an inset shadow on the card header, and
-// an inset shadow is drawn to its own box: square against the card's 8px
-// corner, it left a few pixels of amber outside the rounded edge. A notch on a
-// still card, and a glitch while one folded, which is when the eye is there.
+// The Nostromo glass (the operator, 24 Sep): a pane's bar, the dock's line
+// and the ground under a document wear one glass, over a pane left open so
+// it is the hull that shows through. The ground is the stack's and the
+// document box paints none, so the document fading in does not take the
+// glass with it (27 Sep).
 {
   await page.evaluate(() => document.documentElement.dataset.theme = 'nostromo');
-  await page.waitForFunction(() => getComputedStyle(
-    document.querySelector('.card[data-card="doctor"] h2')).boxShadow !== 'none',
-    null, { timeout: 8000 });
-  const radii = await page.evaluate(() => {
-    const card = document.querySelector('.card[data-card="doctor"]');
-    const h2 = card.querySelector('h2');
-    return {open: getComputedStyle(h2).borderTopLeftRadius,
-            card: getComputedStyle(card).borderTopLeftRadius};
-  });
-  // Closed is read after the fold, not after the click: slideCard takes .closed
-  // OFF for the tween and puts it back at the end, which is what keeps the body
-  // visible on the way down.
-  await page.click('.card[data-card="doctor"] h2');
-  await page.waitForFunction(() => {
-    const c = document.querySelector('.card[data-card="doctor"]');
-    return c.classList.contains('closed') && !c.getAnimations().length;
-  }, null, { timeout: 8000 });
-  radii.shut = await page.$eval('.card[data-card="doctor"] h2',
-                                h => getComputedStyle(h).borderBottomLeftRadius);
-  // Nostromo's corners are square (its --r-surface is 0), so the header's
-  // corner is the card's less one pixel, floored at 0: the relation is what
-  // matters, never the number, and a square card has a square header.
-  const inside = (h, c) => parseFloat(c) === 0 ? parseFloat(h) === 0 : parseFloat(h) > 0 && parseFloat(h) < parseFloat(c);
-  ok(inside(radii.open, radii.card),
-     `the card header's corner sits inside the card's, so the stencil tick cannot poke out past it (${
-       radii.open} in ${radii.card})`);
-  ok(inside(radii.shut, radii.card),
-     `...and the bottom too once the header IS the card, which is what closed means (${radii.shut})`);
-  // Nostromo's fold is two phases (--fold: fade): on open the gap opens
-  // first with the body held invisible, then the body fades in; on close
-  // the body fades where it stands and only then does the gap close. Each
-  // is read the instant after its click, which is deterministic: the first
-  // phase starts in the click's own task and runs 120ms or more. The card
-  // is closed here from the block above, so open comes first. Then the end
-  // state: the body's inline opacity and the fading class both gone, so a
-  // card is never left blank by its own fold.
-  // Script-made animations only (the fold's own), never the stylesheet's
-  // transitions: the card's fill and frame ease on a class in this scheme,
-  // and those are CSSTransition objects in the same list.
-  const phaseOf = () => page.evaluate(() => {
-    const made = el => el.getAnimations().filter(a => a.constructor.name === 'Animation').length;
-    const c = document.querySelector('.card[data-card="doctor"]');
-    return { own: made(c), body: [...c.children].filter(n => n.tagName !== 'H2')
-               .map(made).reduce((a, b) => a + b, 0),
-             fading: c.classList.contains('fading') };
-  });
-  const settle = shut => page.waitForFunction(s => {
-    const c = document.querySelector('.card[data-card="doctor"]');
-    return c.classList.contains('closed') === s && !c.getAnimations({ subtree: true }).length;
-  }, shut, { timeout: 8000 });
-  await page.click('.card[data-card="doctor"] h2');
-  const opening = await phaseOf();
-  ok(opening.own === 1 && opening.body === 0 && opening.fading,
-     `under nostromo a card opens its gap first, the body not yet fading (${JSON.stringify(opening)})`);
-  await settle(false);
-  await page.click('.card[data-card="doctor"] h2');
-  const closing = await phaseOf();
-  ok(closing.own === 0 && closing.body > 0 && closing.fading,
-     `...and closes by fading the body first, with no height tween yet (${JSON.stringify(closing)})`);
-  await settle(true);
-  const settled = await page.evaluate(() => {
-    const c = document.querySelector('.card[data-card="doctor"]');
-    return { fading: c.classList.contains('fading'), overflow: c.style.overflow,
-             opacity: [...c.children].filter(n => n.tagName !== 'H2').map(n => n.style.opacity).join('') };
-  });
-  ok(!settled.fading && settled.overflow === '' && settled.opacity === '',
-     `...and leaves nothing behind once it has settled (${JSON.stringify(settled)})`);
-  // The rings hold still while the cards scroll over them, and the two
-  // halves of the page wear one glass (the operator, 24 Sep): the cards,
-  // the tab strip, a pane's bar and the ground under a document, over a pane
-  // left open so it is the hull that shows through. The ground is the
-  // stack's and the document box paints none, so the document fading in
-  // does not take the glass with it (27 Sep).
   const glass = await page.evaluate(() => {
     const alpha = c => {
       const m = /\/\s*([0-9.]+)\s*\)$/.exec(c || '') || /^rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)$/.exec(c || '');
       return m ? Number(m[1]) : 1;
     };
     const bg = e => e ? getComputedStyle(e).backgroundColor : '';
-    // A document on show, as the tab side draws one, read and taken away
-    // again in the same task, so it is never painted.
+    // A document on show, as a page draws one, read and taken away again in
+    // the same task, so it is never painted.
     const pane = document.querySelector('.pane');
     const st = document.createElement('div'), doc = document.createElement('div');
     st.className = 'stack'; st.style.visibility = 'hidden';
     doc.className = 'doc on';
     st.appendChild(doc);
     pane?.appendChild(st);
-    const out = { rings: getComputedStyle(document.querySelector('.col.side')).backgroundAttachment,
-                  card: bg(document.querySelector('.card[data-card="doctor"]')),
-                  dock: bg(document.querySelector('#pane1 .bar')),   // the dock's line, where the strip was (R218 step 4)
-                  bar: bg(document.querySelector('.pane .bar')) || 'no bar',
+    const out = { dock: bg(document.querySelector('#pane1 .bar')), bar: bg(document.querySelector('#pane0 .bar')) || 'no bar',
                   ground: bg(st), doc: bg(doc), pane: bg(pane) };
     st.remove();
-    out.alpha = alpha(out.card);
+    out.alpha = alpha(out.dock);
     return out;
   });
-  ok(glass.rings === 'scroll',
-     `the rings stay where the column is while the cards scroll over them (${glass.rings})`);
-  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.dock && glass.card === glass.ground
-     && glass.doc === 'rgba(0, 0, 0, 0)'
-     && (glass.bar === 'no bar' || glass.bar === glass.card) && glass.pane === 'rgba(0, 0, 0, 0)',
-     `...and the tab side wears the cards' own glass, over a pane left open (${JSON.stringify(glass)})`);
-  await page.evaluate(() => {
-    document.querySelector('.card[data-card="doctor"] h2').click();
-    delete document.documentElement.dataset.theme;
-  });
-  await page.waitForFunction(() => {
-    const c = document.querySelector('.card[data-card="doctor"]');
-    return !c.classList.contains('closed') && !c.getAnimations().length;
-  }, null, { timeout: 8000 });
+  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.dock === glass.ground && glass.doc === 'rgba(0, 0, 0, 0)'
+     && (glass.bar === 'no bar' || glass.bar === glass.dock) && glass.pane === 'rgba(0, 0, 0, 0)',
+     `the bars, the dock and the ground wear one glass, over a pane left open (${JSON.stringify(glass)})`);
+  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
 }
 
 // The header fits, at every width a phone comes in. It did not: measured at
@@ -225,72 +95,50 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
        cut.length ? `: ${cut.map(m => `${m.clipped.join('/')} at ${m.w}`).join(', ')}` : ''}`);
 }
 
-const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
-  buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
-ok(hs.length === 4 && hs.every(h => h.buttons === 0 && h.chev),
-   `headers are title + chevron only (${hs.length} cards)`);
-// Projects first (R119, 4 Oct): what a person comes here for.
-ok((await order())[0] === 'doctor', 'doctor is first by default: the projects card went with R218 step 3');
-ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
-
-// collapse animates, persists across reload
-const collapsed = await animatedDuring(page,
-  () => page.click('.card[data-card="tools"] h2'));
-ok(collapsed.some(k => k.includes('tools'))
-   && !await page.$eval('.card[data-card="tools"]', el => el.classList.contains('closed')),
-   'collapse runs a height tween before the class lands');
-await page.waitForFunction(() => document.querySelector('.card[data-card="tools"]').classList.contains('closed'));
-await page.reload(); await ready(page);
-ok(await page.$eval('.card[data-card="tools"]', el => el.classList.contains('closed')), 'collapsed state survives a reload');
-
-// doctor: card collapse is the operator's; the verdict only drives the inner detail
-await page.click('.card[data-card="doctor"] h2');
-await page.waitForFunction(() => document.querySelector('.card[data-card="doctor"]').classList.contains('closed'));
-doctorFixture('fail');
-await page.evaluate(() => document.getElementById('bDoctor').onclick());
-await page.waitForFunction(() => document.getElementById('docDot').className.includes('bad'));
-ok(await page.$eval('.card[data-card="doctor"]', el => el.classList.contains('closed')), 'a FAIL leaves a collapsed doctor card collapsed');
-ok(await page.$eval('#doctor', el => !el.hidden), '...but opens the detail behind it');
-ok(await page.$eval('#docBar', el => getComputedStyle(el).display === 'none'), 'collapsed card hides the status row too');
-// A problem reads as one: its line takes the level's color, and what the
-// check said after its first line is on the card, not only in a title a phone
-// never shows. They rendered as plain body text once, under a red dot.
-const probLines = await page.$$eval('#doctor .probs .sub', els => els.map(el => {
-  const root = getComputedStyle(document.documentElement);
-  const tok = el.classList.contains('bad') ? '--bad' : '--warn';
-  const want = document.createElement('i');
-  want.style.color = root.getPropertyValue(tok).trim();
-  document.body.append(want);
-  const same = getComputedStyle(want).color === getComputedStyle(el).color;
-  want.remove();
-  return { text: el.textContent, same, why: el.querySelector('.why')?.textContent || '' };
-}));
-ok(probLines.length === 2 && probLines.every(l => l.same),
-   `each problem line is drawn in its level's color (${JSON.stringify(probLines.map(l => l.same))})`);
-ok(probLines.some(l => /runner offline/.test(l.text) && /bb logs --runner/.test(l.why)),
-   '...and carries the rest of what the check said under it');
-doctorFixture('ok');
-await page.evaluate(() => document.getElementById('bDoctor').onclick());
-await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'));
+// ---- the doctor: a dot in the top bar, its checks in a panel (R218 step 3) ----
+// The column of cards went: the dot wears the worst check's color, and its
+// panel lists problems as lines in their level's color, each with the rest
+// of what the check said under it, and passing checks as chips.
+{
+  await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'), null, { timeout: 15000 });
+  const dd = await page.$eval('#bDocDot', b => ({ said: b.getAttribute('aria-label'), w: b.offsetWidth, top: !!b.closest('header') }));
+  ok(/all 3 ok/.test(dd.said) && dd.w > 0 && dd.top,
+     `the doctor is a dot in the top bar, its verdict all 3 ok (${JSON.stringify(dd)})`);
+  ok(await page.$eval('#docPanel', p => p.hidden), '...its panel shut until pressed');
+  await page.click('#bDocDot');
+  await page.waitForSelector('#docPanel:not([hidden]) #doctor .chips .pill', { timeout: 5000 });
+  ok(await page.$eval('#bDocDot', b => b.getAttribute('aria-expanded') === 'true'), '...and a press opens it, its passing checks as chips');
+  doctorFixture('fail');
+  await page.click('#bDoctor');
+  await page.waitForFunction(() => document.getElementById('docDot').className.includes('bad'), null, { timeout: 15000 });
+  const probLines = await page.$$eval('#doctor .probs .sub', els => els.map(el => {
+    const root = getComputedStyle(document.documentElement);
+    const tok = el.classList.contains('bad') ? '--bad' : '--warn';
+    const want = document.createElement('i');
+    want.style.color = root.getPropertyValue(tok).trim();
+    document.body.append(want);
+    const same = getComputedStyle(want).color === getComputedStyle(el).color;
+    want.remove();
+    return { text: el.textContent, same, why: el.querySelector('.why')?.textContent || '' };
+  }));
+  ok(probLines.length === 2 && probLines.every(l => l.same),
+     `↻ runs it again, and a FAIL turns the dot red with each problem in its level's color (${JSON.stringify(probLines.map(l => l.same))})`);
+  ok(probLines.some(l => /runner offline/.test(l.text) && /bb logs --runner/.test(l.why)),
+     '...and carries the rest of what the check said under it');
+  ok(await page.$eval('#docPanel', p => !p.hidden), '...with the panel still open after ↻ redrew it');
+  await page.keyboard.press('Escape');
+  ok(await page.$eval('#docPanel', p => p.hidden), 'Escape shuts the panel');
+  doctorFixture('ok');
+  await page.evaluate(() => document.getElementById('bDoctor').click());
+  await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'), null, { timeout: 15000 });
+}
 
 // The Analysis tab: the findings, browsable. The sidebar card is gone, since
 // its rows were only doors into each notebook, a summary nothing could be
 // read through, and the server logic it exercised (valid-project attribution,
 // stale-report exclusion, the named aside) is asserted here against the tab
 // that replaced it.
-ok(await page.$('#cardFindings') === null,
-   'the findings card is gone from the sidebar');
-// The Tools card may be folded by the collapse tests above; the button is
-// in its body, and a click cannot land on display:none.
-await page.evaluate(() => {
-  const c = document.querySelector('.card[data-card="tools"]');
-  if (c.classList.contains('closed')) c.querySelector('h2').click();
-});
-await page.waitForFunction(() => {
-  const b = document.getElementById('bFindings');
-  return b && b.offsetParent !== null;
-}, { timeout: 10000 });
-await page.click('#bFindings');
+await page.evaluate(() => railGo('projects', 'findings'));
 await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
 await page.waitForFunction(() => document.querySelectorAll('.fxtab .rule').length > 0,
                            { timeout: 15000 });
@@ -443,9 +291,9 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
      `...and one with findings is not told to run --all, which the relay refuses (${
        (loud.split('\n').find(l => l.startsWith('# ')) || '').slice(0, 50)})`);
 }
-// Nothing readable in /reports and the way in goes quiet: three ways to have
-// nothing (no mount, nothing in it, nothing that parses) and one grayed button
-// carrying the reason. A tab already open on it is closed once, when the page
+// Nothing readable in /reports and the way in says so: three ways to have
+// nothing (no mount, nothing in it, nothing that parses) and one sentence for
+// which, said when Analysis is pressed. A tab already open on it is closed once, when the page
 // first learns: a layout restored from last session can carry an Analysis tab
 // for a scanner that has since been unmounted, and one that stays only to say
 // "nothing here" is a tab somebody has to close by hand.
@@ -453,10 +301,8 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   const keep = readFileSync(`${DIR}/reports/test.sarif`);
   rmSync(`${DIR}/reports`, { recursive: true, force: true });
   await refreshUntil(page, () => state?.reports_ok === false, { timeout: 20000 });
-  ok(await page.$eval('#bFindings', b => b.disabled),
-     'with no readable report the Analysis button is ghosted');
-  ok(/\/reports is not mapped in/.test(await page.$eval('#bFindings', b => saidOf(b))),
-     '...carrying which of the three reasons it is');
+  ok(/\/reports is not mapped in/.test(await page.evaluate(() => findingsOff())),
+     'with no readable report Analysis is off, saying which of the three reasons it is');
   // The tab is open from the tests above; the gate closes it on the next load.
   await page.reload();
   await ready(page);
@@ -472,13 +318,13 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   // from before the directory existed.
   await refreshUntil(page, () => state?.reports === true && state?.reports_ok === false,
                      { timeout: 20000 });
-  ok(/nothing readable/.test(await page.$eval('#bFindings', b => saidOf(b))),
-     'a report that does not parse is not a report, and the button says so');
+  ok(/nothing readable/.test(await page.evaluate(() => findingsOff())),
+     'a report that does not parse is not a report, and Analysis says so');
   rmSync(`${DIR}/reports/broken.sarif`, { force: true });
   writeFileSync(`${DIR}/reports/test.sarif`, keep);
   await refreshUntil(page, () => state?.reports_ok === true, { timeout: 20000 });
-  ok(await page.$eval('#bFindings', b => !b.disabled),
-     '...and a readable one lights it again');
+  ok(await page.evaluate(() => findingsOff() === ''),
+     '...and a readable one turns it on again');
   // A fourth way to have nothing: a mount gone stale under the container.
   // The directory is fine on the host and every read of it here raises
   // (NFS errno 116), and counts() runs on every /api/status, so the whole
@@ -512,7 +358,7 @@ print(json.dumps(out))
        && JSON.stringify(said.listless) === JSON.stringify({ counts: {}, ok: false, mounted: true, available: false }),
        `a reports mount gone stale reads as nothing to read rather than raising into every status poll (${JSON.stringify(said)})`);
   }
-  await page.click('#bFindings');
+  await page.evaluate(() => openFindingsTab());
   await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
 }
 // Two projects whose names shorten to one slug are one dev instance: the same
@@ -581,36 +427,6 @@ print(json.dumps(out))
   ok(true, '...and pressing it unpins the project');
   await page.evaluate(() => setProjectPinned('alpha', true));
   await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Unpin', null, { timeout: 15000 });
-  // The phone's sidebar back in front for the folds block below.
-  await page.evaluate(() => setView('dashboard'));
-}
-
-// A phone's folds are the device's: a card opened there is still open after a
-// reload (it was folding every card back on every refresh), and Reset opens
-// every card on a phone as it does at a desk. Kept in the browser, never in
-// the arrangement the server holds, so the desk's layout is untouched.
-{
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(400);
-  const shut = k => page.$eval(`.card[data-card="${k}"]`, c => c.classList.contains('closed'));
-  const settled = k => page.waitForFunction(key => {
-    const c = document.querySelector(`.card[data-card="${key}"]`);
-    return c && !c.classList.contains('closed') && !c.getAnimations().length;
-  }, k, { timeout: 8000 });
-  ok(await shut('tools') && await shut('doctor'), 'on a phone every card starts folded');
-  await page.click('.card[data-card="tools"] h2');
-  await settled('tools');
-  await page.reload(); await ready(page); await page.waitForTimeout(400);
-  ok(!await shut('tools') && await shut('admin'),
-     'a card opened on a phone is still open after a reload, and the rest are still folded');
-  await page.evaluate(() => resetCards());
-  for (const k of ['tools', 'admin', 'runner', 'doctor']) await settled(k);
-  await page.reload(); await ready(page); await page.waitForTimeout(400);
-  ok(!await shut('admin') && !await shut('runner') && !await shut('doctor'),
-     'Reset opens every card on a phone as at a desk, and they stay open after a reload there');
-  await page.evaluate(() => { localStorage.removeItem('bb.phoneOpen'); });
-  await page.setViewportSize({ width: 1280, height: 1000 });
-  await page.waitForTimeout(400);
 }
 
 // ---- the card's notice: why nobody can be here, and who is ------------
@@ -734,56 +550,8 @@ ok(!all.includes('toolstore'), '...not even among the cards with errors, which t
 ok(all.includes('vendored-junk'),
    '...while one with no marker is listed, as the error it is');
 
-// drag: reorder + slide + persistence; the click ending a drag is not a toggle
-// Into view first: bounding boxes are viewport coordinates, and a section
-// above this one may leave the sidebar scrolled, and a drag aimed at y=-282
-// grabs nothing and the test reads as the FEATURE failing.
-await page.$eval('.side', e => e.scrollTo(0, 0));
-// Projects is first and long (R119): folded for the drag, so the runner card
-// is on screen to be grabbed, and opened again after.
-const projOpen = await page.$eval('.card[data-card="doctor"]', el => !el.classList.contains('closed'));
-if (projOpen){
-  await page.click('.card[data-card="doctor"] h2');
-  await page.waitForFunction(() => document.querySelector('.card[data-card="doctor"]').classList.contains('closed'));
-}
-await new Promise(r => setTimeout(r, 300));
-const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
-const top = await (await page.$('.side .card[data-card]')).boundingBox();
-// Recorded, not sampled. The FLIP tween is 140ms, and asking for it in a
-// round trip AFTER the drag only works if that round trip happens to land
-// inside those 140ms: true on an idle box, false on a loaded one, which is
-// the test timing the browser rather than the behavior. Wrapping
-// Element.animate says whether the displaced card WAS animated, whenever
-// that was. Undone straight after, so nothing later in this file is
-// measuring through a patched prototype.
-await page.evaluate(() => {
-  window.__flipped = [];
-  window.__realAnimate = Element.prototype.animate;
-  Element.prototype.animate = function(...a){
-    window.__flipped.push(this.dataset?.card || "");
-    return window.__realAnimate.apply(this, a);
-  };
-});
-await page.mouse.move(hb.x + 40, hb.y + 12); await page.mouse.down();
-await page.mouse.move(hb.x + 40, top.y + 2, { steps: 10 });
-await page.mouse.up();
-const sliding = await page.evaluate(() => {
-  Element.prototype.animate = window.__realAnimate;
-  return window.__flipped.includes("doctor");
-});
-ok(sliding, 'displaced cards slide during a drag');
-ok((await order())[0] === 'runner', `runner dragged to the top (${(await order()).join(',')})`);
-ok(!(await page.$eval('.card[data-card="runner"]', el => el.classList.contains('closed'))), 'the drop did not toggle the card');
-await page.reload(); await ready(page);
-ok((await order())[0] === 'runner', 'order survives a reload');
-if (projOpen){
-  await page.click('.card[data-card="doctor"] h2');
-  await page.waitForFunction(() => !document.querySelector('.card[data-card="doctor"]').classList.contains('closed'));
-}
-
-// ▤ reset, now an item in the menu the gear opens rather than theom's
-// own action. The menu is the other half: twelve color schemes, each swatch
-// rendered in the scheme it selects.
+// The gear's menu: the color schemes, each swatch rendered in the scheme it
+// selects.
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
 ok(await page.$$eval('#uiMenu .sw', s => s.length) === 13,
@@ -900,20 +668,6 @@ await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.getElementById('uiMenu').hidden,
                            null, { timeout: 5000 });
 ok(true, 'Escape closes the menu');
-
-await page.click('#bCards');
-await page.waitForSelector('#uiMenu:not([hidden])');
-await page.click('#uiReset');
-await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'doctor'
-  && !document.querySelector('.side .card.closed'));
-ok(true, 'reset restores default order and expands everything');
-
-// The whole-report tab came back, on purpose and different: the retired one
-// was an unfiltered dump, and the Analysis tab is the findings browsable,
-// with a project picker, a level filter and a search. What this asserts now is that
-// reset did not conjure one open: it is opened from Tools, not by default.
-ok(await page.evaluate(() => !tabs.some(t => t.kind === 'findings')),
-   'the Analysis tab is opened from Tools, not open by default');
 
 // The favicon set: served by the allow-list, linked from the head. Sizes and
 // content types matter: a wrong type is a globe in the tab, silently.
@@ -1174,27 +928,23 @@ await page.evaluate(() => refresh());
 tmuxKill('claude-alpha');
 await page.evaluate(() => refresh());
 
-// ---- the runner card -------------------------------------------------------
-// A view of the NODES' runners and nothing else: this container ran a runner
-// of its own until CI moved to nodes (docs/nodes.md phase 7), and the card
-// used to lead with that one's moods. Drawn directly, because each state
-// needs a node to be in a particular one.
+// ---- every node's runner, on the CI runner page ----------------------------
+// A view of the NODES' runners: one row each above the chosen node's section
+// (the sidebar's Runner card's, until R218 step 3). Drawn directly, because
+// each state needs a node to be in a particular one.
 const runnerCard = rows => page.evaluate(x => {
   const keep = state.node_runners; state.node_runners = x;
-  drawRunner();
-  const out = { body: document.getElementById('runner').textContent,
-                pills: [...document.querySelectorAll('#runner .sub')].map(e => e.className) };
+  const box = document.createElement('div');
+  box.innerHTML = runnerRows();
   state.node_runners = keep;
-  return out;
+  return { body: box.textContent, pills: [...box.querySelectorAll('.sub')].map(e => e.className) };
 }, rows);
 
 let rc = await runnerCard([]);
-ok(/no runner on any node/.test(rc.body) && /CI runner tab adds one/.test(rc.body),
-   'with no runner anywhere the card says so, and where one is installed');
+ok(rc.body === '', 'with no runner anywhere there is no list: the node\'s own section says how to add one');
 rc = await runnerCard([{ node: 'bb-sandbox', live: true, installed: true,
   listening: true, busy: false, labels: ['bb-sandbox'] }]);
-ok(/bb-sandbox/.test(rc.body) && /listening, idle/.test(rc.body)
-   && /runs-on: \[self-hosted, bb-sandbox\]/.test(rc.body),
+ok(/bb-sandbox/.test(rc.body) && /listening, idle/.test(rc.body),
    'a listening node runner leads with the node\'s name, which is the label a workflow uses');
 rc = await runnerCard([{ node: 'bb-sandbox', live: false, installed: true,
   listening: true, busy: false, labels: [] }]);
@@ -1213,8 +963,6 @@ rc = await runnerCard([{ node: 'bb-sandbox-redhat', live: true, installed: false
   busy: false, labels: [], installing: true }]);
 ok(/installing/.test(rc.body) && !/not reported yet/.test(rc.body),
    '...and one being installed right now says that instead');
-ok(await page.$('#runner [data-m]') === null,
-   'the card carries no Start/Stop of its own: those are the Nodes tab\'s');
 await page.evaluate(() => refresh());
 
 // The padlock: a project the operator keeps and runs themselves. Its whole
@@ -1407,11 +1155,11 @@ await page.evaluate(() => setProjectPinned('ep.silon', true));
 await page.waitForFunction(() =>
   document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Unpin', { timeout: 8000 });
 
-// The docker manager opens from Tools. What it LISTS is asserted in
+// The docker manager is the Containers page. What it LISTS is asserted in
 // devapp.mjs, where a project actually has a compose file and an instance.
 // Here there are none, so the only honest assertion is that the tab opens and
 // shows the daemon's own containers.
-await page.click('#bDocker');
+await page.click('#rail [data-rail="containers"]');
 await page.waitForSelector('.dmtab', { timeout: 15000 });
 // Waited for, not read off the first draw: on an agent node the listing is
 // a probe job, so the rows can land a draw after the tab does.
@@ -1421,17 +1169,12 @@ await page.waitForFunction(() => [...document.querySelectorAll('.dmtab .row')]
 ok(await page.$$eval('.dmtab .row', rs =>
      rs.some(r => /someone-elses/.test(r.textContent) && r.classList.contains('off'))),
    'the manager shows a container this dashboard did not start, marked not ours');
-// Each button on the Tools card carries an icon, and the tab it opens wears
-// the same one: a button and its tab are one thing in two places.
-ok(await page.$$eval('[data-card="tools"] .macros button', bs =>
-     bs.length === 10 && bs.every(b => b.querySelector('svg'))),
-   'every Tools button carries an icon');
-// ...and its page on the rail (R218 step 2): the Containers item wears it.
-ok(await page.evaluate(() => {
-     const btn = document.getElementById('bDocker').querySelector('svg').outerHTML;
-     const item = document.querySelector('#rail [data-rail="containers"] svg')?.outerHTML;
-     return !!item && item === btn;
-   }), '...and the Containers page on the rail wears the Docker button\'s icon');
+// Every group on the rail carries an icon, and the Containers item wears the
+// Docker tab's own: a page and its tool are one thing in two places.
+ok(await page.evaluate(() => [...document.querySelectorAll('#rail [data-rail]')].every(b => b.querySelector('svg'))
+     && (() => { const d = document.createElement('div'); d.innerHTML = TOOL_ICONS.docker;
+                 return document.querySelector('#rail [data-rail="containers"] svg')?.outerHTML === d.firstElementChild.outerHTML; })()),
+   'every group on the rail carries an icon, Containers the Docker tab\'s');
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 
@@ -2001,10 +1744,8 @@ ok(refused.status === 409 && /locked/.test(refused.error),
 // 340px hangs past it, and the column grew a horizontal scrollbar with nothing
 // visibly in the way. Invisible until it is enough to move something, which is
 // why it went unnoticed until a tooltip got a longer sentence.
-ok(await page.evaluate(() => {
-     const s = document.querySelector('.col.side');
-     return s.scrollWidth <= s.clientWidth;
-   }), 'the sidebar fits its column, with no sideways scroll');
+ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+   'the page fits its width, with no sideways scroll');
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');
@@ -2150,18 +1891,16 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   // The control graduated from the gear to the Settings tab with everything
   // controller-scoped (docs/nodes.md §13); the gear keeps this browser's
   // items and the door.
-  await page.click('#bCards');
+  await page.evaluate(() => toggleUiMenu(true));
   await page.waitForSelector('#uiProfile');
   ok(await page.evaluate(() => !document.querySelector('#uiMenu #logApply')),
      'the gear holds appearance and a door, not the log policy');
-  // The door to the controller's settings is the Administration card's
-  // now; the gear's door is the account's own Profile tab.
+  // The door to the controller's settings is the Settings group on the
+  // rail; the gear's door is the account's own Profile tab.
   await page.click('#uiProfile');
   await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
   ok(true, "the gear's door opens the account's Profile tab");
-  await page.evaluate(() => { const c = document.getElementById('cardAdmin');
-    if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
-  await page.click('#bSettings');
+  await page.evaluate(() => railGo('settings', 'settings'));
   await page.waitForSelector('.settingstab #logApply');
   await page.fill('.settingstab #logDays', '3');
   await page.click('.settingstab #logApply');

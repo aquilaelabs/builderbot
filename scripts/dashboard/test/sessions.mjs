@@ -309,7 +309,6 @@ ok(page.dialogs.length === nd2 + 1, 'middle-click asks, then ends the session an
 const phone = await newPage(browser, { viewport: { width: 400, height: 800 } });
 await phone.goto(URL);
 await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'sespanel', { timeout: 30000 });
-await phone.evaluate(() => setView('terminal'));
 // Over a shell tab, opened here: Keys is on the bar over a shell tab and
 // nowhere else, and this page opens on the layout the desktop saved, which
 // has no tab left after the middle-click above (it passed while that save
@@ -345,9 +344,9 @@ ok(await page.$eval('#bAbout .alab', el => getComputedStyle(el).display === 'non
 // Sampling the baseline in an earlier round trip is what CI kept failing on,
 // four runs running, while an idle box passed: the panel assertion above it
 // passed in the same breath, so the panel was still absolute and cannot have
-// been what moved the terminal; the baseline was simply stale. The likeliest
-// mover is setView('terminal') just above, a 220ms slide that holds overflow-x
-// on <main> for its duration, and it was. One task keeps anything from
+// been what moved the terminal; the baseline was simply stale. The mover was
+// the phone's view switch, a 220ms slide that held overflow-x on <main> for
+// its duration (the switch went with R218 step 3). One task keeps anything from
 // landing BETWEEN the two reads and does nothing about a baseline taken while
 // that slide is still running; what had been holding THAT off was the round
 // trips of the assertion above, which is not a thing to depend on and stopped
@@ -386,14 +385,6 @@ ok(await phone.$eval('#macpanel', el => el.classList.contains('show')), 'Command
 ok(await phone.$eval('#commands', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
 // Claude on a project with a transcript opens the Resume/New chooser, which
 // must be visible on a phone (it once shared the hidden pin menu's class).
-// Both in one evaluate: setView animates the column synchronously, so asking
-// afterwards in a second round trip was asking whether the 220ms tween had
-// outlived the trip: true on an idle box, not on a loaded one.
-ok(await phone.evaluate(() => {
-     setView('dash');
-     return document.querySelector('.col.side').getAnimations().length > 0;
-   }),
-   'the view slides across the switch');
 // A Claude session runs on a NODE (R47), so the chooser is what the press
 // opens when one COULD start; a project with no node gets the reason under
 // the row instead, which is agent.mjs's. So alpha gets a node reporting a
@@ -516,7 +507,7 @@ await phone.waitForFunction(() => !document.querySelector('.resumemenu'));
 await phone.setViewportSize({ width: 400, height: 300 });
 // The card is on the Projects page now (R218 step 3), in the pane: shown,
 // then scrolled so its Claude button sits at the scroller's bottom edge.
-await phone.evaluate(() => { openProjectsTab(); setView('terminal'); });
+await phone.evaluate(() => { openProjectsTab(); });
 await phone.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-c]', { timeout: 15000 });
 await phone.evaluate(() => {
   const btn = document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]');
@@ -542,8 +533,8 @@ await phone.click('.resumemenu [data-n]');
 // New conversation turns the menu to the model and effort it starts on
 // (R197), and Start is what opens it.
 await phone.click('.resumemenu [data-start]');
-await phone.waitForFunction(() => tabs.some(t => t.arg === 'claude:alpha') && document.body.dataset.view === 'terminal');
-ok(true, 'phone: New conversation opens the Claude tab and switches to the terminal');
+await phone.waitForFunction(() => tabs.some(t => t.arg === 'claude:alpha') && tabOf(panes[1])?.arg === 'claude:alpha' && dockUp);
+ok(true, 'phone: New conversation opens the Claude tab in the dock, pulled up');
 // ...and alpha goes back to having no node, which is how every other file
 // here finds it.
 await bapi('/api/prefs', { project: 'alpha', node: '' });
@@ -640,16 +631,11 @@ await phone.click(`#pane1 .dtab[data-id="${last}"] [data-min]`);
 await phone.waitForFunction(id => !document.querySelector(`#pane1 .dtab[data-id="${id}"]`), last, { timeout: 5000 });
 ok(true, '...and a terminal minimized from it leaves the line');
 
-// The view a phone was on comes back after a reload.
-await phone.evaluate(() => setView('terminal'));
+// A reload keeps the terminals on the dock's line, under the page.
 await phone.reload();
-await phone.waitForFunction(() => document.body.dataset.view === 'terminal', { timeout: 20000 });
-ok(true, 'a phone reload lands back on the terminal view');
-// ...unless the URL says otherwise: ?view= is how something that can only
-// speak URLs (bb capture shot, a bookmark) asks for a side, and it beats the memory.
-await phone.goto(URL + '?view=dash');
-await phone.waitForFunction(() => document.body.dataset.view === 'dash', { timeout: 20000 });
-ok(true, '?view= overrides the remembered side');
+await phone.waitForFunction(() => typeof state !== 'undefined' && state
+  && document.querySelectorAll('#pane1 .dtab[data-id]').length > 0 && !!tabOf(panes[0]), { timeout: 20000 });
+ok(true, 'a phone reload comes back with a page and the dock\'s terminals');
 ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ': ' + phone.errors.join(' | ') : ''}`);
 await closePage(phone);
 
@@ -661,7 +647,7 @@ await land.waitForFunction(() => state !== null, { timeout: 30000 });
 // A terminal in front first: Commands opens only over a shell, and since
 // R131 a fresh browser starts on the front tab as of the strip's last
 // change, which may be a document (B494).
-await land.evaluate(() => { setView('terminal'); const t = tabs.find(x => x.kind === 'term'); if (t) focusTab(t.id); mobPanel('macros'); });
+await land.evaluate(() => { const t = tabs.find(x => x.kind === 'term'); if (t) focusTab(t.id); mobPanel('macros'); });
 await land.waitForFunction(() => document.getElementById('macpanel').classList.contains('show') && !document.getElementById('macpanel').classList.contains('sliding'));
 const fit = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
 ok(fit.bar <= 390 && fit.panes >= 90, `landscape: the bar stays on screen with a flyout open (bar bottom ${Math.round(fit.bar)}px, terminal ${fit.panes}px)`);

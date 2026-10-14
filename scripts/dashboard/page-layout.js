@@ -25,7 +25,7 @@ function render(){ shellBoot(); if (state) dockSettle(); drawPanes(); drawKeys()
                    // tab's panel, and the loading line has been replaced.
                    if (state) document.body.classList.remove("booting");
                    if (state){ drawCard("sessions", () => drawSessions(state.sessions));
-                               drawCard("runner", drawRunner); drawCard("linux", drawLinux);
+                               drawCard("linux", drawLinux);
                                drawCard("commands", drawCommands); drawCard("git", drawGit);
                                drawCard("custom", drawCustom); } }
 
@@ -35,8 +35,7 @@ function render(){ shellBoot(); if (state) dockSettle(); drawPanes(); drawKeys()
 // open. `myRev` is the revision this client last wrote or adopted; a status
 // poll carrying a different one means another browser changed something.
 // Which tab is in front, and which tab each pane holds, are this browser's
-// own, kept in localStorage the way a phone's folded cards are
-// (bb.phoneOpen): the server's copy is taken only by a browser that has
+// own, kept in localStorage: the server's copy is taken only by a browser that has
 // none yet, and a switch writes nothing to the server (R131).
 let myRev = -1, savePending = false, saveTimer = null, adopting = false;
 const PANES_KEY = "bb.panes";

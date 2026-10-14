@@ -326,6 +326,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Rows that open on the notebook: a roadmap line opens to its workings with Shelve, Reword and Drop; a finding's rule opens to its places and message; the Roadmap's Save and Revert appear only with something staged (f703de8)
 - The Roadmap's head row says when a session last read it; the Tests view's output button comes with the first run; a project's People section is facts and one notice; the New project dialog no longer asks the Claude may dials (f703de8)
 - The dock: terminals and the chat at the foot of every page, one line when shut and half the screen pulled up (a drag on its line sets the height), a sheet over the page on a phone; the tab strip and the split are gone (ad180a6)
+- The sidebar is gone: bb doctor's verdict is a dot after the bell that opens its checks, every tool is a page on the rail, the CI runner page lists every node's runner, and a phone has one page area with the dock at its foot instead of a Dashboard and a Terminal side (0d489e6)
 
 ### Removed
 

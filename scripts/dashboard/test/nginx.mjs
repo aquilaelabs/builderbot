@@ -25,9 +25,9 @@ const base = URL.replace(/\/$/, '');
 const api = async (path, body) => (await fetch(base + path, body === undefined
   ? { headers: H } : { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
 
-// The button, on the Tools card for an account that reads the Nodes tab.
-ok(await page.$eval('#bNginx', b => !b.hidden && /nginx/.test(b.textContent)), 'the Tools card offers nginx');
-await page.click('#bNginx');
+// Under Machines on the rail, for an account that reads the Nodes tab.
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'machines' && g.tools.some(([k]) => k === 'nginx')) && railAllows('nginx')), 'the rail offers nginx under Machines');
+await page.evaluate(() => openNginxTab());
 await page.waitForSelector('.nginxtab [data-ngnode]', { timeout: 15000 });
 const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name === 'sandbox'));
 ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !Object.keys(sandbox.certs || {}).length,

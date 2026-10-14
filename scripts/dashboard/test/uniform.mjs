@@ -1152,7 +1152,6 @@ await page.setViewportSize({ width: 393, height: 851 });
   ok(menuAnim === 'menuIn', `a card's menu comes in with a tween on a phone (${menuAnim})`);
   await page.keyboard.press('Escape');
 }
-await page.evaluate(() => setView('terminal'));
 await sleep(400);
 // The same width rule at phone width, on every tab: the cap is min(--ctl-w,
 // 88%), and 88% is what bites here.
@@ -1229,10 +1228,6 @@ for (const kind of kinds){
   const lists = await page.evaluate(async () => {
     const out = {};
     out.themes = THEMES.map(t => t[1]);
-    out.tools = [...document.querySelectorAll('.card[data-card="tools"] .macros button')]
-      .map(b => b.textContent.trim());
-    out.admin = [...document.querySelectorAll('.card[data-card="admin"] .macros button')]
-      .map(b => b.textContent.trim());
     // Both catalogs ride along with something else rather than costing a
     // fetch of their own: the forge list with the deploy keys the same dialog
     // wants, the hypervisors with the template the VM dialog renders.
@@ -1252,8 +1247,6 @@ for (const kind of kinds){
   ok(lists.themes.length > 3 && lists.themes[0] === 'Default'
      && sorted(lists.themes, { head: 1 }),
      `the color schemes are alphabetical after Default (${lists.themes.join(', ')})`);
-  ok(sorted(lists.tools) && sorted(lists.admin),
-     `the Tools and Administration cards are alphabetical (${lists.tools.join(', ')})`);
   if (lists.forges.length)
     ok(sorted(lists.forges, { tail: 1 })
        && lists.forges[lists.forges.length - 1] === 'Another git host',
@@ -1682,7 +1675,7 @@ for (const [name, open] of Object.entries(DIALOGS)) {
 {
   const phone = await newPage(browser, { viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true });
   await phone.goto(URL); await ready(phone);
-  await phone.evaluate(() => { openNotebook('alpha', 'roadmap'); setView('terminal'); });
+  await phone.evaluate(() => { openNotebook('alpha', 'roadmap'); });
   await phone.waitForSelector('.nb .nbview:not([hidden])', { timeout: 20000 });
   await sleep(600);
   const small = await phone.evaluate(() => [...document.querySelectorAll(

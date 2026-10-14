@@ -3696,7 +3696,6 @@ def snapshot(who):
         # The command cards: the bb commands, the Linux and git/GitHub cards,
         # the pins and the operator's own lists.
         **macros.cards(),
-        "cards": layout.load_cards(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small
         # and every client is already asking for that every 15s. THIS
@@ -3884,7 +3883,6 @@ POST_ROUTES = (
     ("exact", "/api/nginx", "_nginx"),
     ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
-    ("prefix", "/api/cards", "_cards"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
     ("prefix", "/api/create", "_create"),
@@ -7434,10 +7432,6 @@ class Handler(BaseHTTPRequestHandler):
         if not doctor.refresh():
             return self._json({"error": "doctor is already running"}, 409)
         return self._json(doctor.payload())
-
-    def _cards(self, req):
-        """Store the sidebar card arrangement: layout.save_card_order."""
-        return self._json(*layout.save_card_order(req))
 
     def _pin(self, req):
         """Pin or unpin a command: macros.pin."""

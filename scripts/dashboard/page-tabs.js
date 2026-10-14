@@ -116,67 +116,6 @@ const dur = s =>
   s < 3600 ? `${Math.floor(s/60)}m ${s%60}s` :
              `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;
 
-function setView(v){
-  const prev = document.body.dataset.view;
-  document.body.dataset.view = v;
-  $("vDash").classList.toggle("on", v === "dash");
-  $("vTerm").classList.toggle("on", v === "terminal");
-  // Per device, not on the server: which side of the switch a phone was
-  // looking at is about that phone, and a reload (or a tab the browser
-  // evicted overnight) should come back to the same side.
-  // Stamped with the run of the container it was chosen under. A reload comes
-  // back to the same side (that is the point of remembering it), but a
-  // container that has been REPLACED is a different situation: whatever was
-  // on the terminal side ended with it, so coming back there lands on tabs
-  // for sessions that are gone.
-  try{
-    localStorage.setItem("bb.view", v);
-    if (state?.boot) localStorage.setItem("bb.view.boot", state.boot);
-  }catch(e){ /* private mode */ }
-  // The switch reads left-to-right (Dashboard | Terminal), so the incoming
-  // view slides in from its own side. The outgoing one is display:none the
-  // moment the attribute flips (only the entrance can be animated) and
-  // main clips the overshoot so the page never grows a horizontal scrollbar.
-  if (prev && prev !== v && isPhone() && !noMotion()){
-    const col = document.querySelector(v === "dash" ? ".col.side" : ".col.term");
-    const main = document.querySelector("main");
-    main.style.overflowX = "hidden";
-    col.animate([{transform: `translateX(${v === "terminal" ? "" : "-"}100%)`},
-                 {transform: "none"}],
-                {duration: 220, easing: "ease"})
-       .onfinish = () => main.style.overflowX = "";
-  }
-  // The strip was display:none while the dashboard was in front, so nothing
-  // drawn then could scroll it: bring the tab just opened into view now,
-  // and re-judge the arrows, which measured a zero-width strip until now.
-
-}
-
-// Back to the Dashboard when the container this page remembers a side from is
-// not the one answering any more. Checked on the first status as well as on a
-// live restart: a page opened fresh after the container came back has no
-// memory of the previous boot to compare against, only what it stored.
-function viewAfterRestart(){
-  if (!isPhone() || !state?.boot) return;
-  let was = null;
-  try{ was = localStorage.getItem("bb.view.boot"); }catch(e){ return; }
-  if (was === state.boot) return;
-  // No stamp at all is not a restart; it is a browser that has never been
-  // here, or one upgrading from before this existed. Adopt the boot and leave
-  // the side alone: yanking somebody to the Dashboard once, on the strength
-  // of a value that was simply absent, is a worse bug than the one this fixes.
-  if (!was){
-    try{ localStorage.setItem("bb.view.boot", state.boot); }catch(e){ /* private */ }
-    return;
-  }
-  try{ localStorage.setItem("bb.view.boot", state.boot); }catch(e){ /* private */ }
-  // A view asked for in the URL outranks this, the same as it outranks the
-  // remembered side: something that can only speak URLs is making a request.
-  const qv = new URLSearchParams(location.search).get("view");
-  if (qv === "terminal" || qv === "dash") return;
-  if (document.body.dataset.view !== "dash") setView("dash");
-}
-
 // ---- tabs ------------------------------------------------------------
 
 // What makes two tabs the same tab. For a terminal it is the tmux session,
@@ -250,11 +189,6 @@ const TOOL_ICONS = {
   findings: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <circle cx="6.8" cy="6.8" r="4"/><path d="M9.8 9.8 13.4 13.4"/></svg>`,
 };
-// Which button on the Tools card opens which kind, so the card can be
-// stamped with the icons once at load and the tab strip can look them up.
-const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bEmulator: "emulator", bJobs: "jobs",
-                      bNodes: "nodes", bFindings: "findings", bPhone: "phone", bRunner: "runner", bNginx: "nginx",
-                      bStorage: "storage"};
 
 const TABKINDS = {
   term:     { multi: true },
@@ -546,7 +480,6 @@ function focusTab(id){
 // Common tail of "make this tab the one being looked at".
 function show(t){
   render();
-  if (isPhone()) setView("terminal");
   // Once. The render above ran the kind's open hook already when this tab
   // was not the one its pane showed, and running it here as well opened
   // every tab twice: two node listings, two phone probes, and with the

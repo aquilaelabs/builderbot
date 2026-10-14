@@ -69,7 +69,6 @@ ok(!bare.served.some(k => k.includes(':')),
 // The per-project half, which only a notebook watches, and the state in
 // which every token has somebody watching it, since three of the global ones
 // (the reports, the findings log, the version policy) are a notebook's too.
-await page.evaluate(() => setView('terminal'));
 await page.evaluate(() => openNotebook('alpha', 'roadmap'));
 // Not the list itself: the fixture's alpha has an empty roadmap, and the
 // field around the list is hidden until there is something in it.

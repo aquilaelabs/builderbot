@@ -275,19 +275,28 @@ scanner drops in `/reports`, every `bb` command as a button that types into the
 terminal you are looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
 
-The Projects card is the list of folders in the projects share, and it says
-what is wrong with each one rather than hiding it. Errors fold away behind a
-button: no git repository, or ownership the container cannot work with, in red.
-Warnings stay in the list in amber, because they are asking for something: no
-`CLAUDE.md`, as an underlined link that writes one in place. A row with an error carries
-no Claude button, since a session cannot start there; a *locked* one keeps its
+Every tool is a page on the rail down the left edge, in groups: Home,
+Projects (with Analysis), Containers (the Docker manager), Machines (Nodes,
+Storage, nginx), Build (Toolchains, Emulator, Phone, CI runner), Jobs,
+Sessions, People (Users, Roles) and Settings (Controller settings, Profile).
+A page your account's grants forbid is not drawn. On a phone the rail is a
+bar of five across the foot (Home, Projects, Containers, Jobs, More), and
+every page is the one page area, with the terminals and the chat in the dock
+at its foot. `bb doctor`'s verdict is the colored dot after the bell in the
+top bar; pressing it lists the checks and offers a ↻ that runs it now.
+
+The Projects page is a card for each project in the projects share, and it
+says what is wrong with each one rather than hiding it: an error in red (no
+git repository, or ownership the container cannot work with), a warning in
+amber, because it is asking for something. A card with an error carries no
+Claude button, since a session cannot start there; a *locked* one keeps its
 button, ghosted, and a closed padlock after the name.
 A directory with a `.bbignore` file in it is not treated as a project: the
 container marks its own paths that way (the toolchain store, if you put it inside
 the projects share), and you can drop the same file into
-anything you would rather the card ignored.
+anything you would rather the page ignored.
 
-**New project…** at the foot of the card creates one: a fresh local repo built
+**New project** in the page's bar creates one: a fresh local repo built
 from the name and description you give it, or a clone of a GitHub repository
 a deploy key or token can already reach, which needs only the URL:
 the name comes from the repository and the `CLAUDE.md` is drafted from its own
@@ -298,11 +307,12 @@ the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.
 Right-click gives you the browser's menu only: tmux's would be drawn
 underneath it, and Alt+right-click still opens tmux's if you want it.
 
-The `bb` commands card sits between two more: **Linux commands** (disk,
-memory, processes, ports: live on any shell) above it, and **Git & GitHub**
-below, which grays out when the active shell's directory is not a git
-repository, and grays just its `gh` half when the repo has no GitHub remote.
-Last comes a card for your own: **+** takes a title and a list of command
+**Commands**, under the terminal in the dock, opens the `bb` commands between
+two more lists: **Linux commands** (disk, memory, processes, ports: live on
+any shell) above them, and **Git & GitHub** below, which grays out when the
+active shell's directory is not a git repository, and grays just its `gh`
+half when the repo has no GitHub remote. Last comes a list of your own:
+**+** takes a title and a list of command
 lines, and the button it makes types them into the terminal in order. They
 are kept in `/config`, so they survive updates.
 
@@ -316,10 +326,8 @@ the page above it.
 
 A tab's **`&mdash;`** minimizes it: the terminal or Claude session keeps running and is
 listed under Sessions, where clicking the name brings its tab back. Ending a
-session for good is the ✕ in the Sessions card (or a middle-click on its tab),
-and that is the only thing that asks. The sidebar cards collapse on a click of
-their header and can be dragged into any order; the ▤ button in the top bar
-resets them.
+session for good is the ✕ in the Sessions list (Sessions on the rail, or a
+middle-click on its tab), and that is the only thing that asks.
 
 Which terminals are open is stored on the container rather than in the
 browser, so a phone shows what the desktop has open. **Terminals survive a restart of the container**:

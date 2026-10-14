@@ -3356,7 +3356,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
   {
     await page.evaluate(() => { const c = document.getElementById('cardTools');
       if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
-    await page.click('#bNodes');
+    await page.evaluate(() => openNodesTab());
     // The tab shows one node, chosen in the bar, so pick this one before
     // looking for its row.
     await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });

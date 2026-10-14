@@ -232,7 +232,7 @@ print(json.dumps(out))
 {
   await page.evaluate(() => { const c = document.getElementById('cardTools');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
-  await page.click('#bNodes');
+  await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
   ok((await nodeOptions(page)).length === 1,
      'the Nodes tab lists the enrolled machines, and not this container');
@@ -524,11 +524,9 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.evaluate(() => !document.querySelector('#uiMenu #logDays')),
      'the gear keeps appearance only: the log setting moved out');
   await page.evaluate(() => toggleUiMenu(false));
-  await page.evaluate(() => { const c = document.getElementById('cardAdmin');
-    if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
-  await page.click('#bSettings');
+  await page.evaluate(() => openSettingsTab());
   await page.waitForSelector('.settingstab .logdays #logDays', { timeout: 15000 });
-  ok(true, 'Controller settings on the Administration card opens the Settings tab, with the log policy on it');
+  ok(true, 'the Settings group opens the controller\'s settings, with the log policy on it');
   ok(await page.$eval('.settingstab', e => !/template|environment|DOCKER_HOST/.test(e.textContent)),
      '...which describes what is on it and nothing about what lives elsewhere');
   // The idle rule for Claude sessions (idle.py): a controller setting the
@@ -848,9 +846,9 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
        '...and a section folds with the same tween as every other fold here');
     await openFold(page, sel);          // put it back for what reads inside it
   }
-  // The sidebar's Runner card carries every node with a runner, not only
-  // this container's: a workflow lands on whichever runner its runs-on
-  // matches, and GitHub was the only place that answer existed.
+  // The CI runner page lists every node with a runner, not only one: a
+  // workflow lands on whichever runner its runs-on matches, and GitHub was
+  // the only place that answer existed.
   await runnerCensus({ runners: [{ slot: GH, installed: true, active: true, busy: false,
                                    name: 'shed', url: 'https://github.com/example-org',
                                    labels: ['builderbot', 'shed'] }] });
@@ -859,14 +857,14 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // while the fifteen-second poll is out returns at once and re-polls after
   // it, so the first draw here can be from an answer computed before this
   // hello. Wait for the state the assertion is about (B73).
-  await page.evaluate(() => refresh());
+  await page.evaluate(() => { refresh(); openRunnerTab(); });
   await page.waitForFunction(() => {
-    const t = document.getElementById('runner')?.textContent || '';
-    return /listening, idle/.test(t) && /runs-on: \[self-hosted, shed\]/.test(t);
+    const t = document.querySelector('.doc.on .runnersall')?.textContent || '';
+    return /shed/.test(t) && /listening, idle/.test(t);
   }, null, { timeout: 15000 });
-  ok(await page.$eval('#runner', e => /listening, idle/.test(e.textContent)
-       && /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
-     'the Runner card carries a node runner, with the runs-on that lands a job on it');
+  ok(true, 'the CI runner page lists a node\'s runner and says it is listening, idle');
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector(`${ROW}`, { state: 'visible', timeout: 15000 });
   await runnerCensus({});
   // A node with mounts and no saved config opens on the ones it reports.
   // An empty editor for a machine with three shares was the first thing the
@@ -1425,7 +1423,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   // The fold is held to the document rules the same as any tab surface
   // (uniform.mjs cannot see it: that suite has no sandbox node to open one
   // on): every control wears the field skin, and at phone width nothing
-  // scrolls sideways and every text control is 16px.
+  // scrolls sideways and no text control is smaller than the field type
+  // (--f-field). Measured with the page on show: on a phone it once sat in a
+  // hidden view, every control measured nothing, and this passed vacuously.
   const skin = await page.evaluate(sel => {
     const ref = document.getElementById('mName');
     const key = el => { const c = getComputedStyle(el);
@@ -1436,13 +1436,16 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   ok(skin.length >= 8 && skin.every(Boolean), `every control in the fold wears the field skin (${skin.length} checked)`);
   await page.setViewportSize({ width: 393, height: 851 });
   await sleep(300);
-  const phone = await page.evaluate(sel => ({
-    over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    small: [...document.querySelectorAll(sel + ' .ndconf input:not([type=checkbox]), ' + sel + ' .ndconf select')]
-      .filter(e => e.offsetHeight > 0 && parseFloat(getComputedStyle(e).fontSize) < 16).length,
-  }), ROW);
-  ok(phone.over <= 0 && phone.small === 0,
-     `...and at phone width it does not scroll sideways (${phone.over}px) and its controls are 16px (${phone.small} small)`);
+  const phone = await page.evaluate(sel => {
+    const probe = document.createElement('i'); probe.style.font = 'var(--f-field)'; document.body.append(probe);
+    const field = parseFloat(getComputedStyle(probe).fontSize); probe.remove();
+    const ctl = [...document.querySelectorAll(sel + ' .ndconf input:not([type=checkbox]), ' + sel + ' .ndconf select')]
+      .filter(e => e.offsetHeight > 0);
+    return { over: document.documentElement.scrollWidth - document.documentElement.clientWidth, field, seen: ctl.length,
+             small: ctl.filter(e => parseFloat(getComputedStyle(e).fontSize) < field).length };
+  }, ROW);
+  ok(phone.over <= 0 && phone.seen >= 8 && phone.small === 0,
+     `...and at phone width it does not scroll sideways (${phone.over}px) and its ${phone.seen} controls are the field type, ${phone.field}px (${phone.small} smaller)`);
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // ---- toolchains on the node, from the Tools tab (phase 6) ---------------
@@ -1722,13 +1725,8 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) });
     const emuApi = async () => (await fetch(base + '/api/emulator?node=' + minted.id, { headers: H })).json();
-    // The Tools card ghosts the button until some node has sdkmanager and
-    // the emulator, and says why in the line under its buttons.
     await page.evaluate(() => refresh());
-    await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === true,
-                               null, { timeout: 15000 });
-    ok(await page.$eval('#toolsWhy', w => !w.hidden && /^Emulator: .*command-line tools and the emulator/.test(w.textContent)),
-       '...and says so on the card too, in a line a phone can read (R119 step 6)');
+    await page.waitForFunction(() => state?.emulator?.ready === false, null, { timeout: 15000 });
     // No sdkmanager here yet: the tab says what is missing, and the server
     // refuses an add rather than letting it die inside the job.
     const bare = await emuApi();
@@ -1743,9 +1741,8 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
                       store_dirs: { top: ['flutter', 'node'], android: ['cmdline-tools', 'platform-tools', 'emulator'] } };
     await hello(ANDROID);
     await page.evaluate(() => refresh());
-    await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === false,
-                               null, { timeout: 15000 });
-    ok(await page.$eval('#toolsWhy', w => w.hidden), '...and live once one has, the line gone');
+    await page.waitForFunction(() => state?.emulator?.ready === true, null, { timeout: 15000 });
+    ok(true, '...and the controller says the emulator is ready once a node has them');
 
     await page.evaluate(id => { emuNode = id; openEmulator(); }, minted.id);
     // The rows both wait on Google's index (the size is joined from it),
@@ -2796,9 +2793,6 @@ await page.click('#ndBody #vmCancel');
   page.errors = [];
 }
 
-// ---- the seam stays invisible on the sidebar --------------------------------
-ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
-   'still no nodes card: nodes are a tab, not sidebar chrome');
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 // ---- Uninstall from the row --------------------------------------------------

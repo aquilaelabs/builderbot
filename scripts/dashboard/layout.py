@@ -35,64 +35,9 @@ lock = None
 # Each account's strip, and the boot it was pruned under (prune_claude_tabs).
 TABS_FILE = None             # <state>/tabs.json, set by configure()
 
-# How the sidebar is arranged: card order and which cards are collapsed, by
-# the data-card keys the page uses. Validated against this list both ways, so
-# the stored file can never hold a card the page would not know how to place.
-CARDS_FILE = None            # <state>/cards.json, set by configure()
-# Doctor first: this order is the default an unwritten (or reset) sidebar
-# gets, and the verdict on the whole box outranks any one card below it.
-#
-# The command lists and Sessions are NOT here: they live under the terminal,
-# in its bar, because they are about the shell in front of you rather than
-# about the box, and seven cards is a sidebar you can read where twelve was a
-# list you scrolled past. Their
-# keys dropping out of this list is also the migration: load_layout filters an
-# existing cards.json against it, so a file still naming them is cleaned on
-# the next read rather than needing anything done to it.
-# Tools between Doctor and Runner: the reach-for-it card next to the
-# health line, ahead of the two that are read rather than pressed.
-# Projects first since 4 Oct (R119): they are what a person comes for, and
-# fifth they were under the fold on a laptop.
-CARD_KEYS = ["projects", "doctor", "tools", "admin", "runner"]
-# The default before that. A stored order that is exactly it was never
-# arranged by anybody, only written by a fold or a reset, so it reads as the
-# new default rather than holding every existing sidebar where it was.
-_OLD_DEFAULT = ["doctor", "tools", "admin", "runner", "projects"]
-
-
 def configure(*, state, write_json, lock):
-    globals().update(write_json=write_json, lock=lock,
-                     TABS_FILE=Path(state) / "tabs.json", CARDS_FILE=Path(state) / "cards.json")
+    globals().update(write_json=write_json, lock=lock, TABS_FILE=Path(state) / "tabs.json")
 
-
-def load_cards():
-    try:
-        v = json.loads(CARDS_FILE.read_text())
-    except (OSError, ValueError):
-        v = {}
-    if not isinstance(v, dict):         # a hand-edited file is not fatal
-        v = {}
-    # Filter before deduping: membership tolerates any junk a hand-edited file
-    # can hold, where hashing it for dict.fromkeys would not.
-    order = v.get("order") if isinstance(v.get("order"), list) else []
-    order = list(dict.fromkeys(k for k in order if k in CARD_KEYS))
-    if order == _OLD_DEFAULT:
-        order = list(CARD_KEYS)
-    # A card this image knows about that the stored file predates still has to
-    # land somewhere, and "its default position" means exactly that: inserted
-    # where CARD_KEYS puts it, not appended. Appending is how a new card
-    # arrived at the bottom of an existing sidebar and looked misplaced until
-    # somebody hit reset.
-    for i, k in enumerate(CARD_KEYS):
-        if k not in order:
-            order.insert(min(i, len(order)), k)
-    closed = v.get("closed") if isinstance(v.get("closed"), list) else []
-    closed = list(dict.fromkeys(k for k in closed if k in CARD_KEYS))
-    return {"order": order, "closed": closed}
-
-
-def save_cards(v):
-    write_json(CARDS_FILE, v)
 
 # What a stored tab may contain. Anything else is dropped rather than trusted:
 # this file is written by one browser and handed to every other one, so it is
@@ -272,18 +217,3 @@ def save_tabs(uid, req):
         # see, including anything the validator dropped.
         return load_layout(uid), 200
 
-
-def save_card_order(req):
-    """Store the sidebar card arrangement. Last write wins, like the pins:
-    this only changes on an explicit gesture, so two browsers cannot fight
-    over it the way their fifteen-second layout saves would. (payload,
-    status)."""
-    if not isinstance(req.get("order"), list) or not isinstance(req.get("closed"), list):
-        return {"error": "bad request"}, 400
-    v = {"order": [k for k in req["order"] if k in CARD_KEYS],
-         "closed": [k for k in req["closed"] if k in CARD_KEYS]}
-    try:
-        save_cards(v)
-    except OSError as e:
-        return {"error": f"could not save: {e}"}, 500
-    return {"cards": load_cards()}, 200

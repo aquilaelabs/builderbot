@@ -31,8 +31,8 @@ const en = await (await fetch(base + '/api/v1/agent/enroll', { method: 'POST',
                          version: shipped.version, digest: shipped.digest, user: 'bb' }) })).json();
 ok(en.ok, `a node enrolled with a walk of its disks in its census (${en.error || 'ok'})`);
 
-ok(await page.$eval('#bStorage', b => !b.hidden && /Storage/.test(b.textContent)), 'the Tools card offers Storage');
-await page.click('#bStorage');
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'machines' && g.tools.some(([k]) => k === 'storage')) && railAllows('storage')), 'the rail offers Storage under Machines');
+await page.evaluate(() => openStorageTab());
 await page.waitForSelector('.storagetab [data-stnode]', { timeout: 15000 });
 const row = await page.evaluate(() => (storageList || []).find(n => n.name === 'diskbox'));
 ok(row && row.measured && row.projects.map(p => p.name).join() === 'alpha,beta' && row.projects[0].total === 6400 && !row.other,

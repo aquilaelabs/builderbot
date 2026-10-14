@@ -163,7 +163,6 @@ ok(part('rules').share === 16384 && part('roadmap').share === undefined,
 // The whole point. A section that renders its own join would be a section that
 // quietly stops describing what sessions get, which is the failure this module
 // exists to make impossible.
-await page.evaluate(() => setView('terminal'));
 await page.evaluate(() => openNotebook('alpha', 'briefing'));
 await page.waitForSelector('.nb [data-view="briefing"]:not([hidden])', { timeout: 20000 });
 // Attached, not visible: the section is shut by default, which is the point

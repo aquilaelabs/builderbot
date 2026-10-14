@@ -39,12 +39,12 @@ await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 
 await page.evaluate(() => openPhoneTab());
 await page.waitForSelector('.phonetab .row', { timeout: 20000 });
-// A phone is a tool of its own again (R121, the operator 4 Oct): a Tools
-// button and a tab with a Node picker of the nodes that carry adb; the Nodes
+// A phone is a tool of its own again (R121, the operator 4 Oct): a page
+// under Build with a Node picker of the nodes that carry adb; the Nodes
 // tab, a machine's configuration, only points at it.
-ok(await page.$('#bPhone') !== null && await page.evaluate(() => tabs.some(t => t.kind === 'phone'))
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'phone')) && railAllows('phone')) && await page.evaluate(() => tabs.some(t => t.kind === 'phone'))
    && await page.$eval('.doc.on #phPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
-   'the Tools card opens a Phone tab, its Node picker listing the node that carries adb');
+   'the rail opens a Phone page, its Node picker listing the node that carries adb');
 ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
    '...and the Nodes tab carries no Phone section of its own');
 

@@ -1,55 +1,17 @@
-// Real touch through Chromium's gesture recognizer: a quick swipe on a card
-// header or tab label scrolls, a half-second hold then move drags, and never
-// the other way round.
+// Real touch through Chromium's gesture recognizer: the dock's line under a
+// finger, and pull to refresh.
 import { launch, newPage, ok, done, finger, sleep, URL } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 400, height: 700 }, hasTouch: true, isMobile: true });
 await page.goto(URL);
-await page.waitForFunction(() => document.querySelectorAll('.side .card[data-card]').length > 0, { timeout: 40000 });
-const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.dataset.card));
-const side = () => page.$eval('.col.side', el => el.scrollTop);
-
-// A swipe can only be told from a drag on a sidebar that SCROLLS, and how
-// tall this one is was an accident of the fixture until it stopped being tall
-// enough: the projects each carried an issue line ("no environment block")
-// that went with the block itself (R63 step 3), and this assertion silently
-// became a measurement of nothing. So the overflow is made here and asserted,
-// rather than hoped for.
-await page.evaluate(() => {
-  const spacer = document.createElement('div');
-  spacer.id = 'touch-spacer';
-  spacer.style.minHeight = '900px';
-  spacer.style.flex = '0 0 900px';
-  document.querySelector('.col.side').append(spacer);
-});
-ok(await page.$eval('.col.side', el => el.scrollHeight > el.clientHeight + 200),
-   'the sidebar is taller than its column, which is what makes a swipe a scroll');
-
-const o0 = await order();
-let hb = await (await page.$('.card[data-card="doctor"] h2')).boundingBox();
-await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, hb.y - 250, 0);
-ok((await side()) > 20, `quick swipe on a header scrolls the sidebar (${await side()}px)`);
-ok(JSON.stringify(await order()) === JSON.stringify(o0), '...and does not drag');
-
-await page.evaluate(() => {
-  document.getElementById('touch-spacer')?.remove();
-  document.querySelector('.col.side').scrollTop = 0;
-}); await sleep(100);
-hb = await (await page.$('.card[data-card="doctor"] h2')).boundingBox();
-const top = await (await page.$('.side .card[data-card]')).boundingBox();
-await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, top.y + 2, 650);
-ok((await order())[0] === 'doctor', `hold then move drags the card (${(await order()).join(',')})`);
-ok((await side()) === 0, '...without scrolling');
+await page.waitForFunction(() => typeof state !== 'undefined' && state && !document.body.classList.contains('booting'), null, { timeout: 40000 });
 
 // On a phone the terminals are the dock's (R218 step 4): a tap on one on
 // its line brings the sheet up with it, the whole height above the bottom
 // bar; the chevron puts it down; a page opened puts it down too.
-await page.evaluate(() => { for (let i = 0; i < 2; i++) newShell(''); setView('terminal'); dockToggle(false); });
+await page.evaluate(() => { for (let i = 0; i < 2; i++) newShell(''); dockToggle(false); });
 await page.waitForFunction(() => document.querySelectorAll('#pane1 .dtab[data-id]').length >= 2);
-// Measured at rest: the view switch slides the column in, and a box read
-// mid-slide aims the tap at nothing.
-await page.waitForFunction(() => document.querySelector('.col.term').getAnimations().length === 0);
 await page.waitForTimeout(300);
 const want = await page.evaluate(() => tabs.filter(t => t.kind === 'term')[1].id);
 const rb = await (await page.$(`#pane1 .dtab[data-id="${want}"] .dlbl`)).boundingBox();
@@ -67,31 +29,6 @@ await page.waitForFunction(() => !dockUp, null, { timeout: 5000 });
 ok(true, '...and a page opened on a phone puts the sheet down');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
-// A phone comes back to the side it left, but not across a container
-// restart. Whatever was on the terminal side ended with the container, so
-// landing there shows tabs for sessions that are gone. The boot the side was
-// chosen under is stored beside it, and a different one sends it back to the
-// Dashboard once.
-await page.evaluate(() => setView('terminal'));
-ok(await page.evaluate(() => document.body.dataset.view) === 'terminal',
-   'the terminal side can be chosen');
-ok(await page.evaluate(() => localStorage.getItem('bb.view.boot')) !== null,
-   '...and is remembered against the run of the container it was chosen under');
-// An absent stamp is a browser that has never been here, not a restart.
-await page.evaluate(() => localStorage.removeItem('bb.view.boot'));
-await page.evaluate(() => viewAfterRestart());
-ok(await page.evaluate(() => document.body.dataset.view) === 'terminal',
-   '...and no stamp at all leaves the side alone, rather than reading as a restart');
-// A reload of the SAME boot keeps it.
-await page.evaluate(() => viewAfterRestart());
-ok(await page.evaluate(() => document.body.dataset.view) === 'terminal',
-   '...which a plain reload leaves alone');
-// A different boot does not.
-await page.evaluate(() => { localStorage.setItem('bb.view.boot', 'someolderboot'); });
-await page.evaluate(() => viewAfterRestart());
-ok(await page.evaluate(() => document.body.dataset.view) === 'dash',
-   '...while a container that came back since puts it on the Dashboard');
-
 // ---- pull to refresh (page-pull.js) ---------------------------------------
 // The page scrolls inside its panes, so a phone browser's own pull never
 // fires; the page's does: a drag down from the top re-reads the dashboard,

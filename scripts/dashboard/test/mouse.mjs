@@ -56,12 +56,10 @@ ok(!await page.$('#bKeys')
 // A poll that changes nothing rebuilds nothing: the same elements stay put
 // (so :hover survives), and a mid-action edit to one is not wiped.
 await page.evaluate(async () => { await refresh(); await refresh(); });   // let the just-opened shells register
-await page.evaluate(() => { document.querySelector('.side .card[data-card="doctor"]').dataset.mark = 'kept';
-                            document.querySelector('#pane1 .dtab[data-id]').dataset.mark = 'kept'; });
+await page.evaluate(() => { document.querySelector('#pane1 .dtab[data-id]').dataset.mark = 'kept'; });
 await page.evaluate(() => refresh());
-ok(await page.$eval('.side .card[data-card="doctor"]', el => el.dataset.mark === 'kept')
-   && await page.$eval('#pane1 .dtab[data-id]', el => el.dataset.mark === 'kept'),
-   'an unchanged poll leaves the cards and the dock\'s line alone');
+ok(await page.$eval('#pane1 .dtab[data-id]', el => el.dataset.mark === 'kept'),
+   'an unchanged poll leaves the dock\'s line alone');
 await page.evaluate(() => newShell(''));
 ok(await page.$eval('#pane1 .dtab[data-id]', el => el.dataset.mark !== 'kept'), '...while a real change repaints');
 
@@ -118,19 +116,5 @@ const quiet = await page.evaluate(async () => {
 });
 ok(quiet.now === quiet.rev && quiet.front === quiet.other, `...and switching tabs writes nothing to the server (rev ${quiet.rev} still ${quiet.now}, ${quiet.front} in front)`);
 
-// A card another browser folded folds here with the tween, on the poll.
-await page.evaluate(async () => { const c = JSON.parse(JSON.stringify(cards)); c.closed.push('runner');
-  await fetch('/api/cards', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c)}); });
-const folded = await page.evaluate(async () => {
-  const el = document.querySelector('.card[data-card="runner"]');
-  const p = refresh();
-  for (let i = 0; i < 600; i++){          // up to 3s: the poll has to come back first
-    if (el.getAnimations().length > 0) return 'slid';
-    if (el.classList.contains('closed')) return 'snapped';
-    await new Promise(r => setTimeout(r, 5));
-  }
-  await p; return 'nothing';
-});
-ok(folded === 'slid', `a fold from another browser slides shut here (${folded})`);
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);

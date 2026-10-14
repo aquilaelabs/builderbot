@@ -38,21 +38,19 @@ import { dirname, join } from 'node:path';
 // Sorted, and one entry per name. Regenerate by failing the test and reading
 // what it prints. Do not hand-edit it into agreement without looking at why
 // it moved.
-const SURFACE = [
-  'adoptCards', 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyCards', 'applyMode', 'applyNow', 'applyTheme',
+const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyNow', 'applyTheme',
   'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
-  'drawRail', 'phoneViewFor', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpGo', 'wireJump', 'revsDelay',
+  'drawRail', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpGo', 'wireJump', 'revsDelay',
   'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
-  'askVerb', 'cSubmit', 'cUnderPicked', 'cardDropIndex', 'daemonHost', 'closeEditor',
+  'askVerb', 'cSubmit', 'cUnderPicked', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',
   'closeRename', 'closeSendToDocker', 'commandOrder',
   'currentMode', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'openPopup', 'menuHolds', 'actMore', 'statTiles', 'factGrid', 'chipBar', 'dmChipGroups', 'loadDockerStats', 'dmStatStrip', 'loadRowLog', 'dmFollowTick', 'loadDockerImages', 'dmHealth', 'dmRowWrap', 'dmLineFacts', 'dmPorts', 'dmPortsFact', 'dmOpenWhy', 'dmOpenSoon', 'dmRoutesOf', 'dmMatch', 'wireMore', 'closeMore', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'attRow', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
-  'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
+  'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'drawSessions',
   'drawShellCard', 'drawTrash', 'drawUiMenu', 'dressFrame',
-  'dropElsewhere', 'dropTab', 'editCustom',
-  'endCardDrag', 'endSession',
+  'dropElsewhere', 'dropTab', 'editCustom', 'endSession',
   'findingsRulesHtml', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hideTab',
   'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
@@ -61,7 +59,7 @@ const SURFACE = [
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionRows', 'liveRefresh',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
-  'nudgeTerminals', 'onCardDrag', 'onRev', 'openClaude',
+  'nudgeTerminals', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openEditContainer', 'openEditInstance', 'cSaveInstance', 'openLinkProject',
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
@@ -75,13 +73,13 @@ const SURFACE = [
   'openEmulator', 'emuPick', 'loadEmulator', 'emuAddRows', 'emuFlavorNow', 'emuTickedHere', 'emuRow', 'renderEmulatorInto', 'emuAct', 'tcRow', 'tcTermsLine', 'tcSystemLine', 'tcNeedsLine', 'tcDriverRow', 'tcDriverLine', 'tcDriverOption', 'tcToolkitRow', 'tcToolkitLine', 'nodesReadOnly',
   // The Claude sign-in on a node's row (page-signin.js), and the press that goes to it.
   'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes', 'claudeEnd', 'modalTop', 'keepOpen', 'keepLine', 'pollRevsOnce', 'oneOpen', 'sectGroup', 'soleOpen', 'sectJump', 'topModal', 'modalOpened', 'modalClosed', 'modalFocusables', 'dismissModal', 'modalKeys', 'scrollHint', 'scrollHints',
-  'openToolchainsOn', 'nodeGpuSection', 'nodeSound', 'tcTickDots', 'placeCard',
+  'openToolchainsOn', 'nodeGpuSection', 'nodeSound', 'tcTickDots',
   'claudeNodeFacts', 'placeResumeMenu', 'pollRevs', 'postCustom',
   'postTrash', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'wirePhoneTab',
   'openStorageTab', 'loadStorage', 'storageHeld', 'storageRow', 'andList', 'storageDisks', 'storageProjects', 'storageBody', 'storagePick', 'renderStorageInto', 'wireStorageTab',
-  'openNginxTab', 'loadNginx', 'nginxKeepTyping', 'nginxRefocus', 'projectHeader', 'wireProjectHeader', 'projectState', 'projectNote', 'projectActions', 'projectMatches', 'projectCard', 'fxRemember', 'projectJobHtml', 'placeUnder', 'edgeScroll', 'dockKeep', 'dockPlace', 'dockSettle', 'dockShow', 'dockToggle', 'dockBar', 'wireDockBar', 'dockReveal', 'dockDress', 'resumeHostNow', 'syncResumeMenu', 'nginxAct', 'nginxRouteRow', 'nginxCertPick', 'nginxResolve', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxBody', 'nginxPick', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
+  'openNginxTab', 'loadNginx', 'nginxKeepTyping', 'nginxRefocus', 'projectHeader', 'wireProjectHeader', 'projectState', 'projectNote', 'projectActions', 'projectMatches', 'projectCard', 'fxRemember', 'projectJobHtml', 'placeUnder', 'dockKeep', 'dockPlace', 'dockSettle', 'dockShow', 'dockToggle', 'dockBar', 'wireDockBar', 'dockReveal', 'dockDress', 'toggleDoctor', 'runnerRows', 'resumeHostNow', 'syncResumeMenu', 'nginxAct', 'nginxRouteRow', 'nginxCertPick', 'nginxResolve', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxBody', 'nginxPick', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
   // guides are top-level consts, which are not window properties.
   'abShow', 'abLoadLog', 'abDrawLog', 'openAbout', 'closeAbout', 'welcomeOnce',
@@ -94,15 +92,14 @@ const SURFACE = [
     'reportsSection', 'clearReports',
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'repoOfUrl',
-  'reschedRevs', 'resetCards', 'rnDrawAuth', 'rnDrawKey', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode',
+  'reschedRevs', 'rnDrawAuth', 'rnDrawKey', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode',
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnDrawSigning', 'rnFillColor', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnLoadSigning', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSaveSigning', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
-  'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
+  'roomForTab', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
-  'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
-  'signIn', 'signOut', 'slideBody', 'slideCard', 'fadeFoldCard', 'slideDetails',
-  'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'sendSure', 'launchClaude',   'openBrief', 'closeBrief', 'briefGo', 'pArchivePicked',
-  'tabLabel', 'tabLabels', 'tabTitle', 'untitle', 'untitleIn', 'untitleWatch', 'helpToggle', 'cLock', 'dmUnrouted', 'nodeDoorConfig', 'nginxUndeployed', 'resumePicker', 'toggleBell',
-  'toggleCard', 'toggleUiMenu', 'unveil',   'viewAfterRestart', 'watchSignin', 'wireConsole', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
+  'setProjectPinned', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
+  'signIn', 'signOut', 'slideBody', 'slideDetails',
+  'slideHidden', 'slidePanel', 'swapBox', 'startClaude', 'sendSure', 'launchClaude',   'openBrief', 'closeBrief', 'briefGo', 'pArchivePicked',
+  'tabLabel', 'tabLabels', 'tabTitle', 'untitle', 'untitleIn', 'untitleWatch', 'helpToggle', 'cLock', 'dmUnrouted', 'nodeDoorConfig', 'nginxUndeployed', 'resumePicker', 'toggleBell', 'toggleUiMenu', 'unveil', 'watchSignin', 'wireConsole', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
   'wireProjectRows'
 ];
 
@@ -142,7 +139,7 @@ ok(added.length === 0,
 const REACHED = ['refresh', 'openTab', 'hideTab', 'tabOf', 'sessionOf',
                  'newShell', 'setProjectPinned', 'renameProject', 'drawProjects',
                  'drawSessions', 'drawBell', 'notify', 'openTrash', 'drawTrash',
-                 'paint', 'slideCard', 'drawUiMenu', 'toggleBell'];
+                 'paint', 'drawUiMenu', 'toggleBell'];
 // NOT the bridges out of makeNotebook: ruleStagedCount and its version
 // equivalents. They are top-level `let`, and `new Function` below cannot see
 // the global LEXICAL environment, so asking about one here answers

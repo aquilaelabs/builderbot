@@ -74,8 +74,8 @@ for (const who of CAST) {
   const expect = isAdmin ? null : who.projects.slice().sort();
   ok(isAdmin ? ALL.every(p => st.projects.includes(p)) : JSON.stringify(st.projects) === JSON.stringify(expect),
      `${tag} sees ${isAdmin ? 'every project' : 'exactly the projects granted'} (${st.projects.join(', ') || 'none'})`);
-  ok(st.admin === isAdmin && !!await page.$eval('#cardAdmin', c => !c.hidden) === isAdmin,
-     `${tag} the Administration card is ${isAdmin ? 'there' : 'not there'}, and state.admin agrees`);
+  ok(st.admin === isAdmin && await page.evaluate(() => !!document.querySelector('#rail [data-rail="people"]')) === isAdmin,
+     `${tag} People is ${isAdmin ? 'on the rail' : 'not on the rail'}, and state.admin agrees`);
   ok((st.can.terminal !== false) === isAdmin, `${tag} a shell is ${isAdmin ? 'offered' : 'not offered'}`);
 
   // Every notebook view of every project they work on.

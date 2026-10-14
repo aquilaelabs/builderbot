@@ -881,7 +881,7 @@ ${code}`], { encoding: 'utf8' }).trim();
 {
   await page.evaluate(() => { const c = document.getElementById('cardTools');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
-  await page.click('#bUsers');
+  await page.evaluate(() => openUsersTab());
   await page.waitForSelector('.userstab .urow', { timeout: 15000 });
 
   const rows = () => page.$$eval('.userstab .urow', rs => rs.map(r => ({
@@ -1186,8 +1186,8 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   ok(await page.$eval('.profiletab', el => /test/.test(el.textContent) && !!el.querySelector('#pfSave')
                                           && !!el.querySelector('#pfPasswd')),
      'the Profile tab names the account and carries Save and Change password');
-  ok(await page.$eval('#cardAdmin', el => !el.hidden && !!el.querySelector('#bSettings') && !!el.querySelector('#bUsers')),
-     'the Administration card holds Controller settings and Users, and an administrator sees it');
+  ok(await page.evaluate(() => !!document.querySelector('#rail [data-rail="people"]') && railAllows('settings') && railAllows('users')),
+     'an administrator is offered People and the controller\'s settings on the rail');
   // The ? beside a label opens its words as a line on the page under the
   // label, at every width, and a second press folds them away (the operator,
   // 11 Oct: no tooltips, which a pane clipped and a phone never had).
@@ -1204,8 +1204,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      '...and a second tap folds them away');
   // ...and on a phone the line is inside the screen like any other.
   await page.setViewportSize({ width: 393, height: 851 });
-  await page.evaluate(() => setView('terminal'));     // a phone shows one column at a time
-  await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
+    await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
   await page.click('.profiletab .help');
   const fit = await page.$eval('.profiletab .helptext', el => { const r = el.getBoundingClientRect(); return { x: r.left, right: r.right, vw: innerWidth }; });
   ok(fit.x >= 0 && fit.right <= fit.vw,

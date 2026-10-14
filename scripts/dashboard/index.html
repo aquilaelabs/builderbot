@@ -186,7 +186,7 @@
    and had the same 11px explainers and 12px mono facts. Every voice moves
    together, by one pixel, so the ladder between them (note under ui under
    row under sect) is the same ladder at both sizes. The breakpoint is the
-   layout's own (the sidebar folds under 901px). */
+   layout's own (the rail becomes the bottom bar under 901px). */
 @media(min-width:901px){
   :root{
     --f-note:12px/1.5 system-ui,sans-serif;
@@ -372,45 +372,17 @@ html[data-theme="nostromo"] header::after{
   background:repeating-linear-gradient(-45deg,
     rgba(255,176,0,.75) 0 6px, rgba(0,0,0,.55) 6px 12px)}
 
-/* A stencil tick on every card title, like a panel number. The card headers
-   are already uppercase and letter-spaced, which is most of the look.
-   The radius is the card's own, less its 1px border: an inset shadow is drawn
-   to the element's OWN box, and a square one against an 8px corner leaves a
-   few pixels of amber sitting outside the card's rounded edge. It read as a
-   notch on a still card and as a glitch while one folded, the fold being when
-   the eye is on that corner. The bottom pair only when the header IS the card,
-   which is what closed means. */
-html[data-theme="nostromo"] .card h2{
-  box-shadow:inset 3px 0 0 0 rgba(255,176,0,.5);
-  border-radius:calc(var(--r-surface) - 1px) 0 0 0}
-/* Smoked glass: the cards let the hull and the rings behind them show, at
-   three tenths, and the tab side wears the same (below) so the two halves
-   of the page read as one material (the operator, 24 Sep). One value, so
-   the halves cannot drift apart. The buttons stay opaque, which they are
-   by construction (--btn is a mix of the panel color with white, never
-   with transparent).
-   The frame is an inset shadow with the border made transparent, and the
-   header wears the same frame as an outline drawn in the same place and
-   its own share of the fill: both so the fold can fade the card away and
-   leave the header standing framed, below. Neither moves a pixel. */
+/* Smoked glass: the pane bars and the ground under a document let the hull
+   show, at three tenths (the operator, 24 Sep). One value. */
 html[data-theme="nostromo"]{--glass:color-mix(in srgb, var(--panel) 70%, transparent)}
-html[data-theme="nostromo"] .card{
-  background-color:var(--glass);
-  border-color:transparent;box-shadow:inset 0 0 0 1px var(--line);
-  transition:background-color .12s ease, box-shadow .12s ease}
-html[data-theme="nostromo"] .card h2{
-  background:var(--glass);
-  outline:1px solid var(--line);outline-offset:-1px}
-/* The tab side in the same glass: its strip, each pane's bar and the
-   ground under a document (the stack's, so the document fading in does not
-   take its glass with it), with the pane behind them left open so it is the
-   hull that shows, as it does behind a card. A terminal keeps its own solid
-   ground, drawn by the terminal itself: output read through a pattern is
-   output misread. */
+/* Each pane's bar and the ground under a document (the stack's, so the
+   document fading in does not take its glass with it), with the pane behind
+   them left open so it is the hull that shows. A terminal keeps its own
+   solid ground, drawn by the terminal itself: output read through a pattern
+   is output misread. */
 html[data-theme="nostromo"] .pane .bar{background:var(--glass)}
 html[data-theme="nostromo"] .pane{background:transparent}
 html[data-theme="nostromo"] .pane .stack:has(> .doc.on){background-color:var(--glass)}
-html[data-theme="nostromo"] .card.closed h2{border-radius:calc(var(--r-surface) - 1px) 0 0 calc(var(--r-surface) - 1px)}
 
 /* CRT scanlines, on the panels only: never over a terminal pane, where they
    would sit on top of somebody's actual output at the exact size of its text.
@@ -423,7 +395,6 @@ html[data-theme="nostromo"] .card.closed h2{border-radius:calc(var(--r-surface) 
    gradient, painted once, and the lines hold still under the scrolling text
    the way a screen's would. The stack's box, with the glass, since they are
    the ground a notebook arrives on and not part of what fades in. */
-html[data-theme="nostromo"] .card,
 html[data-theme="nostromo"] .modal>.box,
 html[data-theme="nostromo"] .pane .stack:has(> .doc.on > .nb){
   background-image:repeating-linear-gradient(180deg,
@@ -445,34 +416,6 @@ html[data-theme="nostromo"] body::before{
     radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%),
     url(/static/nostromo/plate.svg) repeat}
 
-/* Binding rings down the sidebar's left edge, going behind the cards, in
-   the page's own gutter: main's padding, 10px on a desktop and 8 on a
-   phone, so they occupy space the layout already leaves empty and move
-   nothing. The sidebar column is widened leftwards by the gutter and padded
-   back by the same amount, so its box spans the gutter and the cards stay
-   where they are. The rings hold still while the cards scroll over them
-   (the operator, 24 Sep): the column is its own scroller, and a background
-   that is not attached to its content stays where the column is. Each ring
-   is large and centered inside the cards' left edge: most of it shows dimly
-   through the smoked glass, a gap between two cards shows it plain, and
-   its left side runs off into the gutter. */
-html[data-theme="nostromo"] .col.side{
-  margin-left:-10px;padding-left:10px;
-  background:url(/static/nostromo/rings.svg) repeat-y 0 6px;
-  background-attachment:scroll}
-/* Folding a card here fades the card away, fill, frame and body, and then
-   closes the gap, rather than sliding the body up under the header: the
-   smoked glass sliding into the title bar read as a bug when the corner
-   carried a decal, and the fade reads as this scheme's own. The header
-   keeps its own fill and frame (above) and is what is left standing. Read
-   by slideCard (page-motion.js). */
-html[data-theme="nostromo"] .card{--fold:fade}
-html[data-theme="nostromo"] .card.fading{
-  background-color:transparent;box-shadow:inset 0 0 0 1px transparent}
-@media(max-width:900px){
-  html[data-theme="nostromo"] .col.side{
-    margin-left:-8px;padding-left:8px;background-position:-2px 6px}
-}
 /* The plate mark that sat in an open card's bottom-right corner is gone
    (the operator, 28 Sep): the hull, the rings and the glyphs stay. */
 @media(min-width:901px){
@@ -874,26 +817,16 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   color:var(--accent);font:var(--f-note)}
 .ablog li.old{color:var(--dim)}
 
-.switch{display:none;gap:6px;padding:6px 12px;background:var(--panel);
-  border-bottom:1px solid var(--line);flex:0 0 auto}
-.switch button{flex:1;min-height:var(--tap)}
-
-main{flex:1;min-height:0;display:grid;grid-template-columns:56px 340px 1fr;
+main{flex:1;min-height:0;display:grid;grid-template-columns:56px 1fr;
   gap:10px;padding:10px 10px 10px 0}
-@media(min-width:1280px){ main{grid-template-columns:84px 340px 1fr} }
+@media(min-width:1280px){ main{grid-template-columns:84px 1fr} }
 .col{display:flex;flex-direction:column;gap:10px;min-height:0}
-.col.side{overflow:auto;-webkit-overflow-scrolling:touch}
-@media(max-width:900px){
-  main{grid-template-columns:1fr;padding:8px;gap:8px}
-  body[data-view="terminal"] .col.side{display:none}
-  body[data-view="dash"] .col.term{display:none}
-}
+@media(max-width:900px){ main{grid-template-columns:1fr;padding:8px;gap:8px} }
 /* First run (R199): the setup panel over the Nodes tab, and nothing else
-   until Finish: no sidebar, no tab strip, no bell, at every width. */
+   until Finish: no rail, no bell, no doctor, at every width. */
 body.firstrun main{grid-template-columns:1fr}
 body.firstrun .rail, body.firstrun .railbar, body.firstrun .railmore{display:none}
-body.firstrun .col.side, body.firstrun .switch, body.firstrun #bBell, body.firstrun #bReport{display:none}
-body.firstrun[data-view] .col.term{display:flex}
+body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:none}
 .setup{flex:0 1 auto;max-height:60%;overflow:auto;background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r-surface);padding:12px 14px}
 .setup .setuphead h2{margin:0 0 4px;font-size:16px}
@@ -905,39 +838,22 @@ body.firstrun[data-view] .col.term{display:flex}
 .resetwhat ul{margin:4px 0 8px;padding-left:18px}
 .resetwhat b{color:var(--ink)}
 
-/* position:relative so the resume chooser, which is absolutely positioned and
-   measured against this box, actually lands inside it. */
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
-  flex:0 0 auto;position:relative}
-.card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
-  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
-  font-weight:600;display:flex;align-items:center;gap:8px;min-height:33px}
-/* The header is two gestures and nothing else: click collapses, drag reorders.
-   touch-action stays permissive: a finger that starts on a header and moves
-   before the hold has elapsed is scrolling the sidebar, and the browser is
-   left free to do that: the drag code only says no once a hold has picked
-   the card up (see the touchmove listener). No callout: the same hold would
-   otherwise raise the platform's long-press menu. */
-.side .card h2{cursor:grab;touch-action:manipulation;user-select:none;
-  -webkit-user-select:none;-webkit-touch-callout:none;transition:color .15s ease}
-/* The whole header is a control, so it answers the pointer like one. */
-body.dragging .side .card h2{cursor:grabbing}
-/* Finger-sized where a finger is what presses it: the header is the collapse
-   control, and the header-row buttons (refresh, reset, doctor) were 30px. */
+/* Finger-sized where a finger is what presses it. */
 @media(max-width:900px){
-  .card h2{min-height:40px}
   header button,.docbar button{min-height:var(--tap);min-width:var(--tap)}
   .pane .bar button{min-height:30px}
 }
-.card h2 .chev{margin-left:auto;font-size:10px;transition:transform .15s}
-.card.closed h2 .chev{transform:rotate(-90deg)}
-@media(prefers-reduced-motion:reduce){ .card h2 .chev{transition:none} }
-.card.closed > :not(h2){display:none}
-.card.closed h2{border-bottom:0}   /* no body below it: a border there reads
-                                      as a second card edge */
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
+/* The CI runner page's list of every node's runner, each row a press that
+   picks its node; the one shown wears the accent's edge. */
+.runnersall{display:flex;flex-direction:column;border:1px solid var(--line);
+  border-radius:var(--r-surface);margin:0 0 10px;overflow:hidden}
+.runnersall .row{width:100%;text-align:left;background:none;border:0;border-radius:0;
+  border-bottom:1px solid var(--line);justify-content:flex-start;min-height:var(--tap)}
+.runnersall .row:last-child{border-bottom:0}
+.runnersall .row.on{box-shadow:inset 3px 0 var(--accent)}
 /* A row nothing here can act on: a container this dashboard did not start, or
    any instance while the daemon is not answering. Dimmed rather than dropped;
    it is still the answer to "what is on record", and a row you cannot act on
@@ -994,7 +910,6 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
    ahead of button.primary/.on, which share button:hover's
    specificity and win only by coming later. */
 @media(hover:hover){
-  .side .card h2:hover{color:var(--ink)}
   .row .name.go:hover{text-decoration:underline}
   button:hover{background:var(--btn-hi)}
   /* The green buttons kept their color through button:hover (their own rules
@@ -1030,11 +945,6 @@ button,.pane .bar .x{transition:background-color .15s ease,
    finger alike. :not(:disabled), so a dead button stays visibly inert. */
 button:active:not(:disabled),.pane .bar .x:active{
   transform:translateY(1px);filter:brightness(.82)}
-/* ...except the sidebar's row icons, which dim instead. The dip was taken
-   off them because it upset the tooltips measured against their row; there
-   are no tooltips now (11 Oct), and the dim alone is kept as it is. */
-.side .acts button:active:not(:disabled){
-  transform:none;filter:none;opacity:.65}
 @media(prefers-reduced-motion:reduce){
   button,.pane .bar .x{transition:none}
 }
@@ -1434,13 +1344,6 @@ textarea,select{
 .modal button,.nb button,.doctab button,.uimenu button,.doc .row button{min-height:var(--ctl)}
 /* Not the color swatches: a circle, sized by its own rule. */
 .modal .pcpick button,.pcpick button{min-height:0}
-/* The sidebar's own selects: the Claude card's pickers. A phone gives them
-   the finger height and nothing else: a select does not zoom iOS, so it keeps
-   the size of the text beside it. */
-.side .card select{padding:6px 8px;font:12px/1.3 inherit;min-height:30px}
-@media(max-width:900px){
-  .side .card select{min-height:var(--tap)}
-}
 .modal textarea{min-height:132px;resize:vertical;white-space:pre}
 /* A value that is ONE LINE of prose, in a box that can show all of it. An
    <input> shows about thirty characters at phone width, which is not enough
@@ -3196,7 +3099,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
+:is(.doctab,.nb) :is(.histbar,.logdays,.setrow,.prefrow,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
   max-width:min(var(--ctl-w),88%)}
 /* The grid itself is capped as a whole, so its cells share the surface's
    control width and do not stretch across a wide tab. */
@@ -3211,15 +3114,14 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    floated in space with no edge to sit against, while every other action on
    the page (a row's buttons, a section's status) lines up on the tab's
    right edge. The controls inside it are still capped one by one.
-   Three classes deep to outrank the cap above, whose `:is()` carries
-   `.side .card`'s two. */
+   Three classes deep to outrank the cap above. */
 .doctab .field.docbarrow{max-width:none}
 /* ...and because the bar is not capped, the controls in it are, one by one:
    a search box in a band that spans the tab is exactly the full-width
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
+:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -3231,7 +3133,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    line the eye reads, whatever is stacked above it and whatever each
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
-:is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
+:is(.doctab,.nb,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
   .imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
   .ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
@@ -3298,15 +3200,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    rule below it cannot win at equal specificity, which is how the button
    showed on a desktop, and then on neither. */
 button.eye.rowmore{display:none}
-/* The sidebar card folds its rows at EVERY width since R119 (4 Oct): eight
-   icons on a 340px card were a row nobody could read, on a desktop too, so
-   it takes the phone's shape (Claude, the notebook, and … for the rest). The
-   Projects tab has the room on a desktop and keeps every icon there. */
-.card .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore){display:none}
-.card button.eye.rowmore{display:inline-flex}
-.card .row.moreon .rowmore{color:var(--accent)}
-.card .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;flex-wrap:wrap}
-.card .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
 @media(max-width:900px){
   :root{--row-y:8px}
   /* The hide is scoped to a row that is NOT folded out, so the two states
@@ -3454,19 +3347,17 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @media(prefers-reduced-motion:reduce){ .st.working{animation:none} }
 
-/* Doctor card: healthy checks collapse into green chips; anything wrong is a
+/* The doctor: healthy checks collapse into green chips; anything wrong is a
    full-width line, because a failure is for reading and a pass is for
-   counting. The status row carries the verdict dot, the age and the controls;
-   the detail below it opens and shuts on the verdict, without ever touching
-   the card-level collapse; that setting belongs to the operator. */
-#docDot{margin:0}   /* its own margin-right would double the flex gap */
+   counting. The dot in the top bar wears the worst check's color. */
+#bDocDot{position:relative;padding:0 8px}
+#docDot{margin:0;display:block;width:9px;height:9px}
+#docDot:not(.ok):not(.warn):not(.bad){background:var(--line)}   /* no verdict yet */
 .st.ok{background:var(--accent)}
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
-/* Styled by class, not id: an id's display:flex would outrank the class-based
-   .card.closed rule that hides every body row when the card is folded. */
+/* The doctor's panel under its dot in the top bar (R218 step 3). */
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
-.doctor .docbar+.docbar{border-top:1px solid var(--line)}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
 #doctor:not([hidden]){border-top:1px solid var(--line)}
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
@@ -3546,8 +3437,6 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    line, which would push the column past the viewport on a phone. No gap
    between its parts: the panes and the bottom bar are one frame. */
 .col.term{min-height:0;min-width:0;gap:0}
-.card.held{opacity:.6}   /* the long-press pickup state */
-body.dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
 /* On a phone a pane's caption with nothing to press is dropped; one that
    carries controls (a sub-nav, a popped terminal's Reattach) stays. */
 @media(max-width:900px){ .pane .bar:not(:has(button)){display:none} }
@@ -3846,7 +3735,7 @@ body.booting .pane>.loading{margin:auto}
 .sub.bad{color:var(--bad)}
 </style>
 </head>
-<body data-view="dash" class="booting">
+<body class="booting">
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="box">
@@ -5240,6 +5129,15 @@ body.booting .pane>.loading{margin:auto}
   </button>
   <div id="bellPanel" class="bellpanel" hidden role="dialog"
        aria-label="notifications"></div>
+  <!-- bb doctor's verdict (R218 step 3): a dot in the bell's manners, its
+       color the worst check's, and its panel the checks; page-doctor.js. -->
+  <button id="bDocDot" aria-haspopup="dialog" aria-expanded="false"
+          aria-label="bb doctor: the controller's own checks"><span class="st" id="docDot"></span></button>
+  <div id="docPanel" class="bellpanel doctor" hidden role="dialog" aria-label="bb doctor">
+    <div class="docbar"><b>Doctor</b><span id="docWhen"></span>
+      <button id="bDoctor" title="run bb doctor now" aria-label="run bb doctor now">↻</button></div>
+    <div id="doctor"><div class="empty">first run pending…</div></div>
+  </div>
   <!-- Report a bug in BuilderBot about no project in particular (the
        operator, 2 Oct); a project's own is on its row. The same dialog,
        page-report.js, with no project. -->
@@ -5261,7 +5159,7 @@ body.booting .pane>.loading{margin:auto}
   </button>
   <button id="bCards" aria-haspopup="menu" aria-expanded="false"
           aria-label="settings"
-          title="settings: the color scheme, the cards, and the logs">
+          title="settings: the color scheme and your profile">
     <!-- The same gear a project row's settings button uses (GEAR, below). The
          first attempt drew a circle with eight spokes around it, which is a
          sun, not a gear, and a header that already carries one icon language
@@ -5271,9 +5169,8 @@ body.booting .pane>.loading{margin:auto}
       <circle cx="8" cy="8" r="2.1"/>
     </svg>
   </button>
-  <!-- Under the gear rather than behind it: resetting the cards was the only
-       thing here, and a color scheme is the other thing somebody opens the
-       chrome to change. Built from a table so a new scheme is one entry. -->
+  <!-- Under the gear: the color scheme and the profile, what somebody opens
+       the chrome to change. Built from a table so a new scheme is one entry. -->
   <div id="uiMenu" class="uimenu" hidden role="menu" aria-label="appearance"></div>
   <!-- Sign out clears the session cookie via /logout. A browser signed in
        with cached basic auth has nothing to clear and comes straight back;
@@ -5288,79 +5185,11 @@ body.booting .pane>.loading{margin:auto}
 </header>
 <div id="pollWhy" class="pollwhy" role="status" hidden></div>
 
-<!-- The phone's Dashboard | Terminal switch, kept for setView's state and
-     hidden since the rail's bar took its place (R218 step 2). -->
-<div class="switch" hidden>
-  <button id="vDash" class="on" onclick="setView('dash')">Dashboard</button>
-  <button id="vTerm" onclick="setView('terminal')">Terminal</button>
-</div>
-
 <main>
   <!-- The rail (R218 step 2): one column of groups down the left edge, each
        a page with an address; page-shell.js draws it. On a phone it is the
        bar at the foot of the page, and this column is not drawn. -->
   <nav id="rail" class="rail" aria-label="pages"></nav>
-  <!-- Card headers hold the title and nothing else: the whole header is the
-       collapse control and the drag handle, and every control a card used to
-       keep up there lives in its body now: a button inside a drag handle is
-       a fight over what a press means. -->
-  <div class="col side">
-    <!-- The projects card went with R218 step 3: the Projects page is the
-         grid and a project is a page. Doctor first now; an arrangement
-         somebody dragged is kept, and this is the order a new one, or Reset
-         cards, starts from. -->
-    <div class="card doctor" data-card="doctor">
-      <h2>Doctor</h2>
-      <div id="docBar" class="docbar">
-        <span class="st" id="docDot" hidden></span>
-        <button id="bDocTog" hidden></button>
-        <span id="docWhen"></span>
-        <button id="bDoctor" title="run bb doctor now">↻</button>
-      </div>
-      <div id="doctor"><div class="empty">first run pending…</div></div>
-    </div>
-    <!-- What this container can install. Its own card rather than a corner
-         of the findings one: a scanner report and a toolchain installer answer
-         different questions, and only one of them depends on /reports being
-         mounted. -->
-    <div class="card" data-card="tools">
-      <h2>Tools</h2>
-      <div class="macros">
-        <!-- Alphabetical, so a new one has one place to go. -->
-        <!-- Analysis, as the tab it opens and the notebook's view are called
-             (R119 step 6: one name per thing). -->
-        <button id="bFindings" onclick="openFindingsTab()">Analysis</button>
-        <button id="bRunner" onclick="openRunnerTab()">CI runner</button>
-        <button id="bDocker" onclick="openDocker()">Docker manager</button>
-        <button id="bEmulator" onclick="openEmulator()">Emulator</button>
-        <button id="bJobs" onclick="openJobsTab()">Jobs</button>
-        <button id="bNginx" onclick="openNginxTab()">nginx</button>
-        <button id="bNodes" onclick="openNodesTab()">Nodes</button>
-        <button id="bPhone" onclick="openPhoneTab()">Phone</button>
-        <button id="bStorage" onclick="openStorageTab()">Storage</button>
-        <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
-      </div>
-      <!-- Why a ghosted tool is ghosted, on the card: a tip is nothing on a
-           phone (R119 step 6). -->
-      <div class="sub bad toolwhy" id="toolsWhy" hidden></div>
-    </div>
-    <!-- What only an administrator touches: the controller's own settings
-         and the accounts. An account that is not one does not see the card
-         at all: a card of dead buttons would be a question with no answer. -->
-    <div class="card" data-card="admin" id="cardAdmin">
-      <h2>Administration</h2>
-      <div class="macros">
-        <button id="bSettings" onclick="openSettingsTab()">Controller settings</button>
-        <button id="bRoles" onclick="openRolesTab()">Roles</button>
-        <button id="bUsers" onclick="openUsersTab()">Users</button>
-      </div>
-    </div>
-    <div class="card" data-card="runner">
-      <h2>Runner</h2>
-      <div id="runner"><div class="loading">loading…</div></div>
-    </div>
-  </div>
-
   <div class="col term">
     <!-- First run (R199): the setup page, over the Nodes tab, until Finish.
          page-setup.js draws it. -->
@@ -5406,7 +5235,7 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </main>
 <!-- The rail on a phone (R218 step 2): five across the foot, More a sheet
-     of the rest and of the open tabs; drawn by page-shell.js. -->
+     of the rest; drawn by page-shell.js. -->
 <div id="railmore" class="railmore" role="menu" aria-label="more pages" hidden></div>
 <nav id="railbar" class="railbar" aria-label="pages"></nav>
 
@@ -5437,7 +5266,6 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-pull.js"></script>
 <script src="page-report.js"></script>
 <script src="page-lists.js"></script>
-<script src="page-cards.js"></script>
 <script src="page-gear.js"></script>
 <script src="page-doctor.js"></script>
 <script src="page-commands.js"></script>
@@ -5508,26 +5336,8 @@ quietFields(document.documentElement);
 
 // ---- what a tab is called --------------------------------------------
 // Its declarations are page-tabs.js; what runs at load is below.
-// A phone reload lands on the side it left; the attribute is set directly so
-// the first paint is not an entrance animation. ?view= outranks the memory:
-// it is how something that can only speak URLs (bb capture shot, a bookmark) asks
-// for a particular side, and a request beats a habit.
-if (isPhone()){
-  let v = null;
-  try{ v = localStorage.getItem("bb.view"); }catch(e){ /* private mode */ }
-  const qv = new URLSearchParams(location.search).get("view");
-  if (qv === "terminal" || qv === "dash") v = qv;
-  if (v === "terminal"){
-    document.body.dataset.view = v;
-    $("vDash").classList.remove("on"); $("vTerm").classList.add("on");
-  }
-}
-
 // ---- tabs ------------------------------------------------------------
 // Its declarations are page-tabs.js; what runs at load is below.
-// A sidebar row's tip is positioned against the ROW (see the .side .row
-// rule), and the Projects tab's rows the same: its vertical place is the
-// hovered element's own bottom edge.
 // A tap on a ? opens its words as a line under its label, and a second tap
 // folds them away. Bound once on the document, so icons drawn later count too.
 addEventListener("click", e => {
@@ -5614,27 +5424,8 @@ document.addEventListener("keydown", modalKeys);
 // box nobody is scrolling. Only the few hinted boxes are measured.
 addEventListener("scroll", e => { if (e.target?.matches?.(SCROLL_HINTED)) scrollHint(e.target); }, true);
 setInterval(() => { if (!document.hidden) scrollHints(); }, 700);
-// The Tools card carries the tab icons on its buttons; the markup is static,
-// so they are put on once here rather than kept in two places.
-for (const [id, kind] of Object.entries(TOOL_BUTTONS))
-  $(id)?.insertAdjacentHTML("afterbegin", TOOL_ICONS[kind]);
 
-// ---- a card held -------------------------------------------------------
-// Its declarations are page-cards.js; what runs at load is below.
-
-// Before the hold, the browser owns a moving finger: touch-action lets it
-// scroll the sidebar, and its pointercancel ends the would-be drag for us.
-// After the hold, the finger's movement IS the drag, and this is the one
-// place the page says no to a pan: registered non-passive on purpose, since
-// a passive listener's preventDefault is ignored, and only while a card is
-// picked up, so ordinary scrolling never pays for it.
-window.addEventListener("touchmove", e => {
-  if (cardDrag?.armed) e.preventDefault();
-}, {passive: false});
-// The same half-second is the platform's long-press menu; not over a handle.
-document.addEventListener("contextmenu", e => {
-  if (cardDrag) e.preventDefault();
-});
+// ---- an action bar's More menu ----------------------------------------
 // An action bar's More menu: a press anywhere but on its button shuts it,
 // its own items included, since each has done its work by then; Escape too.
 document.addEventListener("click", e => {
@@ -5695,13 +5486,8 @@ window.addEventListener("blur", () => {
 // ---- keys ------------------------------------------------------------
 // Its declarations are page-keys.js; what runs at load is below.
 
-// ...and the cards fold or unfold with it: which of them start shut is a
-// question about the width, so crossing the breakpoint has to ask it again.
-// A rotation is the case that matters.
-window.matchMedia("(max-width:900px)").addEventListener("change", () => {
-  render();
-  applyCards();
-});
+// Crossing the phone breakpoint (a rotation) draws again for the width.
+window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
 $("mKeys").onclick     = () => mobPanel("keys");
 $("mMacros").onclick   = () => mobPanel("macros");
 $("mSessions").onclick = () => mobPanel("sessions");
@@ -5717,43 +5503,6 @@ $("mChat").onclick     = () => mobPanel("chat");
 
 // ---- findings --------------------------------------------------------
 // Its declarations are tab-findings.js; nothing of it runs at load.
-
-// ---- sidebar cards ---------------------------------------------------
-// Its declarations are page-cards.js; what runs at load is below.
-// One rule for every card: the whole header is the collapse control and the
-// drag handle, and holds nothing else. Order and collapsed-state live on the
-// server like the pins do: the phone and the desktop are looking at one
-// machine and should agree about how its dashboard is arranged.
-// The default order is the server's (CARD_KEYS) and nowhere else: the page
-// kept a copy, and when the default moved the copy did not, so Reset put the
-// cards back where the old copy said. Until the first poll answers, the
-// markup's order stands; it is written in the same order.
-// Which cards a phone has been told to open. A phone's first screen was 470
-// of its 844 pixels of Tools, Administration and Runner before the first
-// project appeared, and those are desk things: on a phone every card but
-// Projects starts folded, the way a document tab's sections do. Kept on the
-// device (localStorage, this browser only) rather than in the arrangement
-// the server holds, so a card opened on the phone stays open across a
-// reload here and never reaches the desk the arrangement was made on. A
-// browser that keeps nothing starts folded, as before.
-const phoneOpen = new Set((() => {
-  try{ return JSON.parse(localStorage.getItem("bb.phoneOpen") || "[]"); }catch{ return []; }
-})());
-
-// Never empty: a drag before the first poll answered used to save the one
-// card it moved, which the server healed into the default and the drag was
-// lost. The markup is written in the default order, so it is the default
-// until the server's own arrangement arrives.
-cards.order = cardEls().map(el => el.dataset.card);
-
-// Wire every header once. Unlike the tab strip, the cards are static elements
-// that are moved rather than re-created, so nothing here needs re-binding.
-cardEls().forEach(el => {
-  const h = el.querySelector("h2");
-  h.insertAdjacentHTML("beforeend", `<span class="chev">▾</span>`);
-  h.onclick = () => { if (!swallowClick) toggleCard(el.dataset.card); };
-  h.onpointerdown = e => startCardDrag(e, el.dataset.card);
-});
 
 $("bOut").onclick = () => { location.href = "/logout"; };
 
@@ -5804,15 +5553,17 @@ document.addEventListener("keydown", e => {
 // Its declarations are page-signin.js; nothing of it runs at load.
 
 // ---- doctor -----------------------------------------------------------
-// bb doctor's verdict, run by the server on a slow loop and on the ↻ button.
-// Failures and warnings are full lines (they are for reading) while passing
-// checks collapse into chips: what a healthy status row says is "all n ok",
-// with the detail folded below it. This inner fold is the verdict's to drive;
-// the card-level collapse is the operator's, and neither touches the other.
-// drawDoctor is page-doctor.js now; its two buttons are wired here.
-
-$("bDocTog").onclick = () => { docOpen = $("doctor").hidden;
-                               slideBody($("doctor"), drawDoctor); };
+// Its declarations are page-doctor.js; the dot, its panel's closing and ↻
+// are wired here.
+$("bDocDot").onclick = e => { e.stopPropagation(); toggleDoctor(); };
+document.addEventListener("click", e => {
+  if (docShown && e.target.isConnected
+      && !$("docPanel").contains(e.target) && !$("bDocDot").contains(e.target))
+    toggleDoctor(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && docShown) toggleDoctor(false);
+});
 
 $("bDoctor").onclick = async () => {
   const b = $("bDoctor");

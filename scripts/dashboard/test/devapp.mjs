@@ -78,7 +78,7 @@ const DM = '.dmtab .row[data-inst^="ep.silon|"]';
 // there" broke the moment another tab took the pane: the row was absent, the
 // guard did not re-open it, and the click waited for something never coming.
 async function openManager(){
-  await page.click('#bDocker');
+  await page.evaluate(() => openDocker());
   await page.waitForSelector(DM, { timeout: 20000 });
 }
 async function dmClick(act){
@@ -2872,7 +2872,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   await page.setViewportSize({ width: 390, height: 844 });
   // A phone shows one thing at a time, and the manager is in the pane behind
   // the sidebar: without this the row measures zero and says nothing.
-  await page.evaluate(() => { setView('terminal'); dockerList = null; dockerRev++; loadDocker(); });
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
   await page.waitForSelector('.dmtab .dmowner select', { state: 'visible', timeout: 15000 });
   const narrow = await page.evaluate(() => {
     const t = document.querySelector('.dmtab');
@@ -2884,7 +2884,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   ok(!narrow.fold, `on a phone the row's detail and its Project picker are on the row, no fold (${JSON.stringify(narrow)})`);
   ok(!narrow.sideways && narrow.actsVisible, '...nothing scrolls sideways, and the row keeps its buttons');
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.evaluate(() => { setView('dashboard'); dockerList = null; dockerRev++; loadDocker(); });
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
 }
 
 // ---- a manager, not a list (R68 steps 1 and 2) ---------------------------

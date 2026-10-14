@@ -11,20 +11,9 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await page.goto(URL);
 await ready(page);
 
-// ---- the card ----------------------------------------------------------
-// The heading carries a chevron alongside its text, so match the text only.
-ok((await page.$eval('.card[data-card="tools"] h2', h => h.textContent.trim())).startsWith('Tools'),
-   'Tools is a card of its own');
-// The scanner's report is a tab off this card now, not a card of its own:
-// a report is read, and a sidebar card is a control surface.
-ok(await page.$$eval('.side .card[data-card]', cs =>
-     !cs.some(c => c.dataset.card === 'findings')),
-   '...and there is no findings card beside it any more');
-ok(await page.$eval('.card[data-card="tools"] #bToolchains', b => !b.hidden),
-   'the Tools card carries its button');
-ok(await page.$eval('.card[data-card="tools"] #bFindings',
-                    b => b.textContent.trim() === 'Analysis'),
-   '...and the scanner report is a button on it');
+// ---- on the rail -------------------------------------------------------
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'toolchains')) && railAllows('toolchains')), 'Toolchains is a page under Build on the rail');
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'projects' && g.tools.some(([k]) => k === 'findings')) && railAllows('findings')), '...and the scanner report, Analysis, one under Projects');
 
 // ---- the tab -----------------------------------------------------------
 // Through the notebook first: a document that parks in the pane's stack used
@@ -39,7 +28,7 @@ await page.waitForFunction(
   () => { const l = document.querySelector('#roadmapList');
           return !!l && !l.querySelector('.loading'); },
                            { timeout: 20000 });
-await page.click('#bToolchains');
+await page.evaluate(() => openToolchains());
 // Toolchains are installed on nodes (roadmap #26): the tab opens on one (the
 // harness's stub agent here) and never offers "this container". With no
 // node at all it says to enroll one and offers nothing; shown by emptying
@@ -639,13 +628,13 @@ ok(clash.status === 409 && /already running/.test(clash.error),
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running, { timeout: 30000 });
 ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown action is refused');
 
-// It is a tab like any other: minimizing it leaves the strip, and the saved
+// It is a tab like any other: closing it puts it away, and the saved
 // layout brings it back with its own data rather than an empty pane.
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'toolchains').id));
 ok(await page.evaluate(() => !tabs.some(t => t.kind === 'toolchains')), 'the tab minimizes away');
-await page.click('#bToolchains');
+await page.evaluate(() => openToolchains());
 await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
-ok(true, 'and reopens from the card');
+ok(true, 'and reopens');
 // The strip lives on the server and is handed to every browser, so a tab kind
 // the store does not recognize is dropped on every read, which is why this
 // one came back from a reload, or a container restart, missing.

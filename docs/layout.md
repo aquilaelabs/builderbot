@@ -104,7 +104,7 @@ scripts/
     index.html                   the markup, the stylesheet and the wiring that runs at load
     tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Emulator, Phone, Settings, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
-    page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, the sidebar, the polls, the bell and the rest
+    page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
     bb-check-relay               the relay's own check, run by bb tests preflight

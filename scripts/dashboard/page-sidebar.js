@@ -1,52 +1,16 @@
-// The sidebar's content: the Runner card, and the Projects card with each
-// project's row (its controls, why it is held, its lock and its pin, its
-// one clone or first-push job), which the Projects tab draws from the same
-// functions so a project offers the same controls wherever it is met. A
-// row arrives and leaves with a tween.
+// What a project offers wherever it is met (the Projects page's cards and a
+// project's page): its controls, why it is held, its lock and its pin, its
+// one clone or first-push job. Named for the sidebar the rows were first
+// drawn in, which went with R218 step 3.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
-// pure declarations, nothing runs at load. What runs at load stays in
-// index.html under the section's header.
+// One classic script beside index.html (docs/design-language.md, Files):
+// pure declarations, nothing runs at load.
 
 "use strict";
 
-// ---- sidebar ---------------------------------------------------------
-
-function drawRunner(){
-  // The nodes' runners, and nothing else. This container ran a runner of its
-  // own until phase 7 of the controller design moved CI onto nodes; the card
-  // used to lead with that one's state and keep Start/Stop for it. A workflow
-  // lands on whichever runner its runs-on matches, and the node's own name is
-  // the label that pins a job to it, so that is what each row leads with. The
-  // Nodes tab is where one is installed, started or removed.
-  const el = $("runner");
-  const rows = state?.node_runners || [];
-  if (!rows.length){
-    paint(el, `<div class="empty">no runner on any node: the CI runner tab adds one</div>`);
-    return;
-  }
-  const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
-  paint(el, rows.map(n => {
-    // A runner job in flight comes first: a remove of a listening runner is
-    // "removing now", not "listening, idle" until the census catches up. And
-    // a failure carries its time, because a new one reads exactly like the
-    // old one otherwise, and the operator pressed Remove on that reading.
-    const [word, cls] = !n.live ? ["quiet: the node has not dialed in lately", "warn"]
-      : n.installing ? ["installing now", "warn"]
-      : n.removing ? ["removing now", "warn"]
-      : n.busy ? ["running a job", "ok"]
-      : n.listening ? ["listening, idle", "ok"]
-      : n.installed ? ["installed, not listening", "bad"]
-      : n.failed ? [`install failed ${when(n.failed.ended)}: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
-      : ["install asked for; not reported yet", "warn"];
-    return `<div class="row" data-runnode="${esc(n.id || "")}" role="button" tabindex="0" title="open the CI runner tab on ${esc(n.node)}"><span class="grow"><b>${esc(n.node)}</b>${n.url ? ` <span class="dim">${esc(n.url.replace(/^https?:\/\//, ""))}</span>` : ""}
-      <span class="sub ${cls}">${esc(word)}</span>${n.labels.length
-        ? `<div class="sub dim">runs-on: [self-hosted, ${esc(n.node)}]</div>` : ""}</span></div>`;
-  }).join(""));
-  // A row opens the CI runner tab on its node (R121), where it is managed.
-  el.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => openRunnerTab(r.dataset.runnode));
-}
+// Rendered, as opposed to merely present: a hidden element and one the
+// stylesheet hides offer nothing to animate.
+const rendered = el => el && !el.hidden && el.getClientRects().length > 0;
 
 // What gets folded away is what the button says: projects with an *error*, and
 // ones the operator has locked. A warning is not an error: a repo with no
@@ -415,8 +379,7 @@ function arriveRow(name, fn){
   const from = card.offsetHeight;
   applyNow(fn);
   const row = pinRow(card, name);
-  // Nothing to watch: the card is collapsed, a phone is on the terminal view,
-  // or the row drew straight into the fold behind Show broken. The draw stands.
+  // Nothing to watch: the row is not on screen. The draw stands.
   if (!rendered(row)) return;
   const to = card.offsetHeight, h = row.offsetHeight;
   row.style.overflow = "hidden";

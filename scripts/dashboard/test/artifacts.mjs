@@ -107,7 +107,7 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
   await phone.goto(URL);
   await ready(phone);
   await phone.evaluate(() => { try{ localStorage.clear(); }catch{} for (const k of Object.keys(sectOpen)) delete sectOpen[k]; });
-  await phone.evaluate(() => { setView("terminal"); openNotebook("alpha", "artifacts"); });
+  await phone.evaluate(() => { openNotebook("alpha", "artifacts"); });
   await phone.waitForSelector('.nb .nbview[data-view="artifacts"] details.sect[data-sect="artifacts:files"]', { timeout: 15000 });
   await phone.waitForTimeout(500);
   const p = await phone.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]

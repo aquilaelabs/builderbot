@@ -993,7 +993,6 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
 // Ten views do not fit 393px in one row: the strip wraps, and every tab
 // stays on screen rather than the last two hiding behind an edge.
 await page.setViewportSize({ width: 393, height: 851 });
-await page.evaluate(() => setView('terminal'));
 await page.waitForFunction(() => document.querySelector('.nb .nbtabs')?.getBoundingClientRect().width > 0);
 const strip = await page.$eval('.nb .nbtabs', el => {
   const bs = [...el.querySelectorAll('button')].map(b => b.getBoundingClientRect());

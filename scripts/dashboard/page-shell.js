@@ -53,19 +53,24 @@ function groupOf(kind){
   return RAIL.find(g => g.key !== "home" && (g.tools || []).some(([k]) => k === kind)) || null;
 }
 
-// Which tool kinds this account may open, read off the buttons the page
-// already ghosts or hides by grant (the Tools and Administration cards): a
-// rail item for something a grant forbids is not drawn.
+// Which tool kinds this account may open, from the areas its grants read
+// (state.areas, "" for no Read; R152 step 3): a rail item for something a
+// grant forbids is not drawn. CI runner is offered by grant too (R137 step
+// 3). Before the first poll everything is drawn, as the page always was.
 function railAllows(kind){
-  const btn = {projects: null, profile: null, settings: "bSettings", users: "bUsers", roles: "bRoles",
-               docker: "bDocker", nodes: "bNodes", storage: "bStorage", nginx: "bNginx", toolchains: "bToolchains",
-               emulator: "bEmulator", phone: "bPhone", runner: "bRunner", jobs: "bJobs", findings: "bFindings"}[kind];
-  if (btn === null) return true;
-  const b = $(btn);
-  if (!b) return false;
-  if (b.closest("#cardAdmin")?.hidden) return false;
-  // Hidden is not offered; disabled is offered dead, with the card's reason.
-  return !b.hidden && b.style.display !== "none";
+  const a = state?.areas;
+  if (!a) return true;
+  switch (kind){
+    case "settings": return !!a.controller;
+    case "users": case "roles": return !!a.accounts;
+    case "toolchains": return !!a.toolchains;
+    case "jobs": return !!a.jobs;
+    // The nginx tab is the Nodes tab's area (R171); Storage its own (R169).
+    case "nodes": case "nginx": return !!a.nodes;
+    case "storage": return !!a.storage;
+    case "runner": return state?.can?.runner !== false && a.runner !== "";
+    default: return true;
+  }
 }
 function railGroups(){
   return RAIL.filter(g => g.panel || (g.tools || []).some(([k]) => railAllows(k)));
@@ -180,7 +185,7 @@ function drawRail(){
   const html = groups.map(item).join("");
   if (rail.innerHTML !== html){
     rail.innerHTML = html;
-    rail.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => { railGo(b.dataset.rail); if (isPhone()) setView(phoneViewFor(b.dataset.rail)); });
+    rail.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => railGo(b.dataset.rail));
   }
   const five = groups.filter(g => RAIL_PHONE.includes(g.key));
   const rest = groups.filter(g => !RAIL_PHONE.includes(g.key));
@@ -189,24 +194,19 @@ function drawRail(){
     ? `<button type="button" class="ritem${moreOn ? " on" : ""}" data-railmore aria-haspopup="menu" aria-expanded="${railMoreOpen}" aria-label="More">${RAIL_ICONS.more}<span class="rlbl">More</span></button>` : "");
   if (bar.innerHTML !== bhtml){
     bar.innerHTML = bhtml;
-    bar.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => { railMoreShow(false); railGo(b.dataset.rail); setView(phoneViewFor(b.dataset.rail)); });
+    bar.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => { railMoreShow(false); railGo(b.dataset.rail); });
     bar.querySelector("[data-railmore]")?.addEventListener("click", () => railMoreShow(!railMoreOpen));
   }
   const more = $("railmore");
   if (more){
     const mhtml = rest.map(g => `<button type="button" class="ritem${g.key === on ? " on" : ""}" data-rail="${esc(g.key)}">${
-        RAIL_ICONS[g.icon] || TOOL_ICONS[g.icon] || ""}<span class="rlbl">${esc(g.label)}</span></button>`).join("")
-      + `<button type="button" class="ritem" data-railtabs>${TOOL_ICONS.notebook}<span class="rlbl">Open tabs</span></button>`;
+        RAIL_ICONS[g.icon] || TOOL_ICONS[g.icon] || ""}<span class="rlbl">${esc(g.label)}</span></button>`).join("");
     if (more.innerHTML !== mhtml){
       more.innerHTML = mhtml;
-      more.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => { railMoreShow(false); railGo(b.dataset.rail); setView(phoneViewFor(b.dataset.rail)); });
-      more.querySelector("[data-railtabs]").onclick = () => { railMoreShow(false); setView("terminal"); };
+      more.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => { railMoreShow(false); railGo(b.dataset.rail); });
     }
   }
 }
-// On a phone Home and Projects are the dashboard panel (the project cards,
-// until step 3 makes the Projects page); every other page is the pane.
-function phoneViewFor(key){ return key === "home" || key === "projects" ? "dash" : "terminal"; }
 let railMoreOpen = false;
 function railMoreShow(on){
   railMoreOpen = !!on;
@@ -274,7 +274,6 @@ function jumpGo(i){
   jumpRows = [];
   if (!row) return;
   row[2]();
-  if (isPhone()) setView(phoneViewFor(railOn()));
 }
 function wireJump(){
   const inp = $("jump"), list = $("jumpList");

@@ -30,7 +30,7 @@ const openSect = async id => {
 
 // From a clean slate: a kept fixture may hold these from a run before.
 for (const n of ['deployer', 'installer']) await api('/api/roles', { action: 'remove', name: n });
-await page.click('#bRoles');
+await page.evaluate(() => openRolesTab());
 await page.waitForSelector('.rolestab #rolesWho', { timeout: 15000 });
 await openSect('roles:roles');
 const names = await page.$$eval('#rolesPick option', os => os.map(o => o.textContent.trim()));
@@ -181,10 +181,11 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
     extraHTTPHeaders: { Authorization: 'Basic ' + Buffer.from('dep:deppass11').toString('base64') } });
   await dp.goto(URL); await ready(dp);
   await dp.waitForFunction(() => state?.areas, null, { timeout: 15000 });
-  const shown = await dp.evaluate(() => Object.fromEntries(['bToolchains', 'bJobs', 'bNodes', 'bSettings', 'bUsers', 'bRoles']
-    .map(id => [id, !!document.getElementById(id) && !document.getElementById(id).hidden && !document.getElementById(id).closest('[hidden]')])));
-  ok(shown.bToolchains && !shown.bJobs && !shown.bNodes && !shown.bSettings && !shown.bUsers && !shown.bRoles,
-     `its page offers Toolchains and hides the tabs it may not read (${JSON.stringify(shown)})`);
+  const shown = await dp.evaluate(() => ({ ...Object.fromEntries(['toolchains', 'jobs', 'nodes', 'settings', 'users', 'roles']
+    .map(k => [k, railAllows(k)])), people: !!document.querySelector('#rail [data-rail="people"]'),
+    jobsRail: !!document.querySelector('#rail [data-rail="jobs"]') }));
+  ok(shown.toolchains && !shown.jobs && !shown.nodes && !shown.settings && !shown.users && !shown.roles && !shown.people && !shown.jobsRail,
+     `its rail offers Toolchains and leaves out the pages it may not read (${JSON.stringify(shown)})`);
   await dp.close();
   await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
   await api('/api/roles', { action: 'remove', name: 'tc-viewer' });

@@ -72,7 +72,6 @@ async function refresh(){
   // state from before the thing the operator just did.
   if (refreshBusy){ refreshAgain = true; return; }
   refreshBusy = true;
-  const asked = performance.now();
   const adoptedBefore = adoptSeq;
   let fetched = false;     // the container answered; what failed is this page
   try{
@@ -126,12 +125,6 @@ async function refresh(){
     // After the boot check above, which drops every Claude tab on a restart:
     // this would otherwise be reaping tabs that have already gone.
     reapDeadTerminals();
-    // ...and come back to the Dashboard side, once, for the same reason the
-    // Claude tabs went: the terminal side is a view of sessions this container
-    // does not have. Only on a phone, where the two are alternatives rather
-    // than columns side by side, and only when the boot actually changed:
-    // a plain reload still lands where it left off.
-    viewAfterRestart();
     $("dot").classList.remove("off");
     $("dot").removeAttribute("aria-label");
     // The container's hostname, which answers "which BuilderBot am I looking
@@ -149,25 +142,10 @@ async function refresh(){
     $("uptime").textContent = "up " + shortUptime(state.uptime);
     drawBuild(state.image);
     adoptLayout(state.layout);
-    // Not mid-drag: adopting the server's order under a moving pointer would
-    // snap the card out of the operator's hand.
-    if (state.cards && !cardDrag && asked > cardsChangedAt) adoptCards(state.cards);
-    // The phone-glance answer while the dashboard is in front: the Terminal
-    // switch carries the worst Claude state: amber if any session is
-    // waiting on you, blue if they are all busy, since the Sessions list
-    // itself is a flyout on the terminal side there.
-    const cs = state.sessions.map(s => s.claude).filter(Boolean);
-    const glance = cs.find(c => c.state === "waiting") || cs.find(c => c.state === "working");
-    $("vTerm").innerHTML = stateDot(glance || null) + "Terminal";
-    // Every card draws on its own from here (bug #44). They used to run as
+    // Every part draws on its own from here (bug #44). They used to run as
     // one straight line, so a draw that threw on the payload took every
-    // draw after it down with it: the operator saw Runner and Projects still
-    // on "loading…" and Doctor on its boot text, minutes after a restart,
-    // under a red light that only said "error", while the phone view, which
-    // fetches for itself, had drawn fine. The container had answered; one
-    // draw had tripped over the answer and the page kept the fact to itself.
-    // Now the card that failed says so in its own body and the rest draw.
-    drawCard("runner", drawRunner);
+    // draw after it down with it, and the page kept the fact to itself. Now
+    // the part that failed says so in its own body and the rest draw.
     // A page opened (or reloaded) while a clone is running starts watching
     // it here. Not through pJobSeen: that redraws the card itself and would
     // recurse into refresh() on a finish, so only the poll is started; the
@@ -187,43 +165,6 @@ async function refresh(){
     drawCard("git", drawGit);
     drawCard("custom", drawCustom);
     drawCard("doctor", drawDoctor);
-    // The Administration card is an administrator's: to anybody else it is
-    // not there, rather than there with dead buttons.
-    // R152 step 3: a tab whose area this account may not read is not
-    // offered at all (state.areas, "" for no Read), and the Administration
-    // card shows whichever of its three it may read, gone when none.
-    drawCard(null, () => {
-      const a = state?.areas;
-      if (!a) return;
-      const show = {bSettings: a.controller, bUsers: a.accounts, bRoles: a.accounts,
-                    bToolchains: a.toolchains, bJobs: a.jobs, bNodes: a.nodes,
-                    // The nginx tab is the Nodes tab's area (R171); the
-                    // Storage tab its own (R169).
-                    bNginx: a.nodes, bStorage: a.storage};
-      for (const [id, lvl] of Object.entries(show)){
-        const b = $(id);
-        if (b) b.hidden = !lvl;
-      }
-      const c = $("cardAdmin");
-      if (c) c.hidden = !a.controller && !a.accounts;
-    });
-    // The Emulator button, ghosted until some node has what the tab needs,
-    // with the reason as its tip and, since a tip is nothing on a phone, as
-    // a red line under the card's buttons (R119 step 6).
-    drawCard(null, () => {
-      // CI runner is offered by grant (R137 step 3): hidden, not ghosted,
-      // for an account without it; the runner's status stays on its card.
-      const r = $("bRunner");
-      if (r) r.hidden = state?.can?.runner === false || state?.areas?.runner === "";
-      const b = $("bEmulator"), e = state?.emulator, w = $("toolsWhy");
-      if (!b || !e) return;
-      b.disabled = !e.ready;
-      if (w){
-        const say = e.ready ? "" : `Emulator: ${e.why}`;
-        if (w.textContent !== say) w.textContent = say;
-        w.hidden = !say;
-      }
-    });
     drawCard(null, watchSignin);
     // A scan re-ran on the host: drop the cache, and any notebook showing
     // its Analysis view re-reads on its poll below.
@@ -272,7 +213,8 @@ async function refresh(){
     const pw = $("pollWhy");
     if (pw && pollFails > 1){ pw.textContent = said; pw.hidden = false; }
     if (pollFails > 1)
-      document.querySelectorAll(".card .loading").forEach(el => {
+      // Every placeholder still waiting: the page's and the panels' own.
+      document.querySelectorAll("main .loading").forEach(el => {
         el.textContent = fetched
           ? "not drawn: the page could not read the server's answer (the line under the header says why)"
           : "not loaded: the page is not reaching the container";
@@ -299,11 +241,6 @@ let pollFails = 0;
 let findingsGated = false;
 function gateFindings(){
   const off = findingsOff();
-  const b = $("bFindings");
-  if (b){
-    b.disabled = !!off;
-    b.title = off || "the scanner's findings, with a project picker and filters";
-  }
   if (findingsGated) return;
   findingsGated = true;
   if (!off) return;

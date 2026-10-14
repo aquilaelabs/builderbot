@@ -162,21 +162,21 @@ const dead = await page.evaluate(() => ({
   title: document.getElementById('dot')?.getAttribute('aria-label') || '',
   line: document.getElementById('pollWhy')?.hidden ? '' : document.getElementById('pollWhy')?.textContent || '',
   fails: pollFails,
-  loading: [...document.querySelectorAll('.card .loading')].map(e => e.textContent),
+  loading: [...document.querySelectorAll('main .loading')].map(e => e.textContent),
 }));
 ok(dead.red && /polls failed in a row/.test(dead.line) && dead.line === dead.title && dead.fails >= 2,
    `a failing poll says so in a line under the header, with the count and the reason, and the light is named by it (${dead.line.slice(0, 80)})`);
 // ...and the case that actually bit: a page whose FIRST poll never lands, so
-// no card ever draws and every one of them keeps its initial text.
+// nothing ever draws and every placeholder keeps its initial text.
 await page.reload({ waitUntil: 'domcontentloaded' });
 await page.evaluate(() => refresh());
 await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
 const cold = await page.evaluate(() =>
-  [...document.querySelectorAll('.card .loading')].map(e => e.textContent));
+  [...document.querySelectorAll('main .loading')].map(e => e.textContent));
 ok(cold.length > 0 && cold.every(t => /not reaching the container/.test(t)),
-   `...and on a page whose first poll never landed, every card says why rather than "loading…" (${
-     cold.length} card(s): ${JSON.stringify(cold[0] || '')})`);
+   `...and on a page whose first poll never landed, every placeholder says why rather than "loading…" (${
+     cold.length}: ${JSON.stringify(cold[0] || '')})`);
 await page.unroute('**/api/status*');
 await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
@@ -186,35 +186,35 @@ ok(await page.evaluate(() => !document.getElementById('dot').classList.contains(
                              && pollFails === 0),
    '...and it all clears the moment a poll lands again');
 
-// ---- one card's draw failing must not strand the rest (bug #44) ----
+// ---- one part's draw failing must not strand the rest (bug #44) ----
 // The other shape of the same report: the container answered, one draw threw
-// on the payload, and every card after it kept its initial text under a red
+// on the payload, and every part after it kept its initial text under a red
 // light, which the words above would then have blamed on the network. The
-// failed card says so in its own body; the others draw; the light stays on.
+// failed part says so in its own body; the others draw; the light stays on.
 await page.evaluate(() => {
-  window.__drawRunner = drawRunner;
-  drawRunner = () => { throw new Error('runner draw boom'); };
+  window.__drawDoctor = drawDoctor;
+  drawDoctor = () => { throw new Error('doctor draw boom'); };
 });
 await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
 const partial = await page.evaluate(() => ({
-  runner: document.getElementById('runner').textContent.trim(),
+  doctor: document.getElementById('doctor').textContent.trim(),
   projectsWaiting: !!document.querySelector('.pgrid .loading'),
-  doctorWaiting: /first run pending/.test(document.getElementById('doctor').textContent),
+  commandsWaiting: !!document.querySelector('#commands .loading'),
   red: document.getElementById('dot').classList.contains('off'),
 }));
-ok(/not drawn/.test(partial.runner) && /runner draw boom/.test(partial.runner),
-   `a card whose draw threw says so in its own body (${JSON.stringify(partial.runner.slice(0, 60))})`);
-ok(!partial.projectsWaiting && !partial.doctorWaiting && !partial.red,
-   `...and the cards after it still draw, under a light that stays on (${JSON.stringify(partial)})`);
-ok(page.errors.some(t => /runner draw boom/.test(t)),
+ok(/not drawn/.test(partial.doctor) && /doctor draw boom/.test(partial.doctor),
+   `a part whose draw threw says so in its own body (${JSON.stringify(partial.doctor.slice(0, 60))})`);
+ok(!partial.projectsWaiting && !partial.commandsWaiting && !partial.red,
+   `...and the parts after it still draw, under a light that stays on (${JSON.stringify(partial)})`);
+ok(page.errors.some(t => /doctor draw boom/.test(t)),
    '...while the error itself still reaches the console');
 page.errors = [];
-await page.evaluate(() => { drawRunner = window.__drawRunner; });
+await page.evaluate(() => { drawDoctor = window.__drawDoctor; });
 await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
-ok(await page.evaluate(() => !/not drawn/.test(document.getElementById('runner').textContent)),
-   '...and the card recovers on the next poll that draws');
+ok(await page.evaluate(() => !/not drawn/.test(document.getElementById('doctor').textContent)),
+   '...and the part recovers on the next poll that draws');
 // ...and when the page trips BEFORE the draws (on the payload, not on the
 // fetch), the light and the placeholders blame this page, not the network.
 // The status answer is held for half a second so the stub is in place
@@ -230,7 +230,7 @@ await page.waitForFunction(() => pollFails >= 2, null, { timeout: 5000 });
 await page.unroute('**/api/status*');
 const tripped = await page.evaluate(() => ({
   title: document.getElementById('pollWhy').textContent || '',
-  loading: [...document.querySelectorAll('.card .loading')].map(e => e.textContent),
+  loading: [...document.querySelectorAll('main .loading')].map(e => e.textContent),
 }));
 ok(/fails on its answer/.test(tripped.title) && /layout boom/.test(tripped.title)
    && tripped.loading.length > 0 && tripped.loading.every(t => /could not read the server's answer/.test(t)),

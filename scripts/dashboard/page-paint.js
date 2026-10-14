@@ -9,10 +9,6 @@
 
 "use strict";
 
-// The click that ends a card's drag is not a press on its header
-// (page-cards.js): set by the drag, read by the header's handler.
-let swallowClick = false;
-
 // Rebuild-if-changed, for every list this page redraws on the poll. The poll
 // is every fifteen seconds and nearly always says the same thing; replacing
 // identical markup anyway dropped :hover under a resting pointer, reset a

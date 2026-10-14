@@ -141,7 +141,7 @@ await ready(page);
 {
   await page.evaluate(() => { const c = document.getElementById('cardTools');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
-  await page.click('#bJobs');
+  await page.evaluate(() => openJobsTab());
   await page.waitForSelector('.jobstab .jbrow', { timeout: 15000 });
   // The tab at a glance (R216): tiles of what runs, waits, failed and
   // finished of the jobs listed.

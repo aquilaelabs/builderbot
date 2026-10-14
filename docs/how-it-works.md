@@ -523,8 +523,8 @@ anywhere else.
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
 | `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb toolchains install tizen` prints the steps and is not in the dashboard's list; everything there installs |
 
-**From the dashboard.** The sidebar's **Tools** card holds **Toolchains…**,
-which opens as a **tab** the way the findings report does: a list of
+**From the dashboard.** **Toolchains**, under Build on the rail, is a
+**page** the way the findings report is: a list of
 everything above with a checkbox each, the size it will take, and, once
 installed, the path it actually landed on. Tick several and install or remove
 them in one go. If one fails, its row says why: the sentence, not the
@@ -706,10 +706,10 @@ bb findings sample --remove
 ```
 
 The scanner is the host's and a development stack has none, so the Analysis
-tab, the card's counts and the findings log have nothing to show in a dev
-instance. `bb findings sample` writes one obviously-fake report, tool
-`builderbot-sample`, with a finding in each of the first few projects on the
-share and one on a path that places nowhere, so every shape those surfaces
+page, the notebook's Analysis view and the findings log have nothing to show
+in a dev instance. `bb findings sample` writes one obviously-fake report,
+tool `builderbot-sample`, with a finding in each of the first few projects on
+the share and one on a path that places nowhere, so every shape those surfaces
 draw has something to draw. It refuses to sit beside a real report, and it
 refuses a read-only `/reports`, which is what a box with a real scanner has.
 Run it inside the instance you want it in: it is not relayed to the
@@ -756,26 +756,30 @@ terminals, which are proxied under `/term` so one
 sign-in covers them all. Signing in is a login page that sets a 30-day
 cookie (a real form, so password managers work) not the browser's own
 credentials dialog, and there is no second prompt for the terminal port
-because there is no second port. The sign-out button beside ↻ and ▤ in the header ends the session (`/logout` does the same).
+because there is no second port. The sign-out button, last in the header, ends the session (`/logout` does the same).
 
 **The page is a rail, a top bar, a page on show and a strip of documents**
 (R218 step 2). The rail down the left edge is nine groups, each one press:
 Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build
 (Toolchains, Emulator, Phone, CI runner), Jobs, Sessions, People (Users,
 Roles) and Settings (Controller, Profile); a group with several tools shows
-them as a sub-nav at the top of its page. A page has an address
+them as a sub-nav at the top of its page. A page an account's grants forbid
+is not drawn: People only for an account that may read accounts, Controller
+only for one that may read the controller. A page has an address
 (`#/containers`, `#/machines/nodes`, `#/projects/NAME`), so a reload, a
 shared link and the back button land on it. Terminals and the chat are the
 dock's, at the foot of every page (step 4). On a phone the rail is a bar of
-five across the foot, with More for the rest and for the open tabs. The
+five across the foot (Home, Projects, Containers, Jobs, and More for the
+rest), and every page, Home and Projects included, is the one page area
+with the dock at its foot: there is no second view to switch to. The
 search in the top bar jumps to a page, a project, a container or a node as
 you type; it does not search inside notebooks.
 
 **A project is a page** (R218 step 3). Its notebook's pane wears the
 project's header: the name, the branch and the node, the session's state
-as a dot and a word, and the actions its sidebar row carried, Open Claude
-with the chooser under it, Shell, and the rest (link, phone, report, lock,
-pin, settings) behind one menu. The views are the page's sub-nav, Overview
+as a dot and a word, and its actions: Open Claude with the chooser under
+it, Shell, and the rest (link, phone, report, lock, pin, settings) behind
+one menu. The views are the page's sub-nav, Overview
 first, and the address names the view (`#/projects/web/bugs`), so a link
 to a project's bug list lands on it. The Projects page is a searchable grid
 of cards, each with the same state and the same two actions and menu; the
@@ -799,6 +803,16 @@ time out.
 
 Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and (in red) a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
 
+**`bb doctor`'s verdict** is the dot right after the bell, green, amber or
+red for the worst check. The server runs the checks in the background every
+30 minutes. Pressing the dot opens a panel with the bell's manners (Escape
+or a press elsewhere closes it): failures and warnings as full lines, each
+with the fix hint from `bb doctor`'s own output beside it, passing checks as
+green chips, when it last ran, and a ↻ that runs `bb doctor` now. A plain
+user's panel carries only the lines that are theirs to act on (whether a
+node can run their session); the runner tokens, ssh keys and the docker
+daemon are an administrator's.
+
 The **About** control beside it is the version, and where the header is too
 narrow for a version string it becomes a **?** rather than a truncated number
 that answers nothing: either way the popup behind it carries the whole stamp,
@@ -814,24 +828,19 @@ releases**, each release under the categories it was filed into, and a line
 saying how many earlier releases it is not showing. The question it answers is
 "what changed in the build in front of me"; the file it reads keeps every
 release forever and is where the rest of them are. Cutting a new minor takes
-the previous one off that page in the same gesture, with nothing pruned. Every sidebar card collapses to its header with a click
-on that header, and dragging a header reorders the cards; both are remembered
-in `/config/cards.json`, so the phone and the desktop agree about the
-arrangement and it survives restarts and image updates. The **▤** button in
-the top bar opens the appearance menu, whose first item puts it all back:
-default order (Doctor on top) with every card expanded.
+the previous one off that page in the same gesture, with nothing pruned.
 
-**Under it, Dark, Light or System, and fourteen color schemes**, each with
-a dark half and a light one but Nostromo, which is dark only: its hull and
-its amber are a dark room, and while it is picked the page stays dark
-whatever the switch says; Fern is its colors without the ship, rounded,
-with a light half of its own. Dark is the page read in a dim room beside a
+**Under the gear in the header, Dark, Light or System, and fourteen color
+schemes**, with Profile below them; each scheme has a dark half and a light
+one but Nostromo, which is dark only: its hull and its amber are a dark
+room, and while it is picked the page stays dark whatever the switch says.
+Fern is its colors without the ship, rounded, with a light half of its own. Dark is the page read in a dim room beside a
 terminal; Light is the same scheme with the page near white, the ink dark
 and the accent pulled down to read on it; System follows the device as it
 changes. The switch is applied on the press like a scheme, kept in the
 browser so the first paint is right, and on the account so a browser that
-has never seen it starts the same way. A scheme is nine custom properties: every rule in
-the stylesheet draws from them, and the button and accent families are mixed
+has never seen it starts the same way. A scheme is nine custom properties:
+every rule in the stylesheet draws from them, and the button and accent families are mixed
 from the scheme's own panel and accent (`color-mix`, with flat fallbacks), so
 a recolor reaches the tabs, the primaries and the active states rather than
 stopping at the background. Each swatch is defined for `.sw[data-theme=…]` as
@@ -839,42 +848,39 @@ well as for the page, which means the preview *is* the palette rather than a
 second copy of it that can drift.
 
 **Nostromo** is the one that is more than a recolor: amber phosphor on a
-green-black hull, with a hazard decal along the header's bottom edge, a stencil
-tick on each card title, faint scanlines on the panels and a vignette on the
-page. All of it drawn: gradients and one pseudo-element, no image files. That
+green-black hull, with a hazard decal along the header's bottom edge, faint
+scanlines on the panels and a vignette on the page. All of it drawn: gradients and one pseudo-element, no image files. That
 is the persistence rule rather than taste: an image would be a binary in the
 repository, re-shipped in a weekly rebuild, for something two gradients say.
 Nothing in it moves the layout, so switching schemes never nudges the page.
 
-The choice is kept in the browser (`localStorage`, `bb.theme`) rather than on
-the server beside the card order; that describes the work and should follow
-you between machines; which colors are comfortable is about the room you are
-sitting in, and a phone in the dark may reasonably differ from a desktop at
-noon. It is also applied from a block in `<head>`, before the first paint,
-which a value fetched from the server could not be without a flash. The sidebar is what the *box* is doing; the command lists and
-the session list are about the shell in front of you, and hang off the
-terminal instead; see below. On a touch screen, hold a header for half a second to pick
-the card up; a finger that moves sooner is scrolling, and the sidebar scrolls
-under it as if the header were not there: a fast flick that happens to land
-on a header is never a misfire. The
-headers hold nothing but the title and a chevron: every control a card has
-lives in its body. The cards:
+The scheme is kept the same way: in the browser (`localStorage`, `bb.theme`,
+with the account it was picked by) so the first paint is right, and on the
+account so another browser starts with it. A browser whose stored choice was
+another account's takes this account's own on the next poll. It is applied
+from a block in `<head>`, before the first paint, which a value fetched from
+the server could not be without a flash.
 
-- container uptime, **and which build of the image is serving it**: the short
-  commit beside the uptime, with the whole one and the time it was built on
-  hover. The two are different questions: an Unraid container keeps running
+The pages the rail opens are what the *box* is doing; the command lists are
+about the shell in front of you, and hang off the dock instead; see below.
+What the pages and each project carry:
+
+- container uptime, **and which build of the image is serving it**: both in
+  the bar of the Settings page, and the build again as the About control in
+  the header, whose popup carries the whole commit and the time it was
+  built. The two are different questions: an Unraid container keeps running
   whatever it last pulled, so "up two hours" says nothing about whether a fix
   merged an hour ago is in there, and inferring one from the other is a good
   way to spend an afternoon debugging a bug that was already fixed. `unstamped`
   means the image was built outside CI. `bb status` prints the same line first,
   and `bb drift` is the other half: what a checkout has changed that the
   running container is not serving.
-- every project under `/workspace` with its branch, and one-click **Claude**
-  and **Shell** per project. Anything with a problem is folded away behind
-  **Show projects with errors**, in red, a directory the container user
-  cannot read/write/enter (with the `chown` that fixes it) or one holding no
-  valid git repository. Only errors are folded away: a **warning stays in the
-  list**, in amber, because it is asking for something. This is what
+- the **Projects** page: every project under `/workspace` as a card with its
+  branch and node, and **Open Claude** and **Shell** on each. A problem is
+  said on the card rather than hidden: an **error** in red, a directory the
+  container user cannot read/write/enter (with the `chown` that fixes it) or
+  one holding no valid git repository, and a **warning** in amber, because
+  it is asking for something. This is what
   makes one mapping for the whole folder workable: a directory that is not a
   project says so instead of quietly not appearing. Hidden directories are
   skipped outright, and empty directories are never listed either: a mount point waiting for
@@ -885,7 +891,7 @@ lives in its body. The cards:
   folder rather than beside it), and you can create one by hand for anything else
   you would rather not see. It *hides*; the padlock **blocks**, which is a
   different promise.
-  At the foot of the card, **New project** creates one. A fresh local repo
+  In the page's bar, **New project** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *Brief*: what you want
   built. The brief is not the project's `CLAUDE.md`, which every session
   reads as standing instructions and which would go on asserting the first
@@ -908,7 +914,7 @@ lives in its body. The cards:
   or xz, unpacked into the new directory before `git init`. However it
   arrived, the code map a session asks before grepping (`bb map`) is built
   for it in the background the moment the tree is there: the dialog closes
-  as usual, the row says *mapping the code* for the seconds it takes, and
+  as usual, the card says *mapping the code* for the seconds it takes, and
   a Claude session on that project waits for it, so its first question
   about the tree is answered from an index rather than by building one. A single
   top-level folder inside is dropped (the project directory *is* that
@@ -934,10 +940,10 @@ lives in its body. The cards:
   public line is ever written; nothing from the request is. With a PAT
   configured (a per-project token, or `gh auth login`) the key is optional even for
   private repos: gh answers for plain https remotes.
-  Every repo wears a chain icon beside its eye, and it is the **remote**
-  whichever state the project is in: for one with **no remote at all** it is
-  **link**, and for one that already has a remote it opens that project's
-  remote settings: the access token, which credential git reaches for, the
+  Every repo's menu carries its **remote** whichever state the project is
+  in: for one with **no remote at all** it is **Link to a git host**, and
+  for one that already has a remote it is the host's settings (**GitHub
+  settings**, say): the access token, which credential git reaches for, the
   repository's address, and **Unlink**, all described under
   [An access token for one project](#an-access-token-for-one-project),
   [A new address for the same repository](#a-new-address-for-the-same-repository) and
@@ -971,17 +977,18 @@ lives in its body. The cards:
   does: everything checkable is checked while the dialog is still up (the
   name, the URL, the key, whether the directory is free, whether the repo
   already has a remote), and then the dialog closes and the work carries on
-  server-side. The job appears as its own row in this card, saying what it is
+  server-side. The job appears as its own band above the Projects page's
+  grid, saying what it is
   doing: an ellipsis, not a percentage; git's progress is a
   carriage-return animation on stderr and parsing it back into a bar is a
   fight not worth having, with an **Abort** that stops it and removes a
   half-cloned directory. Close the page, sleep the phone, come back later:
   the job belongs to the server, and a reload picks it up mid-flight. If it
-  fails, the message stays on the card until you dismiss it rather than
+  fails, the message stays on the page until you dismiss it rather than
   passing through a toast you may not have been there to see. `git init` is
   the exception and stays synchronous; it is done before a spinner would
   render, and a row that flashes up for one frame is worse than none
-- **Tools**: **Toolchains**, which opens the installer as a tab:
+- **Build**: **Toolchains**, the installer as a page:
   every toolchain on the [toolchain store](#the-toolchain-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
@@ -1013,12 +1020,13 @@ lives in its body. The cards:
   install. A toolchain that puts something on
   PATH reaches a session when the session starts, so its row says how many
   sessions open on that node started before it was installed, and to reopen
-  them. Beside it, **Docker manager…**, **Emulator** (a node's Android
-  system images: which it has, which AVDs are built on each, and ticking
-  the ones to add as on Toolchains; ghosted until some node has the
-  command-line tools and the emulator, with the reason in red under the
-  card's buttons), **Analysis** (the scanner reports) and **Nodes**, each a
-  tab of its own
+  them. Beside it under Build, **Emulator** (a node's Android system images:
+  which it has, which AVDs are built on each, and ticking the ones to add as
+  on Toolchains; a node without the command-line tools and the emulator says
+  so in amber, with a link to install them from Toolchains), **Phone** and
+  **CI runner**; on the rail's other groups, **Containers** (the Docker
+  manager), **Analysis** under Projects (the scanner reports) and **Nodes**
+  under Machines, each a page of its own
 - a **checklist** per project, carrying how much is still to hand over here,
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens
@@ -1048,43 +1056,44 @@ lives in its body. The cards:
   index line in the same act, never one without the other. Mostly Claude
   writes these itself; this is for the standing instruction you would
   otherwise repeat once a session and hope stuck.
-  It sits on the project row rather than in a Claude tab on
+  It sits on the project's page rather than in a Claude tab on
   purpose, since *why did it do that?* is usually asked after the tab is closed,
   and it is folded shut, because a handful of files nobody edits does not
   earn the top of a panel. Editing one arms the panel's single **Save**, the
   same button the roadmap uses.
   **Edits land for the next session**: the index is read at startup, and a running session is holding what it read
   then, which is what Save tells it, in the one line it spends
-- **(node: name)** after every project's name, on the card and on the
-  Projects tab: the node its work runs on, or *none*. A project with none
-  says nothing more; its Claude button is ghosted with where to pick one
+- **the node** beside the branch on every project's card and in its page's
+  header: the node its work runs on. A project with none says nothing more;
+  its Claude button is ghosted with where to pick one
 - a **padlock** per project, which locks it: no Claude session starts there
-  and its notebook goes read-only; see below. A locked row keeps every
+  and its notebook goes read-only; see below. A locked card keeps every
   control, with its Claude button ghosted rather than removed and a closed
-  padlock after the name; a row with a repo *error* carries no Claude button at
+  padlock after the name; a card with a repo *error* carries no Claude button at
   all, because a session cannot start there. **Shell** stays either way, since
   that is often how you would fix it
-- a **thumbtack** per project, which decides whether your sidebar shows it at
-  all. The pins are each person's own: unpinning takes a project off your card
-  and nobody else's, and nothing else: it keeps every control on the **All
-  projects** tab at the foot of the card, which lists everything under
-  `/workspace` with the same buttons on each row. Pins live per account in
+- a **pin** per project, **Pin** or **Unpin** in its card's menu on the
+  Projects page, which decides whether Home's glance shows it (R218 step 5).
+  The pins are each person's own: unpinning takes a project off your glance
+  and nobody else's, and nothing else: the Projects page lists everything
+  under `/workspace`, pinned or not, with the same controls on each card and
+  *unpinned* after the name of one that is not. Pins live per account in
   `/config/pinned-projects.json`. An account made since 7 Oct starts with
-  nothing pinned and pins what it wants from **All projects**; one made
-  before that with no set yet still sees everything pinned. The card and the
-  tab both list projects by name, case aside
+  nothing pinned and pins what it wants from the Projects page; one made
+  before that with no set yet still sees everything pinned. The page lists
+  projects by name, case aside
 - a **bin**, which moves a project to `/workspace/.trash/<name>` with every
   file kept: a second delete of the same name is numbered rather than
   overwriting the first, and `/config` is not touched, so putting one back is
-  a `mv`. It is on the **All projects** tab's rows (behind the row's fold on a
-  phone) and as **Delete project…** at the foot of every project's settings
-  dialog, the gear, on the card and the tab alike. Deliberately not a bare
-  button on the sidebar card
-- a **gear** per project, which is that project's own settings: its name, its
+  a `mv`. It is **Delete** in each card's menu on the Projects page and
+  **Delete project…** at the foot of every project's settings dialog, and
+  the bin in the page's bar lists what was deleted, to put back.
+  Deliberately not a bare button on the card
+- **Settings** in each project's menu, that project's own settings: its name, its
   node and the build and test commands that run there, what Claude starts on,
   what a session may enter into the notebook, and how much of the tree it may
-  change without asking. GitHub is not in it; that is the chain, on the same
-  row, so a credential has one home whether or not the project has a remote
+  change without asking. GitHub is not in it; that is the remote, in the
+  same menu, so a credential has one home whether or not the project has a remote
   yet. Renaming changes the name it is shown under and nothing else (R154):
   a project has a permanent id and a directory that is never handed out again,
   and everything (the notebook, the containers, the sessions, Claude's own
@@ -1104,7 +1113,7 @@ lives in its body. The cards:
   control you use stays live (notebook, artifacts, dev instance, shell) and
   the only thing that goes is Claude starting a session there. For a project
   you keep in `/workspace` to deploy and run rather than to develop
-The **Tools** card carries **Docker manager…**, which is where a project's
+**Containers** on the rail is the **Docker manager**, which is where a project's
 containers are built, started, stopped and given their env. A project can have
 several: the Artifacts tab's dev row is one button now, **Send to Docker
 manager…**, which names a container and takes you there; every container of a
@@ -1288,7 +1297,7 @@ project with **no** node has no Claude session at all: this container carries
 no Claude Code, so the button says so and names what to do. Its shell still
 opens here, on the same share (a tree to read, the linters, git) because
 what moved to a node is Claude and not the terminal. A node's sessions ride its
-heartbeat onto the Sessions card with an "on <node>" pill, and ending one
+heartbeat onto the Sessions list with an "on <node>" pill, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,
 and the Toolchains tab's node picker is where more are added. (Underneath, the
@@ -1653,8 +1662,9 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ### The Settings tab
 
-The gear in the header keeps what belongs to this **browser**: theme and
-layout, and one entry, **Profile**, opening the signed-in account's own
+The gear in the header keeps what belongs to this **browser**: the color
+scheme (Dark, Light or System, and the schemes), and one entry, **Profile**,
+opening the signed-in account's own
 tab: their account name, their name and email, the name and email their
 commits carry (blank means the ones above), and a password change that asks
 for the current one first. Neither a Claude session nor a shell starts for an account with no
@@ -1678,9 +1688,9 @@ the same on a project its own reads, whose transcript files of the account's
 are in the session's view read-only as well; nobody else's are anywhere. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured, so two people on one
-project are two authors. The **Administration** card on the sidebar, shown
-only to administrators, holds **Controller settings**, opening the Settings
-tab, and **Users**. The Settings tab is what the
+project are two authors. **Settings > Controller** on the rail, drawn only
+for an account that may read the controller, opens the Settings tab, and
+**People > Users** holds the accounts. The Settings tab is what the
 **controller** owns and can apply live. The session-log policy lives there,
 and the idle rule for Claude sessions: end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
@@ -1785,27 +1795,32 @@ devapp log NAME` reads one, while rebuilding, changing the env, starting and
 stopping follow that project's *Claude may: Run its container*. An account
 that is not an administrator sees what belongs to its projects.
 
+Elsewhere on the page:
+
 - a rendered **findings report**: the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
   Project groups start collapsed: the severity pills on each are the overview,
   and what you open stays open across reloads. If the scanner re-runs while
   the report is open, the view reloads itself: the page watches the report
-  files' mtime, so you never triage stale findings. The sidebar card carries
-  the headline: one row per project with its counts by severity, so "whose
-  code, how bad" is answered without opening the report. Both leave out
-  projects with repo errors; those get fixed in the Projects card first, and
+  files' mtime, so you never triage stale findings. It is the **Analysis**
+  page, under Projects on the rail. It leaves out projects with repo errors;
+  those get fixed on the Projects page first, and
   a *locked* one is not in that category, and the report says how many
   findings that held back
   rather than quietly shrinking
-- the **Runner** card: the nodes' CI runners (this container runs none),
-  each with its state (listening, running a job, installing, failed) and the
-  `runs-on` line that pins a job to its node; a row opens that node's CI
-  runner tab, where one is installed, started or removed
-- every `bb` command as a button, pinnable, typed into the terminal you are
-  looking at, and a second card for **your own** command lists. Every such
+- the **CI runner** page (Build > CI runner): every node's CI runner (this
+  container runs none), one row each with its state (listening, idle;
+  running a job; quiet; install failed, with when and why; installing;
+  removing), above the chosen node's runner section, where one is
+  installed, started or removed, with the `runs-on` line that pins a job to
+  its node. A row picks its node
+- every `bb` command as a button, pinnable, in the dock's **Commands**
+  flyout, typed into the terminal you are looking at, and a section there
+  for **your own** command lists. Every such
   button grays out while the tab on screen is a Claude session or a document:
   commands only ever go to a plain shell, never quietly to some other tab
-- live list of tmux sessions, named exactly as their tabs are, with the same
+- **Sessions** (on the rail, and under the terminal in the dock): a live
+  list of tmux sessions, named exactly as their tabs are, with the same
   hover text the tabs carry. **Click the name** to go to its tab, reopening
   it first if it was minimized. The button beside it does the other thing:
   **Open** when the tab is minimized; when the tab is on the bar it turns
@@ -1819,17 +1834,6 @@ that is not an administrator sees what belongs to its projects.
   terminal: is it still going, or does it need me? The state comes from the
   terminal title Claude Code itself maintains, read through tmux: no polling
   of the conversation, no extra process
-- a **Doctor** card: `bb doctor`'s checks, run by the server in the background
-  every 30 minutes and
-  re-run on demand with its ↻. Its status row wears the verdict as a dot,
-  green, amber or red, beside an "all n ok" button that unfolds the detail:
-  failures and warnings as full lines, each with the fix hint from `bb
-  doctor`'s own output beside it, and passing checks collapsed into green chips.
-  A verdict getting worse unfolds that detail by itself; healing folds it
-  back. Only the detail: collapsing the whole card is your setting, and the
-  verdict never overrides it. A plain user's card carries only the lines
-  that are theirs to act on (whether a node can run their session); the
-  runner tokens, ssh keys and the docker daemon are an administrator's
 
 ### Tabs and panes
 
@@ -1865,15 +1869,15 @@ own address, so closing the dashboard leaves it working.
 - **Shell** opens *another* terminal at the project path every time you click
   it, so you can have several side by side. **+**, at the left of the tab
   strip, does the same for `/workspace`.
-- **Static analysis** on the Tools card opens the **Analysis** tab: the
-  whole report, a project selector, and a filter bar (level, free text): a
-  *document* tab, not a terminal. It is a report to read; putting it through a
+- **Analysis**, under Projects on the rail, opens the whole report as a
+  page: a project selector and a filter bar (level, free text), a
+  *document*, not a terminal. It is a report to read; putting it through a
   PTY would only make it harder to. The notebook's own Analysis view is the
   same report already narrowed to that project. With nothing readable in
-  `/reports` the button is **ghosted** and says which of the three reasons it
-  is (no mount, nothing in it, or nothing in it that parses) and a tab
-  restored from a saved layout is closed once, on the load that finds out,
-  rather than left open to say "nothing here"
+  `/reports`, pressing it opens nothing and a notice says which of the three
+  reasons it is (no mount, nothing in it, or nothing in it that parses), and
+  a page restored from a saved layout is closed once, on the load that finds
+  out, rather than left open to say "nothing here"
 - **`&mdash;` on a tab minimizes it**, and asks nothing. The terminal keeps running
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so
@@ -2149,9 +2153,10 @@ boot, and, because a browser left open still holds its own copy, and a phone
 waking up reloads the terminal iframe, which spawns whatever its URL names:
 each Claude terminal's URL carries the run of the container it was opened in.
 One from a previous run is refused where the session would have been created,
-with a line saying to open it from the card instead. Shell tabs carry no such
-marker and never needed one: a shell is safe to recreate in the same
-directory, which is why it survives a restart and a conversation does not.
+with a line saying to open it from its project's Claude button instead.
+Shell tabs carry no such marker and never needed one: a shell is safe to
+recreate in the same directory, which is why it survives a restart and a
+conversation does not.
 
 **A session can correct a plan, not just follow it**: `bb roadmap edit N`,
 `bb roadmap step add|edit|rm|mv|done`, `bb roadmap mv N up|down`, which matters when the design moves under a plan
@@ -2652,9 +2657,9 @@ file changed" would restate the mtime column.
 
 **Analysis** is the notebook's fourth view: the scanner's findings for that
 project alone, worst level first, read-only: the scan runs on the host, and
-`bb findings` reads the same digest in a terminal, and the Tools card's
-**Static analysis** button opens the whole report as the Analysis tab, with a
-project selector and the same filter bar. Findings whose paths
+`bb findings` reads the same digest in a terminal, and **Analysis** under
+Projects on the rail opens the whole report as a page, with a project
+selector and the same filter bar. Findings whose paths
 resolve into anything other than a **valid** project: one that is listed and
 free of error-level issues; a locked one still counts: are set aside rather
 than shown as "unattributed". The label is reserved for paths that genuinely
@@ -2880,20 +2885,20 @@ saying so and pointing at `bb catchup` and `bb preamble`, once per build.
   phone's alone: a desktop has a keyboard, so it carries no on-screen one at
   all. One flyout at a time on a phone, because there is not the height for
   two, and a flyout that has done its job gets out of the way: picking a
-  session or sending a command closes it. Which of the two
-  views, Dashboard or Terminal, a phone was on is remembered across a reload,
-  and while the dashboard is in front the **Terminal** switch carries the
-  worst Claude state: amber if a session is waiting on you, blue if they are
-  all working: as does each project's Claude button.
+  session or sending a command closes it. There is no second view to
+  switch to: every page, Home and Projects included, is the one page area
+  above the dock and the bottom bar of five, and the dock's line carries
+  each session's dot, amber if it is waiting on you, blue while it works,
+  as each project's card does.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. Coming back to a
 backgrounded page reconnects **the terminal you are looking at**: the three
 kept alive behind it reconnect when you switch to them, because reloading all
 of them at once is several hundred kilobytes of terminal emulator apiece and a
-phone spent its first seconds back doing exactly that. The **Sessions
-card** is the full list: every terminal and every Claude session, named the way
-the tabs are (`sh: <directory>`, `Claude: <project>`), including the ones you
+phone spent its first seconds back doing exactly that. The **Sessions**
+list (Sessions on the rail) is the full list: every terminal and every
+Claude session, named the way the tabs are (`sh: <directory>`, `Claude: <project>`), including the ones you
 minimized; the tmux name and full path are on hover. Document tabs are not
 there, having nothing to keep.
 
@@ -2955,22 +2960,22 @@ the transcript, which is still on disk.
 
 ### Commands run in the terminal
 
-They live under the terminal rather than in the sidebar, at every width:
+They live under the terminal, at every width:
 **Commands** and **Sessions** in the bar below the panes, opening a flyout
 over the terminal they act on. On a desktop it really is *over*: the panel is
 an overlay and the terminal keeps its height, because a resize costs a terminal
 a refit and a reflow of everything on screen, which is a lot to charge for
 looking at a list. A phone pushes the terminal up for it instead, there being
 no screen to spare for covering one thing with another. Both slide. That is where they belong: a command list is
-about the shell in front of you, not about the box, and it is also what keeps
-the sidebar to five cards you can read instead of twelve you scroll past. On
+about the shell in front of you, not about the box, which is what the pages
+are for. On
 a wide screen the buttons sit at the bar's left edge and the flyout is capped
 rather than stretched: a short list read across two thousand pixels is worse
 than one read in a column.
 
 Nothing about the graying-out below depends on where they live. It is computed
-from the *active pane*, which is why the same markup served the phone's bar
-and the desktop's cards for as long as it did.
+from the *active pane*, which is why one markup serves a phone and a desktop
+alike.
 
 The `bb` commands worth a button are buttons. Clicking one clears whatever is half-typed at
 the prompt, types the command into the terminal you are looking at and presses
@@ -2988,7 +2993,7 @@ rather than a signal: `Ctrl-C` would also interrupt whatever is running in that
 terminal, which is not something a button labeled `bb status` should be able to
 do.
 
-They are listed in `bb help`'s own order, so the card and the CLI read the
+They are listed in `bb help`'s own order, so the flyout and the CLI read the
 same. If the list outgrows its space it is cut off at eight with a **Show all**
 button after the cut. The **thumbtack** on each command keeps it above that
 cut: pinning moves a command up, it does not re-sort it into an order the CLI
@@ -2996,10 +3001,10 @@ never uses. Pins live in `/config/pinned-commands.json`: one machine, one
 operator, so a pin made at the desk is there on the phone.
 
 What is *not* there is most of `bb`, on purpose. Nothing that needs an argument
-(`bb capture shot URL`): a button is never a half-written command line. Nothing a card
-already does better: the Projects card lists projects and offers the CLAUDE.md
-fixes on each row, the Doctor card runs doctor, the findings report beats
-`bb findings`, and the Runner card has the runner's own controls. And nothing
+(`bb capture shot URL`): a button is never a half-written command line. Nothing a page
+already does better: the Projects page lists projects, the doctor's dot in
+the top bar runs doctor, the findings report beats `bb findings`, and the
+CI runner page has the runner's own controls. And nothing
 that only means anything from a checkout of the BuilderBot repo (`bb drift`,
 `bb dashboard dev`); those are for sessions developing the container. What is
 left is what an operator actually reaches for from a terminal: status, update,
@@ -3936,7 +3941,7 @@ reported a token that had been replaced hours earlier as expired.
 
 #### Accounts
 
-The Administration card's **Users** tab adds people, and **Edit** on a row opens everything about one account in a dialog (its name, role, projects, name and email, git identity and a new password) saved together. There is exactly one **owner**,
+The **Users** page (People > Users on the rail) adds people, and **Edit** on a row opens everything about one account in a dialog (its name, role, projects, name and email, git identity and a new password) saved together. There is exactly one **owner**,
 undeletable and renameable; an **admin** can do everything except act on the
 owner; a **user** gets the projects you give them and the work inside them,
 but not deleting one, renaming one, or changing which node it builds on: a
@@ -3988,7 +3993,7 @@ project, whichever is less, the projects it reads included, so a session of
 somebody who may only read a project can only read it.
 
 An area without Read is not offered (the status carries each area's level,
-and the page hides the tab or card), and the server holds the same line: the
+and the rail does not draw its page), and the server holds the same line: the
 Users and Roles reads, a Claude console without Terminal Read (no terminal
 at all), the Jobs listing (a person's own projects' jobs alone) and the
 Docker listing (the projects whose Containers they may read). Without Nodes

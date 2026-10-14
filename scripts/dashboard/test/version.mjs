@@ -1394,8 +1394,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // have something long enough to wrap.
   {
     await page.setViewportSize({ width: 393, height: 851 });
-    await page.evaluate(() => setView('terminal'));
-    await sleep(600);
+        await sleep(600);
     const long = 'A minor version moves the compatibility window, so every '
       + "project bound to a node is held until that node's agent is updated, "
       + "and the sessions running on it end when the bump lands";
@@ -1427,8 +1426,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
        `a category reads as a heading, not as another field the size of an entry (${
          JSON.stringify({bold: shape.headBold, unpainted: shape.headPlain})})`);
     await page.setViewportSize({ width: 1280, height: 1000 });
-    await page.evaluate(() => setView('terminal'));
-    await sleep(400);
+        await sleep(400);
   }
   await page.click(`${NB} #sheetClose`);
 }
