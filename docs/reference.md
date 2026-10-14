@@ -157,6 +157,16 @@ bb gpu             this node's NVIDIA card: how much of its memory is free, who 
 bb gpu run [--mem MB] -- CMD
                    CMD with a turn on the card: one heavy job at a time per node, waiting
                    for its turn and for MB of free memory rather than failing on a full card
+bb browser open --ext DIR [--firefox] [--url URL] [--headed]
+                   Chrome (or Firefox) with an unpacked extension loaded, headless,
+                   detached on a debugging port and a profile of its own: its id,
+                   its port and the extension's id
+bb browser go|eval|shot ID ...
+                   go ID URL (ext:PAGE for the extension's own), eval ID JS (the
+                   value as JSON), shot ID FILE (a PNG of the page on show)
+bb browser list | stop ID|--all
+                   the ones open; stop ends one by its process group and removes
+                   its profile
 bb proc [PATTERN]  this account's processes with PATTERN in their command line, never
                    the call's own shell (which pgrep -f matches): pid, age, command
 bb proc stop PATTERN [--grace S]

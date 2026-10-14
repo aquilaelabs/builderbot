@@ -157,6 +157,16 @@ bb gpu             this node's NVIDIA card: how much of its memory is free, who 
 bb gpu run [--mem MB] -- CMD
                    CMD with a turn on the card: one heavy job at a time per node, waiting
                    for its turn and for MB of free memory rather than failing on a full card
+bb browser open --ext DIR [--firefox] [--url URL] [--headed]
+                   Chrome (or Firefox) with an unpacked extension loaded, headless,
+                   detached on a debugging port and a profile of its own: its id,
+                   its port and the extension's id
+bb browser go|eval|shot ID ...
+                   go ID URL (ext:PAGE for the extension's own), eval ID JS (the
+                   value as JSON), shot ID FILE (a PNG of the page on show)
+bb browser list | stop ID|--all
+                   the ones open; stop ends one by its process group and removes
+                   its profile
 bb proc [PATTERN]  this account's processes with PATTERN in their command line, never
                    the call's own shell (which pgrep -f matches): pid, age, command
 bb proc stop PATTERN [--grace S]
@@ -4420,6 +4430,17 @@ EOT
     esac
 }
 
+# A browser with an extension loaded (R247): Playwright's Chrome for Testing
+# and Firefox from the store, driven by browser.mjs on the store's node.
+cmd_browser() {
+    local root ff node
+    root="$(sdk_root 2>/dev/null || true)"
+    ff="$(find -L "${PLAYWRIGHT_BROWSERS_PATH:-$root/playwright}" -path '*/firefox-*/firefox/firefox' -type f 2>/dev/null | head -1)"
+    node="$(command -v node || true)"; [ -n "$node" ] || { [ -x "$root/node/bin/node" ] && node="$root/node/bin/node"; }
+    [ -n "$node" ] || die "bb browser runs on Node, and there is no node toolchain here; installing it is the operator's"
+    BB_BROWSER_CHROME="$(find_chromium 2>/dev/null || true)" BB_BROWSER_FIREFOX="$ff" exec "$node" "$BB_LIB/browser.mjs" "$@"
+}
+
 # The store's tools for capture.py, which shot and reel share.
 capture_env() {
     local root; root="$(sdk_root 2>/dev/null || true)"
@@ -5519,6 +5540,7 @@ case "${1:-help}" in
     gpu)      shift; BB_PROJECT="$(bb_project 2>/dev/null || true)" exec python3 "$BB_LIB/gpu.py" "$@" ;;
     tidy)     shift; exec python3 "$BB_LIB/tidy.py" "$@" ;;
     proc)     shift; exec python3 "$BB_LIB/proc-verbs.py" "$@" ;;
+    browser)  shift; cmd_browser "$@" ;;
     node)     shift
               case "${1:-busy}" in
                   -h|--help) sed -n '/^bb node busy/,/if it never was/p' "$0"; exit 0 ;;

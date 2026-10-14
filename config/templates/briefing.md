@@ -211,6 +211,15 @@ module's `import()` does not read NODE_PATH, so import it by path,
 `$NODE_PATH/playwright/index.mjs`, and say so to a suite that skips itself
 when the bare import fails.
 
+A browser extension is tried in a browser that has it loaded, never a
+harness of your own: `bb browser open --ext DIR [--firefox] [--url URL]`
+starts Chrome or Firefox with the unpacked extension, headless, on a port
+and a profile of its own, and says its id; `bb browser go ID URL`, `eval ID
+JS` and `shot ID FILE` drive it, `ext:popup.html` is the extension's own
+page in Chrome (Firefox will not open one for a driver), and `bb browser
+stop ID` ends it by its process group. The port it prints takes a
+DevTools-protocol client (Chrome) or a WebDriver BiDi one (Firefox).
+
 Two ways to look, by the question you are asking:
 
 - `bb capture shot` is one picture at rest, for what a screen looks like:
