@@ -311,8 +311,9 @@ tool:
   from the static binary in ttyd's GitHub release: the one download in the
   script that is not a package manager's, so an offline node copies it in;
 - **firewalld** holds the session ports where it is running (the RHEL
-  family, SUSE): the same two rich rules, 7681 and 7682 from the controller's
-  address and nobody else's. Everywhere else the nftables file is applied
+  family, SUSE): the same rich rules, 7681, 7682 and 7683 (a container's
+  shell) from the controller's address and nobody else's; the agent adds
+  7683 on a node provisioned before it. Everywhere else the nftables file is applied
   at boot the way that init runs a one-shot: a unit, an OpenRC `local.d`
   script, or a line in `rc.local`;
 - **SELinux stays enforcing** on the RHEL family. The one thing it blocks

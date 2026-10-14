@@ -311,6 +311,53 @@ class SessionsMixin:
                        home=env["HOME"], bind=bind, bundle=self.session_bundle, why="")
         log(f"sessions: ttyd on {bind}:{SESSION_PORT} (read-only twin on {SESSION_PORT + 1}) "
             f"as {user}, bb {self.session_bundle[7:19]}")
+        self.ctr_start(into, bbtty, bind, base, logf)
+
+    def ctr_start(self, into, bbtty, bind, base, logf):
+        """The third ttyd (R218 step 4): a shell inside a container and
+        nothing else, as the docker account, which jobs already run as and
+        the session account is kept apart from (that one is in no docker
+        group: docker is root on the machine). bb-tty under BB_TTY_CTR opens
+        only a ctr: terminal the controller's grant names, and only docker
+        exec into that one running container. Started after the session
+        half is up and never at its cost: one that will not start leaves
+        ctr_port at 0 with why, and the sessions as they are."""
+        user = self.state.get("user") or ""
+        env = dict(sdk_env(self.state))
+        try:
+            who = self.as_user(env, user)
+        except RuntimeError as e:
+            SESSION.update(ctr_port=0, ctr_why=str(e)[:120])
+            return
+        if not who:
+            env["HOME"] = os.path.expanduser("~")
+        store = tc_root(self.state)
+        link = os.path.join(store, ".bb", "current") if store else ""
+        bbdir = link if link and os.path.isdir(link) else into
+        env["PATH"] = os.path.join(bbdir, "scripts") + ":" + env["PATH"]
+        env.update({"BUILDERBOT_ROLE": "node", "BB_CONTROLLER": self.ctl.url,
+                    "BB_CONTROLLER_PIN": self.state.get("pin", ""), "BB_NODE": self.state.get("name") or "",
+                    "BUILDERBOT_NODE": self.state.get("node_id", ""), "LANG": "C.UTF-8", "BB_TTY_CTR": "1"})
+        port = SESSION_PORT + 2
+        try:
+            with open(logf, "ab") as out:
+                p = subprocess.Popen(base[:1] + ["--port", str(port)] + base[1:] + ["--writable", bbtty],
+                                     cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/", env=env,
+                                     stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who)
+        except (OSError, RuntimeError) as e:
+            SESSION.update(ctr_port=0, ctr_why=f"ttyd could not start: {e}"[:120])
+            return
+        for _ in range(6):
+            time.sleep(0.25)
+            if p.poll() is not None:
+                break
+        if p.poll() is not None:
+            SESSION.update(ctr_port=0, ctr_why=f"ttyd could not bind {bind}:{port}")
+            log(f"sessions: the container terminal could not bind {bind}:{port}")
+            return
+        self.ttyd.append(p)
+        SESSION.update(ctr_port=port, ctr_why="")
+        log(f"sessions: container terminal on {bind}:{port} as {user or 'this account'}")
 
     def _session_died(self):
         """The ports whose ttyd exited within the first moment of its start.
@@ -803,17 +850,22 @@ class SessionsMixin:
         """Once a minute: the session ports' rule names the controller's
         address as it resolved when the node was provisioned, and a
         controller that moved (a new lease, a new host behind the same
-        name) would find 7681 and 7682 dropped for it from then on. So the
-        name is resolved again here and the rule rewritten when the answer
+        name) would find the ports dropped for it from then on. So the name
+        is resolved again here and the rule rewritten when the answer
         changed: the nftables file the Debian path wrote and re-applied, or
-        firewalld's rich rules replaced. Root only, which is a managed node;
-        a guest has no such rule and skips."""
+        firewalld's rich rules replaced. The same rewrite brings in the
+        container terminal's port (R218 step 4, SESSION_PORT + 2) on a node
+        provisioned before it, so it is the controller's and nobody else's
+        on the LAN. Root only, which is a managed node; a guest has no such
+        rule and skips."""
         if time.time() - self.fw_checked < FIREWALL_EVERY_S or os.geteuid() != 0:
             return
         self.fw_checked = time.time()
         ip = controller_ip(self.state.get("controller") or "")
         if not ip:
             return
+        want = [7681, 7682, 7683]
+        ports = ", ".join(str(p) for p in want)
         fam = "ip6" if ":" in ip else "ip"
         if os.path.isfile(SESSION_NFT):
             try:
@@ -821,10 +873,13 @@ class SessionsMixin:
                     text = f.read()
             except OSError:
                 return
-            m = re.search(r"tcp dport \{ 7681, 7682 \} (ip6?) saddr (\S+) accept", text)
-            if not m or m.group(2) == ip:
+            m = re.search(r"tcp dport \{ ([0-9, ]+) \} (ip6?) saddr (\S+) accept", text)
+            if not m:
                 return
-            new = text.replace(m.group(0), f"tcp dport {{ 7681, 7682 }} {fam} saddr {ip} accept")
+            if m.group(3) == ip and m.group(1) == ports:
+                return
+            new = re.sub(r"tcp dport \{ [0-9, ]+ \}", f"tcp dport {{ {ports} }}", text)
+            new = new.replace(f"{m.group(2)} saddr {m.group(3)} accept", f"{fam} saddr {ip} accept")
             try:
                 with open(SESSION_NFT, "w") as f:
                     f.write(new)
@@ -832,26 +887,28 @@ class SessionsMixin:
                 log(f"session ports: could not rewrite {SESSION_NFT}: {e}")
                 return
             rc = subprocess.run([NFT_BIN, "-f", SESSION_NFT], capture_output=True, check=False).returncode
-            log(f"session ports: the controller's address moved ({m.group(2)} -> {ip}); "
+            log(f"session ports: {ports} from {ip} (was {m.group(1)} from {m.group(3)}); "
                 f"rule rewritten{'' if rc == 0 else ' but nft refused it (' + str(rc) + ')'}")
             return
         if _have(FIREWALL_CMD) and _run([FIREWALL_CMD, "--state"]) == "running":
             rules = _run([FIREWALL_CMD, "--permanent", "--list-rich-rules"], timeout=20).splitlines()
-            ours = [r for r in rules if 'port="7681"' in r or 'port="7682"' in r]
+            ours = [r for r in rules if any(f'port="{p}"' in r for p in want)]
             have = {re.search(r'source address="([^"]+)"', r).group(1)
                     for r in ours if re.search(r'source address="([^"]+)"', r)}
-            if not ours or have == {ip}:
+            found = [re.search(r'port port="(\d+)"', r) for r in ours]
+            have_ports = {int(m.group(1)) for m in found if m}
+            if not ours or (have == {ip} and have_ports == set(want)):
                 return
             for r in ours:
                 subprocess.run([FIREWALL_CMD, "--permanent", f"--remove-rich-rule={r}"], capture_output=True, check=False)
             ffam = "ipv6" if ":" in ip else "ipv4"
-            for port in (7681, 7682):
+            for port in want:
                 subprocess.run([FIREWALL_CMD, "--permanent", f'--add-rich-rule=rule family="{ffam}" source '
                                 f'address="{ip}" port port="{port}" protocol="tcp" accept'],
                                capture_output=True, check=False)
             subprocess.run([FIREWALL_CMD, "--reload"], capture_output=True, check=False)
-            log(f"session ports: the controller's address moved ({', '.join(sorted(have)) or '?'} -> {ip}); "
-                "firewalld rules replaced")
+            log(f"session ports: {ports} from {ip} (was {', '.join(str(p) for p in sorted(have_ports))} from "
+                f"{', '.join(sorted(have)) or '?'}); firewalld rules replaced")
 
     def session_idle_reap(self):
         """End this node's Claude sessions past the idle rule: the

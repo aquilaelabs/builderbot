@@ -1177,6 +1177,24 @@ esac
   ok(/cannot reach docker on this machine, or alpha-db-1 is gone/.test(gone) && !alive('ctr-alpha-db-1'),
      '...and one docker cannot inspect says so rather than opening an empty session');
   tmuxKill('ctr-alpha-app-1');
+  // The container terminal server's mode (BB_TTY_CTR, the agent's third
+  // ttyd, as the docker account): a node's and nowhere else's, and nothing
+  // opens there without the controller's grant for the token that came in.
+  const ctrMode = (role, arg) => {
+    try {
+      return execFileSync('bash', [BBTTY, arg], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${dbin}:${bin}:${process.env.PATH}`, BB_TTY_CTR: '1',
+               BUILDERBOT_ROLE: role, BB_CONTROLLER: URL, HOME: join(DIR, 'home'), DASHBOARD_STATE: join(DIR, 'state') } });
+    } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; }
+  };
+  const here = ctrMode('controller', 'ctr:alpha:main:alpha-app-1');
+  ok(/runs on a node and nowhere else/.test(here) && !alive('ctr-alpha-app-1'),
+     `the container terminal's mode refuses off a node (${here.trim().slice(0, 60)})`);
+  const bare = ctrMode('node', 'ctr:alpha:main:alpha-app-1');
+  ok(/came without a session token/.test(bare) && !alive('ctr-alpha-app-1'),
+     `...and on a node opens nothing without the controller's grant (${bare.trim().slice(0, 70)})`);
+  tmuxKill('ctr-alpha-app-1');
   rmSync(dbin, { recursive: true, force: true });
 }
 

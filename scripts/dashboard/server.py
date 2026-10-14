@@ -1464,7 +1464,10 @@ def ctr_target(name, instance):
 
     A hosting-only node runs no terminal server, so a container there has no
     Shell, said with the reason (the operator, 14 Oct). Otherwise the node
-    has to be up with its session half running, as for a Claude session.
+    has to be up with its session half running, as for a Claude session,
+    and the shell goes to its container terminal (ctr_port): the agent's
+    third ttyd, as the docker account, which the session account is kept
+    apart from (the operator, 14 Oct).
     """
     nid = devapp.instance_node(name, instance) or ""
     n = nodes.node(nid) if nid and not NODES_OK else None
@@ -1485,9 +1488,16 @@ def ctr_target(name, instance):
         _ask_hello(nid)
         why = (f"{nm} has not taken this controller's update yet; its terminals restart onto it at "
                "its next check-in, asked for now, so try again in a minute")
+    elif not se.get("ctr_port"):
+        # The container terminal is the agent's third ttyd, as the docker
+        # account; the session ones run as an account kept off docker.
+        why = (f"{nm} cannot open a container's shell: {se['ctr_why']}" if se.get("ctr_why")
+               else f"{nm}'s agent is from before a container's shell: Update agent on its row on the Nodes tab")
     else:
+        # Both ports the container terminal's: it has no read-only twin,
+        # and an account without a shell was refused before this.
         return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
-                "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
+                "port": int(se["ctr_port"]), "ro_port": int(se["ctr_port"]),
                 "boot": str(se.get("boot") or "")}
     return {"where": "refused", "name": nm, "why": why}
 

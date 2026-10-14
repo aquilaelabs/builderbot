@@ -494,12 +494,24 @@ try {
     // first start is judged down (a loaded box, 13 Oct: four records, the
     // first pair ended), and a record outlives its ttyd.
     const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    const mine = () => ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id && alive(r.pid));
+    // The session pair, and beside it the container terminal (R218 step 4):
+    // a third, writable, under BB_TTY_CTR, as the docker account.
+    const all = () => ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id && alive(r.pid));
+    const mine = () => all().filter(r => r.env.BB_TTY_CTR !== '1');
     const runs = (await until(async () => { const r = mine(); return r.length >= 2 ? r : null; })) || mine();
     ok(runs.length === 2 && runs.some(r => r.argv.includes('--writable'))
        && runs.some(r => !r.argv.includes('--writable')),
        `two ttyds: the writable one and the read-only twin an account without a shell is shown (${
          runs.length} records: ${runs.map(r => `${r.argv.includes('--writable') ? 'rw' : 'ro'}:${r.pid}`).join(' ')})`);
+    {
+      const ctr = (await until(async () => { const r = all().filter(x => x.env.BB_TTY_CTR === '1'); return r.length ? r : null; })) || [];
+      const at = ctr[0]?.argv || [];
+      const back = await until(async () => { const n = await nodeById(minted.id); return n?.reported?.session?.ctr_port ? n.reported.session : null; });
+      ok(ctr.length === 1 && at.includes('--writable') && at[at.indexOf('--port') + 1] === String(SESSION_PORT + 2)
+         && /\/scripts\/dashboard\/bb-tty$/.test(at.at(-1) || '') && back?.ctr_port === SESSION_PORT + 2,
+         `...and a third, the container terminal, writable on ${SESSION_PORT + 2} and named in the census (${
+           ctr.length} record(s), census ctr_port ${back?.ctr_port})`);
+    }
     const bbtty = runs[0]?.argv.at(-1) || '';
     ok(/\/\.bb\/[0-9a-f]{16}\/scripts\/dashboard\/bb-tty$/.test(bbtty) && existsSync(bbtty),
        `...both running bb-tty out of the bundle unpacked in the toolchain store (${bbtty.replace(DIR, '…')})`);

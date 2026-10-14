@@ -155,6 +155,35 @@ GRANT
     fi
 fi
 
+# ---- a container's shell on a node (R218 step 4) -----------------------------
+#
+# The agent's third terminal server runs this as the docker account, which is
+# kept apart from the session account (that one is in no docker group on
+# purpose: docker is root on the machine, provision-linux.sh). Here it opens a
+# shell inside one running container and nothing else, the one the
+# controller's grant names: no account's home, no session setup, no tree.
+# Each person's shell is their own tmux session on that account, prefixed as
+# their sessions are (the owner's bare), so two people never share one.
+if [ "${BB_TTY_CTR:-}" = 1 ]; then
+    ctr_no() { for line in "$@"; do echo "$line" >&2; done; if [ -t 2 ]; then sleep 10; fi; exit 1; }
+    on_node || ctr_no "A container terminal server runs on a node and nowhere else."
+    case "$target" in ctr:*) ;; *) ctr_no "This terminal server opens a container's shell and nothing else." ;; esac
+    cname="${grant_ctr:-}"
+    case "$cname" in
+        ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_.-]*) ctr_no "Invalid container: ${cname}" ;;
+    esac
+    docker inspect --type container "$cname" >/dev/null 2>&1 \
+        || ctr_no "docker inspect ${cname} failed on this node: it is gone, or the docker account cannot reach the daemon."
+    pre=""
+    [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ] || pre="${account}~"
+    s="${pre}ctr-${cname}"; s="${s//[.:]/_}"
+    # shellcheck disable=SC2016 # expanded in the container, not here
+    tmux new-session -A -d -s "$s" -c / \
+        docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh'
+    tmux set-option -t "$s" mouse off
+    exec tmux attach-session -t "$s"
+fi
+
 # The account's own home: own shell history, own Claude login, own memories.
 # Exported before anything runs, because tmux hands its environment to the
 # shell it starts and there is no second chance once the session exists.
@@ -1275,12 +1304,15 @@ case "$target" in
         fi
         ;;
     # ctr:NAME:INSTANCE:CONTAINER: a shell inside one container of a dev
-    # instance (R218 step 4). Its container is the controller's answer on a
-    # node (tty-grant, above) and the URL's on the controller, whose ttyd is
-    # loopback-only behind the proxy that checked it the same way. bash when
-    # the image has one, sh otherwise; the session ends when it does.
+    # instance on this controller's own daemon (R218 step 4), the container
+    # the URL's, since this ttyd is loopback-only behind the proxy that
+    # checked it. bash when the image has one, sh otherwise; the session ends
+    # when it does. A node's is the block near the top.
     ctr:*)
-        if on_node; then cname="${grant_ctr:-}"; else cname="${target##*:}"; fi
+        # On a node it is the agent's container terminal server's (above):
+        # this one runs as the session account, which reaches no docker.
+        on_node && bad "On a node a container's shell opens on the agent's container terminal server, not here."
+        cname="${target##*:}"
         case "$cname" in
             ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_.-]*) bad "Invalid container: ${cname}" ;;
         esac

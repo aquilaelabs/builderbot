@@ -2717,7 +2717,8 @@ fi
 # The agent binds ttyd on this machine's LAN address so the controller's
 # terminal proxy can dial it, and a ttyd on the LAN with no credential of
 # its own is a shell for anyone who can reach the port, cookie or no cookie
-# (the proxy is the gate, and it is on the other machine). So the two ports
+# (the proxy is the gate, and it is on the other machine). The third is the
+# container terminal (R218 step 4), as the docker account. So the three ports
 # are opened to the controller's address and nothing else, with nftables,
 # in a table of this script's own that leaves whatever else the machine
 # filters alone. Re-applied at boot by a unit, and rewritten here on every
@@ -2725,7 +2726,7 @@ fi
 ctl_url="$CONTROLLER"
 [ -n "$ctl_url" ] || ctl_url="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("controller", ""))' 2>/dev/null || true)"
 if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
-    say "session ports: 7681 and 7682 open to the controller only"
+    say "session ports: 7681, 7682 and 7683 (a container's shell) open to the controller only"
     ctl_host="${ctl_url#*://}"; ctl_host="${ctl_host%%/*}"; ctl_host="${ctl_host%%:*}"
     ctl_host="${ctl_host#\[}"; ctl_host="${ctl_host%\]}"
     ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}' || true)"
@@ -2741,7 +2742,7 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
         for r in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
             firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$r" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
         done
-        for port in 7681 7682; do
+        for port in 7681 7682 7683; do
             firewall-cmd --permanent --add-rich-rule="rule family=\"${fam}\" source address=\"${ctl_ip}\" port port=\"${port}\" protocol=\"tcp\" accept" >/dev/null
         done
         firewall-cmd --reload >/dev/null
@@ -2759,9 +2760,9 @@ delete table inet builderbot_session
 table inet builderbot_session {
     chain input {
         type filter hook input priority -10; policy accept;
-        tcp dport { 7681, 7682 } iifname "lo" accept
-        tcp dport { 7681, 7682 } ${fam} saddr ${ctl_ip} accept
-        tcp dport { 7681, 7682 } drop
+        tcp dport { 7681, 7682, 7683 } iifname "lo" accept
+        tcp dport { 7681, 7682, 7683 } ${fam} saddr ${ctl_ip} accept
+        tcp dport { 7681, 7682, 7683 } drop
     }
 }
 EOF
@@ -2844,8 +2845,9 @@ EOF
         cat <<EOF
 
 Sessions run here too, as ${SESSION_NAME}: the agent keeps a ttyd up on this
-machine's LAN address (port 7681, read-only twin on 7682) running bb-tty from
-the bb the controller ships, so a Claude session on a project bound to this
+machine's LAN address (port 7681, read-only twin on 7682, and on 7683 a
+container's shell as the docker account) running bb-tty from the bb the
+controller ships, so a Claude session on a project bound to this
 node lives on this machine, in its synced copy of the project at
 /workspace, which the agent makes and keeps in step with the controller's.
 It needs the account signed in to Claude once, from a shell here:

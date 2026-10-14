@@ -75,7 +75,10 @@ CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           # copy of any project yet (R163): what the proxy holds a session
           # on, and the row says.
           "session": {"up": True, "port": 7681, "ro_port": 7682, "user": "bb",
-                      "workspace": True, "writable": True, "boot": "1.1"}}
+                      "workspace": True, "writable": True, "boot": "1.1",
+                      # ...and the container terminal (R218 step 4), the
+                      # agent's third ttyd, as the docker account.
+                      "ctr_port": 7683}}
 
 
 def call(verb, body, timeout=60):

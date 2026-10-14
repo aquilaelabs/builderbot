@@ -1294,6 +1294,11 @@ def _census(c):
         out["session"] = {
             "up": bool(se.get("up")), "port": _mb(se.get("port")) or 0,
             "ro_port": _mb(se.get("ro_port")) or 0,
+            # The container terminal (R218 step 4): the agent's third ttyd,
+            # as the docker account; 0 from an agent before it or one that
+            # could not start it, with why.
+            "ctr_port": _mb(se.get("ctr_port")) or 0,
+            "ctr_why": str(se.get("ctr_why") or "")[:120],
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
             # None is "not probed", read as unknown rather than read-only:

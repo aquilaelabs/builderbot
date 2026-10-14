@@ -1998,8 +1998,9 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   }, arg);
   const good = await term(`ctr:ep.silon:main:${offered[0].ctr}`);
   // ep.silon's instance is on the stub node: through the gate, the proxy
-  // relays to that node's terminal server, which the harness does not run.
-  ok(good.status === 502 && /^sandbox did not answer on stub:/.test(good.error),
+  // relays to that node's container terminal (the agent's third ttyd, as
+  // the docker account), which the harness does not run.
+  ok(good.status === 502 && /^sandbox did not answer on stub:7683/.test(good.error),
      `the proxy lets a running container of the instance through, to its node's terminal server (${good.status} ${good.error.slice(0, 60)})`);
   // A node whose terminals still run the scripts from before this
   // controller's update (B746): its bb-tty would not know the argument, so
@@ -2015,6 +2016,21 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
     rmSync(extra, { force: true });
     ok(old?.status === 403 && /has not taken this controller's update yet/.test(old.error),
        `a node still on the scripts from before an update is said plainly, not relayed (${old?.status} ${(old?.error || '').slice(0, 70)})`);
+    for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
+      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
+  }
+  // ...and an agent from before the container terminal says what to do.
+  {
+    const extra = `${DIR}/sandboxdata/census-extra.json`;
+    writeFileSync(extra, JSON.stringify({ session: { ctr_port: 0 } }));
+    let old = null;
+    for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500)){
+      old = await term(`ctr:ep.silon:main:${offered[0].ctr}`);
+      if (old.status === 403) break;
+    }
+    rmSync(extra, { force: true });
+    ok(old?.status === 403 && /agent is from before a container's shell: Update agent on its row/.test(old.error),
+       `a node whose agent runs no container terminal says to update it (${(old?.error || '').slice(0, 80)})`);
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
       if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
   }
