@@ -198,10 +198,21 @@ class Sync(unittest.TestCase):
         self.assertEqual(code, 200, out)
         self.assertEqual(out.get("sha"), hashlib.sha256(helper).hexdigest())
         self.assertEqual(read(f"{self.ws}/alpha/.git/config"), helper.decode())
-        other = helper + b"[core]\n\tfsmonitor = touch /tmp/pwned\n"
-        out, code = put(other, base=out["sha"])
+        # ...and one that differs elsewhere (an upstream the node's push set)
+        # while naming no program the controller's does not already run.
+        more = helper + b'[branch "topic"]\n\tremote = origin\n\tmerge = refs/heads/topic\n'
+        out, code = put(more, base=out["sha"])
+        self.assertEqual(code, 200, out)
+        self.assertEqual(read(f"{self.ws}/alpha/.git/config"), more.decode())
+        base = out["sha"]
+        other = more + b"[core]\n\tfsmonitor = touch /tmp/pwned\n"
+        out, code = put(other, base=base)
         self.assertEqual(code, 403, out)
-        self.assertIn("credential.helper", out["error"], "the first key naming a program, as B618 says it")
+        self.assertIn("core.fsmonitor", out["error"], "the key the node adds, not the one the controller already runs")
+        swapped = more.replace(b"/config/gitcreds/alpha", b"/tmp/elsewhere")
+        out, code = put(swapped, base=base)
+        self.assertEqual(code, 403, out)
+        self.assertIn("credential.helper", out["error"], "the same key pointed elsewhere is a new program")
 
     def test_a_node_bound_to_a_project_is_told_at_once(self):
         """The settings dialog binding a project (or changing what it reads)

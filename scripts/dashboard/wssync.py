@@ -554,11 +554,16 @@ GIT_EXEC = re.compile(
     r"|ssh\.variant|receive\.procreceiverefs)")
 
 
-def git_config_danger(path):
+def git_config_danger(path, have=None):
     """The first key in a git config file that would run something, or
     pointed git elsewhere, as "key", or "" when there is none. Read by git
     itself, which runs nothing to read a file; one it cannot read is
-    refused, since a config git cannot parse is not one to hand it."""
+    refused, since a config git cannot parse is not one to hand it.
+    `have` is the config already here (B732): a key and value git already
+    runs from this tree, the project's own credential helper the controller
+    wrote, is not planted by a node sending it back, so only what the file
+    adds to that counts."""
+    had = set(git_config_runs(have)) if have else set()
     try:
         r = subprocess.run(["git", "config", "--file", str(path), "--no-includes", "--list", "-z"],
                            capture_output=True, timeout=10,
@@ -573,9 +578,31 @@ def git_config_danger(path):
         key = key.strip().lower()
         if not key:
             continue
-        if GIT_EXEC.fullmatch(key) or (key.startswith("alias.") and value.lstrip().startswith("!")):
+        if (GIT_EXEC.fullmatch(key) or (key.startswith("alias.") and value.lstrip().startswith("!"))) \
+                and (key, value) not in had:
             return key
     return ""
+
+
+def git_config_runs(path):
+    """The (key, value) pairs of a git config file that name a program, or
+    nothing for one git cannot read: what the tree already runs."""
+    try:
+        r = subprocess.run(["git", "config", "--file", str(path), "--no-includes", "--list", "-z"],
+                           capture_output=True, timeout=10,
+                           env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent",
+                                "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"})
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if r.returncode != 0:
+        return []
+    out = []
+    for item in r.stdout.split(b"\0"):
+        key, _, value = item.decode("utf-8", "replace").partition("\n")
+        key = key.strip().lower()
+        if key and (GIT_EXEC.fullmatch(key) or (key.startswith("alias.") and value.lstrip().startswith("!"))):
+            out.append((key, value))
+    return out
 
 
 def _refused(nid, project, rel, why):
@@ -673,7 +700,7 @@ def put(nid, project, q, stream, length):
                     row = _load(project).get(rel)
                     if row and not row["gone"] and row["sha"] == sha:
                         return {"ok": True, "rev": rev_of(project), "sha": sha}, 200
-                bad = git_config_danger(tmp)
+                bad = git_config_danger(tmp, target if target.is_file() else None)
                 if bad:
                     why = (f"{rel} sets {bad}, which git would run on the controller"
                            if not bad.startswith("unreadable") else f"{rel} is {bad}")
