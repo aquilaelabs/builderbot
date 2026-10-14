@@ -537,6 +537,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The wiki's page column gives way to a picker when the notebook's pane is narrow, whatever the window's width (f703de8)
 - bb git policy says first whether the project can push at all: its rights, and whether its remote has a key or a token behind it (f88f91a)
 - A roadmap verb on an item that is not on the list says why: done already, dropped, or never there (23ba711)
+- bb devapp says what a build was made from as what it is: a commit (with its branch when pinned), or for a container written here its definition, the compose file and env hashed, rather than a hash that reads as a commit (56eba2f)
 
 ### Security
 

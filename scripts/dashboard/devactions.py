@@ -951,6 +951,10 @@ def state(project, instance=devapp.MAIN):
            # was recorded, and then the row names the revision alone rather
            # than a branch nobody wrote down.
            "built_ref": built.get("built_ref", ""),
+           # A container written here has no repository, so built_rev is its
+           # definition hashed (devapp.built_rev), not a commit, and a verb
+           # printing it says which (B735).
+           "written": devapp.is_file_source(project, instance),
            "missing_env": devapp.missing_env(project, instance),
            "await_env": bool(built.get("await_env")),
            # A marker with no build running behind it means the container went

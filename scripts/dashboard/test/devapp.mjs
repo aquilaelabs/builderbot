@@ -4569,7 +4569,7 @@ print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
   const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
   ok(got.code === 0 && (got.asked || []).some(([a, t]) => a === 'rebuild' && t === 180)
      && /may have started it, so this watches for the build/.test(run.stderr || '')
-     && /rebuilt bbb; alpha-dev is up/.test(run.stdout || ''),
+     && /rebuilt from commit bbb; alpha-dev is up/.test(run.stdout || ''),
      `bb devapp rebuild waits three minutes for the controller, and a timeout there watches for the build rather than giving up (${
        JSON.stringify(got).slice(0, 90)} ${(run.stderr || '').split('\n').filter(Boolean).pop() || ''})`);
 }
@@ -4631,7 +4631,7 @@ except SystemExit as e:
     code = e.code
 print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
   const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
-  ok(got.code === 0 && (got.asked || []).includes('/api/v1/jobs?id=j9') && /rebuilt aaa; alpha-dev is up/.test(run.stdout || ''),
+  ok(got.code === 0 && (got.asked || []).includes('/api/v1/jobs?id=j9') && /rebuilt from commit aaa; alpha-dev is up/.test(run.stdout || ''),
      `bb devapp rebuild follows the job its answer names, so a fast rebuild of the same commit is reported built (${
         JSON.stringify(got).slice(0, 80)})`);
 }
@@ -4706,7 +4706,7 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   const acts = d => (got[d]?.bodies || []).map(b => b.action + (b.instance ? ':' + b.instance : '')).join(' ');
   ok(got.auto?.code === 0 && got.auto.bodies[0].action === 'new' && !got.auto.bodies[0].instance
      && got.auto.bodies[0].ref === 'sendbranch' && acts('auto') === 'new state:alpha-2 rebuild:alpha-2 job:j1 state:alpha-2'
-     && /created alpha-2/.test(run.stderr || '') && /built ccc; alpha-2 is up/.test(run.stdout || ''),
+     && /created alpha-2/.test(run.stderr || '') && /built from commit ccc; alpha-2 is up/.test(run.stdout || ''),
      `bb devapp new on auto makes the container and builds that one, waiting for the verdict (${acts('auto')})`);
   ok(got.ask?.code === 0 && acts('ask') === 'new job:j1 state:alpha-2'
      && /asked the administrators \(#7\) to send it to Docker as alpha-2/.test(run.stderr || ''),

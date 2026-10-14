@@ -24,6 +24,16 @@ import syncwait
 import waits
 
 
+def built_from(st):
+    """What a build was made from, said as what it is: a commit, with the
+    branch when one was pinned, or for a container written here, which has
+    no repository, its compose file and env hashed (B735)."""
+    rev = st.get("built_rev") or ""
+    if st.get("written"):
+        return f"its definition {rev} (the compose file and env, hashed: no repository behind it)"
+    return f"commit {rev}" + (f" on {st['built_ref']}" if st.get("built_ref") else "")
+
+
 def status():
     d = bbapi.call("/api/devapp", {"project": os.environ["BB_DEV_PROJECT"],
                                    "instance": os.environ.get("BB_DEV_INSTANCE", ""),
@@ -42,7 +52,7 @@ def status():
     print(f"  {'daemon':<12} " + ("answering" if st.get("available")
                                   else (st.get("why") or "not reachable")))
     if st.get("built_rev"):
-        print(f"  {'built from':<12} {st['built_rev']}")
+        print(f"  {'built from':<12} {built_from(st)}")
     elif st.get("needs_build"):
         print(f"  {'built from':<12} nothing here yet")
     if st.get("running"):
@@ -205,7 +215,7 @@ def _watch(look, was, auth, job_id=""):
                 print(tail)
             sys.exit(f"[builderbot] ERROR: the {what} failed: {str(job['error'])[:200]}")
         if seen or (st.get("built_rev") or "") != was:
-            print(f"[builderbot] {'rebuilt' if was else 'built'} {st.get('built_rev') or ''}; "
+            print(f"[builderbot] {'rebuilt' if was else 'built'} from {built_from(st)}; "
                   f"{st.get('name') or 'the instance'} is "
                   + ("up" if st.get("running")
                      else "built and not running" if st.get("await_env")
