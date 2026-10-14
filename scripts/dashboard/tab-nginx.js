@@ -47,7 +47,26 @@ async function loadNginx(){
     nginxList = nginxList || [];
   }
   nginxRev++;
-  if (tabs.some(t => t.kind === "nginx")) drawPanes();
+  if (tabs.some(t => t.kind === "nginx")){ const f = nginxKeepTyping(); drawPanes(); nginxRefocus(f); }
+}
+
+// What is being typed survives a re-read (B729): the rows are read into the
+// node's draft before the poll's redraw, and the field with focus gets it
+// back with its caret, so a hostname half typed is not swapped for the
+// pulldown it was typed in place of.
+function nginxKeepTyping(){
+  const sect = document.querySelector(".nginxtab [data-ngnode]");
+  const n = sect && (nginxList || []).find(x => x.node === sect.dataset.ngnode);
+  if (!n || !sect.querySelector("#ngCert")) return null;    // undeployed: no rows to read
+  nginxReadDraft(sect, n);
+  const a = document.activeElement, row = a?.closest?.(".ngroute");
+  return row && a.dataset.ng ? {i: row.dataset.i, k: a.dataset.ng, pos: a.selectionStart} : null;
+}
+function nginxRefocus(f){
+  const el = f && document.querySelector(`.nginxtab .ngroute[data-i="${f.i}"] [data-ng="${f.k}"]`);
+  if (!el) return;
+  el.focus();
+  if (typeof f.pos === "number"){ try{ el.setSelectionRange(f.pos, f.pos); }catch(e){ /* a select */ } }
 }
 
 async function nginxAct(body){
@@ -115,7 +134,10 @@ function nginxHostPick(r){
   if (r.host && r.host !== "*" && !names.includes(r.host)) names.push(r.host);
   // ...and one typed here (the operator, 13 Oct: a subdomain not yet under
   // Hostnames could not be picked): the last choice turns the pick into a
-  // box, and Save puts the name on the shared list.
+  // box, and Save puts the name on the shared list. A row typed into is
+  // drawn as the box again (B729): the draft remembers, so a redraw from
+  // the poll does not hand the pulldown back mid-word.
+  if (r.typed) return `<input data-ng="host" value="${esc(r.host || "")}" placeholder="app.example.com" aria-label="hostname" autocomplete="off" spellcheck="false">`;
   return `<select data-ng="host" aria-label="hostname">
     ${r.host ? "" : `<option value="" selected>pick a hostname</option>`}
     ${names.map(h => `<option value="${esc(h)}"${h === r.host ? " selected" : ""}>${esc(h)}</option>`).join("")}
@@ -294,7 +316,8 @@ function nginxReadDraft(sect, n){
   const d = nginxDraftOf(n);
   d.routes = [...sect.querySelectorAll(".ngroute")].map(row => {
     const pick = row.querySelector('.ngroute [data-ng="cert"]').value;
-    return {host: row.querySelector('[data-ng="host"]').value,
+    const host = row.querySelector('[data-ng="host"]');
+    return {host: host.value, typed: host.tagName === "INPUT",
             path: row.querySelector('[data-ng="path"]').value.trim() || "/",
             port: row.querySelector('[data-ng="port"]').value.trim(),
             tls: pick !== "none", cert: pick === "none" ? "" : pick};

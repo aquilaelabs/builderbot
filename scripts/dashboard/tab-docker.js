@@ -332,7 +332,7 @@ function fillNodeSelect(sel, wrap, prefer, again, allow){
   // ...and drawn again when they land: loadNodes repaints only a Nodes tab,
   // so a draw here during a node-list reload lost the picker until something
   // else moved dockerRev (B69's nodes.mjs sibling).
-  if (nodesList === null) loadNodes().then(() => { dockerRev++; drawPanes(); if (again) again(); });
+  if (nodesList === null || nodesStale) loadNodes().then(() => { dockerRev++; drawPanes(); if (again) again(); });
   const known = dnodes.some(n => n.id === prefer);
   wrap.hidden = allow ? dnodes.length < 1 : dnodes.length < 2;
   sel.disabled = dnodes.length < 2;
@@ -618,12 +618,14 @@ const dmRefDraft = {};
 // A route to this container through the node's nginx, from its row (R209,
 // the operator, 13 Oct): the certificate the route serves under (its
 // domain is the hostname; none means any hostname on 80 alone) and one of
-// the container's published ports, each port once.
+// the container's published ports. A port routed already is offered again
+// for another hostname (the operator, 14 Oct: the site at its domain and
+// at www); the same hostname and port again is what the server refuses.
 function dmNginxLine(d){
   const ng = dockerList?.nginx;
   if (!ng?.deployed || d.owner === "System" || !mayDocker()) return "";
   const ports = [...new Set((d.ports || []).map(p => /:(\d+)->/.exec(p)?.[1] || /^(\d+)->/.exec(p)?.[1]).filter(Boolean).map(Number))];
-  const open = ports.filter(p => !(ng.routed || []).includes(p));
+  const routed = ng.routed || [];
   if (!ports.length) return "";
   const key = `${d.project}|${d.instance}`;
   // Add route is an action, not a setting: it writes the route on the press.
@@ -632,15 +634,14 @@ function dmNginxLine(d){
   // means any name on 80.
   return `<div class="setcell dmnginxroute">${lbl("dmng-" + key, "Route through nginx",
       "A route on this node's nginx tab to one of this container's published ports, at the hostname typed (a subdomain of the "
-      + "certificate's domain), or at any hostname on 80 alone with no certificate. One route per port; the rest of a route is changed on the nginx tab.")}
+      + "certificate's domain), or at any hostname on 80 alone with no certificate. A port routed already takes another hostname; the rest of a route is changed on the nginx tab.")}
     <div class="ctl"><select id="${esc("dmng-" + key)}" data-dmngcert="${esc(key)}" aria-label="which certificate the route serves under">
       <option value="">no certificate: any hostname, 80 alone</option>${
       (ng.certs || []).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select>
     <input data-dmnghost="${esc(key)}" placeholder="app.example.com" aria-label="the hostname the route serves" autocomplete="off" spellcheck="false">
     <select data-dmngport="${esc(key)}" aria-label="which port the route goes to">${
-      ports.map(p => `<option value="${p}"${open.includes(p) ? "" : " disabled"}>${p}${open.includes(p) ? "" : " (routed)"}</option>`).join("")}</select>
-    <button type="button" data-dmngadd="${esc(key)}"${open.length ? "" : " disabled"} title="${
-      open.length ? "write the route on the nginx tab and apply it" : "every published port has a route already"}">Add route</button></div></div>`;
+      ports.map(p => `<option value="${p}">${p}${routed.includes(p) ? " (routed)" : ""}</option>`).join("")}</select>
+    <button type="button" data-dmngadd="${esc(key)}" title="write the route on the nginx tab and apply it">Add route</button></div></div>`;
 }
 
 function dmRefLine(d){
@@ -2187,7 +2188,7 @@ function renderDockerInto(i){
   // the other node-scoped tabs wear: the picker at the left, Refresh at the
   // right, drawn whenever there is a node so the tab says whose daemon it is.
   const dnodes = (nodesList || []).filter(n => n.kind !== "local");
-  if (nodesList === null) loadNodes();
+  if (nodesList === null || nodesStale) loadNodes();
   const picker = `<div class="field histbar docbarrow dmpick">${
       nodePick("dmNode", dnodes, dockerNode || dnodes[0]?.id)}${
       // Search beside the picker (R216): a name, an image, a port or a

@@ -78,6 +78,10 @@ ok(true, '...and the undeployed node says Deploy will bring that route up');
   // its function draws it.
   ok(await page.evaluate(() => /value="__type"[^>]*>type a hostname/.test(nginxHostPick({ host: '' }))),
      '...and the hostname pick offers to type one');
+  // ...and a row typed into is drawn as the box again, with what was typed
+  // (B729: a redraw from the poll handed the pulldown back mid-word).
+  ok(await page.evaluate(() => /^<input data-ng="host" value="turing"/.test(nginxHostPick({ host: 'turing', typed: true }).trim())),
+     '...and draws a row typed into as the box again, carrying the letters so far');
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
   await api('/api/nginx', { action: 'host-remove', name: 'typed.example.com' });
 }

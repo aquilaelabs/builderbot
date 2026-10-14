@@ -701,9 +701,10 @@ def add_route(nid, port, cert, containers, devactions, devapp, host=""):
     else at the hostname the certificate is filed under (its domain), with
     that pair, or at any hostname on 80 alone with no certificate; applied
     at once. A hostname the chosen pair does not cover is refused by name
-    (cert_for's rule: a pair covers its domain and the names under it). A
-    port that already has a route is refused by name: one route per port,
-    the rest is the nginx tab's."""
+    (cert_for's rule: a pair covers its domain and the names under it). The
+    same hostname and port again is refused by name; a port already routed
+    at one hostname takes another (the operator, 14 Oct: a site at its
+    domain and at www), and the rest is the nginx tab's."""
     try:
         port = int(str(port).strip())
     except (TypeError, ValueError):
@@ -726,7 +727,7 @@ def add_route(nid, port, cert, containers, devactions, devapp, host=""):
         add_hostname(host)
     routes = list(rec.get("routes") or [])
     for r in routes:
-        if int(r.get("port") or 0) == port:
+        if int(r.get("port") or 0) == port and (r.get("host") or "*") == host:
             where = f"{r.get('host') or '*'}{r.get('path') or '/'}"
             return {"error": f"port {port} already has a route: {where} on this node's nginx; change it on the nginx tab"}
     routes.append({"host": host, "path": "/", "port": port, "tls": bool(cert), "cert": cert})

@@ -4769,8 +4769,14 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   const again = await page.evaluate(async ([n, p]) => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'route-add', node: n, cert: '', port: p }) })).json()), [nodeId, port]);
   ok(/already has a route: \*\//.test(again.error || ''), `the same port again is refused by name (${again.error})`);
-  await page.waitForFunction(p => [...document.querySelectorAll('.dmtab [data-dmngport] option')].some(o => Number(o.value) === p && o.disabled), port, { timeout: 15000 });
-  ok(true, '...and the pulldown reads that port as routed');
+  await page.waitForFunction(p => [...document.querySelectorAll('.dmtab [data-dmngport] option')].some(o => Number(o.value) === p && /routed/.test(o.textContent) && !o.disabled), port, { timeout: 15000 });
+  ok(true, '...and the pulldown reads that port as routed, still offered for another hostname');
+  // ...which lands (B729: a site at its domain and at www, one port): the
+  // same port under a hostname typed, beside the any-name route.
+  const second = await page.evaluate(async ([n, p]) => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'route-add', node: n, cert: '', host: 'www.second.example', port: p }) })).json()), [nodeId, port]);
+  ok(second.route?.host === 'www.second.example' && second.route?.port === port,
+     `the same port at another hostname is a second route, not a refusal (${JSON.stringify(second.route || second.error)})`);
   // ...and the row says where nginx answers for it, as a fact with a link (R216).
   const routeFact = await page.$eval(`${DM} dl.facts .dmroute a`, a => ({ href: a.href, text: a.textContent })).catch(() => null);
   ok(routeFact && /^http:\/\/[^/]+\/$/.test(routeFact.href),

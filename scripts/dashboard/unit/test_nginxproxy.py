@@ -54,6 +54,13 @@ class Routes(unittest.TestCase):
         self.assertEqual((plain["route"]["host"], plain["route"]["tls"]), ("plain.example.org", False), "a name with no pair is 80 alone")
         none = npx.add_route("n1", 8082, "example.com", None, None, None)
         self.assertEqual(none["route"]["host"], "example.com", "no hostname typed: the pair's own domain, as before")
+        # A port routed already takes another hostname (B729: the site at
+        # its domain and at www, one port); the same name and port again is
+        # the refusal.
+        www = npx.add_route("n1", 8082, "example.com", None, None, None, host="www.example.com")
+        self.assertEqual((www["route"]["host"], www["route"]["port"]), ("www.example.com", 8082), "a second hostname for the port")
+        twice = npx.add_route("n1", 8082, "example.com", None, None, None, host="www.example.com")
+        self.assertIn("already has a route: www.example.com/", twice["error"])
 
     def test_the_config_has_a_server_per_host_and_closes_the_rest(self):
         routes = npx.clean_routes([{"host": "www.example.com", "path": "/", "port": 8080},

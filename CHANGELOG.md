@@ -522,6 +522,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The nginx tab answers in a moment again: each node's container state and port clash are read from its daemon once every 20 seconds rather than on every poll, so a slow node no longer holds the tab (and the Docker tab's env read behind it) for 40 seconds (f9e5027)
 - The graphics toolchain says before downloading anything that ImageMagick's AppImage needs glibc 2.35, on a node that has an older one (Rocky 9), instead of failing after the download (f9e5027)
 - A project's Docker view no longer re-reads the manager on every status poll: on an agent node that read ran through the agent and moved the nodes token, which ran the status poll again, 134 requests in 30 seconds; it re-reads when the manager's token moves, as the Docker tab does (3b5a29f)
+- A container's port routed through nginx already takes a second hostname from its Docker row (the site at its domain and at www), and the nginx tab keeps a hostname being typed, and the rest of a draft, across its own re-reads (9b0165e)
 
 ### Security
 
