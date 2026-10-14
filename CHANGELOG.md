@@ -533,6 +533,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A push from a node no longer waits forever on the project's own git config: the sync takes back the bytes the controller already holds, so the credential helper it wrote there no longer leaves the node behind (83df0d5)
 - The wiki's page column gives way to a picker when the notebook's pane is narrow, whatever the window's width (f703de8)
 - bb git policy says first whether the project can push at all: its rights, and whether its remote has a key or a token behind it (f88f91a)
+- A roadmap verb on an item that is not on the list says why: done already, dropped, or never there (23ba711)
 
 ### Security
 

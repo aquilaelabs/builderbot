@@ -650,6 +650,23 @@ def add(project, text, by="you", steps=(), who="", number=None):
     return {"ok": True, "item": row}
 
 
+def _gone(d, project, item_id):
+    """Why an item is not on the list, from the loaded file's log, or the
+    plain answer: finished (ticked off, or its last step done), dropped, or
+    never there (B737: a step done after the last one closed the item said
+    only 'no such item')."""
+    for e in sorted(d.get("history", {}).get(project) or [], key=lambda e: -e.get("at", 0)):
+        if _int(e.get("id")) != item_id or e.get("step") is not None:
+            continue
+        if e.get("act") == "done":
+            return {"error": f"R{item_id} is done already: it left the list when it was finished, "
+                             "and the notebook's Roadmap view shows it under Finished"}
+        if e.get("act") == "remove":
+            return {"error": f"R{item_id} was dropped from the list"
+                             + (f": {e['why']}" if e.get("why") else "")}
+    return {"error": f"no item R{item_id} on this list"}
+
+
 def _find(rows, item_id):
     return next((r for r in rows if _int(r.get("id")) == item_id), None)
 
@@ -713,7 +730,7 @@ def _edit(project, item_id, change, by="you", who=""):
         rows = d["projects"].get(project) or []
         row = _find(rows, item_id)
         if row is None:
-            return {"error": "no such item"}
+            return _gone(d, project, item_id)
         out = change(row, rows)
         ev = out.pop("log", None) if isinstance(out, dict) else None
         ok = isinstance(out, dict) and not out.get("error")

@@ -1443,7 +1443,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // that is an accident to rely on, and B154 is the report that it might
       // not hold.
       const refused = bbOnNode(['roadmap', 'done', '99999']);
-      ok(/^FAILED 1:/.test(refused) && /no such item/.test(refused),
+      ok(/^FAILED 1:/.test(refused) && /no item R99999 on this list/.test(refused),
          `a relayed verb the controller refused exits non-zero (${
            refused.replace(/\s+/g, ' ').slice(0, 60)})`);
       const num = (once.match(/added R(\d+)/) || [])[1];
