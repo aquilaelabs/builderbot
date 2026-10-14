@@ -2134,7 +2134,11 @@ pre.diff .d-ctx{color:var(--dim)}
 .grp.done .roadmap .txt{text-decoration:line-through}
 .grp.shelved .roadmap .txt{font-style:italic}
 .grp.shelved .who{opacity:.7}
-.roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{flex:0 0 auto;align-self:flex-start}
+.roadmap .go{flex:0 0 auto;align-self:flex-start}
+/* The open row's actions (R223): shelve, reword and drop, under the words. */
+.roadmap .rowacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;padding:0}
+.roadmap .rowacts[hidden]{display:none}
+.roadmap .rowacts button{min-height:28px;padding:2px 10px;font:var(--f-ui)}
 .roadmap .ed{color:var(--dim)}
 @media(hover:hover){ .roadmap .ed:hover{color:var(--ink)} }
 .roadmap .go{color:var(--accent)}

@@ -133,6 +133,10 @@ function nbRoadmapView({$, nb}){
               : idx < 0 ? "pick this to send"
               : idx === nxt ? "pick this to send"
               : `step ${nxt + 1} comes first`;
+    // The row open (R223, rows-you-open): the number, the words and Send
+    // closed; the workings and what can be done to the line (shelve, reword,
+    // drop) on the open row. Which rows are open survives a redraw.
+    const isOpen = nb.roadmapOpen.has(`${r.id}:${idx}`);
     // Both halves of a group light up together.
     const on = nb.roadmapSel && String(nb.roadmapSel.id) === String(r.id)
                && (idx < 0 ? (steps.length ? true : nb.roadmapSel.step === null)
@@ -177,23 +181,24 @@ function nbRoadmapView({$, nb}){
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
-      ${st.info ? `<button type="button" class="dtog" aria-expanded="false"
-        title="the technical half: files, functions, approach">▸ details</button>
-      <div class="dinfo" hidden>${esc(st.info)}</div>` : ""}
+      ${nb.roadmapOrdering ? "" : `<button type="button" class="dtog" aria-expanded="${isOpen}"
+        title="${st.info ? "the technical half: files, functions, approach, and what can be done to this line" : "what can be done to this line"}">${
+        isOpen ? "▾" : "▸"} ${st.info ? "details" : "more"}</button>
+      ${st.info ? `<div class="dinfo"${isOpen ? "" : " hidden"}>${esc(st.info)}</div>` : ""}
+      <div class="rowacts actbar"${isOpen ? "" : " hidden"}>${shelf ? `<button class="x${r.shelved ? " on" : ""}" type="button"
+        aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
+        title="${r.shelved
+            ? "take it off the shelf: back among the live ones"
+            : "shelve it: kept at the bottom"
+              + (steps.length ? " with its steps" : "") + ", not for now"}"
+        >${r.shelved ? "Unshelve" : "Shelve"}</button>` : ""}
+      <button class="ed" type="button" aria-label="reword" title="reword this line">Reword</button>
+      <button class="rm danger" type="button" aria-label="drop it"
+        title="${idx < 0 ? "take it off the list, with a note saying why"
+                           : "drop this step; the one behind it takes its place"}"
+        >Drop</button></div>`}
     </span>
-    ${nb.roadmapOrdering ? moves : `${send}${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
-      aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
-      title="${r.shelved
-          ? "take it off the shelf: back among the live ones"
-          : "shelve it: kept at the bottom"
-            + (steps.length ? " with its steps" : "") + ", not for now"}"
-      >${SHELF}</button>` : `<span class="eye ph"></span>`}
-    <button class="eye ed" type="button" aria-label="reword"
-      title="reword this line">${PENCIL}</button>
-    <button class="eye rm" type="button" aria-label="drop it"
-      title="${idx < 0 ? "take it off the list, with a note saying why"
-                         : "drop this step; the one behind it takes its place"}"
-      >${BIN}</button>`}
+    ${nb.roadmapOrdering ? moves : send}
   </div>`;
   }
 
@@ -345,13 +350,15 @@ function nbRoadmapView({$, nb}){
       // decision and this is the workings, wanted when the work starts.
       const dt = row.querySelector(".dtog");
       if (dt) dt.onclick = () => {
-        const info = row.querySelector(".dinfo");
-        const show = info.hidden;
+        const info = row.querySelector(".dinfo"), acts = row.querySelector(".rowacts");
+        const show = acts.hidden, key = `${id}:${step}`;
+        if (show) nb.roadmapOpen.add(key); else nb.roadmapOpen.delete(key);
         // The caret turns with the slide rather than after it, so the row reads
         // as one movement instead of a glyph flicking ahead of the content.
-        dt.textContent = show ? "▾ details" : "▸ details";
+        dt.textContent = `${show ? "▾" : "▸"} ${info ? "details" : "more"}`;
         dt.setAttribute("aria-expanded", String(show));
-        slideHidden(info, show);
+        if (info) slideHidden(info, show);
+        slideHidden(acts, show);
       };
       // Guarded like every other control on this row: reordering replaces all
       // three of them, so in that mode there is no pencil to bind and an
@@ -477,6 +484,7 @@ function nbRoadmapView({$, nb}){
   // the arrow being pressed, not to the box being drawn.
   nb.sendShownFor = "";
   nb.roadmapOrdering = false;  // the rows are showing move controls instead
+  nb.roadmapOpen = new Set();  // the rows open to their workings and actions (R223), as id:step
   // Reordering is the one edit held back. Everything else here is a decision:
   // ticked, crossed, dropped, and is written the moment it is made; arranging
   // is a draft you are in the middle of, and closing the panel on a half-done

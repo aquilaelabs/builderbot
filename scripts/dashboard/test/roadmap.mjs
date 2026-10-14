@@ -21,7 +21,14 @@ const read = () => existsSync(FILE) ? JSON.parse(readFileSync(FILE, 'utf8')) : {
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
-await page.goto(URL);
+
+// A row's shelf, pencil and bin sit on the open row (R223): opened first,
+// the way a thumb does, by its caret.
+const rowOpen = async sel => {
+  await page.evaluate(s => { const row = document.querySelector(s); const acts = row?.querySelector('.rowacts');
+    if (acts?.hidden) row.querySelector('.dtog')?.click(); }, sel);
+  await page.waitForTimeout(300);
+};await page.goto(URL);
 await ready(page);
 
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
@@ -420,6 +427,8 @@ const shelves = () => page.$$eval('#roadmapList .roadmap',
 ok((await shelves()).every(st => st === '-1'),
    'only items carry a shelf button, never a step of a plan');
 
+await rowOpen(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="-1"]`);
+
 await page.click(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="-1"] .x`);
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .grp:has(.roadmap[data-id="${id}"])`)?.classList.contains('shelved'),
@@ -447,6 +456,8 @@ const up = await post({ action: 'move', project: 'alpha', id: Number(c1.id), dir
 ok(up.status === 400 && /stay at the bottom/.test(up.body.error),
    '...and it cannot be shuffled back up among the live ones');
 page.errors = [];
+
+await rowOpen(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="-1"]`);
 
 await page.click(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="-1"] .x`);
 await page.waitForFunction(id => !document.querySelector(
@@ -477,6 +488,7 @@ ok((await bins()).includes('1'),
 // With the reason it went. Nothing here can be undone, so the note is the
 // only thing standing between a dropped line and somebody adding it back,
 // and it is optional, because a reason demanded is a reason typed as "x".
+await rowOpen(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"] .rm`);
 await page.waitForSelector('.dropbox', { timeout: 10000 });
 ok(await page.$$eval('#roadmapList .roadmap', ts => ts.length) > 0
@@ -495,6 +507,8 @@ await page.click('.dropbox .stop');
   ok(shut && steps === 2,
      `Cancel closes it and drops nothing (the box ${shut ? 'closed' : 'is still open'}, ${steps} steps on disk)`);
 }
+
+await rowOpen(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"]`);
 
 await page.click(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"] .rm`);
 await page.waitForSelector('.dropbox textarea', { timeout: 10000 });
@@ -914,6 +928,7 @@ execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty echo'
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
 
 // ---- dropping ----------------------------------------------------------
+await rowOpen(`#roadmapList .roadmap[data-id="${mine.id}"][data-step="-1"]`);
 await page.click(`#roadmapList .roadmap[data-id="${mine.id}"][data-step="-1"] .rm`);
 await page.waitForSelector('.dropbox', { timeout: 10000 });
 ok(read().projects.alpha.some(r => String(r.id) === mine.id),
@@ -1041,6 +1056,7 @@ ok(made.steps.length === 2 && made.steps[0].text === 'first, widen it'
 // every row, and a plan is written before it is right. In a box under the row
 // rather than a prompt(), because a step can be several lines and a prompt is
 // one by construction, and it would have flattened them on the way back.
+await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 ok(await page.$eval('.editbox textarea', t => t.value) === 'first, widen it',
@@ -1060,6 +1076,7 @@ ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
 // One step, several lines. A step is a message the operator sends by hand, so
 // the expensive unit is the step and the cheap one is the line inside it,
 // which only works if a step can hold more than a sentence.
+await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'widen the select\n\nand check it at 412px');
@@ -1085,6 +1102,7 @@ ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] 
 // the background deleted a half-written rewording under the finger holding
 // it. Bugs has skipped its redraw while a form is open since it was built.
 {
+  await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
   await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
   await page.waitForSelector('.editbox textarea', { timeout: 10000 });
   await page.fill('.editbox textarea', 'half a thought, still typing');
@@ -1115,6 +1133,7 @@ ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] 
   }
   ok(landed, '...and what arrived while it was open is drawn once the box is shut');
 }
+await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'first, widen it a lot');
@@ -1184,6 +1203,7 @@ ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"]
    '...and settles at its real height, with the inline one taken back off');
 
 // Editing them is part of the reword box, staged like everything else there.
+await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
 await page.waitForSelector('.editbox .dta', { timeout: 10000 });
 ok(await page.$eval('.editbox .dta', t => t.value) === 'the select is built in stepRow()',
@@ -1211,9 +1231,12 @@ await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on
 bbRoadmapEarly('info', plainId, '');
 bbRoadmapEarly('step', 'info', plainId, '1', '');
 await page.evaluate(() => notebooks.get('alpha').reload());
-await page.waitForFunction(id => !document.querySelector(
-  `#roadmapList .roadmap[data-id="${id}"] .dtog`), plainId, { timeout: 10000 });
-ok(true, 'clearing the details takes the fold away with them');
+// The caret stays (it opens the row's actions, R223); the details go, and
+// the caret reads more rather than details.
+await page.waitForFunction(id => !document.querySelector(`#roadmapList .roadmap[data-id="${id}"] .dinfo`)
+  && [...document.querySelectorAll(`#roadmapList .roadmap[data-id="${id}"] .dtog`)].every(b => /more/.test(b.textContent)),
+  plainId, { timeout: 10000 });
+ok(true, 'clearing the details takes them off the row, the caret reading more');
 
 // ---- nothing lands until Save, and Close is the other answer ------------
 // Deletions and rewords are staged like everything else: the panel is a form,
@@ -1221,6 +1244,7 @@ ok(true, 'clearing the details takes the fold away with them');
 await saveList();
 const untouched = JSON.stringify(read().projects.alpha);
 const wasText = read().projects.alpha.find(r => String(r.id) === plainId).text;
+await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .ed`);
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'a wording nobody asked for');
@@ -1230,6 +1254,7 @@ await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout:
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="-1"] .txt`)?.textContent
   === 'a wording nobody asked for', plainId, { timeout: patience(20000) });   // late under load (B311)
+await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .rm`);
 await page.waitForSelector('.dropbox .danger', { timeout: 10000 });
 await page.click('.dropbox .danger');
