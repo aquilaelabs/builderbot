@@ -5129,7 +5129,11 @@ body.booting .pane>.loading{margin:auto}
          the settings dialog changes it afterwards. -->
     <div class="field" id="pGateField" hidden>
       <label id="pGateLabel">Claude may</label>
-      <div class="prefrow" role="group" aria-labelledby="pGateLabel">
+      <!-- The dials start at their defaults and live on the project's
+           Settings view (R245): a dialog is for what cannot wait. The
+           selects stay, hidden, since the submit reads them. -->
+      <div class="sub dim">The defaults: auto for its notebook, its build and test fields and reports to BuilderBot; ask for its container, a signed build, a release and its keys. Each is changed on the project's Settings.</div>
+      <div class="prefrow" role="group" aria-labelledby="pGateLabel" hidden>
         <label class="pick">Add to roadmap <select id="pGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="pGateBugs"
@@ -5155,7 +5159,6 @@ body.booting .pane>.loading{margin:auto}
         <label class="pick">Report BuilderBot bugs <select id="pGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
-      <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
     <!-- A code base somebody already has, for a fresh local repo: unpacked
          into the new directory before git init. Uploaded on Create rather

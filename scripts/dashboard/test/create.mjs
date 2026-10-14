@@ -71,11 +71,14 @@ ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
   const want = { pGateRoadmap: 'auto', pGateBugs: 'auto', pGateRules: 'auto', pGateDesign: 'auto', pGateWiki: 'auto', pGateSettings: 'auto',
                  pGateDocker: 'ask', pGateSign: 'ask', pGateRelease: 'ask', pGateKeys: 'ask', pGateReport: 'auto' };
   // The wiki's dial has a fourth choice, hidden (2 Oct).
+  // The dials are not asked in the dialog any more (R245): they ride the
+  // submit at their defaults, said in one line, and live on the project's
+  // Settings view.
   ok(Object.keys(g).length === 11 && Object.entries(want).every(([id, v]) => g[id]?.[0] === v)
      && g.pGateReport[1] === 2 && g.pGateWiki[1] === 4
      && Object.entries(g).filter(([id]) => !['pGateReport', 'pGateWiki'].includes(id)).every(([, [, n]]) => n === 3)
-     && await page.$eval('#pGateField', el => !el.hidden),
-     `the eleven Claude gates are offered on a new local repo, at what a new project starts on (${JSON.stringify(g)})`);
+     && await page.$eval('#pGateField', el => !el.hidden && el.querySelector('.prefrow').hidden && /defaults/.test(el.textContent)),
+     `the eleven Claude gates ride a new project at their defaults, said in a line rather than asked (${JSON.stringify(g)})`);
 }
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
