@@ -979,9 +979,20 @@ is shipped as above). The dialog shows its env to change for the new node.
 succeeds: on the old node, stop it, pack every volume of its compose
 project and its data directory (through a `busybox` container, since a
 volume has no path the job's account reaches) and upload the file
-(`devdata-put`); on the new node, fetch it (`devdata`), make each volume
-again under the new name, labeled as compose labels its own, refusing one
-already there, and fill them; then the new instance's ordinary rebuild. A
+(`devdata-put`); on the new node, fetch it (`devdata`) and, as the dialog's
+*Its data* chose (14 Oct), either unpack it at once (make each volume again
+under the new name, labeled as compose labels its own, and fill it, writing
+over anything a volume of that name there already holds, which the dialog
+warns of) or keep it as the archive it came as, `data.tar` in the
+instance's compose directory on the node, the row then saying so and
+offering *unpack it now* (one job: stop, unpack over what is there, start;
+`relocate.unpack_start`); then the new instance's ordinary rebuild. The
+third choice, *Leave it here*, sends the container alone: nothing is
+packed, it starts on the new node with empty volumes, and the old node
+keeps its volumes and data directory. One that is running is stopped
+around the packing (and a copy starts it again); one that is down or
+stopped is left as it is, and a failed move brings it back up at home
+only if it was up (B725). A
 copy starts the original again after packing and is a new record carrying
 the original's ref, compose file, project and risk acknowledgement; a move
 keeps its name, takes its old node's containers down only once it is up

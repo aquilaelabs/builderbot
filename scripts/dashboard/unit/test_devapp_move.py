@@ -31,7 +31,10 @@ class Scripts(unittest.TestCase):
         for text in (relocate.PACK_PY, relocate.UNPACK_PY):
             self.assertNotIn("{cdir}", text)
             self.assertNotIn("cdir", text, "not even as a name, so an edit cannot bring it back")
-        self.assertIn("left by an earlier try", relocate.UNPACK_PY, "an empty volume from a failed try is filled")
+        self.assertIn("filling the empty volume", relocate.UNPACK_PY, "an empty volume from a failed try is filled")
+        self.assertIn("writing over what the volume", relocate.UNPACK_PY,
+                      "one with files is written over, said in the log (the dialog warned; the operator, 14 Oct)")
+        self.assertNotIn("remove it first", relocate.UNPACK_PY, "no longer refused")
 
     def test_a_failed_step_says_its_last_telling_line(self):
         """A compose step's row carries the last line that says something

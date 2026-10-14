@@ -1583,6 +1583,9 @@ select:focus{outline-offset:-2px}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+/* What to know before the press, in the warning's color (Copy or move's
+   data choice: a volume already there is written over). */
+.modal .hint.warn{color:var(--warn)}
 /* The project settings' Test (the operator, 7 Oct): what is missing in red,
    a list when it is more than one thing, and its notes in the quiet voice. */
 .modal .hint.ok{color:var(--accent)}
@@ -4790,6 +4793,13 @@ body.booting .pane>.loading{margin:auto}
       <select id="rlNode"></select>
       <div class="hint" id="rlNodeHint"></div>
     </div>
+    <div class="field" id="rlDataField">
+      <label>Its data<span class="help" data-help="its named volumes and its data directory travel either way; this is what happens to them on arrival" tabindex="0">?</span></label>
+      <label class="ndcap"><input type="radio" name="rlData" value="unpack" checked> Unpack it into its volumes there</label>
+      <label class="ndcap"><input type="radio" name="rlData" value="archive"> Carry it as an archive, not unpacked</label>
+      <label class="ndcap"><input type="radio" name="rlData" value="none"> Leave it here: the container alone goes</label>
+      <div class="hint" id="rlDataHint"></div>
+    </div>
     <div class="field">
       <label for="rlEnv">Environment</label>
       <textarea id="rlEnv" spellcheck="false"></textarea>
@@ -5911,7 +5921,7 @@ $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker()
 $("rlGo").onclick = rlSubmit;
 $("rlCancel").onclick = closeRelocate;
 $("rlmodal").onclick = e => { if (e.target === $("rlmodal")) closeRelocate(); };
-document.querySelectorAll('input[name="rlMode"]').forEach(r => r.onchange = rlSay);
+document.querySelectorAll('input[name="rlMode"], input[name="rlData"]').forEach(r => r.onchange = rlSay);
 $("rlNode").onchange = rlSay;
 
 // ---- a project's settings dialog, wired ---------------------------------

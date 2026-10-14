@@ -8,8 +8,12 @@ Three jobs, one after another, each started when the one before succeeds
   out    on the old node: the instance stopped, its named volumes and its
          data directory packed into one file and sent to the controller;
          a copy starts the original again, a move leaves it stopped.
-  in     on the new node: that file fetched, the volumes made again under
-         the new instance's name and filled, the data directory filled.
+  in     on the new node: that file fetched and, as the dialog chose (the
+         operator, 14 Oct), either unpacked at once (the volumes made again
+         under the new instance's name and filled, the data directory
+         filled, anything already in a volume of that name written over)
+         or kept as the archive it came as, data.tar in the instance's
+         compose directory there, for the row's Unpack later.
   build  the new instance's ordinary rebuild there, which is a shipped one
          (R166) when the new node is not one of its project's nodes.
 
@@ -68,11 +72,14 @@ for p in ["manifest.json", *parts]:
 print(f"packed {len(vols)} volume(s)" + (" and the data directory" if has_data else ""), flush=True)
 """
 
-# Run on the new node: the volumes made again under the new instance's name
-# (labeled as compose labels its own, so compose takes them as its), filled,
-# and the data directory filled. A volume already there with anything in
-# it is refused rather than written over; an empty one (what a try that
-# failed left behind) is filled. Neither script may spell the plan's {cdir}
+# Run on the new node, at arrival or from the row's Unpack later: the
+# volumes made again under the new instance's name (labeled as compose
+# labels its own, so compose takes them as its), filled, and the data
+# directory filled. A volume already there with anything in it is written
+# over, file by file, and the log says so: the dialog warned before the
+# press (the operator, 14 Oct: unpack it for me, but say it could write
+# over what is there), and a move back to a node that held this instance
+# before is exactly when the newer data should win. Neither script may spell the plan's {cdir}
 # placeholder in its text: the agent rewrites that wherever it stands in
 # argv, the python included, and the helper's mount pointed at the compose
 # directory while the tar had gone into in/ (B659).
@@ -91,11 +98,12 @@ for v in m.get("volumes") or []:
     key = name[len(old) + 1:] if name.startswith(old + "_") else name
     new = f"{pname}_{key}" if name.startswith(old + "_") else name
     if new in have:
-        held = subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v:ro", helper, "sh", "-c", "ls -A /v | head -1"],
+        held = subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v:ro", helper, "sh", "-c", "ls -A /v | wc -l"],
                               check=True, capture_output=True, text=True).stdout.strip()
-        if held:
-            sys.exit(f"a volume called {new} is already on this node with files in it: remove it first, or pick another name")
-        print(f"filling the empty volume {new} left by an earlier try", flush=True)
+        if held and held != "0":
+            print(f"writing over what the volume {new} already holds ({held} entries at its top)", flush=True)
+        else:
+            print(f"filling the empty volume {new}", flush=True)
     else:
         print(f"making the volume {new}", flush=True)
         subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + pname,
@@ -111,6 +119,13 @@ if m.get("data"):
 subprocess.run(["rm", "-rf", work, src])
 print("unpacked", flush=True)
 """
+
+# What goes of its data (the operator, 14 Oct): unpacked into its volumes
+# on arrival, kept there as the archive for the row's Unpack later, or
+# nothing at all (the container alone, starting on empty volumes; this
+# node keeps its volumes and data directory).
+DATA_MODES = ("unpack", "archive", "none")
+ARCHIVE = "{cdir}/data.tar"
 
 def _a():
     """devactions, whose plans and rebuild this stands on. Imported when
@@ -322,15 +337,20 @@ def builds_image(project, instance):
     return bool(re.search(r"^\s+build:", text, re.M))
 
 
-def start(project, instance, mode, node, name="", env=None):
+def start(project, instance, mode, node, name="", env=None, data="unpack"):
     """Copy (mode "copy", into a new instance called `name`) or move (mode
     "move", the same instance) an instance to `node`, its data with it, its
-    env written from `env` when one is given. The first job is queued and
-    the request answers with it; the rest follow on their own."""
+    env written from `env` when one is given; `data` says whether the data
+    is unpacked into its volumes on arrival or kept as the archive for
+    later (DATA_MODES). The first job is queued and the request answers
+    with it; the rest follow on their own."""
     if devapp.queue is None:
         return {"error": "no job queue is configured here"}
     if mode not in ("copy", "move"):
         return {"error": "copy or move"}
+    data = data or "unpack"
+    if data not in DATA_MODES:
+        return {"error": "its data is unpacked on arrival, kept as an archive, or left behind: unpack, archive or none"}
     if instance not in (devapp._load().get(project) or {}):
         return {"error": f"{project} has no container {instance}"}
     old_node = devapp._instance_node(project, instance)
@@ -390,9 +410,26 @@ def start(project, instance, mode, node, name="", env=None):
             w = devapp.write_env(project, env, instance)
             if w.get("error"):
                 return w
+    # Whether it is running now decides what the old node does around the
+    # data: a running one is stopped while its data is packed (and a copy
+    # starts it again), one that is down or stopped is left as it is. A
+    # `start` on one with no containers (a Down before the move) exited 1
+    # and failed the whole job, the data already sent, and the way back
+    # after a failed move left turinglens-registry down at home (B725).
+    with devapp.on_node(old_node):
+        was_up = bool(_a()._running(project, instance))
     plan = {"mode": mode, "from": instance, "to": dest, "old": old_node, "new": target,
             "ship": ship, "was_ship": bool(rec.get("ship")), "was_node": rec.get("node") or "",
-            "old_pname": devapp._pname(project, instance)}
+            "old_pname": devapp._pname(project, instance), "data": data, "was_up": was_up}
+    if data == "none" and not (mode == "move" and was_up):
+        # Nothing to do on the old node: a copy with no data is the new
+        # record alone, built where it goes; a move of one that is down is
+        # the same, its record pointed at the new node.
+        why = _arrived(project, plan)
+        if why:
+            return {"error": why}
+        return {"ok": True, "started": True, "job": "", "instance": dest,
+                "name": devapp._pname(project, dest), "ship": ship}
     _set(project, dest, relocating=plan | {"stage": "out"})
     held = {"project": project, "instance": instance, "action": "relocate-out", "hold": True,
             "relocate": plan | {"stage": "out"}}
@@ -405,16 +442,18 @@ def start(project, instance, mode, node, name="", env=None):
         try:
             with devapp.on_node(old_node):
                 spec = _a()._plan_spec(project, instance, "stop")
-                stop = _a()._plan(project, instance, "stop")
-                start_ = _a()._plan(project, instance, "start") if mode == "copy" else []
-                data = devapp.dev_data_dir(project, instance, make=False) or ""
-            pack = {"name": "packing", "argv": ["python3", "-c", PACK_PY, plan["old_pname"],
-                                                "{cdir}/data.tar", data, HELPER], "timeout": 7200}
-            send = {"name": "sending", "upload": "{cdir}/data.tar", "to": f"devdata-put?job={r['job']}",
-                    "timeout": 7200}
+                stop = _a()._plan(project, instance, "stop") if was_up else []
+                start_ = _a()._plan(project, instance, "start") if mode == "copy" and was_up else []
+                ddir = devapp.dev_data_dir(project, instance, make=False) or ""
+            carry = []
+            if data != "none":
+                carry = [{"name": "packing", "argv": ["python3", "-c", PACK_PY, plan["old_pname"],
+                                                     "{cdir}/data.tar", ddir, HELPER], "timeout": 7200},
+                         {"name": "sending", "upload": "{cdir}/data.tar", "to": f"devdata-put?job={r['job']}",
+                          "timeout": 7200}]
             devapp.queue.job_release(r["job"], spec | {
                 "action": "relocate-out", "dirs": [], "gate": False,
-                "relocate": plan | {"stage": "out"}, "plan": [*stop, pack, send, *start_]})
+                "relocate": plan | {"stage": "out"}, "plan": [*stop, *carry, *start_]})
         except Exception as e:                                       # noqa: BLE001
             print(f"[relocate] preparing {project}/{instance}: {type(e).__name__}: {e}", flush=True)
             devapp.queue.job_refuse(r["job"], f"could not prepare it: {e}")
@@ -426,8 +465,32 @@ def start(project, instance, mode, node, name="", env=None):
             "name": devapp._pname(project, dest), "ship": ship}
 
 
+def _arrived(project, plan):
+    """Its data is on the new node (or none was to go): a move's record
+    points there now, an archive is noted, and the new instance's ordinary
+    rebuild starts. Returns "" or the reason it could not."""
+    if plan["mode"] == "move":
+        _set(project, plan["to"], node=plan["new"], ship=True if plan["ship"] else None)
+    if plan.get("data") == "archive":
+        _set(project, plan["to"], archive=True)
+    _set(project, plan["to"], relocating=plan | {"stage": "build"})
+    ack = devapp._read_rec(project, plan["to"]).get("risks_ack") or ""
+    payload, status = _a().act(project, plan["to"], "rebuild", {"ack": ack}, gate=True)
+    if status != 200:
+        _undo(project, plan | {"stage": "build"}, payload.get("error") or "")
+        return payload.get("error") or "the rebuild could not start"
+    return ""
+
+
+def _unpack_step(project, instance, old_pname, data):
+    return {"name": "unpacking", "argv": ["python3", "-c", UNPACK_PY, devapp._pname(project, instance),
+                                          old_pname, ARCHIVE, data, HELPER],
+            "timeout": 7200}
+
+
 def _in_job(project, plan, out_job):
-    """The new node's half: fetch, unpack."""
+    """The new node's half: fetch, then unpack unless the archive is to
+    stay as it came (plan data "archive")."""
     dest = plan["to"]
     held = {"project": project, "instance": dest, "action": "relocate-in", "hold": True,
             "relocate": plan | {"stage": "in", "out_job": out_job}}
@@ -436,18 +499,62 @@ def _in_job(project, plan, out_job):
         return r
     with devapp.on_node(plan["new"]):
         data = devapp.dev_data_dir(project, dest, make=False) or ""
-    fetch = {"name": "fetching", "fetch": f"devdata?job={r['job']}", "dest": "{cdir}/data.tar",
+    fetch = {"name": "fetching", "fetch": f"devdata?job={r['job']}", "dest": ARCHIVE,
              "timeout": 7200}
-    unpack = {"name": "unpacking", "argv": ["python3", "-c", UNPACK_PY, devapp._pname(project, dest),
-                                            plan["old_pname"], "{cdir}/data.tar", data, HELPER],
-              "timeout": 7200}
+    steps = [fetch] if plan.get("data") == "archive" else [fetch, _unpack_step(project, dest, plan["old_pname"], data)]
     devapp.queue.job_release(r["job"], {
         "project": project, "instance": dest, "action": "relocate-in",
         "name": devapp._pname(project, dest), "files": {}, "dirs": [data] if data else [],
         "gate": False, "relocate": plan | {"stage": "in", "out_job": out_job},
-        "plan": [fetch, unpack]})
+        "plan": steps})
     _set(project, dest, relocating=plan | {"stage": "in"})
     return r
+
+
+def unpack_start(project, instance):
+    """The row's Unpack, for an instance whose data arrived as an archive
+    (record `archive`): one job on its node that stops it if it runs,
+    writes the archive into its volumes and data directory (over whatever
+    is there, which the row's confirm said) and starts it again. The
+    archive is gone once it is unpacked."""
+    if devapp.queue is None:
+        return {"error": "no job queue is configured here"}
+    rec = devapp._read_rec(project, instance)
+    if not rec.get("archive"):
+        return {"error": "its data is not waiting in an archive"}
+    if rec.get("relocating"):
+        return {"error": "it is being copied or moved"}
+    if _a()._active_job(project, instance):
+        return {"error": "a job is running on it: wait for it, or Stop it, then unpack"}
+    nid = devapp._instance_node(project, instance)
+    n = _node_row(nid)
+    if not n or n.get("kind") != "agent" or n.get("state") != "online":
+        return {"error": f"{devapp.node_name(nid)} is not an online agent node"}
+    plan = {"mode": "unpack", "to": instance, "new": nid, "stage": "unpack"}
+    held = {"project": project, "instance": instance, "action": "relocate-unpack", "hold": True,
+            "relocate": plan}
+    r = devapp.queue.job_add("operator", {"node": nid}, "compose", held, project)
+    if r.get("error"):
+        return r
+    try:
+        with devapp.on_node(nid):
+            spec = _a()._plan_spec(project, instance, "stop")
+            # Stopped around the unpack only when it runs (B725's lesson:
+            # start on no containers fails the job).
+            up = bool(_a()._running(project, instance))
+            stop = _a()._plan(project, instance, "stop") if up else []
+            start_ = _a()._plan(project, instance, "start") if up else []
+            data = devapp.dev_data_dir(project, instance, make=False) or ""
+    except Exception as e:                                           # noqa: BLE001
+        devapp.queue.job_refuse(r["job"], f"could not prepare it: {e}")
+        return {"error": f"could not prepare it: {e}"}
+    pname = devapp._pname(project, instance)
+    devapp.queue.job_release(r["job"], spec | {
+        "action": "relocate-unpack", "dirs": [data] if data else [], "gate": False,
+        "relocate": plan, "plan": [*stop, _unpack_step(project, instance, pname, data), *start_]})
+    _set(project, instance, relocating=plan)
+    devapp._bump()
+    return {"ok": True, "job": r["job"], "name": pname}
 
 
 def _queue_on(project, instance, nid, action):
@@ -482,7 +589,11 @@ def _undo(project, plan, why):
     _set(project, dest, relocating=None, relocate_env=None, node=plan.get("was_node") or None,
          ship=True if plan.get("was_ship") else None, relocate_why=why or None,
          relocate_at=int(time.time()) if why else None)
-    _queue_on(project, dest, plan["old"], "start")
+    # Back up as it was: `up`, which starts what is there and makes what
+    # a Down took away (B725: `start` on no containers exited 1 and left
+    # it down at home); one that was down stays down.
+    if plan.get("was_up"):
+        _queue_on(project, dest, plan["old"], "up")
 
 
 def _last_said(job):
@@ -508,7 +619,23 @@ def done(job, state):
     if stage == "after":
         return ""
     plan = {k: v for k, v in rel.items() if k not in ("stage", "out_job")}
+    if stage == "unpack":
+        # The row's Unpack: the archive is written in, or still waits.
+        if state != "succeeded":
+            said = _last_said(job)
+            why = "unpacking its data failed" + (f": {said}" if said else "")
+            _set(project, plan["to"], relocating=None, relocate_why=why, relocate_at=int(time.time()))
+            return why
+        _set(project, plan["to"], relocating=None, archive=None)
+        return ""
     if stage == "out":
+        if plan.get("data") == "none":
+            # Only a stop happened there: nothing to fetch.
+            if state != "succeeded":
+                said = _last_said(job)
+                _undo(project, plan | {"stage": "out"}, "it could not be stopped on the old node")
+                return "stopping it on the old node failed" + (f": {said}" if said else "")
+            return _arrived(project, plan)
         if state != "succeeded" or not _data_file(project, plan["to"]).is_file():
             said = _last_said(job)
             _undo(project, plan | {"stage": "out"}, "the data could not be packed on the old node")
@@ -524,15 +651,7 @@ def done(job, state):
             said = _last_said(job)
             _undo(project, plan | {"stage": "in"}, "the data could not be unpacked on the new node")
             return "unpacking its data on the new node failed" + (f": {said}" if said else "")
-        if plan["mode"] == "move":
-            _set(project, plan["to"], node=plan["new"], ship=True if plan["ship"] else None)
-        _set(project, plan["to"], relocating=plan | {"stage": "build"})
-        ack = devapp._read_rec(project, plan["to"]).get("risks_ack") or ""
-        payload, status = _a().act(project, plan["to"], "rebuild", {"ack": ack}, gate=True)
-        if status != 200:
-            _undo(project, plan | {"stage": "build"}, payload.get("error") or "")
-            return payload.get("error") or "the rebuild could not start"
-        return ""
+        return _arrived(project, plan)
     return ""
 
 
@@ -625,13 +744,23 @@ def view(project, instance):
     rec = devapp._read_rec(project, instance)
     plan = rec.get("relocating")
     if isinstance(plan, dict):
-        verb = "copying" if plan.get("mode") == "copy" else "moving"
         where = devapp.node_name(plan.get("new") or "")
-        step = {"out": "packing its data", "in": "unpacking its data",
+        if plan.get("stage") == "unpack":
+            return {"busy": True, "line": f"unpacking its data into its volumes on {where}"}
+        verb = "copying" if plan.get("mode") == "copy" else "moving"
+        step = {"out": "stopping it" if plan.get("data") == "none" else "packing its data",
+                "in": "fetching its data" if plan.get("data") == "archive" else "unpacking its data",
                 "build": "building"}.get(plan.get("stage"), "")
         return {"busy": True, "line": f"{verb} to {where}: {step}" if step else f"{verb} to {where}"}
     if rec.get("renaming"):
         return {"busy": True, "line": f"renaming it to {rec['renaming']}: the node carries its volumes and data"}
+    if rec.get("archive"):
+        # Arrived as an archive and never unpacked: what to know, with the
+        # one thing to do about it (the row's link).
+        where = devapp.node_name(devapp._instance_node(project, instance) or "")
+        return {"busy": False, "archive": True,
+                "line": f"its data came as an archive (data.tar in its compose directory on {where}) and is not unpacked: "
+                        "it runs on empty volumes until it is"}
     # Why the last one did not happen is the bell's (attention below), where
     # it can be put away, and not the row's for ever (the operator, 11 Oct:
     # a failure from hours before still sat on a row renamed since).

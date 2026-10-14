@@ -144,6 +144,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container's row on the Docker tab routes it through the node's nginx: a certificate (its domain the hostname; none for 80 alone) and one of its published ports, written to the nginx tab and applied; a port with a route already is refused by name (d415a02)
 - A route through nginx takes a hostname: typed into a route row on the nginx tab (type a hostname in its pick) or into a Docker row's Route through nginx, a subdomain under the certificate's domain, and the name joins Hostnames when saved (e255f9c)
 - Forgejo is a vetted git host: the lab stack carries a Forgejo beside its Gitea (port 3001, the same administrator), the forge suite runs against it under its own catalog entry, and a runner registers with it from a node (5f8d703)
+- Copy or move asks what to do with the container's data: unpack it into its volumes on arrival (writing over a volume of the same name already there, which it says), carry it as an archive in the compose directory with an unpack link on the row for later, or leave it here and send the container alone (b1ae732)
 
 ### Changed
 

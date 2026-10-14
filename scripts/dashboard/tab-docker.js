@@ -387,6 +387,7 @@ function openRelocate(project, instance){
   $("rlErrWrap").hidden = true;
   $("rlGo").disabled = false;
   document.querySelector('input[name="rlMode"][value="copy"]').checked = true;
+  document.querySelector('input[name="rlData"][value="unpack"]').checked = true;
   const own = (state?.projects?.find(p => p.name === whose)?.prefs?.nodes || []).filter(Boolean);
   const fill = () => {
     fillNodeSelect($("rlNode"), $("rlNodeField"), own.find(n => n !== here) || "",
@@ -418,11 +419,23 @@ function rlSay(){
   $("rlNameField").hidden = move;
   $("rlGo").textContent = move ? "Move" : "Copy";
   const where = $("rlNode").selectedOptions[0]?.textContent.split(":")[0] || "the node picked";
+  // What goes of its data (the operator, 14 Oct): written into its volumes
+  // on arrival, over anything a volume of that name holds there, which is
+  // said before the press; kept as the archive for the row's Unpack later;
+  // or nothing, the container alone.
+  const data = document.querySelector('input[name="rlData"]:checked')?.value || "unpack";
   $("rlModeHint").textContent = move
-    ? `It stops, its volumes and data directory go with it, and it is built and started on ${where}. `
-      + "Once it is up there its containers here come down; this node keeps a copy of its volumes until you remove them. "
-      + "If it does not come up there, it starts here again."
-    : `It stops for as long as its data takes to copy, then starts again here; the copy is built and started on ${where} with that data.`;
+    ? (data === "none" ? `It stops, and it is built and started on ${where} with empty volumes. `
+        : `It stops, its volumes and data directory go with it, and it is built and started on ${where}. `)
+      + "Once it is up there its containers here come down; this node keeps its volumes until you remove them. "
+      + "If it does not come up there, it comes back up here."
+    : data === "none" ? `Nothing here changes; the copy is built and started on ${where} with empty volumes.`
+    : `If it is running it stops for as long as its data takes to copy, then starts again here; the copy is built and started on ${where} with that data.`;
+  $("rlDataHint").className = data === "unpack" ? "hint warn" : "hint";
+  $("rlDataHint").textContent = data === "archive"
+    ? `The archive lands in its compose directory on ${where} and stays there; it starts on empty volumes, and its row there offers Unpack when you are ready.`
+    : data === "none" ? "Its volumes and data directory stay on this node and nothing of them is sent; what it makes on the new node starts from nothing."
+    : `Its volumes and data directory are filled on arrival. A volume of the same name already on ${where} with files in it is written over.`;
   const own = (state?.projects?.find(p => p.name === rlFor.whose)?.prefs?.nodes || []);
   const node = $("rlNode").value;
   $("rlNodeHint").textContent = !node ? "There is no other node to send it to."
@@ -447,6 +460,7 @@ async function rlSubmit(){
   try{
     const j = await (await fetch("/api/devapp", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({project, instance, action: "relocate", mode, node: $("rlNode").value, name,
+                            data: document.querySelector('input[name="rlData"]:checked')?.value || "unpack",
                             // Its env as it stands goes with it anyway; sent
                             // only when there is something of the person's in it.
                             ...(rlFor.envWas === undefined || (rlFor.seeded && $("rlEnv").value === rlFor.envWas)
@@ -1447,8 +1461,9 @@ function dmRowsHtml(ins, job, blind){
         ], "dmfacts")}
         ${blind ? "" : dmStatStrip(d)}
         ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: its routes and certificates are the nginx tab's, and Deploy there makes it again</div>` : ""}
-        ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : "bad"} dmreloc">${esc(d.relocating.line)}${
-          d.relocating.busy ? '<span class="dots"></span>' : ""}</div>` : ""}
+        ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : d.relocating.archive ? "note" : "bad"} dmreloc">${esc(d.relocating.line)}${
+          d.relocating.busy ? '<span class="dots"></span>'
+          : d.relocating.archive && mayDocker() && !busy ? ` <a href="#" data-dmunpack>unpack it now</a>` : ""}</div>` : ""}
         ${
         // The notices, each a line (the words rule): what is wrong and the
         // one thing to do about it.
@@ -1752,6 +1767,18 @@ function dmWireRows(el, list = dockerList){
   el.querySelectorAll("[data-dmrel]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     openRelocate(project, instance);
+  });
+  // Its archived data written into its volumes (relocate.unpack_start): it
+  // stops, the archive goes in over whatever is there, and it starts again.
+  el.querySelectorAll("[data-dmunpack]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const [project, instance] = a.closest("[data-inst]").dataset.inst.split("|");
+    if (!confirm("Unpack its data into its volumes? It stops, the archive is written in over anything already in them, and it starts again.")) return;
+    const j = await (await postJSON("/api/devapp", {project, instance, action: "unpack"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) return notify(j.error, true);
+    notify(`unpacking ${j.name}: its row says when it is done`);
+    dockerList = null; dockerRev++;
+    loadDocker();
   });
   // Whose Rebuild it is. Written at once, like the row's other controls, and
   // the answer redraws every row of that project; it is the project's

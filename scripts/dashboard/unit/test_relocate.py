@@ -68,6 +68,12 @@ class Relocate(unittest.TestCase):
         real = devactions.act
         devactions.act = lambda p, i, a, req, **kw: (self.acted.append((p, i, a, req)) or ({"ok": True}, 200))
         self.addCleanup(setattr, devactions, "act", real)
+        # Running, unless a test says otherwise: what the old node does
+        # around the data depends on it (B725).
+        self.running = True
+        was_running = devactions._running
+        devactions._running = lambda p, i=devapp.MAIN: self.running
+        self.addCleanup(setattr, devactions, "_running", was_running)
 
     def jobs_on(self, node):
         return [j for j in self.q.jobs.values() if j["node"] == node]
@@ -184,8 +190,8 @@ class Relocate(unittest.TestCase):
                                  "spec": {"project": "alpha", "instance": "main", "action": "up"}}, "succeeded")
         self.assertEqual(relocate.attention(lambda nid: nid), [], "built or started since: history")
         self.assertEqual(devapp.read_env("alpha", "main"), "PORT=1\n", "its env as it was")
-        started = [j for j in self.jobs_on("n1") if j["spec"].get("action") == "start"]
-        self.assertEqual(len(started), 1, "started again on the old node")
+        started = [j for j in self.jobs_on("n1") if j["spec"].get("action") == "up"]
+        self.assertEqual(len(started), 1, "up again on the old node: up, which makes what a Down took away (B725)")
 
     def test_an_arriving_container_builds_and_stays_down(self):
         # The real plan (devactions._plan), with the record at the move's
@@ -198,6 +204,69 @@ class Relocate(unittest.TestCase):
         arriving = [st["name"] for st in real._plan("alpha", "main", "rebuild")]
         self.assertEqual(arriving, ["building", "stopping"], "on arrival it builds and stays down")
         relocate._set("alpha", "main", relocating=None)
+
+    def test_the_data_is_unpacked_on_arrival_unless_the_archive_is_to_stay(self):
+        # The dialog's choice (the operator, 14 Oct): unpack at once, or
+        # carry the archive and unpack from the row later.
+        r = relocate.start("alpha", "main", "copy", "n3", "two")
+        self.q.jobs[r["job"]]["state"] = "running"
+        relocate.data_put("n1", {"job": [r["job"]]}, io.BytesIO(b"x"), 1)
+        self.end(r["job"])
+        jin = next(j for j in self.jobs_on("n3"))
+        self.assertEqual([st["name"] for st in jin["spec"]["plan"]], ["fetching", "unpacking"])
+        self.assertEqual(jin["spec"]["relocate"]["data"], "unpack")
+        self.end(jin["id"])
+        self.assertIsNone(devapp._read_rec("alpha", "two").get("archive"))
+
+    def test_an_archive_stays_packed_and_the_row_unpacks_it_later(self):
+        r = relocate.start("alpha", "main", "move", "n3", data="archive")
+        self.q.jobs[r["job"]]["state"] = "running"
+        relocate.data_put("n1", {"job": [r["job"]]}, io.BytesIO(b"x"), 1)
+        self.end(r["job"])
+        jin = next(j for j in self.jobs_on("n3"))
+        self.assertEqual([st["name"] for st in jin["spec"]["plan"]], ["fetching"], "fetched, never unpacked")
+        self.assertEqual(jin["spec"]["plan"][0]["dest"], relocate.ARCHIVE)
+        self.assertEqual(relocate.view("alpha", "main")["line"], "moving to nodec: fetching its data")
+        self.end(jin["id"])
+        rec = devapp._read_rec("alpha", "main")
+        self.assertEqual((rec.get("node"), rec.get("archive")), ("n3", True))
+        self.assertEqual(self.acted, [("alpha", "main", "rebuild", {"ack": "abc"})], "built as any arrival is")
+        devactions.compose_done({"id": "jb", "node": "n3", "state": "succeeded",
+                                 "spec": {"project": "alpha", "instance": "main", "action": "rebuild"}}, "succeeded")
+        v = relocate.view("alpha", "main")
+        self.assertTrue(v["archive"] and not v["busy"] and "not unpacked" in v["line"] and "nodec" in v["line"], v)
+        # The row's Unpack: one job on its node, stop, unpack, start (once
+        # the old node's down, which this queue never runs, is over).
+        for j in self.q.jobs.values():
+            j["state"] = "succeeded"
+        u = relocate.unpack_start("alpha", "main")
+        self.assertTrue(u.get("ok"), u)
+        ju = self.q.jobs[u["job"]]
+        self.assertEqual(ju["node"], "n3")
+        names = [st["name"] for st in ju["spec"]["plan"]]
+        self.assertIn("unpacking", names)
+        self.assertLess(names.index("stopping"), names.index("unpacking"))
+        self.assertLess(names.index("unpacking"), names.index("starting"))
+        self.assertEqual(ju["spec"]["plan"][names.index("unpacking")]["argv"][5], relocate.ARCHIVE)
+        self.assertEqual(relocate.view("alpha", "main")["line"], "unpacking its data into its volumes on nodec")
+        self.assertIn("being copied or moved", relocate.unpack_start("alpha", "main")["error"])
+        self.end(ju["id"])
+        rec = devapp._read_rec("alpha", "main")
+        self.assertNotIn("archive", rec)
+        self.assertNotIn("relocating", rec)
+        self.assertIsNone(relocate.view("alpha", "main"))
+        self.assertIn("not waiting in an archive", relocate.unpack_start("alpha", "main")["error"])
+
+    def test_an_unpack_that_fails_keeps_the_archive_and_says_so(self):
+        relocate._set("alpha", "main", archive=True)
+        u = relocate.unpack_start("alpha", "main")
+        said = self.end(u["job"], "failed")
+        self.assertIn("unpacking its data failed", said)
+        rec = devapp._read_rec("alpha", "main")
+        self.assertEqual(rec.get("archive"), True, "still there to try again")
+        self.assertNotIn("relocating", rec)
+        self.assertEqual([r["why"] for r in relocate.attention(lambda nid: nid)], [said])
+        self.assertTrue(relocate.view("alpha", "main")["archive"], "the row still offers it")
 
     def test_a_copy_that_fails_to_pack_leaves_only_the_original(self):
         r = relocate.start("alpha", "main", "copy", "n2", "alpha-web")
@@ -226,6 +295,55 @@ class Relocate(unittest.TestCase):
         r = devactions.remove_instance("alpha", "main")
         self.assertTrue(r.get("forgot"), r)
         self.assertNotIn("alpha", devapp._load())
+
+    def test_the_data_word_is_one_of_three(self):
+        self.assertIn("unpack, archive or none", relocate.start("alpha", "main", "move", "n3", data="x")["error"])
+        self.assertTrue(relocate.start("alpha", "main", "move", "n3", data="")["ok"], "nothing said is unpack")
+
+    def test_one_that_is_down_is_neither_stopped_nor_started_around_the_data(self):
+        # B725: start on no containers exited 1, failing a copy after its
+        # data was sent, and leaving a failed move down at home.
+        self.running = False
+        r = relocate.start("alpha", "main", "copy", "n3", "two")
+        out = self.q.jobs[r["job"]]
+        self.assertEqual([st["name"] for st in out["spec"]["plan"]], ["packing", "sending"], "left as it is")
+        self.assertFalse(out["spec"]["relocate"]["was_up"])
+        relocate._drop("alpha", "two")
+        self.q.jobs.clear()
+        r = relocate.start("alpha", "main", "move", "n3")
+        self.assertEqual([st["name"] for st in self.q.jobs[r["job"]]["spec"]["plan"]], ["packing", "sending"])
+        self.q.jobs[r["job"]]["state"] = "running"
+        relocate.data_put("n1", {"job": [r["job"]]}, io.BytesIO(b"x"), 1)
+        self.end(r["job"])
+        self.end(next(j for j in self.jobs_on("n3"))["id"], "failed")
+        self.assertEqual(devapp._read_rec("alpha", "main").get("node"), "n1", "back where it was")
+        self.assertEqual([j["spec"].get("action") for j in self.jobs_on("n1") if j["spec"].get("action") in ("up", "start")], [],
+                         "it was down, so it stays down")
+
+    def test_no_data_sends_the_container_alone(self):
+        # The third choice (the operator, 14 Oct): a copy is the record and
+        # a build on the new node, nothing on the old; a running move stops
+        # here first, a down one does not even that.
+        r = relocate.start("alpha", "main", "copy", "n3", "two", data="none")
+        self.assertTrue(r["ok"] and r["job"] == "", r)
+        self.assertEqual(self.jobs_on("n1"), [], "nothing packed or stopped")
+        self.assertEqual(self.acted, [("alpha", "two", "rebuild", {"ack": "abc"})])
+        self.assertEqual(devapp._read_rec("alpha", "two")["relocating"]["stage"], "build")
+        self.acted.clear()
+        r = relocate.start("alpha", "main", "move", "n3", data="none")
+        out = self.q.jobs[r["job"]]
+        self.assertEqual([st["name"] for st in out["spec"]["plan"]], ["stopping"])
+        self.assertEqual(relocate.view("alpha", "main")["line"], "moving to nodec: stopping it")
+        self.end(r["job"])
+        self.assertEqual(self.jobs_on("n3"), [], "no in job: nothing to fetch")
+        rec = devapp._read_rec("alpha", "main")
+        self.assertEqual((rec.get("node"), rec["relocating"]["stage"]), ("n3", "build"))
+        self.assertEqual(self.acted, [("alpha", "main", "rebuild", {"ack": "abc"})])
+        relocate._set("alpha", "main", relocating=None, node="n1")
+        self.running = False
+        r = relocate.start("alpha", "main", "move", "n3", data="none")
+        self.assertEqual(r["job"], "", "down already: its record moves and it builds there, no job at home")
+        self.assertEqual(devapp._read_rec("alpha", "main").get("node"), "n3")
 
     def test_refusals(self):
         self.assertIn("already on", relocate.start("alpha", "main", "move", "n1")["error"])

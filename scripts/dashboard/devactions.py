@@ -1430,7 +1430,13 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # To another node, its data with it (relocate.py): a copy beside
         # it under a new name, or the same one moved.
         env = req.get("text") if isinstance(req.get("text"), str) else None
-        r = relocate.start(project, instance, f(req, "mode"), f(req, "node"), f(req, "name"), env)
+        r = relocate.start(project, instance, f(req, "mode"), f(req, "node"), f(req, "name"), env,
+                           data=f(req, "data"))
+        return r, (400 if r.get("error") else 200)
+    if action == "unpack":
+        # Its data, carried as an archive, written into its volumes now
+        # (relocate.unpack_start).
+        r = relocate.unpack_start(project, instance)
         return r, (400 if r.get("error") else 200)
     if action == "owner":
         # Which project it belongs to. An administrator's too, and the name

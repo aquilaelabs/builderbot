@@ -3065,6 +3065,18 @@ ok(await page.$('#devSend'),
   ok(await page.$eval('#rlNameField', e => e.hidden) && await page.$eval('#rlGo', e => e.textContent) === 'Move'
      && /comes? down|come down/.test(await page.$eval('#rlModeHint', e => e.textContent)),
      '...and a move keeps its name and says the old node\'s containers come down once it is up');
+  // Its data (the operator, 14 Oct): unpacked on arrival, warned as writing
+  // over a volume of the same name, or carried as the archive for later.
+  ok(await page.$eval('input[name="rlData"][value="unpack"]', e => e.checked)
+     && await page.$eval('#rlDataHint', e => /written over/.test(e.textContent) && e.classList.contains('warn')),
+     'its data is unpacked on arrival by default, with the warning that a volume already there is written over');
+  await page.check('input[name="rlData"][value="archive"]');
+  ok(await page.$eval('#rlDataHint', e => /stays there/.test(e.textContent) && /Unpack/.test(e.textContent) && !e.classList.contains('warn')),
+     '...and carried as an archive it says where the file lands and that the row offers Unpack');
+  await page.check('input[name="rlData"][value="none"]');
+  ok(await page.$eval('#rlDataHint', e => /stay on this node/.test(e.textContent))
+     && /empty volumes/.test(await page.$eval('#rlModeHint', e => e.textContent)),
+     '...and left here, the move\'s own line says it starts there with empty volumes');
   await page.click('#rlCancel');
   // The grouping itself, on a picker of three nodes: the project's own first
   // and said so, the one a container is on left out.
