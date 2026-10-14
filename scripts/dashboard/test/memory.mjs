@@ -19,13 +19,15 @@ await ready(page);
 // ---- the way in --------------------------------------------------------
 // The icon carries the to-do count (roadmap.mjs covers that); memory rides in
 // the same panel, folded under it.
-const row = n => `#projects .row:has(.name:text-is("${n}"))`;
+const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on the Projects page (R218 step 3)
 // A locked project keeps its notebook, which is the whole difference from
 // the exclusion this replaced, which hid it. It opens read-only.
-ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 1),
-   'a locked project still has a notebook to open');
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector(row('delta'), { timeout: 15000 });
+ok(await page.$$eval(`${row('delta')} [data-open]`, b => b.length === 1),
+   'a locked project still has a page to open');
 
-await page.click(`${row('alpha')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
 // Every section opens by default (the operator, 8 Oct: 9fd9ab9), the
@@ -452,7 +454,7 @@ await refreshUntil(page, () => !/your other window/.test(
 const other = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await other.goto(URL);
 await ready(other);
-await other.click(`${row('alpha')} [data-m]`);
+await other.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(other);
 await refreshUntil(page, () => !document.getElementById('nbHere').hidden);
 ok(/your other window/.test(await page.$eval('#nbHere', el => el.textContent)),

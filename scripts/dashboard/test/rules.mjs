@@ -38,7 +38,7 @@ ok(/ask-do-not-install\s+Never install/.test(bb()),
    'bb rules pads the name column past its longest name');
 
 // ---- the tab ---------------------------------------------------------------
-await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await nbTab(page, 'briefing');
 await page.waitForSelector('#rulesBox .sect', { timeout: 15000 });

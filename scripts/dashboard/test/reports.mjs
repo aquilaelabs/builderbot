@@ -178,7 +178,7 @@ ok(page.dialogs.length === 0, '...and with none kept, it says so rather than ask
   await page.evaluate(() => openProjectsTab?.());
   await page.waitForSelector('[data-bug="alpha"]', { timeout: 15000, state: 'attached' });
   await unfold(page, 'alpha');
-  await page.click('#projects [data-bug="alpha"]');
+  await page.click('.pgrid .pcard[data-row="alpha"] [data-bug]');
   await page.waitForSelector('#reportModal:not([hidden]) #reportCat', { timeout: 10000 });
   ok(/alpha/.test(await page.$eval('#reportTitle', e => e.textContent))
      && (await page.$$eval('#reportCat option', os => os.length)) >= 8,
@@ -211,7 +211,7 @@ ok(page.dialogs.length === 0, '...and with none kept, it says so rather than ask
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Saving it now. token=ghp_abcdefghijklmnopqrstuvwxyz0123456789' }] }, timestamp: '2026-10-02T10:00:05Z' },
   ].map(x => JSON.stringify(x)).join('\n') + '\n');
   await unfold(page, 'alpha');
-  await page.click('#projects [data-bug="alpha"]');
+  await page.click('.pgrid .pcard[data-row="alpha"] [data-bug]');
   await page.waitForSelector('#reportConvField:not([hidden])', { timeout: 10000 });
   ok(/make the wiki keep my edit/.test(await page.$eval('#reportConvWhich', e => e.textContent))
      && !(await page.$eval('#reportConv', e => e.checked)),

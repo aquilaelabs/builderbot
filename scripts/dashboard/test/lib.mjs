@@ -600,17 +600,18 @@ export const nbGone = (page) =>
 // A project row on the sidebar card folds all but Claude and the notebook
 // behind … at every width (R119, 4 Oct): a check that presses one of the
 // others opens the fold first, the way a person would.
+// ...and since R218 step 3 the row is a card on the Projects page, whose
+// menu holds the rest: the page is opened and the card's menu pressed open.
 export async function unfold(page, project){
-  // Pressed again when a redraw between the press and the read drew the
-  // row folded (sessions.mjs's lock click met a hidden button in a whole
-  // gate, 13 Oct): three tries, each waited for, before giving up quietly.
+  await page.evaluate(() => { if (tabOf(panes[active])?.kind !== 'projects') openProjectsTab(); });
+  await page.waitForSelector(`.pgrid .pcard[data-row="${project}"]`, { timeout: 15000 });
   for (let i = 0; i < 3; i++){
     await page.evaluate(name => {
-      const row = document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)?.closest('.row');
-      if (row && !row.classList.contains('moreon')) row.querySelector('[data-more]').click();
+      const c = document.querySelector(`.pgrid .pcard[data-row="${CSS.escape(name)}"]`);
+      if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click();
     }, project);
-    const open = await page.waitForFunction(name => document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)
-      ?.closest('.row')?.classList.contains('moreon') ?? true, project, { timeout: 3000 }).then(() => true, () => false);
+    const open = await page.waitForFunction(name => !document.querySelector(`.pgrid .pcard[data-row="${CSS.escape(name)}"] .actmenu`)?.hidden,
+      project, { timeout: 3000 }).then(() => true, () => false);
     if (open) return;
   }
 }

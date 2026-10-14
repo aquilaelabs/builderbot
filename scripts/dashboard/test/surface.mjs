@@ -54,7 +54,7 @@ const SURFACE = [
   'dropElsewhere', 'dropIndex', 'dropTab', 'edgeScroll', 'editCustom',
   'endCardDrag', 'endDrag', 'endSession',
   'findingsRulesHtml', 'finishTabs', 'drawTabPick', 'tabPickShow', 'flip', 'focusTab', 'foldHeight',
-  'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab',
+  'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hideTab',
   'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
   'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'nodeContainerNetRow', 'nodePortsLocalRow', 'nodeHostRootRow', 'nodeReachRow', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'nodeGpu', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'profileLogs', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeSessNetRow', 'nodeSyncRow', 'nodeHostRow', 'nodeDoorRow', 'openUnenroll', 'nodeProjects', 'nodeProjectsSection', 'nodeProjectRemove', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'groupNodeOptions', 'openRelocate', 'rlSay', 'closeRelocate', 'rlSubmit', 'myProjectNames', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmOwnerLine', 'dmMoveLine', 'dmNginxLine', 'dmSetGrid', 'dmRowDirty', 'dmGroupsHtml', 'dmOtherRowsHtml', 'dmTestLine', 'dmBuilt', 'jobWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
   'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
@@ -77,11 +77,11 @@ const SURFACE = [
   'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes', 'claudeEnd', 'modalTop', 'keepOpen', 'keepLine', 'pollRevsOnce', 'oneOpen', 'sectGroup', 'soleOpen', 'sectJump', 'topModal', 'modalOpened', 'modalClosed', 'modalFocusables', 'dismissModal', 'modalKeys', 'scrollHint', 'scrollHints',
   'openToolchainsOn', 'nodeGpuSection', 'nodeSound', 'tcTickDots', 'placeCard',
   'claudeNodeFacts', 'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
-  'postTrash', 'projectRow', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneButton', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
+  'postTrash', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'wirePhoneTab',
   'openStorageTab', 'loadStorage', 'storageHeld', 'storageRow', 'andList', 'storageDisks', 'storageProjects', 'storageBody', 'storagePick', 'renderStorageInto', 'wireStorageTab',
-  'openNginxTab', 'loadNginx', 'nginxKeepTyping', 'nginxRefocus', 'projectHeader', 'wireProjectHeader', 'projectState', 'projectNote', 'projectActions', 'projectMatches', 'projectCard', 'fxRemember', 'resumeHostNow', 'syncResumeMenu', 'nginxAct', 'nginxRouteRow', 'nginxCertPick', 'nginxResolve', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxBody', 'nginxPick', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
+  'openNginxTab', 'loadNginx', 'nginxKeepTyping', 'nginxRefocus', 'projectHeader', 'wireProjectHeader', 'projectState', 'projectNote', 'projectActions', 'projectMatches', 'projectCard', 'fxRemember', 'projectJobHtml', 'resumeHostNow', 'syncResumeMenu', 'nginxAct', 'nginxRouteRow', 'nginxCertPick', 'nginxResolve', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxBody', 'nginxPick', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
   // guides are top-level consts, which are not window properties.
   'abShow', 'abLoadLog', 'abDrawLog', 'openAbout', 'closeAbout', 'welcomeOnce',

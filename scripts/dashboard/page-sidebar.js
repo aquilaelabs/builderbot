@@ -76,15 +76,6 @@ const heldWhy = p => p.held || (!gitReadyFor(p) && !liveSessions().has(myClaude(
   ? "set your commit name and email on your Profile (the gear) or in this project's settings first"
   : "");
 
-let showAllProjects = false;
-
-// What the fold-away button says. It used to have to split its count two
-// ways, because half of what it hid was excluded (a decision) and half was
-// broken. Only the second kind exists now, so it says the one thing.
-function hiddenLabel(flagged){
-  return [flagged.length ? `Error (${flagged.length})` : ""]
-         .filter(Boolean).join(" / ");
-}
 
 const nbOpen = name => tabs.some(t => t.kind === "notebook" && t.arg === name);
 
@@ -145,13 +136,6 @@ function phoneWhy(p){
   if (ph.lease && ph.lease.project !== p.name) return `your phone is lent to ${projLabel(ph.lease.project)}: take it back there first`;
   return "";
 }
-function phoneButton(p){
-  const why = phoneWhy(p), here = p.phone?.lease?.project === p.name;
-  return `<button class="eye${here ? " on acc" : ""}" data-ph="${esc(p.name)}"${why ? " disabled" : ""}
-    aria-label="${here ? "take the phone back" : "lend your phone"}"
-    title="${esc(why || (here ? "your phone is lent here: take it back" : `lend your phone on ${p.node_name} to ${projLabel(p.name)}: each command its session runs asks you`))}"
-    >${TOOL_ICONS.phone}</button>`;
-}
 async function phoneRowPress(b, e){
   e.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === b.dataset.ph);
@@ -191,186 +175,20 @@ function openPhoneLend(name, lend){
   };
 }
 
-// One project's row. Extracted so the sidebar card and the Projects tab
-// render the SAME markup from the same place: two copies of this would
-// have drifted within a week, and the whole point of the tab is that a
-// project offers the same controls wherever you meet it.
-//
-// `live` and `cls` are passed rather than recomputed per row: liveSessions()
-// walks the session list, and doing that once per project turned a redraw
-// into O(projects x sessions) for no gain.
-function projectRow(p, live, cls, inTab){
-  const nb = nbOpen(p.name);
-  const pc = colorAttrs(p.prefs?.color);
-  return `
-    <div class="row stack2${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
-      <div class="grow">
-        <div class="namerow"><div class="name">${esc(p.label || p.name)}${p.locked
-          // After the name, because it is a fact about the project rather
-          // than a control: the row reads "StreamLift, locked" at a glance
-          // without hunting for which of six icons is lit.
-          ? ` <span class="lockmark" aria-label="locked; you run this one">${LOCK}</span>`
-          : ""}${notMine(p)
-          // The same shape as the padlock and for the same reason: a fact
-          // about the row, said where the name is, rather than something to
-          // work out from which controls are gray. A different word, because
-          // it is a different thing: the padlock is the operator keeping a
-          // project to themselves, this is a project you have not taken on.
-          ? ` <span class="lockmark" aria-label="read-only: ${esc(NOT_MINE_WHY)}">${LOCK}</span>`
-          : ""}</div></div>
-        ${state?.mapping?.[p.name] ? (m => m.running
-            ? `<div class="sub">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
-            : m.error ? `<div class="sub warn">the code map did not build: ${esc(m.error)}</div>`
-            : `<div class="sub dim">mapped ${m.files} file${m.files === 1 ? "" : "s"} in ${m.took}s</div>`
-          )(state.mapping[p.name]) : ""}
-        ${p.git ? `<div class="sub">git: ${esc(p.git)}${
-          p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
-
-        ${p.issues.map(i =>
-          // Every issue a project can carry now is something to go and look
-          // at rather than a button to press: an unreadable directory, a
-          // broken .git. There used to be a class with a one-press fix (the
-          // CLAUDE.md block, and the link that wrote it), and the link went
-          // with the block itself, R63 step 3.
-          `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
-      </div>
-      <span class="acts">
-      ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
-         data-c="${esc(p.name)}" aria-label="Claude session"${
-         (p.locked || notMine(p)
-          // No node, no session, and the button says so by being dead: a
-          // Claude session runs on a node and this container carries no
-          // Claude Code, so there is nothing for a press to do.
-          || (!p.session_at && !!p.session_why && !live.has(myClaude(p.name)))
-          // ...and none on a node that was un-enrolled (the operator, 5 Oct):
-          // it still names a place, which is gone.
-          || (p.node_removed && !live.has(myClaude(p.name)))
-          // Not signed in on its node ghosts nothing: the press opens the
-          // chooser, which offers that node's sign-in, the way in.
-          || heldWhy(p))
-           ? " disabled" : ""}
-         title="${notMine(p) ? NOT_MINE_WHY
-                 : p.locked
-                   ? "locked; you run this one. The padlock lets Claude back in"
-                 : heldWhy(p) ? heldWhy(p)
-                 // The whole reason, including what to do about it. The row
-                 // carries the first clause in red and stops there; this is
-                 // where the rest belongs, and it is a tap rather than a
-                 // hover on a phone because these rows are tipified.
-                 : p.session_why ? p.session_why
-                 : othersOn(p.name).length
-                   ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own: start yours`
-                 : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(p.name))
-                   ? `Claude: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
-                 : p.session_at
-                   ? `Claude: a session on ${p.session_at}, this project's node`
-                 : live.has(myClaude(p.name)) ? "Claude: your session is running; open its tab or end it"
-                 : p.last_claude ? "Claude: no session running; resume or start one"
-                 : "Claude: start a session here"}">${SPARK}</button>`}
-      ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
-        ${notMine(p) || !gitReadyFor(p) ? "disabled" : ""}
-        title="${notMine(p) ? NOT_MINE_WHY
-                : !gitReadyFor(p)
-                  ? "set your commit name and email on your Profile (the gear) or in this project's settings first"
-                : "shell: open another terminal here"}"
-        >${TERM}</button>` : ""}
-      ${p.git_ok && !isBroken(p)
-        ? `<button class="eye" data-l="${esc(p.name)}"${state?.can?.["git-auth"] === false ? " disabled" : ""}
-             aria-label="${p.linked ? `${p.forge_name || "remote"} settings` : "link to a git host"}"
-             title="${state?.can?.["git-auth"] === false
-               ? "how this project authenticates to its remote is not one of your roles' grants"
-               : p.linked
-               ? `${esc(p.forge_host || p.forge_name || "its remote")}: the credential this project pushes with, and Unlink`
-               : "no remote: link this repo to an empty repository on GitHub, Gitea, GitLab or another git host"}">${LINK}</button>`
-        : ""}
-      ${isBroken(p) ? "" : `<button class="eye${nb ? " on acc" : ""}"
-         data-m="${esc(p.name)}" aria-label="notebook"
-         title="${p.locked
-                   ? (nb ? "notebook: open, go to its tab. Read-only: this project is locked"
-                         : "notebook: readable while this project is locked, not writable")
-                 : nb ? "notebook: open, go to its tab"
-                 : "notebook: roadmap, memory and bugs for this project"}">${BOOK}</button>`}
-      ${isBroken(p) ? "" : phoneButton(p)}
-      ${p.mine === false ? "" : `<button class="eye" data-bug="${esc(p.name)}" aria-label="report a bug"
-        title="report a bug in BuilderBot, from this project: it goes to the diagnostics">${BUG}</button>`}
-      <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
-        data-on="${p.locked ? "0" : "1"}"${state?.can?.lock === false ? " disabled" : ""}
-        aria-label="${p.locked ? "unlock" : "lock"}"
-        title="${state?.can?.lock === false ? "locking a project is not one of your roles' grants"
-          : p.locked
-          ? "unlock: let Claude start sessions here and write its notebook again"
-          : "lock: run this project yourself. No Claude session starts here "
-            + "and its notebook goes read-only"}"
-        >${p.locked ? LOCK : LOCK_OPEN}</button>
-      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
-        data-on="${p.pinned ? "0" : "1"}"
-        aria-label="${p.pinned ? "unpin" : "pin"}"
-        title="${p.pinned
-          ? "unpin: take it off the sidebar; it stays on the Projects tab"
-          : "pin: show it on the sidebar's Projects card"}"
-        >${TACK}</button>
-      ${inTab ? `<button class="eye rm bare" data-del="${esc(p.name)}" aria-label="delete"
-        title="delete: moves it to the trash with everything it has; Put back restores it">${BIN}</button>` : ""}
-      <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
-        aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
-      </span>
-      ${p.phone?.lease?.project === p.name ? `<div class="sub sessline">${esc(p.phone.model || "a phone")} lent here by ${
-          esc(p.phone.lease.by_name || p.phone.owner)}${p.phone.lease.left != null ? `, ${Math.max(1, Math.round(p.phone.lease.left / 60))} min left` : ""}: each command asks ${
-          p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
-      ${p.testing ? `<div class="sub sessline testing">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
-      ${sessionRows(p.name) ? `<div class="sub sesslist">${sessionRows(p.name)}</div>`
-        // WHO is here, or WHY nobody can be. Which machine they are on is
-        // neither: it is on the project's settings, it is the same for every
-        // session here, and a row that said it had a line spent on something
-        // nobody was asking.
-        //
-        // A project whose NODE cannot start one says so in red whenever it
-        // is not LOCKED, which is the one case where no session is the point
-        // rather than a fault. The whole sentence, what is wrong and what to
-        // do about it: it was cut to its first clause with the rest on the
-        // ghosted button's tooltip, and there are no tooltips now (the
-        // operator, 11 Oct). A project with no node said nothing here for a week ("(node: none)"
-        // beside the name was called the whole fact, 15 Sep); it says so
-        // now, because a dead button and a tooltip are not a reason on a
-        // phone, and the operator stared at three such rows after an update
-        // (23 Sep). The same line for a node whose agent is out of window
-        // (held), unless the row is already saying the map is building.
-        : (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked
-          ? `<div class="sub sessline ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(p.session_why || p.held)}</div>` : ""}
-    </div>
-`;
-}
-
 // Projects by name, as a person reads a list: case aside and numbers as
 // numbers (the operator, 7 Oct). The server's order is the directory's, in
 // which every capitalised name came before every lower-case one.
 function byProjectName(a, b){ return String(a.label || a.name).localeCompare(String(b.label || b.name), undefined, {sensitivity: "base", numeric: true}); }
-function drawProjects(all){
-  const el = $("projects");
-  // The card is the pinned view; the Projects tab is the whole list. Filtered
-  // here rather than by the server, which reports every project to everything
-  // that asks: the findings card and the SARIF attribution both need the full
-  // set, and a payload that quietly shrank would take them with it.
-  const ps = all.filter(p => p.pinned);
-  const flagged = ps.filter(isBroken);
-  const hidden = hiddenLabel(flagged);
-  // Excluded last: it is not a problem waiting to be fixed like the rest of
-  // what is folded away here, it is a decision already made.
-  const shown   = (showAllProjects ? ps : ps.filter(p => !isBroken(p)))
-                  .slice().sort(byProjectName);
-
-  // Declared above the empty-list branch below, which READS it. It used to
-  // sit past that branch's `return`, so a card with nothing pinned threw
-  // "Cannot access 'jobHtml' before initialization" and drew nothing: the
-  // one state where the empty message is the whole point of the card.
-  // A clone or a first push, drawn where its result will appear. An ellipsis
-  // rather than a percentage: git's progress is a carriage-return animation
-  // on stderr, and parsing one to redraw it is the thing the toolchains tab
-  // gave up on. What it *is* doing is a phrase from the server.
-  // The job is the poll's (state.project_job), read here per draw and kept
-  // nowhere else: the page-level copy it used to be drifted from the poll.
+// The project job's row (a clone or a first push, running or failed), for
+// the Projects page: the card that drew it went with R218 step 3. An
+// ellipsis rather than a percentage: git's progress is a carriage-return
+// animation on stderr, and parsing one to redraw it is the thing the
+// toolchains tab gave up on. What it *is* doing is a phrase from the server.
+// The job is the poll's (state.project_job), read here per draw and kept
+// nowhere else: the page-level copy it used to be drifted from the poll.
+function projectJobHtml(){
   const pJob = state?.project_job || null;
-  const jobHtml = pJob?.running
+  return pJob?.running
     ? `<div class="row job">
          <div class="grow">
            <div class="name">${esc(pJob.name)}</div>
@@ -385,10 +203,6 @@ function drawProjects(all){
     // than shown in a toast that is gone in seven seconds: the page may not
     // even have been open when it failed.
     : pJob?.error
-    // Named, like the running row above it. A project row carries a red
-    // `.sub` of its own now (why no session can start here), so "the red
-    // line in the projects card" stopped being one thing, and the test that
-    // waited for one to CLEAR waited forever on somebody else's.
     ? `<div class="row jobfail">
          <div class="grow">
            <div class="name">${esc(pJob.name)}</div>
@@ -397,58 +211,14 @@ function drawProjects(all){
          <span class="acts"><button id="bJobOk">Dismiss</button></span>
        </div>`
     : "";
+}
 
-  // At the foot of the card, not the header: headers hold nothing but the
-  // title, because the whole header is the collapse control and drag handle.
-  // New project lives here too: present even when the list is empty, since
-  // an empty workspace is exactly where it is needed most.
-  const togHtml = `<div class="macros"><button id="bNewProj"
-       title="create a project: a new local repository, or a clone of one">New project</button><button id="bAllProj"
-       title="every project under /workspace, pinned or not, with the same controls">All projects</button
-       ><button id="bTrash" class="ic"
-       title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>${
-       flagged.length
-       ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} ${hidden}</button>` : ""}</div>`;
-
-  if (!shown.length){
-    // state.projects at click time, not the `ps` this draw was given: the
-    // handler outlives the draw now that unchanged markup is kept.
-    if (paint(el, jobHtml + `<div class="empty">${
-      !all.length ? (state.admin ? "no projects yet: New project starts one"
-                     : "no projects are yours yet: an administrator grants them on the Users tab")
-      : !ps.length ? "nothing pinned: open the Projects tab to pin what you want here"
-                 : `nothing to show; everything here is folded away under Show ${hidden}`
-    }</div>` + togHtml)){
-      pJobWire();
-      $("bNewProj").onclick = openNewProject;
-      const tb = $("bTrash"); if (tb) tb.onclick = openTrash;
-      $("bAllProj").onclick = openProjectsTab;
-      if (flagged.length)
-        $("bAll").onclick = () => { showAllProjects = !showAllProjects;
-                                  slideBody(el, () => drawProjects(state?.projects || ps)); };
-    }
-    syncResumeMenu();
-    return;
-  }
-
-  const cls = {error:"bad", warning:"warn", locked:"locked"};
-  const live = liveSessions();
-  // Handlers bind on a real change only; an unchanged card keeps its
-  // elements, and their handlers, from last time.
-  if (paint(el, jobHtml + shown.map(p => projectRow(p, live, cls)).join("") + togHtml)){
-    $("bNewProj").onclick = openNewProject;
-    const tb = $("bTrash"); if (tb) tb.onclick = openTrash;
-    $("bAllProj").onclick = openProjectsTab;
-    if (flagged.length)
-      $("bAll").onclick = () => { showAllProjects = !showAllProjects;
-                                  slideBody(el, () => drawProjects(state?.projects || ps)); };
-    wireProjectRows(el);
-    pJobWire();
-  }
-  // The chooser is positioned against its host (this card, or a project
-  // page's pane), a sibling of the list rather than part of it: replacing
-  // the list's innerHTML does not remove it, and syncResumeMenu keeps one
-  // menu, in step, where it was asked for.
+// What the sidebar's projects card did is the Projects page's (R218 step
+// 3): a draw asked of the card draws the page where it is on show, and
+// keeps the Claude chooser in step wherever it was asked for.
+function drawProjects(all){
+  void all;
+  panes.forEach((id, i) => { if ((i === 0 || isSplit()) && tabOf(id)?.kind === "projects") renderProjectsInto(i); });
   syncResumeMenu();
 }
 
@@ -465,10 +235,10 @@ function pJobWire(){
   // same rule the toolchain buttons follow: the server answers 409 anyway,
   // and a button that earns an error is worse than one that waits.
   const busy = !!state?.project_job?.running;
-  const nb = $("bNewProj"); if (nb) nb.disabled = busy;
+  const nb = $("bNewProjTab"); if (nb) nb.disabled = busy;
   // ...and never re-enabled past the grant (R137 step 4): the busy pass
   // undid the row's disabled for an account without git-auth.
-  document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy || state?.can?.["git-auth"] === false);
+  document.querySelectorAll(".pgrid [data-l]").forEach(b => b.disabled = busy || state?.can?.["git-auth"] === false);
 }
 
 // ---- a project's job: the clone or the first push -----------------------

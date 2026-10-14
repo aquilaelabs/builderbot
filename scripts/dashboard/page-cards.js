@@ -12,8 +12,10 @@
 
 let cards = {order: [], closed: []};   // filled from the markup once it exists, in index.html
 
+// On a phone every card starts folded (the projects card, the one that
+// started open, went with R218 step 3).
 const cardShut = key => cards.closed.includes(key)
-  || (isPhone() && key !== "projects" && !phoneOpen.has(key));
+  || (isPhone() && !phoneOpen.has(key));
 
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll

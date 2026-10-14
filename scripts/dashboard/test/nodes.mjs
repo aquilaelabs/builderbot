@@ -3436,11 +3436,13 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   await napi('/api/v1/nodes', { action: 'retire', id: gone.id });
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => (state?.projects || []).find(p => p.name === 'delta')?.node_removed, null, { timeout: 15000 });
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.pgrid .pcard[data-row="delta"]', { timeout: 15000 });
   const row = await page.evaluate(() => {
     const p = state.projects.find(x => x.name === 'delta');
-    const r = document.querySelector('#projects .row[data-name="delta"], #projects [data-p="delta"]')?.closest('.row');
-    return { why: p.session_why, line: r?.querySelector('.sessline')?.textContent || '', name: p.node_name,
-             off: !!document.querySelector('#projects [data-c="delta"]')?.disabled };
+    const r = document.querySelector('.pgrid .pcard[data-row="delta"]');
+    return { why: p.session_why, line: r?.querySelector('.pnote')?.textContent || '', name: p.node_name,
+             off: !!r?.querySelector('[data-c]')?.disabled };
   });
   ok(row.name === 'oldbox' && /oldbox was removed from the Nodes tab/.test(row.why || '') && row.off
      && !/coming back/.test(row.why || ''),

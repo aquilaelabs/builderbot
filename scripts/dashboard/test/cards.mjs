@@ -227,10 +227,10 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
-ok(hs.length === 5 && hs.every(h => h.buttons === 0 && h.chev),
+ok(hs.length === 4 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
 // Projects first (R119, 4 Oct): what a person comes here for.
-ok((await order())[0] === 'projects', 'projects is first by default');
+ok((await order())[0] === 'doctor', 'doctor is first by default: the projects card went with R218 step 3');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
 
 // collapse animates, persists across reload
@@ -272,16 +272,6 @@ ok(probLines.some(l => /runner offline/.test(l.text) && /bb logs --runner/.test(
 doctorFixture('ok');
 await page.evaluate(() => document.getElementById('bDoctor').onclick());
 await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'));
-
-// projects: fold-away toggle at the foot; slides the card. It counts one kind
-// now; it used to have to split the number, because half of what it hid was
-// excluded, which was a decision rather than a fault. Only faults are folded.
-ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Error (2)',
-   'the toggle says how many are folded away, and they are all faults');
-ok((await animatedDuring(page, () => page.click('#projects #bAll')))
-     .some(k => k.includes('projects')),
-   'in-card toggle slides the card');
-await page.click('#projects #bAll');
 
 // The Analysis tab: the findings, browsable. The sidebar card is gone, since
 // its rows were only doors into each notebook, a summary nothing could be
@@ -554,65 +544,42 @@ print(json.dumps(out))
   await refreshUntil(page, () => !(state?.projects || []).some(p => p.name === 'my-app'),
                      { timeout: 20000 });
 }
-// ---- a phone folds the rest of a row behind one icon -----------------------
-// Three icons beside the name, the rest on demand: a row was 140px against 98
-// on a desktop and a third of it was six buttons. What this pins is the
-// FOLDING OUT, which shipped broken: the rule that hides the extra icons
-// carries three :not()s and outranked the rule that showed them again, so
-// pressing … re-stacked the row and produced nothing (the operator found it
-// on their phone, which is the only place it renders).
+// ---- a project's card on the Projects page, at a phone and at a desk ------
+// The sidebar's row, and its fold, went with R218 step 3: a project is a
+// card on the Projects page with Claude and Shell on it and the rest behind
+// one menu, at every width.
 {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
-  const row = '#projects .row:has(.name:text-is("alpha"))';
-  const shown = () => page.$$eval(`${row} .acts .eye`,
-    bs => bs.filter(b => b.offsetParent !== null).length);
-  const folded = await shown();
-  ok(folded === 3, `a phone row shows the session, the notebook and the fold (${folded})`);
-  // On the same slide the Projects tab's rows use (the operator, 30 Sep):
-  // the card's list is a scroll box, so the card itself did not grow and
-  // the row snapped where the tab's row slid.
-  const slid = await animatedDuring(page, async () => { await page.click(`${row} [data-more]`); await page.waitForTimeout(250); });
-  const open = await shown();
-  ok(open > folded, `...and pressing it shows the rest (${folded} -> ${open})`);
-  ok(slid.some(k => /row|card/.test(k)), `...sliding over the height that takes, as the Projects tab's row does (${slid.join(' ')})`);
-  ok(await page.$eval(`${row} [data-more]`, b => b.getAttribute('aria-expanded') === 'true'),
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.doc.on .projtab .pcard[data-row="alpha"]', { timeout: 10000 });
+  const card = '.doc.on .projtab .pcard[data-row="alpha"]';
+  const shown = () => page.$$eval(`${card} .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).length);
+  ok(await shown() === 2 && await page.$eval(`${card} .actmenu`, m => m.hidden),
+     `a phone's card shows Claude and Shell, the rest behind its menu (${await shown()})`);
+  const slid = await animatedDuring(page, async () => { await page.click(`${card} [data-pmore]`); await page.waitForTimeout(250); });
+  ok(await page.$eval(`${card} .actmenu`, m => !m.hidden && m.querySelectorAll('button').length >= 5),
+     '...and pressing it opens the menu with the rest');
+  ok(slid.length > 0, `...on a tween (${slid.join(' ') || 'nothing animated'})`);
+  ok(await page.$eval(`${card} [data-pmore]`, b => b.getAttribute('aria-expanded') === 'true'),
      '...saying so, for anything that is not looking at the pixels');
-  // With the card's list a scroll box (a long list on a short phone) the
-  // card does not change height, and the row slides on its own.
-  await page.addStyleTag({ content: '#projects{max-height:90px;overflow:auto}' });
-  const slid2 = await animatedDuring(page, async () => { await page.click(`${row} [data-more]`); await page.waitForTimeout(250); });
-  ok(await shown() === folded, '...and pressing it again folds them away');
-  ok(slid2.some(k => /row/.test(k)) && !slid2.some(k => /card/.test(k)),
-     `...the row itself sliding when the card's list scrolls and the card cannot grow (${slid2.join(' ')})`);
-  await page.evaluate(() => document.querySelectorAll('style').forEach(st => { if (st.textContent.startsWith('#projects{max-height')) st.remove(); }));
+  await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
-  // The sidebar card folds on a desktop too (R119, 4 Oct): eight icons on a
-  // 340px card were unreadable. The Projects tab, with room, shows them all.
-  const desk = await shown();
-  ok(desk === 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent !== null),
-     `on a desktop the card's row folds as a phone's does (${desk} icons)`);
-  await page.evaluate(() => openProjectsTab());
-  await page.waitForSelector('.doc.on .projtab .pcard', { timeout: 10000 });
-  // The Projects page is a grid of cards (R218 step 3, R238): two actions
-  // on the card, Claude and Shell, and the rest behind one menu.
-  const tabRow = '.doc.on .projtab .pcard[data-row="alpha"]';
-  const tabShown = await page.$$eval(`${tabRow} .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).length);
-  ok(tabShown === 2 && await page.$eval(`${tabRow} [data-pmore]`, b => b.offsetParent !== null)
-     && await page.$eval(`${tabRow} .actmenu`, m => m.hidden && m.querySelectorAll('button').length >= 5),
-     `...while the Projects page's card shows Claude and Shell, the rest behind its menu (${tabShown} shown)`);
-  // The pin is on the card's rows too (the operator, 30 Sep), so a project
-  // is unpinned from the sidebar without a trip to the Projects tab; the
-  // Projects tab is where it is pinned back.
-  ok(await page.$eval(`${row} [data-p]`, b => b.getAttribute('aria-label') === 'unpin' && b.classList.contains('on')),
-     "the card's row carries the pin, lit, reading unpin");
+  const tabShown = await shown();
+  ok(tabShown === 2 && await page.$eval(`${card} [data-pmore]`, b => b.offsetParent !== null)
+     && await page.$eval(`${card} .actmenu`, m => m.hidden && m.querySelectorAll('button').length >= 5),
+     `...and at a desk the card shows the same two, the rest behind its menu (${tabShown} shown)`);
+  // The pin is in the card's menu, reading Unpin while it is pinned; a press
+  // turns it to Pin, and Home's glance (step 5) is what it decides.
+  ok(await page.$eval(`${card} [data-p]`, b => b.textContent.trim() === 'Unpin'),
+     "the card's menu carries the pin, reading Unpin");
   await unfold(page, 'alpha');
-  await page.click(`${row} [data-p]`);
-  await page.waitForFunction(() => ![...document.querySelectorAll('#projects .row .name')].some(n => n.textContent.trim() === 'alpha'), null, { timeout: 15000 });
-  ok(true, '...and pressing it takes the project off the card');
+  await page.click(`${card} [data-p]`);
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Pin', null, { timeout: 15000 });
+  ok(true, '...and pressing it unpins the project');
   await page.evaluate(() => setProjectPinned('alpha', true));
-  await page.waitForFunction(() => [...document.querySelectorAll('#projects .row .name')].some(n => n.textContent.trim() === 'alpha'), null, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Unpin', null, { timeout: 15000 });
 }
 
 // A phone's folds are the device's: a card opened there is still open after a
@@ -627,7 +594,7 @@ print(json.dumps(out))
     const c = document.querySelector(`.card[data-card="${key}"]`);
     return c && !c.classList.contains('closed') && !c.getAnimations().length;
   }, k, { timeout: 8000 });
-  ok(await shut('tools') && !await shut('projects'), 'on a phone every card but Projects starts folded');
+  ok(await shut('tools') && await shut('doctor'), 'on a phone every card starts folded');
   await page.click('.card[data-card="tools"] h2');
   await settled('tools');
   await page.reload(); await ready(page); await page.waitForTimeout(400);
@@ -643,23 +610,22 @@ print(json.dumps(out))
   await page.waitForTimeout(400);
 }
 
-// ---- the row's session line: who is here, or why nobody can be -------------
-// Never WHICH MACHINE. That is on the project's settings, it is the same for
-// every session on the project, and a row that said it spent a line on
-// something nobody was asking. What the row owes instead is a red line when
-// the Claude button is dead and the project is not locked, since a ghosted
-// button with no reason is the thing somebody stares at.
+// ---- the card's notice: why nobody can be here, and who is ------------
+// The card on the Projects page says WHO is here as its state (the dot and a
+// word) and WHY nobody can be as its one notice, in red, since a ghosted
+// button with no reason is the thing somebody stares at. Never WHICH
+// MACHINE as a sentence: the node is a fact beside the branch.
 //
 // Planted rather than arranged: the fixture has no node, and the four refusals
 // worth drawing (offline, no session half, no copy yet, taken off its copy) are
-// nodes.mjs's to produce. This is about what the ROW does with one.
+// nodes.mjs's to produce. This is about what the CARD does with one.
 {
   await holdPoll(page);
-  const line = () => page.$eval('#projects .row:has(.name:text-is("alpha"))',
-    r => (r.querySelector('.sessline')?.textContent || '').trim());
-  // WHO is here wins the line, and the fixture has a session open on alpha,
-  // so the half being tested here only ever draws with nobody in it. Put back
-  // at the end rather than left cleared: the next block reads this fixture.
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.pgrid .pcard[data-row="alpha"]', { timeout: 10000 });
+  const C = '.pgrid .pcard[data-row="alpha"]';
+  const line = () => page.$eval(C, r => ([...r.querySelectorAll('.pnote')].pop()?.textContent || '').trim());
+  const stateWord = () => page.$eval(`${C} .pstate`, e => e.textContent.trim());
   const were = await page.evaluate(() => {
     const had = state.claude_with; state.claude_with = {}; return had; });
   const plant = (patch) => page.evaluate(p2 => {
@@ -667,81 +633,55 @@ print(json.dumps(out))
     drawProjects(state.projects);
   }, patch);
   await plant({ session_at: 'shed', session_why: '', locked: false });
-  ok(await line() === '', 'a project whose node takes sessions says nothing about which machine');
+  ok(await line() === '', 'a project whose node takes sessions carries no notice');
   await plant({ session_at: 'shed', locked: false,
                 session_why: "alpha's sessions run on shed, which is offline. Sessions run on a "
                            + 'node and nowhere else (this container carries no Claude Code), so '
                            + 'the way on is that machine coming back, or another node in the '
                            + "project's settings." });
   ok(/offline/.test(await line()),
-     `a node that cannot take one puts the reason on the row (${await line()})`);
+     `a node that cannot take one puts the reason on the card (${await line()})`);
   ok(/Sessions run on a node and nowhere else/.test(await line()),
      '...the whole of it, fix included: there is no tooltip to carry the rest (the operator, 11 Oct)');
-  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline',
-                      e => e.classList.contains('bad')),
+  ok(await page.$eval(C, r => [...r.querySelectorAll('.pnote')].pop().classList.contains('bad')),
      '...in red, because a dead button with no reason is what somebody stares at');
-  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
-       b => /nowhere else/.test(saidOf(b))),
+  ok(await page.$eval(`${C} [data-c]`, b => /nowhere else/.test(saidOf(b))),
      '...and a screen reader hears the same words on the ghosted button');
-  // A no-node project says so on the line, in red. It said nothing there
-  // for a week (15 Sep: the fact beside the name was called enough); the
-  // operator asked for the line back on 23 Sep after three such rows read
-  // as dead buttons, and a tooltip is nothing on a phone. The fix is on
-  // the line too since there are no tooltips (11 Oct). The row names no node at all
-  // since R82 (25 Sep): a project's nodes are its settings' to show.
   await plant({ session_at: '', locked: false, node_name: '',
                 session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab" });
-  ok(await line() === "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab"
-     && await page.$('#projects .row:has(.name:text-is("alpha")) .pnode') === null,
-     `a project with no node says so under its name, with what to do, and nothing beside the name (${await line()})`);
-  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline', e => e.classList.contains('bad')),
-     '...in red, since it is why the button is dead');
-  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
-       b => /^no node to run a Claude session on: pick one/.test(saidOf(b))),
+  ok(await line() === "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab",
+     `a project with no node says so on the card, with what to do (${await line()})`);
+  ok(await page.$eval(`${C} [data-c]`, b => /^no node to run a Claude session on: pick one/.test(saidOf(b))),
      '...while the button carries the fix');
-  // ...and a node whose agent is out of window (held) gets the same line.
   await plant({ session_at: 'shed', node_name: 'shed', session_why: '',
                 held: 'shed runs agent 0.5.0 and this controller ships 0.6.93: a different compatibility window, so nothing sent to it is promised to work. Update it from the Nodes tab' });
   ok(/^shed runs agent 0\.5\.0 and this controller ships 0\.6\.93: .*Update it from the Nodes tab$/.test(await line()),
-     `a node out of window says so under the name too (${await line()})`);
+     `a node out of window says so on the card too (${await line()})`);
   await plant({ held: '' });
   await plant({ node_name: 'shed' });
-  ok(await page.$('#projects .row:has(.name:text-is("alpha")) .pnode') === null,
-     '...and a project with a node does not wear its name on the row either');
-  // ...and LOCKED is the one case where no session is the point rather than a
-  // fault, so it stays quiet.
+  ok(/shed/.test(await page.$eval(`${C} .pcfacts`, e => e.textContent)),
+     '...and the node is a fact beside the branch, not a sentence');
   await plant({ locked: true });
   ok(await line() === '', 'a locked project says nothing: no session there is the decision, not a fault');
   await plant({ locked: false, session_at: '', session_why: '' });
-  // Who is here is a line per name with a dot in front, bright for a
-  // session working on a prompt and dim for one waiting, yours last and
-  // marked (the operator, 24 Sep).
+  // Who is here is the card's state: this account's session as the dot
+  // and a word, in the session dot's own colors (the operator, 29 Sep).
   await page.evaluate(() => { state.claude_with = { alpha: ['test', 'alice'] }; state.claude_busy = { alpha: ['alice'] };
                               drawProjects(state.projects); });
-  const rows = await page.$$eval('#projects .row:has(.name:text-is("alpha")) .sessone',
-    es => es.map(e => ({ text: e.textContent.trim(), on: e.querySelector('.st').classList.contains('working'),
-                          waiting: e.querySelector('.st').classList.contains('waiting') })));
-  ok(rows.length === 2 && rows[0].text === 'alice' && rows[0].on && rows[1].text === 'test (you)' && !rows[1].on && rows[1].waiting,
-     `who has a session here is one line per name, the working one's dot the session dot's working, the waiting one's its waiting, yours last (${JSON.stringify(rows)})`);
-  // The same dot as the session's tab, the phone's Terminal tab and the
-  // Sessions card, in the same two colors (the operator, 29 Sep): the row
-  // had a dot of its own, lit in the accent when working and gray when
-  // not, beside three that pulse blue when working and are amber when
-  // waiting.
-  ok(await page.evaluate(() => {
-    const row = [...document.querySelectorAll('#projects .row')].find(r => r.querySelector('.name')?.textContent.trim() === 'alpha')
-      .querySelector('.sessone .st.working');
+  ok(/waiting for you/.test(await stateWord()) && await page.$eval(`${C} .pstate .st`, e => e.classList.contains('waiting')),
+     `this account's session here is the card's state, its dot the session dot's waiting (${await stateWord()})`);
+  await page.evaluate(() => { state.claude_busy = { alpha: ['test'] }; drawProjects(state.projects); });
+  ok(/working/.test(await stateWord()) && await page.evaluate(() => {
+    const dot = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate .st.working');
     const tab = document.createElement('span'); tab.className = 'st working'; document.body.appendChild(tab);
-    const same = getComputedStyle(row).backgroundColor === getComputedStyle(tab).backgroundColor
-      && getComputedStyle(row).animationName === getComputedStyle(tab).animationName;
+    const same = getComputedStyle(dot).backgroundColor === getComputedStyle(tab).backgroundColor
+      && getComputedStyle(dot).animationName === getComputedStyle(tab).animationName;
     tab.remove(); return same && !document.querySelector('.sdot');
-  }), 'the row\'s dot is drawn by the one rule the session dots share, and no dot of its own is left');
-  // ...and the two maps come back on their own light fetch when the revs
-  // token says they moved, without waiting for the status poll.
+  }), "the card's dot is drawn by the one rule the session dots share, and no dot of its own is left");
   await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
   await page.evaluate(() => liveRefresh());
-  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessone', e => /test/.test(e.textContent)),
-     'liveRefresh reads who is here from /api/live and draws the rows again');
+  ok(/waiting for you|working/.test(await stateWord()),
+     'liveRefresh reads who is here from /api/live and draws the cards again');
   await page.evaluate(w => { state.claude_with = w; state.claude_busy = {}; drawProjects(state.projects); }, were);
   await freePoll(page);
 }
@@ -780,12 +720,11 @@ ok(!sib.includes('reports') && sib.length === 1,
 
 // .bbignore hides a directory from the card entirely: not listed, not
 // counted, not folded away under the Excluded/Error toggle either.
-const names = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
-ok(!names.includes('toolstore'), 'a directory carrying .bbignore is not a project');
-await page.click('#projects #bAll');
-const all = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
-await page.click('#projects #bAll');
-ok(!all.includes('toolstore'), '...not even with the error rows shown');
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.pgrid .pcard', { timeout: 10000 });
+const all = await page.$$eval('.pgrid .pcard .name', ns => ns.map(n => n.textContent.trim()));
+ok(!all.includes('toolstore'), 'a directory carrying .bbignore is not a project');
+ok(!all.includes('toolstore'), '...not even among the cards with errors, which the page shows');
 // An unmarked directory IS still listed, as a project with an error, and that is
 // the card doing its job, and how you find out something in the share is not a
 // repository. What changed is that its findings no longer count as anybody's.
@@ -799,10 +738,10 @@ ok(all.includes('vendored-junk'),
 await page.$eval('.side', e => e.scrollTo(0, 0));
 // Projects is first and long (R119): folded for the drag, so the runner card
 // is on screen to be grabbed, and opened again after.
-const projOpen = await page.$eval('.card[data-card="projects"]', el => !el.classList.contains('closed'));
+const projOpen = await page.$eval('.card[data-card="doctor"]', el => !el.classList.contains('closed'));
 if (projOpen){
-  await page.click('.card[data-card="projects"] h2');
-  await page.waitForFunction(() => document.querySelector('.card[data-card="projects"]').classList.contains('closed'));
+  await page.click('.card[data-card="doctor"] h2');
+  await page.waitForFunction(() => document.querySelector('.card[data-card="doctor"]').classList.contains('closed'));
 }
 await new Promise(r => setTimeout(r, 300));
 const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
@@ -827,7 +766,7 @@ await page.mouse.move(hb.x + 40, top.y + 2, { steps: 10 });
 await page.mouse.up();
 const sliding = await page.evaluate(() => {
   Element.prototype.animate = window.__realAnimate;
-  return window.__flipped.includes("projects");
+  return window.__flipped.includes("doctor");
 });
 ok(sliding, 'displaced cards slide during a drag');
 ok((await order())[0] === 'runner', `runner dragged to the top (${(await order()).join(',')})`);
@@ -835,8 +774,8 @@ ok(!(await page.$eval('.card[data-card="runner"]', el => el.classList.contains('
 await page.reload(); await ready(page);
 ok((await order())[0] === 'runner', 'order survives a reload');
 if (projOpen){
-  await page.click('.card[data-card="projects"] h2');
-  await page.waitForFunction(() => !document.querySelector('.card[data-card="projects"]').classList.contains('closed'));
+  await page.click('.card[data-card="doctor"] h2');
+  await page.waitForFunction(() => !document.querySelector('.card[data-card="doctor"]').classList.contains('closed'));
 }
 
 // ▤ reset, now an item in the menu the gear opens rather than theom's
@@ -962,7 +901,7 @@ ok(true, 'Escape closes the menu');
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
 await page.click('#uiReset');
-await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'projects'
+await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'doctor'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
 
@@ -1277,15 +1216,15 @@ await page.evaluate(() => refresh());
 // The padlock: a project the operator keeps and runs themselves. Its whole
 // point is being the OTHER button: excluding hides a row, this one leaves it
 // intact and takes away only the session, so that is what gets asserted.
-await page.evaluate(() => refresh());
-await page.waitForSelector('#projects [data-k="alpha"]', { timeout: 10000, state: 'attached' });
-ok(await page.$$eval('#projects [data-k]', bs => bs.length > 0),
-   'every project row carries a padlock');
+await page.evaluate(() => { refresh(); openProjectsTab(); });
+await page.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-k]', { timeout: 10000, state: 'attached' });
+ok(await page.$$eval('.pgrid [data-k]', bs => bs.length > 0),
+   "every project's card carries a lock in its menu");
 await page.evaluate(() => setLocked('alpha', true));
 await page.waitForFunction(
-  () => document.querySelector('#projects [data-c="alpha"]')?.disabled === true,
+  () => document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]')?.disabled === true,
   { timeout: 10000 });
-const locked = await page.$eval('#projects .row:has([data-k="alpha"])', r => ({
+const locked = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   claude: r.querySelector('[data-c="alpha"]')?.disabled,
   shell:  !!r.querySelector('[data-s="alpha"]'),
   note:   r.textContent.replace(/\s+/g, ' '),
@@ -1300,9 +1239,9 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
   // The MARK, not a sentence. The row used to carry a whole line under the
   // name restating what the padlock already says, on every locked row forever.
   await page.waitForFunction(
-    () => !!document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark'),
+    () => !!document.querySelector('.pgrid .pcard[data-row="alpha"] .lockmark'),
     { timeout: 15000 });
-  const note = await page.$eval('#projects .row:has([data-k="alpha"])',
+  const note = await page.$eval('.pgrid .pcard[data-row="alpha"]',
     r => r.textContent.replace(/\s+/g, ' '));
   ok(!/read-only/.test(note) && !/no Claude session/.test(note),
      '...marked with the padlock alone, not a sentence under the name as well');
@@ -1313,15 +1252,15 @@ await page.evaluate(() => setLocked('alpha', false));
 // row saying one thing at a time rather than two.
 await page.waitForFunction(
   () => {
-    const b = document.querySelector('#projects [data-c="alpha"]');
-    return !document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark')
+    const b = document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]');
+    return !document.querySelector('.pgrid .pcard[data-row="alpha"] .lockmark')
       && !/locked/.test(saidOf(b));
   },
   { timeout: 15000 });
 // Not the disabled state: this fixture has a live claude-alpha session, and
 // a button that would take you to a running conversation stays usable
 // whatever the node arrangement says.
-const backTitle = await page.$eval('#projects [data-c="alpha"]',
+const backTitle = await page.$eval('.pgrid .pcard[data-row="alpha"] [data-c]',
                                    b => saidOf(b));
 ok(!/locked/.test(backTitle) && /no node/.test(backTitle),
    `unlocking gives the row back, and what is left to say is the node it has not got (${
@@ -1329,12 +1268,11 @@ ok(!/locked/.test(backTitle) && /no node/.test(backTitle),
 
 // The Projects tab: every project, pinned or not, and the same controls on
 // each. The thumbtack decides only where a project is met, not what it can do.
-await page.click('#projects #bAllProj');
+await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 const inTab = await page.$$eval('.doc .projtab .pcard .name', ns => ns.map(n => n.textContent.trim()));
-const inCard = await page.$$eval('#projects .row .name', ns => ns.map(n => n.textContent.trim()));
-ok(inTab.length >= inCard.length && inCard.every(n => inTab.includes(n)),
-   'the Projects page lists at least what the card does');
+ok(inTab.length >= 2 && inTab.includes('alpha'),
+   'the Projects page lists every project');
 ok(await page.$eval('.doc .projtab .pcard', r =>
      !!r.querySelector('[data-open]') && !!r.querySelector('[data-s]')
      && !!r.querySelector('[data-k]') && !!r.querySelector('[data-p]')),
@@ -1343,8 +1281,7 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
 // Unpinning takes a project off the sidebar and leaves it on the tab, whole.
 await page.evaluate(() => setProjectPinned('alpha', false));
 await page.waitForFunction(
-  () => ![...document.querySelectorAll('#projects .row .name')]
-          .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
+  () => document.querySelector('.doc .projtab [data-p="alpha"]')?.textContent.trim() === 'Pin', { timeout: 15000 });
 ok(await page.$$eval('.doc .projtab .pcard .name',
      ns => ns.some(n => n.textContent.trim() === 'alpha')),
    'an unpinned project leaves the sidebar and stays on the page');
@@ -1359,9 +1296,8 @@ ok(await page.$eval('.doc .projtab', e => !e.classList.contains('card'))
    'the Projects tab fills its pane the way the notebook does');
 await page.evaluate(() => setProjectPinned('alpha', true));
 await page.waitForFunction(
-  () => [...document.querySelectorAll('#projects .row .name')]
-          .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
-ok(true, 'pinning it puts it back on the sidebar');
+  () => document.querySelector('.doc .projtab [data-p="alpha"]')?.textContent.trim() === 'Unpin', { timeout: 15000 });
+ok(true, 'pinning it back reads Unpin again');
 
 // ---- polls do not stack (bug #44) --------------------------------------
 // /api/status runs git for every project, and refreshSoon fires three
@@ -1426,7 +1362,7 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
 // thumbtack for a project that was no longer pinned, and then clicking it sent
 // the state it was already in, which is what "pinning only works sometimes"
 // was. No poll is waited for: the answer to the pin request is the new set.
-await page.click('#projects #bAllProj');
+await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 // The card's menu says Unpin while it is pinned, Pin once it is not.
 const tackLit = () => page.$eval('.doc .projtab [data-p="beta"]', b => b.textContent.trim() === 'Unpin');
@@ -1436,9 +1372,8 @@ await page.waitForFunction(() =>
   document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Pin',
   { timeout: 5000 });
 ok(true, '...and unpinning it there turns the page\'s menu item to Pin too');
-ok(!await page.$$eval('#projects .row .name',
-     ns => ns.some(n => n.textContent.trim() === 'beta')),
-   '...with the sidebar dropping it in the same breath');
+ok(await page.evaluate(() => !(state.projects.find(p => p.name === 'beta') || {}).pinned),
+   '...with the project unpinned in the same breath');
 await page.evaluate(() => setProjectPinned('beta', true));
 await page.waitForFunction(() =>
   document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Unpin',
@@ -1448,8 +1383,7 @@ ok(true, '...and pinning it back lights it again, first click');
 // one, or the change lands without its animation and nothing says why.
 await page.evaluate(() => setProjectPinned('ep.silon', false));
 await page.waitForFunction(() =>
-  ![...document.querySelectorAll('#projects .row .name')]
-    .some(n => n.textContent.trim() === 'ep.silon'), { timeout: 8000 });
+  document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Pin', { timeout: 8000 });
 ok(true, 'a dotted project name unpins too, animation and all');
 // ...and back, which is the direction that used to be a plain redraw: pinning
 // is watched from the Projects tab, which on a desktop sits in the column
@@ -1476,8 +1410,7 @@ await page.waitForFunction(() => window.__rowAnims.length > 0, { timeout: 8000 }
 await page.evaluate(() => { Element.prototype.animate = window.__pinAnimate; });
 ok(true, '...and pinning it back unrolls the row instead of snapping it in');
 await page.waitForFunction(() =>
-  [...document.querySelectorAll('#projects .row .name')]
-    .some(n => n.textContent.trim() === 'ep.silon'), { timeout: 8000 });
+  document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Unpin', { timeout: 8000 });
 
 // The docker manager opens from Tools. What it LISTS is asserted in
 // devapp.mjs, where a project actually has a compose file and an instance.
@@ -1504,7 +1437,7 @@ ok(await page.evaluate(() => {
      const item = document.querySelector('#rail [data-rail="containers"] svg')?.outerHTML;
      return !!item && item === btn;
    }), '...and the Containers page on the rail wears the Docker button\'s icon');
-await page.click('#projects #bAllProj');
+await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 
 const api = (path, body) => page.evaluate(async ([p, b]) => {
@@ -1909,7 +1842,7 @@ await page.waitForFunction(() => ![...document.querySelectorAll('#tabbar .tab')]
   .find(t => /Notebook: alpha/.test(t.textContent))?.classList.contains('pc'), null, { timeout: 20000 });
 ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
-await page.click('#projects #bAllProj');
+await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
@@ -2032,7 +1965,7 @@ await page.click('#rnCancel');
 ok(await page.$eval('#rnmodal', el => el.hidden), 'Cancel closes it');
 
 // Deleting: on the full list only, and it moves rather than destroys.
-ok(!await page.$('#projects [data-del]'),
+ok(!await page.$('.pgrid .pcacts > [data-del]'),
    'the sidebar card has no delete: that one is brushed past on a phone');
 ok(await page.$('.doc .projtab [data-del]'),
    '...and the Projects tab does');
@@ -2040,22 +1973,24 @@ ok(await page.$('.doc .projtab [data-del]'),
 // from the card it is shown in, pinning back from the tab. It went the
 // delete's way once, on the crowded side of a phone's row; the phone folds
 // it behind the row's more button now.
-ok(await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
+ok(await page.$('.doc .projtab [data-p]'),
    'the pin is on the card\'s rows as on the Projects tab\'s');
 
 // Locking, which is now the only gate there is. The eye that excluded a
 // project is gone: two buttons that looked alike, sat side by side and both
 // ended a session was a finer distinction than it was worth.
-ok(!await page.$('#projects [data-x]') && !await page.$('.doc .projtab [data-x]'),
+ok(!await page.$('.doc .projtab [data-x]'),
    'there is no exclude control anywhere any more');
 // delta is the fixture's locked project.
-const dRow = '#projects .row[data-row="delta"]';
-ok(await page.$$eval(`${dRow} .name .lockmark`, e => e.length) === 1,
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.pgrid .pcard[data-row="delta"]', { timeout: 10000 });
+const dRow = '.pgrid .pcard[data-row="delta"]';
+ok(await page.$$eval(`${dRow} .pcname .lockmark`, e => e.length) === 1,
    'a locked project wears a closed padlock after its name');
 ok(await page.$eval(`${dRow} [data-c]`, e => e.disabled),
    '...with its Claude button ghosted rather than taken away');
-ok(await page.$(`${dRow} [data-m]`) !== null && await page.$(`${dRow} [data-s]`) !== null,
-   '...and its notebook and shell still there, because locking is about who runs it');
+ok(await page.$(`${dRow} [data-open]`) !== null && await page.$(`${dRow} [data-s]`) !== null,
+   '...and its page and shell still there, because locking is about who runs it');
 // The refusal is the server's. A read-only state enforced by a dimmed button
 // is a suggestion, and the endpoint behind it is reachable without the page.
 const refused = await page.evaluate(async () => {

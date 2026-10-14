@@ -116,6 +116,14 @@ function projectCard(p){
     <div class="pcfacts">${p.git ? `git: ${esc(p.git)}${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}</div>
     ${projectState(p)}
     ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
+    ${state?.mapping?.[p.name] ? (m => m.running
+        ? `<div class="pnote dim">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
+        : m.error ? `<div class="pnote warn">the code map did not build: ${esc(m.error)}</div>`
+        : `<div class="pnote dim">mapped ${m.files} file${m.files === 1 ? "" : "s"} in ${m.took}s</div>`)(state.mapping[p.name]) : ""}
+    ${p.phone?.lease?.project === p.name ? `<div class="pnote dim">${esc(p.phone.model || "a phone")} lent here by ${
+        esc(p.phone.lease.by_name || p.phone.owner)}${p.phone.lease.left != null ? `, ${Math.max(1, Math.round(p.phone.lease.left / 60))} min left` : ""}: each command asks ${
+        p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
+    ${p.testing ? `<div class="pnote dim">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
     ${projectNote(p)}
     <div class="pcacts actbar">${projectActions(p, `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
   </div>`;
@@ -135,7 +143,7 @@ function renderProjectsInto(i){
         <span class="sp"></span>
         <span class="actbar"><button type="button" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button>
         <button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button></span>`);
-    d.list.innerHTML = `<div class="field pgridband"><div id="pjGrid" class="pgrid"></div></div>`;
+    d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div class="field pgridband"><div id="pjGrid" class="pgrid"></div></div>`;
     d.setFoot("A project is a page: its name opens it. Pin decides what Home shows at a glance.");
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     el.querySelector("#bTrashTab").onclick = openTrash;
@@ -144,6 +152,11 @@ function renderProjectsInto(i){
     box.oninput = () => { pjQuery = box.value; renderProjectsInto(i); };
   }
   const grid = el.querySelector("#pjGrid");
+  // The project job (a clone, a first push) running or failed, its own
+  // band above the grid, where its result will appear.
+  const jb = el.querySelector("#pjJob"), jh = projectJobHtml();
+  if (paint(jb, jh)) pJobWire();
+  jb.hidden = !jh;
   // The empty case says what to do: an empty workspace is exactly where
   // somebody is about to make their first project.
   if (!ps.length){

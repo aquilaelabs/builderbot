@@ -373,11 +373,11 @@ ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPho
      'the tab says whom it is lent to, for how long, with Take back');
   // The project's row says it to everybody on it, and its Phone button is the
   // owner's way to take it back (R120).
-  await page.evaluate(() => refresh());
-  await page.waitForFunction(() => /lent here by/.test(document.querySelector('#projects .row:has([data-ph="alpha"])')?.textContent || ''),
+  await page.evaluate(() => { refresh(); openProjectsTab(); });
+  await page.waitForFunction(() => /lent here by/.test(document.querySelector('.pgrid .pcard[data-row="alpha"]')?.textContent || ''),
                              null, { timeout: 15000 });
-  ok(await page.$eval('#projects [data-ph="alpha"]', b => !b.disabled && b.classList.contains('on')),
-     'the row shows the lease, and its Phone button is live for the owner, to take it back');
+  ok(await page.$eval('.pgrid .pcard[data-row="alpha"] [data-ph]', b => !b.disabled && /Take your phone back/.test(b.textContent)),
+     "the project's card shows the lease, and its menu offers the owner Take your phone back");
   const first = await use('shot');
   ok(first.status === 200 && first.body.asked > 0, `a lent phone's command is an ask, not a run (${JSON.stringify(first.body)})`);
   ok(((await api('/api/phone?node=' + sandbox.id)).body.asks || []).some(a => a.id === first.body.asked && a.kind === 'phone-use'),

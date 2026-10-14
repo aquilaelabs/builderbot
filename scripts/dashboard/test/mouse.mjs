@@ -60,10 +60,10 @@ ok(!await page.$('#bKeys')
 // A poll that changes nothing rebuilds nothing: the same elements stay put
 // (so :hover survives), and a mid-action edit to one is not wiped.
 await page.evaluate(async () => { await refresh(); await refresh(); });   // let the just-opened shells register
-await page.evaluate(() => { document.querySelector('#projects .row').dataset.mark = 'kept';
+await page.evaluate(() => { document.querySelector('.side .card[data-card="doctor"]').dataset.mark = 'kept';
                             document.querySelector('.tab[data-id]').dataset.mark = 'kept'; });
 await page.evaluate(() => refresh());
-ok(await page.$eval('#projects .row', el => el.dataset.mark === 'kept') && await page.$eval('.tab[data-id]', el => el.dataset.mark === 'kept'),
+ok(await page.$eval('.side .card[data-card="doctor"]', el => el.dataset.mark === 'kept') && await page.$eval('.tab[data-id]', el => el.dataset.mark === 'kept'),
    'an unchanged poll leaves the cards and the strip alone');
 // ...and a change still repaints
 await page.evaluate(() => newShell(''));

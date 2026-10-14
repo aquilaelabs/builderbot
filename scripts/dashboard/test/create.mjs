@@ -12,7 +12,13 @@ import { dirname, join } from 'node:path';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
-await page.goto(URL);
+
+// New project is on the Projects page (R218 step 3): opened, then pressed.
+const newProject = async () => {
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('#bNewProjTab', { timeout: 15000 });
+  await page.click('#bNewProjTab');
+};await page.goto(URL);
 await ready(page);
 
 // Declared here, not down beside the allow-list tests where they began:
@@ -55,9 +61,11 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
 }
 
 // ---- the dialog --------------------------------------------------------
-ok(await page.$eval('#projects #bNewProj', b => b.textContent.includes('New project')),
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('#bNewProjTab', { timeout: 15000 });
+ok(await page.$eval('#bNewProjTab', b => b.textContent.includes('New project')),
    'New project sits at the foot of the Projects card');
-await page.click('#bNewProj');
+await newProject();
 ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // The four gates are on the dialog (R78): what a session may enter into
 // the notebook, auto on every open, so it is a choice made rather than a
@@ -152,7 +160,7 @@ await page.fill('#pAbout', 'A widget frobnicator. Build with make.');
 await page.click('#pCreate');
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 15000 });
-await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
   .some(n => n.textContent === 'zeta'), { timeout: 15000 });
 ok(true, 'the new project appears in the card');
 ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
@@ -189,13 +197,13 @@ ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
 // and this would prove nothing.
 await page.evaluate(() => setProjectPinned('beta', false));
 await page.waitForFunction(
-  () => ![...document.querySelectorAll('#projects .row .name')]
+  () => ![...document.querySelectorAll('.pgrid .pcard .name')]
           .some(n => n.textContent.trim() === 'beta'), { timeout: 15000 });
-await page.click('#bNewProj');           // zeta's create closed the dialog
+await newProject();           // zeta's create closed the dialog
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.fill('#pName', 'pinme');
 await page.click('#pCreate');
-await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
   .some(n => n.textContent === 'pinme'), { timeout: 15000 });
 ok(true, 'a project created while a pins file exists still reaches the sidebar');
 
@@ -215,7 +223,7 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
   mkdirSync(`${fx}/app/__MACOSX`, { recursive: true });
   writeFileSync(`${fx}/app/__MACOSX/._main.js`, 'junk');
   execFileSync('tar', ['czf', `${fx}/app.tgz`, '-C', fx, 'app']);
-  await page.click('#bNewProj');
+  await newProject();
   await page.waitForSelector('#pmodal:not([hidden])');
   ok(await page.$eval('#pArchiveField', el => !el.hidden) && await page.$eval('#pAboutField', el => !el.hidden),
      'a new local repo offers an archive to start from, and a brief');
@@ -229,7 +237,7 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
      '...and once an archive is picked, no brief: the archive is where the project starts');
   await page.click('#pCreate');
   await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
-  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
     .some(n => n.textContent === 'fromtar'), { timeout: 15000 });
   ok(existsSync(`${DIR}/ws/fromtar/src/main.js`) && existsSync(`${DIR}/ws/fromtar/.git`),
      'a tarball is unpacked into the new repo, its one top-level folder dropped');
@@ -258,13 +266,13 @@ with zipfile.ZipFile('${fx}/flat.zip', 'w') as z:
     z.writestr('c.txt', 'c')
     z.writestr('.DS_Store', 'junk')
 `]);
-  await page.click('#bNewProj');
+  await newProject();
   await page.waitForSelector('#pmodal:not([hidden])');
   await page.fill('#pName', 'fromzip');
   await page.setInputFiles('#pArchive', `${fx}/flat.zip`);
   await page.click('#pCreate');
   await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
-  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
     .some(n => n.textContent === 'fromzip'), { timeout: 15000 });
   ok(existsSync(`${DIR}/ws/fromzip/a/b.txt`) && existsSync(`${DIR}/ws/fromzip/c.txt`)
      && !existsSync(`${DIR}/ws/fromzip/.DS_Store`),
@@ -280,24 +288,24 @@ with zipfile.ZipFile('${fx}/finder.zip', 'w') as z:
     z.writestr('__MACOSX/app/._main.js', 'junk')
     z.writestr('.DS_Store', 'junk')
 `]);
-  await page.click('#bNewProj');
+  await newProject();
   await page.waitForSelector('#pmodal:not([hidden])');
   await page.fill('#pName', 'finder');
   await page.setInputFiles('#pArchive', `${fx}/finder.zip`);
   await page.click('#pCreate');
   await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
-  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
     .some(n => n.textContent === 'finder'), { timeout: 15000 });
   ok(existsSync(`${DIR}/ws/finder/src/main.js`) && !existsSync(`${DIR}/ws/finder/__MACOSX`),
      "a Finder-made zip, with its __MACOSX beside the tree, unpacks with the tree's folder dropped and the junk left out");
   execFileSync('tar', ['czf', `${fx}/dotted.tgz`, '-C', fx, './app']);
-  await page.click('#bNewProj');
+  await newProject();
   await page.waitForSelector('#pmodal:not([hidden])');
   await page.fill('#pName', 'dotted');
   await page.setInputFiles('#pArchive', `${fx}/dotted.tgz`);
   await page.click('#pCreate');
   await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
-  await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
     .some(n => n.textContent === 'dotted'), { timeout: 15000 });
   ok(existsSync(`${DIR}/ws/dotted/src/main.js`) && !existsSync(`${DIR}/ws/dotted/app`),
      'a tarball made under ./ drops its one folder the same way');
@@ -321,7 +329,7 @@ for sig, flag_at, len_at, name_at in ((b'PK\\x03\\x04', 6, 26, 30), (b'PK\\x01\\
         i += 4
 open('${fx}/locked.zip', 'wb').write(d)
 `]);
-  await page.click('#bNewProj');
+  await newProject();
   await page.waitForSelector('#pmodal:not([hidden])');
   await page.fill('#pName', 'locked');
   await page.setInputFiles('#pArchive', `${fx}/locked.zip`);
@@ -340,7 +348,7 @@ with zipfile.ZipFile('${fx}/slip.zip', 'w') as z:
     z.writestr('ok.txt', 'fine')
     z.writestr('../evil.txt', 'no')
 `]);
-  await page.click('#bNewProj');
+  await newProject();
   await page.waitForSelector('#pmodal:not([hidden])');
   await page.fill('#pName', 'slip');
   await page.setInputFiles('#pArchive', `${fx}/slip.zip`);
@@ -374,7 +382,7 @@ ok(existsSync(`${DIR}/ws/pinme/.git`) && !existsSync(`${DIR}/ws/Pinned Again`),
    '...the directory did not move');
 ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('pinme'),
    '...so what is keyed by it is still its own');
-await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
   .some(n => n.textContent.startsWith('Pinned-Again')), { timeout: 15000 });
 ok(true, '...and the row is shown under the new name');
 // The refusals: another project's name (any case), a project that is not
@@ -461,7 +469,7 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
   ok(/^\.bb-map\/$/m.test(readFileSync(`${DIR}/ws/My-New-App/.git/info/exclude`, 'utf8')),
      '...and .bb-map/ is excluded through .git/info/exclude, not the project\'s .gitignore');
   await page.evaluate(() => drawProjects(state.projects));
-  ok(await page.$eval('#projects', el => /mapped \d+ files? in [\d.]+s/.test(el.textContent)),
+  ok(await page.$eval('.pgrid', el => /mapped \d+ files? in [\d.]+s/.test(el.textContent)),
      '...and the row says how many files it mapped');
 }
 
@@ -506,7 +514,7 @@ ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused')
 // only answer after Create, and the case that needs it most is the one with
 // the field left EMPTY, where the name comes from the repository and is never
 // typed at all.
-await page.click('#bNewProj');
+await newProject();
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.click('#pClone');
 await page.fill('#pUrl', 'https://github.com/owner/alpha.git');
@@ -521,7 +529,7 @@ await page.keyboard.press('Escape');
 
 // ---- push rights -------------------------------------------------------
 // Off by default, and the box only exists where pushing could mean anything.
-await page.click('#bNewProj');
+await newProject();
 await page.waitForSelector('#pmodal:not([hidden])');
 ok(await page.$eval('#pPushField', el => el.hidden),
    'a local repo is not asked about push rights');
@@ -597,7 +605,7 @@ ok(rj.after_drop === '',
 // so the form does not ask for one. It asks the one thing an address cannot
 // say, which is what is running on a server nobody has answered for, and only
 // then. A paste of a GitHub URL is never asked; a Gitea is asked once ever.
-await page.click('#bNewProj');
+await newProject();
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.click('#pClone');
 await page.waitForFunction(() => document.querySelectorAll('#pForge option').length > 1);
@@ -630,7 +638,7 @@ const selfHosted = await postJson({ mode: 'clone', url: 'https://git.home.lan:30
                                     forge: 'gitea', push: true });
 ok(selfHosted.status === 400 && /pushing needs/.test(selfHosted.body.error || ''),
    `a clone from a self-hosted host is accepted as an address (${selfHosted.body.error})`);
-await page.click('#bNewProj');
+await newProject();
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.click('#pClone');
 await page.waitForFunction(() => Object.keys(pForgeHosts).length > 0);
@@ -644,7 +652,7 @@ await page.keyboard.press('Escape');
 
 // ---- a token that belongs to one project -------------------------------
 // The dialog offers it only where it means something.
-await page.click('#bNewProj');
+await newProject();
 await page.waitForSelector('#pmodal:not([hidden])');
 ok(await page.$eval('#pTokenField', el => el.hidden),
    'a local repo is not asked for an access token');
@@ -815,7 +823,7 @@ ok(keys.length === 1 && keys[0].name === 'github_testkey'
    && keys[0].pub.startsWith('ssh-ed25519 '),
    'the agent key is listed with its public half');
 
-await page.click('#bNewProj');
+await newProject();
 await page.click('#pClone');
 await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
 ok(await page.$eval('#pPubWrap', el => el.hidden), 'no key picked, no key shown');
@@ -840,21 +848,21 @@ ok(true, 'the dialog closes once the clone is accepted, rather than holding the 
 // card, not in a toast that is gone in seven seconds. The page may not even
 // have been open when it happened.
 await page.waitForFunction(() => {
-  const s = document.querySelector('#projects .row.jobfail .sub.bad');
+  const s = document.querySelector('.pjjob .row.jobfail .sub.bad');
   return s && s.textContent.length > 0;
 }, { timeout: 60000 });
-ok(await page.$eval('#projects .row.jobfail .sub.bad',
+ok(await page.$eval('.pjjob .row.jobfail .sub.bad',
      s => s.closest('.row').querySelector('.name').textContent === 'kproj'),
    'the failure is carried under the name the project would have had');
-ok(await page.$('#projects .row.job') === null
-   && await page.$eval('#bNewProj', b => !b.disabled),
+ok(await page.$('.pjjob .row.job') === null
+   && await page.$eval('#bNewProjTab', b => !b.disabled),
    'the job ends and the controls come back');
 ok(!existsSync(`${DIR}/ws/kproj`), '...and a failed clone leaves no directory');
 ok(await page.$('#bJobOk') !== null, 'the failure stays until it is dismissed');
 await page.click('#bJobOk');
-await page.waitForFunction(() => !document.querySelector('#projects .row.jobfail .sub.bad'));
+await page.waitForFunction(() => !document.querySelector('.pjjob .row.jobfail .sub.bad'));
 ok(true, '...and dismissing clears it');
-await page.click('#bNewProj');
+await newProject();
 await page.click('#pClone');
 await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
 const pub = readFileSync(`${DIR}/home/.ssh/bb_github_testkey.pub`, 'utf8');
@@ -872,45 +880,45 @@ await page.click('#pCancel');
 // stalls on this URL, so there is something still running to look at, which
 // is also why every assertion about a job while it runs belongs here rather
 // than against a real clone that may already have failed.
-await page.click('#bNewProj');
+await newProject();
 await page.click('#pClone');
 await page.fill('#pUrl', 'https://github.com/owner/slowclone');
 await page.click('#pCreate');
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 await page.waitForFunction(() =>
-  document.querySelector('#projects .row.job .name')?.textContent === 'slowclone');
+  document.querySelector('.pjjob .row.job .name')?.textContent === 'slowclone');
 ok(true, 'the Projects card shows the job where its result will appear');
-ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textContent))
-   && await page.$('#projects .row.job .dots') !== null,
+ok(await page.$eval('.pjjob .row.job .sub', el => /clon|start/.test(el.textContent))
+   && await page.$('.pjjob .row.job .dots') !== null,
    '...saying what it is doing, with an ellipsis rather than a parsed percentage');
-ok(await page.$eval('#bNewProj', b => b.disabled),
+ok(await page.$eval('#bNewProjTab', b => b.disabled),
    '...and New project is dead while it runs: one job at a time');
 ok(existsSync(`${DIR}/ws/slowclone`),
    'the directory is claimed up front, so a second request cannot take the name');
-ok(await page.$$eval('#projects .row .name',
+ok(await page.$$eval('.pgrid .pcard .name',
      ns => ns.filter(n => n.textContent === 'slowclone').length === 1),
    '...and the half-made directory is not also listed as a broken project');
 
 await page.reload();
 await ready(page);
-ok(await page.$eval('#projects .row.job .name', el => el.textContent === 'slowclone'),
+ok(await page.$eval('.pjjob .row.job .name', el => el.textContent === 'slowclone'),
    'a reload finds the job still running: it belongs to the server, not the page');
 await page.waitForFunction(() => {
-  const s = document.querySelector('#projects .row.job .sub');
+  const s = document.querySelector('.pjjob .row.job .sub');
   return s && /\d+s/.test(s.textContent);
 }, { timeout: 15000 });
 ok(true, '...and says how long it has been going');
 
 await page.click('#bJobStop');
-await page.waitForFunction(() => !document.querySelector('#projects .row.job'),
+await page.waitForFunction(() => !document.querySelector('.pjjob .row.job'),
                            { timeout: 30000 });
 ok(!existsSync(`${DIR}/ws/slowclone`),
    'Abort stops it and removes the half-cloned directory');
-ok((await page.$eval('#projects .row.jobfail .sub.bad', el => el.textContent)).includes('stopped'),
+ok((await page.$eval('.pjjob .row.jobfail .sub.bad', el => el.textContent)).includes('stopped'),
    '...and says so rather than looking like a failure of its own');
 await page.click('#bJobOk');
-await page.waitForFunction(() => !document.querySelector('#projects .row.jobfail .sub.bad'));
+await page.waitForFunction(() => !document.querySelector('.pjjob .row.jobfail .sub.bad'));
 
 // ---- link to GitHub ----------------------------------------------------
 // The chain is GitHub whichever state a project is in: the link form for one
@@ -919,18 +927,20 @@ await page.waitForFunction(() => !document.querySelector('#projects .row.jobfail
 // With the stub gh (never authenticated) a key is mandatory, and the attempt
 // stops at the unresolvable bb- alias, before any remote is added. The
 // success path needs a live GitHub and stays a manual test, like the clone's.
-ok(await page.$('#projects [data-l="beta"]') !== null
-   && await page.$('#projects [data-l="alpha"]') !== null,
-   'the chain shows on every repo, linked or not');
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.pgrid .pcard[data-row="beta"]', { timeout: 15000 });
+ok(await page.$('.pgrid .pcard[data-row="beta"] [data-l]') !== null
+   && await page.$('.pgrid .pcard[data-row="alpha"] [data-l]') !== null,
+   "the chain is in every repo's menu, linked or not");
 await unfold(page, 'alpha');
-await page.click('#projects [data-l="alpha"]');
+await page.click('.pgrid .pcard[data-row="alpha"] [data-l]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(/GitHub/.test(await page.$eval('#rnTitle', el => el.textContent))
    && await page.$eval('#rnNameField', el => el.hidden),
    '...and on a linked one it opens that project\'s GitHub settings, not the link form');
 await page.click('#rnCancel');
 await unfold(page, 'beta');
-await page.click('#projects [data-l="beta"]');
+await page.click('.pgrid .pcard[data-row="beta"] [data-l]');
 // The dialog draws before its catalog lands (the keys and the git hosts are
 // one fetch per open), so every assertion below about the host picker is
 // reading a payload that may still be in flight. Waited on the list being in
@@ -994,7 +1004,7 @@ await page.click('#pCreate');
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 await page.waitForFunction(() => {
-  const s = document.querySelector('#projects .row.jobfail .sub.bad');
+  const s = document.querySelector('.pjjob .row.jobfail .sub.bad');
   return s && s.textContent.length > 0;
 }, { timeout: 60000 });
 ok(true, 'a link runs as a job too, and its failure lands on the card');

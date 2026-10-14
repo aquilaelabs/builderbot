@@ -26,8 +26,8 @@ await page.goto(URL);
 await ready(page);
 
 // ---- the way in ----------------------------------------------------------
-const row = n => `#projects .row:has(.name:text-is("${n}"))`;
-await page.click(`${row('alpha')} [data-m]`);
+const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on the Projects page (R218 step 3)
+await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await page.click('.pane .nb .nbtabs [data-v="bugs"]');
 await page.waitForFunction(() => /^nothing reported$/.test(
@@ -424,7 +424,7 @@ const post = body => page.evaluate(async b => {
 {
   // Back on the list: the History above swapped it out, and a fold cannot be
   // measured through a view that is not on screen.
-  await page.click(`${row('alpha')} [data-m]`);
+  await page.evaluate(n => openNotebook(n), 'alpha');
   await page.click('.pane .nb .nbtabs [data-v="bugs"]');
   // Waited on the LOAD, not on a row appearing. The view is drawn before its
   // fetch lands, so a wait on `.bug` was a wait on a round trip it could not
@@ -510,7 +510,7 @@ ok(/it happens on the second run/.test(sent),
 ok(new RegExp(`bb bug fix B${first}`).test(sent),
    '...and says how to close it when it is dealt with');
 // Back into the notebook: the send above lands you in the session's tab.
-await page.click(`${row('alpha')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.click('.pane .nb .nbtabs [data-v="bugs"]');
 await page.waitForSelector('#bugList .bug', { timeout: 15000 });
 // A closed bug is a record, not work. Both halves of that: the button goes

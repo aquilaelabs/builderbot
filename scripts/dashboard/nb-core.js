@@ -869,7 +869,7 @@ function projectHeader(t){
     ${projectState(p)}
     <span class="sp"></span>
     ${projectActions(p)}
-  </div>${projectNote(p)}`;
+  </div>${projectNote(p)}${p.testing ? `<div class="pnote dim ptesting">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}`;
 }
 // The row's handlers serve the header too (the same data-* names); the
 // menu's own button is the one thing the row did differently.

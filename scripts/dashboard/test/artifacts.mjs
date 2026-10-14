@@ -84,8 +84,8 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(URL);
 await ready(page);
-const row = n => `#projects .row:has(.name:text-is("${n}"))`;
-await page.click(`${row('alpha')} [data-m]`);
+const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on the Projects page (R218 step 3)
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('.artrow', { timeout: 15000 });
@@ -388,7 +388,7 @@ for (const [what, body] of [
 page.errors = [];
 
 // ---- the empty state says what the convention is ---------------------------
-await page.click(`${row('beta')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'beta');
 await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 // Scoped to the pane: alpha's notebook is parked but its own artifacts view

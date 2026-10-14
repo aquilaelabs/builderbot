@@ -239,7 +239,7 @@ ok(read().tests['slow.mjs#3'] !== undefined,
    '...and leaves the suites it never mentioned alone');
 
 // ---- the tab ---------------------------------------------------------------
-await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await nbTab(page, 'tests');
 await page.waitForSelector('#tstList .tst', { timeout: 15000 });
@@ -590,18 +590,16 @@ await page.waitForFunction(() => /tests running/.test(document.querySelector('.n
 const headGoing = await page.$eval('.nb #tstHint', e => e.textContent.replace(/\s+/g, ' ').trim());
 ok(/^tests running, started just now(?: by \w+)?: npm test cards · \d+ tests/.test(headGoing),
    `the Tests view's head names the run first: when it started, by whom, the command (${headGoing.slice(0, 90)})`);
-await page.waitForFunction(() => [...document.querySelectorAll('#projects .row')].some(r =>
-  r.querySelector('.name')?.textContent.trim() === 'alpha' && /tests running, started just now/.test(r.querySelector('.sessline.testing')?.textContent || '')),
+await page.waitForFunction(() => /tests running, started just now/.test(document.querySelector('.pane .bar.proj .ptesting')?.textContent || ''),
   null, { timeout: 20000 });
-ok(true, "...and the project's row says tests running, started just now");
+ok(true, "...and the project's header says tests running, started just now");
 const other = await post({ project: 'alpha', action: 'end', id: 'not-this-run' });
 ok(other.body.ended === false && (await testingOf()) !== null,
    "another run's end does not end this one");
 const ended = await post({ project: 'alpha', action: 'end', id: begun.body.testing.id });
 ok(ended.body.ended === true && (await testingOf()) === null, 'its own end clears it');
-await page.waitForFunction(() => ![...document.querySelectorAll('#projects .row')].some(r =>
-  r.querySelector('.name')?.textContent.trim() === 'alpha' && r.querySelector('.sessline.testing')), null, { timeout: 20000 });
-ok(true, "...and the row's line goes with it");
+await page.waitForFunction(() => !document.querySelector('.pane .bar.proj .ptesting'), null, { timeout: 20000 });
+ok(true, "...and the header's line goes with it");
 ok((await post({ project: 'alpha', action: 'end', id: '' })).body.ended === false,
    '...and an end with no run going says so rather than failing');
 // A run whose end never came (the session under it killed) is forgotten

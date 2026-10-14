@@ -1138,19 +1138,17 @@ for (const kind of kinds){
      `a modal leaves with a tween rather than vanishing (${left.join(', ') || 'nothing animated'})`);
 }
 await page.setViewportSize({ width: 393, height: 851 });
-// A row folding its controls out on a phone slides over the height that
-// takes; six buttons appearing under a name in one frame is a jump the eye
-// has to find.
+// A card's menu on the Projects page comes in on a tween (R218 step 3);
+// the sidebar row that unfolded its controls went with the card.
 {
-  await page.click('#projects');
-  await page.waitForSelector('#projects .row .rowmore', { timeout: 10000 });
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.pgrid .pcard [data-pmore]', { timeout: 10000 });
   const unfolded = await animatedDuring(page, async () => {
-    await page.click('#projects .row .rowmore');
-    await page.waitForSelector('#projects .row.moreon', { timeout: 5000 });
+    await page.click('.pgrid .pcard [data-pmore]');
+    await page.waitForSelector('.pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
   });
-  ok(unfolded.some(k => /\brow\b/.test(k) || /projects/.test(k)),
-     `a project row's controls unfold with a slide on a phone (${unfolded.join(', ') || 'nothing animated'})`);
-  await page.click('#projects .row.moreon .rowmore');
+  ok(unfolded.length > 0, `a card's menu comes in with a tween on a phone (${unfolded.join(', ') || 'nothing animated'})`);
+  await page.keyboard.press('Escape');
 }
 await page.evaluate(() => setView('terminal'));
 await sleep(400);

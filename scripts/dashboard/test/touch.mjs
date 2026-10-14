@@ -6,7 +6,7 @@ import { launch, newPage, ok, done, finger, sleep, URL } from './lib.mjs';
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 400, height: 700 }, hasTouch: true, isMobile: true });
 await page.goto(URL);
-await page.waitForFunction(() => document.querySelectorAll('#projects .row').length > 0, { timeout: 40000 });
+await page.waitForFunction(() => document.querySelectorAll('.side .card[data-card]').length > 0, { timeout: 40000 });
 const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.dataset.card));
 const side = () => page.$eval('.col.side', el => el.scrollTop);
 
@@ -27,7 +27,7 @@ ok(await page.$eval('.col.side', el => el.scrollHeight > el.clientHeight + 200),
    'the sidebar is taller than its column, which is what makes a swipe a scroll');
 
 const o0 = await order();
-let hb = await (await page.$('.card[data-card="projects"] h2')).boundingBox();
+let hb = await (await page.$('.card[data-card="doctor"] h2')).boundingBox();
 await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, hb.y - 250, 0);
 ok((await side()) > 20, `quick swipe on a header scrolls the sidebar (${await side()}px)`);
 ok(JSON.stringify(await order()) === JSON.stringify(o0), '...and does not drag');
@@ -36,10 +36,10 @@ await page.evaluate(() => {
   document.getElementById('touch-spacer')?.remove();
   document.querySelector('.col.side').scrollTop = 0;
 }); await sleep(100);
-hb = await (await page.$('.card[data-card="projects"] h2')).boundingBox();
+hb = await (await page.$('.card[data-card="doctor"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();
 await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, top.y + 2, 650);
-ok((await order())[0] === 'projects', `hold then move drags the card (${(await order()).join(',')})`);
+ok((await order())[0] === 'doctor', `hold then move drags the card (${(await order()).join(',')})`);
 ok((await side()) === 0, '...without scrolling');
 
 // On a phone the strip is a picker (R119 step 5): the tab on show and how

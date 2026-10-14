@@ -123,10 +123,10 @@ await page2.waitForURL('**/login**');
 await page2.fill('#u', 'test');
 await page2.fill('#p', 'test');
 await page2.click('button[type=submit]');
-await page2.waitForFunction(() => document.getElementById('projects') !== null, { timeout: 20000 });
+await page2.waitForFunction(() => document.getElementById('rail') !== null, { timeout: 20000 });
 ok(!page2.url().includes('login'), 'the form signs a fresh browser in');
 await page2.reload();
-await page2.waitForFunction(() => document.getElementById('projects') !== null, { timeout: 20000 });
+await page2.waitForFunction(() => document.getElementById('rail') !== null, { timeout: 20000 });
 ok(true, '...and the cookie survives a reload');
 // The header's sign-out button: drawn to its neighbors' size, and it really
 // ends the session, landing on the login page and staying out.

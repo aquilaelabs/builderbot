@@ -257,7 +257,9 @@ await page.waitForFunction(() => document.querySelector('#sessions [data-go="cla
 ok((await page.$eval('#sessions [data-go="claude-ep_silon"]', el => el.textContent.trim())) === 'Claude: ep.silon', 'dotted project: session labeled by its project name');
 // `on`, not `primary`: the row's controls are icons now, and a live one is
 // lit by color rather than by being a filled button.
-ok(await page.$eval('#projects [data-c="ep.silon"]', b => b.classList.contains('on')), 'dotted project: Claude button knows the session is running');
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-c]', { timeout: 15000 });
+ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Claude'), 'dotted project: Claude button knows the session is running');
 await page.click('#sessions [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
 ok(true, 'dotted project: reopening from Sessions maps back to claude:ep.silon');
@@ -281,8 +283,8 @@ const ndx = page.dialogs.length;
 // Code; a running session is never reaped on that any more.
 await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
-await page.waitForSelector('#projects [data-k="ep.silon"]', { state: 'visible', timeout: 10000 });
-await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the sessions
+await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-k]', { state: 'visible', timeout: 10000 });
+await page.click('.pgrid .pcard[data-row="ep.silon"] [data-k]');            // lock: asks, then the server ends the sessions
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
 // Either wording is the design's: the other account's session is named when
@@ -291,7 +293,7 @@ ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claud
    && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
    `dotted project: locking it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
-await page.waitForFunction(() => document.querySelector('#projects [data-c="ep.silon"]'), { timeout: 15000 });
+await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] [data-c]'), { timeout: 15000 });
 
 // A back/forward-cache restore (persisted pageshow) reloads the terminal
 // iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
@@ -453,7 +455,9 @@ for (let tries = 0; ; tries++){
 // with it: five times before this, always green when run alone, which is the
 // worst shape a test has (B124). Nothing here is about hit-testing the button,
 // only about what pressing it opens.
-const pressAlpha = () => phone.$eval('#projects [data-c="alpha"]', b => b.click());
+await phone.evaluate(() => openProjectsTab());
+await phone.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-c]', { timeout: 15000 });
+const pressAlpha = () => phone.$eval('.pgrid .pcard[data-row="alpha"] [data-c]', b => b.click());
 // Waited for by the condition openClaude() ACTUALLY branches on, which the
 // wait above is not: session_at says only that there is a node a session
 // could run on. The press opens the Resume/New chooser when the project has
@@ -508,7 +512,7 @@ ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.butto
 // edge before the press, and the press has to be dispatched rather than
 // clicked, because Playwright scrolls a target into view for you and would
 // undo the very thing being reproduced.
-await phone.click('#projects [data-c="alpha"]');          // put it away again
+await phone.click('.pgrid .pcard[data-row="alpha"] [data-c]');          // put it away again
 await phone.waitForFunction(() => !document.querySelector('.resumemenu'));
 // A window short enough that the row is at the bottom edge, which is the
 // only shape in which the chooser has nowhere to be drawn; on a tall one it
@@ -517,12 +521,13 @@ await phone.waitForFunction(() => !document.querySelector('.resumemenu'));
 // target into view for you and would undo the thing being reproduced.
 await phone.setViewportSize({ width: 400, height: 300 });
 await phone.evaluate(() => {
-  const side = document.querySelector('.col.side');
-  const btn = document.querySelector('#projects [data-c="alpha"]');
+  // The page's own scroller now (R218 step 3): the card is on the Projects page.
+  const side = document.querySelector('.pane .doc.on');
+  const btn = document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]');
   side.scrollTop += btn.getBoundingClientRect().bottom
                     - side.getBoundingClientRect().bottom + 6;
 });
-await phone.evaluate(() => document.querySelector('#projects [data-c="alpha"]').click());
+await phone.evaluate(() => document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]').click());
 await phone.waitForSelector('.resumemenu', { timeout: 10000 });
 // Where it rests, not where it is mid-entrance: menuIn slides the chooser
 // down 5px over 140ms, and how far along that is when a round trip lands is

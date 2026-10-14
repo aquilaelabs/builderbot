@@ -199,7 +199,7 @@ await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
 const partial = await page.evaluate(() => ({
   runner: document.getElementById('runner').textContent.trim(),
-  projectsWaiting: !!document.querySelector('#projects .loading'),
+  projectsWaiting: !!document.querySelector('.pgrid .loading'),
   doctorWaiting: /first run pending/.test(document.getElementById('doctor').textContent),
   red: document.getElementById('dot').classList.contains('off'),
 }));

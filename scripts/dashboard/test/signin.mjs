@@ -49,14 +49,19 @@ const redraw = () => page.evaluate(async () => { await refresh(); nodesRev++; dr
 await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'beta')?.session_node);
 ok(await page.evaluate(([a, b]) => !!claudeOn(a) && !claudeOn(b), [sandbox.id, box.id]),
    'signed in on one node is not signed in on another: each is asked about by itself');
-const btn = await page.$eval('#projects [data-c="beta"]', b => ({ dead: b.disabled, tip: saidOf(b) }));
+// The project's Claude button is on its card on the Projects page (R218 step 3).
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.pgrid .pcard[data-row="beta"] [data-c]', { timeout: 15000 });
+const PC = '.pgrid .pcard[data-row="beta"] [data-c]';
+const btn = await page.$eval(PC, b => ({ dead: b.disabled, tip: saidOf(b) }));
 ok(!btn.dead && /not signed in on signbox/.test(btn.tip) && /Press for its sign-in/.test(btn.tip),
    `the Claude button of a project whose node has no sign-in stays live and says what a press offers (${btn.tip})`);
 await page.evaluate(id => { openNodesTab(); nodesPick = id; sectOpen['nodes:claude'] = false; nodesRev++; drawPanes(); }, sandbox.id);
 await page.waitForSelector(`.ndrow[data-node="${sandbox.id}"]`, { timeout: 20000 });
 const terms = () => page.evaluate(() => tabs.filter(t => t.kind === 'term').length);
 const before = await terms();
-await page.click('#projects [data-c="beta"]');
+await page.evaluate(() => openProjectsTab());
+await page.click(PC);
 await page.waitForSelector('#resumemenu [data-signin-node]', { timeout: 20000 });
 const menu = await page.$eval('#resumemenu', m => ({ text: m.textContent.replace(/\s+/g, ' ').trim(),
   buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }));
@@ -117,7 +122,7 @@ ok(await page.$eval(`[data-signin="${box.id}"] [data-si="out"]`, b => !b.disable
    'signed in, the row names the Anthropic account this node reported and offers Sign out');
 ok(await page.evaluate(([a, b]) => claudeOn(a)?.email === 'tester@example.com' && claudeOn(b)?.email === 'me@example.invalid', [sandbox.id, box.id]),
    '...and another node\'s sign-in is its own: a different Anthropic account there is not this one\'s business');
-const tip = await page.$eval('#projects [data-c="beta"]', b => saidOf(b));
+const tip = await page.$eval(PC, b => saidOf(b));
 ok(!/not signed in/.test(tip) && await page.evaluate(id => claudeSigninFirst('beta', id), box.id) === false,
    `the project's Claude button goes to a session again (${tip.slice(0, 50)})`);
 
@@ -182,8 +187,8 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
   await up.evaluate(() => fetch('/api/project-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'beta', pinned: true }) }));
   await refreshUntil(up, () => (state?.projects || []).some(p => p.name === 'beta' && p.session_node)
-                               && document.querySelector('#projects [data-c="beta"]')?.disabled === false);
-  await up.click('#projects [data-c="beta"]');
+                               && document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.disabled === false);
+  await up.click('.pgrid .pcard[data-row="beta"] [data-c]');
   await up.click('#resumemenu [data-signin-node]');
   await up.waitForSelector(`.ndrow[data-node="${box.id}"] [data-signin]`, { timeout: 20000 });
   const seen = await up.evaluate(() => {

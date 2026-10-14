@@ -127,7 +127,7 @@ ok(!waiting().some(r => r.kind === 'rules'),
    '...and nothing is held for it');
 
 // ---- the notebook: the band and the tab counts ------------------------------
-await page.click('#projects .row:has(.name:text-is("alpha")) [data-m]');
+await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await page.waitForSelector('.pane .nb #nbPending:not([hidden])', { timeout: 20000 });
 const band = await page.$eval('.pane .nb #nbPending', e => e.textContent.replace(/\s+/g, ' '));

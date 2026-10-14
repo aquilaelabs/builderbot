@@ -65,7 +65,7 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(URL);
 await ready(page);
-await page.click(`#projects .row:has(.name:text-is("ep.silon")) [data-m]`);
+await page.evaluate(() => openNotebook('ep.silon'));
 await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
@@ -131,7 +131,7 @@ async function dmDisabled(act){
 // what the row rendered does not, which is why most assertions here wait on
 // attachment instead.
 async function showRow(){
-  await page.click('#projects .row:has(.name:text-is("ep.silon")) [data-m]');
+  await page.evaluate(() => openNotebook('ep.silon'));
   await openDev();
   await page.waitForSelector('#devRow', { timeout: 20000 });
 }
@@ -655,7 +655,7 @@ writeFileSync(devapps, JSON.stringify({ ...wasBuilt, 'ep.silon': {
   main: { ...wasBuilt['ep.silon'].main, daemon: 'ssh://bb@sandbox' } } }));
 await page.reload();
 await ready(page);
-await page.click(`#projects .row:has(.name:text-is("ep.silon")) [data-m]`);
+await page.evaluate(() => openNotebook('ep.silon'));
 await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });

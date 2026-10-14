@@ -31,7 +31,7 @@ const rowOpen = async sel => {
 };await page.goto(URL);
 await ready(page);
 
-const row = n => `#projects .row:has(.name:text-is("${n}"))`;
+const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on the Projects page (R218 step 3)
 // Nothing the panel does reaches disk until Save. Every assertion about the
 // file goes through this, which is also the assertion that staging works.
 const saveList = async () => {
@@ -57,14 +57,10 @@ const open = () => page.$$eval('#roadmapList .roadmap', ts => ts.map(t => ({
   claude: !!t.querySelector('.who:not(.fin)') })));
 
 // ---- adding ------------------------------------------------------------
-// An icon now, and no count: the number was the panel's business, and the
-// row's job is to say the notebook exists and whether it is open. Lit is a
-// color class rather than a filled button, so that is what is asserted.
-ok(await page.$eval(`${row('alpha')} [data-m]`,
-     b => !!b.querySelector('svg') && !b.classList.contains('on')),
-   'the row offers a notebook icon, unlit while no tab is open');
+// The row and its notebook icon went with R218 step 3: a project is a
+// page, opened by its name on the Projects page or by openNotebook.
 
-await page.click(`${row('alpha')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await nbTab(page, 'roadmap');
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
@@ -224,7 +220,7 @@ ok(await page.$$eval('.tab', ts => ts.some(t => /Claude: alpha/.test(t.textConte
    '...and it put the session\'s tab on the strip');
 
 // Back in, for the rest.
-await page.click(`${row('alpha')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForSelector('#roadmapList .roadmap', { timeout: 20000 });
 items = await open();
 const still = items.find(i => i.id === mine.id);
@@ -251,7 +247,7 @@ await page.evaluate(async () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'alpha', model: 'sonnet', effort: 'xhigh' }) });
 });
-await page.click(`${row('alpha')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForSelector('#roadmapList .roadmap', { timeout: 20000 });
 await page.click(`#roadmapList .roadmap[data-id="${mine.id}"] .go`);
 await page.waitForSelector('.sendbox');
@@ -264,7 +260,7 @@ ok(!/\/model/.test(sent) && !/\/effort/.test(sent),
 ok(/delete a project/.test(sent), '...and the step itself goes on its own');
 // Back into the notebook: sending lands you in the session's tab, and what
 // follows is about the panel.
-await page.click(`${row('alpha')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForSelector('#roadmapList .roadmap', { timeout: 20000 });
 
 // ---- unsaved work blocks a send, and does not follow you to another tab --
@@ -860,7 +856,7 @@ ok(await page.evaluate(() => {
 await page.evaluate(() => {
   notebooks.get('alpha').root.querySelector('[id="roadmapText"]').value = 'half-typed';
 });
-await page.click(`${row('beta')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'beta');
 await page.waitForFunction(() => /beta/.test(
   document.querySelector('.pane .doc.on .nb h3')?.textContent || ''), { timeout: 15000 });
 const nbTabs = await page.evaluate(() => tabs.filter(t => t.kind === 'notebook').map(t => t.arg));
@@ -869,7 +865,7 @@ ok(nbTabs.length === 2 && nbTabs.includes('alpha') && nbTabs.includes('beta'),
 ok(await page.$$eval('.tab', ts => ts.some(t => /Notebook: beta/.test(t.textContent))
      && ts.some(t => /Notebook: alpha/.test(t.textContent))),
    '...each tab named for its project');
-await page.click(`${row('alpha')} [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForFunction(() => /alpha/.test(
   document.querySelector('.pane .doc.on .nb h3')?.textContent || ''), { timeout: 15000 });
 ok(await page.evaluate(() =>
@@ -1388,10 +1384,9 @@ await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadma
 
 // ---- the row's button lights while the tab is open -----------------------
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.querySelector(
-  '#projects .row:has(.name) [data-m]')?.classList.contains('on'),
+await page.waitForFunction(() => /Notebook: /.test(document.querySelector('.tab.on')?.textContent || ''),
   { timeout: 15000 });
-ok(true, 'the notebook icon takes the green while its tab is open');
+ok(true, "the notebook's tab is the strip's active one while it is open");
 // Folded, the card's row keeps three buttons beside the name (R119 step 2).
 ok(await page.$eval(`${row('alpha')} .acts`, a => {
      const r = a.getBoundingClientRect();
@@ -1405,7 +1400,7 @@ ok(await page.$eval(`${row('alpha')} .acts`, a => {
 const ultra = await newPage(browser, { viewport: { width: 2200, height: 900 } });
 await ultra.goto(URL);
 await ready(ultra);
-await ultra.click(`${row('alpha')} [data-m]`);
+await ultra.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(ultra);
 await ultra.waitForFunction(
   // Loaded, whatever it holds, not merely started. This used to match the

@@ -30,7 +30,7 @@ ok(await page.$eval('.card[data-card="tools"] #bFindings',
 // Through the notebook first: a document that parks in the pane's stack used
 // to keep the pane's doc id, and the toolchains view then rendered into that
 // hidden node, a blank tab. The id has one owner now: whatever is shown.
-await page.click('#projects .row:has(.name:text-is("alpha")) [data-m]');
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForFunction(
   // Loaded, whatever it holds, not merely started. This used to match the
   // "loading…" placeholder, so it was satisfied the instant the panel opened

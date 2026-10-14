@@ -26,7 +26,7 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(URL);
 await ready(page);
-await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
+await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="bugs"]:visible');
 await page.waitForSelector('#bugList .bug', { timeout: 20000 });

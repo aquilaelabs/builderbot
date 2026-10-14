@@ -966,7 +966,7 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(DURL);
 await ready(page);
-await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
+await page.evaluate(() => openNotebook('alpha'));
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
 // One section open at a time in a notebook (the operator, 5 Oct): Build is
@@ -1084,7 +1084,7 @@ ok(noVer.target === null && noVer.forms.quad === null,
 ok(noVer.next.patch === null,
    '...and offers no next value to bump to, rather than inventing 0.0.1');
 
-await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`);
+await page.evaluate(() => openNotebook('beta'));
 NB = nb('beta');
 
 // Who may give it one is answerable BEFORE there is one. The picker used to
@@ -1099,7 +1099,7 @@ for (let t = 0; t < 30 && !polOpts.length; t++){
   polOpts = await page.$$eval(`${NB} #verBox #verPolicy option`,
                               os => os.map(o => o.value)).catch(() => []);
   if (polOpts.length) break;
-  await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`).catch(() => {});
+  await page.evaluate(() => openNotebook('beta'));
   await page.click(`${NB} .nbtabs [data-v="artifacts"]`).catch(() => {});
   await sleep(300);
 }
@@ -1125,7 +1125,7 @@ async function initWith(val){
       return true;
     }, val).catch(() => false);
     if (okc) return;
-    await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`).catch(() => {});
+    await page.evaluate(() => openNotebook('beta'));
     await page.click(`${NB} .nbtabs [data-v="artifacts"]`).catch(() => {});
     await sleep(300);
   }
