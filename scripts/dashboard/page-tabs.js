@@ -212,7 +212,7 @@ const TABKINDS = {
   // draw, painted only when they changed.
   home:     { multi: false, label: () => "Home",
               render: (i) => renderHomeInto(i), live: "always",
-              open: () => loadHome() },
+              open: () => homeOpen() },
   projects: { multi: false, label: () => "Projects",
               render: (i) => renderProjectsInto(i), live: "always" },
   // nodesRev as well as dockerRev: the node PICKER on this tab is drawn from

@@ -25,6 +25,13 @@ let homeAgain = null;            // a read asked while one was out: null, "light
 function openHome(){
   openTab({kind: "home", arg: "__home", label: "Home"});
 }
+// Opening: the light read first, so the page draws at once from the queue
+// and the node counts, and the whole one behind it for the containers,
+// which waits on every docker node (up to home.CONTAINER_WAIT_S).
+function homeOpen(){
+  loadHome(true);
+  loadHome(false);
+}
 
 // One out at a time, and never dropped (as refresh() is): a read asked
 // while one is out is remembered, the whole one outranking a light one,
@@ -33,7 +40,7 @@ async function loadHome(light = false){
   if (homeFetching){ homeAgain = homeAgain === "whole" || !light ? "whole" : "light"; return; }
   homeFetching = true;
   try{
-    const j = await (await fetch("/api/home" + (light && homeData ? "?light=1" : ""))).json();
+    const j = await (await fetch("/api/home" + (light ? "?light=1" : ""))).json();
     homeData = j.error ? {error: j.error}
       : light && homeData && !j.containers ? {...j, containers: homeData.containers} : j;
   }catch(e){
@@ -67,10 +74,14 @@ function homeTiles(){
     h.nodes ? {key: "nodes", label: "nodes online", value: h.nodes.online, sub: `of ${h.nodes.enrolled} enrolled`,
                tone: h.nodes.online < h.nodes.enrolled ? "warn" : ""} : null,
     c ? {key: "containers", label: "containers running", value: c.unknown === c.nodes && c.nodes ? "–" : c.running,
-         sub: `of ${c.all}${c.stale || c.unknown ? ", as last seen" : ""}`} : null,
+         sub: `of ${c.all}${c.stale || c.unknown ? ", as last seen" : ""}`}
+      // Asked of every docker node, after the rest has drawn.
+      : h.nodes ? {key: "containers", label: "containers running", value: "–", sub: "asking the nodes…"} : null,
+    // The news here is a failure, not the count running, so the bad tone is
+    // on the line that says it rather than on a red zero.
     {key: "jobs", label: "jobs running", value: jobs.running ?? "–",
      sub: jobs.failed_today ? `${jobs.failed_today} failed today` : jobs.waiting ? `${jobs.waiting} waiting` : "none failed today",
-     tone: jobs.failed_today ? "bad" : ""},
+     subTone: jobs.failed_today ? "bad" : ""},
     {key: "sessions", label: "sessions open", value: sessions},
     {key: "updates", label: "updates due", value: updates, tone: updates ? "warn" : ""},
     {key: "ci", label: "CI red", value: red, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
@@ -90,7 +101,7 @@ function homeTilesHtml(tiles){
     <a class="tile link${t.tone ? " " + esc(t.tone) : ""}" href="${esc(homeHref(t.key))}" data-htile="${esc(t.key)}">
       <span class="tv">${esc(String(t.value ?? "–"))}</span>
       <span class="tl">${esc(t.label)}</span>
-      ${t.sub ? `<span class="ts">${esc(t.sub)}</span>` : ""}
+      ${t.sub ? `<span class="ts${t.subTone ? " " + esc(t.subTone) : ""}">${esc(t.sub)}</span>` : ""}
     </a>`).join("")}</div></div>`;
 }
 
@@ -123,7 +134,7 @@ function renderHomeInto(i){
   if (!d) return;
   if (homeData === null){
     d.list.innerHTML = `<div class="loading">loading…</div>`;
-    loadHome();
+    if (!homeFetching) homeOpen();
     return;
   }
   const needs = needsRows(), hidden = state?.bell_hidden || 0;
@@ -132,14 +143,14 @@ function renderHomeInto(i){
   // the poll's), and an unchanged draw keeps a pointer's hover and a fold.
   if (!paint(d.list, (homeData.error ? `<div class="hint bad">${esc(homeData.error)}</div>` : "")
     + homeTilesHtml(homeTiles())
-    + `<div class="homegrid">
+    + `<div class="field"><div class="homegrid">
         <section class="hcard"><h3>Attention</h3>${needs.length ? needs.join("")
           : `<div class="hnone">nothing needs attention</div>`}${hidden
           ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
               <button type="button" data-brestore>Show again</button></div>` : ""}</section>
         <section class="hcard"><h3>Last jobs</h3>${homeJobsHtml()}</section>
-      </div>
-      <section class="hsect"><h3>Projects at a glance</h3>${homeGlanceHtml()}</section>`)) return;
+      </div></div>
+      <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${homeGlanceHtml()}</section></div>`)) return;
   const root = d.list;
   root.querySelectorAll('[data-htile="sessions"]').forEach(a => a.onclick = e => { e.preventDefault(); mobPanel("sessions"); });
   // The CI tile's address opens the Git view; its CI section opens with it.

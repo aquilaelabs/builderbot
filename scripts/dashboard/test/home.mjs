@@ -49,8 +49,9 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   ok(/^j_/.test(q.job || ''), `a job is queued on the controller (${q.job})`);
   const seen = await until(() => page.evaluate(id => !!document.querySelector(`.doc.on [data-hjob="${id}"] .pill.bad`), q.job), 30000);
   ok(seen, '...and once it has failed, its row is on Last jobs with the failed pill, with nothing pressed');
-  ok(await page.$eval('.doc.on .hometiles [data-htile="jobs"]', t => t.classList.contains('bad') && /failed today/.test(t.textContent)),
-     '...and the jobs tile says how many failed today, in the bad tone');
+  ok(await page.$eval('.doc.on .hometiles [data-htile="jobs"]', t => !t.classList.contains('bad')
+       && /failed today/.test(t.querySelector('.ts.bad')?.textContent || '')),
+     '...and the jobs tile says how many failed today, the line in the bad tone rather than the count running');
   await page.click(`.doc.on [data-hjob="${q.job}"]`);
   await page.waitForFunction(id => tabOf(panes[0])?.kind === 'jobs'
     && document.querySelector(`.jbrow[data-job="${id}"].focus .jblog`), q.job, { timeout: 15000 });
