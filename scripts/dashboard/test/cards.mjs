@@ -958,6 +958,21 @@ const runnerCard = rows => page.evaluate(x => {
 
 let rc = await runnerCard([]);
 ok(rc.body === '', 'with no runner anywhere there is no list: the node\'s own section says how to add one');
+// At a phone's width a row wraps, its state on a line of its own, rather
+// than running off the edge (B745).
+const narrowRows = await page.evaluate(() => {
+  const keep = state.node_runners;
+  state.node_runners = [{ id: 'n_x', node: 'bb-dev-sandbox-rh', url: 'http://192.168.1.16:3000/lab/hello', live: true,
+                          installed: true, listening: true, busy: false, labels: [] }];
+  const box = document.createElement('div'); box.style.width = '300px'; box.style.position = 'absolute';
+  box.innerHTML = runnerRows(); document.body.append(box);
+  const row = box.querySelector('.row');
+  const out = { over: row.scrollWidth - row.clientWidth, lines: row.getBoundingClientRect().height > 50 };
+  box.remove(); state.node_runners = keep;
+  return out;
+});
+ok(narrowRows.over <= 1 && narrowRows.lines,
+   `at a phone's width a runner row wraps rather than running off the edge (${JSON.stringify(narrowRows)})`);
 rc = await runnerCard([{ node: 'bb-sandbox', live: true, installed: true,
   listening: true, busy: false, labels: ['bb-sandbox'] }]);
 ok(/bb-sandbox/.test(rc.body) && /listening, idle/.test(rc.body),

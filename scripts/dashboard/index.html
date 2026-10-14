@@ -851,7 +851,12 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 .runnersall{display:flex;flex-direction:column;border:1px solid var(--line);
   border-radius:var(--r-surface);margin:0 0 10px;overflow:hidden}
 .runnersall .row{width:100%;text-align:left;background:none;border:0;border-radius:0;
-  border-bottom:1px solid var(--line);justify-content:flex-start;min-height:var(--tap)}
+  border-bottom:1px solid var(--line);justify-content:flex-start;min-height:var(--tap);
+  white-space:normal}
+/* The state on a line of its own, and a long host wraps: on a phone the
+   row was one line cut at the screen's edge (B745). */
+.runnersall .row .grow{min-width:0;overflow-wrap:anywhere}
+.runnersall .row .sub{display:block}
 .runnersall .row:last-child{border-bottom:0}
 .runnersall .row.on{box-shadow:inset 3px 0 var(--accent)}
 /* A row nothing here can act on: a container this dashboard did not start, or
