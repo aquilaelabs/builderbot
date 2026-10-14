@@ -556,10 +556,44 @@ def deployed(devapp, nid):
     return bool(devapp.is_file_source(name) and devapp._read_rec(name, devapp.MAIN).get("node") == nid)
 
 
+# The daemon half of a row (the deployed container's state and the ports
+# something else holds), kept per node for DAEMON_TTL seconds (B717). Both
+# are reads of the node's docker, one probe job on an agent node each, up to
+# 25 s on a quiet one: the tab's every poll paid them for every node, which
+# held the view 40 s through production while the operator looked at the
+# nginx tab, and a Docker tab beside it sat on 'reading its env' behind the
+# same node's channel. A row read within the TTL is the last answer; a
+# Deploy, Save or Remove bumps the record, a compose job's end moves the
+# manager's job revision, and the next read after either is fresh.
+DAEMON_TTL = 20.0
+_daemon_memo = {}      # node id -> (expires, key, state or None, clash)
+_memo_lock = threading.Lock()
+
+
+def _daemon_half(devapp, instance_state, nid, name, is_up):
+    key = (_rev, getattr(devapp, "job_rev", lambda: "")())
+    now = time.monotonic()
+    with _memo_lock:
+        got = _daemon_memo.get(nid)
+    if got and got[0] > now and got[1] == key:
+        return got[2], got[3]
+    state, clash = None, []
+    if is_up:
+        with contextlib.suppress(Exception):  # noqa: BLE001 (a row still draws without its state)
+            state = instance_state(name, devapp.MAIN)
+    with contextlib.suppress(Exception):  # noqa: BLE001 (a node that does not answer has no clash to show)
+        with devapp.on_node(nid):
+            clash = taken_ports(name, devapp.MAIN, [{"published": "80"}, {"published": "443"}])
+    with _memo_lock:
+        _daemon_memo[nid] = (time.monotonic() + DAEMON_TTL, key, state, clash)
+    return state, clash
+
+
 def view(devapp, instance_state):
     """Every agent node with what its nginx is: deployed or not, its routes,
     its certificate (never the key), and the containers on it holding 80 or
-    443 themselves. `instance_state` is devactions.state, for a deployed one."""
+    443 themselves. `instance_state` is devactions.state, for a deployed one.
+    The two daemon reads per node come from a short memo (_daemon_half)."""
     out = []
     for n in node_list():
         if n.get("kind") != "agent" or n.get("state") in ("retired", "pending"):
@@ -578,12 +612,9 @@ def view(devapp, instance_state):
                "live": n.get("live"), "clash": [],
                # What it is pinned to and the line it would move to (R192).
                "image": image_of(rec) | {"ref": image_ref(rec)}, "behind": behind(rec)}
-        if is_up:
-            with contextlib.suppress(Exception):  # noqa: BLE001 (a row still draws without its state)
-                row["state"] = instance_state(name, devapp.MAIN)
-        with contextlib.suppress(Exception):  # noqa: BLE001 (a node that does not answer has no clash to show)
-            with devapp.on_node(nid):
-                row["clash"] = taken_ports(name, devapp.MAIN, [{"published": "80"}, {"published": "443"}])
+        state, row["clash"] = _daemon_half(devapp, instance_state, nid, name, is_up)
+        if state is not None:
+            row["state"] = state
         out.append(row)
     return {"nodes": out, "image": IMAGE, "latest": latest_image(), "hostnames": hostnames()}
 

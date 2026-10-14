@@ -311,6 +311,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container copied or moved to another node arrives built and down, with Up on its row there; a move still takes the old node's down once the build lands (71d49c1)
 - A design pass (R210): text a step larger at a desk, buttons in the page's font, and under each row a state pill, one mono line of facts and notices behind a colored bar; a container's settings are one grid with one Apply, and its bar keeps Up, Down and the build with the rest behind More (c3f03a7)
 - A project's settings offer one list of nodes under Also works on, a hosting-only node marked Hosting only in it, in place of a second Hosts its containers on list; a hosting node left unticked stays yours to copy to and rebuild on (b59527f)
+- A build of an instance pinned to a branch opens its log with the commit it builds from and says that untracked and ignored files of the working tree are not in it (f9e5027)
+- The controller's log says when the agent's sources changed under it, naming the newest file and the digest it ships now, so a node held on the old digest has a reason beside it (f9e5027)
 
 ### Removed
 
@@ -514,6 +516,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The nginx tab re-reads when a route or certificate is written from elsewhere: a container row's Add route, bb or another browser, within a poll rather than at its next Refresh (b59527f)
 - The Toolchains tab no longer offers an update a toolchain already has when the two sides write the same release differently (Swift 6.4 against 6.4.0): trailing zeros are ignored in the comparison (b59527f)
 - Copy or move of a container written on the Docker tab whose compose builds an image ships the image from its project's node, as a project's own instances do, instead of building on the node it lands on, which a hosting node cannot (332a95c)
+- The nginx tab answers in a moment again: each node's container state and port clash are read from its daemon once every 20 seconds rather than on every poll, so a slow node no longer holds the tab (and the Docker tab's env read behind it) for 40 seconds (f9e5027)
+- The graphics toolchain says before downloading anything that ImageMagick's AppImage needs glibc 2.35, on a node that has an older one (Rocky 9), instead of failing after the download (f9e5027)
 
 ### Security
 

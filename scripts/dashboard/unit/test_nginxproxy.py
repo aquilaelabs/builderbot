@@ -1,6 +1,7 @@
 """One nginx per node (nginxproxy.py, R171): the routes kept here become
 nginx's config and a compose file with everything inline; a certificate is
 checked as nginx would load it, kept 0600, and never shown back."""
+import contextlib
 import json
 import os
 import shutil
@@ -321,6 +322,54 @@ class Image(unittest.TestCase):
         mk = Making()
         self.assertEqual(npx.deploy("n2", mk, da, FakeDevapp(set()))["job"], "j-2")
         self.assertIn("image: nginx:1.29-alpine@sha256:" + "b" * 64, mk.written["nginx-box"])
+
+
+class DaemonMemo(unittest.TestCase):
+    """The two daemon reads per row are kept DAEMON_TTL seconds (B717): a
+    tab polling every few seconds paid a probe job per node per poll."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.asked = []
+        npx.configure(state=self.tmp, write_json=write_json,
+                      node_list=lambda: [{"id": "n1", "name": "vps", "kind": "agent", "state": "online"}],
+                      node_name=lambda nid: "vps", taken_ports=lambda *a: self.asked.append("ports") or ["80 (web)"])
+        npx._daemon_memo.clear()
+        self.dv = FakeDevapp({"nginx-vps"})
+        self.dv.on_node = lambda nid: contextlib.nullcontext()
+        self.dv.job_rev = lambda: self.jrev
+        self.jrev = "1"
+
+    def state(self, name, inst):
+        self.asked.append("state")
+        return {"up": True}
+
+    def test_a_second_view_within_the_ttl_reads_nothing_from_the_daemon(self):
+        v1 = npx.view(self.dv, self.state)
+        self.assertEqual((v1["nodes"][0]["state"], v1["nodes"][0]["clash"]), ({"up": True}, ["80 (web)"]))
+        self.assertEqual(self.asked, ["state", "ports"])
+        v2 = npx.view(self.dv, self.state)
+        self.assertEqual(self.asked, ["state", "ports"], "the memo answered")
+        self.assertEqual(v2["nodes"][0]["clash"], ["80 (web)"])
+
+    def test_a_write_to_the_record_or_a_compose_job_reads_fresh(self):
+        npx.view(self.dv, self.state)
+        npx.add_hostname("www.example.com")
+        npx.view(self.dv, self.state)
+        self.assertEqual(self.asked, ["state", "ports", "state", "ports"], "the record moved, so the daemon was asked again")
+        self.jrev = "2"
+        npx.view(self.dv, self.state)
+        self.assertEqual(len(self.asked), 6, "a compose job ended, so the daemon was asked again")
+        npx.view(self.dv, self.state)
+        self.assertEqual(len(self.asked), 6)
+
+    def test_the_memo_runs_out(self):
+        npx.view(self.dv, self.state)
+        with npx._memo_lock:
+            exp, key, st, cl = npx._daemon_memo["n1"]
+            npx._daemon_memo["n1"] = (0.0, key, st, cl)
+        npx.view(self.dv, self.state)
+        self.assertEqual(len(self.asked), 4)
 
 
 if __name__ == "__main__":

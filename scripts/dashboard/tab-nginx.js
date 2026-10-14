@@ -57,6 +57,10 @@ async function nginxAct(body){
   else if (j.job) notify(`${body.action === "deploy" ? "deploying" : body.action === "update" ? `updating nginx to ${j.to}` : "rebuilding nginx"}${
     body.action === "deploy" ? " nginx" : ""}: its row on the Docker tab has the build`);
   else if (body.action === "check") notify(`the registry lists nginx:${j.latest?.tag || "?"}`);
+  // A hostname added or deleted comes back with the list as it now is, so
+  // the pull-downs hold it the moment the answer lands rather than after
+  // the whole tab is read again (every node's daemon, B721).
+  if (Array.isArray(j.hostnames)) nginxHostnames = j.hostnames;
   await loadNginx();
   return j;
 }
