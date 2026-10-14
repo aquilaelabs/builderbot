@@ -18,6 +18,8 @@ let nodesList = null;            // last answer, or null before the first
 // one, and meanwhile draws the last, so a picker drawn in the same tick as
 // its dialog opened still has its nodes.
 let nodesStale = false;
+// The pages that draw the list: a node picker each, or the rows themselves.
+const NODE_READERS = ["nodes", "toolchains", "emulator", "docker", "projects", "settings"];
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
@@ -68,7 +70,10 @@ async function loadNodes(){
   }
   nodesStale = false;
   nodesRev++;
-  if (shown("nodes")) drawPanes();
+  // Any page that draws the list is drawn again with it: the Toolchains
+  // bar's picker appears when the first node enrolls, as it did when the
+  // strip held the Nodes tab.
+  if (NODE_READERS.some(shown)) drawPanes();
 }
 
 // A button that starts something goes dead the moment it is pressed.

@@ -71,7 +71,8 @@ ok(await page.$('.pane .bar [data-reload]') === null,
    'the pane bar carries no button of its own');
 ok(await page.$eval('.doc .docbarrow #tcRefresh', b => b.textContent.trim()) === 'Refresh',
    '...and Refresh sits in the tab\'s bar, where every other tab keeps its action');
-ok(await page.$eval('.doc .docbarrow', el => {
+// The Toolchains tab's own bar: the Projects page parked in the pane has one too now (R218 step 3).
+ok(await page.$eval('.doc .tctab .docbarrow', el => {
      const kids = [...el.children];
      return kids.indexOf(el.querySelector('#tcRefresh')) === kids.length - 1
             && kids.indexOf(el.querySelector('#tcNodeSel').closest('.pick')) === 0;

@@ -11,7 +11,14 @@ import { execFileSync } from 'node:child_process';
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
-await page.goto(URL);
+
+// A card's link, lock, pin and the rest sit behind its menu on the Projects
+// page (R218 step 3): opened first, the way a thumb does.
+const pjMenu = async name => {
+  await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
+    if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click(); }, name);
+  await page.waitForTimeout(150);
+};await page.goto(URL);
 await ready(page);
 const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.dataset.card));
 
@@ -1642,6 +1649,7 @@ await page.evaluate(() => { state.invites = []; drawBell(); toggleBell(false); }
 // The chain, on a project that already has one. alpha can push (the
 // retroactive seeding granted it, on the deploy key its remote uses), so it
 // is offered a token, and told what setting one does and does not do.
+await pjMenu('alpha');
 await page.click('.doc .projtab [data-l="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(/GitHub/.test(await page.$eval('#rnTitle', e => e.textContent))
@@ -1983,6 +1991,7 @@ await page.click('#rnCancel');
 
 // Ghosted where no session can start. Unlike the credential fields above there
 // is no typing that brings this back, so the reason is the whole message.
+await pjMenu('gamma');
 await page.click(`.doc .projtab [data-k="gamma"]`);
 await page.waitForFunction(() => (state?.projects || [])
   .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
@@ -1994,11 +2003,13 @@ ok(await page.$eval('#rnReply', e => e.disabled)
 ok(/Locked/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
+await pjMenu('gamma');
 await page.click(`.doc .projtab [data-k="gamma"]`);
 await page.waitForFunction(() => !(state?.projects || [])
   .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
 // ep.silon is linked and cannot push, which is the third state the chain has
 // to have an answer for: not a form to fill in, and not an empty box either.
+await pjMenu('ep.silon');
 await page.click('.doc .projtab [data-l="ep.silon"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTokenField', el => el.hidden)

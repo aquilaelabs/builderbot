@@ -6289,7 +6289,7 @@ onRev("nodes", () => {
   // alone: re-read for the one on show, and when none is, marked stale, so
   // the next page to read it loads a fresh one rather than a list from
   // before a node enrolled or retired.
-  if (["nodes", "toolchains", "emulator", "docker", "projects", "settings"].some(shown)) loadNodes();
+  if (NODE_READERS.some(shown)) loadNodes();
   else nodesStale = true;
   // A node's census carries its images: refetched only when they moved.
   if (shown("emulator")) emuOnNodes();
