@@ -273,6 +273,11 @@ def theme_from(scheme_key, name=""):
             "colors": [{"name": k, "hex": colors[k], "means": means} for k, _, means in TOKENS]}
 
 
+def _other(mode):
+    """The mode a theme's second palette is for."""
+    return "light" if mode == "dark" else "dark"
+
+
 def _luma(hexcol):
     r, g, b = (int(hexcol[i:i + 2], 16) / 255 for i in (1, 3, 5))
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
@@ -465,7 +470,18 @@ def _clean_theme(t, n):
     if mode not in MODES:
         bg = _role({"colors": colors}, "bg")
         mode = "light" if bg and _luma(bg) > 0.5 else "dark"
-    out = {"name": name, "mode": mode, "colors": colors,
+    # The other half (R216): a theme may carry a second palette of the same
+    # tokens for the opposite mode, so one name is one scheme with a dark
+    # half and a light one, and a switch beside the picker chooses the half.
+    # Empty when the theme has one palette only.
+    half, hseen = [], set()
+    for c in (t.get("light") if isinstance(t.get("light"), list) else [])[:COLORS_MAX]:
+        c = _clean_color(c, f"{name}'s other half")
+        if c is None or c["name"].lower() in hseen:
+            continue
+        hseen.add(c["name"].lower())
+        half.append(c)
+    out = {"name": name, "mode": mode, "colors": colors, "light": half,
            "rules": _clean_rules(t.get("rules"), f"the theme {name}")}
     for key, rows in CHOICES.items():
         out[key] = _choice(t.get(key), [k for k, _, _ in rows], key, "")
@@ -981,6 +997,9 @@ def language_text(lang, platform=""):
         for i, t in enumerate(themes):
             lines.append(f"  {t['name']} ({t['mode']}{', the default' if i == 0 else ''}):")
             lines.extend(f"    {c['name']} {c['hex']}" + (f": {c['means']}" if c["means"] else "") for c in t["colors"])
+            if t.get("light"):
+                lines.append(f"    its {_other(t['mode'])} half, the same tokens, under the mode switch:")
+                lines.extend(f"      {c['name']} {c['hex']}" for c in t["light"])
             if i:
                 # Another theme's choices where they differ from the default's.
                 lines.extend("    " + ln for ln in _choice_lines(t, platform, themes[0]))
@@ -1154,6 +1173,10 @@ def file_text(rec):
             out += ["", f"### {t['name']} ({t['mode']}{', the default' if i == 0 else ''})"]
         out += ["", "| token | value | for |", "|---|---|---|"]
         out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` | {c['means']} |" for c in t["colors"]]
+        if t.get("light"):
+            out += ["", f"Its {_other(t['mode'])} half, the same tokens under the mode switch:", "",
+                    "| token | value |", "|---|---|"]
+            out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` |" for c in t["light"]]
         if i:
             # Where this theme's choices differ from the default's, and its own rules.
             differs = _choice_lines(t, "", themes[0])
@@ -1385,6 +1408,9 @@ def text_for(project, which=""):
         first = rec["language"]["themes"][0] is theme
         lines = [f"{theme['name']} ({theme['mode']}), {'the default of' if first else 'one theme of'} {len(rec['language']['themes'])}:"]
         lines.extend(f"  {c['name']} {c['hex']}" + (f": {c['means']}" if c["means"] else "") for c in theme["colors"])
+        if theme.get("light"):
+            lines.append(f"  its {_other(theme['mode'])} half, under the mode switch:")
+            lines.extend(f"    {c['name']} {c['hex']}" for c in theme["light"])
         lines.extend("  " + ln for ln in _choice_lines(theme))
         for r in theme.get("rules") or []:
             on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
@@ -1401,7 +1427,8 @@ def listing(project):
     """bb design with no words: the language in one line and the pages."""
     rec = _record(_load(), project)
     lang = rec["language"]
-    themes = ", ".join(f"{t['name']} ({t['mode']})" for t in lang["themes"]) or "no theme yet"
+    themes = ", ".join(f"{t['name']} ({t['mode']}{' and ' + _other(t['mode']) if t.get('light') else ''})"
+                       for t in lang["themes"]) or "no theme yet"
     first = lead(lang)
     # Each with its noun: "custom corners, custom, quiet motion" left the
     # reader to work out what the second custom was.

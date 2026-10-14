@@ -42,8 +42,10 @@ Refuses with exit 2 and the sentence on stderr, which Claude Code hands to the
 model; allows with exit 0. Silent on any failure of its own, except the
 controller not answering, which is the point.
 """
+import http.client
 import json
 import os
+import socket
 import sys
 import time
 
@@ -82,17 +84,38 @@ def stamp_file(project):
 
 
 def controller_answers(project):
-    """True when the controller answered a status request now.
+    """True when the controller is there to answer a status request now.
 
     Any HTTP answer counts, a refusal included: a session whose token has
     expired is talking to a controller that is up, and telling it BuilderBot
     is restarting sends everybody to look at an update that did nothing. The
     status decides it, never the wording, because the server's refusals are
-    sentences ("not signed in") with nothing in them to test for."""
+    sentences ("not signed in") with nothing in them to test for.
+
+    And a slow answer counts too: the connection is made first, on its own,
+    and a request that then runs out of time is a controller that is busy,
+    not one that is restarting (B719: four calls in a row refused while it
+    was up the whole time, the operator watching). Only a connection nobody
+    accepts is down."""
     if bbapi is None:
         return True                     # nothing to ask with; never refuse blind
-    status, _ = bbapi.request("/api/status", auth="Bearer " + token(project), timeout=8)
-    return status is not None           # None: no connection, so down or restarting
+    try:
+        c, base = bbapi._conn(8)
+        if c.sock is None:              # https is connected in _conn, for the pin
+            c.connect()
+    except (OSError, http.client.HTTPException):
+        return False                    # nothing listening: down or restarting
+    try:
+        c.request("GET", base + "/api/status", None,
+                  {"Authorization": "Bearer " + token(project)})
+        c.getresponse().read()
+    except socket.timeout:
+        return True                     # listening, and slow: busy, not down
+    except (OSError, http.client.HTTPException):
+        return False
+    finally:
+        c.close()
+    return True
 
 
 # How often a waiting prompt asks again. The controller drops a waiter that

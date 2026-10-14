@@ -185,6 +185,19 @@ function renderEmulatorInto(i){
       : (d.missing || []).length ? `<div class="tchead warn emneed">${esc(d.name)} has no ${
       esc(d.missing.join(" or "))} yet: <a href="#" id="emuToTc">install ${
       d.missing.length === 1 ? "it" : "them"} from Toolchains</a>.</div>` : ""}
+    ${
+    // The node's images at a glance (R216): how many, the AVDs built on
+    // them, the levels its projects need and have none of, the room left.
+    !d.wrong_platform && d.known !== false ? statTiles([
+      {label: "images", value: (d.images || []).length},
+      {label: "AVDs", value: (d.images || []).reduce((n, im) => n + (im.avds || []).length, 0), sub: "built on them"},
+      {label: "levels needed", value: (d.needed || []).length, tone: (d.needed || []).length ? "warn" : "", omit: !(d.needed || []).length},
+      {label: "free", value: typeof d.free_mb === "number" ? (d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB") : "",
+       sub: "on the store", omit: typeof d.free_mb !== "number"},
+    ]) : ""}
+    ${(d.needed || []).map(nd => `<div class="tchead warn emlevel">${esc(nd.projects.join(", "))} compile${
+      nd.projects.length === 1 ? "s" : ""} against ${esc(nd.level)} and no image of that level is here${
+      nd.pick ? `: ${esc(nd.pick)} below is the plain one` : ""}.</div>`).join("")}
     ${job.state === "failed" && job.error ? `<div class="tchead bad">${
       job.action === "remove" ? "Removing" : "Adding"} ${esc(job.image)} failed: ${esc(job.error)}.
       The Jobs tab has its log.</div>` : ""}

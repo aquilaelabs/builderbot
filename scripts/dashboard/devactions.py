@@ -221,7 +221,13 @@ def _plan(project, instance, action, extra=None):
     # because neither the build nor the down touches .env.example or the
     # instance env. What it must NOT do is send `up` anyway and gate
     # afterwards: that is the broken start the gate exists to prevent.
-    rebuild = [build, down] if devapp.missing_env(project, instance) else [build, down, up]
+    # ...and one arriving on another node (relocate.py's last stage) builds
+    # and stays down: the person decides when it serves there, and a move
+    # takes the old node's down once the build lands (the operator, 13 Oct;
+    # R208).
+    rel = devapp._read_rec(project, instance).get("relocating")
+    arriving = isinstance(rel, dict) and rel.get("stage") == "build"
+    rebuild = [build, down] if devapp.missing_env(project, instance) or arriving else [build, down, up]
     # The project's own test command, inside its running instance (roadmap
     # R48): `exec` into the service the project builds, with the command the
     # settings dialog recorded and nothing else, and the caller's arguments
@@ -318,7 +324,12 @@ def _ship_build_spec(project, instance, job_id):
     send it up. Never starts anything there."""
     spec = _plan_spec(project, instance, "rebuild")
     pname = devapp._pname(project, instance)
-    pdir = str(devapp.WORKSPACE / project / devapp.compose_sub(project, instance)).rstrip("/")
+    # The project directory the build resolves paths against: the tree for
+    # a project's instance, the data directory for a written one (as _plan
+    # has it), on the node that builds.
+    pdir = ((devapp.dev_data_dir(project, instance, make=False) or str(Path(devapp.appdata_root()) / pname))
+            if devapp.is_file_source(project, instance)
+            else str(devapp.WORKSPACE / project / devapp.compose_sub(project, instance)).rstrip("/"))
     base = [devapp.DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
     if "instance.env" in spec["files"]:
@@ -346,9 +357,12 @@ def _ship_run_spec(project, instance, job_id):
 def _ship_submit(project, instance, target):
     """A shipped instance's rebuild: the build node's job now, the instance
     node's when it succeeds (ship_next, from compose_done)."""
-    own = devapp.nodes_of(project) or []
+    # A written container builds on its owner's node, where the context its
+    # compose file names is (B716); a project's on its own.
+    owner = devapp.owner_of(project, instance) or project
+    own = devapp.nodes_of(owner) or []
     if not own:
-        return {"error": f"{project} has no node of its own to build its image on: set one in its settings"}
+        return {"error": f"{owner} has no node of its own to build its image on: set one in its settings"}
     builder, _ = devapp.queue.first_up(own) if hasattr(devapp.queue, "first_up") else (own[0], "")
     builder = builder or own[0]
     held = {"project": project, "instance": instance, "action": "rebuild", "hold": True,
@@ -1253,6 +1267,14 @@ def _clear_marker(project, instance=devapp.MAIN):
 def _job_rebuild(project, instance, run):
     try:
         run.step("building")
+        if devapp.work_tree(project, instance) is not None:
+            # A pinned instance builds from a worktree of its ref, which holds
+            # the files committed there and nothing else: a gitignored file
+            # changed beside the project's checkout is not in this build,
+            # and the log says so before the build rather than after (B595).
+            ref = str(devapp._read_rec(project, instance).get("ref") or "").strip()
+            run.line(f"building from {ref} at {devapp._head(project, instance)[:12] or '?'}: "
+                     "the files committed there; untracked and ignored files of the working tree are not in it\n")
         r = devapp._run(devapp._compose(project, instance, "build"), timeout=3600,
                         env_extra=devapp._dev_data_env(project, instance) | devapp._build_env(project, instance),
                         sink=run.line, hold=run.hold)
@@ -1408,7 +1430,13 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # To another node, its data with it (relocate.py): a copy beside
         # it under a new name, or the same one moved.
         env = req.get("text") if isinstance(req.get("text"), str) else None
-        r = relocate.start(project, instance, f(req, "mode"), f(req, "node"), f(req, "name"), env)
+        r = relocate.start(project, instance, f(req, "mode"), f(req, "node"), f(req, "name"), env,
+                           data=f(req, "data"))
+        return r, (400 if r.get("error") else 200)
+    if action == "unpack":
+        # Its data, carried as an archive, written into its volumes now
+        # (relocate.unpack_start).
+        r = relocate.unpack_start(project, instance)
         return r, (400 if r.get("error") else 200)
     if action == "owner":
         # Which project it belongs to. An administrator's too, and the name

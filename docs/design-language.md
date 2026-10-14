@@ -22,6 +22,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#f8524a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#58a6ff` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f1f4f7` |
+| `--panel` | `#fcfeff` |
+| `--ink` | `#242729` |
+| `--dim` | `#5e646a` |
+| `--line` | `#c9d2dd` |
+| `--accent` | `#007c05` |
+| `--warn` | `#996200` |
+| `--bad` | `#c3131b` |
+| `--note` | `#0863b6` |
+
 ### Abyss (dark)
 
 | token | value | for |
@@ -35,6 +49,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#d7ab4c` | a warning, and the amber marks |
 | `--bad` | `#ef6a63` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#6fb3e0` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#eff5f6` |
+| `--panel` | `#fbfeff` |
+| `--ink` | `#212829` |
+| `--dim` | `#5a6667` |
+| `--line` | `#c3d5d9` |
+| `--accent` | `#007480` |
+| `--warn` | `#906700` |
+| `--bad` | `#b53433` |
+| `--note` | `#236a93` |
 
 ### Ash (dark)
 
@@ -50,6 +78,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#e26d60` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#82a7b8` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f3f3f3` |
+| `--panel` | `#fdfdfd` |
+| `--ink` | `#262725` |
+| `--dim` | `#626461` |
+| `--line` | `#cfd2cf` |
+| `--accent` | `#5d6945` |
+| `--warn` | `#8d6800` |
+| `--bad` | `#ae3e34` |
+| `--note` | `#466979` |
+
 ### Carbon (dark)
 
 | token | value | for |
@@ -63,6 +105,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ff6b6b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7aa2f7` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f3f3f5` |
+| `--panel` | `#fdfdfe` |
+| `--ink` | `#262627` |
+| `--dim` | `#636367` |
+| `--line` | `#d0d0d5` |
+| `--accent` | `#b6192c` |
+| `--warn` | `#905e00` |
+| `--bad` | `#bb2933` |
+| `--note` | `#3c5fae` |
 
 ### Ember (dark)
 
@@ -78,6 +134,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#ef5f52` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#8fb4d9` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f6f3f1` |
+| `--panel` | `#fffdfb` |
+| `--ink` | `#2b2520` |
+| `--dim` | `#6a6159` |
+| `--line` | `#dbcfc3` |
+| `--accent` | `#a34100` |
+| `--warn` | `#8b6100` |
+| `--bad` | `#ba2c25` |
+| `--note` | `#446688` |
+
 ### Ice (dark)
 
 | token | value | for |
@@ -91,6 +161,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#d3ab52` | a warning, and the amber marks |
 | `--bad` | `#ee6a68` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cc0ff` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f0f4f6` |
+| `--panel` | `#fbfeff` |
+| `--ink` | `#23272b` |
+| `--dim` | `#5d6568` |
+| `--line` | `#c7d3dd` |
+| `--accent` | `#00708f` |
+| `--warn` | `#886200` |
+| `--bad` | `#b43439` |
+| `--note` | `#2167a0` |
 
 ### Moss (dark)
 
@@ -106,6 +190,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--bad` | `#e8695f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#74b3d8` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f0f5f3` |
+| `--panel` | `#fbfefc` |
+| `--ink` | `#232823` |
+| `--dim` | `#5e6660` |
+| `--line` | `#c8d5cb` |
+| `--accent` | `#00783f` |
+| `--warn` | `#8e6800` |
+| `--bad` | `#b33833` |
+| `--note` | `#2b6a8c` |
+
 ### Nocturne (dark)
 
 | token | value | for |
@@ -119,6 +217,20 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--warn` | `#e0b24d` | a warning, and the amber marks |
 | `--bad` | `#f2637b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cb0ff` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f2f3f9` |
+| `--panel` | `#fdfdff` |
+| `--ink` | `#26252e` |
+| `--dim` | `#626173` |
+| `--line` | `#cecfe6` |
+| `--accent` | `#6a44c2` |
+| `--warn` | `#916600` |
+| `--bad` | `#b72b4c` |
+| `--note` | `#3262aa` |
 
 ### Nostromo (dark)
 
@@ -179,6 +291,20 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--bad` | `#ee6183` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#83aee8` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f6f2f8` |
+| `--panel` | `#fffcff` |
+| `--ink` | `#2a242c` |
+| `--dim` | `#695f6e` |
+| `--line` | `#d9cbe1` |
+| `--accent` | `#8c3a9b` |
+| `--warn` | `#936500` |
+| `--bad` | `#b62b55` |
+| `--note` | `#3d6499` |
+
 ### Rust (dark)
 
 | token | value | for |
@@ -192,6 +318,20 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#e8544a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fa8c9` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f7f2f1` |
+| `--panel` | `#fffdfc` |
+| `--ink` | `#2b2523` |
+| `--dim` | `#6a615f` |
+| `--line` | `#ddcdca` |
+| `--accent` | `#a14123` |
+| `--warn` | `#905e00` |
+| `--bad` | `#bc2825` |
+| `--note` | `#416886` |
 
 ### Sepia (dark)
 
@@ -207,6 +347,20 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--bad` | `#e0705f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9db98c` | an informational mark, the low level |
 
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f5f3f0` |
+| `--panel` | `#fffdfb` |
+| `--ink` | `#2b261c` |
+| `--dim` | `#6a6256` |
+| `--line` | `#d7d0c3` |
+| `--accent` | `#835c00` |
+| `--warn` | `#8a6900` |
+| `--bad` | `#ac4133` |
+| `--note` | `#536c43` |
+
 ### Slate (dark)
 
 | token | value | for |
@@ -220,6 +374,48 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ef6f6c` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fb8ff` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#f1f3f7` |
+| `--panel` | `#fcfdff` |
+| `--ink` | `#24272a` |
+| `--dim` | `#606468` |
+| `--line` | `#cbd2da` |
+| `--accent` | `#2a61b1` |
+| `--warn` | `#905e00` |
+| `--bad` | `#b2373a` |
+| `--note` | `#2e64a5` |
+
+### Fern (light)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#f1f4f2` | the page |
+| `--panel` | `#fbfefc` | a raised box: a card, a pane, a modal |
+| `--ink` | `#23291c` | the text, and text on a filled accent |
+| `--dim` | `#5e6657` | secondary text and field labels |
+| `--line` | `#c7d6c2` | hairlines and borders, 1px |
+| `--accent` | `#974f00` | the one color that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#8b6100` | a warning, and the amber marks |
+| `--bad` | `#c11d00` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#41721b` | an informational mark, the low level |
+
+Its dark half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#101712` |
+| `--panel` | `#162018` |
+| `--ink` | `#d7e3c8` |
+| `--dim` | `#95a488` |
+| `--line` | `#405b37` |
+| `--accent` | `#ffb000` |
+| `--warn` | `#ffd166` |
+| `--bad` | `#ff5f45` |
+| `--note` | `#9ad07a` |
 
 ## Type
 
@@ -276,6 +472,8 @@ email" above a text box, on an accent fill, at 2.51:1.
 
 The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mid`: the accent darkened by 14%, between the accent and `--accent-deep`.
 
+**Every scheme has a light half (R216).** The same nine tokens, hue for hue, with the page near white, the ink dark and the accent and the marks pulled down to AA against the page; `html[data-mode="light"]` is the switch, set by the gear's Dark / Light / System beside the swatches, before first paint from localStorage and on the account. What the dark half derives by lightening the light half derives by darkening (`--btn`, `--sunk`), the purple family and its edges flip with it, and a filled accent carries `--on-fill` (the ink in the dark half, white in the light) rather than the ink itself. Never a hex in a component in either half.
+
 ### shape
 
 Applies to: scripts/dashboard/index.html; corner, radius, rounded, hairline, border
@@ -304,6 +502,8 @@ note and low blue.
 
 A section's heading is `--f-sect` (600 14px system sans, 13px for a section
 inside a section), the one voice above a row's. What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
+
+**One step up at a desk (R210).** The sizes above are the phone's, set against a thumb's width; at a desk, `@media(min-width:901px)`, every voice is one pixel larger (`--f-note` 12, `--f-ui` 13, `--f-row` 14, `--f-field` 12 mono, `--f-sect` 15) so the ladder between them is the same ladder at both sizes. A row's mono facts are `--f-data` (12px, 13 at a desk) and a pill's text `--f-pill`; a button speaks in `--f-ui`, never the browser's default (B711). Nothing retypes a size: a voice is named once on `:root` and once in the desk block.
 
 ### space
 
@@ -485,6 +685,8 @@ swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
 
+**A row's settings are a grid with one Apply (R210).** `.setgrid` holds a `.setcell` per setting, the label above its control as every field is (`lbl`), in columns where there is room and one column on a phone; a read-only cell (`.ro`) says a setting kept elsewhere with the way there; an action that belongs beside a setting (Add route) sits in the cell's `.ctl` and acts on the press. The one Apply is in `.setfoot`, asleep until a control differs from what is saved, and writes every staged setting in turn. A container row was five settings each with its own Apply or Move (the operator, 13 Oct).
+
 ### files
 
 Applies to: scripts/dashboard/index.html; script, module, file, load
@@ -536,6 +738,10 @@ row. The destructive verb wears `.danger` and comes last, so nothing safe
 sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
+
+**At most five buttons on a bar, and the rest behind More (R210).** A row's bar holds its primary verbs (Up, Down, the build, an Update that is due) and `actMore([...])` draws the rest behind one More button, whose menu opens under it as the gear's does, anything else closes it, Escape too; a single leftover is drawn inline, since a menu of one is a detour. The destructive verb is last in the menu as it was last on the bar. Seven buttons wrapped to two lines on a phone with Remove alone on the second (the operator, 13 Oct); `test/uniform.mjs` counts a bar's buttons at phone width.
+
+A segmented switch (`.pseg`: Deploy key / Access token, Dark / Light / System, Cards / List) is one choice of two or three, not a set of verbs, so it is not an action bar and sits where the choice is read: in a dialog's field, the gear, a tab's bar (R216).
 
 ### rows-you-open
 
@@ -747,6 +953,30 @@ Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/page-docs.js; node, pi
 A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner, the Docker manager) picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the left of the tab's bar (`.docbarrow`) with its verbs at the right, Refresh last, listing the agent nodes by name; a node that cannot be picked for this tab is in the list, disabled, its reason after its name (`sandbox: no adb`), and a quiet one says so. A tip in that bar opens under it, anchored to its right edge, so the rightmost one never hangs past a phone's pane.
 
 What is installed on the node is a list of ticked rows (`label.tc`): an installed thing is a set, dead tick with its bin at the right, a thing to add is a tick, and one **Install selected** in the action bar at the foot does them all in one job; Toolchains and the Emulator are both this, the Emulator's rows to add narrowed to one flavor picked above them. A thing the node runs (the Phone, the CI runner) opens on a state row, `.row.toolstate`: "Phone on sandbox" or "CI runners on sandbox" with its state as a pill and one sentence under it; then its controls and its add band (inset in a `.field`), and at the foot a `.field.toolfoot` hint saying how a session or a workflow reaches it. A new node-scoped tab starts from one of these two shapes, never from a picker or a layout of its own (R121, the operator 4 Oct).
+
+### voices
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; notice, notices, state, pill, facts, voice, voices, warning
+
+Three things live under a row's name, and each has a voice of its own (R210; the operator, 13 Oct: facts, warnings and settings all wore the same dim mono and read as one gray block). **Facts** are one line of `--f-data` mono in `var(--dim)`: where it came from, its ports, a path, a revision, separated by ` · `. **A notice** is what is wrong or what to know, one sentence, in `--f-ui` sans in the level's color behind a 3px bar of that color, no wider than a paragraph: `.sub.warn`, `.sub.bad`, `.sub.note` under a row, `.notice` where there is no row; a problem the page can fix is a link in the same color. **A state** is a pill on the name line, `.pill.stat` (`.state` is the action bar's status line, `.st` the session dot), a word in `--f-tag` caps: `.ok` (running) in the accent, `.warn` (partly up) in gold, `.off` (stopped, down) in purple, and no class for one nobody asked (state unknown); never a parenthesis in the facts' mono. Settings are the grid the settings rule describes. `test/uniform.mjs` measures a notice's font and bar.
+
+### tiles
+
+Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/dashboard/index.html; tile, tiles, stat, count, number, summary, glance
+
+**A number a tab is about is a tile (R216).** Where a surface has a few numbers that say its state at a glance (containers running of all, updates due, jobs waiting, images held, routes), they sit in one row of tiles under the bar: `statTiles([{label, value, sub, tone}])` in page-docs.js, `.tiles` a grid of `.tile`s that wraps to two columns on a phone. A tile is the value in `--f-stat` (the one voice larger than `--f-sect`, 600 and tabular figures), its label under it in `--f-note` dim, and an optional line of what the number is of; its tone is the number's color, `ok`, `warn` or `bad`, only when the number itself is news (two updates due is amber; six containers is ink). Tiles are facts: pressing one does nothing, and a tile is never drawn for a number that is always the same. One row per surface, at most six; more than that is a table.
+
+### facts
+
+Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js, scripts/dashboard/index.html; fact, facts, grid, label, value, key, pairs
+
+**What a row knows is a facts grid, not a sentence of dots (R216).** A row with more than two facts about one thing (image, ports, where it was built from, the compose file it came from, its containers) lays them out as `factGrid([[label, value], ...])`: a `dl.facts` of `dt` labels in `--f-note` dim and `dd` values in `--f-data` mono, two columns at a desk and one on a phone, each value wrapping on its own line. The ` · ` run-on line stays for two facts or fewer, and for the one line under a name that says where a thing came from. A value that is a path or an id is mono; a value that is a sentence is not a fact and goes in a notice (the voices rule).
+
+### chips
+
+Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/dashboard/index.html; chip, chips, filter, narrow, group, groups
+
+**A long list is narrowed by chips, not by a second list (R216).** Where a list is grouped (containers by project, jobs by node, toolchains by kind) a row of `.chip` buttons under the bar narrows it: All first with the whole count, then one chip per group with its count in a small pill, the one in force wearing `.on` in the accent. One chip at a time; All puts everything back; a chip for an empty group is not drawn. Chips are a view, never a setting: nothing is saved, and the list is whole again on the next open. The row scrolls sideways on a phone rather than wrapping into a block.
 
 ## Pages
 
@@ -1049,6 +1279,7 @@ Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Bla
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
   The nginx tab (R171) is a node-scoped tab of the Toolchains shape (the node-switcher rule): one node at a time, picked in the bar, a state row first (nginx on NAME, its pill not deployed, deployed or deployed, down, and under it the container's name and route count); then the form, route rows (hostname, path, port, 443 too, remove) with Add route on their action bar, the certificates' lines (each name and when it ends; a key is never shown back), the hostname picker, the certificate and the key each a full-width PEM box under its label (the operator, 11 Oct: side by side on desktop read as broken), the clash in red since nginx holds 80 and 443 on the host, and Save, Revert then Deploy or Remove on the action bar at the foot, the destructive one last.
+  2.0 (R216, the operator, 13 Oct): under the bar, a row of tiles (containers running of all, updates due, projects) and a row of chips narrowing the list to one project. A container's row is its name and a state pill with a dot (running, stopped, partly up, down), a facts grid (image, ports, built from, compose file, containers), its notices, then the settings grid with one Apply, then its action bar. Nothing a person acts on moves into a fold. The bar carries a search box (name, image, port or project) and a Cards or List switch: in the list a container is one line, its name and state pill then its facts in the data voice (whose, its ports as links, where nginx routes it, its image), that opens into its card (rows-you-open); this browser's choice, kept. A published port is a link to where it answers; a port nginx routes to shows the address as a fact; Docker's health (healthy, unhealthy, starting) is said on the state pill.
 
 ### the Nodes tab (Web app)
 

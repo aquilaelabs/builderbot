@@ -147,6 +147,16 @@ def check(answers, again=False):
     if not host:
         return {"error": "the controller's address is a URL the node dials, like http://192.168.1.10:7680"}
     out = {"reach": reach, "controller": url, "sessions": answers.get("sessions") is not False}
+    # The machine's system (R204): the built script carries that system's
+    # provisioner family and refuses another machine by name. Vetted ones,
+    # or any with dev features on; an unknown one is said back.
+    import systems
+    sid = str(answers.get("system") or systems.DEFAULT)
+    if not systems.get(sid):
+        return {"error": f"no such system: {sid}; one of {', '.join(x['id'] for x in systems.SYSTEMS)}"}
+    if not systems.allowed(sid):
+        return {"error": f"{systems.get(sid)['name']} has not been walked on a node yet: it is offered behind Offer dev features (Settings), tagged dev"}
+    out["system"] = sid
     # A door in for SSH (R174): which recipe, its name, and its secret.
     door = str(answers.get("door") or "")
     if door:
@@ -222,7 +232,7 @@ def filename(name, nid=""):
     return f"enroll-{base}-{_NAME.sub('-', str(nid))}.sh" if nid else f"enroll-{base}.sh"
 
 
-def build(ans, *, name, user, token, expires, provisioner, again=False, machine=""):
+def build(ans, *, name, user, token, expires, provisioner, family=b"", again=False, machine=""):
     """The script, as text. `ans` is check()'s answer. With `again` (R177)
     the secrets are the node's own (its WireGuard config installed from
     /etc/wireguard, its door left as it is), and `machine` binds the
@@ -275,6 +285,10 @@ def build(ans, *, name, user, token, expires, provisioner, again=False, machine=
         _b64(provisioner),
         "PROVISIONER",
     ]
+    if family:
+        # The picked system's family file, beside the core, which sources it
+        # and refuses a machine of another family by name (R204).
+        lines += ["base64 -d > \"$dir/provision-family.sh\" <<'FAMILY'", _b64(family), "FAMILY"]
     if ans["reach"] == "wireguard" and ans.get("wg_conf"):
         lines += [WG_BEGIN, _b64(ans["wg_conf"]), "WGCONF",
                   'chmod 600 "$dir/bb.conf"']

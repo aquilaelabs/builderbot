@@ -207,9 +207,15 @@ function drawBell(){
           : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "phone-use" ? `your phone, from ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "push" ? `a push from ${esc(a.project ? projLabel(a.project) : "a project")} looks sensitive: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" || a.kind === "release-remove" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
+        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" || a.kind === "release-remove" || a.kind === "push" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
+        // A push (R219) is approved by reading the lines that look like a
+        // secret or something private, whole, open, each with its file and
+        // line: Approve sends them and okays these exact lines.
+        a.kind === "push" ? `<details class="bdetail" open><summary>the ${a.count || ""} flagged line${a.count === 1 ? "" : "s"}: approving okays these exact lines until they change</summary><pre class="bflag">${
+            esc(a.detail || "")}</pre></details>` : ""}${
         // A container is approved by reading its compose file, the way root
         // is approved by reading its argv (R71): the file is the request, so
         // it is here whole, folded, with the env file's keys and never its

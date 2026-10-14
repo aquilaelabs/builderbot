@@ -106,7 +106,8 @@ FORGES = (
               "a repository under an organization and user to create one under "
               "your own account."},
     {"id": "forgejo", "name": "Forgejo", "host": "", "fixed": False,
-     "vetted": "",
+     "vetted": "2026-10-13: lab-forge.mjs against the lab's Forgejo 16.0.6 (beside its Gitea, BB_LAB_FORGE=forgejo), "
+               "and act_runner v5.0.0 registered from bb-dev-sandbox",
      "user": "oauth2",
      "kind": "gitea", "nested": False,
      "token": None, "hint": "a Forgejo access token",

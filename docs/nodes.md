@@ -434,9 +434,15 @@ would use if a deployment ever wants one: the shape is there, unbuilt.
    fails closed, showing offline with "credential revoked".
 
 **Enroll node is one script (R161, 9 Oct).** The dialog asks the name, the
-account jobs run as, whether sessions run there, how the machine reaches the
-controller and at what address, and answers with a file: the provisioner with
-those answers and the token inside, built on the press and kept nowhere.
+account jobs run as, which system the machine runs (R204: a pulldown of the
+systems walked on a node, Ubuntu and Rocky Linux, the rest behind Offer dev
+features and tagged dev; `scripts/dashboard/systems.py` is the list and its
+vetting), whether sessions run there, how the machine reaches the controller
+and at what address, and answers with a file: the provisioner core with the
+picked system's family file (`nodes/families/`) beside it, those answers and
+the token inside, built on the press and kept nowhere. The core sources the
+family file and refuses a machine whose os-release names another family, by
+name.
 Behind WireGuard the config the person's router made goes in too, narrowed
 to route the controller's address alone, with its own commands (PostUp) and
 resolver dropped and a keepalive added; the provisioner brings it up as
@@ -587,7 +593,10 @@ path, and its listing of the directory (`store_dirs`, every hello) is the
 authority on what is installed: a toolchain deleted from the store by hand
 reads as not installed within a hello, whatever the last check said
 (`toolchains.store_known`, B671), so a store emptied to start over offers
-every row for installing again. The Android system images are guest
+every row for installing again. The listing names the versions under the
+Android families too (`store_dirs.versions`: ndk, build-tools, platforms,
+cmake), which is what a version a project pins is read against
+(`toolchains.pin_rows`, B712). The Android system images are guest
 artifacts, identical on every host, and live once under `<store>/shared`
 with each scope's `android/system-images` a symlink to them: kept by the
 agent on every hello (`share_images()`) and by the controller at boot
@@ -970,9 +979,20 @@ is shipped as above). The dialog shows its env to change for the new node.
 succeeds: on the old node, stop it, pack every volume of its compose
 project and its data directory (through a `busybox` container, since a
 volume has no path the job's account reaches) and upload the file
-(`devdata-put`); on the new node, fetch it (`devdata`), make each volume
-again under the new name, labeled as compose labels its own, refusing one
-already there, and fill them; then the new instance's ordinary rebuild. A
+(`devdata-put`); on the new node, fetch it (`devdata`) and, as the dialog's
+*Its data* chose (14 Oct), either unpack it at once (make each volume again
+under the new name, labeled as compose labels its own, and fill it, writing
+over anything a volume of that name there already holds, which the dialog
+warns of) or keep it as the archive it came as, `data.tar` in the
+instance's compose directory on the node, the row then saying so and
+offering *unpack it now* (one job: stop, unpack over what is there, start;
+`relocate.unpack_start`); then the new instance's ordinary rebuild. The
+third choice, *Leave it here*, sends the container alone: nothing is
+packed, it starts on the new node with empty volumes, and the old node
+keeps its volumes and data directory. One that is running is stopped
+around the packing (and a copy starts it again); one that is down or
+stopped is left as it is, and a failed move brings it back up at home
+only if it was up (B725). A
 copy starts the original again after packing and is a new record carrying
 the original's ref, compose file, project and risk acknowledgement; a move
 keeps its name, takes its old node's containers down only once it is up
@@ -1035,9 +1055,12 @@ the pieces stack:
    directory to the new one (R191). Its registry images keep up to date
    with Check for updates and Update on the Docker tab (R195); what is
    built from code keeps Rebuild.
-4. *Name it under Hosts its containers on*, in the project's settings
-   (Where it runs, `prefs.hosts`; only a hosting-only node may be named,
-   by whoever may set the project's node). The project's sessions may then
+4. *Tick it under Also works on*, in the project's settings, where it is
+   marked Hosting only (Where it runs; one list on screen, `prefs.hosts`
+   underneath for the hosting-only rows and `prefs.nodes` for the rest; a
+   hosting-only node may be ticked by whoever may set the project's node;
+   the Node picker above the list never offers one, since it holds no code
+   and runs no session). The project's sessions may then
    make a container there (`bb devapp new --node NAME`, built on the
    project's own node and shipped) and rebuild and remove the ones there,
    under its Claude may: Run its container, as on its own node; a node not
@@ -1088,7 +1111,12 @@ the pieces stack:
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back). A
    route's hostname is picked from one list every node's nginx shares
-   (Hostnames on the tab, the operator, 12 Oct): a name is added once and
+   A container's row on the Docker tab writes a route too (R209): the
+   certificate it serves under, one of its published ports, Add route; a
+   port that has a route already is refused by name.
+   (Hostnames on the tab, the operator, 12 Oct; or typed into a route row
+   with "type a hostname…", or into a Docker row's Route through nginx,
+   and put on the list by the save): a name is added once and
    any route on any node, for any project's container, picks it, and one a
    route still uses cannot be deleted. A
    node holds a list of certificate pairs, each known by the domain its
@@ -1115,7 +1143,11 @@ the pieces stack:
    update that learns more of the setting applies it by itself (B667). A
    network keeps the options it was made with, so a container made before
    is bound again by a Down and Up; its Docker row says so in red while a
-   port is still published on every address.
+   port is still published on every address, and says why when the compose
+   file is the reason (R217): a variable defaulting to `0.0.0.0` (named, to
+   set to `127.0.0.1` under Env) or the address written in, since either
+   wins over the daemon's default; a down row with such a file says so
+   before it comes up.
    nginx's image is pinned per node by digest (R192): a weekly check of the
    registry, Check now and Update on the nginx tab, Update on its Docker
    row, and a bell note when a newer line is out. Its Docker row's Edit is

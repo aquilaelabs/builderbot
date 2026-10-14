@@ -260,11 +260,24 @@ await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsbo
 const frames = await page.$$eval(`${NB} [data-dspage] [data-dsf="frame"] option`, os => os.map(o => o.value));
 ok(frames.join() === 'phone,landscape' && await page.$eval(`${NB} [data-dspage] .dsblock[data-i="4"]`, e => e.style.gridColumn) === '2 / span 5',
    `an Android page has the phone frames only, upright and sideways, and its blocks are clamped into the upright one (${frames.join()})`);
+// A theme's other half (R216): the same tokens for the opposite mode,
+// started from the colors above and saved with the theme.
+ok(/no dark half of Paper/.test(await page.$eval(`${NB} [data-dstheme="1"] [data-dstladd]`, b => b.closest('.actbar').textContent)),
+   'a one-palette theme says it has no other half, and offers to add one');
+await page.click(`${NB} [data-dstheme="1"] [data-dstladd]`);
+await page.waitForSelector(`${NB} [data-dstheme="1"] [data-dstl="0"]`, { timeout: 5000 });
+ok(await page.$$eval(`${NB} [data-dstheme="1"] [data-dstl]`, rs => rs.length) === await page.$$eval(`${NB} [data-dstheme="1"] [data-dstc]`, rs => rs.length)
+   && await page.$eval(`${NB} #dstl-1-name-0`, e => e.value) === await page.$eval(`${NB} #dst-1-name-0`, e => e.value),
+   '...which starts as the colors, token for token, with hexes to set');
+await page.fill(`${NB} #dstl-1-hex-0`, '#123456');
 await saved();
 const again = await api(`/api/design?project=${P}`);
 ok(again.language.themes.length === 2 && again.language.themes[0].colors.find(c => c.name === 'accent')?.hex === '#ff8800'
    && again.language.themes[0].colors[0].name === 'page' && again.language.themes[1].mode === 'light' && again.pages[0].frame === 'phone',
    'the language and the page save together: the changed hex, the renamed color and the second theme');
+ok(again.language.themes[1].light?.[0]?.hex === '#123456' && again.language.themes[1].light.length === again.language.themes[1].colors.length
+   && again.language.themes[0].light.length === 0,
+   `...and the other half with it, the first theme having none (${JSON.stringify(again.language.themes[1].light?.[0])})`);
 
 // ---- nothing takes effect until Save -------------------------------------------------
 // Every control here stages (the operator, 29 Sep, and the design language's
@@ -374,8 +387,8 @@ const token = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', P, '
 const bb = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, 'design', ...a], { encoding: 'utf8',
   env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: P,
          XDG_CACHE_HOME: `${DIR}/cache-design` } });
-ok(/Default \(dark\), Paper \(light\); system sans/.test(bb()) && /1  the home dashboard  \(android app, phone, 6 blocks\)/.test(bb()),
-   `bb design lists the language and the pages (${bb().split('\n')[1].trim()})`);
+ok(/Default \(dark\), Paper \(light and dark\); system sans/.test(bb()) && /1  the home dashboard  \(android app, phone, 6 blocks\)/.test(bb()),
+   `bb design lists the language and the pages, a theme with another half said so (${bb().split('\n')[0].trim()})`);
 const shown = bb('show', '1');
 ok(bb('show', 'the home dashboard') === shown && /^Build or restyle the home dashboard to this layout/.test(shown)
    && /Platform: an Android app/.test(shown),

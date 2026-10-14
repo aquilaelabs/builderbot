@@ -57,6 +57,10 @@ async function nginxAct(body){
   else if (j.job) notify(`${body.action === "deploy" ? "deploying" : body.action === "update" ? `updating nginx to ${j.to}` : "rebuilding nginx"}${
     body.action === "deploy" ? " nginx" : ""}: its row on the Docker tab has the build`);
   else if (body.action === "check") notify(`the registry lists nginx:${j.latest?.tag || "?"}`);
+  // A hostname added or deleted comes back with the list as it now is, so
+  // the pull-downs hold it the moment the answer lands rather than after
+  // the whole tab is read again (every node's daemon, B721).
+  if (Array.isArray(j.hostnames)) nginxHostnames = j.hostnames;
   await loadNginx();
   return j;
 }
@@ -109,10 +113,14 @@ function nginxResolve(n, host){
 function nginxHostPick(r){
   const names = nginxHostnames.map(h => h.name);
   if (r.host && r.host !== "*" && !names.includes(r.host)) names.push(r.host);
+  // ...and one typed here (the operator, 13 Oct: a subdomain not yet under
+  // Hostnames could not be picked): the last choice turns the pick into a
+  // box, and Save puts the name on the shared list.
   return `<select data-ng="host" aria-label="hostname">
     ${r.host ? "" : `<option value="" selected>pick a hostname</option>`}
     ${names.map(h => `<option value="${esc(h)}"${h === r.host ? " selected" : ""}>${esc(h)}</option>`).join("")}
     <option value="*"${r.host === "*" ? " selected" : ""}>every name (*)</option>
+    <option value="__type">type a hostname…</option>
   </select>`;
 }
 
@@ -243,9 +251,9 @@ function nginxBody(n){
       <textarea id="ngKey" data-ng="key" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
     </div>
     <div class="field">
-      ${lbl("ngCertFor", "Known as")}
-      <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="the domain its names say, unless you name one" autocomplete="off" spellcheck="false">
-      <div class="hint">Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), which is what its routes resolve to; type a name only to file it under another. The same name again is a renewal.</div>
+      ${lbl("ngCertFor", "Filed under")}
+      <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="from the certificate's names" autocomplete="off" spellcheck="false">
+      <div class="hint">Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), and the routes under that domain find it. Name one only for a pair whose names say no domain (an address, localhost), or to file it under another.</div>
     </div>
     ${image}
     ${clash}
@@ -322,7 +330,24 @@ function wireNginxTab(root){
     };
     return;
   }
-  const sync = () => {
+  const sync = e => {
+    // "type a hostname…" picked: the pick becomes a box in its place, with
+    // the same data-ng, so the draft reads it like any hostname.
+    const t = e?.target;
+    if (t?.matches?.('select[data-ng="host"]') && t.value === "__type"){
+      const box = document.createElement("input");
+      box.dataset.ng = "host"; box.placeholder = "app.example.com"; box.autocomplete = "off"; box.spellcheck = false;
+      box.setAttribute("aria-label", "hostname");
+      t.replaceWith(box); box.focus();
+    }
+    // The pair a route resolves to follows its hostname: the automatic
+    // option said "no pair covers it yet" for a name picked after the
+    // row was drawn (the operator, 13 Oct).
+    sect.querySelectorAll(".ngroute").forEach(row => {
+      const host = row.querySelector('[data-ng="host"]')?.value || "";
+      const auto = row.querySelector('[data-ng="cert"] option[value=""]');
+      if (auto){ const k = nginxResolve(n, host.trim().toLowerCase()); auto.textContent = `443, ${k ? `${k}'s pair` : "no pair covers it yet"}`; }
+    });
     const dirty = nginxReadDraft(sect, n);
     bar.querySelector("[data-ngsave]").disabled = !dirty;
     bar.querySelector("[data-ngrevert]").disabled = !dirty;

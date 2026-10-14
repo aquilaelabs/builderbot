@@ -6,6 +6,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Added
 
+- Nostromo is dark only again; Fern, its colors without the ship and rounded like the rest, is a fourteenth scheme with a light half (cb8ad77)
 - Each project's containers on a node can be kept to their own network (R178): a container reaches its own project's containers, those of the projects its project reads, the controller, DNS, the node's 80 and 443 and the internet, and no longer another project's container by the node's address or the node's own ports. A switch on the node's row, on by default for a hosting-only node; the row says when it is in force.
 - A session asks for a root command on one of the nodes its project hosts containers on: bb root run --node NAME, allowed or denied by a person as ever, and refused where that node's root-asks switch is off; the switch is on a hosting-only node's row too.
 - bb transcripts lists the account's own conversations with Claude on the project and bb transcripts show ID prints one; with bb -p NAME a session reads the account's conversations on a project its own reads, whose files are in its view read-only, and never another account's
@@ -139,6 +140,12 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A test suite started in the foreground of a session is refused with the reason: it holds every reply, so a new ask could not cut in as the While a test runs setting says (8553fdb)
 - A house rule carries its why (Why on the Briefing view, bb rules add --why), kept for bb rules show and the tab and never sent to a session, so the block carries the instruction alone (b7cab78)
 - bb lint checks the instruction channels: CLAUDE.md describes the tree, the briefing the machine, the shipped rules the obligations, a sentence shared between them or a date, bug number or attribution in either is a finding (b7cab78)
+- Enroll node asks which system the machine runs, from a pulldown of the systems walked on a node (Ubuntu, Rocky Linux; the rest behind Offer dev features, tagged dev), and the script it makes carries that system's provisioner family and refuses a machine of another family by name (416aad8)
+- A container's row on the Docker tab routes it through the node's nginx: a certificate (its domain the hostname; none for 80 alone) and one of its published ports, written to the nginx tab and applied; a port with a route already is refused by name (d415a02)
+- A route through nginx takes a hostname: typed into a route row on the nginx tab (type a hostname in its pick) or into a Docker row's Route through nginx, a subdomain under the certificate's domain, and the name joins Hostnames when saved (e255f9c)
+- Forgejo is a vetted git host: the lab stack carries a Forgejo beside its Gitea (port 3001, the same administrator), the forge suite runs against it under its own catalog entry, and a runner registers with it from a node (5f8d703)
+- Copy or move asks what to do with the container's data: unpack it into its volumes on arrival (writing over a volume of the same name already there, which it says), carry it as an archive in the compose directory with an unpack link on the row for later, or leave it here and send the container alone (b1ae732)
+- A push is read for secrets before it goes: a token, a key, a password, a private key, an address with a password, an email or IP address in what bb git push or the Git view's Push would send holds it, the bell shows the lines, and an approved line is not asked about again until it changes (986793d)
 
 ### Changed
 
@@ -301,6 +308,14 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - What a session is handed opens with a short core of what holds every time, then the house rules, then the project's own lines and an index of the rest of the briefing as topics, each read whole with bb help TOPIC when the work reaches it; the roadmap and the bugs are a count and the verbs, and the items and bugs a prompt names, by number or by words shared with the title, arrive on that prompt, once a conversation (R202)
 - Every tab's corner button reads Refresh, the Storage and nginx tabs' Reload among them, and the button itself says Refreshing while the answer is on its way, where the Phone and Docker tabs said it beside the button (9297925)
 - The Settings tab's Public hostname group is Reach from outside, and its status line names the nodes that come in through the controller's tunnel; each node's row says how it reaches the controller (over the LAN, over WireGuard, or through the public hostname), as it was enrolled (326947e)
+- The Docker tab's row for the nginx BuilderBot deployed keeps Up, Down, Remove and the image update, and loses Edit, Rebuild and Copy or move: what a person changes about it is the nginx tab's, where Deploy makes it again (c926aee)
+- The nginx tab's certificate field is Filed under, with its placeholder saying the certificate's own names decide and its hint saying when to type one (57a2fcf)
+- A container copied or moved to another node arrives built and down, with Up on its row there; a move still takes the old node's down once the build lands (71d49c1)
+- A design pass (R210): text a step larger at a desk, buttons in the page's font, and under each row a state pill, one mono line of facts and notices behind a colored bar; a container's settings are one grid with one Apply, and its bar keeps Up, Down and the build with the rest behind More (c3f03a7)
+- A project's settings offer one list of nodes under Also works on, a hosting-only node marked Hosting only in it, in place of a second Hosts its containers on list; a hosting node left unticked stays yours to copy to and rebuild on (b59527f)
+- A build of an instance pinned to a branch opens its log with the commit it builds from and says that untracked and ignored files of the working tree are not in it (f9e5027)
+- The controller's log says when the agent's sources changed under it, naming the newest file and the digest it ships now, so a node held on the old digest has a reason beside it (f9e5027)
+- A container on a node that keeps its ports on loopback says why it still publishes on every address: the variable in its compose file that defaults to 0.0.0.0 (or the address written in), and what to set; a down one says so before it comes up (27bdc3b)
 
 ### Removed
 
@@ -500,6 +515,13 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Deleted projects dialog's delete-for-good button shows its bin icon (9297925)
 - A rule that refuses a command matches the program's name, not any word of the line: reading the test runner with sed is no longer refused as running it, and bb tests preflight --dry runs in the foreground (9297925)
 - Un-enrolling a node from its row retires it when the uninstall has stopped the agent: the job read canceled and the row stayed, quiet and empty (4a547c6)
+- A version a project pins in its Gradle files (ndkVersion, buildToolsVersion, compileSdk) is a row of its own on its node's Toolchains tab, named for the project, so a store that holds only the newest NDK or build-tools no longer strands it (4ca99b5)
+- The nginx tab re-reads when a route or certificate is written from elsewhere: a container row's Add route, bb or another browser, within a poll rather than at its next Refresh (b59527f)
+- The Toolchains tab no longer offers an update a toolchain already has when the two sides write the same release differently (Swift 6.4 against 6.4.0): trailing zeros are ignored in the comparison (b59527f)
+- Copy or move of a container written on the Docker tab whose compose builds an image ships the image from its project's node, as a project's own instances do, instead of building on the node it lands on, which a hosting node cannot (332a95c)
+- The nginx tab answers in a moment again: each node's container state and port clash are read from its daemon once every 20 seconds rather than on every poll, so a slow node no longer holds the tab (and the Docker tab's env read behind it) for 40 seconds (f9e5027)
+- The graphics toolchain says before downloading anything that ImageMagick's AppImage needs glibc 2.35, on a node that has an older one (Rocky 9), instead of failing after the download (f9e5027)
+- A project's Docker view no longer re-reads the manager on every status poll: on an agent node that read ran through the agent and moved the nodes token, which ran the status poll again, 134 requests in 30 seconds; it re-reads when the manager's token moves, as the Docker tab does (3b5a29f)
 
 ### Security
 
@@ -522,6 +544,26 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Only BuilderBot's owner can change which other projects a project's sessions may read; administrators and users see the list, and the settings dialog says why they cannot change it (3a7a58f)
 - The new-diagnostics notice is shown only where reading the diagnostics is allowed: debug mode on, the project granted them, an account with the debug grant (b31c7ad)
 - The Docker tab's copy of the nginx container's compose file carries a line in place of the private key, and saving that copy back is refused: the file is the nginx tab's to write (B656) (ca1b299)
+
+### Dashboard
+
+- The New project and Link dialogs ask for the repository's address first and read the git host from it on a row under it; a server nobody has answered for is the one case the row is a question (286127b)
+- Dark, Light or System beside the color scheme in the gear: every one of the thirteen schemes has a light half now, kept with the scheme in the browser and on the account (7af2b7b)
+- The Docker tab at a glance: tiles for what runs of what is here, updates due and projects; chips that narrow the list to one project; a container's row as a facts grid with a dotted state pill (ff1afb7)
+- A running container's row carries a strip of what it uses now: CPU, memory, network in and out, processes, sampled beside the list (ff1afb7)
+- A container's row has a Log fold: the last lines of each of its containers, read when opened, again on request, and every few seconds with Follow ticked (ff1afb7)
+- The Docker tab has an Images and volumes section: what the daemon holds and what a prune would give back, each image in use or not, each volume, and Prune images or Prune volumes for an administrator (ff1afb7)
+- The Docker tab has a List view, one line per container that opens into its card, a search box in its bar, published ports as links with the nginx route beside them, and Docker's health said on the state pill (80b9b56)
+- The Jobs, Toolchains and Emulator tabs open on a row of tiles: what runs and what finished, what is installed and what a project needs, the images held and the AVDs on them (5270f6b)
+- A project's Node picker no longer offers a hosting-only node: it is a row under Also works on, marked Hosting only, and nothing else (bc5a138)
+
+### Sessions
+
+- A session's tool calls are no longer refused as 'BuilderBot is restarting' while the controller is merely slow to answer: the gate tells a busy controller from one that is down (6c27b71)
+
+### Toolchains
+
+- The Toolchains tab also lists the build-tools a project's Android Gradle plugin version defaults to when none is pinned, and the Emulator tab says which level its projects compile against with no image of it here, naming the image to pick (dce3331)
 
 ## 0.7.0: 2026-09-25
 

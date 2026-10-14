@@ -20,7 +20,7 @@ stopped by a hook when it runs, with the reason.
 - A refusal (a project's dial, a hook, a permission prompt) is an answer: never route around it.
 - Run `bb tidy` when a task or a batch of them is done.
 - Where a name is defined or called: `bb map find NAME` and `bb map who-calls NAME`; grep is for text.
-- The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step done R4 2`; `bb report "..."` for a problem with BuilderBot itself.
+- The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself.
 - `bb version policy` before moving the version; `bb changelog add "..." --cat NAME` for what a change means to the person using it.
 - Another account's branch (claude/<their name>) is theirs: merge, rebase or delete it only when asked.
 - The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
@@ -338,7 +338,11 @@ arrives as git's environment, so a commit that cannot find an author is a
 fault to report, not one to fix with `user.name`. Pushing is `bb git push`
 (also `fetch`, `pull`, `ls-remote`): the controller holds the keys, and a
 plain `git push` says so. `bb git policy` prints what you may push: your own
-branches, not a tag, a deletion or a branch only the host has. What CI
+branches, not a tag, a deletion or a branch only the host has. A push whose
+lines look like a secret or something private (a token, a key, a password,
+an address) is held: the person reads those lines on the bell and approves
+or denies while `bb git push` waits, and an approved line is not asked about
+again until it changes. What CI
 printed is `bb ci-log` (`--list` for the runs), failed jobs' ends first. The
 controller looks at a project's CI once a day (a moving runner label, an
 action a major behind, a red main branch, GitHub's own notices), and `bb
@@ -504,9 +508,9 @@ a file in the tree: `bb devapp env` prints it, a compose line `env_file:
 project is expected. A compose file in a folder starts from its own folder's
 `.env.example`, never the root's, and a variable the file requires
 (`${NAME:?...}`) is set in the env before the first build, or the build
-stops at the gate asking for it. A project may also name hosting-only nodes
-(Hosts its containers on, in its settings), which hold no code and no
-session: `bb devapp new --node NODE` builds one here and ships it there, and
+stops at the gate asking for it. A project may also tick hosting-only nodes
+(marked Hosting only under Also works on, in its settings), which hold no
+code and no session: `bb devapp new --node NODE` builds one here and ships it there, and
 rebuild and remove reach it; sending a container to any other node, and
 copying or moving one with its data, is a person's on the Docker tab. A
 build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION` (the commit,

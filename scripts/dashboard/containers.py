@@ -627,7 +627,20 @@ def admin_verb(act, name, nid, under):
             return _answer(r)
         if act == "logs":
             return container_logs(name), 200
+        # The two prunes the Images and volumes section offers (R216):
+        # `name` is which, images or volumes, and nothing is named.
+        if act == "prune":
+            if name not in ("images", "volumes"):
+                return {"error": "prune images or volumes"}, 400
+            return _answer(devapp.prune(name))
         return _answer(container_ctl(name, act))
+
+
+def images_view(nid):
+    """The daemon's images and volumes on node `nid` (R216), as
+    devapp.images_view reads them, under that node's address."""
+    with devapp.on_node(nid or None):
+        return {"node": nid, **devapp.images_view()}
 
 
 def tab_verb(act, name, req, seen):
@@ -682,6 +695,25 @@ def tab_verb(act, name, req, seen):
     return _answer(r)
 
 
+def stats_view(nid, seen):
+    """What the containers on `nid`'s daemon are using now (R216), by
+    name: the page asks for it beside the list, never inside it. `seen` as
+    manager_view takes it: an administrator reads every container, anybody
+    else the containers of the instances of their projects."""
+    import contextlib
+    with contextlib.ExitStack() as ctx:
+        ctx.enter_context(devapp.read_scope())
+        if nid:
+            ctx.enter_context(devapp.on_node(nid))
+        got = devapp.stats()
+    if seen is not None:
+        mine = {devapp._pname(p, i) for p, insts in devapp._load().items() if p in seen for i in insts}
+        got = {"error": got.get("error", ""),
+               "stats": {n: v for n, v in (got.get("stats") or {}).items()
+                         if any(n == pn or n.startswith(pn + "-") or n.startswith(pn + "_") for pn in mine)}}
+    return {"node": nid, **got}
+
+
 def manager_view(nid, seen):
     """The Docker manager's whole page in one answer: every instance bound
     to the node, and every container on that node's daemon that is not one
@@ -708,8 +740,27 @@ def manager_view(nid, seen):
     # a container moved to a VPS that then answers nowhere (11 Oct).
     got["nginx_ports"] = sorted({int(r.get("port") or 0) for r in (nginxproxy.record(got["node"]).get("routes") or [])}
                                 if got["ports_local"] else set())
+    # ...and the node's nginx as a row would route through it (R209): whether
+    # it is deployed, the certificates it holds (by the domain each is filed
+    # under) and the ports its routes already point at, whatever the node's
+    # port setting.
+    nrec = nginxproxy.record(got["node"]) if got.get("node") else {}
+    got["nginx"] = {"deployed": bool(got.get("node")) and nginxproxy.deployed(devapp, got["node"]),
+                    "certs": sorted(k for k, v in (nrec.get("certs") or {}).items() if (v or {}).get("set")),
+                    "routed": sorted({int(r.get("port") or 0) for r in (nrec.get("routes") or [])}),
+                    # ...and each route whole, so a row can say the address
+                    # nginx answers for its port at (R216).
+                    "routes": [{"host": r.get("host") or "*", "path": r.get("path") or "/",
+                                "port": int(r.get("port") or 0), "tls": bool(r.get("tls"))}
+                               for r in (nrec.get("routes") or [])]}
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
+        # Why a row publishes on every address of a node whose ports stay
+        # on it (R217): 0.0.0.0 in its compose file, by name or through a
+        # variable defaulting to it, wins over the daemon's loopback default,
+        # and a down row with such a file will do the same when it comes up.
+        if got["ports_local"]:
+            i["open_from"] = devapp.every_address(i.get("project", ""), i.get("instance", "") or devapp.MAIN)
         # A node's nginx behind the newest line says so on its row, with
         # Update (R192); "" for every other row.
         if i.get("owner") == devapp.SYSTEM:

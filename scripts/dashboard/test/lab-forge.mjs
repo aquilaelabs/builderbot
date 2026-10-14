@@ -24,6 +24,10 @@ if (!GITEA){
   console.log('SKIP  lab-forge: BB_LAB_GITEA is not set (bb tests lab sets it)');
   process.exit(0);
 }
+// Which catalog entry the link names: gitea, or forgejo for the lab's
+// Forgejo (BB_LAB_FORGE), which answers the same API under its own name.
+const FORGE = process.env.BB_LAB_FORGE || 'gitea';
+const NAME = { gitea: 'Gitea', forgejo: 'Forgejo' }[FORGE] || FORGE;   // as the catalog names it, in notes and on the version block
 const USER = process.env.BB_LAB_USER || 'labadmin';
 const PASS = process.env.BB_LAB_PASS || 'labpassword';
 const HOST = GITEA.replace(/^https?:\/\//, '');
@@ -44,7 +48,7 @@ const forge = async (method, path, body, auth = null) => {
 };
 {
   const v = await forge('GET', '/version');
-  ok(v.status === 200 && v.body?.version, `the lab's Gitea answers at ${GITEA} (${v.body?.version})`);
+  ok(v.status === 200 && v.body?.version, `the lab's ${FORGE} answers at ${GITEA} (${v.body?.version})`);
   const t = await forge('POST', `/users/${USER}/tokens`,
     // write:user as well: creating a repository under the ACCOUNT goes
     // through POST /user/repos, which Gitea gates on that scope (measured
@@ -64,6 +68,13 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(URL);
 await ready(page);
+// A host not yet vetted is offered only with Offer dev features on: this run
+// is what vets it, so the switch goes on for it in this scratch world.
+if (FORGE !== 'gitea'){
+  await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ set: { offer_unvetted: true } }) }); });
+  ok(true, `${FORGE} is offered for this run with Offer dev features on`);
+}
 const api = (path, body) => page.evaluate(async ([p, b]) => {
   const r = await fetch(p, b ? { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                  body: JSON.stringify(b) } : {});
@@ -90,10 +101,10 @@ const made = [];   // owner/repo pairs to delete at the end
 // not exist yet, then the commit pushed over the stored credential.
 {
   const repo = `lab/beta-${stamp}`;
-  const r = await api('/api/link', { name: 'beta', url: `${GITEA}/${repo}`, forge: 'gitea', token });
+  const r = await api('/api/link', { name: 'beta', url: `${GITEA}/${repo}`, forge: FORGE, token });
   ok(r.status === 200 && r.body.started, `linking beta to ${repo} starts the job (${r.status}: ${r.body.error || 'ok'})`);
   const j = await jobDone();
-  ok(!j.error && /created lab\/beta-.* on Gitea/.test(j.note || '') && /pushed/.test(j.note || ''),
+  ok(!j.error && new RegExp(`created lab\\/beta-.* on ${NAME}`).test(j.note || '') && /pushed/.test(j.note || ''),
      `...which creates the repository under the organization and pushes (${j.error || j.note})`);
   made.push(repo);
   const got = await forge('GET', `/repos/${repo}`);
@@ -131,8 +142,8 @@ const made = [];   // owner/repo pairs to delete at the end
   writeFileSync(`${DIR}/ws/beta/dist/${apk}`, 'lab build');
   const rel = await api('/api/version', { project: 'beta', action: 'release' });
   const fg = rel.body.released?.forge || {};
-  ok(rel.status === 200 && rel.body.released?.pushed && fg.made && fg.forge === 'Gitea',
-     `Release pushes v0.1.0 and makes Gitea's release beside it (${rel.status}: ${rel.body.error || fg.error || fg.url})`);
+  ok(rel.status === 200 && rel.body.released?.pushed && fg.made && fg.forge === NAME,
+     `Release pushes v0.1.0 and makes ${NAME}'s release beside it (${rel.status}: ${rel.body.error || fg.error || fg.url})`);
   const on = await forge('GET', `/repos/${repo}/releases/tags/v0.1.0`);
   ok(on.status === 200 && on.body?.name === '0.1.0' && /- The lab release/.test(on.body?.body || ''),
      `...titled with the version, its notes the changelog's section (${on.status}: ${JSON.stringify(on.body?.body || on.body)?.slice(0, 80)})`);
@@ -143,10 +154,10 @@ const made = [];   // owner/repo pairs to delete at the end
   // on a LAN serves it over plain http (B505: only https was linked).
   await page.evaluate(() => openNotebook('beta', 'artifacts'));
   const link = await page.waitForFunction(() => {
-    const ln = [...document.querySelectorAll('.verln')].find(x => /^on Gitea/.test(x.textContent.trim()));
+    const ln = [...document.querySelectorAll('.verln')].find(x => /^on (Gitea|Forgejo)/.test(x.textContent.trim()));
     return ln?.querySelector('a')?.href || '';
   }, null, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => '');
-  ok(link === fg.url, `the version block says on Gitea and links to the release (${link || 'no link'})`);
+  ok(link === fg.url, `the version block says on ${NAME} and links to the release (${link || 'no link'})`);
   // ...then edited (R139): the notes replaced, a committed screenshot
   // attached and shown in them by (asset:NAME), and an edit again replaces
   // the file of that name rather than doubling it.
@@ -182,7 +193,7 @@ const made = [];   // owner/repo pairs to delete at the end
      'a second Release is refused at the tag, so nothing is made twice');
   // A second link to the same repository is refused: it is not empty now.
   git('delta', 'add', '-A'); git('delta', 'commit', '-q', '-m', 'lab: delta');
-  const again = await api('/api/link', { name: 'delta', url: `${GITEA}/${repo}`, forge: 'gitea', token });
+  const again = await api('/api/link', { name: 'delta', url: `${GITEA}/${repo}`, forge: FORGE, token });
   const jj = await jobDone();
   ok(again.status === 200 && /not empty/.test(jj.error || ''),
      `a repository that already holds commits is refused, so nothing is overwritten (${jj.error || jj.note})`);
@@ -198,7 +209,7 @@ const made = [];   // owner/repo pairs to delete at the end
   ok(u.status === 200 && !existsSync(`${DIR}/state/gitcreds/beta`),
      'unlinking takes the remote and the stored token off');
   const repo = `${USER}/beta-again-${stamp}`;
-  const r = await api('/api/link', { name: 'beta', url: `${GITEA}/${repo}`, forge: 'gitea', token });
+  const r = await api('/api/link', { name: 'beta', url: `${GITEA}/${repo}`, forge: FORGE, token });
   const j = await jobDone();
   ok(r.status === 200 && !j.error && /created/.test(j.note || ''),
      `linking again under the account creates the repository there (${j.error || j.note})`);
@@ -211,7 +222,7 @@ const made = [];   // owner/repo pairs to delete at the end
 // Somebody else's name is refused, not silently created under the account.
 {
   const repo = `nobody-${stamp}/x`;
-  const r = await api('/api/link', { name: 'delta', url: `${GITEA}/${repo}`, forge: 'gitea', token });
+  const r = await api('/api/link', { name: 'delta', url: `${GITEA}/${repo}`, forge: FORGE, token });
   const j = await jobDone();
   ok(r.status === 200 && /is not an organization this token can create in/.test(j.error || ''),
      `a path under a name that is neither an organization nor the account is refused with the reason (${(j.error || j.note || '').slice(0, 120)})`);
@@ -221,7 +232,7 @@ const made = [];   // owner/repo pairs to delete at the end
 
 // A token the forge does not accept is refused before anything is written.
 {
-  const r = await api('/api/link', { name: 'delta', url: `${GITEA}/lab/never-${stamp}`, forge: 'gitea',
+  const r = await api('/api/link', { name: 'delta', url: `${GITEA}/lab/never-${stamp}`, forge: FORGE,
                                      token: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' });
   ok(r.status === 400 && /does not accept that token/.test(r.body.error || ''),
      `a token the forge rejects is refused at the press (${r.body.error})`);

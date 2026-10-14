@@ -452,7 +452,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // Waited for and read in one go: the tab repaints from the poll, and this
   // read used to land between two draws about one run in several.
   const emptyWhy = await page.waitForFunction(() => {
-    const e = document.querySelector('.dmtab .empty');
+    const e = document.querySelector('.dmtab .dmnote, .dmtab .empty');
     return e && e.textContent.trim() ? e.textContent : false;
   }, null, { timeout: 15000 }).then(h => h.jsonValue());
   // FOUR refusals, not three. The fixture kills the host, and which of
@@ -1184,6 +1184,17 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const hi = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
     ok(hi.host_only === true && hi.bundle === '' && (hi.session_tokens || []).length === 0,
        `its hello says so, hands it no bb bundle and no session token (${JSON.stringify([hi.host_only, hi.bundle])})`);
+    // ...and a project's Node picker does not offer it (the operator, 14
+    // Oct): it is a row under Also works on, marked Hosting only, and
+    // nothing else.
+    await page.evaluate(async () => { nodesList = null; await loadNodes(); });
+    await page.evaluate(n => renameProject(n), 'gamma');
+    await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+    await page.waitForFunction(id => [...document.querySelectorAll('#rnNodesMore input')].some(i => i.value === id), minted.id, { timeout: 10000 });
+    ok(!(await page.$$eval('#rnNode option', (os, id) => os.some(o => o.value === id), minted.id))
+       && /Hosting only/.test(await page.$eval('#rnNodesMore', b => b.textContent)),
+       'a hosting-only node is not offered as a project\'s primary, only under Also works on, marked Hosting only');
+    await page.click('#rnCancel');
     // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
     // its row, no row on its Toolchains tab.
     await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:claude"]'), ROW, { timeout: 10000 }).catch(() => {});
@@ -1323,11 +1334,11 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(!hosted.error && hostsNow.join() === minted.id,
        `...but a project may name it under Hosts its containers on (${hosted.error || hostsNow.join()})`);
     await page.evaluate(n => renameProject(n), 'gamma');
-    await page.waitForSelector('#rnHosts:not([hidden]) input:checked', { timeout: 10000 });
-    ok(await page.$eval('#rnHostsLabel', e => e.textContent) === 'Hosts its containers on'
+    await page.waitForSelector(`#rnNodesMore:not([hidden]) input[value="${minted.id}"]:checked`, { timeout: 10000 });
+    ok(/\(Hosting only\)$/.test(await page.$eval(`#rnNodesMore input[value="${minted.id}"]`, i => i.parentElement.querySelector('span').textContent))
        && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
-       '...shown ticked in the project\'s Where it runs, nothing unsaved');
-    await page.click('#rnHosts input:checked');
+       '...shown ticked under Also works on, marked Hosting only, nothing unsaved');
+    await page.click(`#rnNodesMore input[value="${minted.id}"]`);
     const unErr = await sectSave(page, 'runs');
     const left = (await gammaHosts('')).length;
     ok(!unErr && left === 0, `...and unticked there and saved, it is taken off (${unErr || left})`);
@@ -1818,6 +1829,33 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       await hello(ANDROID);
     }
 
+    // A level a project compiles against with no image of it here is said
+    // on this tab, with the index's plain image of that level to pick (B720:
+    // the Toolchains tab had guessed the id and failed the job with it).
+    {
+      const { writeFileSync, mkdirSync, rmSync } = await import('node:fs');
+      mkdirSync(`${DIR}/ws/alpha/app`, { recursive: true });
+      writeFileSync(`${DIR}/ws/alpha/app/build.gradle.kts`, 'android {\n    compileSdk = 31\n}\n');
+      await napi('/api/prefs', { project: 'alpha', node: minted.id });
+      const lv = await emuApi();
+      const need = (lv.needed || []).find(x => x.level === '31');
+      ok(need && need.projects.includes('alpha') && need.pick === 'system-images;android-31;google_apis;x86_64',
+         `a level a project compiles against with no image of it here is said, with the index's plain image to pick (${
+           JSON.stringify(lv.needed)})`);
+      await page.evaluate(() => { emu = null; loadEmulator(); });
+      await page.waitForFunction(() => /alpha compiles against 31 and no image of that level is here: system-images;android-31/.test(
+        document.querySelector('.emutab .emlevel')?.textContent || ''), null, { timeout: 15000 });
+      ok(true, '...and the tab says so above the picker, naming the image');
+      await napi('/api/prefs', { project: 'alpha', node: '' });
+      rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });
+    }
+
+    // The images at a glance (R216): tiles of how many, the AVDs on them.
+    await page.evaluate(() => { emu = null; loadEmulator(); });
+    await page.waitForSelector('.emutab .tiles .tile', { timeout: 15000 });
+    ok((await page.$$eval('.emutab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('images'),
+       'the Emulator tab opens on tiles: images held and the AVDs built on them');
+
     // An agent too old to report the field at all is not a node with no
     // images: the tab would otherwise say "no image" for a node never asked.
     const noField = { ...ANDROID }; delete noField.images;
@@ -2275,11 +2313,17 @@ await page.evaluate(() => nodeAct({ action: 'paths', id: nodesList.find(n => n.n
 // Retire what this file made, the way agent.mjs does: the store outlives a
 // suite, and a node left online here becomes the DEFAULT node for the files
 // after it, which sent devapp's compose at a machine that does not exist.
+// ...and a node that leaves re-runs the Doctor (B710): its cached verdict
+// named the node's daemon for up to half an hour after the row was gone.
+const docBefore = await page.evaluate(() => state.doctor?.when || 0);
 for (const n of (await (await fetch(URL.replace(/\/$/, '') + '/api/v1/nodes',
      { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json()).nodes){
   if (n.kind !== 'local' && n.name !== 'sandbox')
     await page.evaluate(id => nodeAct({ action: 'retire', id }), n.id);
 }
+await page.waitForFunction(t => (state.doctor?.when || 0) > t, docBefore, { timeout: 60000 }).catch(() => {});
+ok(await page.evaluate(t => (state.doctor?.when || 0) > t, docBefore),
+   'retiring a node re-runs the Doctor, so its verdict stops naming the node');
 
 // ---- a machine to enroll, before there is one -------------------------------
 // The Nodes tab renders the domain XML for a sandbox VM rather than asking
@@ -2295,6 +2339,11 @@ await page.waitForSelector('.nodestab #ndVm', { timeout: 20000 });
 // somebody having to remember the flag.
 await page.click('.nodestab #ndEnroll');
 await page.waitForSelector('#ndBody #ndEnUser', { timeout: 10000 });
+// The machine's system (R204): the vetted ones by name, nothing tagged dev
+// while Offer dev features is off, Ubuntu first as the default.
+const sysOpts = await page.$$eval('#ndBody #ndEnSystem option', os => os.map(o => `${o.value}:${o.textContent}`));
+ok(sysOpts.length >= 2 && sysOpts[0].startsWith('ubuntu:') && sysOpts.some(o => o.startsWith('rocky:')) && !sysOpts.some(o => /\(dev\)/.test(o)),
+   `the dialog asks which system the machine runs, the walked ones only (${sysOpts.join(', ')})`);
 ok(await page.$eval('#ndBody #ndEnUser', i => i.value) === 'bb',
    'Enroll node opens on bb as the account jobs run as');
 await page.fill('#ndBody #ndEnName', 'joesbox');
@@ -2394,6 +2443,10 @@ await page.evaluate(async () => {
   const prov = readFileSync(`${REPO}/nodes/provision-linux.sh`, 'utf8');
   ok(/^enroll-cloudbox-n_[0-9a-f]+\.sh$/.test(file) && script.startsWith('#!/usr/bin/env bash') && part('PROVISIONER') === prov,
      `Make the script saves ${file}, named with the row's id, the provisioner this controller ships inside it`);
+  // ...and the picked system's family file beside it (R204): Ubuntu's is the
+  // Debian family's, sourced by the core from $dir/provision-family.sh.
+  ok(part('FAMILY') === readFileSync(`${REPO}/nodes/families/deb.sh`, 'utf8') && /base64 -d > "\$dir\/provision-family\.sh"/.test(script),
+     'the script carries the picked system\'s provisioner family beside the core');
   const conf = part('WGCONF');
   ok(/AllowedIPs = 192\.168\.1\.16\/32/.test(conf) && !/0\.0\.0\.0\/0|DNS/.test(conf) && /PersistentKeepalive = 25/.test(conf),
      `...with the router's config routing the controller alone (${conf.split('\n').filter(l => /Allowed|Keep/.test(l)).join('; ')})`);

@@ -75,8 +75,26 @@ def _load():
         return {}
 
 
+# The token the nginx tab watches (/api/revs `nginx`, B714): moved by every
+# write of the record and of the hostnames, so a route added from a Docker
+# row, from bb or from another browser reaches an open tab within a poll
+# rather than at its next Refresh. A counter, not an mtime: the tab stages
+# a draft per node and redraws around it.
+_rev = 0
+
+
+def _bump():
+    global _rev
+    _rev += 1
+
+
+def rev():
+    return _rev
+
+
 def _save(d):
     write_json(_file(), d)
+    _bump()
 
 
 def _cert_dir(nid, host=""):
@@ -318,7 +336,7 @@ def set_cert(nid, cert, key, host=""):
         return got
     host = host or domain_of(got.get("names") or got.get("subject") or "")
     if not host:
-        return {"error": "that pair names no hostname: say what it is for under Known as"}
+        return {"error": "that pair names no hostname: say which domain it is for under Filed under"}
     d = _cert_dir(nid, host)
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name, text in (("cert.pem", cert), ("key.pem", key)):
@@ -381,7 +399,10 @@ def _migrate(nid):
                     (src / name).replace(dst / name)
             rec.setdefault("certs", {}).setdefault(key, cur)
         rec.pop("cert", None)
-        _save(st)
+        # Written without moving the tab's token: this runs on a READ (the
+        # Docker list reads the record for its rows), and a token moved by
+        # a read had the Docker tab re-reading itself (uniform.mjs, 13 Oct).
+        write_json(_file(), st)
 
 
 # ---- the tab's verbs ----------------------------------------------------------
@@ -535,10 +556,44 @@ def deployed(devapp, nid):
     return bool(devapp.is_file_source(name) and devapp._read_rec(name, devapp.MAIN).get("node") == nid)
 
 
+# The daemon half of a row (the deployed container's state and the ports
+# something else holds), kept per node for DAEMON_TTL seconds (B717). Both
+# are reads of the node's docker, one probe job on an agent node each, up to
+# 25 s on a quiet one: the tab's every poll paid them for every node, which
+# held the view 40 s through production while the operator looked at the
+# nginx tab, and a Docker tab beside it sat on 'reading its env' behind the
+# same node's channel. A row read within the TTL is the last answer; a
+# Deploy, Save or Remove bumps the record, a compose job's end moves the
+# manager's job revision, and the next read after either is fresh.
+DAEMON_TTL = 20.0
+_daemon_memo = {}      # node id -> (expires, key, state or None, clash)
+_memo_lock = threading.Lock()
+
+
+def _daemon_half(devapp, instance_state, nid, name, is_up):
+    key = (_rev, getattr(devapp, "job_rev", lambda: "")())
+    now = time.monotonic()
+    with _memo_lock:
+        got = _daemon_memo.get(nid)
+    if got and got[0] > now and got[1] == key:
+        return got[2], got[3]
+    state, clash = None, []
+    if is_up:
+        with contextlib.suppress(Exception):  # noqa: BLE001 (a row still draws without its state)
+            state = instance_state(name, devapp.MAIN)
+    with contextlib.suppress(Exception):  # noqa: BLE001 (a node that does not answer has no clash to show)
+        with devapp.on_node(nid):
+            clash = taken_ports(name, devapp.MAIN, [{"published": "80"}, {"published": "443"}])
+    with _memo_lock:
+        _daemon_memo[nid] = (time.monotonic() + DAEMON_TTL, key, state, clash)
+    return state, clash
+
+
 def view(devapp, instance_state):
     """Every agent node with what its nginx is: deployed or not, its routes,
     its certificate (never the key), and the containers on it holding 80 or
-    443 themselves. `instance_state` is devactions.state, for a deployed one."""
+    443 themselves. `instance_state` is devactions.state, for a deployed one.
+    The two daemon reads per node come from a short memo (_daemon_half)."""
     out = []
     for n in node_list():
         if n.get("kind") != "agent" or n.get("state") in ("retired", "pending"):
@@ -557,12 +612,9 @@ def view(devapp, instance_state):
                "live": n.get("live"), "clash": [],
                # What it is pinned to and the line it would move to (R192).
                "image": image_of(rec) | {"ref": image_ref(rec)}, "behind": behind(rec)}
-        if is_up:
-            with contextlib.suppress(Exception):  # noqa: BLE001 (a row still draws without its state)
-                row["state"] = instance_state(name, devapp.MAIN)
-        with contextlib.suppress(Exception):  # noqa: BLE001 (a node that does not answer has no clash to show)
-            with devapp.on_node(nid):
-                row["clash"] = taken_ports(name, devapp.MAIN, [{"published": "80"}, {"published": "443"}])
+        state, row["clash"] = _daemon_half(devapp, instance_state, nid, name, is_up)
+        if state is not None:
+            row["state"] = state
         out.append(row)
     return {"nodes": out, "image": IMAGE, "latest": latest_image(), "hostnames": hostnames()}
 
@@ -608,6 +660,7 @@ def add_hostname(name):
         have = _hosts_saved()
         if h not in have:
             write_json(_hosts_file(), sorted(have + [h]))
+            _bump()
     return {"ok": True, "hostnames": hostnames()}
 
 
@@ -621,6 +674,7 @@ def remove_hostname(name):
                          "take those routes off first"}
     with _lock:
         write_json(_hosts_file(), [x for x in _hosts_saved() if x != h])
+        _bump()
     return {"ok": True, "hostnames": hostnames()}
 
 
@@ -628,11 +682,61 @@ def save_routes(nid, routes):
     got = clean_routes(routes)
     if isinstance(got, dict):
         return got
+    # A hostname typed into a route row (the operator, 13 Oct: the pulldown
+    # offered no subdomain) joins the shared list, so every node's rows
+    # offer it from now on.
+    for r in got:
+        if r["host"] != "*" and r["host"] not in _hosts_saved():
+            add_hostname(r["host"])
     with _lock:
         st = _load()
         st.setdefault(str(nid), {})["routes"] = got
         _save(st)
     return {"ok": True, "routes": got}
+
+
+def add_route(nid, port, cert, containers, devactions, devapp, host=""):
+    """A route written from a container's row on the Docker tab (R209): to
+    `port` on the node, at `host` (a subdomain, the operator, 13 Oct) or
+    else at the hostname the certificate is filed under (its domain), with
+    that pair, or at any hostname on 80 alone with no certificate; applied
+    at once. A hostname the chosen pair does not cover is refused by name
+    (cert_for's rule: a pair covers its domain and the names under it). A
+    port that already has a route is refused by name: one route per port,
+    the rest is the nginx tab's."""
+    try:
+        port = int(str(port).strip())
+    except (TypeError, ValueError):
+        return {"error": "which port? one the container publishes on this node"}
+    if not 1 <= port <= 65535:
+        return {"error": f"not a port: {port}"}
+    rec = record(nid)
+    certs = rec.get("certs") or {}
+    cert = str(cert or "").strip().lower()
+    if cert and not (certs.get(cert) or {}).get("set"):
+        return {"error": f"this node holds no certificate filed under {cert}: paste it on the nginx tab first"}
+    host = str(host or "").strip().lower()
+    if host and host != "*" and not HOST_RE.match(host):
+        return {"error": f"a hostname is a name like app.example.com: not {host}"}
+    if host and cert and cert_for(rec, host) != cert:
+        return {"error": f"the pair filed under {cert} does not cover {host}: pick a pair filed under its domain, "
+                         "or paste one on the nginx tab"}
+    host = host or cert or "*"
+    if host != "*" and host not in _hosts_saved():
+        add_hostname(host)
+    routes = list(rec.get("routes") or [])
+    for r in routes:
+        if int(r.get("port") or 0) == port:
+            where = f"{r.get('host') or '*'}{r.get('path') or '/'}"
+            return {"error": f"port {port} already has a route: {where} on this node's nginx; change it on the nginx tab"}
+    routes.append({"host": host, "path": "/", "port": port, "tls": bool(cert), "cert": cert})
+    saved = save_routes(nid, routes)
+    if saved.get("error"):
+        return saved
+    r = apply(nid, containers, devactions, devapp)
+    if r.get("error"):
+        return r
+    return r | {"route": routes[-1]}
 
 
 def deploy(nid, containers, devactions, devapp):

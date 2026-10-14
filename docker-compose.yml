@@ -204,7 +204,59 @@ services:
         --email lab@example.invalid --must-change-password=false
         2>&1 | grep -v 'already exists' || true;
         echo 'lab seeded: labadmin/labpassword'
+  # ...and a real Forgejo beside it (the operator, 13 Oct: vet it as a git
+  # host), the same shape one port along: it answers Gitea's API, which is
+  # what the catalog's entry claims and what lab-forge.mjs proves against
+  # it with BB_LAB_FORGE=forgejo. Its seed is the same administrator.
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:16
+    profiles: ["lab"]
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__server__ROOT_URL: "http://${BB_LAB_HOST:-127.0.0.1}:3001/"
+      FORGEJO__server__HTTP_PORT: "3000"
+      FORGEJO__server__SSH_DOMAIN: "${BB_LAB_HOST:-127.0.0.1}"
+      FORGEJO__server__SSH_PORT: "2223"
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+      FORGEJO__actions__ENABLED: "true"
+      FORGEJO__log__LEVEL: "Warn"
+    ports:
+      - "3001:3000"
+      - "2223:22"
+    volumes:
+      - lab-forgejo:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/api/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  forgejo-seed:
+    image: codeberg.org/forgejo/forgejo:16
+    profiles: ["lab"]
+    depends_on:
+      forgejo:
+        condition: service_healthy
+    user: "1000:1000"
+    environment:
+      GITEA_WORK_DIR: /data/gitea
+      GITEA_CUSTOM: /data/gitea
+      HOME: /data/git
+    volumes:
+      - lab-forgejo:/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        forgejo --config /data/gitea/conf/app.ini admin user create
+        --admin --username labadmin --password labpassword
+        --email lab@example.invalid --must-change-password=false
+        2>&1 | grep -v 'already exists' || true;
+        echo 'lab seeded: labadmin/labpassword'
 
 volumes:
   runner-tokens:
   lab-gitea:
+  lab-forgejo:

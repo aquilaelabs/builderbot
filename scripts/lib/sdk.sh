@@ -805,8 +805,11 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
         if [ "$inst" = "-" ]; then status=absent
         elif [ "$latest" = "-" ]; then status=unknown
         # The same release written with and without its build (Temurin's
-        # 21.0.12.1+1 against java's own 21.0.12.1) is the same release.
-        elif [ "${inst%%+*}" = "${latest%%+*}" ]; then status=current
+        # 21.0.12.1+1 against java's own 21.0.12.1) is the same release, and
+        # so is one written with and without its trailing zero (Swift 6.4
+        # as the compiler prints it against swift-6.4.0-RELEASE, the tag the
+        # resolver reads: the row offered that update forever, B715).
+        elif [ "$(sdk_vnorm "${inst%%+*}")" = "$(sdk_vnorm "${latest%%+*}")" ]; then status=current
         else status=update
         fi
     fi
@@ -827,6 +830,14 @@ sdk_versions() {
     [ -n "$names" ] || names="$(sdk_checkable)"
     local n
     for n in $names; do sdk_check_one "$n" local; done
+}
+
+# A version with its trailing zero components off (6.4.0 and 6.4 are one
+# release), for the one comparison the check makes.
+sdk_vnorm() {
+    local v="$1"
+    while [ "${v%.0}" != "$v" ]; do v="${v%.0}"; done
+    printf '%s' "$v"
 }
 
 sdk_check() {
@@ -1361,8 +1372,12 @@ sdk_install() {
         command)    sdk_install_command "$what" ;;
         *) die "the catalog gives ${what} an unknown source kind: ${kind}" ;;
     esac
-    local -a after
-    sdk_meta_into after argv "$what" source.after
+    local -a after=()
+    # A versioned android id (a platform a project pins, an emulator image)
+    # has no catalog row to carry an `after`, and asking printed "no
+    # toolchain named ... in the catalog" into the job's log after a
+    # successful install (B712).
+    case "$what" in android:*\;*) ;; *) sdk_meta_into after argv "$what" source.after ;; esac
     local line; for line in "${after[@]}"; do log "$line"; done
     case "$kind" in
         tarball|script|git) log "${what} ready: new shells pick it up; this one: eval \"\$(bb toolchains env)\"" ;;

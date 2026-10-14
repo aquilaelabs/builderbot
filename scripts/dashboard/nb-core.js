@@ -633,6 +633,12 @@ function makeNotebook(project){
     if (showing("git")) loadGit();
   });
   watch("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
+  // The Docker view re-reads on the manager's token, as the Docker tab
+  // does: a job queued, taken or finished, an instance written. Not on the
+  // status poll (B727): a read of an agent node's docker is a round trip
+  // through its agent, whose heartbeat moves the nodes token, whose watch
+  // runs the status poll, which re-read docker again, 134 requests in 30 s.
+  watch("devapp", () => { if (showing("docker")) loadNbDocker(); });
   watch("reports", () => { if (showing("analysis")) loadAnalysis(); });
   watch(() => `wiki:${project}`, k => { if (showing("wiki") && wikiNews(k)) loadWiki(); });
   watch("findings", () => { if (showing("analysis")) loadAnalysis(); });
@@ -767,8 +773,7 @@ function makeNotebook(project){
       const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
       if (now !== nb.roadmapSession){ nb.roadmapSession = now; redrawRoadmap(); }
-      // The Docker view follows a running job the way the tab does.
-      if (!root.querySelector('[data-view="docker"]').hidden) loadNbDocker();
+      // The Docker view follows a job on the devapp token above, never here.
       // What this notebook re-reads and when is declared once, up where the
       // watches are taken; nothing here decides it. All six halves are on
       // the revisions poll; this poll carries only what /api/status alone

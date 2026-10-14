@@ -167,7 +167,19 @@ function renderJobsInto(i){
       </div>
     </div>`;
   }).join("");
-  d.list.innerHTML = rows + (!jobsList.length
+  // The tab at a glance (R216, the tiles rule): of the jobs listed, how
+  // many run, wait, failed and finished; a tile for a number that is zero
+  // and not news (nothing failed) is left out.
+  const count = f => jobsList.filter(f).length;
+  const tiles = !jobsList.length ? "" : statTiles([
+    {label: "running", value: count(j => j.state === "running"), tone: count(j => j.state === "running") ? "ok" : ""},
+    {label: "waiting", value: count(j => ["queued", "assigned"].includes(j.state)),
+     omit: !count(j => ["queued", "assigned"].includes(j.state))},
+    {label: "failed", value: count(j => j.state === "failed"), tone: count(j => j.state === "failed") ? "bad" : "",
+     omit: !count(j => j.state === "failed")},
+    {label: "succeeded", value: count(j => j.state === "succeeded"), sub: `of ${jobsList.length} listed`},
+  ]);
+  d.list.innerHTML = tiles + rows + (!jobsList.length
     ? `<div class="empty">${jobsActive ? "nothing is running or waiting"
                                        : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>` : "");
   // Paged like every other long list here. This one grows without bound:

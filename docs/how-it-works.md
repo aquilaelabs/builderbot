@@ -295,6 +295,22 @@ write the store, so the Android Gradle plugin cannot fetch a missing
 platform itself: a project wanting a level the store lacks names it, and
 the operator ticks the row. Before these two rows, a platform arrived only
 with an emulator image of its level, and platform 37 never arrived at all.
+What a project pins by number in its Gradle files (`ndkVersion`,
+`buildToolsVersion`, `compileSdk`) is a row of its own on the tab of the
+node it builds on, named for the project, installed or not: a store remade
+at the newest versions only had stranded a project pinning NDK 29 and
+build-tools 36, with nothing on the tab to tick. Two more rows come from
+what a build needs with no line pinning it: the build-tools its Android
+Gradle plugin version defaults to when no `buildToolsVersion` says
+otherwise (read from the version catalog, a plugins block or the old
+classpath, against the table in the plugin's release notes). The level a
+project compiles against is the Emulator tab's question instead: it says
+which of its node's projects compile against a level no image here is of,
+and names the index's plain Google APIs image of that level to pick, since
+an image exists at every level in several flavors under names only
+Google's index knows (API 37 is `android-37.0`). A project with no
+build-tools pinned had failed at the plugin's default with nothing on the
+tab naming it (diag #105 to #107).
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
 census names an NVIDIA card, the Toolchains tab shows the driver as a row of
@@ -783,9 +799,16 @@ arrangement and it survives restarts and image updates. The **▤** button in
 the top bar opens the appearance menu, whose first item puts it all back:
 default order (Doctor on top) with every card expanded.
 
-**Under it, twelve color schemes**, all dark, because this page is read in a
-dim room beside a terminal and a light one would be a different design rather
-than a recolor of this one. A scheme is nine custom properties: every rule in
+**Under it, Dark, Light or System, and fourteen color schemes**, each with
+a dark half and a light one but Nostromo, which is dark only: its hull and
+its amber are a dark room, and while it is picked the page stays dark
+whatever the switch says; Fern is its colors without the ship, rounded,
+with a light half of its own. Dark is the page read in a dim room beside a
+terminal; Light is the same scheme with the page near white, the ink dark
+and the accent pulled down to read on it; System follows the device as it
+changes. The switch is applied on the press like a scheme, kept in the
+browser so the first paint is right, and on the account so a browser that
+has never seen it starts the same way. A scheme is nine custom properties: every rule in
 the stylesheet draws from them, and the button and accent families are mixed
 from the scheme's own panel and accent (`color-mix`, with flat fallbacks), so
 a recolor reaches the tabs, the primaries and the active states rather than
@@ -897,13 +920,15 @@ lives in its body. The cards:
   [An access token for one project](#an-access-token-for-one-project),
   [A new address for the same repository](#a-new-address-for-the-same-repository) and
   [Unlinking](#unlinking).
-  Linking asks **which host**: GitHub, Gitea, Forgejo, Codeberg, GitLab,
-  Bitbucket, or another git host, because a hostname does not say what is
-  running on it, and only the person who set the server up knows. A public
-  one names itself; a self-hosted one asks for its address, and the answer is
-  remembered against that host, so the second project on the same server is
-  not asked again.
-  Then it asks for the URL and how the push authenticates: a **deploy key**
+  Linking looks like the bottom of the clone form: the repository's address
+  first, and under it a **Host** row that reads the address back: GitHub,
+  Gitea, Forgejo, Codeberg, GitLab, Bitbucket, or another git host. A public
+  host names itself and the row says so, locked. A server nobody has
+  answered for is the one case where the row is a question, because a
+  hostname does not say what is running on it and only the person who set
+  the server up knows; the answer is remembered against that host, so the
+  second project on the same server is read back rather than asked again.
+  Then it asks how the push authenticates: a **deploy key**
   the agent holds, or an **access token** for this project alone, checked
   with the host where the host has an API to ask, stored under `/config` and
   read by git's helper. It sets `origin`, records the project as able to
@@ -1066,6 +1091,22 @@ that codebase says at the time. It opens on the project's own name while the
 project has no container and on `<project>-2`, `-3` after, so another one is
 the same press, and a Claude session sends its project the same way with `bb
 devapp new`, under the project's **Run its container** setting.
+
+**The tab at a glance.** Under the bar, a row of tiles says how many
+containers run of how many are here, how many have an update due, how many
+projects they belong to, and how many on the daemon nobody here started; a
+row of chips narrows the list to one project (All puts it back, and nothing
+is saved). A container's row is its name and a state pill with a dot of its
+color, a facts grid (image, ports, containers, what it was built from, its
+compose file), its notices, its settings with one Apply, then its action
+bar. A published port is a link to where it answers, and a port nginx
+routes to shows the address as a fact beside it. Docker's health is read
+off the status and said on the pill: healthy, unhealthy or starting, not
+just running. The bar holds a search box (a name, an image, a port or a
+project, narrowing the rows as it is typed) and a Cards or List switch: in
+the list each container is one line, its name, state and facts, that opens
+into its card, which is the view for a node with thirty containers and
+this browser's choice to keep.
 
 **The daemon is a node.** The sandbox VM is enrolled on the Nodes tab like
 any other node, and what this container's paths are called over there is set
@@ -1545,7 +1586,16 @@ no other branch has until you say so twice, and says which of the two kinds
 it is: a branch whose commits change nothing `main` lacks is history going,
 not work. Merge into main waits while the copy of `main` here is behind the
 host, and names the pull, because merging into it is how that copy ends up
-both ahead and behind. The **only on `<host>`** fold says of each branch
+both ahead and behind. **A push is read before it goes** (`pushscan.py`,
+R219): the added lines of what it would send are looked at for a token, a
+key, a password, a private key block, an address with a password in it, an
+email address or an IP address, in the relay's own repository and never in
+the tree. A session's `bb git push` with such lines is held: the bell shows
+them whole, each with its file and line, Approve pushes and Deny drops it,
+and `bb git push` waits on the answer the way `bb root run` does. The Git
+view's Push shows the same lines in a confirm. An approved line in a file
+is okayed for that project (`/config/pushok.json`) and passes from then on;
+a line that changes is asked about again. The **only on `<host>`** fold says of each branch
 whether `main` already has every commit on it, and offers **Delete on
 `<host>`** for the ones where it does, which is the only case where removing
 a branch there can lose nothing. **Revert** and **Branch here**

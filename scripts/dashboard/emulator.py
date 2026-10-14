@@ -14,6 +14,7 @@ node HAS is its census (the agent walks its store); which images EXIST is
 Google's index, read here once an hour: an image is the same bytes on every
 host, so a node needs no network of its own to be offered one.
 """
+import re
 import threading
 import time
 from typing import Any
@@ -202,6 +203,32 @@ def _job(nid):
     return {"running": False}
 
 
+def level_of(image_id):
+    """The API level an image id is of: android-36, android-36.1 and
+    android-36-ext18 are all level 36."""
+    m = re.match(r"system-images;android-(\d+)", image_id or "")
+    return m.group(1) if m else ""
+
+
+def needed(n, imgs, rows):
+    """[{level, projects, pick}]: each level a project on this node compiles
+    against (compileSdk) that no image here is of, with the image to pick:
+    the index's plain google_apis image of that level (android-N, else the
+    newest android-N.x), or "" while the index has none."""
+    held = {level_of(i.get("id", "")) for i in imgs}
+    out = []
+    for level, who in sorted(toolchains.levels_needed(n["id"]).items(), key=lambda kv: -int(kv[0])):
+        if level in held:
+            continue
+        mine = [r["id"] for r in rows
+                if level_of(r["id"]) == level and r.get("kind") == "google_apis"
+                and re.fullmatch(r"system-images;android-\d+(\.\d+)?;google_apis;x86_64", r["id"])]
+        plain = [i for i in mine if "." not in i.split(";")[1]]
+        pick = plain[0] if plain else (sorted(mine, key=lambda i: i.split(";")[1])[-1] if mine else "")
+        out.append({"level": level, "projects": sorted({p for p, _ in who}), "pick": pick})
+    return out
+
+
 def payload(nid):
     n = nodes.node(nid) if nodes else None
     if not n or n["kind"] != "agent":
@@ -222,6 +249,10 @@ def payload(nid):
             # An agent too old to report its images is not a node with none.
             "known": "images" in rep,
             "missing": missing(n),
+            # The levels this node's projects compile against with no image
+            # of that level here (R215), each with the index's plain image
+            # of it in the rootable flavor to pick, where the index has one.
+            "needed": needed(n, imgs, c["rows"]),
             # A node that can never have them, and what they are packaged for:
             # said instead of a link to Toolchains, where both rows sit behind
             # "Not for this node".

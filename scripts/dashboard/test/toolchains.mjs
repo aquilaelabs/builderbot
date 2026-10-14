@@ -91,6 +91,8 @@ ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed')
    'a scratch root starts with nothing installed');
 ok(await page.$$eval('.doc .tc .nm .pill', ps => ps.length === 0),
    '...so no row carries a size or a version: nothing has been weighed yet');
+ok((await page.$$eval('.doc .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('installed'),
+   'the Toolchains tab opens on tiles: what is installed of what is offered');
 ok((await page.$eval('.tchead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
 // The catalog is a file in the repository, not a list in the server: adding a
@@ -841,6 +843,56 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   });
   ok(/On this store and used by no node: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
      `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
+}
+
+// ---- the versions a project pins are rows on its node's tab (B712) --------
+// A store remade at the newest versions only stranded a project pinning
+// NDK 29 and build-tools 36: nothing on the tab to tick. The pins are read
+// off the project's Gradle files, each a row named for the project, the
+// store's own listing saying whether it is held.
+{
+  const { writeFileSync, mkdirSync, rmSync } = await import('node:fs');
+  const api = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b ? { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) } : {})).json()), [path, body]);
+  const sb = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+  await api('/api/prefs', { project: 'alpha', node: sb.id });
+  mkdirSync(`${DIR}/ws/alpha/app`, { recursive: true });
+  writeFileSync(`${DIR}/ws/alpha/app/build.gradle.kts`,
+    'android {\n    compileSdk = 37\n    ndkVersion = "29.0.14206865"\n    buildToolsVersion = "36.0.0"\n}\n');
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ store_dirs: {
+    top: [], android: ['ndk', 'build-tools', 'platforms'],
+    versions: { ndk: ['30.0.16248370'], 'build-tools': ['37.0.0'], platforms: ['android-37.0'] } } }));
+  let got = {};
+  for (let i = 0; i < 60; i++){
+    got = await api(`/api/toolchains?node=${sb.id}`);
+    if ((got.items || []).some(r => r.name === 'android:ndk;29.0.14206865')) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  const by = Object.fromEntries((got.items || []).map(r => [r.name, r]));
+  const ndk = by['android:ndk;29.0.14206865'], bt = by['android:build-tools;36.0.0'], plat = by['android:platforms;android-37'];
+  ok(ndk && !ndk.installed && /^Needed by alpha \(app\/build\.gradle\.kts\)/.test(ndk.about) && /lacks it/.test(ndk.about)
+     && ndk.label === 'Android NDK 29.0.14206865' && ndk.terms.length,
+     `an NDK a project pins and the store lacks is a row to install, named for the project (${JSON.stringify(ndk || got).slice(0, 160)})`);
+  ok(bt && !bt.installed && bt.label === 'Android SDK Build-Tools 36.0.0',
+     `...and so is a build-tools version (${bt?.label})`);
+  ok(plat && plat.installed && plat.label === 'Android SDK Platform 37' && /holds it/.test(plat.about),
+     `...while a compileSdk the store holds (android-37.0) reads installed (${plat?.about?.slice(-30)})`);
+  ok(!Object.keys(by).some(k => /system-images/.test(k)),
+     'no image row: the level a project compiles against is the Emulator tab\'s question (B720)');
+  const drawn = await page.evaluate(async id => { tcNode = id; toolchains = null; tcRev++; drawPanes(); await loadToolchains();
+    return [...document.querySelectorAll('.doc .tc')].map(e => e.querySelector('input')?.value).filter(v => /;/.test(v || '')); }, sb.id);
+  ok(drawn.includes('android:ndk;29.0.14206865') && drawn.includes('android:build-tools;36.0.0'),
+     `...and the tab draws them as rows with a tick, like any toolchain (${drawn.join(', ')})`);
+  // Ticked and installed like any row: the versioned id is a name the node's
+  // tab drew, so the handler takes it, where a name off any tab is refused.
+  const queued = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id });
+  ok(queued.ok && /^j_/.test(queued.job || ''), `Install takes a pinned version by its id (${queued.job || queued.error})`);
+  const stray = await api('/api/toolchains', { action: 'install', names: ['android:ndk;1.2.3'], node: sb.id });
+  ok(/nothing selected/.test(stray.error || ''), `...and a version nobody pins is still refused (${stray.error})`);
+  await api('/api/toolchains', { action: 'abort', node: sb.id });
+  rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
+  await api('/api/prefs', { project: 'alpha', node: '' });
 }
 
 await done(browser);

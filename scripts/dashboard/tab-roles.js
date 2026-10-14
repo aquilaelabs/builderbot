@@ -81,9 +81,12 @@ function rolesPeopleBody(){
   // Holding a role on a project is being on it (R155): no separate box.
   const projects = (d.projects || []).map(pn => {
     const have = dr.project_roles[pn] || [];
+    // A role that is one project's (its owner role, B726) is offered
+    // under that project and no other.
+    const here = onProject.filter(r => !r.project || r.project === pn);
     return `<div class="rproj" data-rproject="${esc(pn)}">
       <div class="rprojname"><b>${esc(projLabel(pn))}</b> <span class="dim">${have.length ? "" : "not on it"}</span></div>
-      <div class="upick">${onProject.length ? onProject.map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
+      <div class="upick">${here.length ? here.map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
         have.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("") : `<span class="dim">no roles on a project yet: add one under Roles</span>`}</div>
     </div>`;
   }).join("");

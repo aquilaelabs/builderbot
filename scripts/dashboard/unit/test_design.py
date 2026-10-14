@@ -32,6 +32,36 @@ def page(blocks, **kw):
             "blocks": blocks, **kw}
 
 
+class OtherHalf(unittest.TestCase):
+    """A theme's other half (R216): the same tokens for the opposite mode,
+    kept with the theme, a bad hex dropped like any color's, and written
+    out wherever the theme's colors are."""
+    THEME = {"name": "Night", "mode": "dark",
+             "colors": [{"name": "bg", "hex": "#101010", "means": "the page"},
+                        {"name": "accent", "hex": "#3fb950", "means": "the one"}],
+             "light": [{"name": "bg", "hex": "#f4f4f4", "means": "the page"},
+                       {"name": "accent", "hex": "#1f7a3a", "means": "the one"},
+                       {"name": "accent", "hex": "#000000", "means": "twice"},
+                       {"name": "odd", "hex": "nope", "means": ""}]}
+
+    def test_the_other_half_is_kept_and_cleaned(self):
+        got, found = clean({"themes": [self.THEME]})
+        light = got["themes"][0]["light"]
+        self.assertEqual([c["name"] for c in light], ["bg", "accent", "odd"], "a name twice is dropped")
+        self.assertEqual(light[0]["hex"], "#f4f4f4")
+        self.assertEqual(light[2]["hex"], "#000000", "a hex that is not one reads as black, as a color's does")
+        self.assertTrue(any("nope" in f for f in found))
+        none, _ = clean({"themes": [{"name": "Plain", "mode": "dark", "colors": self.THEME["colors"]}]})
+        self.assertEqual(none["themes"][0]["light"], [])
+
+    def test_the_other_half_is_written_out_with_the_theme(self):
+        got, _ = clean({"themes": [self.THEME, {"name": "Day", "mode": "light", "colors": self.THEME["light"][:2]}]})
+        text = design.file_text({"language": got, "pages": []})
+        self.assertIn("Its light half, the same tokens under the mode switch:", text)
+        self.assertIn("| `--accent` | `#1f7a3a` |", text)
+        self.assertNotIn("Its dark half", text, "Day has one palette")
+
+
 class Migration(unittest.TestCase):
     def test_pre_theme_record_becomes_one_theme(self):
         got, found = clean({"scheme": "abyss", "colors": {"bg": "#000000"}})

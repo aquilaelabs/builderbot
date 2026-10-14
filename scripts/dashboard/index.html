@@ -30,6 +30,12 @@
     const t = localStorage.getItem("bb.theme");
     if (t && t !== "default" && /^[a-z]{2,12}$/.test(t))
       document.documentElement.dataset.theme = t;
+    // ...and whether it is the dark or the light half of it (R216): "system"
+    // follows the device, resolved here so the first paint is already right.
+    const m = localStorage.getItem("bb.mode");
+    if ((m === "light" || (m === "system" && matchMedia("(prefers-color-scheme: light)").matches))
+        && t !== "nostromo")
+      document.documentElement.dataset.mode = "light";
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
 
 </script>
@@ -60,6 +66,14 @@
   --btn-hi:#2b3540;     --btn-hi:color-mix(in srgb, var(--panel), #ffffff 9%);
   --accent-mid:#2ea043; --accent-mid:color-mix(in srgb, var(--accent), #000000 14%);
   --accent-deep:#1f6f36;--accent-deep:color-mix(in srgb, var(--accent), #000000 40%);
+  /* What is written on a filled accent: the ink in a dark scheme, where the
+     ink is light; white in a light one, where the ink is dark and the fill
+     is still the darkened accent (R216). */
+  --on-fill:var(--ink);
+  /* The shade at a scrolling edge (more below, more above): a deep one on a
+     dark page, a faint one on a light page, where the same shade read as a
+     smear of soot (the light half, 13 Oct). */
+  --edge-hint:rgba(0,0,0,.75);
   /* ...and capped below, in the block under this one. Every filled accent
      surface on the page draws --ink on --accent-deep: the active tab, a
      primary button, a view bar's current tab, an open select's chosen row,
@@ -149,6 +163,14 @@
      the rows under it are about. It was --f-ui at 600, a step below the
      rows it headed, and read as small (the operator, 7 Oct). */
   --f-sect:600 14px/1.4 system-ui,sans-serif;
+  /* A ROW'S FACTS: the mono line under a name (ports, a path, a revision),
+     named so it moves with the scale below rather than staying 12px while
+     everything around it grew. */
+  --f-data:12px/1.4 var(--mono);
+  --f-pill:11px/1 var(--mono);
+  /* A tile's number (R216): the one voice above --f-sect, for a figure a
+     tab is about, read from across the room. */
+  --f-stat:600 22px/1.1 system-ui,sans-serif;
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
      "reference" and "na" stop looking like the same family. */
@@ -157,6 +179,25 @@
   --blue2:#77b7e8;  --blue2-edge:#1e3a4a;
   --gold:#d8b25c;   --gold-edge:#4a3c1e;
   --red2:#e0796f;   --red2-edge:#94423d;
+}
+/* ONE STEP UP AT A DESK (the operator, 13 Oct: "a lot of text looks too
+   small on desktop in a lot of places"). The phone keeps the sizes above,
+   which were set against a thumb's width; a desk reads from further away
+   and had the same 11px explainers and 12px mono facts. Every voice moves
+   together, by one pixel, so the ladder between them (note under ui under
+   row under sect) is the same ladder at both sizes. The breakpoint is the
+   layout's own (the sidebar folds under 901px). */
+@media(min-width:901px){
+  :root{
+    --f-note:12px/1.5 system-ui,sans-serif;
+    --f-ui:13px/1.5 system-ui,sans-serif;
+    --f-row:14px/1.45 system-ui,sans-serif;
+    --f-field:12px/1.5 var(--mono);
+    --f-sect:600 15px/1.4 system-ui,sans-serif;
+    --f-data:13px/1.4 var(--mono);
+    --f-pill:12px/1 var(--mono);
+    --f-stat:600 26px/1.1 system-ui,sans-serif;
+  }
 }
 /* The cap. A lightness ceiling rather than more black, because "more black"
    is the wrong knob: it darkens the schemes that were already fine into mud
@@ -177,9 +218,8 @@
   }
 }
 /* ---- color schemes ----------------------------------------------------
-   Twelve, all dark: this page is looked at in a dim room beside a terminal,
-   and a light one would be a different design rather than a recolor of this
-   one. A scheme is nine custom properties and nothing else: every rule in
+   Fourteen, each with a dark half and a light one but Nostromo, which is
+   dark only (the light halves follow, under their own switch). A scheme is nine custom properties and nothing else: every rule in
    the sheet already draws from them, which is what makes a recolor cheap and
    a new one three lines.
 
@@ -227,6 +267,78 @@ html[data-theme="sepia"],.sw[data-theme="sepia"]{
 html[data-theme="ash"],.sw[data-theme="ash"]{
   --bg:#1b1b1b; --panel:#222322; --line:#555955; --ink:#e2e4e0;
   --dim:#a1a59f; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
+/* Fern: Nostromo's colors without the ship (the operator, 14 Oct): green
+   and amber, rounded like the rest, and a light half of its own. */
+html[data-theme="fern"],.sw[data-theme="fern"]{
+  --bg:#101712; --panel:#162018; --line:#405b37; --ink:#d7e3c8;
+  --dim:#95a488; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a}
+/* ---- the light half (R216) -----------------------------------------------
+   Every scheme has a light half: the same hue family token for token, with
+   the page near white, the ink dark, and the accent and the marks pulled
+   down to read on it (each at AA against --bg or better; the generator and
+   its ratios are in the commit that added them). html[data-mode="light"] is
+   the switch, set by the gear beside the scheme and before first paint from
+   localStorage, so a swatch in the gear shows the half that is on. What the
+   dark half derives by lightening (a button's ground, the sunk field) the
+   light half derives by darkening, and a filled accent carries white rather
+   than the ink. The purple family and its edges, the shades a few badges
+   wear, flip with it. */
+html[data-mode="light"]{
+  color-scheme:light;
+  --on-fill:#ffffff;
+  --edge-hint:rgba(0,0,0,.16);
+  --btn:#f0f2f5;        --btn:color-mix(in srgb, var(--panel), #000000 4%);
+  --btn-hi:#e6e9ee;     --btn-hi:color-mix(in srgb, var(--panel), #000000 8%);
+  --sunk:#f3f5f8;       --sunk:color-mix(in srgb, var(--panel), #000000 5%);
+  --purple:#6b45a8; --purple-edge:#dcd0f0;
+  --green2:#2f7a3e; --green2-edge:#cfe8d4;
+  --blue2:#2b6fa8;  --blue2-edge:#d3e4f3;
+  --gold:#8a6a1c;   --gold-edge:#efe3bf;
+  --red2:#b03a30;   --red2-edge:#f3cdc9;
+}
+html[data-mode="light"],html[data-mode="light"] .sw[data-theme="default"]{
+  --bg:#f1f4f7; --panel:#fcfeff; --line:#c9d2dd; --ink:#242729;
+  --dim:#5e646a; --accent:#007c05; --warn:#996200; --bad:#c3131b; --note:#0863b6}
+/* Nostromo has no light half (the operator, 14 Oct): its hull, its stencil
+   and its amber are a dark room, and a page of it near white would be a
+   different design. The gear keeps the page dark while it is picked. What
+   its light half was is Fern, a scheme of its own with rounded corners. */
+html[data-mode="light"][data-theme="fern"],html[data-mode="light"] .sw[data-theme="fern"]{
+  --bg:#f1f4f2; --panel:#fbfefc; --line:#c7d6c2; --ink:#23291c;
+  --dim:#5e6657; --accent:#974f00; --warn:#8b6100; --bad:#c11d00; --note:#41721b}
+html[data-mode="light"][data-theme="slate"],html[data-mode="light"] .sw[data-theme="slate"]{
+  --bg:#f1f3f7; --panel:#fcfdff; --line:#cbd2da; --ink:#24272a;
+  --dim:#606468; --accent:#2a61b1; --warn:#905e00; --bad:#b2373a; --note:#2e64a5}
+html[data-mode="light"][data-theme="carbon"],html[data-mode="light"] .sw[data-theme="carbon"]{
+  --bg:#f3f3f5; --panel:#fdfdfe; --line:#d0d0d5; --ink:#262627;
+  --dim:#636367; --accent:#b6192c; --warn:#905e00; --bad:#bb2933; --note:#3c5fae}
+html[data-mode="light"][data-theme="nocturne"],html[data-mode="light"] .sw[data-theme="nocturne"]{
+  --bg:#f2f3f9; --panel:#fdfdff; --line:#cecfe6; --ink:#26252e;
+  --dim:#626173; --accent:#6a44c2; --warn:#916600; --bad:#b72b4c; --note:#3262aa}
+html[data-mode="light"][data-theme="moss"],html[data-mode="light"] .sw[data-theme="moss"]{
+  --bg:#f0f5f3; --panel:#fbfefc; --line:#c8d5cb; --ink:#232823;
+  --dim:#5e6660; --accent:#00783f; --warn:#8e6800; --bad:#b33833; --note:#2b6a8c}
+html[data-mode="light"][data-theme="ember"],html[data-mode="light"] .sw[data-theme="ember"]{
+  --bg:#f6f3f1; --panel:#fffdfb; --line:#dbcfc3; --ink:#2b2520;
+  --dim:#6a6159; --accent:#a34100; --warn:#8b6100; --bad:#ba2c25; --note:#446688}
+html[data-mode="light"][data-theme="abyss"],html[data-mode="light"] .sw[data-theme="abyss"]{
+  --bg:#eff5f6; --panel:#fbfeff; --line:#c3d5d9; --ink:#212829;
+  --dim:#5a6667; --accent:#007480; --warn:#906700; --bad:#b53433; --note:#236a93}
+html[data-mode="light"][data-theme="plum"],html[data-mode="light"] .sw[data-theme="plum"]{
+  --bg:#f6f2f8; --panel:#fffcff; --line:#d9cbe1; --ink:#2a242c;
+  --dim:#695f6e; --accent:#8c3a9b; --warn:#936500; --bad:#b62b55; --note:#3d6499}
+html[data-mode="light"][data-theme="rust"],html[data-mode="light"] .sw[data-theme="rust"]{
+  --bg:#f7f2f1; --panel:#fffdfc; --line:#ddcdca; --ink:#2b2523;
+  --dim:#6a615f; --accent:#a14123; --warn:#905e00; --bad:#bc2825; --note:#416886}
+html[data-mode="light"][data-theme="ice"],html[data-mode="light"] .sw[data-theme="ice"]{
+  --bg:#f0f4f6; --panel:#fbfeff; --line:#c7d3dd; --ink:#23272b;
+  --dim:#5d6568; --accent:#00708f; --warn:#886200; --bad:#b43439; --note:#2167a0}
+html[data-mode="light"][data-theme="sepia"],html[data-mode="light"] .sw[data-theme="sepia"]{
+  --bg:#f5f3f0; --panel:#fffdfb; --line:#d7d0c3; --ink:#2b261c;
+  --dim:#6a6256; --accent:#835c00; --warn:#8a6900; --bad:#ac4133; --note:#536c43}
+html[data-mode="light"][data-theme="ash"],html[data-mode="light"] .sw[data-theme="ash"]{
+  --bg:#f3f3f3; --panel:#fdfdfd; --line:#cfd2cf; --ink:#262725;
+  --dim:#626461; --accent:#5d6945; --warn:#8d6800; --bad:#ae3e34; --note:#466979}
 
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolor. Amber phosphor on a green-black
@@ -409,7 +521,7 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
    nobody can place, where in the scheme's own accent it reads as what it
    is. Both halves declared, because a background with no color beside it
    inherits the text color it happens to land on. */
-::selection{background:var(--accent-deep);color:var(--ink)}
+::selection{background:var(--accent-deep);color:var(--on-fill)}
 
 header{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;
@@ -612,7 +724,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    field. */
 .setrow.col>input:not([type=checkbox]):not([type=number]),.setrow.col>select{width:100%;flex:0 0 auto}
 .setrow.col>input[type=number]{width:7em;flex:0 0 auto}
-.lbl{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);margin:0}
+.lbl{display:block;font:var(--f-ui);color:var(--dim);margin:0}
 .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
   margin-left:5px;border-radius:50%;border:1px solid var(--line);color:var(--dim);
   font:11px/1 system-ui,sans-serif;vertical-align:middle;cursor:help;
@@ -833,15 +945,29 @@ body.dragging .side .card h2{cursor:grabbing}
    should look like one before you press anything. The buttons inside carry
    :disabled's own fade on top of this, which is the intended reading: the row
    is inert and its controls doubly so. */
-.row.off{opacity:.62}
+/* The row's PARTS are dimmed, not the row: a More menu opened on a dimmed
+   row is drawn inside it, and an opacity on the row made the menu see-through
+   over the next row's words (R210). */
+.row.off > :not(.actbar),.row.off > .actbar > :not(.more),.row.off > .actbar > .more > button{opacity:.62}
 /* A directory name can be one long unbroken token; it wraps rather than
    handing the whole sidebar a sideways scroll. */
 .row .name{font-weight:600;overflow-wrap:anywhere}
 .row .name.go{cursor:pointer}
-.row .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
-.row .sub.bad{color:var(--bad)}
-/* A problem the page can fix is a link in the color of its own warning. */
-.row .sub.warn{color:var(--warn)}
+.row .sub{color:var(--dim);font:var(--f-data);overflow-wrap:anywhere}
+/* A NOTICE: what is wrong or what to know, under a row, in a voice of its
+   own (the operator, 13 Oct: facts, warnings and settings all wore the same
+   dim mono and read as one gray block). Sans, in the level's color, behind
+   a bar of that color, and no wider than a paragraph: the eye finds it
+   without reading the facts around it. `.notice` is the same thing where
+   there is no row (a tab's own line at the top). A problem the page can fix
+   is a link in the color of its own warning. */
+.row .sub.bad,.row .sub.warn,.row .sub.note,.notice{
+  font:var(--f-ui);padding:2px 0 2px 10px;border-left:3px solid var(--warn);
+  margin:4px 0;max-width:78ch;overflow-wrap:anywhere}
+.row .sub.warn,.notice,.notice.warn{color:var(--warn)}
+.row .sub.bad,.notice.bad{color:var(--bad);border-left-color:var(--bad)}
+.row .sub.note,.notice.note{color:var(--note);border-left-color:var(--note)}
+.notice a,.row .sub.warn a,.row .sub.bad a{color:inherit}
 /* Locked is a decision, not a fault: stated plainly rather than alarming.
    Nothing about the row is dimmed for it: a locked project is one the operator
    is actively running, and graying it out would say the opposite. */
@@ -854,8 +980,11 @@ body.dragging .side .card h2{cursor:grabbing}
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .grow{flex:1;min-width:120px}
 
+/* The page's own secondary voice, not the browser's: `font:12px/1 inherit`
+   is not valid shorthand (inherit cannot ride inside it), so the whole
+   declaration was dropped and every button wore 13.3px Arial (B711). */
 button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
-  border-radius:var(--r-control);padding:6px 10px;font:12px/1 inherit;cursor:pointer;
+  border-radius:var(--r-control);padding:6px 10px;font:var(--f-ui);cursor:pointer;
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
 /* Hover, only where there is a pointer that hovers. On a touch screen a tap
@@ -991,7 +1120,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
     min-height:var(--tap);padding:6px 9px;border-radius:var(--r-control);
     background:none;color:var(--ink)}
   select option:hover,select option:focus{background:var(--sunk)}
-  select option:checked{background:var(--accent-deep);color:var(--ink)}
+  select option:checked{background:var(--accent-deep);color:var(--on-fill)}
   select option:disabled{color:var(--dim);background:none}
   select option::checkmark{flex:0 0 auto;color:var(--accent)}
 }
@@ -999,8 +1128,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
   select::picker-icon{transition:none}
   select::picker(select){animation:none}
 }
-button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
-button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
+button.primary{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
+button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
 /* A ghosted tool's reason, under the card's buttons and on their inset. */
 .toolwhy{padding:0 10px 9px;margin:0;font:12px/1.4 var(--mono);color:var(--bad);overflow-wrap:anywhere}
@@ -1206,7 +1335,7 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
    each edge with more past it, a darkening as a shadow falls (the operator,
    30 Sep), and a thin scrollbar where the platform draws one. */
 .modal .box,.modal .sheetslot,.pane .doc,.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap{
-  --hint:rgba(0,0,0,.75);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  --hint:var(--edge-hint);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 .modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -34px 26px -24px var(--hint)}
 .modal .box.scrollup{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 34px 26px -24px var(--hint)}
 /* ...and never on a box shown inline (the notebook's Settings view borrows
@@ -1454,6 +1583,9 @@ select:focus{outline-offset:-2px}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+/* What to know before the press, in the warning's color (Copy or move's
+   data choice: a volume already there is written over). */
+.modal .hint.warn{color:var(--warn)}
 /* The project settings' Test (the operator, 7 Oct): what is missing in red,
    a list when it is more than one thing, and its notes in the quiet voice. */
 .modal .hint.ok{color:var(--accent)}
@@ -1504,7 +1636,7 @@ select:focus{outline-offset:-2px}
 /* ...and its route rows: hostname, path, port, TLS. */
 .ngroute{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0}
 /* The field band gives every input its full width; a route's share it. */
-.ngroute select[data-ng="host"]{width:auto;flex:2 1 12em;min-width:0}
+.ngroute select[data-ng="host"],.ngroute input[data-ng="host"]{width:auto;flex:2 1 12em;min-width:0}
 /* The shared hostname list on the nginx tab: a name, where it is routed,
    and Delete where it is routed nowhere; the box to add one under it. */
 .nghost{display:flex;align-items:center;gap:8px;margin:2px 0}
@@ -2233,7 +2365,7 @@ pre.diff .d-ctx{color:var(--dim)}
    section put above the head on one tab is how it was broken once. */
 .nb .vbar{display:flex;gap:8px;align-items:center}
 .nb .vbar .sp{flex:1}
-.nb .vbar button.on{background:var(--accent-deep);border-color:var(--accent-mid);
+.nb .vbar button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill);
   color:color-mix(in srgb, var(--accent), #ffffff 72%)}
 .nb .vbar button{flex:0 0 auto}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
@@ -2498,6 +2630,69 @@ pre.diff .d-ctx{color:var(--dim)}
   box-shadow:inset 4px 0 0 0 var(--gc);
   border-bottom:1px solid color-mix(in srgb, var(--gc) 50%, var(--line))}
 .dmtab .dmgroup.none{--gc:var(--line)}
+/* ---- tiles, facts and chips (R216) --------------------------------------
+   The 2.0 shapes, one definition each, read by every tab that draws them
+   (page-docs.js statTiles, factGrid, chipBar). A tile is a number the tab
+   is about, large, with its label under it; a facts grid is what a row
+   knows as labels and values; a chip narrows a list. Each is held by the
+   design's rule of the same name and measured by test/uniform.mjs. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:var(--field-gap)}
+@media(max-width:900px){ .tiles{grid-template-columns:repeat(2,1fr)} }
+.tile{background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control);
+  padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tile .tv{font:var(--f-stat);font-variant-numeric:tabular-nums;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .tv .tu{font:var(--f-ui);color:var(--dim);margin-left:4px}
+.tile .tl{font:var(--f-note);color:var(--dim)}
+.tile .ts{font:var(--f-note);color:var(--dim);opacity:.85}
+.tile.ok .tv{color:var(--accent)}
+.tile.warn .tv{color:var(--warn)}
+.tile.bad .tv{color:var(--bad)}
+/* The strip on a row (what a container uses now): the same tile, smaller,
+   its number in the section voice, four across at a desk and two on a phone. */
+.tiles.mini{grid-template-columns:repeat(auto-fit,minmax(7rem,1fr));margin-top:6px}
+@media(max-width:900px){ .tiles.mini{grid-template-columns:repeat(2,1fr)} }
+.tiles.mini .tile{padding:6px 9px}
+.tiles.mini .tv{font:var(--f-sect);font-variant-numeric:tabular-nums}
+/* The list view (R216): a container as one line that opens into its card
+   (rows-you-open). The line is the name with its state pill, then its
+   facts in the data voice: whose, its ports as links, where nginx routes
+   it, its image. The bar's search box takes the room the picker leaves. */
+.dmtab details.dmline{display:block;padding:0}
+.dmtab details.dmline > summary.dmsum{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
+  cursor:pointer;list-style:none;padding:var(--row-y) var(--row-x);min-height:var(--tap)}
+.dmtab details.dmline > summary.dmsum::-webkit-details-marker{display:none}
+.dmtab details.dmline > summary.dmsum::before{content:"";display:inline-block;width:0;height:0;
+  border:5px solid transparent;border-left:6px solid var(--dim);margin-right:2px;align-self:center;
+  transition:transform .15s ease}
+.dmtab details.dmline[open] > summary.dmsum::before{transform:rotate(90deg)}
+.dmtab details.dmline > summary.dmsum .name{font-weight:600}
+.dmtab .dmsumf{font:var(--f-data);color:var(--dim);display:flex;flex-wrap:wrap;gap:2px 12px;min-width:0;flex:1 1 auto}
+.dmtab .dmsumf > span{overflow-wrap:anywhere}
+.dmtab .dmsumf a{color:var(--accent)}
+.dmtab details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:1px solid var(--line)}
+.dmtab .dmpick #dmSearch{flex:1 1 12rem;min-width:8rem;max-width:var(--ctl-w)}
+.dmtab .dmviewseg{display:flex;gap:4px}
+.dmtab .dmviewseg button{min-height:var(--ctl)}
+.facts dd a,.dmports a{color:var(--accent)}
+/* The row's Log fold: each container's tail under its name, the whole no
+   taller than a screen, and the Follow switch on its action bar. */
+.dmlogbox .dmlogsvc + .dmlogsvc{margin-top:8px}
+.dmlogbox pre.dmlog{max-height:40vh;overflow:auto;margin:4px 0 0}
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
+@media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
+.facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}
+.facts dt{font:var(--f-note);color:var(--dim);margin:0;white-space:nowrap}
+.facts dd{font:var(--f-data);color:var(--ink);margin:0;min-width:0;overflow-wrap:anywhere}
+.facts dd code{font:inherit}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  padding-bottom:2px;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
+.chips::-webkit-scrollbar{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto;
+  font:var(--f-ui);padding:0 10px;min-height:var(--ctl);border-radius:99px}
+.chip .pill{font:var(--f-tag);padding:2px 6px}
+.chip.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
+.chip.on .pill{color:var(--on-fill);border-color:color-mix(in srgb, var(--on-fill) 40%, transparent)}
 .dmtab .dmgroup b{color:var(--ink);font-weight:700;font-size:1.1em;letter-spacing:.02em}
 .dmtab .row + .dmgroup{margin-top:14px}
 /* The small text areas in the container form: a few lines each, not the
@@ -2674,8 +2869,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
     grid-template-columns:minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.1fr);
     align-items:start;column-gap:14px;row-gap:2px}
   .dmtab .row.stack2 .grow > *,.dkrows .row.stack2 .grow > *{grid-column:1 / -1}
-  .dmtab .row.stack2 .dmid,.dkrows .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
-  .dmtab .row.stack2 .dmports,.dkrows .row.stack2 .dmports{grid-column:2 / -1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmid,.dkrows .row.stack2 .dmid   {grid-column:1 / -1;grid-row:1;min-width:0}
   .dmtab .row.stack2 .dmid .sub{margin:0}
 
   /* The fold's two halves, likewise: ports on the left, mounts on the right.
@@ -2886,8 +3080,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
   max-width:min(var(--ctl-w),88%)}
+/* The grid itself is capped as a whole, so its cells share the surface's
+   control width and do not stretch across a wide tab. */
+:is(.doctab,.nb) .setgrid{max-width:min(calc(var(--ctl-w) * 2),100%)}
 /* A prose editor in the notebook (a memory's body, a rule, a bug's repro)
    is a page, not a control: it keeps the reading width. */
 .nb textarea{max-width:none}
@@ -2906,7 +3103,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -2919,7 +3116,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
+  .imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
   .ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
@@ -2939,13 +3136,39 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    not the field-that-owns-its-row width the skin gives a select. */
 .actbar select{width:auto;flex:0 0 auto}
 .actbar input{width:auto;flex:0 1 12em;min-width:0}
+/* MORE: a bar keeps its primary verbs and folds the rest behind one button
+   (R210; the operator, 13 Oct: seven buttons wrapped to two lines on a phone
+   and Remove sat alone on the second). The menu opens under the button, as
+   the gear's does, anything else closes it, and its items are the bar's
+   own buttons, so the destructive one is still last. `actMore()` draws it
+   and `wireMore()` wires it; a single leftover is drawn inline instead. */
+.actbar .more{position:relative;display:inline-flex;flex:0 0 auto}
+.actmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:40;
+  min-width:11em;width:max-content;max-width:calc(100vw - 32px);
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+  box-shadow:0 8px 22px rgba(0,0,0,.45);padding:6px;
+  display:flex;flex-direction:column;gap:4px;
+  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+.actmenu>button{width:100%;min-height:var(--tap);justify-content:flex-start;text-align:left;flex:0 0 auto}
 @media(max-width:600px){
   /* The finger height, and nothing of the width: a phone's action bar used
      to share the row between its buttons, which made every set of two span
      the screen edge to edge: the shape the width rule above forbids. The
      buttons keep their own size and sit at the right, as on a desktop. */
   .actbar button,.actbar select{flex:0 0 auto;min-height:var(--tap)}
+  /* ...except a FULL bar, four buttons SHOWING or more (a hidden one does
+     not count, and More counts as one): those share the width rather than each taking its text's, so
+     the last is never pushed to a line of its own (the phone rule
+     both-sizes: at 344px four did not fit; R210: More sat alone under Up,
+     Down, Update and Rebuild). */
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)){gap:6px}
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > :is(button,.more){flex:1 1 0;min-width:0;padding-left:5px;padding-right:5px}
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > .more > button{width:100%;padding-left:5px;padding-right:5px}
 }
+/* The row whose More menu is open stacks above the rows after it: a dimmed
+   row (opacity) is a stacking context of its own, and the menu, z-indexed
+   inside it, drew under the next row's words. */
+.row:has(.actmenu:not([hidden])){position:relative;z-index:41}
 /* A ROW ON A PHONE, measured: a project row was 140px against 98 on a
    desktop, on a screen a third as wide: six rows to a screen where a
    desktop gets nine, and a third of each row was its six icon buttons.
@@ -3012,27 +3235,31 @@ button[aria-busy="true"]{opacity:.75}
 /* The mapping's row is an action bar (its field, then Save and Check), so
    it lays out like every other bar; the input takes the room before them. */
 .ndpaths input,.ndname input{flex:1 1 auto;min-width:0}
-.dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.dmroute select{width:auto;max-width:100%}
-/* The settings a container row carries, as one block rather than loose
-   lines: they are read together (whose it is, which branch, and who may
-   build it), and a phone was stacking them with the row's own line spacing
-   between, so they looked like unrelated strays. */
-/* Their controls line up at the bottom, as every row of controls does: a
-   select stands taller than its Apply here, and centering them left the two
-   bottoms four pixels apart. The label stays centered on the select. */
-.dmgrant,.dmref,.dmowner{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;
-  margin:2px 0}
-.dmref + .dmgrant{margin-top:0}
-.dmgrant select,.dmref select,.dmowner select{width:auto;max-width:100%}
-.dmgrant label,.dmref label,.dmowner label{color:var(--dim);flex:0 0 auto;align-self:center}
-.dmgrant select{width:auto;max-width:100%}
-/* The row's three settings (build from, Claude may rebuild, Claude tests)
-   on one line where there is room, wrapping on a phone: three stacked
-   pickers read as three forms above five buttons (R58). */
-.dmsettings{display:flex;flex-wrap:wrap;gap:2px 18px;align-items:flex-start}
-.dmsettings:empty{display:none}
-.dmsettings>.sub{margin-top:4px}
+/* A ROW'S SETTINGS are a grid of labeled cells with ONE Apply at its foot
+   (R210; the settings rule: one Apply per group). Each cell is a label
+   above its control, as every field on the page is (`lbl`), in columns
+   where there is room and one column on a phone; a read-only cell (`.ro`)
+   says a setting kept elsewhere, with the way there. A select takes its
+   cell. An action that belongs with a setting (Add route) sits beside its
+   controls in `.ctl` and acts on the press, as actions do. Before this a
+   container row was five settings each with its own Apply or Move, wrapping
+   into a form of their own on a phone (the operator, 13 Oct). */
+.setgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(15em,1fr));
+  gap:8px 16px;align-items:end;margin:6px 0 2px}
+.setgrid:empty{display:none}
+.setgrid .setcell{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0}
+.setgrid .setcell .val{font:var(--f-ui);color:var(--ink);min-height:var(--ctl);
+  display:flex;align-items:center;overflow-wrap:anywhere}
+.setgrid .setcell .val a{color:var(--accent);white-space:nowrap}
+.setgrid .setcell .ctl{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
+.setgrid .setcell .ctl>select{flex:1 1 8em;min-width:0}
+.setgrid .setcell .ctl>button{flex:0 0 auto}
+/* A select takes its cell, short of the control cap (the controls rule: no
+   control spans the screen at any width). */
+.setgrid .setcell>select,.setgrid .setcell .ctl{width:100%;min-width:0;max-width:min(var(--ctl-w),88%)}
+.setgrid .setcell .ndcap{min-height:var(--ctl);display:flex;align-items:center}
+.setgrid .setfoot{grid-column:1 / -1;display:flex;justify-content:flex-end}
+@media(max-width:600px){ .setgrid{grid-template-columns:1fr} }
 .jbouts a{color:var(--accent)}
 /* A kept workspace is a long path, and .row code is nowrap; on a phone it
    wraps here rather than running off the row. Written with the row in the
@@ -3139,8 +3366,18 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 .doctor .chips .pill{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   max-width:100%}
 
-.pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
+.pill{font:var(--f-pill);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}
+/* A STATE on a row's name line is a pill, not a parenthesis: running, stopped,
+   down, partly up, unknown, each in the level's color (R210). `.stat`: `.state` is
+   the action bar's status line and `.st` the session dot. */
+.row .name .pill.stat{font:var(--f-tag);text-transform:uppercase;letter-spacing:.5px;
+  vertical-align:2px;margin-left:6px;margin-bottom:0}
+/* ...with a dot of its color before the word (R216): the state is read at
+   a glance down a list, before the word is. */
+.row .name .pill.stat::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:currentColor;margin-right:5px;vertical-align:1px}
+.row .name .pill.stat.off{color:var(--purple);border-color:var(--purple-edge)}
 .pill.ok{color:var(--accent);border-color:var(--green2-edge)}
 .pill.bad{color:var(--bad);border-color:var(--red2-edge)}
 .pill.warn{color:var(--warn);border-color:var(--gold-edge)}
@@ -3186,7 +3423,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 #toast.bad{border-color:var(--red2-edge);color:var(--bad)}
 #toast.warn{border-color:var(--warn);color:var(--warn)}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none} }
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.pane .doc.on{animation:none} .tab,.help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.pane .doc.on{animation:none} .tab,.help{transition:none} }
 
 .tabbar .newtab{border:1px solid var(--line);border-radius:var(--r-control);font-size:15px;
   line-height:1;padding:5px 9px;color:var(--dim)}
@@ -3206,7 +3443,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .tab{display:flex;align-items:center;gap:0;border:1px solid var(--line);
   border-radius:var(--r-control);overflow:hidden;background:var(--btn);
   transition:background-color .15s ease,border-color .15s ease}
-.tab.on{background:var(--accent-deep);border-color:var(--accent-mid)}
+.tab.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
 /* The tab and the command chip clip their contents, which would clip the
    focus ring off a button inside; drawn inside the edge instead. */
@@ -3231,7 +3468,7 @@ body.dragging .tab .lbl{cursor:grabbing}
    
    Only on the ACTIVE one. An inactive tab is quieter on purpose and its dim
    sits on --btn, where it reads. */
-.tab.on .lbl,.tab.on .ic{color:var(--ink)}
+.tab.on .lbl,.tab.on .ic{color:var(--on-fill)}
 @media(max-width:900px){ .tab button{min-height:var(--tap)} }
 .tabbar .sep{flex:1}
 .tabstrip{display:flex;align-items:stretch}
@@ -3487,7 +3724,7 @@ body.booting .pane>.loading{margin:auto}
 .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
   border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface)}
 .mobar button{min-height:var(--tap)}
-.mobar button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
+.mobar button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
 /* flex-shrink 1, unlike the strip and the bar: on a phone held sideways the
    fixed chrome plus a flyout can be taller than the screen, and since the
@@ -4156,16 +4393,13 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnNode">Node<span class="help" data-help="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
+      <!-- One list for the rest of the set and the hosting-only nodes (the
+           operator, 13 Oct): a node marked Hosting only is prefs.hosts (its
+           containers alone, built on the project's node and shipped there),
+           the rest prefs.nodes. Drawn by rnFillNodesMore. -->
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
-      <!-- The hosting-only nodes its containers may also go to (prefs.hosts,
-           the operator, 10 Oct): built on its own node and shipped there,
-           and its sessions may make, rebuild and remove them under Run its
-           container. Drawn by rnFillHosts; hidden with no hosting node. -->
-      <label id="rnHostsLabel" hidden>Hosts its containers on</label>
-      <div class="lbox" id="rnHosts" role="group" aria-labelledby="rnHostsLabel" hidden></div>
-      <div class="hint" id="rnHostsHint" hidden>Hosting-only nodes: no code or session goes there. Its containers there are built on its own node and sent, and its sessions may make, rebuild and remove them under Claude may: Run its container.</div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Claude may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
       <div class="prefrow">
@@ -4559,6 +4793,13 @@ body.booting .pane>.loading{margin:auto}
       <select id="rlNode"></select>
       <div class="hint" id="rlNodeHint"></div>
     </div>
+    <div class="field" id="rlDataField">
+      <label>Its data<span class="help" data-help="its named volumes and its data directory travel either way; this is what happens to them on arrival" tabindex="0">?</span></label>
+      <label class="ndcap"><input type="radio" name="rlData" value="unpack" checked> Unpack it into its volumes there</label>
+      <label class="ndcap"><input type="radio" name="rlData" value="archive"> Carry it as an archive, not unpacked</label>
+      <label class="ndcap"><input type="radio" name="rlData" value="none"> Leave it here: the container alone goes</label>
+      <div class="hint" id="rlDataHint"></div>
+    </div>
     <div class="field">
       <label for="rlEnv">Environment</label>
       <textarea id="rlEnv" spellcheck="false"></textarea>
@@ -4824,29 +5065,24 @@ body.booting .pane>.loading{margin:auto}
         <span class="dim" id="pArchiveName">none picked</span></div>
       <div class="hint">zip or tar; a single top-level folder is dropped.</div>
     </div>
-    <!-- Which host, because a hostname does not say what is running on it: a
-         Gitea at git.example.com looks exactly like a Forgejo or a bare git
-         daemon until somebody says which, and only the person who set it up
-         knows. Picked once per host and remembered against the host, so the
-         second project on the same server is not asked again. -->
-    <div class="field" id="pForgeField" hidden>
-      <label for="pForge">Host<span class="help" data-help="what the server runs" tabindex="0">?</span></label>
-      <!-- One question, so one label and one hint: which host, and where it
-           is. Both controls take the row's width like every other field in
-           this dialog, so the pair reads as one answer being given. -->
-      <div class="prefrow">
-        <select id="pForge" aria-label="which git host this is"></select>
-        <input id="pForgeHost" autocomplete="off" spellcheck="false" hidden
-               aria-label="the address you reach it on"
-               placeholder="git.example.com">
-      </div>
-      <div class="hint" id="pForgeHint"></div>
-    </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
       <input id="pUrl" autocomplete="off" spellcheck="false"
              placeholder="git@github.com:owner/repo.git">
       <div class="hint" id="pUrlHint"></div>
+    </div>
+    <!-- Which host, under the address it is read from, in both modes: a
+         hostname does not say what software runs on it, and a Gitea at
+         git.example.com looks exactly like a Forgejo or a bare git daemon
+         until somebody says which, and only the person who set it up knows.
+         The row is always there so nothing appears as the address is typed:
+         it reads the address back (a public host names itself, a server
+         answered for before is remembered against its host) and is a
+         question only for a server nobody has answered for. -->
+    <div class="field" id="pForgeField" hidden>
+      <label for="pForge">Host<span class="help" data-help="what the server runs" tabindex="0">?</span></label>
+      <select id="pForge" aria-label="which git host this is"></select>
+      <div class="hint" id="pForgeHint"></div>
     </div>
     <!-- Deploy keys: the shielded agent's public halves, straight from
          ssh-add -L. Picking one makes the server write the .pub selector and
@@ -5355,8 +5591,11 @@ window.addEventListener("resize", updateArrows);
 $("tabPick").onclick = e => { e.stopPropagation(); tabPickShow(!tabPickOpen); };
 document.addEventListener("click", e => {
   if (tabPickOpen && !e.target.closest("#tabPickList, #tabPick")) tabPickShow(false);
+  // An action bar's More menu: a press anywhere but on its button shuts it,
+  // its own items included, since each has done its work by then.
+  if (!e.target.closest(".actbar .more > button")) closeMore();
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && tabPickOpen) tabPickShow(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape"){ if (tabPickOpen) tabPickShow(false); closeMore(); } });
 
 // ---- panes -----------------------------------------------------------
 // Its declarations are page-panes.js; what runs at load is below.
@@ -5621,9 +5860,6 @@ $("pLinkKey").onclick = () => { pLinkAuth = "key"; pDraw(); };
 $("pLinkToken").onclick = () => { pLinkAuth = "token"; pDraw(); };
 $("pKey").onchange = pShowKey;
 $("pForge").onchange = () => { pForgeId = $("pForge").value; pDraw(); };
-// The address box follows what is typed here, so the shape being asked for
-// keeps up with the server being named.
-$("pForgeHost").addEventListener("input", pDrawForge);
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
   // falls back to the selection route, which works everywhere a click does.
@@ -5646,10 +5882,10 @@ $("pUrl").oninput = () => {
   pNameShow();
 };
 // ...and when a name HAS been typed, the URL still decides nothing, but the
-// warning has to keep up with a URL edited afterwards. So does the question
-// about the host, which appears and goes as the address is typed.
+// warning has to keep up with a URL edited afterwards. So does the Host row
+// under the address, which reads it back as it is typed, in both modes.
 $("pUrl").addEventListener("input", pNameShow);
-$("pUrl").addEventListener("input", () => { if (pMode === "clone") pDraw(); });
+$("pUrl").addEventListener("input", () => { if (pMode !== "init") pDraw(); });
 
 // ---- the container dialogs: New container, and Send to Docker -----------
 $("cTabForm").onclick = () => cSwitch("form");
@@ -5685,7 +5921,7 @@ $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker()
 $("rlGo").onclick = rlSubmit;
 $("rlCancel").onclick = closeRelocate;
 $("rlmodal").onclick = e => { if (e.target === $("rlmodal")) closeRelocate(); };
-document.querySelectorAll('input[name="rlMode"]').forEach(r => r.onchange = rlSay);
+document.querySelectorAll('input[name="rlMode"], input[name="rlData"]').forEach(r => r.onchange = rlSay);
 $("rlNode").onchange = rlSay;
 
 // ---- a project's settings dialog, wired ---------------------------------
@@ -5880,6 +6116,14 @@ onRev("emulator", () => {
 // The node registry moved: a mutation here, or another browser's. Open
 // views refetch; node data deliberately never rides the status poll
 // (docs/nodes.md §13).
+// The nginx record moved: a route or certificate saved here, from a
+// container's row on the Docker tab (R209), by bb or by another browser
+// (B714). An open nginx tab re-reads around its draft; an open Docker tab
+// re-reads too, since its rows say which ports are routed.
+onRev("nginx", () => {
+  if (tabs.some(t => t.kind === "nginx")) loadNginx();
+  if (tabs.some(t => t.kind === "docker")){ dockerList = null; dockerRev++; loadDocker(); }
+});
 onRev("nodes", () => {
   if (tabs.some(t => t.kind === "nodes")) loadNodes();
   // A node's census carries its images: refetched only when they moved.

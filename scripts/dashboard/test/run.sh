@@ -1110,7 +1110,10 @@ case "$1" in
         done
         continue
       fi
-      printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
+      # ...wearing the health its marker says ($pn.health: healthy, unhealthy
+      # or starting), the way docker's own Status column does (R216).
+      hs=""; [ -f "$ST/$pn.health" ] && hs=" ($(cat "$ST/$pn.health"))"
+      printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes'"$hs"'","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
         "$pn" "$pn" "$pn" "$pn"
     done
     # An exited container is still THERE, holding its name and its network,
@@ -1125,6 +1128,46 @@ case "$1" in
     # And one this dashboard did not start, which is the distinction the
     # listing exists to draw.
     printf '%s\n' '{"ID":"ccccccccccccdddd","Names":"someone-elses","Image":"redis:7","State":"exited","Status":"Exited (0) 2 hours ago","Ports":"","Labels":"com.docker.compose.project=other"}'
+    exit 0 ;;
+  images)
+    # The daemon's images (R216): one in use by the fixture's container and
+    # one dangling, in docker's own json shape.
+    printf '%s\n' '{"Repository":"ep-silon-img","Tag":"latest","ID":"sha256:1111aaaa2222","Size":"123MB","CreatedSince":"2 days ago"}'
+    printf '%s\n' '{"Repository":"<none>","Tag":"<none>","ID":"sha256:3333bbbb4444","Size":"45.6MB","CreatedSince":"3 weeks ago"}'
+    exit 0 ;;
+  image)
+    # image prune -f: what docker says, and a record that it was asked.
+    printf '%s\n' "image $2 $3" >> "$ST/ctl.log"
+    printf 'Deleted Images:\ndeleted: sha256:3333bbbb4444\n\nTotal reclaimed space: 45.6MB\n'
+    exit 0 ;;
+  volume)
+    case "$2" in
+      ls) printf '%s\n' '{"Driver":"local","Name":"ep-silon_data"}' '{"Driver":"local","Name":"orphan-vol"}'; exit 0 ;;
+      prune) printf '%s\n' "volume $2 $3" >> "$ST/ctl.log"; printf 'Deleted Volumes:\norphan-vol\n\nTotal reclaimed space: 2.1MB\n'; exit 0 ;;
+    esac
+    echo "stub: volume $2"; exit 1 ;;
+  system)
+    [ "$2" = "df" ] || { echo "stub: system $2"; exit 1; }
+    printf '%s\n' '{"Type":"Images","TotalCount":"2","Active":"1","Size":"168.6MB","Reclaimable":"45.6MB (27%)"}'
+    printf '%s\n' '{"Type":"Containers","TotalCount":"1","Active":"1","Size":"1.2MB","Reclaimable":"0B (0%)"}'
+    printf '%s\n' '{"Type":"Local Volumes","TotalCount":"2","Active":"1","Size":"8.4MB","Reclaimable":"2.1MB (25%)"}'
+    exit 0 ;;
+  stats)
+    # What each running container uses now (R216): one line per `up`
+    # marker, in docker's own json shape and units, with the service
+    # names the ps above gives. Fixed figures: a test reads the row's
+    # strip, not the daemon's arithmetic.
+    for f in "$ST"/*.up; do
+      [ -e "$f" ] || continue
+      pn="$(basename "$f" .up)"
+      if [ -f "$ST/$pn.svcs" ]; then
+        for sv in $(awk '{print $1}' "$ST/$pn.svcs" | sort -u); do
+          printf '{"Name":"%s-%s-1","CPUPerc":"1.25%%","MemUsage":"12.7MiB / 21.4MiB","MemPerc":"2.66%%","NetIO":"1.2kB / 648B","PIDs":"11"}\n' "$pn" "$sv"
+        done
+        continue
+      fi
+      printf '{"Name":"%s-app-1","CPUPerc":"1.25%%","MemUsage":"12.7MiB / 21.4MiB","MemPerc":"2.66%%","NetIO":"1.2kB / 648B","PIDs":"22"}\n' "$pn"
+    done
     exit 0 ;;
   start|stop|restart)
     # One container by name, which is all the guard lets through (R68). The

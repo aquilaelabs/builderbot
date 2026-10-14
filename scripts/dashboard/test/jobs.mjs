@@ -143,6 +143,11 @@ await ready(page);
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
   await page.click('#bJobs');
   await page.waitForSelector('.jobstab .jbrow', { timeout: 15000 });
+  // The tab at a glance (R216): tiles of what runs, waits, failed and
+  // finished of the jobs listed.
+  const jtiles = await page.$$eval('.jobstab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()));
+  ok(jtiles.includes('running') && jtiles.includes('succeeded'),
+     `the Jobs tab opens on tiles of what runs and what finished (${jtiles.join(', ')})`);
   const rows = (await page.$$eval('.jobstab .jbrow', rs => rs.map(r => ({
     id: r.dataset.job, state: r.dataset.state, text: r.textContent.replace(/\s+/g, ' ') }))))
     .filter(r => mine.has(r.id));

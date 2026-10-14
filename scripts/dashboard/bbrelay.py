@@ -58,6 +58,8 @@ prefs = None
 gitrelay = None
 # registry.py (R154): a shown name to the directory it is.
 registry = None
+phone = None          # the asks (R219): a held push waits on the bell there
+pushscan = None
 WORKSPACE = None
 STATE = None
 
@@ -282,6 +284,19 @@ def run(me, req, project):
         r = gitrelay.run(project, str(cwd), argv[1], argv[2:])
         if "error" in r:
             return r, 400
+        if r.get("held"):
+            # Lines that look like a secret or something private (R219):
+            # the push waits on a person, who reads them on the bell. The
+            # node's bb waits on the ask the way bb root run does, and the
+            # push runs here when they approve, its apply handed back then.
+            a = phone.ask_push(project, str(cwd), argv[2:], r["held"],
+                               asker_uid=me.get("uid") or "", asker_name=me.get("name") or "",
+                               asker_admin=users.is_admin(me))
+            if a.get("error"):
+                return {"error": a["error"]}, 400
+            return {"held": a["id"], "code": 1, "out": "",
+                    "err": f"[builderbot] held: {pushscan.summary(r['held'])}. The flagged lines wait on the bell "
+                           f"for {a.get('to') or 'a person'} to approve or deny; waiting up to 15 minutes\n"}, 200
         return {"code": r["code"], "out": r["out"][-200000:], "err": r["err"][-20000:],
                 **({"apply": r["apply"]} if r.get("apply") else {})}, 200
     # A few at a time: every relayed verb is a process of its own here, and

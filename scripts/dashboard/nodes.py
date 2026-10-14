@@ -927,8 +927,11 @@ def enroll_script(principal, req):
     u = urllib.parse.urlparse(ans["controller"])
     port = u.port or (443 if u.scheme == "https" else 80)
     machine = ((again or {}).get("reported") or {}).get("machine") or ""
+    import systems
+    fam = systems.family_file(ans.get("system") or systems.DEFAULT)
     return m | {"script": enrollscript.build(ans, name=name, user=user, token=m["token"],
                                               expires=m["expires"], provisioner=prov.read_bytes(),
+                                              family=fam.read_bytes() if fam and fam.is_file() else b"",
                                               again=enrolled, machine=machine),
                 "filename": enrollscript.filename(name, m["id"]), "reach": ans["reach"],
                 "home": enrollscript.home_rules(ans, port),
@@ -1096,6 +1099,14 @@ def _census(c):
     if sd is not None:
         out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                              for k in ("top", "android", "incomplete", "roots")}
+        # ...and the versions under android's families (B712), kept only
+        # when the agent lists them (0.7.190 on): the Toolchains tab reads a
+        # version a project pins against this, and an agent that cannot say
+        # must not read as a store that lacks it.
+        if isinstance(sd.get("versions"), dict):
+            out["store_dirs"]["versions"] = {
+                str(k)[:20]: [str(x)[:60] for x in (v or [])[:64]]
+                for k, v in list(sd["versions"].items())[:8] if isinstance(v, list)}
     # The android system images in the toolchain store, and the AVDs built on
     # each (roadmap #20). Whitelisted like store_dirs and toolchain_versions,
     # and for the same reason: a field the agent reports and this drops is a
@@ -4084,13 +4095,9 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         print(f"dashboard: nodes: job log sweep after {job_id} skipped: {e}",
               file=sys.stderr, flush=True)
     # An uninstall that ran retires the node: the agent is gone with it, so
-    # the row leaves every list now rather than after a stale timeout.
-    # ...and one the agent's stop handler reported as canceled because the
-    # agent was stopped: the uninstall removes the agent's unit inside the
-    # seconds the agent watches it, and that last word is the job done, not
-    # undone; read as a cancel it left the row, quiet and empty (B703).
-    if got[0]["type"] == "system" and (state == "succeeded"
-                                       or (state == "canceled" and "agent was stopped" in err)):
+    # the row leaves every list now rather than after a stale timeout. The
+    # agent reports its own uninstall as done from its stop handler (B703).
+    if got[0]["type"] == "system" and state == "succeeded":
         spec = (job(job_id, with_log=False) or {}).get("spec") or {}
         if spec.get("apply") == "uninstall":
             node_state(f"node:{node_id}", node_id, "retired")
@@ -4357,9 +4364,19 @@ def agent_file():
         except OSError:
             return {"body": b"", "digest": "", "version": ""}
         m = re.search(rb'^AGENT_VERSION\s*=\s*"([^"]+)"', init, re.MULTILINE)
+        digest = "sha256:" + hashlib.sha256(body).hexdigest()
+        was = _agent_cache.get("digest")
+        if was and was != digest:
+            # The sources moved under a running controller (a tree edited
+            # under bb dashboard dev, a harness copy written mid-run, B718):
+            # every node enrolled on the old digest is held from here on, so
+            # the file that moved is named, once, where the log is read.
+            newest = max(b.sources(str(AGENT_DIR)), key=lambda t: os.stat(t[1]).st_mtime)[1]
+            print(f"[nodes] the agent's sources changed on disk: {was[:19]}… is now {digest[:19]}… "
+                  f"(newest {newest}, {time.strftime('%H:%M:%S', time.localtime(mtime))})",
+                  file=sys.stderr, flush=True)
         _agent_cache.update({
-            "mtime": mtime, "body": body,
-            "digest": "sha256:" + hashlib.sha256(body).hexdigest(),
+            "mtime": mtime, "body": body, "digest": digest,
             "version": m.group(1).decode() if m else "?"})
     return {k: v for k, v in _agent_cache.items() if k != "bundle"}
 
@@ -4868,8 +4885,11 @@ def tab_view(rows, admin):
     for n in rows:
         if n.get("kind") == "agent":
             n["turns"] = turns_of(n)
+    import systems
     return {"nodes": rows, "agent": agent_shipped() if admin else {},
-            "default": node_for() if admin else ""}
+            "default": node_for() if admin else "",
+            # What Enroll node's System pulldown offers (R204).
+            "systems": systems.offered() if admin else []}
 
 
 def log_read_named(principal, asking_id, want, stream, lines, debug_on, grants=(), project=""):

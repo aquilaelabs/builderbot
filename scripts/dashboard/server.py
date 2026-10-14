@@ -2009,6 +2009,11 @@ def trace_note(handler, ms=0):
     try:
         path, _, query = handler.path.partition("?")
         keys = "&".join(sorted(k for k in urllib.parse.parse_qs(query, keep_blank_values=True)))
+        # ...and what a handler chose to add (the devapp action, B717): a
+        # POST keyed by its path alone could not say which verb was slow.
+        extra = getattr(handler, "trace_extra", "")
+        if extra:
+            keys = f"{keys}&{extra}" if keys else extra
         ua = (handler.headers.get("User-Agent") or "")[:40]
         who = getattr(_writing, "who", None) or {}
         by = ("session" if who.get("session") else "agent" if path.startswith("/api/v1/agent")
@@ -2360,7 +2365,9 @@ def claude_auth(home=""):
 # needs and otherwise knows nothing about this file.
 import toolchains                                                  # noqa: E402
 
-toolchains.configure(run=run, write_json=write_json, state=STATE)
+toolchains.configure(run=run, write_json=write_json, state=STATE,
+                     project_nodes=lambda: {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()},
+                     workspace=WORKSPACE)
 # The Android system images on each node's store, behind the Emulator tab:
 # kept on the toolchain store without being toolchains (emulator.py).
 import emulator                                                  # noqa: E402
@@ -3146,8 +3153,26 @@ workspace.paths = gitview.paths = logs.paths = gitrelay.paths = paths
 # travel and what a token may do with them are bbrelay.py's.
 import bbrelay                                                   # noqa: E402
 
+import pushscan                                                  # noqa: E402
+
+pushscan.configure(state=STATE, write_json=write_json)
 bbrelay.configure(users=users, projects=projects, prefs=prefs, gitrelay=gitrelay, registry=registry,
-                  WORKSPACE=WORKSPACE, STATE=STATE)
+                  WORKSPACE=WORKSPACE, STATE=STATE, phone=phone, pushscan=pushscan)
+
+
+def _push_approved(rec, by):
+    """A held push approved on the bell (R219): the flagged lines okayed
+    for the project, then the push, unscanned, in the relay's own
+    repository, as the session's bb would have run it."""
+    pushscan.okay(rec.get("project") or "", rec.get("findings") or [], by)
+    return gitrelay.run(rec.get("project") or "", rec.get("cwd") or str(WORKSPACE / (rec.get("project") or "")),
+                        "push", rec.get("args") or [], scan=False)
+
+
+phone.pusher = _push_approved
+# ...and the Git view's Push reads the same way, asking in a confirm.
+gitview.SCAN = lambda project: gitrelay.run(project, str(WORKSPACE / project), "push", [], scan="only")
+gitview.OKAY = pushscan.okay
 
 # ---- a session's hooks, from a node -------------------------------------------
 # The overlap notes, the chat feed, the catch-up and the turn queue, posted by
@@ -3466,6 +3491,9 @@ def revisions(who=None, projects=None):
         # Node and job data never joins the status payload (docs/nodes.md
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),
+        # The nginx tab's record and hostnames (B714): a route written from
+        # a Docker row, bb or another browser.
+        "nginx": nginxproxy.rev(),
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
         # Who has a session where, and whether it is working: the project
         # rows fetch /api/live when this moves.
@@ -3747,6 +3775,7 @@ def snapshot(who):
         # This account's color scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
+        "mode": users.prefs(who).get("mode", ""),
         # Whether this account has read the getting-started guide, and
         # which image's changelog it acknowledged: the welcome panel opens
         # itself once for each (the guide on a first sign-in, the changelog
@@ -4986,7 +5015,9 @@ class Handler(BaseHTTPRequestHandler):
         # A project's owner role is named after its directory; the tab says
         # whose it is by the name the project is shown under (R154).
         owners_of = {roles.owner_role_name(d): d for d in registry.labels()}
-        rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}") if n in owners_of else r)
+        # ...and which project it is for, so the People section offers it
+        # under that project alone (B726).
+        rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)
               for n, r in rs.items()}
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
                            "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
@@ -5080,6 +5111,20 @@ class Handler(BaseHTTPRequestHandler):
         # read (R152 step 3).
         if seen is not None and not sess and not users.is_admin(me):
             seen = {p for p in seen if roles.level_of(me, "containers", p, users.may_work)}
+        # /api/docker/stats: what the containers are using now, asked
+        # beside the list once it has landed (R216), so the list never
+        # waits on a sample of the daemon. A path of its own rather than a
+        # query, since the page's open-once rule counts endpoints by path.
+        sub = self.path.partition("?")[0].rstrip("/").rsplit("/", 1)[-1]
+        if sub == "stats" or q.get("stats", [""])[0]:
+            return self._json(containers.stats_view(nid, seen))
+        # /api/docker/images: the daemon's images and volumes, an
+        # administrator's like every daemon-wide thing here (R216).
+        if sub == "images" or q.get("images", [""])[0]:
+            if sess or not users.is_admin(me):
+                return self._json({"error": "an administrator reads the daemon's images and volumes",
+                                   "images": [], "volumes": [], "df": []}, 403)
+            return self._json(containers.images_view(nid))
         return self._json(containers.manager_view(nid, seen))
 
     def _get_containers(self):
@@ -5644,7 +5689,13 @@ class Handler(BaseHTTPRequestHandler):
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
-        return self._json(*nodes.verb(self._principal(), req))
+        got = nodes.verb(self._principal(), req)
+        # A node that left is a node the Doctor's cached verdict may still
+        # name, for up to its half hour: the next run starts now, on its own
+        # thread, so the card stops saying a daemon nobody can reach (B710).
+        if req.get("action") in ("retire", "discard", "uninstall") and isinstance(got[0], dict) and got[0].get("ok"):
+            threading.Thread(target=doctor.refresh, name="doctor-after-node", daemon=True).start()
+        return self._json(*got)
 
     def _jobs(self, req):
         """The Jobs tab's one verb, and where `bb run`, `bb build`, `bb test`
@@ -6190,6 +6241,9 @@ class Handler(BaseHTTPRequestHandler):
                 and name not in containers.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
+        # The verb onto this request's trace row (B717): a POST keyed by its
+        # path alone could not say which devapp action was the slow one.
+        self.trace_extra = f"action={act}" if isinstance(act, str) and act.replace("-", "").isalnum() else ""
         # WHOSE IT IS, before anything else is asked: an account that is not
         # an administrator reaches what belongs to its projects, and a
         # session what belongs to its own one (the operator, 24 Sep). The
@@ -6287,8 +6341,9 @@ class Handler(BaseHTTPRequestHandler):
             # is a person's.
             if session and (name != sess or str(req.get("node") or "") not in (prefs.get(sess).get("hosts") or [])):
                 return self._json({"error": "sending a project's container to a node it is not on is a "
-                                            "person's, unless the node is under Hosts its containers on in "
-                                            "the project's settings: it puts the project's image on another machine"}, 403)
+                                            "person's, unless the node is ticked under Also works on in the "
+                                            "project's settings (a hosting-only node takes containers alone): "
+                                            "it puts the project's image on another machine"}, 403)
             if not session and self._refused("node", name):
                 return None
         if act not in ("starter", "state") and session:
@@ -7447,6 +7502,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "which node?"}, 400)
         if act == "deploy":
             r = nginxproxy.deploy(nid, containers, devactions, devapp)
+        elif act == "route-add":
+            # From a container's row on the Docker tab (R209): a port of the
+            # container and the certificate the route serves under.
+            r = nginxproxy.add_route(nid, req.get("port"), field(req, "cert"), containers, devactions, devapp,
+                                     host=field(req, "host"))
         elif act == "save":
             r = nginxproxy.save_routes(nid, req.get("routes"))
             # The certificate pasted is the node's default, or one

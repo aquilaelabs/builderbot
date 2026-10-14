@@ -43,9 +43,13 @@ claudecode = None     # claudecode.py, set by the server: Claude Code as a node'
 CLAUDE = "claude-code"
 
 
-def configure(*, run, write_json, state):
-    """Hand over the server's helpers and read what is on disk."""
-    globals().update(run=run, write_json=write_json, STATE=Path(state))
+def configure(*, run, write_json, state, project_nodes=None, workspace=None):
+    """Hand over the server's helpers and read what is on disk. `project_nodes`
+    answers {project: node id} (the project's own node, where its builds
+    run) and `workspace` is where the projects' trees are, for the versions
+    a project pins (pin_rows)."""
+    globals().update(run=run, write_json=write_json, STATE=Path(state),
+                     project_nodes=project_nodes, WORKSPACE=Path(workspace) if workspace else None)
     globals()["VERSIONS_FILE"] = Path(state) / "toolchain-versions.json"
     globals().update(zip(("_tc_versions", "_tc_checked", "_tc_remembered",
                           "_tc_local"), load_versions(), strict=True))
@@ -936,6 +940,211 @@ def attention(project_nodes):
     return out
 
 
+# ---- the versions a node's projects pin (B712) -----------------------------
+# A store remade at the newest versions only strands a project that pins an
+# older one: Shebang-DevBoard pins NDK 29.0.14206865 and build-tools 36.0.0,
+# the store held NDK 30 and build-tools 37, and Gradle cannot fetch into a
+# store a session cannot write (13 Oct). The pins are read off the project's
+# Gradle files here, never by running Gradle, and each one is a row of its
+# own on the node's tab, named for the project, installed or not; the
+# versioned id (android:ndk;29.0.14206865) installs through the same path an
+# emulator image does.
+project_nodes = None
+WORKSPACE = None
+PIN_RE = {
+    "ndk": re.compile(r"""\bndkVersion\s*=?\s*["']([0-9][\w.]*)["']"""),
+    "build-tools": re.compile(r"""\bbuildToolsVersion\s*=?\s*["']([0-9][\w.]*)["']"""),
+    "platforms": re.compile(r"""\bcompileSdk(?:Version)?\s*=?\s*(\d{2,3})\b"""),
+}
+PIN_LABEL = {"ndk": "Android NDK", "build-tools": "Android SDK Build-Tools", "platforms": "Android SDK Platform"}
+PIN_SKIP = {"build", ".gradle", ".git", "node_modules", ".idea"}
+
+# What the Android Gradle plugin needs without a line in the project saying
+# so (R215): each release defaults to one build-tools version, and a project
+# with no buildToolsVersion builds with that one, which only the plugin's
+# release notes name. Newest first; the first entry the plugin's version
+# reaches is its default. Read off the notes on 13 Oct 2026: every 9.x is
+# 36.0.0, 8.7 through 8.13 are 35.0.0, 8.2 raised it to 34.0.0, 8.0 to
+# 33.0.1, 7.1 to 30.0.3 and 7.0 to 30.0.2. A plugin older than that, or one
+# newer than the table, is left alone rather than guessed.
+AGP_BUILD_TOOLS = (((9, 0), "36.0.0"), ((8, 7), "35.0.0"), ((8, 2), "34.0.0"),
+                   ((8, 0), "33.0.1"), ((7, 1), "30.0.3"), ((7, 0), "30.0.2"))
+AGP_NEWEST = (9, 99)
+# Where a project names its plugin version: the version catalog's plugin
+# entry (inline or by reference into [versions]), a plugins block with a
+# version, or the old buildscript classpath.
+AGP_RE = {
+    "catalog-ref": re.compile(r"""com\.android\.(?:application|library)["']\s*,\s*version\.ref\s*=\s*["']([\w.-]+)["']"""),
+    "catalog-inline": re.compile(r"""com\.android\.(?:application|library)["']\s*,\s*version\s*=\s*["']([0-9][\w.-]*)["']"""),
+    "plugins": re.compile(r"""id\s*\(?\s*["']com\.android\.(?:application|library)["']\s*\)?\s*version\s*\(?\s*["']([0-9][\w.-]*)["']"""),
+    "classpath": re.compile(r"""["']com\.android\.tools\.build:gradle:([0-9][\w.-]*)["']"""),
+}
+AGP_FILES = ("gradle/libs.versions.toml", "settings.gradle.kts", "settings.gradle",
+             "build.gradle.kts", "build.gradle")
+
+
+def agp_version(tree):
+    """(version, file) for the Android Gradle plugin a project builds with,
+    or ("", "") when no file names one. The version catalog first, since a
+    plugins block that reads it carries no number of its own."""
+    root = Path(tree)
+    for rel in AGP_FILES:
+        try:
+            text = (root / rel).read_text(errors="replace")[:200000]
+        except OSError:
+            continue
+        if rel.endswith(".toml"):
+            m = AGP_RE["catalog-inline"].search(text)
+            if m:
+                return m.group(1), rel
+            m = AGP_RE["catalog-ref"].search(text)
+            if m:
+                ref = re.search(r"""^\s*%s\s*=\s*["']([0-9][\w.-]*)["']""" % re.escape(m.group(1)), text, re.M)
+                if ref:
+                    return ref.group(1), rel
+            continue
+        for key in ("plugins", "classpath"):
+            m = AGP_RE[key].search(text)
+            if m:
+                return m.group(1), rel
+    return "", ""
+
+
+def agp_build_tools(version):
+    """The build-tools version this plugin version defaults to, or "" for one
+    the table does not reach (older than 7.0, or newer than it knows)."""
+    m = re.match(r"(\d+)\.(\d+)", version or "")
+    if not m:
+        return ""
+    v = (int(m.group(1)), int(m.group(2)))
+    if v > AGP_NEWEST:
+        return ""
+    for floor, bt in AGP_BUILD_TOOLS:
+        if v >= floor:
+            return bt
+    return ""
+
+
+def gradle_needs(tree):
+    """{sdkmanager id: [note, ...]}: what a project's build needs that no line
+    of it pins (R215): the build-tools its Android Gradle plugin defaults to,
+    when no buildToolsVersion says otherwise. The note says which file
+    implies it, the way gradle_pins names the file that pins."""
+    out = {}
+    pins = gradle_pins(tree)
+    if not any(p.startswith("build-tools;") for p in pins):
+        ver, rel = agp_version(tree)
+        bt = agp_build_tools(ver)
+        if bt:
+            out.setdefault(f"build-tools;{bt}", []).append(
+                f"{rel}: the Android Gradle plugin {ver} defaults to it")
+    return out
+
+
+def levels_needed(nid):
+    """{API level: [(project, file), ...]} for the levels the projects on
+    `nid` compile against (compileSdk), for the Emulator tab to say which
+    level has no image here (R215). An image is the Emulator tab's to pick,
+    not a row on Toolchains: it exists at every level in several flavors,
+    under names only Google's index knows (API 37 is android-37.0), and a
+    guessed id failed as a job on bb-sandbox beside the build-tools it had
+    been ticked with (B720)."""
+    if project_nodes is None or WORKSPACE is None:
+        return {}
+    try:
+        mine = sorted(p for p, n in (project_nodes() or {}).items() if n == nid)
+    except Exception:                                                # noqa: BLE001
+        return {}
+    out = {}
+    for proj in mine:
+        for pid, files in gradle_pins(WORKSPACE / proj).items():
+            if pid.startswith("platforms;android-"):
+                level = pid[len("platforms;android-"):]
+                out.setdefault(level, []).extend((proj, f) for f in files)
+    return out
+
+
+def gradle_pins(tree, depth=3):
+    """{sdkmanager id: [file, ...]} for the Android versions a project's Gradle
+    files pin: ndkVersion V is ndk;V, buildToolsVersion V is build-tools;V,
+    compileSdk N is platforms;android-N. Three levels down at most (the app
+    and its modules), skipping what a build writes."""
+    out = {}
+    root = Path(tree)
+    if not root.is_dir():
+        return out
+    for here, dirs, files in os.walk(root):
+        rel = Path(here).relative_to(root)
+        if len(rel.parts) >= depth:
+            dirs[:] = []
+        dirs[:] = sorted(d for d in dirs if d not in PIN_SKIP and not d.startswith("."))
+        for f in files:
+            if f not in ("build.gradle", "build.gradle.kts"):
+                continue
+            try:
+                text = (Path(here) / f).read_text(errors="replace")[:200000]
+            except OSError:
+                continue
+            for kind, rx in PIN_RE.items():
+                for v in rx.findall(text):
+                    pid = f"platforms;android-{v}" if kind == "platforms" else f"{kind};{v}"
+                    out.setdefault(pid, []).append(str(rel / f) if str(rel) != "." else f)
+    return out
+
+
+def pin_held(pid, versions):
+    """Whether the store holds the package: ndk;V and build-tools;V by their
+    directory, platforms;android-N by its level's base or any minor of it
+    (android-37.0 is what compileSdk 37 names)."""
+    kind, _, v = pid.partition(";")
+    have = versions.get(kind) or []
+    if kind == "platforms":
+        return any(d == v or d.startswith(v + ".") for d in have)
+    return v in have
+
+
+def pin_rows(nid, rep):
+    """The rows for what the projects on `nid` pin: one per package, naming
+    the projects and files that pin it, installed by the store's listing.
+    Nothing from an agent that does not list versions (before 0.7.190):
+    absence it cannot report is not absence."""
+    vers = ((rep.get("store_dirs") or {}).get("versions"))
+    if not isinstance(vers, dict) or project_nodes is None or WORKSPACE is None:
+        return []
+    try:
+        mine = sorted(p for p, n in (project_nodes() or {}).items() if n == nid)
+    except Exception:                                                # noqa: BLE001
+        return []
+    pins = {}
+    for proj in mine:
+        needs = gradle_pins(WORKSPACE / proj)
+        for pid, notes in gradle_needs(WORKSPACE / proj).items():
+            needs.setdefault(pid, []).extend(notes)
+        for pid, files in needs.items():
+            pins.setdefault(pid, []).append((proj, files))
+    terms = {p["probe"]: p.get("terms") or [] for p in TOOLCHAINS}
+    rows = []
+    for pid in sorted(pins):
+        kind, _, v = pid.partition(";")
+        if kind not in PIN_LABEL:
+            continue
+        who = pins[pid]
+        held = pin_held(pid, vers)
+        names = ", ".join(f"{proj} ({', '.join(files[:2])})" for proj, files in who)
+        rows.append({
+            "name": f"android:{pid}",
+            "label": f"{PIN_LABEL[kind]} {v[len('android-'):] if kind == 'platforms' else v}",
+            "about": f"Needed by {names}: its build fails without this version, and the Android Gradle "
+                     f"plugin cannot fetch it into a store a session cannot write. "
+                     + ("The store holds it." if held else "The store lacks it: tick it and Install."),
+            "terms": terms.get(f"android:{kind}") or [],
+            "tool": "", "updatable": False, "wrong_platform": "",
+            "installed": held, "unknown": False, "pinned_by": [proj for proj, _ in who],
+            "path": "", "version": v if held else "", "size": "", "size_from": "",
+            "latest": "", "state": ""})
+    return rows
+
+
 def payload_for_node(nid):
     n = nodes.node(nid) if nodes else None
     if not n:
@@ -1001,6 +1210,8 @@ def payload_for_node(nid):
                       "size": human_kb(kb) if kb else "",
                       "size_from": "measured the last time it was installed here" if kb else "",
                       "latest": "", "state": ""})
+    # The versions this node's projects pin (B712), beside the catalog's rows.
+    items.extend(pin_rows(nid, rep))
     items.sort(key=lambda x: (not x["installed"], x["label"].lower()))
     # A toolchain that puts something on PATH (or sets a variable) reaches a
     # session only when the session starts: one open since before the
@@ -1976,6 +2187,11 @@ def verb(action, req, principal):
         if not node:
             return {"error": "no such node"}, 400
         known = {p["name"] for p in TOOLCHAINS}
+        # ...and the versions this node's projects pin (B712), rows the tab
+        # drew beside the catalog's: a versioned id installs through the
+        # path an emulator image takes, and a name not on this node's tab is
+        # still refused.
+        known |= {r["name"] for r in pin_rows(nid, node.get("reported") or {})}
         # The NVIDIA driver is a name like the others on a node that has
         # the card (R102); node_job decides whether it may be touched.
         if (node.get("reported") or {}).get("gpu_card"):

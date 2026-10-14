@@ -1598,6 +1598,20 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       ok(moved.body.owner === 'adminone' && offer.body.owner === 'adminone' && offer.body.offered === 'plainone'
          && off && off.by === 'adminone' && took.body.owner === true && now.body.owner === 'plainone',
          `BuilderBot's owner hands a project on at once; its own owner offers it, and it moves when accepted (${moved.body.owner} -> offered ${offer.body.offered} -> ${now.body.owner})`);
+      // The owner role the handover made is gamma's alone (B726): the roles
+      // payload says whose it is, and the People section offers it under
+      // gamma and no other project.
+      const rl = await (await bare('/api/roles', { headers: ownerAuth })).json();
+      const gOwner = Object.values(rl.roles || {}).find(r => r.project === 'gamma');
+      ok(gOwner && /^owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
+         `a project's owner role carries its project (${JSON.stringify(gOwner || {}).slice(0, 80)})`);
+      await page.evaluate(() => openRolesTab());
+      await page.waitForSelector('#rolesWho', { timeout: 15000 });
+      await page.selectOption('#rolesWho', 'plainone');
+      await page.waitForFunction(n => document.querySelectorAll(`[data-rprole="${n}"]`).length > 0, gOwner?.name || '', { timeout: 10000 }).catch(() => {});
+      const where = await page.evaluate(n => [...document.querySelectorAll(`[data-rprole="${n}"]`)].map(e => e.closest('.rproj')?.dataset.rproject), gOwner?.name || '');
+      ok(where.length === 1 && where[0] === 'gamma',
+         `...and the People section offers it under gamma alone (${JSON.stringify(where)})`);
       await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'test' });
       const sessM = await act(sessAuth, '/api/members', { action: 'view', project: 'alpha' });
       ok(sessM.status === 403, `...and a session has no say in who joins a project (${sessM.status})`);

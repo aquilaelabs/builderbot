@@ -144,12 +144,19 @@ ok(bySession.status === 403 && /a person's, from Controller settings/.test(bySes
    && (await call('/api/reports', { action: 'count' })).all > 0,
    `a session may not clear them (${bySession.error})`);
 await call('/api/reports', { action: 'add', text: 'one nobody has looked at yet' }, ALPHA);
-const before = await call('/api/reports', { action: 'count' });
+// Read until it answers a number: under an eight-worker load one count came
+// back without one (B722), and the check then compared against undefined.
+let before = {};
+for (let i = 0; i < 10 && typeof before.all !== 'number'; i++) before = await call('/api/reports', { action: 'count' });
+ok(typeof before.all === 'number' && before.all > 0, `the reports are counted before the press (${before.all})`);
 const lastId = Math.max(...(await call('/api/reports', { action: 'list' })).reports.map(r => r.id));
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('#setReportsClear', { timeout: 15000 });
 page.dialogs.length = 0;
 await page.click('#setReportsClear');
+// The button counts first, then asks: the confirm is waited for in its own
+// right, so a slow count under load is a late dialog rather than a missing one.
+for (let i = 0; i < 100 && !page.dialogs.length; i++) await page.waitForTimeout(150);
 await page.waitForFunction(async () => (await (await fetch('/api/reports', { method: 'POST',
   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'count' }) })).json()).all === 0,
   null, { timeout: 15000, polling: 300 });

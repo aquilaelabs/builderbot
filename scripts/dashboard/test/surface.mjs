@@ -39,13 +39,13 @@ import { dirname, join } from 'node:path';
 // what it prints. Do not hand-edit it into agreement without looking at why
 // it moved.
 const SURFACE = [
-  'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
+  'adoptCards', 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyCards', 'applyMode', 'applyNow', 'applyTheme',
   'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'cardDropIndex', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
-  'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
-  'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'menuHolds', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'attRow', 'drawBuild',
+  'currentMode', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
+  'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'openPopup', 'menuHolds', 'actMore', 'statTiles', 'factGrid', 'chipBar', 'dmChipGroups', 'loadDockerStats', 'dmStatStrip', 'loadRowLog', 'dmFollowTick', 'loadDockerImages', 'dmHealth', 'dmRowWrap', 'dmLineFacts', 'dmPorts', 'dmPortsFact', 'dmOpenWhy', 'dmOpenSoon', 'dmRoutesOf', 'dmMatch', 'wireMore', 'closeMore', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'attRow', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
   'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',
@@ -54,7 +54,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'drawTabPick', 'tabPickShow', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab',
   'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'nodeContainerNetRow', 'nodePortsLocalRow', 'nodeHostRootRow', 'nodeReachRow', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'nodeGpu', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'profileLogs', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeSessNetRow', 'nodeSyncRow', 'nodeHostRow', 'nodeDoorRow', 'openUnenroll', 'nodeProjects', 'nodeProjectsSection', 'nodeProjectRemove', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'groupNodeOptions', 'openRelocate', 'rlSay', 'closeRelocate', 'rlSubmit', 'myProjectNames', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmOwnerLine', 'dmMoveLine', 'dmGroupsHtml', 'dmOtherRowsHtml', 'dmTestLine', 'dmBuilt', 'jobWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'nodeContainerNetRow', 'nodePortsLocalRow', 'nodeHostRootRow', 'nodeReachRow', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'nodeGpu', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'profileLogs', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeSessNetRow', 'nodeSyncRow', 'nodeHostRow', 'nodeDoorRow', 'openUnenroll', 'nodeProjects', 'nodeProjectsSection', 'nodeProjectRemove', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'groupNodeOptions', 'openRelocate', 'rlSay', 'closeRelocate', 'rlSubmit', 'myProjectNames', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmOwnerLine', 'dmMoveLine', 'dmNginxLine', 'dmSetGrid', 'dmRowDirty', 'dmGroupsHtml', 'dmOtherRowsHtml', 'dmTestLine', 'dmBuilt', 'jobWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
   'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionRows', 'liveRefresh',
@@ -64,7 +64,7 @@ const SURFACE = [
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbDesignView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'nbWikiView', 'wikiMarkdown', 'wikiSlug', 'wikiToc', 'pullScroller', 'pullRefresh', 'wirePull', 'openReport', 'sendReport', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
-  'pFillGates', 'pFillNode', 'rnFillReads', 'tcClaudeRow', 'rnFillDebug', 'rnDebugNow', 'rnFillHosts', 'rnBars', 'rnBarSay', 'rnRevertSect', 'rnSectChanges', 'rnEnc', 'rnDec', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
+  'pFillGates', 'pFillNode', 'rnFillReads', 'tcClaudeRow', 'rnFillDebug', 'rnDebugNow', 'rnHostIds', 'rnBars', 'rnBarSay', 'rnRevertSect', 'rnSectChanges', 'rnEnc', 'rnDec', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
   // A terminal in its own window (R8).
   'popOut', 'reattachTab',
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',

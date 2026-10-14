@@ -17,7 +17,7 @@
 //
 // What is deliberately NOT here: per-kind content checks. Those live in each
 // kind's own suite. This file only holds the language every kind shares.
-import { URL, DIR, launch, newPage, ok, done, ready, sleep, animatedDuring } from './lib.mjs';
+import { URL, DIR, launch, newPage, ok, done, ready, sleep, settled, animatedDuring } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -232,40 +232,20 @@ async function bring(kind){
     if (view){
       await page.evaluate(w => getNotebook('alpha').view(w), view);
       await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-      await sleep(400);                   // the view's own fetch lands
+      await settled(page);                // the view's own fetch lands
     }
     return;
   }
   // A fresh open settles before it is measured: a proseline sizes itself to
   // its text once the view's data has landed, a beat after the band shows.
+  // Waited for (lib.mjs settled: the requests landed and a quiet beat),
+  // not slept: a fixed half second here was paid on every kind in every
+  // section of this file (R211).
   await DRIVERS[kind].open();
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(500);
+  await settled(page, { quiet: 250 });
 }
 
-for (const kind of kinds){
-  if (!DRIVERS[kind]) continue;
-  await bring(kind);
-  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(150);                       // entrance animation settles
-  const m = await measure(kind);
-  ok(!m.err, `[${kind}] a document box exists (${m.err || 'ok'})`);
-  ok((m.ragged || []).length === 0,
-     `[${kind}] every stack of meters has tracks of one width (${m.stacks || 0} stack${m.stacks === 1 ? '' : 's'}${
-       m.ragged?.length ? `; ragged: ${m.ragged.map(w => w.join('/')).join('; ')}` : ''})`);
-  if (m.err) continue;
-  if (m.jump) ok(m.jump.dir === 'row' && !m.jump.stacked, `[${kind}] its jump bar's chips sit in a row (${m.jump.dir}${m.jump.stacked ? ', stacked' : ''})`);
-  ok(m.flush, `[${kind}] fills its pane flush, like every document`);
-  ok(m.maxw === '1080px',
-     `[${kind}] caps at the document width (got ${m.maxw})`);
-  ok(m.bands > 0 && m.lefts.length === 1,
-     `[${kind}] every band starts at one x (${m.bands} bands at ${
-       JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
-  ok(m.offskin.length === 0,
-     `[${kind}] every control wears the field skin${
-       m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
-       m.controls} checked)`);
-}
 
 // ---- the section and action-bar language -----------------------------------
 // The other half of the document language, and the half that drifts: it is
@@ -294,7 +274,9 @@ for (const kind of kinds){
 // below is for. It reached this check for the first time when the Jobs tab
 // was paged, because every other paginated list is in a notebook whose
 // fixture is too short to draw one.
-const NOT_A_BAR = ['nbtabs', 'foot', 'pagemore'];
+// ...and a segmented switch (.pseg: Deploy key / Access token, Dark / Light,
+// Cards / List) is one choice, not a set of verbs (R216).
+const NOT_A_BAR = ['nbtabs', 'foot', 'pagemore', 'pseg'];
 
 async function language(){
   return page.evaluate(({ NOT_A_BAR }) => {
@@ -335,37 +317,31 @@ async function language(){
       return { status: s.querySelector('.sst')?.textContent?.trim() || '',
                skin: [c.minHeight, c.fontWeight, c.cursor].join('|') };
     });
-    return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects };
+    // The voices (R210): a button speaks in the page's sans (the key caps
+    // on the terminal tab are mono on purpose), never the browser's own
+    // default, which a dropped shorthand left every button in (B711); and a
+    // notice under a row (.sub.warn, .sub.bad, .notice) is sans behind a
+    // bar of its color, so it is told from the mono facts above it.
+    // The first family named is what is compared: the page's stacks spell
+    // their fallbacks differently (system-ui, -apple-system, ... against
+    // system-ui, sans-serif) and all begin with the same face.
+    const first = f => f.split(',')[0].trim().replace(/["']/g, '');
+    const bodyFont = first(getComputedStyle(document.body).fontFamily);
+    const alien = [...box.querySelectorAll('button')].filter(b => {
+      const f = getComputedStyle(b).fontFamily;
+      return vis(b) && b.textContent.trim() && first(f) !== bodyFont && !/mono/i.test(f);
+    }).map(b => `${named(b)} "${b.textContent.trim().slice(0, 12)}" (${first(getComputedStyle(b).fontFamily)})`);
+    const flat = [...box.querySelectorAll('.row .sub.warn, .row .sub.bad, .row .sub.note, .notice')].filter(n => {
+      const c = getComputedStyle(n);
+      return vis(n) && (/mono/i.test(c.fontFamily) || parseFloat(c.borderLeftWidth) < 2);
+    }).map(n => `${named(n)} "${n.textContent.trim().slice(0, 20)}"`);
+    return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects, alien, flat };
   }, { NOT_A_BAR });
 }
 
 // Gathered across every kind and compared at the end: "the same on every tab"
 // is not a claim any one tab can fail on its own.
 const seenBars = new Set(), seenSects = new Set(), seenReds = new Set();
-for (const kind of kinds){
-  if (!DRIVERS[kind]) continue;
-  await bring(kind);
-  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(200);
-  const L = await language();
-  ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
-  if (L.err) continue;
-  ok(L.loose.length === 0,
-     `[${kind}] every set of text buttons is an action bar${
-       L.loose.length ? `; not: ${L.loose.join(', ')}` : ''}`);
-  ok(L.order.length === 0,
-     `[${kind}] nothing safe sits after a verb that cannot be undone${
-       L.order.length ? `: ${L.order.join(', ')}` : ''}`);
-  L.layout.forEach(x => seenBars.add(x));
-  L.sects.forEach(x => seenSects.add(x.skin));
-  L.reds.forEach(x => seenReds.add(x));
-  const wordy = L.sects.filter(x => x.status.length > 24).map(x => x.status);
-  ok(wordy.length === 0,
-     `[${kind}] a section's status is a word or a number, not a sentence${
-       wordy.length ? `: ${JSON.stringify(wordy)}` : ''}`);
-}
-ok(seenBars.size <= 1,
-   `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
 
 // ---- a control never spans its container ----------------------------------
 // A button, a select, a text field, or a row of them side by side stops
@@ -385,7 +361,7 @@ async function spanning(){
     const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
-    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .dmroute, .dmgrant, .dmref, .imgadd, .tcnode, .ndpaths';
+    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .setcell .ctl, .setfoot, .imgadd, .tcnode, .ndpaths, .chips';
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).
@@ -398,6 +374,12 @@ async function spanning(){
       // the action at the tab's right edge), so its union spans by design.
       // Its controls are measured one by one below, like any lone control.
       if (row.classList.contains('docbarrow')) continue;
+      // A full action bar on a phone (four buttons or more) shares the row
+      // between its buttons on purpose (the phone rule both-sizes: at 344px
+      // four did not fit), so its union spans by design; each button is
+      // still a fraction of the width.
+      if (W <= 600 && row.classList.contains('actbar')
+          && [...row.children].filter(c => (c.tagName === 'BUTTON' || c.classList.contains('more')) && vis(c)).length >= 4) continue;
       const kids = [...row.querySelectorAll(CTL)].filter(vis);
       kids.forEach(k => seen.add(k));
       if (!kids.length) continue;
@@ -418,15 +400,6 @@ async function spanning(){
     }
     return { wide: out, w: W };
   });
-}
-for (const kind of kinds){
-  if (!DRIVERS[kind]) continue;
-  await bring(kind);
-  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  const S = await spanning();
-  ok(!S.err && S.wide.length === 0,
-     `[${kind}] no control or row of controls spans the tab${
-       S.err ? ` (${S.err})` : S.wide.length ? `: ${S.wide.join(', ')}` : ''}`);
 }
 
 // ---- controls in a row line up ---------------------------------------------
@@ -539,19 +512,106 @@ async function unwrapped(){
     return { tall };
   });
 }
+// ---- tiles and facts (R216) --------------------------------------------------
+// A row of tiles is one height with its numbers in the stat voice, and a
+// facts grid is labels in the note voice over values in mono: the two
+// shapes every tab draws the same way or not at all.
+async function glance(){
+  return page.evaluate(() => {
+    const box = document.querySelector('.pane .doc.on .doctab, .pane .doc.on .nb');
+    if (!box) return { err: 'no document' };
+    const px = s => parseFloat(s) || 0;
+    const stat = getComputedStyle(document.documentElement).getPropertyValue('--f-stat');
+    const bad = [];
+    for (const row of box.querySelectorAll('.tiles')){
+      const ts = [...row.querySelectorAll('.tile')].filter(t => t.offsetHeight);
+      const hs = ts.map(t => Math.round(t.getBoundingClientRect().height));
+      if (ts.length && Math.max(...hs) - Math.min(...hs) > 1) bad.push(`tiles of ${hs.join('/')}px`);
+      for (const t of ts){
+        const v = t.querySelector('.tv');
+        if (!v || px(getComputedStyle(v).fontSize) < 20) bad.push(`a tile's number at ${v ? getComputedStyle(v).fontSize : 'none'}`);
+        if (!t.querySelector('.tl')?.textContent.trim()) bad.push('a tile with no label');
+      }
+      if (ts.length > 6) bad.push(`${ts.length} tiles in one row`);
+    }
+    for (const dl of box.querySelectorAll('dl.facts')){
+      const dt = dl.querySelector('dt'), dd = dl.querySelector('dd');
+      if (!dt || !dd) continue;
+      if (!/monospace|Mono|Menlo|Consolas/i.test(getComputedStyle(dd).fontFamily)) bad.push('a fact value not in mono');
+      if (px(getComputedStyle(dt).fontSize) > px(getComputedStyle(dd).fontSize)) bad.push('a fact label larger than its value');
+    }
+    return { bad, tiles: box.querySelectorAll('.tiles .tile').length, facts: box.querySelectorAll('dl.facts').length, stat: stat.trim() };
+  });
+}
+
+// ---- one walk over every kind, at a desk ---------------------------------
+// The four readings that change nothing on the page (the box and its bands,
+// the button language, what spans, what lines up) are taken on ONE visit to
+// each kind. They were four walks over 26 kinds, each paying the bring and
+// the settle again (R211: 0.5 to 0.8 s a visit, four times over).
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await bring(kind);
   await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
-  await sleep(250);              // the last band to arrive is part of the row
-  const L = await lineup();
-  ok(!L.err && L.off.length === 0,
+  await sleep(250);   // the entrance animation settles, and the last band to arrive is part of the row
+  const m = await measure(kind);
+  ok(!m.err, `[${kind}] a document box exists (${m.err || 'ok'})`);
+  ok((m.ragged || []).length === 0,
+     `[${kind}] every stack of meters has tracks of one width (${m.stacks || 0} stack${m.stacks === 1 ? '' : 's'}${
+       m.ragged?.length ? `; ragged: ${m.ragged.map(w => w.join('/')).join('; ')}` : ''})`);
+  if (!m.err){
+  if (m.jump) ok(m.jump.dir === 'row' && !m.jump.stacked, `[${kind}] its jump bar's chips sit in a row (${m.jump.dir}${m.jump.stacked ? ', stacked' : ''})`);
+  ok(m.flush, `[${kind}] fills its pane flush, like every document`);
+  ok(m.maxw === '1080px',
+     `[${kind}] caps at the document width (got ${m.maxw})`);
+  ok(m.bands > 0 && m.lefts.length === 1,
+     `[${kind}] every band starts at one x (${m.bands} bands at ${
+       JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
+  ok(m.offskin.length === 0,
+     `[${kind}] every control wears the field skin${
+       m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
+       m.controls} checked)`);
+  }
+  const L = await language();
+  ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
+  if (!L.err){
+  ok(L.loose.length === 0,
+     `[${kind}] every set of text buttons is an action bar${
+       L.loose.length ? `; not: ${L.loose.join(', ')}` : ''}`);
+  ok(L.order.length === 0,
+     `[${kind}] nothing safe sits after a verb that cannot be undone${
+       L.order.length ? `: ${L.order.join(', ')}` : ''}`);
+  ok(L.alien.length === 0,
+     `[${kind}] every button speaks in the page's font${L.alien.length ? `; not: ${L.alien.slice(0, 6).join(', ')}` : ''}`);
+  ok(L.flat.length === 0,
+     `[${kind}] a notice is sans behind a bar of its color${L.flat.length ? `; not: ${L.flat.slice(0, 6).join(', ')}` : ''}`);
+  L.layout.forEach(x => seenBars.add(x));
+  L.sects.forEach(x => seenSects.add(x.skin));
+  L.reds.forEach(x => seenReds.add(x));
+  const wordy = L.sects.filter(x => x.status.length > 24).map(x => x.status);
+  ok(wordy.length === 0,
+     `[${kind}] a section's status is a word or a number, not a sentence${
+       wordy.length ? `: ${JSON.stringify(wordy)}` : ''}`);
+  }
+  const S = await spanning();
+  ok(!S.err && S.wide.length === 0,
+     `[${kind}] no control or row of controls spans the tab${
+       S.err ? ` (${S.err})` : S.wide.length ? `: ${S.wide.join(', ')}` : ''}`);
+  const U = await lineup();
+  ok(!U.err && U.off.length === 0,
      `[${kind}] every control on a line ends at the same height${
-       L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
-  ok(!L.err && L.sizes.length === 0,
+       U.err ? ` (${U.err})` : U.off.length ? `: ${U.off.join('; ')}` : ''}`);
+  ok(!U.err && U.sizes.length === 0,
      `[${kind}] every control on a line is one height${
-       L.err ? ` (${L.err})` : L.sizes.length ? `: ${L.sizes.join('; ')}` : ''}`);
+       U.err ? ` (${U.err})` : U.sizes.length ? `: ${U.sizes.join('; ')}` : ''}`);
+  const G = await glance();
+  if (!G.err && (G.tiles || G.facts))
+    ok(G.bad.length === 0,
+       `[${kind}] its tiles are one height in the stat voice and its facts labels over mono values (${G.tiles} tiles, ${G.facts} grids${
+         G.bad.length ? `; ${G.bad.join(', ')}` : ''})`);
 }
+ok(seenBars.size <= 1,
+   `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
 
 // ---- one loading line and one empty state -----------------------------------
 // docs/design-language.md, Document tabs: `.loading` while it waits and
@@ -715,11 +775,16 @@ for (const kind of kinds){
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
                                v, { timeout: 20000 });
     // The notebook on screen, not the first in the DOM: a second project's
-    // notebook may be parked before it.
-    // Waited on, since a view draws its sections when it is first shown.
-    foots[v] = await page.waitForFunction(w => !!([...document.querySelectorAll('.nb')]
-      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`)), v, { timeout: ["bugs", "analysis", "tests", "git"].includes(v) ? 3000 : 15000 })
-      .then(() => true, () => false);
+    // notebook may be parked before it. Waited on until the view has drawn
+    // (its head row is there), then read once: proving a foot ABSENT by
+    // waiting a timeout out cost three seconds a view, four views a run.
+    const nbSel = w => `.nbview[data-view="${w}"]`;
+    await page.waitForFunction(w => !![...document.querySelectorAll('.nb')].find(n => n.checkVisibility())
+      ?.querySelector(`.nbview[data-view="${w}"] .nbhead`), v, { timeout: 15000 });
+    await sleep(150);
+    foots[v] = await page.evaluate(w => !![...document.querySelectorAll('.nb')]
+      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`), v);
+    void nbSel;
   }
   // Artifacts carries one only where a Version can stage a bump, which this
   // fixture's alpha, with no commits, cannot (version.mjs holds that one).
@@ -917,12 +982,17 @@ for (const kind of kinds){
 // engine actually paints.
 {
   const SCHEMES = ['default', 'nostromo', 'slate', 'carbon', 'nocturne', 'moss',
-                   'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash'];
+                   'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash', 'fern'];
   const AA = 4.5;
   const bad = [];
-  for (const t of SCHEMES) {
-    await page.evaluate(th => { document.documentElement.dataset.theme = th; }, t);
-    await sleep(120);
+  // ...in both halves of each (R216): the light half writes white on the
+  // same darkened accent, and its icons the same.
+  for (const [t, mode] of SCHEMES.flatMap(t => [[t, ''], [t, 'light']])) {
+    await page.evaluate(([th, m]) => { document.documentElement.dataset.theme = th;
+      if (m) document.documentElement.dataset.mode = m; else delete document.documentElement.dataset.mode; }, [t, mode]);
+    // Past the tab's own 150ms background transition: a dark half measured
+    // 120ms after a light one read a blend of the two.
+    await sleep(220);
     const r = await page.evaluate(() => {
       const el = document.querySelector('.tab.on');
       if (!el) return { err: 'no active tab' };
@@ -940,14 +1010,15 @@ for (const kind of kinds){
                           return k ? +R(getComputedStyle(k).color, bg).toFixed(2) : null; };
       return { label: at('.lbl'), icon: at('.ic') };
     });
-    if (r.err) { bad.push(`${t}: ${r.err}`); continue; }
-    if (!(r.label >= AA)) bad.push(`${t} label ${r.label}`);
-    if (r.icon !== null && !(r.icon >= AA)) bad.push(`${t} icons ${r.icon}`);
+    const name = mode ? `${t} (light)` : t;
+    if (r.err) { bad.push(`${name}: ${r.err}`); continue; }
+    if (!(r.label >= AA)) bad.push(`${name} label ${r.label}`);
+    if (r.icon !== null && !(r.icon >= AA)) bad.push(`${name} icons ${r.icon}`);
   }
-  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+  await page.evaluate(() => { delete document.documentElement.dataset.theme; delete document.documentElement.dataset.mode; });
   await sleep(120);
   ok(bad.length === 0,
-     `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes${
+     `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes, dark and light${
        bad.length ? `; under ${AA}:1: ${bad.join(', ')}` : ''}`);
 }
 
@@ -1108,6 +1179,17 @@ for (const kind of kinds){
   ok(!L.err && L.sizes.length === 0,
      `[${kind}] every control on a line is one height at phone width${
        L.err ? ` (${L.err})` : L.sizes.length ? `: ${L.sizes.join('; ')}` : ''}`);
+  // An action bar on a phone shows at most five text buttons; what a row
+  // can do beyond its primary verbs is behind More (R210: seven wrapped to
+  // two lines, Remove alone on the second).
+  const crowded = await page.$$eval('.doc.on .actbar', bars => bars.map(b => {
+    const vis = e => e.offsetHeight > 0 && e.textContent.trim();
+    const n = [...b.children].filter(c => c.tagName === 'BUTTON' && vis(c)).length
+      + [...b.querySelectorAll(':scope > .more > button')].filter(vis).length;
+    return n > 5 ? `${b.className.split(/\s+/).pop()}(${n})` : '';
+  }).filter(Boolean));
+  ok(crowded.length === 0,
+     `[${kind}] an action bar shows at most five buttons at phone width${crowded.length ? `: ${crowded.join(', ')}` : ''}`);
   const W = await unwrapped();
   ok(!W.err && W.tall.length === 0,
      `[${kind}] every select is one line high at phone width${

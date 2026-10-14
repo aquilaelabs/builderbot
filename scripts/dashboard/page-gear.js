@@ -12,12 +12,75 @@
 const THEMES = [
   ["default",  "Default"],
   ["abyss",    "Abyss"],    ["carbon",   "Carbon"],   ["ember", "Ember"],
-  ["ice",      "Ice"],      ["moss",     "Moss"],     ["nocturne", "Nocturne"],
+  ["fern",     "Fern"],     ["ice",      "Ice"],      ["moss",     "Moss"],     ["nocturne", "Nocturne"],
   ["nostromo", "Nostromo"], ["plum",     "Plum"],     ["rust",  "Rust"],
   ["sepia",    "Sepia"],    ["slate",    "Slate"],
 ];
 
 const THEME_IDS = new Set(THEMES.map(t => t[0]));
+
+// The scheme's other half (R216): each has a dark and a light palette, and
+// which is on is this switch: dark, light, or the device's own setting,
+// followed as it changes. Kept exactly as the scheme is: in localStorage
+// for the paint path and on the account for a browser that has none.
+const MODES = [["dark", "Dark"], ["light", "Light"], ["system", "System"]];
+const MODE_IDS = new Set(MODES.map(m => m[0]));
+let modeSaved = null;
+const modeMedia = window.matchMedia ? matchMedia("(prefers-color-scheme: light)") : null;
+
+function currentMode(){
+  let m = null;
+  try{ m = localStorage.getItem("bb.mode"); }catch(e){ /* private mode */ }
+  return MODE_IDS.has(m) ? m : "dark";
+}
+
+// What the page wears for a mode: "system" resolved against the device
+// now, and always dark under Nostromo, which has no light half (the
+// operator, 14 Oct): the choice is kept and applies to the other schemes.
+const DARK_ONLY = new Set(["nostromo"]);
+const modeHalf = m => DARK_ONLY.has(document.documentElement.dataset.theme || "default") ? "dark"
+  : m === "light" || (m === "system" && modeMedia && modeMedia.matches) ? "light" : "dark";
+
+function applyMode(id, {save = true} = {}){
+  const use = MODE_IDS.has(id) ? id : "dark";
+  const root = document.documentElement;
+  const half = modeHalf(use);
+  if (!noMotion() && (root.dataset.mode || "dark") !== half){
+    root.classList.add("theming");
+    clearTimeout(themingTimer);
+    themingTimer = setTimeout(() => root.classList.remove("theming"), 320);
+  }
+  if (half === "light") root.dataset.mode = "light";
+  else delete root.dataset.mode;
+  if (!save) return;
+  try{ localStorage.setItem("bb.mode", use); localStorage.setItem("bb.mode.who", state?.me || ""); }catch(e){ /* private mode */ }
+  modeSaved = use;
+  fetch("/api/users", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "prefs", prefs: { mode: use } }) })
+    .catch(() => {});
+  markUiMenu();
+}
+
+// The account's mode, taken up only by a browser that has none of its own:
+// adoptTheme's rule, for the same reasons.
+function adoptMode(m, who){
+  let had, whose;
+  try{
+    had = localStorage.getItem("bb.mode"); whose = localStorage.getItem("bb.mode.who");
+  }catch(e){ return; }
+  const same = !who || !had || (whose || "") === who;
+  if (had && same) return;
+  const use = MODE_IDS.has(m) ? m : "dark";
+  if (same && (!m || use === modeSaved)) return;
+  modeSaved = use;
+  applyMode(use);
+}
+
+// "System" follows the device as it changes, without a reload.
+if (modeMedia) modeMedia.addEventListener("change", () => {
+  if (currentMode() === "system") applyMode("system", {save: false});
+});
 
 // The browser holds it and the ACCOUNT remembers it, and the order matters
 // (roadmap #25). localStorage is the only way to have no flash: applied from
@@ -55,6 +118,9 @@ function applyTheme(id){
   }
   if (use === "default") delete root.dataset.theme;
   else root.dataset.theme = use;
+  // The half follows the scheme: Nostromo takes the page dark, and leaving
+  // it gives the chosen half back.
+  applyMode(currentMode(), {save: false});
   // ...with whose it is (B491): a browser's choice wins for the account
   // that made it, and another account signing in here gets its own.
   try{ localStorage.setItem("bb.theme", use); localStorage.setItem("bb.theme.who", state?.me || ""); }catch(e){ /* private mode */ }
@@ -108,6 +174,15 @@ function markUiMenu(){
     b.classList.toggle("on", on);
     b.setAttribute("aria-checked", on ? "true" : "false");
   });
+  const mode = currentMode();
+  document.querySelectorAll("#uiMenu [data-mode]").forEach(b => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
+  });
+  // The dark-only note follows the scheme in use, without a rebuild.
+  const hint = document.querySelector("#uiMenu .modehint");
+  if (hint) hint.hidden = !DARK_ONLY.has(cur);
 }
 
 function currentTheme(){
@@ -118,8 +193,14 @@ function drawUiMenu(){
   const el = $("uiMenu");
   if (!el || el.hidden) return;
   const cur = currentTheme();
+  const mode = currentMode();
   el.innerHTML = `<h4>Layout</h4>
     <button type="button" id="uiReset">Reset the sidebar cards</button>
+    <h4>Appearance</h4>
+    <div class="pseg modeseg" role="group" aria-label="dark or light">${MODES.map(([id, label]) => `
+      <button type="button" data-mode="${id}" class="${id === mode ? "on" : ""}"
+        role="menuitemradio" aria-checked="${id === mode}">${esc(label)}</button>`).join("")}</div>
+    <div class="hint modehint"${DARK_ONLY.has(cur) ? "" : " hidden"}>Nostromo is dark only; Light applies to the other schemes.</div>
     <h4>Color scheme</h4>
     <div class="swgrid">${THEMES.map(([id, label]) => `
       <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
@@ -133,6 +214,8 @@ function drawUiMenu(){
   el.querySelector("#uiReset").onclick = resetCards;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
+  el.querySelectorAll("[data-mode]").forEach(b =>
+    b.onclick = () => applyMode(b.dataset.mode));
   // The graduation (docs/nodes.md §13): the gear keeps what is this
   // BROWSER's (theme, layout) and everything the controller owns lives on
   // the Settings tab, where it has room to say what it costs. The log

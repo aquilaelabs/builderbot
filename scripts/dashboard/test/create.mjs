@@ -38,7 +38,9 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
 {
   const hosts = async () => (await page.evaluate(async () => (await (await fetch('/api/pubkeys')).json()))).forges || [];
   const off = await hosts();
-  ok(off.map(f => f.name).join(', ') === 'Gitea, GitHub, Another git host' && off.every(f => !f.dev),
+  // Forgejo joined the proven ones on 13 Oct (lab-forge.mjs against the
+  // lab's Forgejo, a runner registered with it from bb-dev-sandbox).
+  ok(off.map(f => f.name).join(', ') === 'Forgejo, Gitea, GitHub, Another git host' && off.every(f => !f.dev),
      `with unvetted features off, the hosts offered are the proven ones and the catch-all (${off.map(f => f.name).join(', ')})`);
   const refused = await postJson({ mode: 'clone', url: 'https://gitlab.com/group/thing', forge: 'gitlab', name: 'thing' });
   ok(refused.status === 400 && /GitLab is dev, not yet vetted/.test(refused.body.error || '')
@@ -46,9 +48,9 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
      `a clone naming an unvetted host is refused, and the sentence names the switch (${refused.body.error})`);
   await postJson({ set: { offer_unvetted: true } }, '/api/settings');
   const on = await hosts();
-  ok(on.length === 7 && on.filter(f => f.dev).map(f => f.name).join(', ') === 'Bitbucket, Codeberg, Forgejo, GitLab'
+  ok(on.length === 7 && on.filter(f => f.dev).map(f => f.name).join(', ') === 'Bitbucket, Codeberg, GitLab'
      && on[on.length - 1].name === 'Another git host',
-     `on, every host is offered, the unproven four tagged dev, the catch-all still last (${on.map(f => f.name + (f.dev ? '*' : '')).join(', ')})`);
+     `on, every host is offered, the unproven three tagged dev, the catch-all still last (${on.map(f => f.name + (f.dev ? '*' : '')).join(', ')})`);
   await postJson({ set: { offer_unvetted: false } }, '/api/settings');
 }
 
@@ -596,19 +598,26 @@ await page.click('#bNewProj');
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.click('#pClone');
 await page.waitForFunction(() => document.querySelectorAll('#pForge option').length > 1);
-ok(await page.$eval('#pForgeField', el => el.hidden),
-   'an empty address asks nothing about a host');
+// The Host row sits under the address and is always there, so nothing pops
+// up as the address is typed (the operator, 13 Oct): it reads the address
+// back, locked with the reason on the row, and is a question only for a
+// server nobody has answered for.
+const forgeRow = () => page.$eval('#pForgeField', el => el.hidden ? null : {
+  disabled: el.querySelector('#pForge').disabled, value: el.querySelector('#pForge').value,
+  hint: el.querySelector('#pForgeHint').textContent,
+  below: el.compareDocumentPosition(document.getElementById('pUrlField')) & Node.DOCUMENT_POSITION_PRECEDING });
+let fr = await forgeRow();
+ok(fr && fr.below && fr.disabled && fr.value === '' && /from the address/i.test(fr.hint),
+   `the Host row is under the address, there before one is typed, and locked until it is (${fr && fr.hint})`);
 await page.fill('#pUrl', 'https://github.com/owner/thing.git');
-ok(await page.$eval('#pForgeField', el => el.hidden),
-   '...and a host that names itself is not a question');
+fr = await forgeRow();
+ok(fr.disabled && fr.value === 'github' && /github\.com names itself/.test(fr.hint),
+   `...a host that names itself is read back, not asked (${fr.hint})`);
 await page.fill('#pUrl', 'https://git.home.lan:3000/owner/thing.git');
-ok(!await page.$eval('#pForgeField', el => el.hidden)
-   && await page.$eval('#pForgeHost', el => el.hidden),
-   '...while one nobody has answered for is asked about, without asking for the address twice');
-ok(await page.$eval('#pForge', el => el.value) === 'git',
-   '...starting on the entry that promises nothing, rather than on GitHub');
-ok(/git\.home\.lan:3000/.test(await page.$eval('#pForgeHint', el => el.textContent)),
-   '...naming the server it is asking about');
+fr = await forgeRow();
+ok(!fr.disabled && fr.value === 'git',
+   '...while one nobody has answered for is a question, starting on the entry that promises nothing');
+ok(/git\.home\.lan:3000/.test(fr.hint), '...naming the server it is asking about');
 await page.keyboard.press('Escape');
 // And the answer is kept against the host: cloning from it declares it, so
 // the next address on the same server is not a question again. Refused for
@@ -623,8 +632,9 @@ await page.waitForSelector('#pmodal:not([hidden])');
 await page.click('#pClone');
 await page.waitForFunction(() => Object.keys(pForgeHosts).length > 0);
 await page.fill('#pUrl', 'https://git.home.lan:3000/owner/other.git');
-ok(await page.$eval('#pForgeField', el => el.hidden),
-   '...and once answered, that server is never asked about again');
+fr = await forgeRow();
+ok(fr.disabled && fr.value === 'gitea' && /Answered before/.test(fr.hint),
+   `...and once answered, that server is read back rather than asked again (${fr.hint})`);
 ok(/Gitea/.test(await page.$eval('#pToken', el => el.placeholder)),
    '...with the token field asking for the kind of token that host issues');
 await page.keyboard.press('Escape');
@@ -927,22 +937,23 @@ await page.waitForFunction(() => !document.getElementById('pmodal').hidden
   && document.getElementById('pForge')?.options.length > 1, null, { timeout: 20000 });
 ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to a git host'),
    'the dialog names the project it is linking');
-// Which host, because a hostname does not say what runs on it. GitHub is one
-// server and needs no address; a Gitea is whichever one the operator runs, so
-// picking it asks for the address and the placeholder follows what is typed.
-ok(!await page.$eval('#pForgeField', el => el.hidden)
-   && await page.$eval('#pForgeHost', el => el.hidden),
-   'linking asks which host, and a public one needs no address');
-await page.selectOption('#pForge', 'gitea');
-ok(!await page.$eval('#pForgeHost', el => el.hidden),
-   '...and picking a self-hosted one asks where it is');
-await page.fill('#pForgeHost', 'git.home.lan:3000');
-ok(/git\.home\.lan:3000/.test(await page.$eval('#pUrl', el => el.placeholder)),
-   '...with the address box showing the shape for that server');
+// Linking looks like the bottom of the clone form (the operator, 13 Oct):
+// the address first and the Host row under it, read from the address. A
+// hostname does not say what runs on it, so a server nobody has answered
+// for is the one case that is a question; git.home.lan was answered above.
+fr = await forgeRow();
+ok(fr && fr.below && fr.disabled && fr.value === '',
+   'linking leads with the address, the Host row under it locked until one is typed');
+await page.fill('#pUrl', 'https://git.home.lan:3000/owner/beta.git');
+fr = await forgeRow();
+ok(fr.disabled && fr.value === 'gitea', '...and a server answered for before is read back');
+await page.fill('#pUrl', 'https://git.other.lan/owner/beta.git');
+fr = await forgeRow();
+ok(!fr.disabled && fr.value === 'git' && /git\.other\.lan/.test(fr.hint),
+   '...while one nobody has answered for is asked about, on the row');
 ok(await post({ name: 'beta', url: 'https://github.com/owner/beta', forge: 'gitea' },
               '/api/link') === 400,
    'and github.com cannot be linked as Gitea: the host names itself');
-await page.selectOption('#pForge', 'github');
 // The deploy-key pick from the clone flow above must not ride along into
 // this open: the select starts empty and repopulates from a fresh fetch.
 await page.waitForFunction(() => document.querySelectorAll('#pKey option').length > 1);

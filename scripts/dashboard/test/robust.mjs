@@ -104,9 +104,12 @@ cases.push(['/api/login-code', {}]);
 cases.push(['/api/signin', {}]);
 
 const broke = [];
-for (const [path, body] of cases){
-  const r = await post(path, body);
-  if (r.status >= 500) broke.push(`${path} ${JSON.stringify(body).slice(0, 70)} -> ${r.status} ${r.text}`);
+// Eight at a time: the server threads its requests, and one at a time was
+// fourteen seconds of waiting on a question whose cases are independent.
+for (let i = 0; i < cases.length; i += 8){
+  const got = await Promise.all(cases.slice(i, i + 8).map(async ([path, body]) => [path, body, await post(path, body)]));
+  for (const [path, body, r] of got)
+    if (r.status >= 500) broke.push(`${path} ${JSON.stringify(body).slice(0, 70)} -> ${r.status} ${r.text}`);
 }
 ok(broke.length === 0,
    `${cases.length} malformed bodies, none crashed an endpoint${

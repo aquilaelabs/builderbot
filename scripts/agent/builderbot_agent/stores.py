@@ -333,6 +333,18 @@ def store_dirs(state):
     with contextlib.suppress(OSError):
         out["android"] = sorted(x for x in os.listdir(os.path.join(store, "android"))
                                 if x.startswith(".") or full(os.path.join(store, "android", x)))[:64]
+    # ...and the versions under android's versioned families (B712): what a
+    # project pins (ndkVersion, buildToolsVersion, compileSdk) is a directory
+    # here, one listdir each, and the controller says which pins this store
+    # lacks. The key is sent even when empty: its absence is an agent from
+    # before this, which the controller reads as "cannot say".
+    vers = {}
+    for sub in ("ndk", "build-tools", "platforms", "cmake"):
+        d = os.path.join(store, "android", sub)
+        with contextlib.suppress(OSError):
+            vers[sub] = sorted(x for x in os.listdir(d)
+                               if not x.startswith(".") and full(os.path.join(d, x)))[:64]
+    out["versions"] = vers
     # A directory is not a toolchain: an install that stopped part-way leaves
     # one without the file that completes it (playwright's module beside its
     # browsers). A layout that names that file (`needs`) is checked here, and

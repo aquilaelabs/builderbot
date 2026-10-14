@@ -113,6 +113,7 @@ async function refresh(){
     // HERE outranks the record, or picking a scheme on a phone would be
     // undone by the desktop's next poll.
     adoptTheme(state.theme, state.me);
+    adoptMode(state.mode, state.me);
     // An account with no shell must not be sitting in one. The page opens on
     // a workspace terminal and the saved strip may carry more, both of which
     // predate knowing who is asking, so the first payload that says so is

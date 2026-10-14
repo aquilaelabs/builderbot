@@ -55,6 +55,32 @@ ok(kept.ok && row.routes.length === 1 && row.routes[0].host === 'www.example.com
 await page.evaluate(() => loadNginx());
 await page.waitForFunction(id => /1 route and 0 certificates/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''), sandbox.node, { timeout: 10000 });
 ok(true, '...and the undeployed node says Deploy will bring that route up');
+// Written from elsewhere (a Docker row's Add route, bb, another browser),
+// the open tab re-reads by the revisions token, not by its Refresh (B714).
+{
+  const two = [...row.routes, { host: 'two.example.com', path: '/', port: 8081, tls: false }];
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: two });
+  const came = await page.waitForFunction(id => document.querySelectorAll(`.nginxtab [data-ngnode="${id}"] .ngroute`).length === 2
+      || /2 routes/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''),
+    sandbox.node, { timeout: 15000 }).then(() => true, () => false);
+  ok(came, 'a route saved from elsewhere shows on the open tab within a poll, with no Refresh pressed');
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
+  await page.waitForFunction(id => /1 route/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''),
+    sandbox.node, { timeout: 15000 });
+}
+// A hostname typed in the route row (the operator, 13 Oct): the last choice
+// of the pick turns it into a box, and the name saved joins Hostnames.
+{
+  const typed = await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [...row.routes, { host: 'typed.example.com', path: '/', port: 8082, tls: false }] });
+  ok(typed.ok && (await api('/api/nginx')).hostnames.some(h => h.name === 'typed.example.com'),
+     'a route saved with a name not on the list puts it there');
+  // Before Deploy the section draws no route rows, so the pick is read as
+  // its function draws it.
+  ok(await page.evaluate(() => /value="__type"[^>]*>type a hostname/.test(nginxHostPick({ host: '' }))),
+     '...and the hostname pick offers to type one');
+  await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
+  await api('/api/nginx', { action: 'host-remove', name: 'typed.example.com' });
+}
 ok(/a port on the node/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [{ host: 'x.example.com', port: 'eighty' }] })).error || ''),
    'a route with no port is refused by name');
 ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, cert: 'not a cert', key: 'nor a key' })).error || ''),
@@ -172,6 +198,15 @@ await page.click('#bBell');
 // ...and the Docker row says so with Update, the word every row's update uses.
 await page.evaluate(() => openDocker());
 await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
+// System's row keeps what a person needs and loses what the nginx tab owns
+// (the operator, 13 Oct; R207): Up, Down, Remove and the update, no Edit,
+// Rebuild or Copy or move, and a line saying where its settings are.
+const sysBtns = await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => ({
+  has: [...r.querySelectorAll('.dmacts [data-dm]')].map(b => b.dataset.dm), rel: !!r.querySelector('[data-dmrel]'),
+  line: r.querySelector('.dmmanaged')?.textContent || '' }));
+ok(['up', 'down', 'remove', 'nginx-update'].every(b => sysBtns.has.includes(b)) && !sysBtns.has.includes('edit') && !sysBtns.has.includes('rebuild') && !sysBtns.rel
+   && /nginx tab/.test(sysBtns.line),
+   `BuilderBot's nginx row keeps Up, Down, Remove and the update and loses Edit, Rebuild and Copy or move (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
 ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
      && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),
    'the Docker tab\'s row of a node\'s nginx says the line is out, with Update as on every row');
