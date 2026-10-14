@@ -871,6 +871,22 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 .hproj.pc{box-shadow:inset 3px 0 var(--pc)}
 .hproj .name{font:var(--f-row);font-weight:600}
 .jbrow.focus{box-shadow:inset 3px 0 var(--accent)}
+/* The Notifications page (R218 step 6): an ask's long part whole in a box
+   that scrolls inside itself; a kept notice wears its kind's icon. */
+.ntask.bad{box-shadow:inset 3px 0 var(--bad)}
+.ntask .bcmd{font:var(--f-data);color:var(--dim);overflow-wrap:anywhere;margin-top:4px}
+.ntlong summary{font:var(--f-note);color:var(--dim);cursor:pointer;margin-top:6px}
+.ntbox{font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:50vh;overflow:auto;
+  margin:6px 0 0;padding:8px 10px;background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control)}
+.ntrow{align-items:flex-start;flex-wrap:nowrap}
+.ntrow .tic svg{width:16px;height:16px;display:block;margin-top:2px;fill:none;stroke:currentColor;
+  stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.ntrow.info .tic{color:var(--accent)}
+.ntrow.warn .tic{color:var(--warn)}
+.ntrow.bad .tic,.ntrow.bad .nttext{color:var(--bad)}
+.ntrow .grow{min-width:0}
+.ntrow .nttext{display:block;overflow-wrap:anywhere}
+.ntrow .sub{display:block}
 .runnersall{display:flex;flex-direction:column;border:1px solid var(--line);
   border-radius:var(--r-surface);margin:0 0 10px;overflow:hidden}
 .runnersall .row{width:100%;text-align:left;background:none;border:0;border-radius:0;
@@ -3454,17 +3470,29 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 
 /* Macros run in the terminal now, so there is no output pane to put a message
    in. Anything the page needs to say is transient and says it here. */
-#toast{position:fixed;left:50%;transform:translateX(-50%) translateY(-140%);
-  top:calc(10px + env(safe-area-inset-top));z-index:80;   /* over the editor: its
-                            save errors are shown here */
-  max-width:min(560px,92vw);padding:9px 14px;border-radius:var(--r-surface);overflow-wrap:anywhere;
+/* The toast stack (R218 step 6): one column at the top right, under the top
+   bar, the newest on top, each its kind's icon, its words and a ×; over the
+   editor, whose save errors are said here. Not the bottom right: a dialog's
+   foot, its primary action, is there, and a toast held there sat on it. On
+   a phone it spans the width under the top bar. The stack itself takes no
+   pointer where it is empty. */
+#toast{position:fixed;right:14px;top:calc(56px + env(safe-area-inset-top));z-index:80;
+  display:flex;flex-direction:column-reverse;align-items:flex-end;gap:8px;width:min(420px,calc(100vw - 28px));
+  pointer-events:none}
+#toast .tst{pointer-events:auto;display:flex;align-items:flex-start;gap:8px;width:100%;
+  padding:9px 8px 9px 12px;border-radius:var(--r-surface);overflow-wrap:anywhere;
   background:var(--btn);border:1px solid var(--line);color:var(--ink);
-  font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.55);
-  transition:transform .18s ease,opacity .18s ease;opacity:0;pointer-events:none}
-#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-#toast.bad{border-color:var(--red2-edge);color:var(--bad)}
-#toast.warn{border-color:var(--warn);color:var(--warn)}
-@media(prefers-reduced-motion:reduce){ #toast{transition:none} }
+  font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+#toast .tic svg{width:16px;height:16px;display:block;margin-top:2px;fill:none;stroke:currentColor;
+  stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+#toast .tst.info .tic{color:var(--accent)}
+#toast .tst.warn{border-color:var(--warn)}
+#toast .tst.warn .tic,#toast .tst.warn .tmsg{color:var(--warn)}
+#toast .tst.bad{border-color:var(--red2-edge)}
+#toast .tst.bad .tic,#toast .tst.bad .tmsg{color:var(--bad)}
+#toast .tmsg{flex:1;min-width:0}
+#toast .tx{flex:0 0 auto;min-height:24px;min-width:24px;padding:0;border:0;background:none;color:var(--dim)}
+@media(max-width:900px){ #toast{right:8px;left:8px;width:auto} }
 @media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.pane .doc.on{animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */
@@ -5325,6 +5353,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-shell.js"></script>
 <script src="page-dock.js"></script>
 <script src="page-home.js"></script>
+<script src="page-notices.js"></script>
 <script src="page-paint.js"></script>
 <script src="page-panes.js"></script>
 <script src="page-projsettings.js"></script>
@@ -5855,6 +5884,9 @@ $("pCreate").onclick = createProject;
 // Its declarations are page-bell.js; what runs at load is below.
 
 $("bBell").onclick = e => { e.stopPropagation(); toggleBell(); };
+// A toast being read stays: the stack's clocks stop under the pointer.
+$("toast").addEventListener("pointerenter", () => toastHold(true));
+$("toast").addEventListener("pointerleave", () => toastHold(false));
 $("pendApprove").onclick = () => pendAct("approve");
 $("pendDeny").onclick = () => pendAct("deny");
 $("pendClose").onclick = () => { $("pendModal").hidden = true; pendFor = null; };
@@ -5976,6 +6008,8 @@ onRev("jobs", () => {
   if (shown("jobs")) loadJobs();
   // Home's queue and node counts, its containers kept (R218 step 5).
   if (shown("home")) loadHome(true);
+  // ...and the jobs a toast is following (R218 step 6).
+  if (jobToasts.size) jobToastsCheck();
   if (shown("emulator")) loadEmulator();
 });
 // The Phone tab's data (tab-phone.js): fetched here too, because the bell

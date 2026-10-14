@@ -10,8 +10,13 @@
 "use strict";
 
 // ---- toasts -------------------------------------------------------------
+// One stack at a corner (R218 step 6, the design's the-dashboard/notifications
+// rule): the top right, the newest on top, at most TOAST_MAX on screen, each with its
+// kind's icon and its own ×, gone after a while but held while the pointer
+// is over the stack, so a sentence being read does not leave mid-read. And
+// every one is on the record: the bell's latest for this page, and the
+// account's notices (notices.py), read on the Notifications page.
 
-let toastTimer = null;
 // How bad is it: "info", "warn" or "bad". The second argument was a boolean
 // and sixty-odd callers pass `true` for a failure, so `true` still means what
 // it always did and "warn" is the new middle: a caller that never learns
@@ -20,17 +25,119 @@ function level(v){
   return v === true || v === "bad" ? "bad" : v === "warn" ? "warn" : "info";
 }
 
-function notify(msg, bad){
+const TOAST_MAX = 4;
+// The kind's mark: a dot of information, a warning's bang, a failure's cross.
+const TOAST_ICONS = {
+  info: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>`,
+  warn: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.4 14.2 13H1.8z"/><path d="M8 6.6v3.2"/><path d="M8 11.5h.01"/></svg>`,
+  bad: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>`,
+};
+let toastHeld = false;
+
+// `opts.kind` is what the record files it under ("said", the default, or
+// "ask" or "job"); `opts.job` names the job it is about.
+function notify(msg, bad, opts = {}){
   const lv = level(bad);
-  const el = $("toast");
-  el.textContent = msg;
-  el.classList.toggle("bad", lv === "bad");
-  el.classList.toggle("warn", lv === "warn");
-  el.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"),
-                          lv === "info" ? 4000 : 7000);
+  toastAdd(String(msg), lv);
   logNote(msg, bad);
+  keepNotice({text: String(msg), level: lv, kind: opts.kind || "said", job: opts.job || ""});
+}
+
+function toastAdd(text, lv){
+  const stack = $("toast");
+  if (!stack) return null;
+  const el = document.createElement("div");
+  el.className = "tst " + lv;
+  el.innerHTML = `<span class="tic">${TOAST_ICONS[lv] || TOAST_ICONS.info}</span><span class="tmsg"></span>
+    <button type="button" class="ic tx" aria-label="dismiss">×</button>`;
+  el.querySelector(".tmsg").textContent = text;
+  el.querySelector(".tx").onclick = () => toastGone(el);
+  stack.append(el);
+  // The oldest goes first, but not a running job's, which is followed.
+  while (stack.children.length > TOAST_MAX)
+    ([...stack.children].find(c => !c.classList.contains("job")) || stack.firstElementChild).remove();
+  if (!noMotion()) el.animate([{opacity: 0, transform: "translateY(8px)"}, {opacity: 1, transform: "none"}],
+                              {duration: 160, easing: "ease"});
+  el.left = lv === "info" ? 4000 : 7000;
+  toastTick(el);
+  return el;
+}
+
+// Each toast's own clock, which stops while the stack is held and goes on
+// with what it had left when the pointer leaves.
+function toastTick(el){
+  clearTimeout(el.timer);
+  if (toastHeld || el.left === Infinity) return;
+  el.started = Date.now();
+  el.timer = setTimeout(() => toastGone(el), el.left);
+}
+function toastHold(on){
+  toastHeld = on;
+  for (const el of $("toast")?.children || []){
+    if (on){ clearTimeout(el.timer); if (el.started) el.left = Math.max(1500, el.left - (Date.now() - el.started)); }
+    else toastTick(el);
+  }
+}
+function toastGone(el){
+  clearTimeout(el.timer);
+  if (!el.isConnected) return;
+  if (noMotion()){ el.remove(); return; }
+  const out = el.animate([{opacity: 1}, {opacity: 0}], {duration: 140, easing: "ease"});
+  out.onfinish = out.oncancel = () => el.remove();
+}
+
+// A job's toast (R218 step 6): it stays while the job runs, its line the
+// job's state and step as the queue reports them, read again each time the
+// jobs token moves; when the job ends it takes the outcome's tone, starts
+// its clock like any other, and the outcome is kept on the record as a
+// job's (kind "job", with the job's id, which the Notifications page opens).
+// Dismissed before then, it is still followed, so the end is still kept.
+const jobToasts = new Map();     // job id -> {el, label}
+function notifyJob(id, label){
+  if (!id) return notify(label);
+  const el = toastAdd(`${label}: queued`, "info");
+  if (el){ el.classList.add("job"); el.left = Infinity; clearTimeout(el.timer); }
+  jobToasts.set(id, {el, label});
+  logNote(`${label}: queued`, false);
+  jobToastsCheck();
+}
+async function jobToastsCheck(){
+  for (const [id, t] of [...jobToasts]){
+    let j;
+    try{ j = await (await fetch(`/api/v1/jobs?id=${encodeURIComponent(id)}`)).json(); }catch(e){ continue; }
+    // A job carries an error field of its own (a failed one's reason), so
+    // the read is good when it names the job.
+    if (!j || j.id !== id){ jobToasts.delete(id); continue; }
+    const over = ["succeeded", "failed", "canceled"].includes(j.state);
+    const line = over ? `${t.label}: ${j.state}${j.state === "failed" && j.error ? " (" + j.error + ")" : ""}`
+      : `${t.label}: ${j.state === "running" && j.step ? j.step : j.state}`;
+    if (t.el?.isConnected) t.el.querySelector(".tmsg").textContent = line;
+    if (!over) continue;
+    jobToasts.delete(id);
+    const lv = j.state === "failed" ? "bad" : j.state === "canceled" ? "warn" : "info";
+    if (t.el?.isConnected){
+      t.el.className = "tst " + lv;
+      t.el.querySelector(".tic").innerHTML = TOAST_ICONS[lv];
+      t.el.left = lv === "info" ? 4000 : 7000;
+      toastTick(t.el);
+    }
+    logNote(line, lv === "info" ? false : lv);
+    keepNotice({text: line, level: lv, kind: "job", job: id});
+  }
+}
+
+// Onto the account's record, a few at a time: a burst of toasts is one
+// write. Never a toast of its own when it fails, which would be a loop.
+let noticeQueue = [], noticeTimer = null;
+function keepNotice(n){
+  if (!state?.uid) return;
+  noticeQueue.push(n);
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(async () => {
+    const items = noticeQueue.splice(0);
+    try{ await postJSON("/api/notices", {action: "add", items}); }catch(e){ /* the toast was said */ }
+    if (shown("notices")) loadNotices();
+  }, 400);
 }
 
 // ---- what the page has said, and what is waiting on you ----------------
@@ -158,6 +265,46 @@ function needsRows(){
   ];
 }
 
+// What an ask is, in one line: the machine and that it is root there, the
+// project and the verb, a container and its node. The bell's row and the
+// Notifications page's both lead with it.
+function askTag(a){
+  return (
+          a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
+          : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
+          : a.kind === "sign" ? `sign a build of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "sign-key" ? `a signing key change in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release" ? `release ${esc(a.project ? projLabel(a.project) : "a project")} ${esc(a.tag || "")}: needs your answer`
+          : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "phone-use" ? `your phone, from ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "push" ? `a push from ${esc(a.project ? projLabel(a.project) : "a project")} looks sensitive: needs your answer`
+          : "needs your answer");
+}
+
+// The command an ask would run, with the prompt it runs at: root's #, bb's
+// verbs, adb's for a phone.
+function askCmd(a){
+  const pre = a.kind === "root" ? "# " : a.kind === "phone-use" ? ""
+    : ["rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "push"].includes(a.kind) ? "bb " : "adb ";
+  return pre + esc((a.cmd || []).join(" "));
+}
+
+// An answer to an ask, from the bell or the Notifications page, and onto
+// the account's record (kind "ask"): which ask, and what was said to it.
+function askAnswer(id, allow, session = false){
+  const a = (ph?.asks || []).find(x => x.id === id);
+  if (allow){ phBusy = "running it"; phRev++; drawPanes(); }
+  phFetch(allow ? {action: "allow", id, session} : {action: "deny", id});
+  if (a){
+    const plain = document.createElement("i");
+    plain.innerHTML = askTag(a).replace(/: needs your answer$/, "");
+    keepNotice({text: `${allow ? (session ? "Approved for the session" : "Approved") : "Denied"}: ${plain.textContent}${
+      (a.cmd || []).length ? ` (${a.cmd.join(" ")})` : ""}`, level: allow ? "info" : "warn", kind: "ask"});
+  }
+}
+
 function drawBell(){
   const bell = $("bBell"), panel = $("bellPanel");
   if (!bell) return;
@@ -227,20 +374,9 @@ function drawBell(){
     // A removal from a release takes something away from the people
     // downloading, so it wears the destructive color, as root does.
     ...asks.map(a => `<div class="bnote ask${a.kind === "root" || a.kind === "release-remove" ? " bad" : ""}">
-        <div class="btag">${
-          a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
-          : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
-          : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
-          : a.kind === "sign" ? `sign a build of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
-          : a.kind === "sign-key" ? `a signing key change in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
-          : a.kind === "release" ? `release ${esc(a.project ? projLabel(a.project) : "a project")} ${esc(a.tag || "")}: needs your answer`
-          : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
-          : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
-          : a.kind === "phone-use" ? `your phone, from ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
-          : a.kind === "push" ? `a push from ${esc(a.project ? projLabel(a.project) : "a project")} looks sensitive: needs your answer`
-          : "needs your answer"}</div>
+        <div class="btag">${askTag(a)}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" || a.kind === "release-remove" || a.kind === "push" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
+        <div class="bcmd">${askCmd(a)}</div>${
         // A push (R219) is approved by reading the lines that look like a
         // secret or something private, whole, open, each with its file and
         // line: Approve sends them and okays these exact lines.
@@ -292,14 +428,18 @@ function drawBell(){
   // Three groups, each headed with its count, so what waits on an answer is
   // never under what the page merely said; Clear heads the one it clears.
   const hidden = state?.bell_hidden || 0;
-  const group = (title, list, extra = "") => list.length
-    ? `<div class="bgroup"><span>${title} · ${list.length}</span>${extra}</div>` + list.join("") : "";
+  const group = (title, list, extra = "", total = list.length) => list.length
+    ? `<div class="bgroup"><span>${title} · ${total}</span>${extra}</div>` + list.join("") : "";
   const putAway = hidden ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
       <button type="button" id="bellRestore">Show again</button></div>` : "";
+  // A short list (R218 step 6): what waits on an answer, what needs doing,
+  // then the latest five of what the page said, and See all for the rest
+  // and the account's whole record on the Notifications page.
+  const seeAll = `<div class="bfootbar"><button type="button" id="bellAll">See all</button></div>`;
   panel.innerHTML = (answer.length + needs.length + said.length
     ? group("Waiting on you", answer) + group("Needs attention", needs)
-      + group("Recent", said, `<button type="button" id="bellClear">Clear</button>`)
-    : `<div class="bempty">nothing to report</div>`) + putAway;
+      + group("Recent", said.slice(0, 5), `<button type="button" id="bellClear">Clear</button>`, said.length)
+    : `<div class="bempty">nothing to report</div>`) + putAway + seeAll;
   // Any press in the drawer closes it, after the press's own handler has
   // run (the operator, 7 Oct): Approve, Deny, an invitation's answer, Clear,
   // a link to where a row is about. One listener on the drawer, so a row
@@ -310,17 +450,18 @@ function drawBell(){
     if (e.target.closest?.("button, a") && !e.target.closest("[data-bdismiss], #bellRestore"))
       queueMicrotask(() => toggleBell(false));
   };
+  const all = $("bellAll");
+  if (all) all.onclick = () => { toggleBell(false); openNotices(); };
   const clear = $("bellClear");
   // Only the page's own log clears: an ask is not this button's to dismiss.
   if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
   panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    phBusy = "running it"; phRev++; drawPanes();
-    phFetch({action: "allow", id: Number(a.dataset.ballow), session: !!a.dataset.bsession});
+    askAnswer(Number(a.dataset.ballow), true, !!a.dataset.bsession);
   });
   panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    phFetch({action: "deny", id: Number(a.dataset.bdeny)});
+    askAnswer(Number(a.dataset.bdeny), false);
   });
   panel.querySelectorAll("[data-binvite]").forEach(a => a.onclick = async e => {
     e.preventDefault();

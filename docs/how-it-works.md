@@ -802,23 +802,38 @@ to a project's bug list lands on it. The Projects page is a searchable grid
 of cards, each with the same state and the same two actions and menu; the
 name opens the page.
 
-**The bell** in the header is where messages go to stay. A toast says a thing
-once, for four seconds, to whoever happened to be looking: the right deal for
-*saved*, and the wrong one for anything that failed while you were in another
-tab. So every message the page shows lands behind the bell as well and stays
-until you clear it, errors marked as errors. It is bare rather than boxed
-because it is a state light first and a control second: a red dot means
-something unread, an **amber** one means a session is blocked on an answer.
-That second case is the reason it exists: a request to reach the phone shows
-up there with **Approve** and **Deny** on it, for the account that connected
-that phone and nobody else, so answering does not depend on the Nodes tab
-being open. Clearing empties the page's own log and never an ask: a
-question somebody is still waiting on is not this button's to dismiss. The log
-is this tab's, so a reload draws a line under it; the asks are the server's and
-are read live, which is why they leave the list the moment they are answered or
-time out.
+**What the page says** (R218 step 6). A toast is one of a stack at the
+top right under the top bar (across the screen on a phone), the newest on
+top and at most four, each with its kind's icon and its own ×. It goes after four seconds, seven for a warning or a failure, and stays
+while the pointer is over the stack. A job started from the page (an agent
+update, a toolchain install) gets a toast of its own that stays while the
+job runs, says its state and its step as the queue reports them, and takes
+the outcome's tone when it ends. Every toast is also kept for your account
+on the server, newest first, the latest 300, so a failure you were not at
+the screen for is still there to read.
 
-Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and (in red) a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
+**The bell** in the header is a short list: what waits on an answer, then
+what needs attention, then the five latest of what was said, and See all.
+It is bare rather than boxed because it is a state light first and a
+control second: a red dot means something unread or something stopped, an
+**amber** one means a session is blocked on an answer. That second case is
+the reason it exists: a request to reach the phone, a container, a root
+command or a release shows up there with **Approve** and **Deny** on it,
+so answering does not depend on another page being open. Pinned in it, and
+not Clear's to dismiss, is what is waiting on you or stopping work: a
+notebook holding a session's changes, a node whose agent has an update, (in
+red) a node from another compatibility window, a red CI run. Those come from
+the state on every poll and leave the moment they stop being true.
+
+**The Notifications page** (See all, at `#/notifications`) has the rest.
+Waiting on you comes first: every ask, invitation and held change as a row
+with its answer on the row, and the long part (a compose file, the lines a
+push flagged, a release's notes) whole in a box that scrolls inside itself.
+History follows: what the page has said to your account, each with its
+kind, when, its own × and, for a job, a button to its row on the Jobs page;
+chips narrow it to what was said, answers to asks, jobs or failures, and
+Clear empties it or the chip in force, asked first. An answer to an ask is
+kept there as an answer, from the bell or from the page.
 
 **`bb doctor`'s verdict** is the dot right after the bell, green, amber or
 red for the worst check. The server runs the checks in the background every

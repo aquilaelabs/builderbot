@@ -43,6 +43,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/home` | prefix | `_get_home` | GET /api/home: home.read, the overview's numbers (R218 step 5). |  |
+| GET | `/api/notices` | prefix | `_get_notices` | GET /api/notices: notices.listing, this account's own (R218 step 6). |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |
 | GET | `/api/containers` | prefix | `_get_containers` | GET /api/containers. | refused: admin |
 | GET | `/api/project-job` | prefix | `_get_project_job` | GET /api/project-job. | refused: create |
@@ -87,6 +88,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/chat` | prefix | `_chat` | Read a conversation, send into one, or mark one seen: chat.converse. |  |
 | POST | `/api/layout` | prefix | `_layout` | Store this account's open tabs: layout.save_tabs. |  |
 | POST | `/api/bell` | exact | `_bell` | Put a bell note away for this account, or bring every one back (bellseen.py). |  |
+| POST | `/api/notices` | exact | `_notices` | Keep, delete or clear what the page said to this account: notices.act. |  |
 | POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove, check and update on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
 | POST | `/api/images` | exact | `_images` | Check for updates on the Docker tab (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage tab: a node's disks walked at once (nodes.node_storage_measure). |  |

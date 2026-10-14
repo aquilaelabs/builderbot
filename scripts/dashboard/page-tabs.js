@@ -208,6 +208,11 @@ const TABKINDS = {
               icon: TOOL_ICONS.emulator,
               render: (i) => renderEmulatorInto(i), live: () => `${emuRev}/${nodesRev}`,
               open: () => loadEmulator() },
+  // The Notifications page (R218 step 6): the account's record, read on
+  // open, and the asks, which ride the phone payload, on every draw.
+  notices:  { multi: false, label: () => "Notifications",
+              render: (i) => renderNoticesInto(i), live: "always",
+              open: () => loadNotices() },
   // Home (R218 step 5): its own read on open, and the poll's rows on every
   // draw, painted only when they changed.
   home:     { multi: false, label: () => "Home",

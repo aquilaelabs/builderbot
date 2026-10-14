@@ -694,15 +694,12 @@ async function tcAct(action, only){
     if (j?.added?.length)
       notify(`also installing ${j.added.join(", ")}: needed by what you picked`);
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
-    notify(action === "check"
-      ? (tcNode === "local" ? "checking for updates"
-         : "checking for updates on " + ((nodesList || []).find(n => n.id === tcNode)?.name
-                                         || "the node"))
-      : action === "sysdeps"
-      ? "installing the system packages"
-      : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${
-          tcNode !== "local" ? " on " + ((nodesList || []).find(n => n.id === tcNode)?.name || "the node") : ""
-        }; this can take minutes`);
+    // The job's own toast where there is one (R218 step 6): it follows the
+    // job to its end, which is kept on the record.
+    const on = tcNode !== "local" ? " on " + ((nodesList || []).find(n => n.id === tcNode)?.name || "the node") : "";
+    notifyJob(j.job, action === "check" ? "checking for updates" + on
+      : action === "sysdeps" ? "installing the system packages" + on
+      : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${on}`);
     loadToolchains();
   }catch(e){ notify("could not start: " + e, true); }
 }

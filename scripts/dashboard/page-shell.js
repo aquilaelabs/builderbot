@@ -122,6 +122,8 @@ function routeOf(t){
     return "#/projects/" + encodeURIComponent(t.arg) + (v ? "/" + (v === "briefing" ? "overview" : v) : "");
   }
   if (!isToolKind(t.kind)) return "";
+  // The Notifications page is on no group: the bell's See all opens it.
+  if (t.kind === "notices") return "#/notifications";
   const g = groupOf(t.kind);
   if (!g) return "";
   return (g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`;
@@ -140,6 +142,7 @@ function openRoute(hash){
     openNotebook(name, v ? (v === "overview" ? "briefing" : v) : undefined);
     return true;
   }
+  if (key === "notifications"){ openNotices(); return true; }
   const g = RAIL.find(x => x.key === key);
   if (!g || g.panel) return false;
   const kind = a && (g.tools || []).some(([k]) => k === a) ? a : g.tools[0][0];

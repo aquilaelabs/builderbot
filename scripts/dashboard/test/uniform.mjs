@@ -77,6 +77,10 @@ const DRIVERS = {
     open: () => page.evaluate(() => openRunnerTab()),
     readyWhen: '.runnertab .ndconf, .runnertab .hint',
   },
+  notices: {
+    open: () => page.evaluate(() => openNotices()),
+    readyWhen: '.noticestab details.sect',
+  },
   home: {
     open: () => page.evaluate(() => railGo('home')),
     readyWhen: '.hometab .hometiles .tile',

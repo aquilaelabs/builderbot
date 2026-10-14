@@ -297,6 +297,9 @@ layout.configure(state=STATE, write_json=write_json, lock=_state_lock)
 import bellseen                                                  # noqa: E402
 
 bellseen.configure(state=STATE, write_json=write_json)
+# ...and what the page has said to each account, kept: notices.py (R218 step 6).
+import notices                                                   # noqa: E402
+notices.configure(state=STATE, write_json=write_json)
 
 
 
@@ -3891,6 +3894,7 @@ GET_ROUTES = (
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/home", "_get_home"),
+    ("prefix", "/api/notices", "_get_notices"),
     ("prefix", "/api/docker", "_get_docker"),
     ("prefix", "/api/containers", "_get_containers"),
     ("prefix", "/api/project-job", "_get_project_job"),
@@ -3948,6 +3952,7 @@ POST_ROUTES = (
     ("prefix", "/api/chat", "_chat"),
     ("prefix", "/api/layout", "_layout"),
     ("exact", "/api/bell", "_bell"),
+    ("exact", "/api/notices", "_notices"),
     ("exact", "/api/nginx", "_nginx"),
     ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
@@ -7674,6 +7679,22 @@ class Handler(BaseHTTPRequestHandler):
         if nid and not nodes.node(nid):
             return self._json({"error": "which node?"}, 400)
         return self._result(imagecheck.check(nid or None))
+
+    def _get_notices(self):
+        """GET /api/notices: notices.listing, this account's own (R218 step 6).
+        A session has none: what a page said is a person's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a session has no notices"}, 403)
+        return self._json(*notices.listing(users.uid_of(who)))
+
+    def _notices(self, req):
+        """Keep, delete or clear what the page said to this account:
+        notices.act. The account's own, so no grant; a session has none."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a session has no notices"}, 403)
+        return self._json(*notices.act(users.uid_of(who), req))
 
     def _bell(self, req):
         """Put a bell note away for this account, or bring every one back

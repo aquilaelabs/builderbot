@@ -2100,7 +2100,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
         if (j.current){ delete nodesUpdating[id]; notify(`already on ${j.version}`); }
-        else if (j.ok) notify("Update queued: the row refreshes when the node reports back");
+        else if (j.ok) notifyJob(j.job, `agent update on ${(nodesList || []).find(n => n.id === id)?.name || "the node"}`);
         else delete nodesUpdating[id];
         return;
       }
