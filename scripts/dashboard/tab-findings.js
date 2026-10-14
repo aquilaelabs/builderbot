@@ -127,6 +127,15 @@ const opened = new Set();
 // The per-rule rendering the notebook's Analysis view uses: worst level
 // first, each rule one block with its hits. What used to be the whole-report
 // tab, scoped to one project: the grouping by project became the notebook.
+// Which rules are open, by id, so a redraw (the poll, a filter) draws them
+// open again (the fold rule: a fold is remembered); recorded by fxRemember,
+// which index.html hands the page's toggle listener.
+const fxOpen = new Set();
+function fxRemember(e){
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.classList.contains("rule") || !d.dataset.key) return;
+  if (d.open) fxOpen.add(d.dataset.key); else fxOpen.delete(d.dataset.key);
+}
 function findingsRulesHtml(rows){
   const by = (xs, k) => xs.reduce((m, x) => ((m[x[k] ?? "none"] ??= []).push(x), m), {});
   const rules = by(rows, "rule");
@@ -144,7 +153,7 @@ function findingsRulesHtml(rows){
     const hits = rules[rid];
     const f = hits[0];
     const cves = [...new Set(hits.flatMap(h => h.cves))];
-    html += `<details class="rule">
+    html += `<details class="rule" data-key="${esc(rid)}"${fxOpen.has(rid) ? " open" : ""}>
       <summary class="rid">
         <span class="pill ${levelClass(f.level)}">${esc(f.level)}</span>
         <span class="rname">${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`

@@ -380,7 +380,9 @@ ok(elsewhere.git_name === 'T. Person',
 // itself, and back to the dialog when another view is picked.
 {
   await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); });
-  ok(!(await page.$('#projects [data-rn]')) && !(await page.$('.doc .projtab [data-rn]')),
+  // The sidebar's row carries no gear; the Projects page's card offers
+  // Settings in its menu by design (R218 step 3), not as a button on the row.
+  ok(!(await page.$('#projects [data-rn]')) && !(await page.$('.doc .projtab .pcacts > [data-rn]')),
      'no project row carries a settings button any more');
   await page.evaluate(() => openProjectSettings('alpha'));
   await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 15000 });

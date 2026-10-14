@@ -772,6 +772,16 @@ five across the foot, with More for the rest and for the open tabs. The
 search in the top bar jumps to a page, a project, a container or a node as
 you type; it does not search inside notebooks.
 
+**A project is a page** (R218 step 3). Its notebook's pane wears the
+project's header: the name, the branch and the node, the session's state
+as a dot and a word, and the actions its sidebar row carried, Open Claude
+with the chooser under it, Shell, and the rest (link, phone, report, lock,
+pin, settings) behind one menu. The views are the page's sub-nav, Overview
+first, and the address names the view (`#/projects/web/bugs`), so a link
+to a project's bug list lands on it. The Projects page is a searchable grid
+of cards, each with the same state and the same two actions and menu; the
+name opens the page.
+
 **The bell** in the header is where messages go to stay. A toast says a thing
 once, for four seconds, to whoever happened to be looking: the right deal for
 *saved*, and the wrong one for anything that failed while you were in another

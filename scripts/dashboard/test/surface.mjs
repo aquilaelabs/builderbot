@@ -81,7 +81,7 @@ const SURFACE = [
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'wirePhoneTab',
   'openStorageTab', 'loadStorage', 'storageHeld', 'storageRow', 'andList', 'storageDisks', 'storageProjects', 'storageBody', 'storagePick', 'renderStorageInto', 'wireStorageTab',
-  'openNginxTab', 'loadNginx', 'nginxKeepTyping', 'nginxRefocus', 'projectHeader', 'wireProjectHeader', 'projectState', 'projectNote', 'projectActions', 'projectMatches', 'projectCard', 'resumeHostNow', 'syncResumeMenu', 'nginxAct', 'nginxRouteRow', 'nginxCertPick', 'nginxResolve', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxBody', 'nginxPick', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
+  'openNginxTab', 'loadNginx', 'nginxKeepTyping', 'nginxRefocus', 'projectHeader', 'wireProjectHeader', 'projectState', 'projectNote', 'projectActions', 'projectMatches', 'projectCard', 'fxRemember', 'resumeHostNow', 'syncResumeMenu', 'nginxAct', 'nginxRouteRow', 'nginxCertPick', 'nginxResolve', 'nginxCertLines', 'nginxRedraw', 'nginxDraftOf', 'nginxBody', 'nginxPick', 'renderNginxInto', 'nginxReadDraft', 'wireNginxTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
   // guides are top-level consts, which are not window properties.
   'abShow', 'abLoadLog', 'abDrawLog', 'openAbout', 'closeAbout', 'welcomeOnce',

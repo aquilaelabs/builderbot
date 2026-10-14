@@ -856,7 +856,7 @@ function projectActions(p, extra = ""){
         esc(notMine(p) ? NOT_MINE_WHY : p.locked ? "locked; you run this one. Unlock lets Claude back in" : heldWhy(p) || p.session_why || "")}">${
         mine ? "Claude" : "Open Claude"}</button>`}
     ${mayShell() ? `<button type="button" data-s="${esc(name)}"${notMine(p) || !gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
-    <span class="more"><button type="button" class="ic" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
+    <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }
 function projectHeader(t){
   const name = t.arg, p = (state?.projects || []).find(x => x.name === name);

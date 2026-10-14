@@ -919,6 +919,10 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
   ok(await page.evaluate(() => { try { return localStorage.getItem('bb.mode'); } catch (e) { return 'no storage'; } }) === 'light',
      '...and the browser keeps it, as it keeps the scheme');
   const swLight = await page.$eval('#uiMenu .sw[data-theme="moss"]', b => getComputedStyle(b).backgroundColor);
+  // A document in front (R218 step 2): a page on show has no tab in the
+  // strip, and the measure is the strip's active tab.
+  await page.evaluate(() => { const d = tabs.find(t => !isToolKind(t.kind)); if (d) focusTab(d.id); });
+  await page.waitForTimeout(300);
   ok(await page.$eval('.tab.on .lbl', e => getComputedStyle(e).color) === 'rgb(255, 255, 255)',
      'a filled accent carries white in the light half, where the ink is dark');
   // Nostromo has no light half: picked while Light is on, the page goes
@@ -1430,7 +1434,7 @@ ok(!await page.$$eval('#projects .row .name',
    '...with the sidebar dropping it in the same breath');
 await page.evaluate(() => setProjectPinned('beta', true));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="beta"]')?.classList.contains('on'),
+  document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Unpin',
   { timeout: 5000 });
 ok(true, '...and pinning it back lights it again, first click');
 // A project whose name has a dot in it: the row's own selector has to survive
@@ -1556,14 +1560,18 @@ ok(await page.$eval('#rnTokenField', el => el.hidden)
 // Its people (membership.py): the owner, who may hand it on and make it
 // invite only, staged until Save, and an Invite that acts on the press.
 await page.waitForSelector('#rnPeopleField:not([hidden]) #rnOwner', { timeout: 10000 });
+// What Invite only allows is the ? help on People now (R244), not prose
+// drawn on every visit; the section itself is the two settings and a facts
+// line.
 ok(await page.$eval('#rnOwner', s => s.value) === 'test'
    && await page.$('#rnInviteOnly:not([disabled])') !== null
-   && /Any administrator can add people/.test(await page.$eval('#rnPeople', e => e.textContent)),
-   'the gear shows the project\'s owner, to hand on, and Invite only, off, saying what that allows');
+   && /Any administrator can add people/.test(await page.$eval('#rnPeopleLabel .help', e => e.dataset.help))
+   && /On it:/.test(await page.$eval('#rnPeople', e => e.textContent)),
+   'the gear shows the project\'s owner, to hand on, and Invite only, off, what that allows behind the ? on People');
 await page.click('#rnInviteOnly');
-ok(/Administrators cannot add themselves/.test(await page.$eval('#rnPeople', e => e.textContent))
+ok(await page.$eval('#rnInviteOnly', c => c.checked)
    && (await api('/api/members', { action: 'view', project: 'alpha' })).body.invite_only === false,
-   '...ticking Invite only says what it means and changes nothing until Save');
+   '...ticking Invite only stages it and changes nothing until Save');
 await page.click('#rnInviteOnly');
 // Its Android signing keys (R106), an administrator's: a row per route,
 // a picked keystore staged until Save, its password asked for before

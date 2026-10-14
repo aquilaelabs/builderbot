@@ -319,6 +319,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container on a node that keeps its ports on loopback says why it still publishes on every address: the variable in its compose file that defaults to 0.0.0.0 (or the address written in), and what to set; a down one says so before it comes up (27bdc3b)
 - The dashboard has a rail: nine groups down the left edge (Home, Projects, Containers, Machines, Build, Jobs, Sessions, People, Settings), each a page with its own address, the tool tabs gone from the strip, which keeps terminals and notebooks; on a phone the rail is a bar across the foot with More (0782f1b)
 - The revisions poll slows to five seconds after a minute with nothing moving, and a page's watches fetch only while that page is on show (0782f1b)
+- A project is a page: its header (name, branch, node, the session's state, Open Claude, Shell and a menu) over its views as a sub-nav, Overview first, each view at its own address (#/projects/web/bugs); the Projects page is a searchable grid of cards with Claude, Shell and a menu on each (f703de8)
+- Rows that open on the notebook: a roadmap line opens to its workings with Shelve, Reword and Drop; a finding's rule opens to its places and message; the Roadmap's Save and Revert appear only with something staged (f703de8)
+- The Roadmap's head row says when a session last read it; the Tests view's output button comes with the first run; a project's People section is facts and one notice; the New project dialog no longer asks the Claude may dials (f703de8)
 
 ### Removed
 
@@ -527,6 +530,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Docker view no longer re-reads the manager on every status poll: on an agent node that read ran through the agent and moved the nodes token, which ran the status poll again, 134 requests in 30 seconds; it re-reads when the manager's token moves, as the Docker tab does (3b5a29f)
 - A container's port routed through nginx already takes a second hostname from its Docker row (the site at its domain and at www), and the nginx tab keeps a hostname being typed, and the rest of a draft, across its own re-reads (9b0165e)
 - A push from a node no longer waits forever on the project's own git config: the sync takes back the bytes the controller already holds, so the credential helper it wrote there no longer leaves the node behind (83df0d5)
+- The wiki's page column gives way to a picker when the notebook's pane is narrow, whatever the window's width (f703de8)
+- bb git policy says first whether the project can push at all: its rights, and whether its remote has a key or a token behind it (f88f91a)
 
 ### Security
 

@@ -2282,6 +2282,15 @@ pre.diff .d-ctx{color:var(--dim)}
   .wkpick{display:flex;margin-bottom:10px}
   .wktitle{font-size:1.5em}
 }
+/* ...and the window's rule too: a container query is not evaluated for a
+   view the phone's layout has not laid out yet, and a phone is narrow
+   whatever the pane's width. */
+@media(max-width:620px){
+  .wkreader{display:block}
+  .wknav{display:none}
+  .wkpick{display:flex;margin-bottom:10px}
+  .wktitle{font-size:1.5em}
+}
 
 /* ---- the Design view (nb-design.js) --------------------------------------
    A language's choices in labeled controls, its colors as chips beside
@@ -2694,15 +2703,15 @@ pre.diff .d-ctx{color:var(--dim)}
 .pane .bar.proj .sp{flex:1}
 .pane .bar.proj .phead>button{min-height:32px;padding:4px 12px;font:var(--f-ui)}
 .pane .bar.proj .more{position:relative;display:inline-flex}
-.pane .bar.proj .more>button{min-height:32px;min-width:32px}
+.pane .bar.proj .more>button{min-height:32px;min-width:32px;padding:4px 8px}
 .pane .bar.proj .pnote{flex:1 1 100%;font:var(--f-ui)}
 .pane .bar.proj .pnote.bad{color:var(--bad)}
 .pane .bar.proj .pnote.dim{color:var(--dim)}
 @media(max-width:600px){ .pane .bar.proj .pfacts{flex:1 1 100%;max-width:none} }
 /* The Projects page (R218 step 3): a searchable grid of cards with status. */
-.pjbar{padding:10px 12px}
-.pjbar input{flex:1 1 220px;min-height:var(--tap);padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data);border:1px solid var(--line);border-radius:var(--r-control)}
-.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:0 12px 12px}
+.projtab .docbarrow #pjSearch{flex:1 1 220px}
+.pgridband{padding-top:12px;padding-bottom:12px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .pgrid .empty{grid-column:1/-1}
 .pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);min-width:0}
 .pcard.pc{box-shadow:inset 3px 0 var(--pc)}
@@ -2715,10 +2724,9 @@ pre.diff .d-ctx{color:var(--dim)}
 .pcard .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 .pcard .pnote{font:var(--f-ui)}
 .pcard .pnote.bad{color:var(--bad)} .pcard .pnote.warn{color:var(--warn)} .pcard .pnote.dim{color:var(--dim)}
-.pcard .pcacts{display:flex;gap:6px;align-items:center;margin-top:auto;padding-top:6px}
-.pcard .pcacts>button{min-height:32px;padding:4px 12px;font:var(--f-ui)}
+.pcard .pcacts{margin-top:auto;padding:6px 0 0;border:0;background:none}
 .pcard .pcacts .more{position:relative;display:inline-flex;margin-left:auto}
-.pcard .pcacts .more>button{min-height:32px;min-width:32px}
+.pcard .pcacts .more>button{min-width:var(--tap);padding:4px 8px}
 .pcard:has(.actmenu:not([hidden])){z-index:41}
 .pane .bar .subnav{display:flex;gap:4px;flex-wrap:wrap}
 .pane .bar .subnav button{min-height:26px;padding:2px 10px;font:var(--f-ui);border:1px solid var(--line);
@@ -3905,12 +3913,12 @@ body.booting .pane>.loading{margin:auto}
   transition:background-color .15s ease}
 /* A rule is a row that opens (R234): the summary is the closed row, its
    body the places, the description and the message. */
-.fx .rule{border-top:1px solid var(--line);padding:0}
-.fx .rule>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:var(--row-y) var(--row-x)}
+.fx .rule{border-top:1px solid var(--line);padding:0 var(--row-x)}
+.fx .rule>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:var(--row-y) 0}
 .fx .rule>summary::-webkit-details-marker{display:none}
 .fx .rule>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
 .fx .rule[open]>summary::before{content:"\25BE"}
-.fx .rule .rbody{padding:0 var(--row-x) var(--row-y) calc(var(--row-x) + 17px)}
+.fx .rule .rbody{padding:0 0 var(--row-y) 17px}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
 .fx .rule .rid .rname{color:var(--ink)}
 .fx .rule .desc{margin:3px 0 6px;overflow-wrap:anywhere}
@@ -6340,6 +6348,7 @@ document.addEventListener("click", e => {
   sectOpen[d.dataset.sect] = !d.open;
 }, true);
 document.addEventListener("toggle", e => {
+  fxRemember(e);                        // a finding's rule, open or shut (tab-findings.js)
   const d = e.target;
   if (d?.dataset?.sect && d.dataset.pressed) sectOpen[d.dataset.sect] = d.open;
 }, true);

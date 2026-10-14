@@ -117,24 +117,26 @@ function projectCard(p){
     ${projectState(p)}
     ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
     ${projectNote(p)}
-    <div class="pcacts">${projectActions(p, `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
+    <div class="pcacts actbar">${projectActions(p, `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
   </div>`;
 }
 
 function renderProjectsInto(i){
   const el = $("doc" + i);
   if (!el) return;
-  el.classList.add("flush");
   const ps = state?.projects || [];
-  // The bar once: the search, New project and the trash; the grid under it
-  // is what paints on every pass, so typing in the box is not drawn over.
+  // The surface once (docSurface: the bar band, the band list, the quiet
+  // footer): its bar is the search, New project and the trash, and the grid
+  // under it is what paints on every pass, so typing in the box is not
+  // drawn over.
   if (!el.querySelector(".projtab")){
-    el.innerHTML = `<div class="projtab"><div class="actbar pjbar">
-        <input id="pjSearch" type="search" placeholder="name, branch or node" aria-label="narrow the projects" autocomplete="off" spellcheck="false">
+    const d = docSurface(i, "proj");
+    d.setBar(`<input id="pjSearch" type="search" placeholder="name, branch or node" aria-label="narrow the projects" autocomplete="off" spellcheck="false">
         <span class="sp"></span>
-        <button type="button" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button>
-        <button type="button" id="bTrashTab" class="ic" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
-      </div><div id="pjGrid" class="pgrid"></div></div>`;
+        <span class="actbar"><button type="button" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button>
+        <button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button></span>`);
+    d.list.innerHTML = `<div class="field pgridband"><div id="pjGrid" class="pgrid"></div></div>`;
+    d.setFoot("A project is a page: its name opens it. Pin decides what Home shows at a glance.");
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");
