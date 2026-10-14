@@ -3370,8 +3370,11 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
    phone never shows. */
 .doctor .probs .why{display:block;color:var(--dim);font:var(--f-note);white-space:pre-line;
   overflow-wrap:anywhere;margin-top:2px}
-.doctor .chips .pill{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  max-width:100%}
+/* A long check wraps rather than ending in an ellipsis: with no tooltips
+   (11 Oct) a cut chip says nothing of the rest. A chip of two lines takes the
+   control's corners, where a pill's round ends would bulge. */
+.doctor .chips .pill{white-space:normal;overflow-wrap:anywhere;max-width:100%;
+  border-radius:var(--r-control)}
 
 .pill{font:var(--f-pill);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}

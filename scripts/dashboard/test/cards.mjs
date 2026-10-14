@@ -108,6 +108,22 @@ await ready(page);
   await page.click('#bDocDot');
   await page.waitForSelector('#docPanel:not([hidden]) #doctor .chips .pill', { timeout: 5000 });
   ok(await page.$eval('#bDocDot', b => b.getAttribute('aria-expanded') === 'true'), '...and a press opens it, its passing checks as chips');
+  // A long check wraps inside the panel rather than ending in an ellipsis
+  // (B742): no tooltip says the rest.
+  const long = await page.evaluate(() => {
+    const keep = state.doctor.checks;
+    state.doctor.checks = [...keep, { level: 'ok', text: '2 nodes can run a session (bb-dev-sandbox, bb-dev-sandbox-rh, a third node with a long name)' }];
+    drawDoctor();
+    const pills = [...document.querySelectorAll('#doctor .chips .pill')];
+    const panel = document.getElementById('docPanel').getBoundingClientRect();
+    const out = { cut: pills.filter(p => p.scrollWidth > p.clientWidth + 1).length,
+                  out: pills.filter(p => p.getBoundingClientRect().right > panel.right + 1).length,
+                  tall: pills.some(p => p.getBoundingClientRect().height > 30) };
+    state.doctor.checks = keep; drawDoctor();
+    return out;
+  });
+  ok(long.cut === 0 && long.out === 0 && long.tall,
+     `...a long check wrapping inside the panel rather than cut short (${JSON.stringify(long)})`);
   doctorFixture('fail');
   await page.click('#bDoctor');
   await page.waitForFunction(() => document.getElementById('docDot').className.includes('bad'), null, { timeout: 15000 });
