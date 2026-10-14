@@ -902,6 +902,9 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
 // account, and the swatches show the half that is on.
 {
   const pageBg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  // Past the crossfade Default's pick above started (320ms of html.theming):
+  // read mid-swap, the color to come back to was one no theme paints.
+  await page.waitForFunction(() => !document.documentElement.classList.contains('theming'), null, { timeout: 5000 });
   const darkBg = await pageBg();
   ok(await page.$eval('#uiMenu [data-mode="dark"]', b => b.classList.contains('on')),
      'the gear offers Dark, Light and System, on Dark to begin with');
