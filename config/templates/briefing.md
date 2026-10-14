@@ -20,7 +20,7 @@ stopped by a hook when it runs, with the reason.
 - A refusal (a project's dial, a hook, a permission prompt) is an answer: never route around it.
 - Run `bb tidy` when a task or a batch of them is done.
 - Where a name is defined or called: `bb map find NAME` and `bb map who-calls NAME`; grep is for text.
-- The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step done R4 2`; `bb report "..."` for a problem with BuilderBot itself.
+- The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself.
 - `bb version policy` before moving the version; `bb changelog add "..." --cat NAME` for what a change means to the person using it.
 - Another account's branch (claude/<their name>) is theirs: merge, rebase or delete it only when asked.
 - The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
