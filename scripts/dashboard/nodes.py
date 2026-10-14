@@ -4364,9 +4364,19 @@ def agent_file():
         except OSError:
             return {"body": b"", "digest": "", "version": ""}
         m = re.search(rb'^AGENT_VERSION\s*=\s*"([^"]+)"', init, re.MULTILINE)
+        digest = "sha256:" + hashlib.sha256(body).hexdigest()
+        was = _agent_cache.get("digest")
+        if was and was != digest:
+            # The sources moved under a running controller (a tree edited
+            # under bb dashboard dev, a harness copy written mid-run, B718):
+            # every node enrolled on the old digest is held from here on, so
+            # the file that moved is named, once, where the log is read.
+            newest = max(b.sources(str(AGENT_DIR)), key=lambda t: os.stat(t[1]).st_mtime)[1]
+            print(f"[nodes] the agent's sources changed on disk: {was[:19]}… is now {digest[:19]}… "
+                  f"(newest {newest}, {time.strftime('%H:%M:%S', time.localtime(mtime))})",
+                  file=sys.stderr, flush=True)
         _agent_cache.update({
-            "mtime": mtime, "body": body,
-            "digest": "sha256:" + hashlib.sha256(body).hexdigest(),
+            "mtime": mtime, "body": body, "digest": digest,
             "version": m.group(1).decode() if m else "?"})
     return {k: v for k, v in _agent_cache.items() if k != "bundle"}
 
