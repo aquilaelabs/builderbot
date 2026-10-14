@@ -2690,6 +2690,7 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A page's bar: the group's tools as a segment (the same .pseg the gear's
    Appearance uses), or the page's name, and no close. */
 .pane .bar.page{padding:4px 6px}
+.nbhead .nbsum{min-width:0;flex:1 1 auto}
 .pane .bar .pgname{font:var(--f-ui);color:var(--ink)}
 /* A project's page (R218 step 3): the bar is its header, one band: the name
    large, the branch and the node in the data face, the session's dot and
@@ -2710,6 +2711,11 @@ pre.diff .d-ctx{color:var(--dim)}
 @media(max-width:600px){ .pane .bar.proj .pfacts{flex:1 1 100%;max-width:none} }
 /* The Projects page (R218 step 3): a searchable grid of cards with status. */
 .projtab .docbarrow #pjSearch{flex:1 1 220px}
+.projtab .docbarrow #bTrashTab{min-width:var(--tap);padding:4px 8px}
+.projtab .docbarrow #bTrashTab svg{width:16px;height:16px}
+/* The Claude chooser drawn in a project page's pane (R218 step 3): as wide
+   as its words, never the pane. */
+.pane>.resumemenu{max-width:min(440px,calc(100% - 8px));width:max-content}
 .pgridband{padding-top:12px;padding-bottom:12px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .pgrid .empty{grid-column:1/-1}
@@ -4015,7 +4021,7 @@ body.booting .pane>.loading{margin:auto}
          one-line summary on the left, its History on the right. It sits above
          the add row rather than under it so all four tabs start the same way:
          the eye should not have to look in a different place per tab. -->
-    <div class="field nbhead vbar"><span id="roadmapHint">loading…</span><span id="roadmapRead" class="dim"></span>
+    <div class="field nbhead vbar"><span class="nbsum"><span id="roadmapHint">loading…</span> <span id="roadmapRead" class="dim"></span></span>
       <span class="sp"></span>
       <button id="roadmapDone" type="button"
         title="the items ticked off, with their plans"
