@@ -19,6 +19,25 @@ ok(true, 'a press on a terminal in the dock brings it forward');
 await page.click(`#pane1 .dtab[data-id="${ids0[1]}"] [data-min]`);
 await page.waitForFunction(id => !tabs.some(t => t.id === id), ids0[1], { timeout: 5000 });
 ok(await page.evaluate(() => tabOf(panes[1])?.kind === 'term'), '...and its − puts it away, the next terminal taking the dock');
+// More terminals than the line holds: the one in front is brought into view
+// on it, at either end (B740).
+{
+  const before = await page.evaluate(() => tabs.map(t => t.id));
+  await page.evaluate(() => { for (let i = 0; i < 9; i++) newShell(''); });
+  await page.waitForFunction(n => document.querySelectorAll('#pane1 .dtab[data-id]').length >= n, before.length + 7, { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const seen = () => page.evaluate(() => { const line = document.querySelector('#pane1 .dockline'), on = line.querySelector('.dtab.on');
+    const a = line.getBoundingClientRect(), b = on.getBoundingClientRect();
+    return { fits: b.left >= a.left - 1 && b.right <= a.right + 1, scrolls: line.scrollWidth > line.clientWidth }; });
+  const last = await seen();
+  await page.evaluate(() => dockShow(tabs.filter(t => t.kind === 'term')[0].id));
+  await page.waitForTimeout(200);
+  const first = await seen();
+  ok(last.scrolls && last.fits && first.fits,
+     `with more terminals than the line holds, the one in front is on it, the newest and then the first (${JSON.stringify({ last, first })})`);
+  await page.evaluate(was => { tabs.filter(t => !was.includes(t.id)).forEach(t => hideTab(t.id)); }, before);
+  await page.waitForFunction(n => tabs.length === n, before.length, { timeout: 10000 });
+}
 await page.evaluate(() => dockToggle(true));
 await page.waitForSelector('#pane1 .slot.on iframe', { timeout: 10000 });
 // The frame carries the terminal's own color, because its document is

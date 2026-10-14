@@ -166,6 +166,16 @@ function wireDockBar(bar){
   };
 }
 
+// The terminal in front brought into view on the line, which scrolls inside
+// itself: with more tabs than fit, the one in front sat past its end (B740).
+function dockReveal(bar){
+  const line = bar.querySelector(".dockline"), on = line?.querySelector(".dtab.on");
+  if (!on) return;
+  const lr = line.getBoundingClientRect(), r = on.getBoundingClientRect();
+  if (r.left < lr.left) line.scrollLeft -= lr.left - r.left;
+  else if (r.right > lr.right) line.scrollLeft += r.right - lr.right;
+}
+
 // The pane's classes and height for the dock's state, each draw.
 function dockDress(){
   const el = $("panes");

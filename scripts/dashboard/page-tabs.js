@@ -572,9 +572,9 @@ function refreshSoon(){
   soonTimers = [1500, 4000].map(ms => setTimeout(() => refresh(), ms));
 }
 
-// Take a tab off the strip. Nothing is destroyed and nothing is asked: a
-// terminal keeps running and is listed under Sessions, a document is a view of
-// a file on disk. Ending a session for good is the ✕ in the Sessions card,
+// Put a tab away: a terminal off the dock's line, a page closed. Nothing is
+// destroyed and nothing is asked: a terminal keeps running and is listed
+// under Sessions, a document is a view of a file on disk. Ending a session for good is the ✕ in the Sessions card,
 // which is where a question is worth asking because something is actually lost.
 function hideTab(id, ev){
   ev?.stopPropagation();
