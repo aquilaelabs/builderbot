@@ -310,9 +310,9 @@ The page starts with one workspace tab; every tab, that one included, can be
 minimized. **Claude** opens one session per project: resumable if a previous
 conversation exists, and **Shell** opens another terminal each time you click
 it. Tabs are named for where they are (`sh: <directory>`, following a `cd`;
-`Claude: <project>`), with the full path on hover. Tabs can be dragged to
-reorder (on a phone, hold for half a second first) and pinned to a left or
-right pane for a side-by-side view. A pane's ✕ only collapses the split.
+`Claude: <project>`), with the full path on hover. They live in the dock at
+the foot of every page: one line when shut, half the screen when pulled up,
+the page above it.
 
 A tab's **`&mdash;`** minimizes it: the terminal or Claude session keeps running and is
 listed under Sessions, where clicking the name brings its tab back. Ending a
@@ -321,8 +321,8 @@ and that is the only thing that asks. The sidebar cards collapse on a click of
 their header and can be dragged into any order; the ▤ button in the top bar
 resets them.
 
-The tab strip is stored on the container rather than in the browser, so a phone
-shows what the desktop has open. **Terminals survive a restart of the container**:
+Which terminals are open is stored on the container rather than in the
+browser, so a phone shows what the desktop has open. **Terminals survive a restart of the container**:
 the shutdown saves each one's directory and the last screenful of its
 scrollback under the Config path in `sessions/`, and startup puts them back.
 What was *running* in them does not come back; that went down with the

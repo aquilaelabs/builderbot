@@ -151,6 +151,11 @@ function drawKeys(){
   $("mSessions").classList.toggle("on", showSessions);
   const mc = $("mChat");
   mc.classList.toggle("on", showChat);
+  // Sessions is the rail's and Chat a tab on the dock's line (R218 step 4):
+  // the foot bar keeps what is about the terminal in front, Keys and
+  // Commands, and is not drawn with nothing in it.
+  $("mSessions").hidden = mc.hidden = true;
+  $("mobar").hidden = mk.hidden && mm.hidden;
   // The dot is the whole reason the counts ride the status poll: a chat you
   // have to open to discover is one nobody opens.
   const waiting = Object.values(state?.chat?.unread || {}).reduce((a, b) => a + b, 0);

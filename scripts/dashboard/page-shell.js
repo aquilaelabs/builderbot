@@ -75,7 +75,7 @@ function railGroups(){
 // one on show; else the group of the page on show.
 let railWant = "";
 function railOn(){
-  const t = tabOf(panes[active]);
+  const t = tabOf(panes[0]);
   const kind = t?.kind || "";
   if (railWant){
     const g = RAIL.find(x => x.key === railWant);
@@ -103,7 +103,7 @@ function railGo(key, tool){
   if (!railAllows(kind)) return;
   const was = location.hash;
   OPENERS[kind]?.();
-  const to = routeOf(tabOf(panes[active]));
+  const to = routeOf(tabOf(panes[0]));
   if (to && to !== was) history.pushState(null, "", to);
 }
 
@@ -148,7 +148,7 @@ function openRoute(hash){
 // The address follows the page on show (render calls this): replaced, not
 // pushed, so a poll's redraw is not a history entry; a rail press pushes.
 function shellSync(){
-  const to = routeOf(tabOf(panes[active]));
+  const to = routeOf(tabOf(panes[0]));
   if (to && to !== location.hash) history.replaceState(null, "", to);
   // A document in front has no address: the page's goes, so a reload lands
   // on the document this browser had in front (R131), not on the last page.
@@ -161,7 +161,7 @@ function shellBoot(){
   if (shellBooted || !state) return;
   shellBooted = true;
   const h = location.hash;
-  if (h && h !== "#/" && h !== routeOf(tabOf(panes[active]))) openRoute(h);
+  if (h && h !== "#/" && h !== routeOf(tabOf(panes[0]))) openRoute(h);
 }
 
 // A page on show in a visible pane: what a watch asks before fetching for it
@@ -220,11 +220,10 @@ function railMoreShow(on){
 // leave it (a split pane keeps its own close).
 function shellBar(t, i){
   const g = groupOf(t.kind);
-  const closeBtn = isSplit() ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
   if (!g || (g.tools || []).length < 2)
-    return `<span class="pgname">${esc(g ? g.tools[0][1] : tabLabel(t))}</span>${closeBtn}`;
+    return `<span class="pgname">${esc(g ? g.tools[0][1] : tabLabel(t))}</span>`;
   return `<span class="subnav pseg" role="tablist" aria-label="${esc(g.label)}">${g.tools.filter(([k]) => railAllows(k)).map(([k, label]) =>
-      `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}" data-subnav="${esc(k)}">${esc(label)}</button>`).join("")}</span>${closeBtn}`;
+      `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}" data-subnav="${esc(k)}">${esc(label)}</button>`).join("")}</span>`;
 }
 function wireShellBar(bar){
   bar.querySelectorAll("[data-subnav]").forEach(b => b.onclick = () => {

@@ -537,8 +537,7 @@ and a bin each. Each one also says **which AVDs are built on it**, which is
 what "can this go?" actually means: an AVD names one image exactly and will
 not boot without it, and two flavors at the same API level are not
 interchangeable. An image no AVD names says so, and is the one that is spare. A tab rather than a dialog because an install runs for
-minutes; it can sit on the strip, be pinned to a pane, or be minimized while
-you work, and the work itself is a background job on the container, so the
+minutes; it stays a page you can leave and come back to while you work, and the work itself is a background job on the container, so the
 list keeps reporting progress instead of hanging on a request that would take
 four minutes to answer. The page only ever posts names the server offered it,
 the same rule the command buttons follow.
@@ -766,8 +765,8 @@ Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build
 Roles) and Settings (Controller, Profile); a group with several tools shows
 them as a sub-nav at the top of its page. A page has an address
 (`#/containers`, `#/machines/nodes`, `#/projects/NAME`), so a reload, a
-shared link and the back button land on it. The strip above the pane holds
-documents only: terminals and notebooks. On a phone the rail is a bar of
+shared link and the back button land on it. Terminals and the chat are the
+dock's, at the foot of every page (step 4). On a phone the rail is a bar of
 five across the foot, with More for the rest and for the open tabs. The
 search in the top bar jumps to a page, a project, a container or a node as
 you type; it does not search inside notebooks.
@@ -1812,8 +1811,7 @@ that is not an administrator sees what belongs to its projects.
   **Open** when the tab is minimized; when the tab is on the bar it turns
   green and reads **Minimize** for a shell, or **Close** for a Claude session,
   which asks first, because that ends the conversation. An **attached** pill
-  marks the sessions on screen right now, with ◧/◨ saying which pane when
-  the view is split.
+  marks the sessions on screen right now, in the dock.
   Every Claude session (in this list and on its tab) carries a **state dot**:
   blue and pulsing while it works, amber when it is waiting on you (input, a
   permission decision, or a finished turn), with the task it reported
@@ -1850,13 +1848,13 @@ no session" is also true of every tab restored from a saved layout before
 anything has started, and of all of them for a moment if a poll ever comes back
 empty. Reaping on absence would wipe the strip at every boot.
 
-The page starts with one tab (**workspace**, a shell at `/workspace`) and
-everything you open gets its own tab above the terminal. Every tab, the
-workspace one included, can be minimized or closed; an empty strip just shows
-a placeholder, and **+** starts over. On a desktop a terminal tab can also be
-popped out into its own window (the ⧉ on the tab): the tab stays in the strip
-as a blank pane with **Reattach**, in a split view as in a single one, and
-closing the window brings it back on its own. The window is the terminal's
+The dock starts with one terminal (**workspace**, a shell at `/workspace`),
+and every shell or Claude session you open is another tab on its line.
+Every one, the workspace one included, can be minimized; a dock with none
+is its line alone, and **+** starts over. On a desktop the terminal in front
+can also be popped out into its own window (the ⧉ on the dock's line): its
+tab stays, its pane blank with **Reattach**, and closing the window brings
+it back on its own. The window is the terminal's
 own address, so closing the dashboard leaves it working.
 
 - **Claude** on a project opens *one* session per project. If it is already
@@ -2867,22 +2865,18 @@ saying so and pointing at `bb catchup` and `bb preamble`, once per build.
   following the shell as it `cd`s; hover for the full path. A Claude tab reads
   `Claude: <project>`. Two terminals in the same directory carry their number
   so they stay distinguishable.
-- **Drag a tab** by its label to reorder the strip. With a finger, hold for
-  half a second first: the tab dims to say it is picked up; a finger that
-  moves sooner is swiping, and on a phone that swipe scrolls the strip.
-- **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
-  view. Once split, each tab on screen carries ◧ or ◨ for the pane it is in,
-  and clicking into either terminal makes its pane the active one: the one
-  the keys and the commands go to.
-- **✕ on a pane** collapses back to a single pane. It does **not** close the
-  tab or touch its session: the tab owns the session, the pane is only where
-  it was being shown.
-- **On a phone** there is no split: the pin buttons are hidden and only the
-  active pane is shown: a split made at the desk is still there when you get
-  back to it. The strip stays one row: swipe it, or page it with the **‹ ›**
-  arrows (grayed at the end you cannot page past): instead of wrapping, so
-  the terminal keeps its screen space; a tab you open is scrolled into view.
-  Under the terminal sit **Keys**, **Commands** and **Sessions**. Keys is the
+- **The dock** (R218 step 4) is the foot of every page: shut it is one line
+  naming the open terminals, each with its session's dot, **Chat**, and
+  **+** for a new shell; a press on a terminal brings the dock up with it,
+  half the area to begin with, and dragging the line changes that height,
+  which this browser keeps. The chevron puts it down again and the terminal
+  keeps running behind its line. A middle click on a terminal's tab ends its
+  session, asked first; **⧉** opens the one in front in its own window. The
+  page above stays whole: clicking into the terminal gives the dock the
+  keyboard, a press on the page gives it back.
+- **On a phone** the dock up is a sheet over the whole page, above the
+  bottom bar, and opening a page puts it down. Under the terminal sit
+  **Keys** and **Commands**. Keys is the
   phone's alone: a desktop has a keyboard, so it carries no on-screen one at
   all. One flyout at a time on a phone, because there is not the height for
   two, and a flyout that has done its job gets out of the way: picking a
@@ -2933,8 +2927,8 @@ from outside the frame (the terminal is served from its own port), so tmux's is
 unbound. **Alt+right-click** still opens it if you want *Copy Line* and the
 pane commands.
 
-**The tab strip is shared, not per-browser.** It lives on the container, so
-opening the dashboard on a phone shows what the desktop has open, and a change
+**Which tabs are open is shared, not per-browser.** It lives on the container, so
+opening the dashboard on a phone shows the terminals the desktop has open, and a change
 on either reaches the other within a poll; the pages a rail item opens ride
 in the same saved layout, so the page you were on comes back too. The tab cap on the Settings tab
 (default 12) limits how many can be open at once: each terminal tab is an iframe running a

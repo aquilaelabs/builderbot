@@ -325,6 +325,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project is a page: its header (name, branch, node, the session's state, Open Claude, Shell and a menu) over its views as a sub-nav, Overview first, each view at its own address (#/projects/web/bugs); the Projects page is a searchable grid of cards with Claude, Shell and a menu on each (f703de8)
 - Rows that open on the notebook: a roadmap line opens to its workings with Shelve, Reword and Drop; a finding's rule opens to its places and message; the Roadmap's Save and Revert appear only with something staged (f703de8)
 - The Roadmap's head row says when a session last read it; the Tests view's output button comes with the first run; a project's People section is facts and one notice; the New project dialog no longer asks the Claude may dials (f703de8)
+- The dock: terminals and the chat at the foot of every page, one line when shut and half the screen pulled up (a drag on its line sets the height), a sheet over the page on a phone; the tab strip and the split are gone (ad180a6)
 
 ### Removed
 

@@ -17,22 +17,30 @@
 // whenever the same tab is still in it, because rebuilding it would reload the
 // iframe and drop a live terminal for no reason.
 function paintBar(pane, t, i){
-  const closeBtn = isSplit()
-    ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
+  const bar = pane.querySelector(".bar");
+  // The dock's pane wears the dock's line (R218 step 4), with or without a
+  // terminal in it.
+  if (i === 1){
+    bar.className = "bar dockbar";
+    bar.style.removeProperty("--pc");
+    // Painted only when it changed: a poll that moves nothing leaves the
+    // line's buttons where they are, and a pointer over one keeps its hover.
+    if (paint(bar, dockBar())) wireDockBar(bar);
+    return;
+  }
   // Only the kinds that still declare it. Toolchains moved its own into the tab
   // beside the node picker, where a control belongs: this bar is the tab's
   // name and its close button everywhere else, and a third thing in it was a
   // shape one tab had and no other.
   const reload = TABKINDS[t.kind]?.reload
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
-  const bar = pane.querySelector(".bar");
   // A page (R218 step 2) wears its group's sub-nav, or its name, and no
   // close: the rail is how you leave it. A project (step 3) wears its
   // header: the name, the facts, the session's state and its actions.
   const proj = t.kind === "notebook";
   bar.innerHTML = isToolKind(t.kind) ? shellBar(t, i) + reload
-    : proj ? projectHeader(t) + closeBtn
-    : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
+    : proj ? projectHeader(t)
+    : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}`;
   bar.classList.toggle("page", isToolKind(t.kind));
   bar.classList.toggle("proj", proj);
   wireShellBar(bar);
@@ -41,8 +49,6 @@ function paintBar(pane, t, i){
   const tone = colorTone(projectColor(tabProject(t)));
   bar.classList.toggle("pc", !!tone);
   bar.style.setProperty("--pc", tone || "");
-  bar.querySelectorAll("[data-cp]").forEach(b =>
-    b.onclick = e => closePane(Number(b.dataset.cp), e));
   bar.querySelectorAll("[data-reload]").forEach(b =>
     b.onclick = e => { e.stopPropagation();
       loadFindings(true); });
@@ -157,7 +163,7 @@ const openedNow = new Set();
 function drawPanes(){
   openedNow.clear();
   if (!state) return;    // nothing to point a frame at until the first poll
-  $("panes").classList.toggle("split", isSplit());
+  dockDress();
   // A frame kept alive behind the visible one belongs to a tab. When the tab
   // goes (closed, or replaced by a Resume that mints a new one) the frame
   // is nobody's, and a nobody's frame is still an attached tmux client.
@@ -168,14 +174,18 @@ function drawPanes(){
       .forEach(c => c.remove());
   for (let i = 0; i < 2; i++){
     const pane = $("pane" + i);
-    pane.classList.toggle("hidden", i === 1 && !isSplit());
-    pane.classList.toggle("active", isSplit() && i === active);
+    pane.classList.remove("hidden");
+    pane.classList.toggle("active", i === 1 && active === 1 && dockUp);
+    pane.classList.toggle("dock", i === 1);
     if (i === 1 && !isSplit()){
-      // Emptied, not just hidden: a hidden frame is still a live tmux client
-      //: a second one on a session that has a visible tab (the size fight
-      // pinTo works to avoid), and one that reattachTerminals would reload,
-      // recreating a session that had since been ended.
-      if (pane.dataset.tab){ pane.innerHTML = ""; pane.dataset.tab = pane.dataset.kind = pane.dataset.arg = pane.dataset.popped = ""; }
+      // No terminal in the dock: its line alone. Emptied, not just hidden:
+      // a hidden frame is still a live tmux client, and one that
+      // reattachTerminals would reload, recreating a session since ended.
+      if (pane.dataset.tab || !pane.querySelector(".bar")){
+        pane.innerHTML = `<div class="bar dockbar"></div>`;
+        pane.dataset.tab = pane.dataset.kind = pane.dataset.arg = pane.dataset.popped = "";
+      }
+      paintBar(pane, null, 1);
       continue;
     }
 
@@ -203,7 +213,7 @@ function drawPanes(){
 
     pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || ""; pane.dataset.arg = t?.arg || "";
     pane.dataset.popped = t?.popped ? "1" : "";
-    pane.onclick = () => { if (isSplit()){ active = i; render(); } };
+    pane.onclick = () => { if (isSplit() && active !== i && (i === 0 || dockUp)){ active = i; render(); } };
 
     const st = paneStack(pane);
     if (!t){ showInStack(st, "", () =>
@@ -212,8 +222,8 @@ function drawPanes(){
     const key = `${t.id}|${t.kind}|${t.arg}${t.popped ? "|popped" : ""}`;
     // A terminal that was on screen a moment ago is kept alive behind the one
     // that replaced it, so coming back to it is instant. Two panes must never
-    // hold the same one: a second live client on a session is the size fight
-    // pinTo exists to avoid.
+    // hold the same one: a second live client on a session is the size fight one
+    // client per terminal avoids.
     if (t.kind === "term" || t.kind === "notebook") dropElsewhere(i, key);
     // Same tab, different argument: a dead session's tab taking a Resume's
     // transcript id: is a different frame, and the old one is nobody's now.
@@ -223,7 +233,7 @@ function drawPanes(){
     const { el, fresh } = showInStack(st, key, () => t.kind === "term" && t.popped
       // Popped out into its own window (R8): the tab stays, blank, with the
       // one control that makes sense. Not a hidden frame: that would be a
-      // second client on the session, the size fight pinTo exists to avoid.
+      // second client on the session, the size fight one client per terminal avoids.
       ? `<div class="slot popped"><div class="empty-pane">this terminal is open in its own window<br>
            <button type="button" class="reattach" data-reattach="${esc(t.id)}">Reattach</button></div></div>`
       : t.kind === "term"

@@ -97,7 +97,34 @@ function toggleCard(key){
   saveCards();
 }
 
-// The same pointer-based drag as the tab strip, turned vertical: the number
+// On touch a drag must be earned: hold still for half a second and the card
+// lifts (long-press is a pickup, so its release is not a click either). A
+// finger that moves before then was swiping, and the drag is dropped rather
+// than reordering cards under it. Mouse drags arm immediately.
+const HOLD_MS = 500;
+
+// While a card is held near the edge of the sidebar, the sidebar creeps in
+// that direction, so a drop can reach a card off screen. A held pointer
+// sends no more move events, so this is a frame loop, not a move handler;
+// it re-runs the drop step with the last known position because the cards
+// have moved under a stationary pointer. Speed scales with how deep into the
+// 48px margin the pointer sits.
+let edgeRaf = 0;
+function edgeScroll(){
+  cancelAnimationFrame(edgeRaf);
+  const tick = () => {
+    edgeRaf = 0;
+    if (!(cardDrag?.armed && cardDrag.moved)) return;
+    const side = document.querySelector(".col.side"), r = side.getBoundingClientRect(), m = 48;
+    const v = cardDrag.y < r.top + m ? cardDrag.y - (r.top + m)
+            : cardDrag.y > r.bottom - m ? cardDrag.y - (r.bottom - m) : 0;
+    if (v && side.scrollHeight > side.clientHeight){ side.scrollTop += v / 4; placeCard(); }
+    edgeRaf = requestAnimationFrame(tick);
+  };
+  edgeRaf = requestAnimationFrame(tick);
+}
+
+// The same pointer-based drag the tab strip had, turned vertical: the number
 // of *other* visible cards whose midline is above the pointer is exactly the
 // insertion index. A hidden card (findings without /reports) offers nothing
 // to aim at, so it is re-appended after the visible order: the bottom is

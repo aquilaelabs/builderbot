@@ -407,7 +407,6 @@ html[data-theme="nostromo"] .card h2{
    hull that shows, as it does behind a card. A terminal keeps its own solid
    ground, drawn by the terminal itself: output read through a pattern is
    output misread. */
-html[data-theme="nostromo"] .tabbar,
 html[data-theme="nostromo"] .pane .bar{background:var(--glass)}
 html[data-theme="nostromo"] .pane{background:transparent}
 html[data-theme="nostromo"] .pane .stack:has(> .doc.on){background-color:var(--glass)}
@@ -501,9 +500,9 @@ html[data-theme="nostromo"] button:not(.link){
    at the top of this block still holds. */
 html[data-theme="nostromo"] header h1{
   text-transform:uppercase;letter-spacing:2px;font-size:13px;color:var(--accent)}
-html[data-theme="nostromo"] .tab.on{
+html[data-theme="nostromo"] .dockline .dtab.on{
   box-shadow:0 0 10px 0 color-mix(in srgb, var(--accent) 35%, transparent)}
-html[data-theme="nostromo"] .tab.pc.on{
+html[data-theme="nostromo"] .dockline .dtab.pc.on{
   box-shadow:0 0 10px 0 color-mix(in srgb, var(--pc) 45%, transparent)}
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -893,8 +892,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:56px 340px 1fr;
    until Finish: no sidebar, no tab strip, no bell, at every width. */
 body.firstrun main{grid-template-columns:1fr}
 body.firstrun .rail, body.firstrun .railbar, body.firstrun .railmore{display:none}
-body.firstrun .col.side, body.firstrun .switch, body.firstrun .tabstrip,
-body.firstrun .tabpicklist, body.firstrun #bBell, body.firstrun #bReport{display:none}
+body.firstrun .col.side, body.firstrun .switch, body.firstrun #bBell, body.firstrun #bReport{display:none}
 body.firstrun[data-view] .col.term{display:flex}
 .setup{flex:0 1 auto;max-height:60%;overflow:auto;background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r-surface);padding:12px 14px}
@@ -993,7 +991,7 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
    header stayed bright after collapsing it, a key stayed lit after ^C, the
    bar button held its lighter gray, and with the tap highlight turned off
    that stuck state was the only thing left over from the touch. Placed here,
-   ahead of button.primary/.on and .tab button, which share button:hover's
+   ahead of button.primary/.on, which share button:hover's
    specificity and win only by coming later. */
 @media(hover:hover){
   .side .card h2:hover{color:var(--ink)}
@@ -1016,23 +1014,21 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
   .cmd button:hover{background:var(--btn-hi)}
   .cmd .tack:hover{color:var(--ink)}
   button.eye:hover{color:var(--ink)}
-  .tabbar .newtab:hover{color:var(--ink)}
-  .tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
+  .dockline .dtab .dx:hover{background:rgba(255,255,255,.09);color:var(--ink)}
   .pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
   .fx .grp>summary:hover{background:var(--btn)}
   .fx .cve:hover{background:color-mix(in srgb, var(--bad) 30%, var(--panel))}
-  .tscroll:disabled:hover{background:transparent}
 }
 
 /* Hover states fade rather than snap. Background, border and color cover
    every button variant on the page; the disabled fade rides on opacity;
    transform and filter carry the press, so releasing eases back too. */
-button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
+button,.pane .bar .x{transition:background-color .15s ease,
   border-color .15s ease,color .15s ease,opacity .15s ease,
   transform .1s ease,filter .1s ease}
 /* Every button presses the same way: a one-pixel dip and a dim, mouse or
    finger alike. :not(:disabled), so a dead button stays visibly inert. */
-button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
+button:active:not(:disabled),.pane .bar .x:active{
   transform:translateY(1px);filter:brightness(.82)}
 /* ...except the sidebar's row icons, which dim instead. The dip was taken
    off them because it upset the tooltips measured against their row; there
@@ -1040,7 +1036,7 @@ button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
 .side .acts button:active:not(:disabled){
   transform:none;filter:none;opacity:.65}
 @media(prefers-reduced-motion:reduce){
-  button,.pane .bar .x,.tab .ic{transition:none}
+  button,.pane .bar .x{transition:none}
 }
 button:disabled{opacity:.5;cursor:default}
 /* A control that is dead but still answers a press with why (the roadmap's
@@ -1815,21 +1811,18 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
      an oval on a phone (the operator, 28 Sep). */
   .pcpick button,.modal .pcpick button{width:30px;height:30px;min-height:30px;flex:0 0 auto}   /* nine in a row at 375px */
   #bBell{padding:0 8px}
-  .tab .ic{display:inline-flex;align-items:center;justify-content:center;min-width:32px}
-  .tabbar .newtab{min-width:36px;min-height:36px}
-  button.tscroll{padding:0 14px}
   /* Every button in a dialog and in the notebook at the tap height, as the
      tabs, bars and cards already are: their feet (Save, Approve, Link) and
      History measured 30px. */
   .modal button,.nb button{min-height:var(--tap)}
 }
-.tab.pc{border-left:3px solid var(--pc);
-  /* A hint of it while the tab rests too: with only the bar, a notebook
-     that was not in front read as a plain tab wearing a stripe, and the
-     color it was given was gone until it was clicked on. Ten percent:
+.dockline .dtab.pc{border-left:3px solid var(--pc);
+  /* A project's terminal in the dock (the strip's tab rule, kept): a hint
+     of it while the tab rests too, since a stripe alone read as a plain tab
+     and the color was gone until it was pressed. Ten percent:
      enough to say whose, under --ink at 9:1 or better on every scheme. */
   background:color-mix(in srgb, var(--pc) 10%, var(--btn))}
-.tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
+.dockline .dtab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
 .row[data-row].pc{box-shadow:inset 3px 0 var(--pc);
   background-color:color-mix(in srgb, var(--pc) 6%, transparent)}
@@ -1847,7 +1840,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
-.macros button svg,.tab .lbl svg,.tabpick svg,.tabpicklist .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
+.macros button svg{width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;margin-right:5px}
 /* A group of picks (Claude may, Yours on this project, the new-project
@@ -3546,136 +3539,22 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 #toast.bad{border-color:var(--red2-edge);color:var(--bad)}
 #toast.warn{border-color:var(--warn);color:var(--warn)}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none} }
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.pane .doc.on{animation:none} .tab,.help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.pane .doc.on{animation:none} .help{transition:none} }
 
-.tabbar .newtab{border:1px solid var(--line);border-radius:var(--r-control);font-size:15px;
-  line-height:1;padding:5px 9px;color:var(--dim)}
-
-/* Tabs --------------------------------------------------------------- */
-/* min-width:0 matters: a grid item's min-content width is the whole nowrap
-   tab strip, which would push the column past the viewport on a phone. */
-/* No gap between its parts, unlike the sidebar's stack of cards. The strip,
-   the panes and the bottom bar are one frame drawn in three pieces: the strip
-   owns the top corners and its bottom edge, the panes carry the sides with no
-   top border, the bar owns the bottom corners, and .col's 10px pushed them
-   apart into three separate boxes with the seams showing. */
+/* The page column ------------------------------------------------------ */
+/* min-width:0 matters: a grid item's min-content width is its widest nowrap
+   line, which would push the column past the viewport on a phone. No gap
+   between its parts: the panes and the bottom bar are one frame. */
 .col.term{min-height:0;min-width:0;gap:0}
-.tabbar{display:flex;gap:5px;flex-wrap:wrap;padding:6px 7px;background:var(--panel);
-  border:1px solid var(--line);border-radius:var(--r-surface) var(--r-surface) 0 0;flex:0 0 auto;
-  align-items:center;position:relative}
-.tab{display:flex;align-items:center;gap:0;border:1px solid var(--line);
-  border-radius:var(--r-control);overflow:hidden;background:var(--btn);
-  transition:background-color .15s ease,border-color .15s ease}
-.tab.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
-.tab button{border:0;border-radius:0;background:transparent;min-height:28px}
-/* The tab and the command chip clip their contents, which would clip the
-   focus ring off a button inside; drawn inside the edge instead. */
-.tab button:focus-visible,.cmd button:focus-visible{outline-offset:-2px}
-.tab .lbl{padding:6px 8px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;
-  cursor:grab;touch-action:manipulation;user-select:none;-webkit-user-select:none;
-  -webkit-touch-callout:none}
-.tab.held{opacity:.45}
-.card.held{opacity:.6}   /* the long-press pickup state, cards as tabs */
+.card.held{opacity:.6}   /* the long-press pickup state */
 body.dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
-body.dragging .tab .lbl{cursor:grabbing}
-.tab .ic{padding:6px 7px;color:var(--dim);font-size:13px;line-height:1}
-/* The active tab's own words and controls, which sit on the accent fill
-   rather than on --btn.
-   
-   The label was the worse half and the reason is a class collision: a tab's
-   name is a `.lbl`, which is ALSO the field-label helper (see `.lbl` in the
-   base sheet), so the tab wore the quiet color meant for "Your email" above
-   a text box. On nostromo that measured 2.51:1 against the fill. The icons
-   are --dim by their own rule and measured 2.5 to 3.1, under the floor for
-   a control, let alone for text.
-   
-   Only on the ACTIVE one. An inactive tab is quieter on purpose and its dim
-   sits on --btn, where it reads. */
-.tab.on .lbl,.tab.on .ic{color:var(--on-fill)}
-@media(max-width:900px){ .tab button{min-height:var(--tap)} }
-.tabbar .sep{flex:1}
-.tabstrip{display:flex;align-items:stretch}
-.tabstrip .tabbar{flex:1;min-width:0}
-.tscroll{display:none}
-/* The phone's tab picker (R119 step 5): instead of a strip to swipe and two
-   arrows to page it, one button naming the tab on show and how many are
-   open, and a list under it of every tab, each with its close. A desktop
-   keeps the strip, which wraps. */
-.tabpick{display:none}
-.tabpicklist{position:absolute;z-index:40;left:0;right:0;display:flex;flex-direction:column;
-  background:var(--panel);border:1px solid var(--line);border-radius:0 0 var(--r-surface) var(--r-surface);
-  box-shadow:0 10px 24px rgba(0,0,0,.5);max-height:70vh;overflow-y:auto;
-  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
-.tabpicklist[hidden]{display:none}
-.tabpicklist .tprow{display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--line)}
-.tabpicklist .tprow:last-child{border-bottom:0}
-.tabpicklist .tprow .lbl{flex:1;min-width:0;text-align:left;background:transparent;border:0;
-  min-height:var(--tap);padding:0 6px;color:var(--ink);font:var(--f-ui);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tabpicklist .tprow.on .lbl{color:var(--accent);font-weight:600}
-.tabpicklist .tprow .ic{flex:0 0 auto;min-height:var(--tap);min-width:var(--tap)}
-/* On a phone the strip is one row: swipe it, or page it with the arrows:
-   wrapping to more rows would eat the terminal's space. */
-@media(max-width:900px){
-  /* The BOX belongs to the strip, and the scroller inside it is transparent and
-     borderless. A mask fades everything it is applied to: background and
-     borders included, so masking the element that carried them dissolved the
-     outline as it reached each arrow. Drawn by an ancestor that is not masked,
-     the line runs the full width and only what scrolls fades. */
-  .tabstrip{background:var(--panel);border:1px solid var(--line);
-    border-radius:var(--r-surface) var(--r-surface) 0 0;overflow:hidden}
-  .tabbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
-    background:transparent;border:0;border-radius:0}
-  .tabbar::-webkit-scrollbar{display:none}
-  /* A tab cut off by the edge fades out instead of being sliced. Masked rather
-     than an overlay gradient: the strip scrolls under its own paging arrows,
-     which have their own background, so a gradient painted on top would have
-     to match a color that changes with the scheme: the mask fades whatever
-     is actually there.
-     One side at a time, driven by updateArrows: hard against an end, that edge
-     is showing a whole tab, and fading a complete tab is worse than the seam.
-     The 7px of padding is why nothing at rest sits under the fade. */
-  .tabbar.fadeL{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px);
-    mask-image:linear-gradient(to right,transparent 0,#000 20px)}
-  .tabbar.fadeR{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 20px);
-    mask-image:linear-gradient(to left,transparent 0,#000 20px)}
-  .tabbar.fadeL.fadeR{
-    -webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px,
-      #000 calc(100% - 20px),transparent 100%);
-    mask-image:linear-gradient(to right,transparent 0,#000 20px,
-      #000 calc(100% - 20px),transparent 100%)}
-  .tab{flex:0 0 auto}   /* overflow and scroll, rather than squeeze to fit */
-  /* No box of their own any more: the strip around them draws it, so an arrow
-     is the glyph and the tap target and nothing else. Their borders used to
-     supply the left and right edges and the top corners, which is why they
-     had them. */
-  .tscroll{display:block;flex:0 0 auto;border:0;background:transparent;
-    padding:0 12px;font-size:16px;color:var(--dim)}
-  /* NOT dimmed at the end it cannot go past. Two half-there arrows on a strip
-     that is simply not long enough to page read as something broken rather
-     than as a limit, and pressing one at the end already says so by nothing
-     moving. Still `disabled`, so it is not a tap target that does nothing and
-     a screen reader is told: only the look of it changes.
-     `opacity:1` explicitly, and that is the whole fix: the fade was never this
-     rule's, it is `button:disabled{opacity:.5}` up in the base sheet. Dropping
-     a `.35` from here only handed them back to the .5 and left them looking
-     exactly as ghosted, which is what happened the first time. */
-  .tscroll:disabled{background:transparent;opacity:1}
-  /* The picker replaces the strip and its arrows here. */
-  .tabstrip .tabbar,.tabstrip .tscroll{display:none}
-  .tabpick{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:var(--tap);
-    padding:0 12px;background:transparent;border:0;border-radius:0;color:var(--ink);font:var(--f-ui);text-align:left}
-  .tabpick .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .tabpick .pill,.tabpick .chev{flex:0 0 auto}
-  .tabpick .chev{color:var(--dim)}
-  /* The pane's own caption repeats the picker's name on a phone; one that
-     carries controls (a popped terminal's Reattach) stays. */
-  .pane .bar:not(:has(button)){display:none}
-}
+/* On a phone a pane's caption with nothing to press is dropped; one that
+   carries controls (a sub-nav, a popped terminal's Reattach) stays. */
+@media(max-width:900px){ .pane .bar:not(:has(button)){display:none} }
 
 /* Built fresh each time it is opened, so the animation runs on the element
-   coming into being: the Resume/New chooser under a Claude button, and the
-   pane chooser under a tab, both of which used to snap into place. */
+   coming into being: the Resume/New chooser under a Claude button, which
+   used to snap into place. */
 @keyframes menuIn{from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none}}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
@@ -3694,18 +3573,42 @@ body.dragging .tab .lbl{cursor:grabbing}
 .panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
   background:var(--line);border:1px solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);overflow:hidden}
-.panes.split{grid-template-columns:1fr 1fr}
-/* A phone has no room for a split: a split layout shows only its active pane
-   (every tab is still on the strip), and the pin controls that build splits
-   are hidden: the split machinery is desktop's. */
+/* The dock (R218 step 4): the second pane at the page's foot, one line when
+   shut, --dock-h tall when up (half the area to begin with, a drag on its
+   line changes it); on a phone up is the whole height above the bottom bar.
+   The strip and the split it replaces are gone. */
+.panes.docked{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;gap:0}
+.panes.docked .pane{min-width:0}
+.panes.docked .pane.dock{border-top:1px solid var(--line)}
+.panes.docked .pane.dock .stack{display:none}
+.panes.dockup{grid-template-rows:minmax(0,1fr) var(--dock-h,50%)}
+.panes.dockup .pane.dock{min-height:120px}
+.panes.dockup .pane.dock .stack{display:block}
+.pane.dock.active{outline:0}
+.pane .bar.dockbar{display:flex;align-items:center;gap:6px;padding:4px 6px;min-height:36px;cursor:default;
+  background:var(--panel);font:var(--f-ui);color:var(--dim)}
+.panes.dockup .pane .bar.dockbar{cursor:ns-resize}
+/* The line takes the room and scrolls inside itself; the controls after it
+   stay at the right edge on every width (a phone's line once pushed the
+   chevron off the screen). */
+.dockline{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.pane .bar.dockbar>.ic{flex:0 0 auto}
+.dockline .dtab{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;border:1px solid var(--line);
+  border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
+.dockline .dtab.on{border-color:var(--accent-mid);color:var(--ink)}
+.dockline .dtab .dlbl{display:inline-flex;align-items:center;gap:6px;background:none;border:0;min-height:32px;
+  padding:2px 8px;font:var(--f-ui);color:inherit;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dockline .dtab .dx{min-height:32px;min-width:30px;border:0;background:none}
+.dockline button.dtab.dchat{min-height:34px;padding:2px 10px;font:var(--f-ui)}
+.dockline .dtab.dchat.unread{position:relative}
+.dockline .dtab.dchat.unread::after{content:"";position:absolute;top:3px;right:3px;width:7px;height:7px;
+  border-radius:50%;background:var(--accent)}
+.pane .bar.dockbar .ic{min-height:30px;min-width:30px}
 @media(max-width:900px){
-  .panes.split{grid-template-columns:1fr}
-  .panes.split .pane:not(.active){display:none}
-  .tab [data-pin],.tab [data-pop]{display:none}
-  /* The pane chooser only, by id. The Resume/New chooser under a Claude
-     button shares the .pinmenu class, and hiding by class once made that
-     button look dead on a phone whenever a project had a transcript. */
-  #pinmenu{display:none}
+  .panes.dockup .pane:not(.dock){display:none}
+  /* The page is display:none, so it is no grid item: the dock is the one
+     row, all of it. */
+  .panes.dockup{grid-template-rows:minmax(0,1fr)}
 }
 .pane{position:relative;background:#000;min-height:0;display:flex;flex-direction:column}
 /* ...and it is the page's own ground until it holds something. A terminal
@@ -3844,6 +3747,7 @@ body.booting .pane>.loading{margin:auto}
    desktop the keys row is not part of that trade, because there is room for
    it and a panel at once. */
 .mpanel{display:none}
+.mobar[hidden]{display:none}
 .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
   border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface)}
 .mobar button{min-height:var(--tap)}
@@ -3888,11 +3792,10 @@ body.booting .pane>.loading{margin:auto}
      The panel is capped for the same reason: a macro list is a short list,
      and one read across two thousand pixels is worse than one read in a
      column. */
-  .mobar #mKeys{display:none}   /* the tab strip already carries ⌨ here */
+  .mobar #mKeys{display:none}   /* a desk has a keyboard: no on-screen one */
   .mpanel{max-width:min(760px,100%)}
 }
 @media(max-width:900px){
-  .tabbar .sep{display:none}
   .pill.att{display:none}   /* one pane on a phone: nothing to say */
   .mobar button{flex:1}     /* thumbs, and only three of them */
   /* ...and they share the bar rather than each taking its text's width: on a
@@ -3902,6 +3805,7 @@ body.booting .pane>.loading{margin:auto}
      short words, Commands and Sessions were cut at 390px in equal quarters. */
   .mobar button{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .mobar button[hidden]{display:none}
+  .mobar[hidden]{display:none}
   .panes{min-height:90px}
 }
 
@@ -5461,15 +5365,6 @@ body.booting .pane>.loading{margin:auto}
     <!-- First run (R199): the setup page, over the Nodes tab, until Finish.
          page-setup.js draws it. -->
     <div class="setup" id="setupPanel" hidden></div>
-    <div class="tabstrip">
-      <!-- On a phone the strip is this: the tab on show, and the rest in a
-           list under it (R119 step 5). Drawn by drawTabPick. -->
-      <button class="tabpick" id="tabPick" type="button" aria-haspopup="true" aria-expanded="false"></button>
-      <button class="tscroll" id="tabL" title="scroll the tab bar">‹</button>
-      <div class="tabbar" id="tabbar" role="tablist" aria-label="Open tabs"></div>
-      <button class="tscroll" id="tabR" title="scroll the tab bar">›</button>
-    </div>
-    <div class="tabpicklist" id="tabPickList" role="menu" hidden></div>
     <div class="panes" id="panes">
       <!-- No `active`: that outline says WHICH of two panes has the keyboard
            and belongs to a split, and drawPanes takes it off on the first
@@ -5565,7 +5460,8 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-prose.js"></script>
 <script src="page-tabs.js"></script>
 <script src="page-shell.js"></script>
-<script src="page-tabstrip.js"></script>
+<script src="page-dock.js"></script>
+<script src="page-paint.js"></script>
 <script src="page-panes.js"></script>
 <script src="page-projsettings.js"></script>
 <script src="page-keys.js"></script>
@@ -5723,40 +5619,28 @@ setInterval(() => { if (!document.hidden) scrollHints(); }, 700);
 for (const [id, kind] of Object.entries(TOOL_BUTTONS))
   $(id)?.insertAdjacentHTML("afterbegin", TOOL_ICONS[kind]);
 
-// ---- drag to reorder -------------------------------------------------
-// Its declarations are page-tabstrip.js; what runs at load is below.
+// ---- a card held -------------------------------------------------------
+// Its declarations are page-cards.js; what runs at load is below.
 
 // Before the hold, the browser owns a moving finger: touch-action lets it
-// scroll the sidebar or the tab strip, and its pointercancel ends the
-// would-be drag for us. After the hold, the finger's movement IS the drag,
-// and this is the one place the page says no to a pan: registered
-// non-passive on purpose, since a passive listener's preventDefault is
-// ignored, and only while something is picked up, so ordinary scrolling
-// never pays for it.
+// scroll the sidebar, and its pointercancel ends the would-be drag for us.
+// After the hold, the finger's movement IS the drag, and this is the one
+// place the page says no to a pan: registered non-passive on purpose, since
+// a passive listener's preventDefault is ignored, and only while a card is
+// picked up, so ordinary scrolling never pays for it.
 window.addEventListener("touchmove", e => {
-  if (drag?.armed || cardDrag?.armed) e.preventDefault();
+  if (cardDrag?.armed) e.preventDefault();
 }, {passive: false});
 // The same half-second is the platform's long-press menu; not over a handle.
 document.addEventListener("contextmenu", e => {
-  if (drag || cardDrag) e.preventDefault();
+  if (cardDrag) e.preventDefault();
 });
-
-// Mobile paging for the one-row strip: each press slides it by most of a
-// screen. The arrows only exist on a phone; desktop wraps instead.
-$("tabL").onclick = () => $("tabbar").scrollBy({left: -$("tabbar").clientWidth * .7, behavior: noMotion() ? "instant" : "smooth"});
-$("tabR").onclick = () => $("tabbar").scrollBy({left:  $("tabbar").clientWidth * .7, behavior: noMotion() ? "instant" : "smooth"});
-$("tabbar").addEventListener("scroll", updateArrows, {passive: true});
-window.addEventListener("resize", updateArrows);
-// The phone's tab picker (R119 step 5): the press opens the list, a press
-// anywhere else or Escape closes it.
-$("tabPick").onclick = e => { e.stopPropagation(); tabPickShow(!tabPickOpen); };
+// An action bar's More menu: a press anywhere but on its button shuts it,
+// its own items included, since each has done its work by then; Escape too.
 document.addEventListener("click", e => {
-  if (tabPickOpen && !e.target.closest("#tabPickList, #tabPick")) tabPickShow(false);
-  // An action bar's More menu: a press anywhere but on its button shuts it,
-  // its own items included, since each has done its work by then.
   if (!e.target.closest(".actbar .more > button")) closeMore();
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape"){ if (tabPickOpen) tabPickShow(false); closeMore(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeMore(); });
 
 // ---- panes -----------------------------------------------------------
 // Its declarations are page-panes.js; what runs at load is below.
@@ -6362,9 +6246,6 @@ document.addEventListener("toggle", e => {
 // Both popup menus dismiss on a click that is neither in them nor on the
 // control that opened them.
 document.addEventListener("click", e => {
-  if (pinFor && !e.target.closest(".pinmenu") && !e.target.closest("[data-pin]")){
-    pinFor = null; drawTabs();
-  }
   if (resumeFor && !e.target.closest(".resumemenu") && !e.target.closest("[data-c]")){
     resumeFor = null;
     if (state) drawProjects(state.projects);
@@ -6395,7 +6276,6 @@ document.addEventListener("keydown", e => {
   let armed = false;
   notebooks.forEach(nb => { if (nb.escape()) armed = true; });
   if (armed) return;
-  if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
 });
 

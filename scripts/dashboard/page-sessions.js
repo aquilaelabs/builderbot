@@ -49,7 +49,7 @@ function drawSessions(ss){
   // (Minimize for a shell; Close for a Claude session, which asks first, the
   // way the ✕ does, because that one ends the conversation); plain "Open"
   // when there is no tab. The pill says whether the session is on screen
-  // right now, and in which pane when the view is split.
+  // right now (in the dock: R218 step 4 took the split and its sides).
   const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
   const fresh = paint(el, ss.map(s => {
     const t = tabFor.get(s.name);
@@ -58,7 +58,7 @@ function drawSessions(ss){
     // A session on a node says so (roadmap #24): it is in that machine's
     // tmux, reached through the same tab, ended through its agent.
     const pill = (shownAt === -1 ? ""
-      : `<span class="pill ok att">${isSplit() ? (shownAt === 0 ? "◧ " : "◨ ") : ""}attached</span>`)
+      : `<span class="pill ok att">attached</span>`)
       + (s.node ? ` <span class="pill" title="runs on the node ${esc(s.node)}">on ${esc(s.node)}</span>` : "");
     const tip = tabTitle(t || {kind:"term", arg: argForSession(s.name), label: s.name});
     return `

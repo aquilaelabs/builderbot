@@ -365,7 +365,7 @@ async function spanning(){
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).
-    const NAV = '.nbtabs, .switch, .tabbar';
+    const NAV = '.nbtabs, .switch, .subnav';
     const vis = e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0;
     const out = [];
     const seen = new Set();
@@ -985,9 +985,10 @@ for (const kind of kinds){
                    'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash', 'fern'];
   const AA = 4.5;
   const bad = [];
-  // A document in front (R218 step 2): a page on show has no tab in the
-  // strip, and the measure is the strip's active tab.
-  await page.evaluate(() => { const d = tabs.find(t => !isToolKind(t.kind)); if (d) focusTab(d.id); });
+  // The filled accent measured is the page's sub-nav (R218 step 4: the strip
+  // and its active tab are gone): Machines, whose Nodes is on.
+  await page.evaluate(() => railGo('machines', 'nodes'));
+  await page.waitForSelector('.pane .bar .subnav button.on', { timeout: 10000 });
   await sleep(300);
   // ...in both halves of each (R216): the light half writes white on the
   // same darkened accent, and its icons the same.
@@ -998,8 +999,8 @@ for (const kind of kinds){
     // 120ms after a light one read a blend of the two.
     await sleep(220);
     const r = await page.evaluate(() => {
-      const el = document.querySelector('.tab.on');
-      if (!el) return { err: 'no active tab' };
+      const el = document.querySelector('.pane .bar .subnav button.on');
+      if (!el) return { err: 'no sub-nav on show' };
       const c = document.createElement('canvas'); c.width = c.height = 1;
       const ctx = c.getContext('2d', { willReadFrequently: true });
       const px = v => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 1, 1);
@@ -1012,7 +1013,7 @@ for (const kind of kinds){
       const bg = getComputedStyle(el).backgroundColor;
       const at = sel => { const k = el.querySelector(sel);
                           return k ? +R(getComputedStyle(k).color, bg).toFixed(2) : null; };
-      return { label: at('.lbl'), icon: at('.ic') };
+      return { label: +R(getComputedStyle(el).color, bg).toFixed(2), icon: at('.ic') };
     });
     const name = mode ? `${t} (light)` : t;
     if (r.err) { bad.push(`${name}: ${r.err}`); continue; }
@@ -1685,11 +1686,11 @@ for (const [name, open] of Object.entries(DIALOGS)) {
   await phone.waitForSelector('.nb .nbview:not([hidden])', { timeout: 20000 });
   await sleep(600);
   const small = await phone.evaluate(() => [...document.querySelectorAll(
-      '.tabbar .tab .ic, .tabbar .newtab, .nb button, .mobar button')]
+      '.dockbar button, .nb button, .mobar button')]
     .filter(e => e.offsetHeight > 0)
     .filter(e => { const r = e.getBoundingClientRect(); return r.height < 30 || r.width < 30; })
     .map(e => `${e.className || e.tagName} "${e.textContent.trim().slice(0, 12)}" ${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}`));
-  ok(small.length === 0, `on a touch phone the tab strip, the notebook and the bar are a thumb's size${small.length ? ': ' + small.slice(0, 4).join(', ') : ''}`);
+  ok(small.length === 0, `on a touch phone the dock, the notebook and the bar are a thumb's size${small.length ? ': ' + small.slice(0, 4).join(', ') : ''}`);
   await phone.evaluate(() => openNewProject());
   await phone.waitForSelector('.modal:not([hidden]) .foot button', { timeout: 10000 });
   const shortFoot = await phone.$$eval('.modal:not([hidden]) .foot button', bs => bs.filter(b => b.getBoundingClientRect().height < 36).length);

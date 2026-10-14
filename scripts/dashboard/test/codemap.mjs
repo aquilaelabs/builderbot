@@ -168,10 +168,10 @@ ok(/devactions\.py:\d+  passed by name in configure  \| .*runner\.register\("com
 {
   const txt = `${REPO}/.bb-map/probe-addresses.txt`;
   const at = map('find', 'openDocker').match(/:(\d+)/)[1];      // a true address, wherever it is today
-  writeFileSync(txt, ['  R2  a plan', '       details: The picker is pinTo() in scripts/dashboard/page-tabs.js (~4634), and',
+  writeFileSync(txt, ['  R2  a plan', '       details: The picker is hideTab() in scripts/dashboard/page-tabs.js (~4634), and',
                       '~ R3  another, shelved', `       details: imgAdder() in index.html (~8093); openDocker (tab-docker.js ~${at}) draws it.`, ''].join('\n'));
   const adr = map('addresses', txt);
-  ok(/^  R2: ~4634  pinTo is scripts\/dashboard\/page-tabs\.js:\d+ now$/m.test(adr),
+  ok(/^  R2: ~4634  hideTab is scripts\/dashboard\/page-tabs\.js:\d+ now$/m.test(adr),
      'an address more than twenty lines from its name is reported with where the name is now, under its item');
   ok(/^  R3: ~8093  imgAdder is defined nowhere the map looks now \(was index\.html;/m.test(adr),
      '...a name that is gone is said to be gone, under a shelved item too');

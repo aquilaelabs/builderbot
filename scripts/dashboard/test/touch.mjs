@@ -42,33 +42,29 @@ await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, top.y + 2, 650);
 ok((await order())[0] === 'doctor', `hold then move drags the card (${(await order()).join(',')})`);
 ok((await side()) === 0, '...without scrolling');
 
-// On a phone the strip is a picker (R119 step 5): the tab on show and how
-// many are open, and a list of them under it. Driven by real taps.
-await page.evaluate(() => { for (let i = 0; i < 4; i++) newShell(''); setView('terminal'); });
+// On a phone the terminals are the dock's (R218 step 4): a tap on one on
+// its line brings the sheet up with it, the whole height above the bottom
+// bar; the chevron puts it down; a page opened puts it down too.
+await page.evaluate(() => { for (let i = 0; i < 2; i++) newShell(''); setView('terminal'); dockToggle(false); });
+await page.waitForFunction(() => document.querySelectorAll('#pane1 .dtab[data-id]').length >= 2);
+// Measured at rest: the view switch slides the column in, and a box read
+// mid-slide aims the tap at nothing.
 await page.waitForFunction(() => document.querySelector('.col.term').getAnimations().length === 0);
-ok(await page.evaluate(() => getComputedStyle(document.getElementById('tabbar')).display === 'none'
-     && getComputedStyle(document.getElementById('tabL')).display === 'none'
-     && getComputedStyle(document.getElementById('tabPick')).display !== 'none'),
-   'on a phone the strip and its arrows give way to the tab picker');
-// The documents: a page (a tool) is on the rail, not in the picker (R218 step 2).
-const open = await page.evaluate(() => tabs.filter(t => !isToolKind(t.kind)).length);
-ok(new RegExp(`${open}`).test(await page.$eval('#tabPick .pill', e => e.textContent)),
-   `...which names the tab on show and counts the ${open} open`);
-let pb = await (await page.$('#tabPick')).boundingBox();
-await finger(page, pb.x + 30, pb.y + pb.height / 2, pb.x + 30, pb.y + pb.height / 2, 0);
-await page.waitForFunction(() => !document.getElementById('tabPickList').hidden, null, { timeout: 5000 });
-ok(await page.$$eval('#tabPickList [data-pshow]', r => r.length) === open,
-   'a tap lists every tab, each a row');
-const want = await page.evaluate(() => tabs[1].id);
-const rb = await (await page.$(`#tabPickList [data-pshow="${want}"]`)).boundingBox();
+await page.waitForTimeout(300);
+const want = await page.evaluate(() => tabs.filter(t => t.kind === 'term')[1].id);
+const rb = await (await page.$(`#pane1 .dtab[data-id="${want}"] .dlbl`)).boundingBox();
 await finger(page, rb.x + 20, rb.y + rb.height / 2, rb.x + 20, rb.y + rb.height / 2, 0);
-await page.waitForFunction(w => panes[active] === w && document.getElementById('tabPickList').hidden, want, { timeout: 5000 });
-ok(true, '...and a tapped row brings its tab forward and closes the list');
-await finger(page, pb.x + 30, pb.y + pb.height / 2, pb.x + 30, pb.y + pb.height / 2, 0);
-await page.waitForFunction(() => !document.getElementById('tabPickList').hidden, null, { timeout: 5000 });
-await finger(page, 200, 650, 200, 650, 0);
-await page.waitForFunction(() => document.getElementById('tabPickList').hidden, null, { timeout: 5000 });
-ok(true, '...and a tap anywhere else closes it');
+await page.waitForFunction(w => panes[1] === w && dockUp, want, { timeout: 5000 });
+ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane0')).display === 'none'),
+   "a tap on a terminal brings the dock's sheet up over the page");
+const cb = await (await page.$('#pane1 [data-dtoggle]')).boundingBox();
+await finger(page, cb.x + cb.width / 2, cb.y + cb.height / 2, cb.x + cb.width / 2, cb.y + cb.height / 2, 0);
+await page.waitForFunction(() => !dockUp, null, { timeout: 5000 });
+ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane0')).display !== 'none'),
+   '...and its chevron puts it down to its line under the page');
+await page.evaluate(() => { dockToggle(true); openJobsTab(); });
+await page.waitForFunction(() => !dockUp, null, { timeout: 5000 });
+ok(true, '...and a page opened on a phone puts the sheet down');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 // A phone comes back to the side it left, but not across a container

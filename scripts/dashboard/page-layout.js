@@ -19,7 +19,7 @@
 // Each card under its own guard here too: refresh() ends in render(), so a
 // draw that threw here would still take the poll down after the guarded
 // pass above it had kept the page up.
-function render(){ shellBoot(); drawTabs(); drawPanes(); drawKeys(); drawRail(); shellSync(); saveLayout();
+function render(){ shellBoot(); if (state) dockSettle(); drawPanes(); drawKeys(); drawRail(); shellSync(); saveLayout();
                    // The first draw that had something to draw ends the boot
                    // ground: from here a pane is a terminal's black or a
                    // tab's panel, and the loading line has been replaced.
@@ -123,10 +123,6 @@ function adoptLayout(v){
   // was adopted: the tab just minimized came back, and a killed session's
   // tab was rebuilt, which recreated the session. Revisions only go up.
   if (!v || v.rev <= myRev || savePending) return;
-  // Not under a moving pointer either: the strip is re-sorted in place while
-  // a tab is held, and swapping the array underneath would drop it one slot
-  // off from where the finger is.
-  if (drag) return;
   // Revision 0 with nothing in it is a server that has never been written to,
   // not an operator who closed every tab: keep the default strip rather than
   // adopting the void. A strip the operator deliberately emptied was saved,

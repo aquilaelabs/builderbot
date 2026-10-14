@@ -42,7 +42,6 @@ let active = 0;
 let state = null;   // the status poll's answer, and the one source: a `let` that
                     // mirrors part of it drifts (B213, B215), so read it here
 let findings = null;
-let pinFor = null;
 // Shut, on every device. A touch device is where the on-screen keys are most
 // useful and also where they cost the most room: opening one over the
 // terminal before anybody asked meant arriving at a phone with half the

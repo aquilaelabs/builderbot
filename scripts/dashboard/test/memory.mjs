@@ -481,15 +481,11 @@ ok(true, '...and goes when that window closes the notebook');
 // It is a tab, so it closes the way tabs close and not on a stray Escape.
 await page.keyboard.press('Escape');
 ok(!!await page.$('.pane .nb'), 'Escape does not dismiss it; a tab is not a dialog');
-const nbTab = await page.$$eval('.tab',
-  ts => ts.findIndex(t => /Notebook: alpha/.test(t.textContent)));
-ok(nbTab >= 0, 'it is on the tab strip, named for its project');
-// Bounded, like create.mjs's: the fallback below is the path that actually
-// runs, and waiting the default thirty seconds to find that out is thirty
-// seconds of the suite.
-await page.click(`.tab:nth-of-type(${nbTab + 1}) .x, .tab:nth-of-type(${nbTab + 1}) [data-hide]`,
-                 { timeout: 1500 })
-  .catch(() => page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id)));
+// The project's page (R218 step 3), its header named for the project.
+ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'notebook'
+     && /alpha/.test(document.querySelector('#pane0 .bar.proj .pname')?.textContent || '')),
+   'it is the page on show, its header named for its project');
+await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));
 await nbGone(page);
 ok(true, '...and closing that tab puts it away');
 

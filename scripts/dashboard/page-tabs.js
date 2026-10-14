@@ -149,7 +149,7 @@ function setView(v){
   // The strip was display:none while the dashboard was in front, so nothing
   // drawn then could scroll it: bring the tab just opened into view now,
   // and re-judge the arrows, which measured a zero-width strip until now.
-  if (v === "terminal"){ revealActiveTab(); updateArrows(); }
+
 }
 
 // Back to the Dashboard when the container this page remembers a side from is
@@ -514,9 +514,9 @@ function openTab(spec){
   // had just opened.
   if (String(t.arg).startsWith("claude:") && t.boot === undefined)
     t.boot = bootFor(t.arg);
-  const shown = panes.indexOf(t.id);
-  if (shown === -1) panes[active] = t.id;    // not on screen; put it here
-  else active = shown;                       // already on screen: focus it
+  // A terminal goes to the dock and anything else is the page on show
+  // (R218 step 4): there is no strip and no second pane to choose.
+  dockPlace(t);
   show(t);
 }
 
@@ -539,14 +539,12 @@ function roomForTab(kind){
 function focusTab(id){
   const t = tabOf(id);
   if (!t) return;
-  const shown = panes.indexOf(id);
-  if (shown === -1) panes[active] = id; else active = shown;
+  dockPlace(t);
   show(t);
 }
 
 // Common tail of "make this tab the one being looked at".
 function show(t){
-  pinFor = null;
   render();
   if (isPhone()) setView("terminal");
   // Once. The render above ran the kind's open hook already when this tab
@@ -597,38 +595,15 @@ function hideTab(id, ev){
 // one, then to whatever tab is still open, then to nothing, which drawPanes
 // renders as a placeholder rather than this function preventing.
 function dropTab(id){
-  if (pinFor === id) pinFor = null;    // its menu would otherwise outlive it
   tabs = tabs.filter(x => x.id !== id);
   for (let i = 0; i < 2; i++) if (panes[i] === id) panes[i] = null;
-  if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
-  if (panes[0] === null) panes[0] = tabs[0]?.id ?? null;
-  if (panes[1] === null) active = 0;
-  render();
-}
-
-function pinTo(id, idx, ev){
-  ev?.stopPropagation();
-  pinFor = null;
-  if (!tabOf(id)){ render(); return; }   // the tab went while its menu was open
-  const other = 1 - idx;
-  if (panes[other] === id){
-    // It is already in the other pane. That pane needs something else or the
-    // tab renders twice: two iframes attaching to one tmux session.
-    const fill = tabs.find(t => t.id !== id)?.id ?? null;
-    if (idx === 1 && fill === null){ render(); return; }  // nothing to sit beside it
-    panes[other] = idx === 1 ? fill : null;
+  // The dock keeps the next terminal, if there is one; the page falls back
+  // to another (dockSettle, on the render).
+  if (panes[1] === null){
+    const next = tabs.find(t => slotFor(t) === 1);
+    if (next) panes[1] = next.id;
+    else active = 0;
   }
-  panes[idx] = id;
-  active = idx;
-  render();
-}
-
-// Closing a pane collapses the layout. It must not close the tab: the tab is
-// the thing that owns a session, the pane is only where it was being shown.
-function closePane(idx, ev){
-  ev?.stopPropagation();
-  if (idx === 1){ panes[1] = null; active = 0; }
-  else { panes[0] = panes[1] ?? tabs[0]?.id ?? null; panes[1] = null; active = 0; }
   render();
 }
 
@@ -663,21 +638,4 @@ function reattachTab(id, ev){
   try{ if (w && !w.closed) w.close(); }catch(e){ /* another origin by now: it stays */ }
   t.popped = false;
   render();
-}
-
-function togglePin(id, ev){
-  ev.stopPropagation();
-  pinFor = pinFor === id ? null : id;
-  drawTabs();
-}
-
-// Positioning happens in drawTabs, not here, because the tab bar is rebuilt on
-// every status poll: anything measured at click time is gone 15 seconds later.
-function placePinMenu(){
-  const menu = $("pinmenu"), anchor = $("tabbar").querySelector(`.tab[data-id="${pinFor}"]`);
-  if (!menu || !anchor) return;
-  const a = anchor.getBoundingClientRect(), bar = $("tabbar").getBoundingClientRect();
-  menu.style.left = Math.max(4, Math.min(a.left - bar.left,
-                                         bar.width - menu.offsetWidth - 4)) + "px";
-  menu.style.top = (a.bottom - bar.top + 4) + "px";
 }

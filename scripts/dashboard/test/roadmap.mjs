@@ -202,7 +202,7 @@ await page.click('#roadmapGo');
 // Three things: the line goes, the step is crossed, and the session's tab
 // opens. The notebook stays where it is: it is a tab now, and a tab is not
 // in the way of the one you are being sent to.
-await page.waitForFunction(() => [...document.querySelectorAll('.tab')]
+await page.waitForFunction(() => [...document.querySelectorAll('#pane1 .dtab')]
   .some(t => /Claude: alpha/.test(t.textContent)), { timeout: 20000 });
 ok(read().projects.alpha.find(r => String(r.id) === mine.id).sent > 0,
    'sending crosses it off; the record is what was handed over');
@@ -216,8 +216,8 @@ ok(/From the operator, with this step: the select is the one on the left/.test(p
 const flags = read().unsaved?.alpha || {};
 ok(flags.roadmap === false && flags.memory === false,
    '...and the panel counts as told, since it was told');
-ok(await page.$$eval('.tab', ts => ts.some(t => /Claude: alpha/.test(t.textContent))),
-   '...and it put the session\'s tab on the strip');
+ok(await page.$$eval('#pane1 .dtab', ts => ts.some(t => /Claude: alpha/.test(t.textContent))),
+   '...and it put the session\'s tab in the dock');
 
 // Back in, for the rest.
 await page.evaluate(n => openNotebook(n), 'alpha');
@@ -862,9 +862,9 @@ await page.waitForFunction(() => /beta/.test(
 const nbTabs = await page.evaluate(() => tabs.filter(t => t.kind === 'notebook').map(t => t.arg));
 ok(nbTabs.length === 2 && nbTabs.includes('alpha') && nbTabs.includes('beta'),
    `both projects' notebooks are open at once (${nbTabs})`);
-ok(await page.$$eval('.tab', ts => ts.some(t => /Notebook: beta/.test(t.textContent))
-     && ts.some(t => /Notebook: alpha/.test(t.textContent))),
-   '...each tab named for its project');
+ok(await page.evaluate(() => tabs.filter(t => t.kind === 'notebook')
+     .every(t => tabLabel(t).includes(t.arg))),
+   '...each named for its project');
 await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForFunction(() => /alpha/.test(
   document.querySelector('.pane .doc.on .nb h3')?.textContent || ''), { timeout: 15000 });
@@ -1384,9 +1384,8 @@ await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadma
 
 // ---- the row's button lights while the tab is open -----------------------
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => /Notebook: /.test(document.querySelector('.tab.on')?.textContent || ''),
-  { timeout: 15000 });
-ok(true, "the notebook's tab is the strip's active one while it is open");
+await page.waitForFunction(() => tabOf(panes[0])?.kind === 'notebook', null, { timeout: 15000 });
+ok(true, "the notebook is the page on show while it is open");
 
 // ---- a document has a reading width --------------------------------------
 // An ultrawide pane put a row's name at one end of two thousand pixels and

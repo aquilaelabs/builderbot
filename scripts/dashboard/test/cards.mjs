@@ -161,7 +161,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
     pane?.appendChild(st);
     const out = { rings: getComputedStyle(document.querySelector('.col.side')).backgroundAttachment,
                   card: bg(document.querySelector('.card[data-card="doctor"]')),
-                  tabbar: bg(document.querySelector('.tabbar')),
+                  dock: bg(document.querySelector('#pane1 .bar')),   // the dock's line, where the strip was (R218 step 4)
                   bar: bg(document.querySelector('.pane .bar')) || 'no bar',
                   ground: bg(st), doc: bg(doc), pane: bg(pane) };
     st.remove();
@@ -170,7 +170,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   });
   ok(glass.rings === 'scroll',
      `the rings stay where the column is while the cards scroll over them (${glass.rings})`);
-  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.tabbar && glass.card === glass.ground
+  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.dock && glass.card === glass.ground
      && glass.doc === 'rgba(0, 0, 0, 0)'
      && (glass.bar === 'no bar' || glass.bar === glass.card) && glass.pane === 'rgba(0, 0, 0, 0)',
      `...and the tab side wears the cards' own glass, over a pane left open (${JSON.stringify(glass)})`);
@@ -868,11 +868,11 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
   ok(await page.evaluate(() => { try { return localStorage.getItem('bb.mode'); } catch (e) { return 'no storage'; } }) === 'light',
      '...and the browser keeps it, as it keeps the scheme');
   const swLight = await page.$eval('#uiMenu .sw[data-theme="moss"]', b => getComputedStyle(b).backgroundColor);
-  // A document in front (R218 step 2): a page on show has no tab in the
-  // strip, and the measure is the strip's active tab.
-  await page.evaluate(() => { const d = tabs.find(t => !isToolKind(t.kind)); if (d) focusTab(d.id); });
+  // The page's sub-nav is the filled accent on show (R218 step 4).
+  await page.evaluate(() => railGo('machines', 'nodes'));
+  await page.waitForSelector('.pane .bar .subnav button.on', { timeout: 10000 });
   await page.waitForTimeout(300);
-  ok(await page.$eval('.tab.on .lbl', e => getComputedStyle(e).color) === 'rgb(255, 255, 255)',
+  ok(await page.$eval('.pane .bar .subnav button.on', e => getComputedStyle(e).color) === 'rgb(255, 255, 255)',
      'a filled accent carries white in the light half, where the ink is dark');
   // Nostromo has no light half: picked while Light is on, the page goes
   // dark and says why, and Fern, its colors without the ship, has one.
@@ -1000,12 +1000,13 @@ ok(true, '...and so does a click on the page under it');
       .map(e => e.id || e.className) }));
   ok(names.wrong === 0 && names.dangling.length === 0,
      `every dialog names its title by aria-labelledby, and each title is there (${JSON.stringify(names)})`);
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'term'); if (t) dockShow(t.id); });
   const tabs = await page.evaluate(() => ({
-    list: document.getElementById('tabbar').getAttribute('role'),
-    on: [...document.querySelectorAll('#tabbar [role=tab][aria-selected=true]')].map(b => b.dataset.show),
-    cur: document.querySelector('#tabbar .tab.on')?.dataset.id }));
+    list: document.querySelector('#pane1 .dockline')?.getAttribute('role'),
+    on: [...document.querySelectorAll('#pane1 .dockline [role=tab][aria-selected=true]')].map(b => b.dataset.dock),
+    cur: panes[1] }));
   ok(tabs.list === 'tablist' && tabs.on.length === 1 && tabs.on[0] === tabs.cur,
-     `the tab strip is a tablist, with the tab showing marked selected (${JSON.stringify(tabs)})`);
+     `the dock's line is a tablist, with the terminal showing marked selected (${JSON.stringify(tabs)})`);
 }
 // ---- the welcome panel: a guide and the changelog behind one switch -------------
 // The same popup opens itself twice in an account's life: on the guide the
@@ -1820,17 +1821,16 @@ ok(await page.$eval('.doc .projtab [data-row="alpha"]', r =>
 await page.evaluate(() => openNotebook('alpha'));
 await nbShown(page);
 ok(await page.evaluate(() => {
-     const t = [...document.querySelectorAll('#tabbar .tab')].find(t => /Notebook: alpha/.test(t.textContent));
-     return !!t && t.classList.contains('pc') && /--pc:/.test(t.getAttribute('style') || '');
-   }), '...and on its notebook tab');
+     const b = document.querySelector('#pane0 .bar.proj');
+     return !!b && b.classList.contains('pc') && /--pc:/.test(b.getAttribute('style') || '');
+   }), "...and on its page's header");
 await page.evaluate(async () => {
   await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ project: 'alpha', color: '' }) });
 });
 await refreshUntil(page, () => !(state?.projects || [])
   .find(p => p.name === 'alpha')?.prefs?.color, { timeout: 20000 });
-await page.waitForFunction(() => ![...document.querySelectorAll('#tabbar .tab')]
-  .find(t => /Notebook: alpha/.test(t.textContent))?.classList.contains('pc'), null, { timeout: 20000 });
+await page.waitForFunction(() => !document.querySelector('#pane0 .bar.proj')?.classList.contains('pc'), null, { timeout: 20000 });
 ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
 await page.evaluate(() => openProjectsTab());
@@ -2098,12 +2098,14 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 {
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')]
     .find(x => /^Terminal$/.test(x.textContent.trim())); b && b.click(); });
+  // A terminal in the dock, so the foot bar under it is drawn (R218 step 4).
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'term'); if (t) dockShow(t.id); });
   await page.waitForTimeout(400);
   const seams = await page.evaluate(() => {
     const box = s => { const e = document.querySelector(s);
       if (!e) return null; const r = e.getBoundingClientRect();
       return r.height ? [r.top, r.bottom] : null; };
-    const parts = ['.tabstrip', '.panes', '.keys', '.mobar']
+    const parts = ['.panes', '.keys', '.mobar']
       .map(s => [s, box(s)]).filter(p => p[1]);
     return parts.slice(1).map((p, i) => p[1][0] - parts[i][1][1]);
   });

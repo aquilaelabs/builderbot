@@ -15,8 +15,9 @@ await page.goto(URL);
 // Sessions hangs off the terminal now, at every width, so a desktop page has
 // to open the panel before there is a list to click: the sidebar card it
 // used to live in is gone.
-await page.waitForSelector('#mSessions');
-await page.click('#mSessions');
+// The rail's Sessions opens it (R218 step 4: the foot bar keeps Keys and
+// Commands only).
+await page.evaluate(() => mobPanel('sessions'));
 await page.waitForFunction(() => document.querySelectorAll('#sessions .row').length >= 2, { timeout: 40000 });
 // On a desktop the flyout is an OVERLAY: the terminal keeps its height, and
 // with it its fit and its scrollback; a resize costs a terminal a refit and a
@@ -29,7 +30,7 @@ await page.waitForFunction(() => document.querySelectorAll('#sessions .row').len
 // by a row, and measuring across that reads 30px of tab strip as if the panel
 // had taken it. Both heights in one task, for the reason at the phone's own
 // version of this below.
-await page.click('#mSessions');
+await page.evaluate(() => mobPanel('sessions'));
 await page.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
 await page.waitForFunction(
   () => !document.getAnimations().some(a => a.playState === 'running'), { timeout: 10000 });
@@ -52,7 +53,7 @@ await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 ok((await btn('shell-9').textContent()).trim() === 'Minimize' && await btn('shell-9').evaluate(b => b.classList.contains('primary')),
    'clicking the name opens the tab; button becomes green Minimize');
-ok(await page.evaluate(() => sessionOf(tabOf(panes[0]).arg) === 'shell-9'), '...and goes to it');
+ok(await page.evaluate(() => sessionOf(tabOf(panes[1]).arg) === 'shell-9' && dockUp), '...and goes to it, the dock up');
 // PgUp from the keys row is how a finger scrolls: at a prompt it enters copy
 // mode a page up; PgDn pages back and copy mode ends itself at the bottom.
 await page.evaluate(() => sendKey('pgup'));
@@ -60,24 +61,16 @@ await page.waitForFunction(() => true); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '1', 'PgUp at a prompt enters copy mode (scrolls back)');
 await page.evaluate(() => sendKey('pgdn')); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', 'PgDn back at the bottom leaves copy mode by itself');
-ok((await row('shell-9').locator('.pill.att').textContent()).trim() === 'attached', 'attached pill, no glyph while unsplit');
-ok(await page.$eval('.tab.on .lbl', el => !el.textContent.includes('◧')), 'no pane glyph on the tab while unsplit');
-ok((await row('shell-9').locator('[data-go]').evaluate(e => saidOf(e))) === await page.$eval('.tab.on .lbl', el => saidOf(el)),
-   'the session row and its tab are described by the same words');
+ok((await row('shell-9').locator('.pill.att').textContent()).trim() === 'attached', 'attached pill, no pane glyph (the dock has no sides)');
+ok((await row('shell-9').locator('[data-go]').evaluate(e => saidOf(e))) === await page.$eval('#pane1 .dtab.on .dlbl', el => saidOf(el)),
+   "the session row and its tab on the dock's line are described by the same words");
 await btn('shell-9').click();
 await page.waitForFunction(() => !tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 ok((await btn('shell-9').textContent()).trim() === 'Open', 'Minimize takes the tab away');
 
 await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
-await page.evaluate(() => pinTo(tabs.find(x => sessionOf(x.arg) === 'shell-9').id, 1));
-ok((await row('shell-9').locator('.pill.att').textContent()).trim().startsWith('◨'), 'split: pane glyph on the pill');
-// The left pane may hold a page, which has no tab in the strip (R218 step 2): then only the right glyph is on a tab.
-ok(await page.evaluate(() => { const els = [...document.querySelectorAll('.tab .lbl')];
-     const left = tabOf(panes[0]);
-     return els.some(e => e.textContent.includes('◨')) && (isToolKind(left?.kind) || els.some(e => e.textContent.includes('◧'))); }),
-   'split: tabs carry glyphs');
-await page.evaluate(() => closePane(1));
+
 
 // ---- the git/GitHub card ghosts against the shell's directory ----------
 // shell-9 lives in /tmp; alpha has a GitHub remote; ep.silon's remote is
@@ -132,8 +125,8 @@ const resumed = await page.evaluate(() => {
   return {
     tabs: tabs.filter(t => sessionOf(t.arg) === 'claude-alpha').length,
     arg: tabs.find(t => sessionOf(t.arg) === 'claude-alpha')?.arg,
-    src: document.querySelector('#pane0 .slot.on iframe')?.src,
-    slots: [...document.querySelectorAll('#pane0 .slot')].map(c => c.dataset.key),
+    src: document.querySelector('#pane1 .slot.on iframe')?.src,       // the dock's (R218 step 4)
+    slots: [...document.querySelectorAll('#pane1 .slot')].map(c => c.dataset.key),
   };
 });
 ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
@@ -234,7 +227,7 @@ await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
 ok(true, 'a notebook tab restored from the layout loads itself');
 // A reload closes the flyout, the way it always has on a phone: the panel
 // is a toggle, not a card that is simply there. Open it again for the rest.
-await page.click('#mSessions');
+await page.evaluate(() => mobPanel('sessions'));
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));
 
 // The rest needs shell-9 on the strip; reopen it if the restore above failed.
@@ -308,7 +301,7 @@ await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow
 await page.waitForFunction(() => window.__loads > 0, { timeout: 10000 });
 ok(true, 'a bfcache restore reloads the terminal iframe to reconnect it');
 const nd2 = page.dialogs.length;
-const tb = await (await page.$('.tab.on')).boundingBox();
+const tb = await (await page.$('#pane1 .dtab.on')).boundingBox();
 await page.mouse.click(tb.x + 20, tb.y + 12, { button: 'middle' });
 await page.waitForFunction(() => !document.querySelector('[data-go="shell-9"]'), { timeout: 15000 });
 ok(page.dialogs.length === nd2 + 1, 'middle-click asks, then ends the session and its tab');
@@ -383,15 +376,14 @@ ok(await phone.$eval('#panes', el => el.offsetHeight) < paneH0, 'then the termin
 await phone.evaluate(() => {
   const shell = t => t.kind === 'term' && !t.arg.startsWith('claude:');
   if (!tabs.some(shell)) newShell();
-  panes[active] = tabs.find(shell).id;
-  render();
+  dockPlace(tabs.find(shell));      // a shell in the dock, in front (R218 step 4); dockShow
+  render();                         // would put it down if it already was
 });
 await phone.click('#mMacros');
 // the close is a slide now: the class drops when the tween lands
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
 ok(await phone.$eval('#macpanel', el => el.classList.contains('show')), 'Commands closes it and opens the macros');
 ok(await phone.$eval('#commands', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
-ok(await phone.$eval('.tab [data-pin]', el => getComputedStyle(el).display === 'none'), 'pin buttons hidden on a phone');
 // Claude on a project with a transcript opens the Resume/New chooser, which
 // must be visible on a phone (it once shared the hidden pin menu's class).
 // Both in one evaluate: setView animates the column synchronously, so asking
@@ -556,10 +548,10 @@ ok(true, 'phone: New conversation opens the Claude tab and switches to the termi
 // here finds it.
 await bapi('/api/prefs', { project: 'alpha', node: '' });
 await bapi('/api/v1/nodes', { action: 'retire', id: deskbox.id });
-// A picker rather than a strip to swipe (R119 step 5).
-ok(await phone.$eval('#tabPick', el => getComputedStyle(el).display !== 'none')
-   && await phone.$eval('#tabbar', el => getComputedStyle(el).display === 'none'),
-   'the tab strip is the tab picker on a phone');
+// No strip: the terminals are the dock's line.
+ok(await phone.evaluate(() => !document.getElementById('tabbar'))
+   && await phone.$eval('#pane1 .dockline', el => getComputedStyle(el).display !== 'none'),
+   "on a phone the terminals are the dock's line, as at a desk (R218 step 4)");
 
 // Swapping one flyout for another: the outgoing one stays under the incoming
 // slide and the terminal changes size once, when the new one lands. Commands
@@ -567,11 +559,11 @@ ok(await phone.$eval('#tabPick', el => getComputedStyle(el).display !== 'none')
 await phone.evaluate(() => {
   const shell = t => t.kind === 'term' && !t.arg.startsWith('claude:');
   if (!tabs.some(shell)) newShell();
-  panes[active] = tabs.find(shell).id;
+  dockPlace(tabs.find(shell));
   render();
 });
 await phone.waitForFunction(() => document.querySelector('.col.term').getAnimations().length === 0);
-await phone.click('#mSessions');
+await phone.evaluate(() => mobPanel('sessions'));
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('sliding'));
 const hSess = await phone.$eval('#panes', el => el.offsetHeight);
 await phone.click('#mMacros');
@@ -612,7 +604,7 @@ await phone.waitForFunction(() => !document.getElementById('macpanel').classList
 tmuxNew('shell-7');
 await phone.evaluate(() => refresh());
 await phone.waitForFunction(() => document.querySelector('#sessions [data-go="shell-7"]'), { timeout: 15000 });
-await phone.click('#mSessions');
+await phone.evaluate(() => mobPanel('sessions'));
 await phone.waitForFunction(() => document.getElementById('sespanel').classList.contains('show') && !document.getElementById('sespanel').classList.contains('sliding'));
 await phone.click('#sessions [data-go="shell-7"]');
 ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sessions flyout');
@@ -629,29 +621,24 @@ ok(await phone.$$eval('#mobar button', bs => bs.filter(b => b.offsetWidth).every
 // go to a conversation with its own idea of what a keystroke means.
 await phone.evaluate(() => {
   const t = tabs.find(x => x.kind === 'term' && x.arg.startsWith('claude:'));
-  if (t) { panes[active] = t.id; render(); }
+  if (t) { dockPlace(t); render(); }
 });
 ok(await phone.evaluate(() => !tabs.some(t => t.arg.startsWith('claude:')))
    || (await phone.$eval('#mKeys', b => b.hidden)
        && await phone.$eval('#mMacros', b => b.hidden)),
    '...and both leave it over a Claude tab');
 
-// With many open, the picker names the one in front, whichever it is: no
-// tab is ever off the end of anything.
+// With many open, the dock's line holds them all, scrolling along, and the
+// one in front is marked; a − on one takes it off the line.
 await phone.evaluate(() => { for (let i = 0; i < 6; i++) newShell(''); });
-await phone.evaluate(() => focusTab(tabs[tabs.length - 1].id));
-await phone.waitForFunction(() => document.querySelector('#tabPick .nm')?.textContent === tabLabels().get(tabs[tabs.length - 1].id)
-  && document.querySelector('#tabPick .pill')?.textContent === String(tabs.filter(t => !isToolKind(t.kind)).length), { timeout: 5000 });
-ok(true, 'the picker names the last tab opened and counts them all');
-await phone.click('#tabPick');
-const last = await phone.evaluate(() => tabs[tabs.length - 1].id);
-await phone.click(`#tabPickList [data-pmin="${last}"]`);
-await phone.waitForFunction(id => !document.querySelector(`#tabPickList [data-pshow="${id}"]`), last, { timeout: 5000 });
-ok(await phone.$eval('#tabPickList', l => !l.hidden),
-   '...and a terminal minimized from its list leaves its row and keeps the list open for the next');
-await phone.keyboard.press('Escape');
-await phone.waitForFunction(() => document.getElementById('tabPickList').hidden, { timeout: 5000 });
-ok(true, '...which Escape closes');
+await phone.evaluate(() => dockShow(tabs.filter(t => t.kind === 'term').at(-1).id));
+await phone.waitForFunction(() => document.querySelectorAll('#pane1 .dtab[data-id]').length === tabs.filter(t => t.kind === 'term').length
+  && document.querySelector('#pane1 .dtab.on')?.dataset.id === panes[1], { timeout: 5000 });
+ok(true, "the dock's line lists every terminal and marks the one in front");
+const last = await phone.evaluate(() => panes[1]);
+await phone.click(`#pane1 .dtab[data-id="${last}"] [data-min]`);
+await phone.waitForFunction(id => !document.querySelector(`#pane1 .dtab[data-id="${id}"]`), last, { timeout: 5000 });
+ok(true, '...and a terminal minimized from it leaves the line');
 
 // The view a phone was on comes back after a reload.
 await phone.evaluate(() => setView('terminal'));
