@@ -427,6 +427,7 @@ function drawProjects(all){
         $("bAll").onclick = () => { showAllProjects = !showAllProjects;
                                   slideBody(el, () => drawProjects(state?.projects || ps)); };
     }
+    syncResumeMenu();
     return;
   }
 
@@ -444,19 +445,11 @@ function drawProjects(all){
     wireProjectRows(el);
     pJobWire();
   }
-  // The chooser is positioned against the card, so it is a sibling of the list
-  // rather than part of it: replacing the list's innerHTML does not remove it,
-  // and without this they stack up one per draw.
-  // ...except the menu's second step while it is up for the same project:
-  // drawn again on every poll, a pull-down somebody had open snapped shut.
-  const keep = resumePick && resumeFor === resumePick.project
-    ? el.closest(".card").querySelector(`.resumemenu[data-pick="${CSS.escape(resumePick.project)}"]`) : null;
-  // ...and its first step too, which placeResumeMenu leaves in place when
-  // it would draw the same thing (a redraw replaced it under the pointer).
-  const first = resumeFor && !keep
-    ? el.closest(".card").querySelector(`.resumemenu[data-for="${CSS.escape(resumeFor)}"]:not([data-pick])`) : null;
-  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => { if (n !== keep && n !== first) n.remove(); });
-  if (resumeFor && !keep) placeResumeMenu();
+  // The chooser is positioned against its host (this card, or a project
+  // page's pane), a sibling of the list rather than part of it: replacing
+  // the list's innerHTML does not remove it, and syncResumeMenu keeps one
+  // menu, in step, where it was asked for.
+  syncResumeMenu();
 }
 
 // Handlers for the job row, and the ellipsis it needs running. Called from

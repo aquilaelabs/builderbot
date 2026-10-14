@@ -50,7 +50,7 @@ const DRIVERS = {
   },
   projects: {
     open: () => page.evaluate(() => openProjectsTab()),
-    readyWhen: '.projtab .row',
+    readyWhen: '.projtab .pcard',
   },
   notebook: {
     open: () => page.evaluate(() => openNotebook('alpha', 'roadmap')),

@@ -27,11 +27,16 @@ function paintBar(pane, t, i){
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   // A page (R218 step 2) wears its group's sub-nav, or its name, and no
-  // close: the rail is how you leave it.
+  // close: the rail is how you leave it. A project (step 3) wears its
+  // header: the name, the facts, the session's state and its actions.
+  const proj = t.kind === "notebook";
   bar.innerHTML = isToolKind(t.kind) ? shellBar(t, i) + reload
+    : proj ? projectHeader(t) + closeBtn
     : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
   bar.classList.toggle("page", isToolKind(t.kind));
+  bar.classList.toggle("proj", proj);
   wireShellBar(bar);
+  if (proj){ wireProjectHeader(bar); syncResumeMenu(); }
   // The project's color on the strip too, so a split pane says whose it is.
   const tone = colorTone(projectColor(tabProject(t)));
   bar.classList.toggle("pc", !!tone);

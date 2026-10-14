@@ -508,6 +508,7 @@ function makeNotebook(project){
     // other window would otherwise name the tab this one just left.
     if (nb.nbWhere !== v){ nb.nbWhere = v; beat(); }
     nbViewMemo.keep(project, v);
+    shellSync();                    // the address names the view (R218 step 3)
     root.querySelectorAll(".nbtabs button").forEach(b => {
       const on = b.dataset.v === v;
       b.classList.toggle("on", on);
@@ -754,6 +755,7 @@ function makeNotebook(project){
     held: nbHeld,
     unsaved: nbUnsaved,
     view: setNbView,
+    where: () => nb.nbWhere,
     poll(p){
       noteBatch(p.todo_batch); drawBatchNote(); syncSave();
       beat();                       // and who else is in here (roadmap #26)
@@ -797,4 +799,82 @@ function makeNotebook(project){
       root.remove();
     },
   };
+}
+
+// ---- the project page's header (R218 step 3) -----------------------------
+
+// A project is a page: its pane's bar is the header the design names (the
+// a-notebook/project-page rule): the name large, the branch and the node in
+// the data face, the session's state as the dot and a word, and at the
+// right the actions the sidebar's row carried: Open Claude (the chooser
+// under it), Shell, and the rest behind one menu (link, phone, report,
+// lock, pin, settings). Drawn by paintBar on every pass like every bar; the
+// chooser sits on the pane, not in the bar, so a repaint leaves it up.
+// The session's state as the dot and a word: this account's session
+// first, then whose else is here, then none. The dot is the one every
+// session surface wears; the word is what the sidebar's rows said.
+function projectState(p){
+  const name = p.name, mine = liveSessions().has(myClaude(name));
+  const busy = new Set((state?.claude_busy || {})[name] || []);
+  const who = withMe(name);
+  const st = mine ? (busy.has(state?.me) ? ["working", "working"] : ["waiting", "waiting for you"])
+    : who.length ? ["waiting", who.length === 1 ? `${who[0]}'s session here` : `${who.length} sessions here`]
+    : ["", "no session"];
+  return `<span class="pstate">${st[0] ? `<span class="st ${st[0]}"></span>` : ""}${esc(st[1])}</span>`;
+}
+// The one notice the sidebar's row carried (why nobody can start here, the
+// agent out of window), in the notice voice, or nothing.
+function projectNote(p){
+  const mine = liveSessions().has(myClaude(p.name));
+  return (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked && !mine
+    ? `<div class="pnote ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(p.session_why || p.held)}</div>` : "";
+}
+// The two actions a project page and its card show, and the rest behind
+// one menu (R238: nine look-alike icons on a row were one too many). The
+// data-* names are the sidebar row's, so wireProjectRows serves them.
+function projectActions(p, extra = ""){
+  const name = p.name, mine = liveSessions().has(myClaude(name));
+  const dead = p.locked || notMine(p) || (!p.session_at && !!p.session_why && !mine) || (p.node_removed && !mine) || heldWhy(p);
+  const menu = [
+    p.git_ok && !isBroken(p)
+      ? `<button type="button" data-l="${esc(name)}"${state?.can?.["git-auth"] === false ? " disabled" : ""}>${
+          p.linked ? `${esc(p.forge_name || "Remote")} settings` : "Link to a git host"}</button>` : "",
+    p.phone?.mine ? `<button type="button" data-ph="${esc(name)}"${phoneWhy(p) ? " disabled" : ""}>${
+        p.phone?.lease?.project === name ? "Take your phone back" : "Lend your phone"}</button>` : "",
+    p.mine === false ? "" : `<button type="button" data-bug="${esc(name)}">Report a BuilderBot bug</button>`,
+    `<button type="button" data-k="${esc(name)}" data-on="${p.locked ? "0" : "1"}"${state?.can?.lock === false ? " disabled" : ""}>${p.locked ? "Unlock" : "Lock"}</button>`,
+    `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
+    `<button type="button" data-rn="${esc(name)}">Settings</button>`,
+    extra,
+  ].filter(Boolean).join("");
+  return `${isBroken(p) ? "" : `<button type="button" class="primary" data-c="${esc(name)}"${dead ? " disabled" : ""} title="${
+        esc(notMine(p) ? NOT_MINE_WHY : p.locked ? "locked; you run this one. Unlock lets Claude back in" : heldWhy(p) || p.session_why || "")}">${
+        mine ? "Claude" : "Open Claude"}</button>`}
+    ${mayShell() ? `<button type="button" data-s="${esc(name)}"${notMine(p) || !gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
+    <span class="more"><button type="button" class="ic" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
+}
+function projectHeader(t){
+  const name = t.arg, p = (state?.projects || []).find(x => x.name === name);
+  if (!p) return `<div class="phead"><span class="pname">${esc(projLabel(name))}</span></div>`;
+  const node = p.node_name || p.session_at || "";
+  return `<div class="phead">
+    <span class="pname">${esc(p.label || name)}${p.locked || notMine(p)
+      ? ` <span class="lockmark" aria-label="${p.locked ? "locked; you run this one" : "read-only"}">${LOCK}</span>` : ""}</span>
+    <span class="pfacts">${p.git ? `git: ${esc(p.git)}` : ""}${p.git && node ? " · " : ""}${esc(node)}</span>
+    ${projectState(p)}
+    <span class="sp"></span>
+    ${projectActions(p)}
+  </div>${projectNote(p)}`;
+}
+// The row's handlers serve the header too (the same data-* names); the
+// menu's own button is the one thing the row did differently.
+function wireProjectHeader(bar){
+  wireProjectRows(bar);
+  bar.querySelectorAll("[data-pmore]").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const m = b.nextElementSibling, open = m.hidden;
+    closeMore();
+    m.hidden = !open;
+    b.setAttribute("aria-expanded", open ? "true" : "false");
+  });
 }

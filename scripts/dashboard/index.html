@@ -2672,6 +2672,44 @@ pre.diff .d-ctx{color:var(--dim)}
    Appearance uses), or the page's name, and no close. */
 .pane .bar.page{padding:4px 6px}
 .pane .bar .pgname{font:var(--f-ui);color:var(--ink)}
+/* A project's page (R218 step 3): the bar is its header, one band: the name
+   large, the branch and the node in the data face, the session's dot and
+   word, and the actions at the right; the one notice under it. */
+.pane .bar.proj{padding:6px 10px;flex-wrap:wrap;gap:4px 10px;font:var(--f-ui)}
+.pane .bar.proj .phead{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
+.pane .bar.proj .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.pane .bar.proj .pname .lockmark svg{width:14px;height:14px}
+.pane .bar.proj .pfacts{font:var(--f-data);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:40ch}
+.pane .bar.proj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);white-space:nowrap}
+.pane .bar.proj .sp{flex:1}
+.pane .bar.proj .phead>button{min-height:32px;padding:4px 12px;font:var(--f-ui)}
+.pane .bar.proj .more{position:relative;display:inline-flex}
+.pane .bar.proj .more>button{min-height:32px;min-width:32px}
+.pane .bar.proj .pnote{flex:1 1 100%;font:var(--f-ui)}
+.pane .bar.proj .pnote.bad{color:var(--bad)}
+.pane .bar.proj .pnote.dim{color:var(--dim)}
+@media(max-width:600px){ .pane .bar.proj .pfacts{flex:1 1 100%;max-width:none} }
+/* The Projects page (R218 step 3): a searchable grid of cards with status. */
+.pjbar{padding:10px 12px}
+.pjbar input{flex:1 1 220px;min-height:var(--tap);padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data);border:1px solid var(--line);border-radius:var(--r-control)}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:0 12px 12px}
+.pgrid .empty{grid-column:1/-1}
+.pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);min-width:0}
+.pcard.pc{box-shadow:inset 3px 0 var(--pc)}
+.pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);background:none;border:0;padding:0;min-height:0;text-align:left;cursor:pointer}
+.pcard .pcname .name:hover{text-decoration:underline}
+.pcard .pcname .lockmark svg{width:14px;height:14px}
+.pcard .pcunpinned{font:var(--f-ui)}
+.pcard .pcfacts{font:var(--f-data);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
+.pcard .pnote{font:var(--f-ui)}
+.pcard .pnote.bad{color:var(--bad)} .pcard .pnote.warn{color:var(--warn)} .pcard .pnote.dim{color:var(--dim)}
+.pcard .pcacts{display:flex;gap:6px;align-items:center;margin-top:auto;padding-top:6px}
+.pcard .pcacts>button{min-height:32px;padding:4px 12px;font:var(--f-ui)}
+.pcard .pcacts .more{position:relative;display:inline-flex;margin-left:auto}
+.pcard .pcacts .more>button{min-height:32px;min-width:32px}
+.pcard:has(.actmenu:not([hidden])){z-index:41}
 .pane .bar .subnav{display:flex;gap:4px;flex-wrap:wrap}
 .pane .bar .subnav button{min-height:26px;padding:2px 10px;font:var(--f-ui);border:1px solid var(--line);
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
@@ -3925,7 +3963,7 @@ body.booting .pane>.loading{margin:auto}
          says about it (Analysis): the last because it is read least, and
          only when a report exists. -->
     <div class="nbtabs" role="tablist">
-      <button type="button" data-v="briefing">Briefing</button>
+      <button type="button" data-v="briefing">Overview</button>
       <button type="button" data-v="design">Design</button>
       <button type="button" data-v="wiki">Wiki</button>
       <button type="button" data-v="roadmap">Roadmap</button>

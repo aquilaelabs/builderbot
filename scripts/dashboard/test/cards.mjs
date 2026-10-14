@@ -587,11 +587,14 @@ print(json.dumps(out))
   ok(desk === 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent !== null),
      `on a desktop the card's row folds as a phone's does (${desk} icons)`);
   await page.evaluate(() => openProjectsTab());
-  await page.waitForSelector('.doc.on .projtab .row', { timeout: 10000 });
-  const tabRow = '.doc.on .projtab .row:has(.name:text-is("alpha"))';
-  const tabShown = await page.$$eval(`${tabRow} .acts .eye`, bs => bs.filter(b => b.offsetParent !== null).length);
-  ok(tabShown > 3 && await page.$eval(`${tabRow} [data-more]`, b => b.offsetParent === null),
-     `...while the Projects tab on a desktop shows every icon and no fold (${tabShown})`);
+  await page.waitForSelector('.doc.on .projtab .pcard', { timeout: 10000 });
+  // The Projects page is a grid of cards (R218 step 3, R238): two actions
+  // on the card, Claude and Shell, and the rest behind one menu.
+  const tabRow = '.doc.on .projtab .pcard[data-row="alpha"]';
+  const tabShown = await page.$$eval(`${tabRow} .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).length);
+  ok(tabShown === 2 && await page.$eval(`${tabRow} [data-pmore]`, b => b.offsetParent !== null)
+     && await page.$eval(`${tabRow} .actmenu`, m => m.hidden && m.querySelectorAll('button').length >= 5),
+     `...while the Projects page's card shows Claude and Shell, the rest behind its menu (${tabShown} shown)`);
   // The pin is on the card's rows too (the operator, 30 Sep), so a project
   // is unpinned from the sidebar without a trip to the Projects tab; the
   // Projects tab is where it is pinned back.
@@ -1316,26 +1319,26 @@ ok(!/locked/.test(backTitle) && /no node/.test(backTitle),
 // The Projects tab: every project, pinned or not, and the same controls on
 // each. The thumbtack decides only where a project is met, not what it can do.
 await page.click('#projects #bAllProj');
-await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
-const inTab = await page.$$eval('.doc .projtab .row .name', ns => ns.map(n => n.textContent.trim()));
+await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
+const inTab = await page.$$eval('.doc .projtab .pcard .name', ns => ns.map(n => n.textContent.trim()));
 const inCard = await page.$$eval('#projects .row .name', ns => ns.map(n => n.textContent.trim()));
 ok(inTab.length >= inCard.length && inCard.every(n => inTab.includes(n)),
-   'the Projects tab lists at least what the card does');
-ok(await page.$eval('.doc .projtab .row', r =>
-     !!r.querySelector('[data-m]') && !!r.querySelector('[data-s]')
+   'the Projects page lists at least what the card does');
+ok(await page.$eval('.doc .projtab .pcard', r =>
+     !!r.querySelector('[data-open]') && !!r.querySelector('[data-s]')
      && !!r.querySelector('[data-k]') && !!r.querySelector('[data-p]')),
-   '...with the same buttons on a row: notebook, shell, padlock, thumbtack');
+   '...with the same controls on a card: its page, shell, the lock and the pin');
 
 // Unpinning takes a project off the sidebar and leaves it on the tab, whole.
 await page.evaluate(() => setProjectPinned('alpha', false));
 await page.waitForFunction(
   () => ![...document.querySelectorAll('#projects .row .name')]
           .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
-ok(await page.$$eval('.doc .projtab .row .name',
+ok(await page.$$eval('.doc .projtab .pcard .name',
      ns => ns.some(n => n.textContent.trim() === 'alpha')),
-   'an unpinned project leaves the sidebar and stays on the tab');
-ok(await page.$eval('.doc .projtab .row:has([data-p="alpha"])',
-     r => !!r.querySelector('[data-c]') && !!r.querySelector('[data-m]')),
+   'an unpinned project leaves the sidebar and stays on the page');
+ok(await page.$eval('.doc .projtab .pcard[data-row="alpha"]',
+     r => !!r.querySelector('[data-c]') && !!r.querySelector('[data-open]')),
    '...still carrying every control, which is the whole promise of the pin');
 // The tab is a document, not a card adrift in one. It used to draw itself
 // inside .card, rounded, bordered and floating on a darker gutter, while the
@@ -1413,15 +1416,15 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
 // the state it was already in, which is what "pinning only works sometimes"
 // was. No poll is waited for: the answer to the pin request is the new set.
 await page.click('#projects #bAllProj');
-await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
-const tackLit = () => page.$eval('.doc .projtab [data-p="beta"]',
-                                 b => b.classList.contains('on'));
-ok(await tackLit(), 'the Projects tab shows beta pinned');
+await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
+// The card's menu says Unpin while it is pinned, Pin once it is not.
+const tackLit = () => page.$eval('.doc .projtab [data-p="beta"]', b => b.textContent.trim() === 'Unpin');
+ok(await tackLit(), 'the Projects page shows beta pinned');
 await page.evaluate(() => setProjectPinned('beta', false));
 await page.waitForFunction(() =>
-  !document.querySelector('.doc .projtab [data-p="beta"]')?.classList.contains('on'),
+  document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Pin',
   { timeout: 5000 });
-ok(true, '...and unpinning it there unlights the tab\'s thumbtack too');
+ok(true, '...and unpinning it there turns the page\'s menu item to Pin too');
 ok(!await page.$$eval('#projects .row .name',
      ns => ns.some(n => n.textContent.trim() === 'beta')),
    '...with the sidebar dropping it in the same breath');
@@ -1491,7 +1494,7 @@ ok(await page.evaluate(() => {
      return !!item && item === btn;
    }), '...and the Containers page on the rail wears the Docker button\'s icon');
 await page.click('#projects #bAllProj');
-await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
+await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 
 const api = (path, body) => page.evaluate(async ([p, b]) => {
   const r = await fetch(p, { method: 'POST',
@@ -1891,7 +1894,7 @@ await page.waitForFunction(() => ![...document.querySelectorAll('#tabbar .tab')]
 ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
 await page.click('#projects #bAllProj');
-await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
+await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 await page.click('#rnCancel');

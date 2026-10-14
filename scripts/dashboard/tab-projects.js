@@ -93,45 +93,73 @@ function openProjectsTab(){
   openTab({kind: "projects", arg: "__projects", label: "Projects"});
 }
 
+// What the search box narrows the grid to: a view, this browser's, never
+// saved. Matched against the name, the label, the branch and the node.
+let pjQuery = "";
+function projectMatches(p, q){
+  if (!q) return true;
+  const hay = [p.name, p.label, p.git, p.node_name, p.session_at].filter(Boolean).join(" ").toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+
+// One project's card on the grid (R218 step 3): its color down the left
+// edge, the name (a press opens its page), the branch and the node, the
+// session's dot and word, the one notice, and the two actions with the
+// rest behind the menu, the same parts the project page's header draws.
+function projectCard(p){
+  const pc = colorAttrs(p.prefs?.color), cls = {error:"bad", warning:"warn", locked:"locked"};
+  const node = p.node_name || p.session_at || "";
+  return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
+    <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
+      p.locked || notMine(p) ? ` <span class="lockmark" aria-label="${p.locked ? "locked; you run this one" : "read-only"}">${LOCK}</span>` : ""}${
+      p.pinned ? "" : ` <span class="dim pcunpinned" title="not on Home's glance">unpinned</span>`}</div>
+    <div class="pcfacts">${p.git ? `git: ${esc(p.git)}${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}</div>
+    ${projectState(p)}
+    ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
+    ${projectNote(p)}
+    <div class="pcacts">${projectActions(p, `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
+  </div>`;
+}
+
 function renderProjectsInto(i){
   const el = $("doc" + i);
   if (!el) return;
   el.classList.add("flush");
   const ps = state?.projects || [];
-  // The empty case keeps the button, and needs it most: an empty workspace is
-  // exactly where somebody is about to make their first project, and a page
-  // that only says what is missing offers no way to fix it.
-  if (!ps.length){
-    el.innerHTML = `<div class="projtab"><div class="macros"><button
-        id="bNewProjTab">New project</button></div>
-      <div class="empty">${state.admin ? "nothing under /workspace yet: New project starts one"
-                                       : "no projects are yours yet: an administrator grants them on the Users tab"}</div></div>`;
+  // The bar once: the search, New project and the trash; the grid under it
+  // is what paints on every pass, so typing in the box is not drawn over.
+  if (!el.querySelector(".projtab")){
+    el.innerHTML = `<div class="projtab"><div class="actbar pjbar">
+        <input id="pjSearch" type="search" placeholder="name, branch or node" aria-label="narrow the projects" autocomplete="off" spellcheck="false">
+        <span class="sp"></span>
+        <button type="button" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button>
+        <button type="button" id="bTrashTab" class="ic" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
+      </div><div id="pjGrid" class="pgrid"></div></div>`;
     el.querySelector("#bNewProjTab").onclick = openNewProject;
+    el.querySelector("#bTrashTab").onclick = openTrash;
+    const box = el.querySelector("#pjSearch");
+    box.value = pjQuery;
+    box.oninput = () => { pjQuery = box.value; renderProjectsInto(i); };
+  }
+  const grid = el.querySelector("#pjGrid");
+  // The empty case says what to do: an empty workspace is exactly where
+  // somebody is about to make their first project.
+  if (!ps.length){
+    paint(grid, `<div class="empty">${state.admin ? "nothing under /workspace yet: New project starts one"
+                                       : "no projects are yours yet: an administrator grants them on the Users tab"}</div>`);
     return;
   }
-  const live = liveSessions();
-  const cls = {error:"bad", warning:"warn", locked:"locked"};
-  // By name, pinned or not, the sidebar's order (the operator, 7 Oct): pinned
-  // first split one list into two alphabets, and the thumbtack on each row
-  // already says which is pinned. Sorted here rather than by the server,
-  // which reports the directory order every other reader wants.
-  const ordered = ps.slice().sort(byProjectName);
-  // paint() rather than innerHTML, the same as the card: this runs on every
-  // render pass, and rebuilding a list of rows nobody changed throws away the
-  // handlers on it for no reason.
-  // At the TOP here, unlike the sidebar card where it sits at the foot. That
-  // card's header is its collapse control and drag handle, so nothing else can
-  // live in it; this tab has no such header, and the list of every project is
-  // exactly where somebody stands when they want another one: the bottom of a
-  // long scroll is the worst place for it.
-  if (paint(el, `<div class="projtab"><div class="actbar macros"><button
-      id="bNewProjTab"
-      title="a fresh local repo, or a clone"
-      >New project</button></div>${
-    ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`)){
-    wireProjectRows(el);
-    el.querySelector("#bNewProjTab").onclick = openNewProject;
+  // By name, pinned or not (the operator, 7 Oct): pinned first split one
+  // list into two alphabets. Sorted here rather than by the server, which
+  // reports the directory order every other reader wants.
+  const shown = ps.filter(p => projectMatches(p, pjQuery)).sort(byProjectName);
+  if (paint(grid, shown.map(projectCard).join("")
+      || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
+    wireProjectRows(grid);
+    wireProjectHeader(grid);
+    grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
   }
+  syncResumeMenu();
 }
 
 // Whether a session in this project may rebuild its dev instance: the

@@ -111,7 +111,12 @@ function railGo(key, tool){
 // A terminal has none.
 function routeOf(t){
   if (!t) return "";
-  if (t.kind === "notebook") return "#/projects/" + encodeURIComponent(t.arg);
+  if (t.kind === "notebook"){
+    // ...and the view it is on (R218 step 3): Overview is the Briefing
+    // view's name on the page, so the address says overview.
+    const v = notebooks.get(t.arg)?.where?.() || "";
+    return "#/projects/" + encodeURIComponent(t.arg) + (v ? "/" + (v === "briefing" ? "overview" : v) : "");
+  }
   if (!isToolKind(t.kind)) return "";
   const g = railWant === "home" && t.kind === "projects" ? RAIL[0] : groupOf(t.kind);
   if (!g) return "";
@@ -127,7 +132,8 @@ function openRoute(hash){
     const name = decodeURIComponent(a);
     if (!(state?.projects || []).some(p => p.name === name)) return false;
     railWant = "projects";
-    openNotebook(name, b ? decodeURIComponent(b) : undefined);
+    const v = b ? decodeURIComponent(b) : "";
+    openNotebook(name, v ? (v === "overview" ? "briefing" : v) : undefined);
     return true;
   }
   const g = RAIL.find(x => x.key === key);

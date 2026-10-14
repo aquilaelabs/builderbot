@@ -14,6 +14,26 @@
 
 // Which project's chooser is open, if any.
 let resumeFor = null;
+// Where the chooser was asked for (R218 step 3): the project page's pane,
+// or the sidebar's card; it is drawn in that one and positioned under the
+// Claude button there.
+let resumeHost = null;
+function resumeHostNow(){
+  return resumeHost?.isConnected ? resumeHost : ($("projects")?.closest(".card") || null);
+}
+// The chooser kept in step with a redraw of its host: the same menu stays
+// where it is (drawn again on every poll, its buttons were replaced under
+// the pointer), a stale one goes, and one asked for is placed.
+function syncResumeMenu(){
+  const host = resumeHostNow();
+  if (!host) return;
+  const keep = resumePick && resumeFor === resumePick.project
+    ? host.querySelector(`.resumemenu[data-pick="${CSS.escape(resumePick.project)}"]`) : null;
+  const first = resumeFor && !keep
+    ? host.querySelector(`.resumemenu[data-for="${CSS.escape(resumeFor)}"]:not([data-pick])`) : null;
+  document.querySelectorAll(".resumemenu").forEach(n => { if (n !== keep && n !== first) n.remove(); });
+  if (resumeFor && !keep) placeResumeMenu();
+}
 // The second step of the Claude button's menu (the operator, 12 Oct): which
 // conversation on which node was picked, and the model and effort it is to
 // start on, chosen there each time rather than kept in the project's
@@ -158,7 +178,9 @@ function openClaude(name, ev){
   void ns;
   resumeFor = resumeFor === name ? null : name;
   resumePick = null;
+  resumeHost = ev?.currentTarget?.closest?.(".pane, .card") || null;
   drawProjects(state.projects);
+  syncResumeMenu();
 }
 
 // A button that sends something to a project's Claude session asks first
@@ -337,10 +359,10 @@ function resumePicker(p, m, card, anchor, ns, several){
 
 function placeResumeMenu(){
   const p = (state?.projects || []).find(x => x.name === resumeFor);
-  const anchor = $("projects").querySelector(`[data-c="${CSS.escape(resumeFor)}"]`);
+  const card = resumeHostNow();
+  const anchor = card?.querySelector(`[data-c="${CSS.escape(resumeFor)}"]`);
   const ns = claudeNodes(p), several = ns.length > 1;
   if (!p || !anchor){ resumeFor = null; return; }
-  const card = anchor.closest(".card");
   const m = document.createElement("div");
   m.className = "pinmenu resumemenu";
   m.id = "resumemenu";
