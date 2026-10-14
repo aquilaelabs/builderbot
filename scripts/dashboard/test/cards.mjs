@@ -2204,12 +2204,15 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   const readsEnd = await page.$eval('#rnReads', l => [l.classList.contains('scrollup'), l.classList.contains('scrolldown')]);
   ok(reads.room > 0 && reads.down && !reads.up && /inset/.test(reads.shadow) && readsEnd[0] && !readsEnd[1],
      `a list that scrolls, the project's Reads, darkens the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
-  await page.$eval(box, b => { b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll')); });
-  // The classes follow the scroll on the page's next frame: read them once they have.
+  // To the end and kept there while the dialog fills (B741): scrolled once,
+  // a section that landed after the scroll left more below it, and the
+  // bottom shadow was right to stay. The classes follow on the next frame.
   await page.waitForFunction(sel => { const l = document.querySelector(sel);
-    return l && l.classList.contains('scrollup') && !l.classList.contains('scrolldown'); }, box, { timeout: 5000 }).catch(() => {});
+    if (!l) return false;
+    l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll'));
+    return l.classList.contains('scrollup') && !l.classList.contains('scrolldown'); }, box, { timeout: 5000, polling: 200 }).catch(() => {});
   const b = await cls();
-  ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down })})`);
+  ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down, top: b.top, room: b.room })})`);
   await page.evaluate(() => closeRename());
   await page.waitForFunction(() => document.getElementById('rnmodal').hasAttribute('hidden'), null, { timeout: 5000 });
   await page.evaluate(() => renameProject('alpha'));
