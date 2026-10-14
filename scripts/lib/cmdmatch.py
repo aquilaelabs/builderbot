@@ -46,6 +46,9 @@ _VALUED = {"sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U"},
            "nice": {"-n"}, "ionice": {"-c", "-n"}, "env": {"-u", "-C", "-S"},
            "xargs": {"-I", "-n", "-P", "-d", "-L", "-s", "-E", "-a"}}
 _ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# The shell's own words in front of a command: `until ! pgrep -f x` runs
+# pgrep (B736: a wait loop that way was the shape the refusal missed).
+KEYWORDS = {"!", "if", "then", "else", "elif", "while", "until", "do", "{", "}"}
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 MAX_DEPTH = 3
 
@@ -83,7 +86,7 @@ def _unwrap(words):
     i = 0
     while i < len(words):
         w = words[i]
-        if _ASSIGN.match(w):
+        if _ASSIGN.match(w) or w in KEYWORDS:
             i += 1
             continue
         if w == "bb" and words[i + 1:i + 2] == ["run"]:

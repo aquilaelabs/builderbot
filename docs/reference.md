@@ -157,6 +157,12 @@ bb gpu             this node's NVIDIA card: how much of its memory is free, who 
 bb gpu run [--mem MB] -- CMD
                    CMD with a turn on the card: one heavy job at a time per node, waiting
                    for its turn and for MB of free memory rather than failing on a full card
+bb proc [PATTERN]  this account's processes with PATTERN in their command line, never
+                   the call's own shell (which pgrep -f matches): pid, age, command
+bb proc stop PATTERN [--grace S]
+                   end them: SIGTERM, then SIGKILL after S seconds (3)
+bb proc wait PATTERN [--timeout S]
+                   wait until none is left (600s), saying what is left if some is
 bb tidy [--keep emulator|gpu|gradle|browser|server|tmp]... [--dry]
                    after a task or a batch of them, give back what it left holding:
                    this session's emulator (through bb emu stop), anything else of

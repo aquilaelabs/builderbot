@@ -89,6 +89,20 @@ class Store(unittest.TestCase):
                            input=json.dumps(stdin), capture_output=True, text=True, env=self.env, timeout=30)
         return r.stdout
 
+    def test_pgrep_f_is_the_same_hazard_wherever_the_shell_puts_it(self):
+        """B736: pgrep -f from a tool call matches the call's own shell, in a
+        kill, in a wait loop behind the shell's own words, and run alone;
+        bb proc is the way, and pgrep by name is let be."""
+        import rules
+        pats = next(r for r in rules.ALWAYS if r["name"] == "pkill-by-pid")["refuse"]
+        for line in ("pgrep -f ff/grant.js", "kill $(pgrep -f x.js)", "until ! pgrep -f x; do sleep 2; done",
+                     "while pgrep -f x >/dev/null; do sleep 1; done", "pgrep -af x", "pkill -9 -f x"):
+            self.assertIsNotNone(cmdmatch.first_match(line, pats), line)
+        for line in ("pgrep -x firefox", "pgrep firefox", "bb proc stop ff/grant.js", "echo until done",
+                     "for i in 1 2; do echo $i; done"):
+            self.assertIsNone(cmdmatch.first_match(line, pats), line)
+        self.assertIn("bb proc", next(r for r in rules.ALWAYS if r["name"] == "pkill-by-pid")["text"])
+
     def test_the_shipped_install_rule_refuses_and_says_why(self):
         out = self.hook("bb-rule-hook", "guard", "alpha", "u_t",
                         stdin={"tool_name": "Bash", "tool_input": {"command": "sudo apt-get install -y jq"}})

@@ -12,7 +12,7 @@ stopped by a hook when it runs, with the reason.
 
 - Build, test and run through `bb build`, `bb test` and `bb run -- CMD`.
 - Start and stop the emulator with `bb emu start` and `bb emu stop`, never its binary (refused).
-- End a process by its pid or `pkill -x NAME`, never `pkill -f` (refused).
+- End a process by its pid, `pkill -x NAME` or `bb proc stop PATTERN`, never `pkill -f` or `pgrep -f` (refused).
 - Push with `bb git push`; never write a credential into a repository; your commit identity is given, never set (refused).
 - Report what happened: a failure with its output, a skipped step as skipped, never a success you did not see.
 - Read `bb roadmap show N` or `bb bug show N` before starting on one, and `bb design show` before styling anything.
@@ -158,8 +158,12 @@ read it (`pytest -n "$BB_TEST_WORKERS"`, `node --test
 --test-concurrency="$BB_TEST_WORKERS"`, Gradle's `--max-workers`) rather
 than hard-coding a number.
 
-A `pkill -f PATTERN` run from a tool call matches the shell running that
-call and kills it: end a process by pid, or with `pkill -x NAME`.
+A `pkill -f PATTERN` or `pgrep -f PATTERN` run from a tool call matches
+the shell running that call, because the pattern is on its command line:
+pkill kills that shell, and a wait loop on pgrep never ends. `bb proc
+PATTERN` lists this account's processes that hold it, `bb proc stop` ends
+them and `bb proc wait` waits for them to go, never the call's own shell;
+or end a process by its pid, or with `pkill -x NAME`.
 
 What ran is read rather than guessed: `bb jobs [--node NAME] [--type T]`
 lists the jobs this project may see and `bb jobs ID [--all]` prints one's

@@ -206,10 +206,13 @@ BUILTIN = [
 # project's dial turns off.
 ALWAYS = [
     {"name": "pkill-by-pid",
-     "text": "A `pkill -f PATTERN` run from a tool call matches the shell running that call, because"
-             " the pattern is on its command line, and kills it: end a process by its pid, or with"
-             " `pkill -x NAME`.",
-     "refuse": ["pkill -f", "pkill --full"]},
+     "text": "A `pkill -f PATTERN` or `pgrep -f PATTERN` run from a tool call matches the shell running"
+             " that call, because the pattern is on its command line: pkill kills it, and a wait on"
+             " pgrep never ends (B736). `bb proc PATTERN` lists what holds it, `bb proc stop PATTERN`"
+             " ends it and `bb proc wait PATTERN` waits for it to go, never touching the call's own"
+             " shell; or end a process by its pid, or with `pkill -x NAME`.",
+     "refuse": ["pkill -f", "pkill --full", "pkill -* -f", "pkill -*f",
+                "pgrep -f", "pgrep --full", "pgrep -* -f", "pgrep -*f"]},
     {"name": "emulator-through-bb",
      "text": "The emulator is started with `bb emu start` and stopped with `bb emu stop`, never the"
              " emulator binary: bb picks the GPU, waits for the boot, keeps the log and saves its"
