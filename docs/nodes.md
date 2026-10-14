@@ -1047,7 +1047,9 @@ the pieces stack:
 4. *Tick it under Also works on*, in the project's settings, where it is
    marked Hosting only (Where it runs; one list on screen, `prefs.hosts`
    underneath for the hosting-only rows and `prefs.nodes` for the rest; a
-   hosting-only node may be ticked by whoever may set the project's node). The project's sessions may then
+   hosting-only node may be ticked by whoever may set the project's node;
+   the Node picker above the list never offers one, since it holds no code
+   and runs no session). The project's sessions may then
    make a container there (`bb devapp new --node NAME`, built on the
    project's own node and shipped) and rebuild and remove the ones there,
    under its Claude may: Run its container, as on its own node; a node not

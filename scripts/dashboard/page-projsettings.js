@@ -151,8 +151,11 @@ function rnFillNode(){
     const removed = new Set((state?.projects || []).filter(p => p.node_removed).map(p => p.prefs?.node).filter(Boolean));
     // A disabled node is kept but not offered (the operator, 11 Oct), unless
     // it is this project's already, which the row then says.
+    // ...and a hosting-only node is not offered as the primary (the operator,
+    // 14 Oct): it holds no code and runs no session, so it is a row under
+    // Also works on, marked Hosting only, and nothing else.
     const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired"
-      && (n.state !== "disabled" || n.id === rnPrefWas.node) && !removed.has(n.id));
+      && (n.state !== "disabled" || n.id === rnPrefWas.node) && !removed.has(n.id) && !n.config?.host_only);
     if (nodesList === null){
       const opened = rnFor;
       loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); rnBars(); } });

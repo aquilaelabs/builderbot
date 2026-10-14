@@ -1184,6 +1184,17 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const hi = await (await agent('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest })).json();
     ok(hi.host_only === true && hi.bundle === '' && (hi.session_tokens || []).length === 0,
        `its hello says so, hands it no bb bundle and no session token (${JSON.stringify([hi.host_only, hi.bundle])})`);
+    // ...and a project's Node picker does not offer it (the operator, 14
+    // Oct): it is a row under Also works on, marked Hosting only, and
+    // nothing else.
+    await page.evaluate(async () => { nodesList = null; await loadNodes(); });
+    await page.evaluate(n => renameProject(n), 'gamma');
+    await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+    await page.waitForFunction(id => [...document.querySelectorAll('#rnNodesMore input')].some(i => i.value === id), minted.id, { timeout: 10000 });
+    ok(!(await page.$$eval('#rnNode option', (os, id) => os.some(o => o.value === id), minted.id))
+       && /Hosting only/.test(await page.$eval('#rnNodesMore', b => b.textContent)),
+       'a hosting-only node is not offered as a project\'s primary, only under Also works on, marked Hosting only');
+    await page.click('#rnCancel');
     // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
     // its row, no row on its Toolchains tab.
     await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:claude"]'), ROW, { timeout: 10000 }).catch(() => {});

@@ -546,6 +546,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Docker tab has an Images and volumes section: what the daemon holds and what a prune would give back, each image in use or not, each volume, and Prune images or Prune volumes for an administrator (ff1afb7)
 - The Docker tab has a List view, one line per container that opens into its card, a search box in its bar, published ports as links with the nginx route beside them, and Docker's health said on the state pill (80b9b56)
 - The Jobs, Toolchains and Emulator tabs open on a row of tiles: what runs and what finished, what is installed and what a project needs, the images held and the AVDs on them (5270f6b)
+- A project's Node picker no longer offers a hosting-only node: it is a row under Also works on, marked Hosting only, and nothing else (bc5a138)
 
 ### Sessions
 
