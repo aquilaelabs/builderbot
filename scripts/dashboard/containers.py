@@ -755,6 +755,12 @@ def manager_view(nid, seen):
                                for r in (nrec.get("routes") or [])]}
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
+        # Why a row publishes on every address of a node whose ports stay
+        # on it (R217): 0.0.0.0 in its compose file, by name or through a
+        # variable defaulting to it, wins over the daemon's loopback default,
+        # and a down row with such a file will do the same when it comes up.
+        if got["ports_local"]:
+            i["open_from"] = devapp.every_address(i.get("project", ""), i.get("instance", "") or devapp.MAIN)
         # A node's nginx behind the newest line says so on its row, with
         # Update (R192); "" for every other row.
         if i.get("owner") == devapp.SYSTEM:

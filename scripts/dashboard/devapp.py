@@ -3855,6 +3855,37 @@ def problems(project, cfg):
     return out
 
 
+# A ports line that names every address: the literal, or a variable that
+# defaults to it (`${REGISTRY_BIND:-0.0.0.0}:9787:8787`), with the variable
+# a person can set in the env to put it right.
+_EVERY_ADDR = re.compile(r"""^\s*-\s*['"]?(?:\$\{(?P<var>[A-Za-z_][A-Za-z0-9_]*)(?::-0\.0\.0\.0)?\}|(?P<lit>0\.0\.0\.0)):""", re.M)
+
+
+def every_address(project, instance=MAIN):
+    """Where the compose file behind an instance publishes on every address
+    (R217): {"vars": [names], "literal": bool}, or None when it names no
+    address, which leaves the daemon's default (127.0.0.1 on a node whose
+    ports stay on it, R190) to decide. Read as text, since a variable's
+    default is its spelling and the resolved config has only the value."""
+    f = compose_file(project, instance)
+    if f is None:
+        return None
+    try:
+        text = f.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    found = {"vars": [], "literal": False}
+    for m in _EVERY_ADDR.finditer(text):
+        if m.group("lit"):
+            found["literal"] = True
+        elif m.group("var") and m.group("var") not in found["vars"]:
+            # A variable with no default names every address only when the
+            # env leaves it empty; the one defaulting to 0.0.0.0 is the case.
+            if ":-0.0.0.0" in m.group(0):
+                found["vars"].append(m.group("var"))
+    return found if found["vars"] or found["literal"] else None
+
+
 def taken_ports(project, instance, ports):
     """The host ports this instance would publish that something ELSE on the
     same daemon already has, as ["6789 (jumble)", ...].

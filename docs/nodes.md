@@ -1143,7 +1143,11 @@ the pieces stack:
    update that learns more of the setting applies it by itself (B667). A
    network keeps the options it was made with, so a container made before
    is bound again by a Down and Up; its Docker row says so in red while a
-   port is still published on every address.
+   port is still published on every address, and says why when the compose
+   file is the reason (R217): a variable defaulting to `0.0.0.0` (named, to
+   set to `127.0.0.1` under Env) or the address written in, since either
+   wins over the daemon's default; a down row with such a file says so
+   before it comes up.
    nginx's image is pinned per node by digest (R192): a weekly check of the
    registry, Check now and Update on the nginx tab, Update on its Docker
    row, and a bell note when a newer line is out. Its Docker row's Edit is

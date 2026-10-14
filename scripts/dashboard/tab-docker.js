@@ -1474,7 +1474,8 @@ function dmRowsHtml(ins, job, blind){
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
         ${dockerList?.ports_local && (d.open_ports || []).length ? `<div class="sub bad dmopen">${esc(d.open_ports.join(", "))} ${
           d.open_ports.length === 1 ? "is" : "are"} published on every address of this node, so the internet reaches ${
-          d.open_ports.length === 1 ? "it" : "them"} past nginx: Down and Up binds ${d.open_ports.length === 1 ? "it" : "them"} to 127.0.0.1</div>` : ""}
+          d.open_ports.length === 1 ? "it" : "them"} past nginx: ${dmOpenWhy(d, d.open_ports.length === 1 ? "it" : "them")}</div>`
+          : dockerList?.ports_local && d.open_from && !d.exists ? `<div class="sub warn dmopen">${dmOpenSoon(d)}</div>` : ""}
         ${dmUnrouted(d)}
         ${(d.images_behind || []).length ? `<div class="sub warn dmimages">a newer ${esc(d.images_behind.join(", "))} is out: Update pulls it and starts it again</div>` : ""}
         ${dmSetGrid([dmOwnerLine(d, `inst:${d.project}|${d.instance}`), dmMoveLine(d), dmRefLine(d), dmRouteLine(d),
@@ -1612,6 +1613,27 @@ function dmPortsFact(d){
     return d.services.filter(c => (c.ports || []).length).map(c =>
       c.ports.map(p => line(p, "")).join(", ").replace(/^/, `${esc(c.service || c.name)}: `)).join(" · ");
   return (d.ports || []).map(p => line(p, "")).join(" · ");
+}
+
+// Why a row publishes on every address of a node whose ports stay on it
+// (R217), and what puts it right: its compose file names 0.0.0.0, by a
+// variable defaulting to it (set in the env) or written in; or nothing in
+// the file says so, and the container was made before the node's setting.
+function dmOpenWhy(d, them){
+  const f = d.open_from;
+  if (f?.vars?.length)
+    return `${esc(f.vars.join(", "))} default${f.vars.length === 1 ? "s" : ""} to 0.0.0.0 in its compose file, which wins over this node's setting; set ${
+      f.vars.length === 1 ? "it" : "them"} to 127.0.0.1 under Env, then Down and Up`;
+  if (f?.literal)
+    return `0.0.0.0 is written into its compose file, which wins over this node's setting; change it there to 127.0.0.1, or leave the address out, then Down and Up`;
+  return `Down and Up binds ${them} to 127.0.0.1`;
+}
+function dmOpenSoon(d){
+  const f = d.open_from;
+  return f.vars?.length
+    ? `when it comes up, ${esc(f.vars.join(", "))} default${f.vars.length === 1 ? "s" : ""} to 0.0.0.0 in its compose file and its ports publish on every address of this node past nginx: set ${
+        f.vars.length === 1 ? "it" : "them"} to 127.0.0.1 under Env first`
+    : `when it comes up, 0.0.0.0 in its compose file publishes its ports on every address of this node past nginx: change it there to 127.0.0.1 first`;
 }
 
 // The nginx routes on this node that point at one of the row's published

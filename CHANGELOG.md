@@ -315,6 +315,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings offer one list of nodes under Also works on, a hosting-only node marked Hosting only in it, in place of a second Hosts its containers on list; a hosting node left unticked stays yours to copy to and rebuild on (b59527f)
 - A build of an instance pinned to a branch opens its log with the commit it builds from and says that untracked and ignored files of the working tree are not in it (f9e5027)
 - The controller's log says when the agent's sources changed under it, naming the newest file and the digest it ships now, so a node held on the old digest has a reason beside it (f9e5027)
+- A container on a node that keeps its ports on loopback says why it still publishes on every address: the variable in its compose file that defaults to 0.0.0.0 (or the address written in), and what to set; a down one says so before it comes up (27bdc3b)
 
 ### Removed
 
