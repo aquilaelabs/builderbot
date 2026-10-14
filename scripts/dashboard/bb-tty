@@ -163,7 +163,7 @@ fi
 # shell inside one running container and nothing else, the one the
 # controller's grant names: no account's home, no session setup, no tree.
 # Each person's shell is their own tmux session on that account, prefixed as
-# their sessions are (the owner's bare), so two people never share one.
+# their sessions on a node are (tmux_prefix), so two people never share one.
 if [ "${BB_TTY_CTR:-}" = 1 ]; then
     ctr_no() { for line in "$@"; do echo "$line" >&2; done; if [ -t 2 ]; then sleep 10; fi; exit 1; }
     on_node || ctr_no "A container terminal server runs on a node and nowhere else."
@@ -174,13 +174,16 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
     esac
     docker inspect --type container "$cname" >/dev/null 2>&1 \
         || ctr_no "docker inspect ${cname} failed on this node: it is gone, or the docker account cannot reach the daemon."
-    pre=""
-    [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ] || pre="${account}~"
-    s="${pre}ctr-${cname}"; s="${s//[.:]/_}"
+    s="$(tmux_prefix "$account")ctr-${cname}"; s="${s//[.:]/_}"
     # shellcheck disable=SC2016 # expanded in the container, not here
     tmux new-session -A -d -s "$s" -c / \
         docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh'
     tmux set-option -t "$s" mouse off
+    # The status line every terminal in the dock wears (15-dashboard.sh's),
+    # on the session: the docker account has no BuilderBot tmux.conf.
+    tmux set-option -t "$s" status-style bg=color236,fg=color252
+    tmux set-option -t "$s" status-left '#[bold] #S '
+    tmux set-option -t "$s" status-right ' builderbot '
     exec tmux attach-session -t "$s"
 fi
 
