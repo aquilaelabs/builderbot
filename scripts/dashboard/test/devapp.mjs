@@ -1974,6 +1974,94 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   await dmRefresh();
 }
 
+// ---- a shell inside a container, in the dock (R218 step 4) -------------------
+// The row of a running instance carries Shell for its first running container
+// and Shell in SERVICE for the rest under More; a press opens a terminal tab in
+// the dock whose argument names the container. The proxy checks the account,
+// the instance and the container against its daemon before relaying: here,
+// where the harness runs no terminal server, a terminal it lets through meets "not
+// answering on the node" and one it refuses meets the reason.
+{
+  const ST = `${DIR}/dockerstate`;
+  const wasUp = existsSync(`${ST}/ep-silon.up`);
+  writeFileSync(`${ST}/ep-silon.up`, '');
+  writeFileSync(`${ST}/ep-silon.svcs`, 'app 7475 7474\ngitea 3000 3000\n');
+  await dmRefresh();
+  await page.waitForSelector(`${DM} [data-dmshell]`, { timeout: 15000 });
+  const offered = await page.evaluate(sel => [...document.querySelectorAll(sel + ' [data-dmshell]')]
+    .map(b => ({ ctr: b.dataset.dmshell, text: b.textContent.trim(), dead: b.disabled })), DM);
+  ok(offered.length === 2 && offered[0].text === 'Shell' && !offered[0].dead && /^Shell in gitea$/.test(offered[1].text),
+     `a running instance offers Shell for its first container and Shell in the rest under More (${JSON.stringify(offered)})`);
+  const term = async arg => page.evaluate(async a => {
+    const r = await fetch('/term/?arg=' + encodeURIComponent(a), { headers: { Accept: 'application/json' } });
+    return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
+  }, arg);
+  const good = await term(`ctr:ep.silon:main:${offered[0].ctr}`);
+  // ep.silon's instance is on the stub node: through the gate, the proxy
+  // relays to that node's terminal server, which the harness does not run.
+  ok(good.status === 502 && /^sandbox did not answer on stub:/.test(good.error),
+     `the proxy lets a running container of the instance through, to its node's terminal server (${good.status} ${good.error.slice(0, 60)})`);
+  const wrong = await term('ctr:ep.silon:main:someone-elses');
+  ok(wrong.status === 403 && /someone-elses is not a running container of ep-silon/.test(wrong.error),
+     `...and refuses a container that is not one of the instance's (${wrong.error})`);
+  const noInst = await term(`ctr:ep.silon:nope:${offered[0].ctr}`);
+  ok(noInst.status === 403 && /no instance nope of ep\.silon/.test(noInst.error),
+     `...an instance that is not on record (${noInst.error})`);
+  const shape = await term('ctr:ep.silon:main:-x');
+  ok(shape.status === 403 && /not a container's terminal/.test(shape.error),
+     `...and an argument in any other shape (${shape.error})`);
+  // On a node, bb-tty asks the controller with the token the proxy minted
+  // for the container's project, and execs into what the answer names, not
+  // what the URL says: the same questions, asked of the token's account.
+  {
+    const { fileURLToPath } = await import('node:url');
+    const REPO = fileURLToPath(new globalThis.URL('../../../', import.meta.url));
+    const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'ep.silon', 'test'],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+    const grant = async arg => {
+      const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/tty-grant', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ arg }) });
+      return { status: r.status, ...(await r.json().catch(() => ({}))) };
+    };
+    const g = await grant(`ctr:ep.silon:main:${offered[0].ctr}`);
+    ok(g.status === 200 && g.ctr === offered[0].ctr && g.project === 'ep.silon',
+       `a node's grant for a container's terminal names the container, checked (${g.status} ${g.ctr || g.error})`);
+    const gx = await grant('ctr:ep.silon:main:someone-elses');
+    ok(gx.status === 403 && /someone-elses is not a running container/.test(gx.error || '') && !gx.ctr,
+       `...and refuses one that is not the instance's, naming no container (${gx.error})`);
+  }
+  // The press: a terminal tab in the dock, named by its container.
+  await page.click(`${DM} [data-dmshell="${offered[0].ctr}"]`);
+  await page.waitForFunction(c => tabOf(panes[1])?.arg === `ctr:ep.silon:main:${c}` && dockUp, offered[0].ctr, { timeout: 10000 });
+  ok(await page.evaluate(c => sessionOf(tabOf(panes[1]).arg) === myTmux(tmuxName('ctr-' + c))
+       && /^in /.test(tabLabel(tabOf(panes[1]))), offered[0].ctr),
+     'Shell opens a terminal tab in the dock, its session and its label named by the container');
+  // Put away, and the dock down again: up, it takes the page's room, and the
+  // blocks below this one read the Docker page's own controls.
+  await page.evaluate(() => { hideTab(panes[1]); dockToggle(false); });
+  // Why it is dead, said under the row: a hosting-only node runs no
+  // terminal, and a project whose Run its container is Deny keeps its
+  // containers' shells to an administrator.
+  const why = await page.evaluate(() => {
+    const keepN = nodesList, keepL = dockerList, keepA = state.admin;
+    nodesList = [{ id: 'n_host', name: 'draconis', config: { host_only: true } }];
+    dockerList = { ...(dockerList || {}), node: 'n_host' };
+    const host = dmShellWhy({ project: 'ep.silon', instance: 'main' });
+    nodesList = keepN; dockerList = keepL;
+    const p = state.projects.find(x => x.name === 'ep.silon'), keepB = p.prefs?.devbuild;
+    p.prefs = { ...(p.prefs || {}), devbuild: 'deny' }; state.admin = false;
+    const deny = dmShellWhy({ project: 'ep.silon', instance: 'main' });
+    state.admin = true; const admin = dmShellWhy({ project: 'ep.silon', instance: 'main' });
+    p.prefs.devbuild = keepB; state.admin = keepA;
+    return { host, deny, admin };
+  });
+  ok(/draconis hosts containers only/.test(why.host) && /Run its container is Deny/.test(why.deny) && why.admin === '',
+     `a dead Shell says why: a hosting-only node, or Deny for anybody but an administrator (${JSON.stringify(why)})`);
+  rmSync(`${ST}/ep-silon.svcs`, { force: true });
+  if (!wasUp) rmSync(`${ST}/ep-silon.up`, { force: true });
+  await dmRefresh();
+}
+
 // Where the row's state sits, asserted by geometry rather than by a
 // screenshot. It used to be a third column beside the name; it is the action
 // bar's status line now, which is the shared rule: what a thing is doing

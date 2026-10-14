@@ -144,6 +144,10 @@ GRANT
     # --check names when it says who is signed in to Claude here.
     BB_NODE_ID="$(printf '%s' "$grant" | jq -r '.node // ""')"
     export BB_NODE_ID
+    # The container a ctr: terminal goes into, as the controller checked it
+    # against the instance's running ones (R218 step 4): the URL's own word
+    # for it is never taken here, where anything on the node can write one.
+    grant_ctr="$(printf '%s' "$grant" | jq -r '.ctr // ""')"
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -1269,6 +1273,26 @@ case "$target" in
             in_view "$proj" "$dir" "${cmd[@]}"
             start "$(sess "claude-${proj}")" "$dir" "${RUN[@]}"
         fi
+        ;;
+    # ctr:NAME:INSTANCE:CONTAINER: a shell inside one container of a dev
+    # instance (R218 step 4). Its container is the controller's answer on a
+    # node (tty-grant, above) and the URL's on the controller, whose ttyd is
+    # loopback-only behind the proxy that checked it the same way. bash when
+    # the image has one, sh otherwise; the session ends when it does.
+    ctr:*)
+        if on_node; then cname="${grant_ctr:-}"; else cname="${target##*:}"; fi
+        case "$cname" in
+            ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_.-]*) bad "Invalid container: ${cname}" ;;
+        esac
+        command -v docker >/dev/null 2>&1 \
+            || bad "There is no docker on this machine, so a shell in ${cname} cannot open here."
+        docker inspect --type container "$cname" >/dev/null 2>&1 \
+            || bad "The terminal's account cannot reach docker on this machine, or ${cname} is gone:" \
+                   "docker inspect ${cname} failed. On a node, the session account needs to be in" \
+                   "the docker group for a container's shell."
+        # shellcheck disable=SC2016 # expanded in the container, not here
+        start "$(sess "ctr-${cname}")" "${HOME:-/}" \
+            docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh'
         ;;
     shell:*)
         proj="${target#shell:}"

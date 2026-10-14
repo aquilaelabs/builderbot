@@ -1139,6 +1139,19 @@ the list each container is one line, its name, state and facts, that opens
 into its card, which is the view for a node with thirty containers and
 this browser's choice to keep.
 
+**A shell inside a container.** A running instance's row carries **Shell**
+for its first running container, and **Shell in** each other one under
+More; it opens `docker exec` into that container as a terminal in the
+dock, bash where the image has it and sh where it does not, on the machine
+the container runs on. It is for a person who may start and stop that
+container (its project's account or an administrator) and has a shell, and
+for an administrator alone when the project's **Run its container** is
+Deny. A container on a hosting-only node runs no terminal, so its Shell is
+dead with the reason under the row. The controller checks the account and
+that the container is one of the instance's running ones before anything
+opens, and on a node the node asks the controller again rather than taking
+the address's word for which container it is.
+
 **The daemon is a node.** The sandbox VM is enrolled on the Nodes tab like
 any other node, and what this container's paths are called over there is set
 on the node's row, because the daemon resolves a compose file's bind sources

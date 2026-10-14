@@ -1406,6 +1406,23 @@ function dmUnrouted(d){
     loop.length === 1 ? "at it" : "at them"} yet: <a href="#" data-dmnginx="${esc(dockerList.node || "")}">add a route on the nginx tab</a></div>`;
 }
 
+// A shell inside one of the instance's running containers, in the dock
+// (R218 step 4): why it cannot open here, or "" when it can. Said under the
+// row in red when it cannot (the operator, 14 Oct); the server asks the same
+// questions again, and of the daemon, before anything runs (_ctr_refused).
+function dmShellWhy(d){
+  const n = (nodesList || []).find(x => x.id === (dockerList?.node || dockerNode));
+  if (n?.config?.host_only)
+    return `${n.name} hosts containers only and runs no terminal, so a shell in this one opens on a node that runs sessions`;
+  const owner = d.owner || d.project;
+  if (!state?.admin && (state?.projects || []).find(p => p.name === owner)?.prefs?.devbuild === "deny")
+    return `${projLabel(owner)}'s Claude may: Run its container is Deny, so a shell in its containers is an administrator's`;
+  return "";
+}
+function dmShell(project, instance, ctr){
+  openTab({kind: "term", arg: `ctr:${project}:${instance}:${ctr}`, label: `in ${ctr}`});
+}
+
 function dmRowsHtml(ins, job, blind){
   return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
@@ -1437,6 +1454,11 @@ function dmRowsHtml(ins, job, blind){
       : d.running && hl.includes("starting") ? ["starting", "warn"]
       : d.running && hl.length && hl.every(h => h === "healthy") ? ["healthy", "ok"]
       : d.running ? ["running", "ok"] : d.exists ? ["stopped", "off"] : ["down", "off"];
+    // Its running containers, for the Shell (R218 step 4), and why one
+    // cannot open, said under the row.
+    const shellAt = !blind && mayShell() && mayDocker() && (d.services || []).filter(c => c.state === "running").length
+      ? (d.services || []).filter(c => c.state === "running") : null;
+    const shellWhy = shellAt ? dmShellWhy(d) : "";
     const inner = `
       <div class="grow">
         <div class="dmid">
@@ -1478,6 +1500,7 @@ function dmRowsHtml(ins, job, blind){
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
           : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
+        ${shellWhy ? `<div class="sub bad dmshellwhy">No shell here: ${esc(shellWhy)}</div>` : ""}
         ${dockerList?.ports_local && (d.open_ports || []).length ? `<div class="sub bad dmopen">${esc(d.open_ports.join(", "))} ${
           d.open_ports.length === 1 ? "is" : "are"} published on every address of this node, so the internet reaches ${
           d.open_ports.length === 1 ? "it" : "them"} past nginx: ${dmOpenWhy(d, d.open_ports.length === 1 ? "it" : "them")}</div>`
@@ -1500,6 +1523,8 @@ function dmRowsHtml(ins, job, blind){
               : "Start it: docker compose up -d"}">Up</button>
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
           title="Stop it and remove its containers: docker compose down">Down</button>
+        ${shellAt ? `<button type="button" data-dmshell="${esc(shellAt[0].name)}"${shellWhy ? " disabled" : ""}
+          title="a shell inside ${esc(shellAt[0].service || shellAt[0].name)}, in the dock">Shell</button>` : ""}
         ${(d.images_behind || []).length && !busy ? `<button type="button" data-dm="update"
           title="pull the newer images and start it again: docker compose pull, then up -d">Update</button>` : ""}
         ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
@@ -1530,6 +1555,8 @@ function dmRowsHtml(ins, job, blind){
         // Up, Down and the build are what a row is for; the rest goes behind
         // More (R210), Remove last in there as it was last on the bar.
         actMore([
+          ...(shellAt && !shellWhy ? shellAt.slice(1).map(c => `<button type="button" data-dmshell="${esc(c.name)}"
+            title="a shell inside ${esc(c.service || c.name)}, in the dock">Shell in ${esc(c.service || c.name)}</button>`) : []),
           managed || !mayDocker() ? "" : `<button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
             title="${d.source === "file" ? "edit this container's compose file and env"
                     : "edit the project's compose file and this container's env"}">Edit</button>`,
@@ -1791,6 +1818,10 @@ function dmWireRows(el, list = dockerList){
   el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);
+  });
+  el.querySelectorAll("[data-dmshell]").forEach(btn => btn.onclick = () => {
+    const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
+    dmShell(project, instance, btn.dataset.dmshell);
   });
   el.querySelectorAll("[data-dmrel]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");

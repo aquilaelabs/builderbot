@@ -150,6 +150,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb proc lists, ends or waits for this account's processes by a word of their command line, never the call's own shell; pgrep -f is refused beside pkill -f, in a loop or a kill as well (ce0a7c3)
 - bb devapp probe says whether a container answers on its node's loopback, each published port open or refused and the HTTP status of a path: a read with no root ask, on a hosting-only node too (8f62c47)
 - bb browser opens Chrome or Firefox with an unpacked extension loaded, headless on a port and profile of its own, and goes, evaluates, takes a picture and stops it from one verb (8345b95)
+- A running container's row on the Containers page has Shell: a terminal inside that container in the dock, for whoever may start and stop it (an administrator alone when the project's Run its container is Deny); on a hosting-only node it says why it cannot open (af727f8)
 
 ### Changed
 

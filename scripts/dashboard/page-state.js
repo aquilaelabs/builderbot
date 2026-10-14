@@ -132,6 +132,8 @@ function sessionOf(arg){
   }
   if (arg.startsWith("claude:")) return myClaude(arg.slice(7).split(":")[0]);
   if (arg.startsWith("shell:"))  return myTmux(tmuxName("shell-"  + arg.slice(6)));
+  // ctr:NAME:INSTANCE:CONTAINER, named by its container (bb-tty's ctr-).
+  if (arg.startsWith("ctr:"))    return myTmux(tmuxName("ctr-" + arg.split(":")[3]));
   return arg;
 }
 // The project a session name was made from, when it is one we know: the

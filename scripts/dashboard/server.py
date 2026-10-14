@@ -1268,9 +1268,26 @@ def _arg_node(arg):
     return m.group(1) if m else ""
 
 
+# `ctr:NAME:INSTANCE:CONTAINER`: a shell inside one container of a dev
+# instance (R218 step 4), NAME the project or the container written here
+# whose instance it is. Names in the shapes docker and the store allow and
+# nothing else, since each reaches docker exec on a node.
+_ARG_CTR = re.compile(r"^ctr:([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9._-]*):"
+                      r"([A-Za-z0-9][A-Za-z0-9_.-]*)$")
+
+
+def _ctr_owner(name, instance):
+    """The project a container's terminal is for: the one its instance
+    belongs to (devapp.owner_of), "" for nobody's."""
+    return devapp.owner_of(name, instance) or ""
+
+
 def _arg_project(arg):
     """The project a terminal argument is about, or "" (the workspace
     shell, a named scratch session)."""
+    m = _ARG_CTR.match(arg or "")
+    if m:
+        return _ctr_owner(m.group(1), m.group(2))
     if arg.startswith("claude:"):
         return arg[len("claude:"):].split(":")[0]
     if arg.startswith("shell:"):
@@ -1436,6 +1453,37 @@ def session_target(project, claude=False, node="", uid=""):
                           ". Sessions run on a node and nowhere else (this container "
                           "carries no Claude Code), so the way on is that machine "
                           "coming back, or another node in the project's settings.")}
+
+def ctr_target(name, instance):
+    """Where a container's Shell runs (R218 step 4): on the machine its
+    instance is on, since docker exec reaches a daemon from its own host.
+
+        {"where": "local"}                         (this container's daemon)
+        {"where": "node", "id", "name", "host", "port", "ro_port", "boot"}
+        {"where": "refused", "name", "why"}
+
+    A hosting-only node runs no terminal server, so a container there has no
+    Shell, said with the reason (the operator, 14 Oct). Otherwise the node
+    has to be up with its session half running, as for a Claude session.
+    """
+    nid = devapp.instance_node(name, instance) or ""
+    n = nodes.node(nid) if nid and not NODES_OK else None
+    if not n or n.get("kind") == "local":
+        return {"where": "local"}
+    nm = n.get("name") or nid
+    se = (n.get("reported") or {}).get("session")
+    if nodes.host_only(n):
+        why = f"{nm} hosts containers only and runs no terminal, so a shell in this one opens on a node that runs sessions"
+    elif n.get("state") != "online" or n.get("live") is False:
+        why = f"{nm}, where this container runs, is not answering now"
+    elif not isinstance(se, dict) or not se.get("up") or not se.get("port"):
+        why = f"{nm} runs no terminal server yet" + (f": {se['why']}" if isinstance(se, dict) and se.get("why") else "")
+    else:
+        return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
+                "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
+                "boot": str(se.get("boot") or "")}
+    return {"where": "refused", "name": nm, "why": why}
+
 
 # A session name without the account that owns it. Shell sessions are named
 # `<uid>~shell-…` since roadmap #26 (two people opening a terminal on one
@@ -4272,12 +4320,49 @@ class Handler(BaseHTTPRequestHandler):
         """
         me = me or self._who()
         arg = _term_arg(rest)
+        if arg.startswith("ctr:"):
+            return self._ctr_refused(arg, me)
         if arg.startswith("claude:"):
             project = arg[len("claude:"):].split(":")[0]
             # Terminal Read is the shielded Claude console; without it there
             # is no terminal on the project at all (R152 (e)).
             return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
         return users.may(me, "terminal")
+
+    def _ctr_refused(self, arg, me):
+        """A sentence when this account may not open a shell in the container
+        a ctr: argument names, and "" when it may (R218 step 4, the operator,
+        14 Oct): a person with a shell who may run that container, which is
+        its project's account or an administrator, as for Start and Stop on
+        the Docker tab; an administrator alone when the project's Claude may:
+        Run its container is Deny; and the container one of the instance's
+        running ones, asked of its daemon now, never taken from the URL."""
+        m = _ARG_CTR.match(arg)
+        if not m:
+            return "not a container's terminal: ctr:NAME:INSTANCE:CONTAINER"
+        name, inst, ctr = m.groups()
+        no_shell = users.may(me, "terminal")
+        if no_shell:
+            return no_shell
+        if inst not in (devapp.instances(name) or []):
+            return f"no instance {inst} of {name} on record here"
+        owner = _ctr_owner(name, inst)
+        admin = users.is_admin(me)
+        if not admin:
+            if not owner:
+                return f"{name} belongs to no project, so its shell is an administrator's"
+            why = users.may(me, "write", owner)
+            if why:
+                return why
+            if (prefs.get(owner) or {}).get("devbuild") == "deny":
+                return (f"{owner}'s Claude may: Run its container is Deny, so a shell in its containers "
+                        "is an administrator's")
+        t = ctr_target(name, inst)
+        if t["where"] == "refused":
+            return t["why"]
+        if ctr not in devactions.running_names(name, inst):
+            return f"{ctr} is not a running container of {devapp.pname(name, inst)} now"
+        return ""
 
     def _claude_held(self, rest, me=None):
         """A sentence when this account may not open the Claude session it is
@@ -4448,10 +4533,13 @@ class Handler(BaseHTTPRequestHandler):
         # only Claude is the thing this container does not carry, so the
         # question is asked about a claude: argument and about nothing else.
         arg0 = _term_arg(rest0)
-        target = session_target(_arg_project(arg0),
-                                claude=arg0.startswith("claude:"),
-                                node=_arg_node(arg0),
-                                uid=users.uid_of(self._who() or {}) or "")
+        # ...and a container's shell is where its container is (R218 step 4).
+        ctr = _ARG_CTR.match(arg0)
+        target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else \
+            session_target(_arg_project(arg0),
+                           claude=arg0.startswith("claude:"),
+                           node=_arg_node(arg0),
+                           uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
@@ -5846,7 +5934,11 @@ class Handler(BaseHTTPRequestHandler):
                            # Which node this terminal is on, by id: what a
                            # session there names when it reports its Claude
                            # sign-in, since a project may work on several.
-                           "node": _arg_node(arg) or (prefs.get(project) or {}).get("node") or ""})
+                           "node": _arg_node(arg) or (prefs.get(project) or {}).get("node") or "",
+                           # The container a ctr: terminal goes into, checked
+                           # above against its instance's running ones: what
+                           # bb-tty execs into, never the URL's word for it.
+                           "ctr": (_ARG_CTR.match(arg).group(3) if _ARG_CTR.match(arg) else "")})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):

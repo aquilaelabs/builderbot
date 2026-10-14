@@ -1138,4 +1138,46 @@ u._save(d)`);
   }
 }
 
+
+// ---- a container's shell (R218 step 4) ----------------------------------------
+// ctr:NAME:INSTANCE:CONTAINER runs docker exec in its own tmux session, named
+// by the container; on the controller the container is the argument's, which
+// the proxy checked (on a node it is tty-grant's answer, never the URL's). A
+// name in any other shape, or one docker cannot inspect, opens nothing and
+// says why.
+{
+  const dbin = mkdtempSync(join(tmpdir(), 'bbtty-docker-'));
+  const dlog = join(dbin, 'log');
+  writeFileSync(join(dbin, 'docker'), `#!/usr/bin/env bash
+echo "$*" >> "${dlog}"
+case "$1" in
+  inspect) [ "$4" = alpha-app-1 ] ;;
+  exec) sleep 60 ;;
+esac
+`);
+  chmodSync(join(dbin, 'docker'), 0o755);
+  const run = arg => {
+    try {
+      return execFileSync('bash', [BBTTY, arg], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${dbin}:${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'),
+               HOME: join(DIR, 'home'), DASHBOARD_STATE: join(DIR, 'state') } });
+    } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; }
+  };
+  tmuxKill('ctr-alpha-app-1');
+  run('ctr:alpha:main:alpha-app-1');
+  await sleep(400);
+  const said = existsSync(dlog) ? readFileSync(dlog, 'utf8') : '';
+  ok(alive('ctr-alpha-app-1') && /^exec -it alpha-app-1 sh -c /m.test(said),
+     `a container's terminal is docker exec into it, in a session named by the container (${said.trim().split('\n').pop()})`);
+  const shape = run('ctr:alpha:main:-oops');
+  ok(/Invalid container: -oops/.test(shape) && !alive('ctr--oops'),
+     `...a container name in any other shape opens nothing (${shape.trim().slice(0, 50)})`);
+  const gone = run('ctr:alpha:main:alpha-db-1');
+  ok(/cannot reach docker on this machine, or alpha-db-1 is gone/.test(gone) && !alive('ctr-alpha-db-1'),
+     '...and one docker cannot inspect says so rather than opening an empty session');
+  tmuxKill('ctr-alpha-app-1');
+  rmSync(dbin, { recursive: true, force: true });
+}
+
 await done();

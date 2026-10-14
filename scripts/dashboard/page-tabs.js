@@ -31,6 +31,9 @@ function sessionLabels(){
   // prefixed Claude session is still a Claude session.
   const of = s => { const b = tmuxBase(s.name);
     return b.startsWith("claude-") ? "Claude: " + projLabel(projFor(b.slice(7)) ?? b.slice(7))
+           // A container's shell (R218 step 4) by the container, not by a
+           // directory on the host it says nothing about.
+           : b.startsWith("ctr-") ? "in " + b.slice(4)
            : s.cwd ? "sh: " + baseOf(s.cwd)
            : "sh: " + s.name; };
   const total = {};

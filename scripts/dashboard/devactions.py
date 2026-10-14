@@ -904,6 +904,17 @@ def _exists(project, instance=devapp.MAIN):
 
 
 @devapp._on_instance
+def running_names(project, instance=devapp.MAIN):
+    """The names of an instance's running containers, from its own daemon:
+    what a container's Shell may name (R218 step 4), asked when one opens
+    rather than taken from the page's last listing. The daemon's own listing
+    by the compose project's label, on any daemon: the one the row's
+    services are drawn from, so the two cannot name a container apart."""
+    got = devapp._agent_instance_containers(devapp._agent_here(), project, instance, True)
+    return [c["name"] for c in (got or [])]
+
+
+@devapp._on_instance
 def state(project, instance=devapp.MAIN):
     """Everything the Artifacts row needs, or the reason there is no row."""
     if devapp.compose_file(project) is None:
