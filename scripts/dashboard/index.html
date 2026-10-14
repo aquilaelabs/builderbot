@@ -3899,8 +3899,16 @@ body.booting .pane>.loading{margin:auto}
   margin-bottom:10px;background:var(--panel);overflow:hidden}
 .fx .grp>summary{padding:var(--row-y) var(--row-x);font-weight:600;flex-wrap:wrap;
   transition:background-color .15s ease}
-.fx .rule{border-top:1px solid var(--line);padding:var(--row-y) var(--row-x)}
+/* A rule is a row that opens (R234): the summary is the closed row, its
+   body the places, the description and the message. */
+.fx .rule{border-top:1px solid var(--line);padding:0}
+.fx .rule>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:var(--row-y) var(--row-x)}
+.fx .rule>summary::-webkit-details-marker{display:none}
+.fx .rule>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
+.fx .rule[open]>summary::before{content:"\25BE"}
+.fx .rule .rbody{padding:0 var(--row-x) var(--row-y) calc(var(--row-x) + 17px)}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
+.fx .rule .rid .rname{color:var(--ink)}
 .fx .rule .desc{margin:3px 0 6px;overflow-wrap:anywhere}
 .fx .loc{font:12px/1.7 var(--mono);color:color-mix(in srgb, var(--ink) 80%, var(--dim));overflow-wrap:anywhere}
 .fx .msg{font:12px/1.5 var(--mono);color:var(--dim);white-space:pre-wrap;

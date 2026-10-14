@@ -135,24 +135,31 @@ function findingsRulesHtml(rows){
   const order = Object.keys(rules).sort((a, b) =>
     (LEVEL_ORDER[rules[a][0].level] ?? 9) - (LEVEL_ORDER[rules[b][0].level] ?? 9)
     || rules[b].length - rules[a].length);
+  // A rule is a row that opens (R234, rows-you-open): closed, the level,
+  // the rule, how many places and the first of them; open, every place, the
+  // description, the message whole and the CVEs. The whole message on every
+  // closed row made a report a wall.
   let html = "";
   for (const rid of order){
     const hits = rules[rid];
     const f = hits[0];
     const cves = [...new Set(hits.flatMap(h => h.cves))];
-    html += `<div class="rule">
-      <div class="rid">
+    html += `<details class="rule">
+      <summary class="rid">
         <span class="pill ${levelClass(f.level)}">${esc(f.level)}</span>
-        ${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`
-                : esc(rid)} · ${hits.length}
+        <span class="rname">${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`
+                : esc(rid)}</span>
+        <span class="loc">${esc(f.path)}:${f.line}${hits.length > 1 ? ` <span class="dim">and ${hits.length - 1} more</span>` : ""}</span>
+      </summary>
+      <div class="rbody">
+        <div class="desc">${esc(f.desc || "(no description)")}</div>
+        ${cves.map(c => `<a class="cve" target="_blank" rel="noopener"
+            href="https://nvd.nist.gov/vuln/detail/${esc(c)}">${esc(c)}</a>`).join("")}
+        ${hits.length > 1 ? `<div>${hits.map(h => `<div class="loc">${esc(h.path)}:${h.line}</div>`).join("")}</div>` : ""}
+        ${f.message && f.message !== f.desc
+            ? `<div class="msg">${esc(f.message)}</div>` : ""}
       </div>
-      <div class="desc">${esc(f.desc || "(no description)")}</div>
-      ${cves.map(c => `<a class="cve" target="_blank" rel="noopener"
-          href="https://nvd.nist.gov/vuln/detail/${esc(c)}">${esc(c)}</a>`).join("")}
-      <div>${hits.map(h => `<div class="loc">${esc(h.path)}:${h.line}</div>`).join("")}</div>
-      ${f.message && f.message !== f.desc
-          ? `<div class="msg">${esc(f.message.slice(0, 600))}</div>` : ""}
-    </div>`;
+    </details>`;
   }
   return html;
 }
