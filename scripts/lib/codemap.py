@@ -2762,7 +2762,9 @@ def q_covered(idx, cov, name):
             continue
         top = sorted(by.items(), key=lambda kv: -kv[1])
         out.append(f"{d['file']}:{d['line']}  {name}: reached by {len(by)} suite{'s' if len(by) != 1 else ''}: "
-                   + ", ".join(f"{s} ({n})" for s, n in top[:8]) + (", ..." if len(top) > 8 else ""))
+                   # Every suite, not the top eight: the name was asked for, and
+                   # the one suite a reader is looking for is as likely the last.
+                   + ", ".join(f"{s} ({n})" for s, n in top))
     return out
 
 
