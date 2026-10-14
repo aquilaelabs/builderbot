@@ -5,7 +5,7 @@
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
 import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold } from './lib.mjs';
-import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
+import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -2619,12 +2619,14 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   // Its log, in a fold under the row, read when the fold opens, with Follow.
   const logSect = '.dmtab .row[data-inst="ep.silon|staging-two"] details[data-sect="docker:logs:ep.silon|staging-two"]';
   await page.click(`${logSect} > summary`);
-  await page.waitForFunction(sel => {
-    const b = document.querySelector(sel + ' .dmlogbox'); return b && !/reading…/.test(b.textContent) && b.querySelector('[data-dmfollow]');
-  }, logSect, { timeout: 15000 });
-  const logged = await page.$eval(`${logSect} .dmlogbox`, b => ({
-    pre: !!b.querySelector('pre.dmlog'), none: /printed nothing/.test(b.textContent),
-    follow: !!b.querySelector('[data-dmfollow]'), again: !!b.querySelector('[data-dmlogagain]') }));
+  // Read in the same breath as waited for: the list redraws on every
+  // revision and a fold read between the two is "reading…" again.
+  const logged = await (await page.waitForFunction(sel => {
+    const b = document.querySelector(sel + ' .dmlogbox');
+    if (!b || /reading…/.test(b.textContent) || !b.querySelector('[data-dmfollow]')) return null;
+    return { pre: !!b.querySelector('pre.dmlog'), none: /printed nothing/.test(b.textContent),
+             follow: !!b.querySelector('[data-dmfollow]'), again: !!b.querySelector('[data-dmlogagain]') };
+  }, logSect, { timeout: 15000 })).jsonValue();
   ok((logged.pre || logged.none) && logged.follow && logged.again,
      `a row's Log fold reads the container's tail when opened, with Follow and Read again (${JSON.stringify(logged)})`);
   await page.click(`${logSect} > summary`);
@@ -2666,6 +2668,51 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   } else {
     ok(true, 'one project here, so no chips: a chip row of one is not drawn');
   }
+  // A published port is the address it answers at (R216): a link on the
+  // ports fact, to the daemon's host and that port.
+  const portLink = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmports a', a => a.href);
+  ok(/^http:\/\/[^/]+:7475\/$/.test(portLink), `a published port is a link to where it answers (${portLink})`);
+  // Docker's health, read off the status and said on the pill: the fixture
+  // wears what its marker says.
+  const upFile = readdirSync(`${DIR}/dockerstate`).find(f => /staging-two.*\.up$/.test(f));
+  const pn = upFile.replace(/\.up$/, '');
+  writeFileSync(`${DIR}/dockerstate/${pn}.health`, 'unhealthy');
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => /unhealthy/.test(document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill')?.textContent || ''), null, { timeout: 20000 });
+  ok(await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill', e => e.classList.contains('bad')),
+     'an unhealthy container says so on its state pill, in red');
+  writeFileSync(`${DIR}/dockerstate/${pn}.health`, 'healthy');
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await page.waitForFunction(() => /^healthy/.test(document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill')?.textContent || ''), null, { timeout: 20000 });
+  ok(true, '...and a healthy one says healthy rather than running');
+  rmSync(`${DIR}/dockerstate/${pn}.health`, { force: true });
+  // The list view (R216): one line per container that opens into its card,
+  // this browser's choice, and the search narrows the rows as typed.
+  await page.click('.dmtab [data-dmview="list"]');
+  await page.waitForSelector('.dmtab details.dmline[data-inst="ep.silon|staging-two"] > summary.dmsum', { timeout: 10000 });
+  const line = await page.$eval('.dmtab details.dmline[data-inst="ep.silon|staging-two"]', d => ({
+    open: d.open, name: d.querySelector('summary .name')?.textContent.trim(), facts: d.querySelector('summary .dmsumf')?.textContent.replace(/\s+/g, ' ').trim(),
+    body: !!d.querySelector('.dmbody dl.facts') }));
+  ok(!line.open && /staging-two/.test(line.name || '') && /7475/.test(line.facts || '') && line.body,
+     `in list view a container is one line, its name, state and facts, with its card behind it (${JSON.stringify(line)})`);
+  await page.click('.dmtab details.dmline[data-inst="ep.silon|staging-two"] > summary.dmsum');
+  await page.waitForFunction(() => document.querySelector('.dmtab details.dmline[data-inst="ep.silon|staging-two"]')?.open, null, { timeout: 5000 });
+  ok(await page.$eval('.dmtab details.dmline[data-inst="ep.silon|staging-two"] .dmbody .actbar.dmacts', e => e.getBoundingClientRect().height > 0),
+     '...which opens into the card with its settings and its action bar');
+  ok(await page.evaluate(() => { try { return localStorage.getItem('bb.dmview'); } catch (e) { return 'no storage'; } }) === 'list',
+     '...and the choice is this browser\'s, kept');
+  await page.fill('.dmtab #dmSearch', 'staging');
+  await page.waitForFunction(() => [...document.querySelectorAll('.dmtab .row[data-inst]')].every(r => /staging/.test(r.dataset.inst)) && document.querySelectorAll('.dmtab .row[data-inst]').length >= 1, null, { timeout: 10000 });
+  ok(true, 'the search narrows the rows to what matches as it is typed');
+  ok(await page.$$eval('.dmtab .tiles:not(.mini) .tile', ts => ts.length > 0), '...while the tiles still count the whole');
+  await page.fill('.dmtab #dmSearch', 'no-such-container-anywhere');
+  await page.waitForFunction(() => /nothing here matches/.test(document.querySelector('.dmtab .empty')?.textContent || ''), null, { timeout: 10000 });
+  ok(true, '...and nothing matching says so');
+  await page.fill('.dmtab #dmSearch', '');
+  await page.waitForFunction(() => document.querySelectorAll('.dmtab .row[data-inst]').length > 1, null, { timeout: 10000 });
+  await page.click('.dmtab [data-dmview="cards"]');
+  await page.waitForSelector('.dmtab div.row[data-inst="ep.silon|staging-two"]', { timeout: 10000 });
+  ok(true, 'and Cards puts the full rows back');
 }
 // The failed Up earlier is a JOB that failed: the request that queued it was
 // accepted, and the failure landed on the row. Before the queue it answered
@@ -4358,8 +4405,10 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   const pillOf = async svc => page.evaluate(r => { const el = document.createElement('div');
     el.innerHTML = dmRowsHtml([r], null, false); return el.querySelector('.dmpill')?.textContent.trim(); }, row(svc));
   const seededPill = await pillOf({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (0) 5 hours ago' });
-  ok(/^running(, as last seen)?$/.test(seededPill) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
-     `a one-shot that exited 0 leaves the row running and reads finished, while one that failed still reads partly up (${
+  // Its two containers say healthy, so the row does too (R216), rather
+  // than running: the one-shot that finished does not count against it.
+  ok(/^healthy(, as last seen)?$/.test(seededPill) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
+     `a one-shot that exited 0 leaves the row healthy and reads finished, while one that failed still reads partly up (${
        seededPill} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
 }
 
@@ -4702,6 +4751,10 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   ok(/already has a route: \*\//.test(again.error || ''), `the same port again is refused by name (${again.error})`);
   await page.waitForFunction(p => [...document.querySelectorAll('.dmtab [data-dmngport] option')].some(o => Number(o.value) === p && o.disabled), port, { timeout: 15000 });
   ok(true, '...and the pulldown reads that port as routed');
+  // ...and the row says where nginx answers for it, as a fact with a link (R216).
+  const routeFact = await page.$eval(`${DM} dl.facts .dmroute a`, a => ({ href: a.href, text: a.textContent })).catch(() => null);
+  ok(routeFact && /^http:\/\/[^/]+\/$/.test(routeFact.href),
+     `...and the row carries the route as a fact, the address it answers at (${JSON.stringify(routeFact)})`);
   const bad = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'route-add', node: n, cert: 'nope.example.com', port: 9 }) })).json()), nodeId);
   ok(/holds no certificate filed under nope.example.com/.test(bad.error || ''), `a certificate the node does not hold is refused by name (${bad.error})`);

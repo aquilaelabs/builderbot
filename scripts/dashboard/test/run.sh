@@ -1110,7 +1110,10 @@ case "$1" in
         done
         continue
       fi
-      printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
+      # ...wearing the health its marker says ($pn.health: healthy, unhealthy
+      # or starting), the way docker's own Status column does (R216).
+      hs=""; [ -f "$ST/$pn.health" ] && hs=" ($(cat "$ST/$pn.health"))"
+      printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes'"$hs"'","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
         "$pn" "$pn" "$pn" "$pn"
     done
     # An exited container is still THERE, holding its name and its network,

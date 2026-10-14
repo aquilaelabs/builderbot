@@ -747,7 +747,12 @@ def manager_view(nid, seen):
     nrec = nginxproxy.record(got["node"]) if got.get("node") else {}
     got["nginx"] = {"deployed": bool(got.get("node")) and nginxproxy.deployed(devapp, got["node"]),
                     "certs": sorted(k for k, v in (nrec.get("certs") or {}).items() if (v or {}).get("set")),
-                    "routed": sorted({int(r.get("port") or 0) for r in (nrec.get("routes") or [])})}
+                    "routed": sorted({int(r.get("port") or 0) for r in (nrec.get("routes") or [])}),
+                    # ...and each route whole, so a row can say the address
+                    # nginx answers for its port at (R216).
+                    "routes": [{"host": r.get("host") or "*", "path": r.get("path") or "/",
+                                "port": int(r.get("port") or 0), "tls": bool(r.get("tls"))}
+                               for r in (nrec.get("routes") or [])]}
     for i in got.get("instances") or []:
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
         # A node's nginx behind the newest line says so on its row, with

@@ -2641,6 +2641,27 @@ pre.diff .d-ctx{color:var(--dim)}
 @media(max-width:900px){ .tiles.mini{grid-template-columns:repeat(2,1fr)} }
 .tiles.mini .tile{padding:6px 9px}
 .tiles.mini .tv{font:var(--f-sect);font-variant-numeric:tabular-nums}
+/* The list view (R216): a container as one line that opens into its card
+   (rows-you-open). The line is the name with its state pill, then its
+   facts in the data voice: whose, its ports as links, where nginx routes
+   it, its image. The bar's search box takes the room the picker leaves. */
+.dmtab details.dmline{display:block;padding:0}
+.dmtab details.dmline > summary.dmsum{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
+  cursor:pointer;list-style:none;padding:var(--row-y) var(--row-x);min-height:var(--tap)}
+.dmtab details.dmline > summary.dmsum::-webkit-details-marker{display:none}
+.dmtab details.dmline > summary.dmsum::before{content:"";display:inline-block;width:0;height:0;
+  border:5px solid transparent;border-left:6px solid var(--dim);margin-right:2px;align-self:center;
+  transition:transform .15s ease}
+.dmtab details.dmline[open] > summary.dmsum::before{transform:rotate(90deg)}
+.dmtab details.dmline > summary.dmsum .name{font-weight:600}
+.dmtab .dmsumf{font:var(--f-data);color:var(--dim);display:flex;flex-wrap:wrap;gap:2px 12px;min-width:0;flex:1 1 auto}
+.dmtab .dmsumf > span{overflow-wrap:anywhere}
+.dmtab .dmsumf a{color:var(--accent)}
+.dmtab details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:1px solid var(--line)}
+.dmtab .dmpick #dmSearch{flex:1 1 12rem;min-width:8rem;max-width:var(--ctl-w)}
+.dmtab .dmviewseg{display:flex;gap:4px}
+.dmtab .dmviewseg button{min-height:var(--ctl)}
+.facts dd a,.dmports a{color:var(--accent)}
 /* The row's Log fold: each container's tail under its name, the whole no
    taller than a screen, and the Follow switch on its action bar. */
 .dmlogbox .dmlogsvc + .dmlogsvc{margin-top:8px}

@@ -274,7 +274,9 @@ async function bring(kind){
 // below is for. It reached this check for the first time when the Jobs tab
 // was paged, because every other paginated list is in a notebook whose
 // fixture is too short to draw one.
-const NOT_A_BAR = ['nbtabs', 'foot', 'pagemore'];
+// ...and a segmented switch (.pseg: Deploy key / Access token, Dark / Light,
+// Cards / List) is one choice, not a set of verbs (R216).
+const NOT_A_BAR = ['nbtabs', 'foot', 'pagemore', 'pseg'];
 
 async function language(){
   return page.evaluate(({ NOT_A_BAR }) => {

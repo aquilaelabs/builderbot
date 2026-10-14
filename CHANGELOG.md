@@ -544,6 +544,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A running container's row carries a strip of what it uses now: CPU, memory, network in and out, processes, sampled beside the list (ff1afb7)
 - A container's row has a Log fold: the last lines of each of its containers, read when opened, again on request, and every few seconds with Follow ticked (ff1afb7)
 - The Docker tab has an Images and volumes section: what the daemon holds and what a prune would give back, each image in use or not, each volume, and Prune images or Prune volumes for an administrator (ff1afb7)
+- The Docker tab has a List view, one line per container that opens into its card, a search box in its bar, published ports as links with the nginx route beside them, and Docker's health said on the state pill (80b9b56)
 
 ### Sessions
 

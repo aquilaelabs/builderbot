@@ -1407,12 +1407,17 @@ function dmRowsHtml(ins, job, blind){
     // The state is a pill on the name line (R210): a word in the level's
     // color, not a parenthesis in the dim mono the facts under it wear.
     const partly = !blind && d.running && live.some(c => c.state !== "running");
+    // Docker's own health, read off the status it prints (R216): one
+    // container unhealthy and the row says so; all of them healthy and it
+    // says that rather than running; one still starting is said too.
+    const hl = live.map(dmHealth).filter(Boolean);
     const st = blind ? ["state unknown", ""]
       : partly ? [`partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`, "warn"]
+      : d.running && hl.includes("unhealthy") ? ["unhealthy", "bad"]
+      : d.running && hl.includes("starting") ? ["starting", "warn"]
+      : d.running && hl.length && hl.every(h => h === "healthy") ? ["healthy", "ok"]
       : d.running ? ["running", "ok"] : d.exists ? ["stopped", "off"] : ["down", "off"];
-    return `
-    <div class="row stack2${blind ? " off" : ""}" data-inst="${
-      esc(d.project)}|${esc(d.instance)}">
+    const inner = `
       <div class="grow">
         <div class="dmid">
         <div class="name">${esc(d.name)}<span class="pill stat dmpill${st[1] ? " " + st[1] : ""}">${
@@ -1431,12 +1436,8 @@ function dmRowsHtml(ins, job, blind){
         factGrid([
           ["Image", (d.services || []).length === 1 ? d.services[0].image || "" : ""],
           ["Images", (d.services || []).length > 1 ? [...new Set(d.services.map(c => c.image).filter(Boolean))].join(", ") : ""],
-          ["Ports", d.ports.length
-            ? ((d.services || []).length > 1
-                ? d.services.filter(c => (c.ports || []).length).map(c =>
-                    `${esc(c.service || c.name)}: ${c.ports.map(esc).join(", ")}`).join(" · ")
-                : d.ports.map(esc).join(" · "))
-            : "", {html: true, cls: "dmports"}],
+          ["Ports", d.ports.length ? dmPortsFact(d) : "", {html: true, cls: "dmports"}],
+          ["Route", dmRoutesOf(d).map(dmRouteLink).join(" · "), {html: true, cls: "dmroute"}],
           ["Containers", (d.services || []).length > 1 ? d.services.map(c =>
             `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
               esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>") : "",
@@ -1527,10 +1528,88 @@ function dmRowsHtml(ins, job, blind){
       d.exists && !blind && (d.services || []).length
         ? docSection("docker", `logs:${d.project}|${d.instance}`, "Log",
                      (d.services || []).length > 1 ? `${d.services.length} containers` : "",
-                     `<div class="dmlogbox">reading…</div>`, {open: false}) : ""}
-    </div>`;
+                     `<div class="dmlogbox">reading…</div>`, {open: false}) : ""}`;
+    return dmRowWrap(d, st, inner, blind);
   }).join("");
 }
+
+// Docker's health for one container, off the status it prints ("Up 3
+// weeks (healthy)"): healthy, unhealthy, starting, or "" for none.
+function dmHealth(c){
+  const t = c.status || "";
+  return /\(healthy\)/.test(t) ? "healthy" : /\(unhealthy\)/.test(t) ? "unhealthy" : /health: starting/.test(t) ? "starting" : "";
+}
+
+// Cards or a list (R216, the operator's second set of examples): the same
+// card either way, drawn whole as a row, or behind one line that opens
+// into it (rows-you-open). Which, is this browser's, kept in localStorage.
+let dmView = (() => { try{ return localStorage.getItem("bb.dmview") === "list" ? "list" : "cards"; }catch(e){ return "cards"; } })();
+function dmRowWrap(d, st, inner, blind){
+  const key = `${d.project}|${d.instance}`;
+  if (dmView !== "list")
+    return `<div class="row stack2${blind ? " off" : ""}" data-inst="${esc(key)}">${inner}</div>`;
+  return `<details class="row stack2 dmline${blind ? " off" : ""}" data-inst="${esc(key)}"${sectAttr(`docker:line:${key}`)}>
+    <summary class="dmsum"><span class="name">${esc(d.name)}<span class="pill stat dmpill${st[1] ? " " + st[1] : ""}">${
+      esc(st[0])}</span></span><span class="dmsumf">${dmLineFacts(d)}</span></summary>
+    <div class="dmbody">${inner}</div></details>`;
+}
+
+// The line's facts: whose it is, where it answers (its published ports as
+// links, the address nginx routes to it), and its image.
+function dmLineFacts(d){
+  const bits = [];
+  const who = d.owner || d.project;
+  if (who) bits.push(`<span>${esc(who === "System" ? "System" : projLabel(who))}</span>`);
+  const ports = dmPorts(d);
+  if (ports.length) bits.push(`<span>${ports.map(p => dmPortLink(p.pub)).join(" ")}</span>`);
+  const routes = dmRoutesOf(d);
+  if (routes.length) bits.push(`<span>${routes.map(dmRouteLink).join(" ")}</span>`);
+  const imgs = [...new Set((d.services || []).map(c => (c.image || "").replace(/@sha256:.*$/, "")).filter(Boolean))];
+  if (imgs.length) bits.push(`<span>${esc(imgs.join(", "))}</span>`);
+  return bits.join("");
+}
+
+// The published ports of an instance: [{pub, target, proto, svc}].
+function dmPorts(d){
+  const out = [];
+  const take = (text, svc) => {
+    const m = /(?:^|:)(\d+)->(\d+)\/(\w+)/.exec(text || "");
+    if (m && !out.some(p => p.pub === m[1])) out.push({pub: m[1], target: m[2], proto: m[3], svc});
+  };
+  if ((d.services || []).length > 1) d.services.forEach(c => (c.ports || []).forEach(p => take(p, c.service || c.name)));
+  else (d.ports || []).forEach(p => take(p, ""));
+  return out;
+}
+
+// A published port as the address it answers at (R216): the daemon's
+// host, which the row's Reached at line already names.
+const dmPortLink = pub => `<a href="http://${esc(daemonHost())}:${esc(pub)}/" target="_blank" rel="noreferrer">${esc(pub)}</a>`;
+
+// The ports fact: each published port a link, the rest of the mapping as
+// text, and whose each is when the instance is more than one container.
+function dmPortsFact(d){
+  const line = (text, svc) => {
+    const m = /^(.*?)(\d+)->(\d+\/\w+)(.*)$/.exec(text || "");
+    const body = m ? `${esc(m[1])}${dmPortLink(m[2])}->${esc(m[3])}${esc(m[4])}` : esc(text);
+    return svc ? `${esc(svc)}: ${body}` : body;
+  };
+  if ((d.services || []).length > 1)
+    return d.services.filter(c => (c.ports || []).length).map(c =>
+      c.ports.map(p => line(p, "")).join(", ").replace(/^/, `${esc(c.service || c.name)}: `)).join(" · ");
+  return (d.ports || []).map(p => line(p, "")).join(" · ");
+}
+
+// The nginx routes on this node that point at one of the row's published
+// ports (manager_view's nginx.routes), and each as a link.
+function dmRoutesOf(d){
+  const mine = new Set(dmPorts(d).map(p => +p.pub));
+  return (dockerList?.nginx?.routes || []).filter(r => mine.has(+r.port));
+}
+const dmRouteLink = r => {
+  const host = r.host && r.host !== "*" ? r.host : daemonHost();
+  const url = `${r.tls ? "https" : "http"}://${host}${r.path || "/"}`;
+  return `<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(host + (r.path && r.path !== "/" ? r.path : ""))}</a>`;
+};
 
 // The Images and volumes section: tiles of what the daemon holds and
 // what a prune would give back, then each image (in use or not, its size
@@ -1860,6 +1939,21 @@ function dmWireRows(el, list = dockerList){
 // containers first and then the others, by name. Where a row came from
 // (built from a project, written here, or started by somebody else) is said
 // on the row itself, since that is what decides what can be done to it.
+// The search (R216): what was typed, where the caret was when the redraw
+// took the box, and whether a redraw since was the search's own (only
+// then is the focus put back, so a redraw for a revision does not steal it).
+let dmSearch = "", dmSearchCaret = null, dmSearchTimer = null, dmSearchAt = 0;
+const dmSearchTouched = () => Date.now() - dmSearchAt < 1500;
+function dmMatch(r){
+  const q = dmSearch.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [r.name, r.id, r.image, r.project, r.instance, r.owner, r.owner_label,
+               r.owner ? projLabel(r.owner) : "", ...(r.ports || []),
+               ...((r.services || []).flatMap(c => [c.name, c.image, c.service, ...(c.ports || [])]))]
+    .filter(Boolean).join(" ").toLowerCase();
+  return q.split(/\s+/).every(w => hay.includes(w));
+}
+
 // Which project's group the chips narrow the list to, for the page's life
 // ("" is All, "none" the containers of no project): a view, never saved.
 let dmChip = "";
@@ -1974,12 +2068,14 @@ function renderDockerInto(i){
   // and the gate below both used to ask and only one of them narrowed it.
   const pollSays = dmPollSays();
   const blind = dmBlind();
-  const ins = dockerList.instances || [];
-  const cs = dockerList.containers || [];
   const job = dockerJob();
+  // The search narrows the rows and nothing else: the tiles and the chips
+  // still count the whole, so what is hidden is still said.
+  const ins = (dockerList.instances || []).filter(dmMatch);
+  const cs = (dockerList.containers || []).filter(dmMatch);
   // A chip in force names a group that is still here; one for a group that
   // went (its last container removed) falls back to All.
-  const chips = dmChipGroups(ins, cs);
+  const chips = dmChipGroups(dockerList.instances || [], dockerList.containers || []);
   if (dmChip && !chips.some(g => g.key === dmChip)) dmChip = "";
   const rows = dmGroupsHtml(ins, cs, job, blind, dmChip);
   // Its own class rather than the projects tab's: the two look alike and a
@@ -2044,7 +2140,14 @@ function renderDockerInto(i){
   const dnodes = (nodesList || []).filter(n => n.kind !== "local");
   if (nodesList === null) loadNodes();
   const picker = `<div class="field histbar docbarrow dmpick">${
-      nodePick("dmNode", dnodes, dockerNode || dnodes[0]?.id)}<span class="sp"></span>
+      nodePick("dmNode", dnodes, dockerNode || dnodes[0]?.id)}${
+      // Search beside the picker (R216): a name, an image, a port or a
+      // project, narrowing the rows as it is typed; a view, never saved.
+      ""}<input id="dmSearch" type="search" placeholder="name, image, port or project" autocomplete="off"
+        aria-label="narrow the containers" value="${esc(dmSearch)}"><span class="sp"></span>
+      <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
+        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card">Cards</button>
+        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card">List</button></div>
       <button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button></div>${
       // Adding at the top, in the add band every view adds with, where a
       // phone finds it without scrolling past every container (R119 step 5).
@@ -2078,12 +2181,13 @@ function renderDockerInto(i){
   // are here, how many have an update due, how many projects, and what
   // is on the daemon that nobody here started. Blind, the daemon has not
   // answered, so nothing is counted.
-  const running = ins.filter(d => d.running).length;
-  const behind = ins.filter(d => (d.images_behind || []).length || d.nginx_to).length;
-  const notOurs = cs.filter(c => !c.ours).length;
-  const tiles = blind || !(ins.length || cs.length) ? "" : statTiles([
-    {label: "running", value: running, sub: `of ${ins.length} container${ins.length === 1 ? "" : "s"}`,
-     tone: ins.length && !running ? "warn" : ""},
+  const allIns = dockerList.instances || [], allCs = dockerList.containers || [];
+  const running = allIns.filter(d => d.running).length;
+  const behind = allIns.filter(d => (d.images_behind || []).length || d.nginx_to).length;
+  const notOurs = allCs.filter(c => !c.ours).length;
+  const tiles = blind || !(allIns.length || allCs.length) ? "" : statTiles([
+    {label: "running", value: running, sub: `of ${allIns.length} container${allIns.length === 1 ? "" : "s"}`,
+     tone: allIns.length && !running ? "warn" : ""},
     {label: "updates due", value: behind, tone: behind ? "warn" : "", omit: !dockerList?.images_at && !behind},
     {label: "projects", value: chips.filter(g => g.key !== "none").length},
     {label: "not ours", value: notOurs, omit: !notOurs, title: "on this daemon, started by nobody here"},
@@ -2094,7 +2198,7 @@ function renderDockerInto(i){
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
     // machine nobody just asked.
-    rows || `<div class="empty">${blind
+    rows || `<div class="empty">${dmSearch ? `nothing here matches ${esc(dmSearch)}` : blind
       ? "nothing on record here: an instance appears once it has been sent"
       : "nothing on this daemon yet"}</div>`}
     ${
@@ -2145,6 +2249,25 @@ function renderDockerInto(i){
   el.querySelectorAll("[data-dmchip]").forEach(c => c.onclick = () => {
     dmChip = c.dataset.dmchip; dockerRev++; drawPanes();
   });
+  // Cards or a list: this browser's choice, kept for the next open.
+  el.querySelectorAll("[data-dmview]").forEach(b => b.onclick = () => {
+    dmView = b.dataset.dmview === "list" ? "list" : "cards";
+    try{ localStorage.setItem("bb.dmview", dmView); }catch(e){ /* private mode */ }
+    dockerRev++; drawPanes();
+  });
+  // The search redraws as it is typed, and keeps its focus and its caret
+  // across the redraw, which replaces the box.
+  const sb = el.querySelector("#dmSearch");
+  if (sb){
+    sb.oninput = () => {
+      dmSearch = sb.value; dmSearchCaret = sb.selectionStart; dmSearchAt = Date.now();
+      clearTimeout(dmSearchTimer);
+      dmSearchTimer = setTimeout(() => { dockerRev++; drawPanes(); }, 120);
+    };
+    if (dmSearchCaret !== null && document.activeElement !== sb && dmSearchTouched()){
+      sb.focus(); try{ sb.setSelectionRange(dmSearchCaret, dmSearchCaret); }catch(e){ /* a type that cannot */ }
+    }
+  }
   // The wiring, fetched when the fold is opened and not before. It needs the
   // compose file parsed, which is the one thing overview() refuses to do for
   // every instance at once, and it is the thing you want occasionally, which

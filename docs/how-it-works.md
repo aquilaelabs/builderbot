@@ -1096,7 +1096,14 @@ row of chips narrows the list to one project (All puts it back, and nothing
 is saved). A container's row is its name and a state pill with a dot of its
 color, a facts grid (image, ports, containers, what it was built from, its
 compose file), its notices, its settings with one Apply, then its action
-bar.
+bar. A published port is a link to where it answers, and a port nginx
+routes to shows the address as a fact beside it. Docker's health is read
+off the status and said on the pill: healthy, unhealthy or starting, not
+just running. The bar holds a search box (a name, an image, a port or a
+project, narrowing the rows as it is typed) and a Cards or List switch: in
+the list each container is one line, its name, state and facts, that opens
+into its card, which is the view for a node with thirty containers and
+this browser's choice to keep.
 
 **The daemon is a node.** The sandbox VM is enrolled on the Nodes tab like
 any other node, and what this container's paths are called over there is set
