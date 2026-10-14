@@ -1377,6 +1377,13 @@ def in_use(project, action, args, uid):
     return ""
 
 
+# A push read for secrets first (R219, pushscan through gitrelay): SCAN
+# answers {held: [findings]} for the project's tree and OKAY records what a
+# person approved. Set by server.py; None in a test that has neither.
+SCAN = None
+OKAY = None
+
+
 def verb(project, action, req, me, *, prefix, principal):
     """One of the Git view's actions (roadmap R36 step 2), once server.py
     has let this account act on the project and in_use() has said the tree
@@ -1396,6 +1403,20 @@ def verb(project, action, req, me, *, prefix, principal):
         if r.get("ok"):
             AUDIT(principal, "git-ci-fix", project, {"path": r["file"], "at": r["line"]})
         return r
+    if action == "push" and SCAN is not None:
+        # Lines that look like a secret or something private hold the
+        # push until the presser has read them (the confirm carries them
+        # whole); Push again with `confirmed` okays those lines and pushes.
+        args = req.get("args") if isinstance(req.get("args"), dict) else {}
+        got = SCAN(project)
+        found = got.get("held") or [] if isinstance(got, dict) else []
+        if found and not args.get("confirmed"):
+            import pushscan                                   # noqa: PLC0415
+            return {"error": pushscan.summary(found),
+                    "confirm": f"{pushscan.summary(found)}:\n\n{pushscan.block(found)}\n\n"
+                               "Push anyway? These exact lines will not be asked about again."}
+        if found and OKAY is not None:
+            OKAY(project, found, (me or {}).get("name") or "")
     r = act(WORKSPACE / project, action, req.get("args") or {}, env=GIT_ENV(me, project),
             may_push=MAY_PUSH(project))
     if action == "init" and r.get("ok"):

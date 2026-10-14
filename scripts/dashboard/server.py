@@ -3153,8 +3153,26 @@ workspace.paths = gitview.paths = logs.paths = gitrelay.paths = paths
 # travel and what a token may do with them are bbrelay.py's.
 import bbrelay                                                   # noqa: E402
 
+import pushscan                                                  # noqa: E402
+
+pushscan.configure(state=STATE, write_json=write_json)
 bbrelay.configure(users=users, projects=projects, prefs=prefs, gitrelay=gitrelay, registry=registry,
-                  WORKSPACE=WORKSPACE, STATE=STATE)
+                  WORKSPACE=WORKSPACE, STATE=STATE, phone=phone, pushscan=pushscan)
+
+
+def _push_approved(rec, by):
+    """A held push approved on the bell (R219): the flagged lines okayed
+    for the project, then the push, unscanned, in the relay's own
+    repository, as the session's bb would have run it."""
+    pushscan.okay(rec.get("project") or "", rec.get("findings") or [], by)
+    return gitrelay.run(rec.get("project") or "", rec.get("cwd") or str(WORKSPACE / (rec.get("project") or "")),
+                        "push", rec.get("args") or [], scan=False)
+
+
+phone.pusher = _push_approved
+# ...and the Git view's Push reads the same way, asking in a confirm.
+gitview.SCAN = lambda project: gitrelay.run(project, str(WORKSPACE / project), "push", [], scan="only")
+gitview.OKAY = pushscan.okay
 
 # ---- a session's hooks, from a node -------------------------------------------
 # The overlap notes, the chat feed, the catch-up and the turn queue, posted by

@@ -83,6 +83,7 @@ release_editor = None
 release_remover = None
 container_free = None
 container_builds = None
+pusher = None         # a held push run after Approve (R219): (record, by) -> {code, out, err, apply?}
 # ...and what verb() needs to know about the one asking, set by server.py
 # beside the rest: the account store, the projects an account sees, the
 # node a project builds on and its Run its container dial, a container's
@@ -735,6 +736,11 @@ def _req_public(r):
                            if "=" in ln and not ln.lstrip().startswith("#")]
         out["name"] = r.get("name") or ""
         out["for"] = r.get("for") or ""
+    # A push (R219) is approved by reading the lines that look sensitive:
+    # each with its file and line, whole, in a box.
+    if r.get("kind") == "push":
+        out["detail"] = r.get("detail") or ""
+        out["count"] = len(r.get("findings") or [])
     return out
 
 
@@ -756,6 +762,10 @@ def _for(r, uid, admin):
     # their role.
     if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove"):
         return r["to"] == uid
+    # A held push (R219) is the asking account's to answer, and an
+    # administrator's, since what it would send is the project's.
+    if r.get("kind") == "push":
+        return admin or r["to"] == uid
     if r["to"] == "admins":
         return bool(admin)
     return r["to"] == uid
@@ -925,6 +935,22 @@ def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker="",
         _reqs.append(r)
         del _reqs[:-MAX_REQS]
     return {"ok": True, "id": r["id"], "to": to_name, "node": node_name or nid}
+
+
+def ask_push(project, cwd, args, findings, asker_uid="", asker_name="", asker_admin=False):
+    """A session's push held for a person (R219): the lines pushscan
+    flagged, in a box on the bell, for the account whose session pushes
+    (and any administrator). Approve runs the push on the controller
+    (pusher) and okays those lines; Deny drops it. Returns the request."""
+    import pushscan                                       # noqa: PLC0415
+    if not findings:
+        return {"error": "nothing to ask about"}
+    why = pushscan.summary(findings)
+    to = asker_uid or "admins"
+    to_name = f"{asker_name or 'you'} (your own account)" if asker_uid else "the administrators"
+    return _queue("push", why, ["git", "push", *[str(a) for a in args]], "", "", project, "claude", to, to_name,
+                  asker_name, extra={"cwd": str(cwd), "args": [str(a) for a in args],
+                                     "findings": findings, "detail": pushscan.block(findings)})
 
 
 def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
@@ -1248,6 +1274,20 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
         if res.get("error"):
             return {"error": res["error"]}
         return {"ok": True}
+    if r.get("kind") == "push":
+        # The push runs here, now, with the flagged lines okayed first, and
+        # what the session's tree needs afterwards (apply) rides on the
+        # outcome the waiting bb reads.
+        if pusher is None:
+            with _lock:
+                r.update(state="done", out="no push path is wired up here", code=1)
+            return {"ok": True}
+        res = pusher(r, name or "") or {}
+        with _lock:
+            r.update(state="done", code=1 if res.get("error") else int(res.get("code") or 0),
+                     out=str(res.get("error") or (res.get("out") or "") + (res.get("err") or ""))[-8000:],
+                     apply=res.get("apply") or None)
+        return {"error": res["error"]} if res.get("error") else {"ok": True}
     if r.get("kind") == "sign":
         # Queued as the session's own, the way the auto path does it; the
         # job's id is what the session follows next.
@@ -1390,7 +1430,8 @@ def outcome(rid, project=""):
         if project and r.get("project") != project:
             return {"error": "no such request"}
         return {"ok": True, "state": r["state"], "out": r["out"],
-                "code": r["code"], "why": r["why"]}
+                "code": r["code"], "why": r["why"],
+                **({"apply": r["apply"]} if r.get("apply") else {})}
 
 
 # ---- installing an APK -----------------------------------------------------

@@ -1586,7 +1586,16 @@ no other branch has until you say so twice, and says which of the two kinds
 it is: a branch whose commits change nothing `main` lacks is history going,
 not work. Merge into main waits while the copy of `main` here is behind the
 host, and names the pull, because merging into it is how that copy ends up
-both ahead and behind. The **only on `<host>`** fold says of each branch
+both ahead and behind. **A push is read before it goes** (`pushscan.py`,
+R219): the added lines of what it would send are looked at for a token, a
+key, a password, a private key block, an address with a password in it, an
+email address or an IP address, in the relay's own repository and never in
+the tree. A session's `bb git push` with such lines is held: the bell shows
+them whole, each with its file and line, Approve pushes and Deny drops it,
+and `bb git push` waits on the answer the way `bb root run` does. The Git
+view's Push shows the same lines in a confirm. An approved line in a file
+is okayed for that project (`/config/pushok.json`) and passes from then on;
+a line that changes is asked about again. The **only on `<host>`** fold says of each branch
 whether `main` already has every commit on it, and offers **Delete on
 `<host>`** for the ones where it does, which is the only case where removing
 a branch there can lose nothing. **Revert** and **Branch here**

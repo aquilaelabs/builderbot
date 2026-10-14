@@ -36,6 +36,7 @@ from pathlib import Path
 # Its own directory on the path, so a test can load this file alone (git.mjs
 # does) and still find statefile beside it.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pushscan  # noqa: E402
 import statefile  # noqa: E402
 
 # Injected by configure().
@@ -420,11 +421,14 @@ def _lfs(root):
 
 # ---- the verbs --------------------------------------------------------------
 
-def run(project, cwd, verb, args):
+def run(project, cwd, verb, args, scan=True):
     """{code, out, err, apply?} for one relayed verb, or {error} when it
-    was refused before any git ran."""
+    was refused before any git ran. A push is read for secrets first
+    (pushscan, R219): `scan` True holds one with findings ({held: [...]},
+    no push), "only" answers {held: [...]} and pushes nothing, and False
+    pushes what a person has read and approved."""
     try:
-        return _run(project, cwd, verb, [str(a) for a in args])
+        return _run(project, cwd, verb, [str(a) for a in args], scan=scan)
     except Refused as e:
         return {"error": str(e)}
 
@@ -509,7 +513,54 @@ def bad_args(args):
     return ""
 
 
-def _run(project, cwd, verb, args):
+def _scan(d, project, name, pos, head_ref, branch, tree_refs):
+    """The findings a push would send that nobody has okayed (pushscan): the
+    added lines of each branch it writes, against the remote's copy of that
+    branch as this tree last saw it, else the remote's main, else nothing.
+    Read in the shadow repository, so nothing the tree's config names runs;
+    a diff git cannot make counts as nothing to flag, said in the log."""
+    specs = [a for a in pos[1:]]
+    pairs = []
+    dashd = False
+    for s in specs:
+        s = s[1:] if s.startswith("+") else s
+        src, sep, dst = s.partition(":")
+        if dashd or (sep and not src):
+            continue
+        src_ref = head_ref if src in ("", "HEAD") else (src if src.startswith("refs/") else f"refs/heads/{src}")
+        dest = (dst if sep else src).removeprefix("refs/heads/")
+        pairs.append((src_ref, head_ref.removeprefix("refs/heads/") if dest in ("", "HEAD") else dest))
+    if not specs:
+        pairs.append((head_ref, branch))
+    empty = ""
+    found = []
+    for src_ref, dest in pairs:
+        src = tree_refs.get(src_ref) or (src_ref if OID.fullmatch(src_ref) else "")
+        if not src:
+            continue
+        base = (tree_refs.get(f"refs/remotes/{name}/{dest}") or tree_refs.get(f"refs/remotes/{name}/main")
+                or tree_refs.get(f"refs/remotes/{name}/master") or "")
+        if not base:
+            if not empty:
+                e = _git(d, "hash-object", "-t", "tree", "/dev/null", timeout=30)
+                empty = e["out"].strip() if e["code"] == 0 else ""
+            base = empty
+        if not base or base == src:
+            continue
+        r = _git(d, "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "-U0",
+                 "--diff-filter=AM", base, src, timeout=120)
+        if r["code"] != 0:
+            continue
+        found += pushscan.scan(r["out"][:20_000_000])
+    seen, uniq = set(), []
+    for f in found:
+        if f["key"] not in seen:
+            seen.add(f["key"])
+            uniq.append(f)
+    return pushscan.fresh(project, uniq)
+
+
+def _run(project, cwd, verb, args, scan=True):
     if verb not in VERBS:
         raise Refused(f"bb git takes {', '.join(VERBS)} or policy; plain git does everything else")
     why = bad_args(args)
@@ -559,6 +610,13 @@ def _run(project, cwd, verb, args):
         net = [f for f in flags if f not in PULL_ONLY]
         if verb == "ls-remote":
             return _git(d, "ls-remote", *net, name, *pos[1:])
+        if verb == "push" and scan:
+            # Read before it goes (R219): what nobody has okayed holds it.
+            found = _scan(d, project, name, pos, head_ref, branch, tree_refs)
+            if scan == "only":
+                return {"held": found}
+            if found:
+                return {"code": 1, "out": "", "err": "", "held": found}
         if verb == "push":
             r = _git(d, "push", *net, name, *pos[1:])
         elif verb == "fetch":

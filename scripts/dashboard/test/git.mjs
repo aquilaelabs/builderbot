@@ -757,6 +757,44 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // Allowing main does not widen anything else: it names one more ref, not
   // every ref.
   const stillNot = await relay(['git', 'push', 'origin', 'HEAD:someone-else']);
+  const act = async (action, args) => post('/api/git', { project: 'beta', action, args: args || {} });
+
+  // A push that would send a secret or something private is held (R219):
+  // the bell shows the lines whole, Approve pushes from the controller and
+  // okays those exact lines, Deny drops it, and a line that changes is
+  // asked about again. The Git view's Push asks the same in a confirm.
+  const cur = git('rev-parse', '--abbrev-ref', 'HEAD');
+  writeFileSync(`${B}/secrets.env`, 'GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD\nHOME_IP=192.168.1.16\n');
+  git('add', 'secrets.env'); git('commit', '-q', '-m', 'with a token');
+  const held = await relay(['git', 'push', 'origin', cur]);
+  ok(held.status === 200 && held.held && held.code === 1 && /held: 2 lines look sensitive/.test(held.err || ''),
+     `a push that would send a token is held, naming what it saw (${(held.err || held.error || '').slice(0, 90)})`);
+  const asks = (await (await fetch(URL.replace(/\/$/, '') + '/api/phone', { headers: H })).json()).asks || [];
+  const ask = asks.find(a => a.kind === 'push' && a.id === held.held);
+  ok(ask && ask.count === 2 && /secrets\.env:1  \(a GitHub token\)/.test(ask.detail || '')
+     && /secrets\.env:2  \(an IP address\)/.test(ask.detail || '') && ask.cmd.join(' ') === `git push origin ${cur}`,
+     `...and the bell carries the flagged lines whole, each with its file and line (${(ask?.detail || '').slice(0, 70)})`);
+  const allowed = await post('/api/phone', { action: 'allow', id: held.held });
+  const outcome = await post('/api/phone', { action: 'outcome', id: held.held }, S);
+  const top = () => execFileSync('git', [`--git-dir=${origin}`, 'log', '-1', '--format=%s', cur], { encoding: 'utf8' }).trim();
+  ok(allowed.status === 200 && outcome.state === 'done' && outcome.code === 0 && top() === 'with a token',
+     `Approve pushes it from the controller, and the waiting session reads the outcome (${JSON.stringify(outcome).slice(0, 80)})`);
+  writeFileSync(`${B}/other.txt`, 'nothing here\n'); git('add', 'other.txt'); git('commit', '-q', '-m', 'plain');
+  const again = await relay(['git', 'push', 'origin', cur]);
+  ok(again.status === 200 && again.code === 0 && !again.held && top() === 'plain',
+     'the approved lines pass the next push without asking');
+  writeFileSync(`${B}/secrets.env`, 'GITHUB_TOKEN=ghp_zyxwvutsrqponmlkjihgfedcba9876543210DCBA\n');
+  git('add', 'secrets.env'); git('commit', '-q', '-m', 'rotated');
+  const changed = await relay(['git', 'push', 'origin', cur]);
+  ok(changed.held && /1 line looks sensitive/.test(changed.err || ''), 'a changed line is asked about again');
+  await post('/api/phone', { action: 'deny', id: changed.held });
+  ok((await post('/api/phone', { action: 'outcome', id: changed.held }, S)).state === 'denied' && top() === 'plain',
+     '...and Deny leaves the remote as it was');
+  const pv = await act('push', {});
+  ok(pv.confirm && /1 line looks sensitive/.test(pv.confirm) && /secrets\.env:1/.test(pv.confirm),
+     `the Git view's Push shows the same lines in its confirm (${(pv.confirm || pv.error || '').slice(0, 60)})`);
+  const pv2 = await act('push', { confirmed: true });
+  ok(pv2.ok && top() === 'rotated', `...and confirmed, it pushes and okays them (${JSON.stringify(pv2).slice(0, 60)})`);
   ok(stillNot.status === 403 && /its own branches/.test(stillNot.error || ''),
      '...while a branch that is only on the remote stays refused, since that dial names one ref');
   // Push rights hold on the relay itself: a read-only clone's refusing hook

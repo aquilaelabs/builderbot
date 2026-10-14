@@ -186,6 +186,7 @@ scripts/
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say
     gitrelay.py                  a node session's push, fetch and pull, done in a repository of the controller's own
+    pushscan.py                  what a push would send, read for secrets and private things before it goes, and the lines a person okayed (R219)
     bbrelay.py                   a bb verb from a node's session, run here: which verbs travel, and what a session may push
     hooks.py                     what a node session's hooks post: overlap notes, the chat feed, the catch-up, the turn queue
     macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists

@@ -145,6 +145,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A route through nginx takes a hostname: typed into a route row on the nginx tab (type a hostname in its pick) or into a Docker row's Route through nginx, a subdomain under the certificate's domain, and the name joins Hostnames when saved (e255f9c)
 - Forgejo is a vetted git host: the lab stack carries a Forgejo beside its Gitea (port 3001, the same administrator), the forge suite runs against it under its own catalog entry, and a runner registers with it from a node (5f8d703)
 - Copy or move asks what to do with the container's data: unpack it into its volumes on arrival (writing over a volume of the same name already there, which it says), carry it as an archive in the compose directory with an unpack link on the row for later, or leave it here and send the container alone (b1ae732)
+- A push is read for secrets before it goes: a token, a key, a password, a private key, an address with a password, an email or IP address in what bb git push or the Git view's Push would send holds it, the bell shows the lines, and an approved line is not asked about again until it changes (986793d)
 
 ### Changed
 

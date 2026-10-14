@@ -34,6 +34,16 @@ r = bbapi.call("/api/v1/bb", {"argv": argv, "project": project,
                auth=auth, timeout=200)
 if r.get("error") and "code" not in r:
     sys.exit(f"[builderbot] ERROR: {r['error']} (relayed to {bbapi.url()})")
+if r.get("held"):
+    # A push held for a person (R219): the flagged lines wait on the bell,
+    # and this waits on the answer the way bb root run does; an approval
+    # ran the push on the controller, and its outcome is what to print and
+    # apply here.
+    import waits
+    sys.stderr.write(r.get("err") or "")
+    sys.stderr.flush()
+    o = waits.outcome(auth, r["held"], "the push was denied: the flagged lines were read and not approved")
+    r = {"code": o.get("code") or 0, "out": o.get("out") or "", "err": "", "apply": o.get("apply")}
 if tree and r.get("sync_rev"):
     syncwait.down(project, r["sync_rev"])
 sys.stdout.write(r.get("out") or "")
