@@ -5015,7 +5015,9 @@ class Handler(BaseHTTPRequestHandler):
         # A project's owner role is named after its directory; the tab says
         # whose it is by the name the project is shown under (R154).
         owners_of = {roles.owner_role_name(d): d for d in registry.labels()}
-        rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}") if n in owners_of else r)
+        # ...and which project it is for, so the People section offers it
+        # under that project alone (B726).
+        rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)
               for n, r in rs.items()}
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
                            "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
