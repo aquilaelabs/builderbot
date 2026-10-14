@@ -146,6 +146,9 @@ function nbTestsView({$, nb, project}){
       ? `<b>tests running</b>, started ${esc(ago(j.running.since))}${j.running.by ? " by " + esc(j.running.by) : ""}${
           j.running.cmd ? `: <code>${esc(j.running.cmd)}</code>` : ""} · `
       : "";
+    // What has nothing to act on is hidden (R225): the output button
+    // appears with the first run.
+    $("tstOut").hidden = !all.length;
     if (!all.length){
       $("tstHint").innerHTML = going + "no runs yet";
       $("tstStats").hidden = false;
