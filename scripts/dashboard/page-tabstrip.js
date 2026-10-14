@@ -209,7 +209,10 @@ function drawTabs(){
   if (drag){ reorderTabEls(); return; }
   if (pinFor && !tabOf(pinFor)) pinFor = null;   // its tab went (another browser's layout, a kill)
   const cur = panes[active], names = tabLabels();
-  const html = tabs.map(t => {
+  // Documents only (R218 step 2): a tool is a page on the rail now, and its
+  // tab, still in `tabs` so the panes and the saved layout work as before,
+  // is not drawn here.
+  const html = tabs.filter(t => !isToolKind(t.kind)).map(t => {
     // Only a split has sides worth marking; a lone pane is just "the screen".
     const where = !isSplit() ? "" : panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
     const held = drag?.moved && drag.id === t.id ? " held" : "";
@@ -375,12 +378,15 @@ function drawTabPick(){
   if (!b || !list) return;
   const cur = panes[active], names = tabLabels();
   const t = tabOf(cur);
+  // The documents (R218 step 2): a page on show is named, and the list
+  // under it is the strip's, the pages being the phone's bar.
+  const docs = tabs.filter(x => !isToolKind(x.kind));
   const say = `${t ? TABKINDS[t.kind]?.icon || "" : ""}<span class="nm">${esc(t ? names.get(t.id) : "no tab open")}</span>${
-    tabs.length > 1 ? `<span class="pill">${tabs.length}</span>` : ""}<span class="chev">▾</span>`;
+    docs.length > 1 ? `<span class="pill">${docs.length}</span>` : ""}<span class="chev">▾</span>`;
   if (b.innerHTML !== say) b.innerHTML = say;
-  b.setAttribute("aria-label", `tab: ${t ? names.get(t.id) : "none"}, ${tabs.length} open; list them`);
+  b.setAttribute("aria-label", `tab: ${t ? names.get(t.id) : "none"}, ${docs.length} open; list them`);
   if (!tabPickOpen) return;
-  list.innerHTML = tabs.map(x => `<div class="tprow${x.id === cur ? " on" : ""}" role="none">
+  list.innerHTML = docs.map(x => `<div class="tprow${x.id === cur ? " on" : ""}" role="none">
       <button type="button" class="lbl" role="menuitem" data-pshow="${esc(x.id)}">${
         isClaude(x) ? stateDot(claudeOf(sessionOf(x.arg))) : ""}${TABKINDS[x.kind]?.icon || ""}${esc(names.get(x.id))}</button>
       ${x.kind === "term"

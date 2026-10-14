@@ -146,6 +146,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Forgejo is a vetted git host: the lab stack carries a Forgejo beside its Gitea (port 3001, the same administrator), the forge suite runs against it under its own catalog entry, and a runner registers with it from a node (5f8d703)
 - Copy or move asks what to do with the container's data: unpack it into its volumes on arrival (writing over a volume of the same name already there, which it says), carry it as an archive in the compose directory with an unpack link on the row for later, or leave it here and send the container alone (b1ae732)
 - A push is read for secrets before it goes: a token, a key, a password, a private key, an address with a password, an email or IP address in what bb git push or the Git view's Push would send holds it, the bell shows the lines, and an approved line is not asked about again until it changes (986793d)
+- A search in the top bar jumps to a page, a project, a container or a node; the uptime moved to the Settings page (0782f1b)
 
 ### Changed
 
@@ -316,6 +317,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A build of an instance pinned to a branch opens its log with the commit it builds from and says that untracked and ignored files of the working tree are not in it (f9e5027)
 - The controller's log says when the agent's sources changed under it, naming the newest file and the digest it ships now, so a node held on the old digest has a reason beside it (f9e5027)
 - A container on a node that keeps its ports on loopback says why it still publishes on every address: the variable in its compose file that defaults to 0.0.0.0 (or the address written in), and what to set; a down one says so before it comes up (27bdc3b)
+- The dashboard has a rail: nine groups down the left edge (Home, Projects, Containers, Machines, Build, Jobs, Sessions, People, Settings), each a page with its own address, the tool tabs gone from the strip, which keeps terminals and notebooks; on a phone the rail is a bar across the foot with More (0782f1b)
+- The revisions poll slows to five seconds after a minute with nothing moving, and a page's watches fetch only while that page is on show (0782f1b)
 
 ### Removed
 

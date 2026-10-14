@@ -55,7 +55,7 @@ async function emuOnNodes(){
 
 async function loadEmulator(){
   const asked = ++emuLoadSeq;
-  if (nodesList === null) await loadNodes();
+  if (nodesList === null || nodesStale) await loadNodes();
   if (asked !== emuLoadSeq) return;
   if (!emuPick()){ emu = {nonode: true}; emuRev++; drawPanes(); return; }
   try{

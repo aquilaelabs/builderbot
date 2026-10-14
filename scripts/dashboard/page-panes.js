@@ -26,7 +26,12 @@ function paintBar(pane, t, i){
   const reload = TABKINDS[t.kind]?.reload
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
-  bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
+  // A page (R218 step 2) wears its group's sub-nav, or its name, and no
+  // close: the rail is how you leave it.
+  bar.innerHTML = isToolKind(t.kind) ? shellBar(t, i) + reload
+    : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
+  bar.classList.toggle("page", isToolKind(t.kind));
+  wireShellBar(bar);
   // The project's color on the strip too, so a split pane says whose it is.
   const tone = colorTone(projectColor(tabProject(t)));
   bar.classList.toggle("pc", !!tone);

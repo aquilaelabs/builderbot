@@ -72,7 +72,11 @@ await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 await page.evaluate(() => pinTo(tabs.find(x => sessionOf(x.arg) === 'shell-9').id, 1));
 ok((await row('shell-9').locator('.pill.att').textContent()).trim().startsWith('◨'), 'split: pane glyph on the pill');
-ok(await page.$$eval('.tab .lbl', els => els.some(e => e.textContent.includes('◧')) && els.some(e => e.textContent.includes('◨'))), 'split: tabs carry glyphs');
+// The left pane may hold a page, which has no tab in the strip (R218 step 2): then only the right glyph is on a tab.
+ok(await page.evaluate(() => { const els = [...document.querySelectorAll('.tab .lbl')];
+     const left = tabOf(panes[0]);
+     return els.some(e => e.textContent.includes('◨')) && (isToolKind(left?.kind) || els.some(e => e.textContent.includes('◧'))); }),
+   'split: tabs carry glyphs');
 await page.evaluate(() => closePane(1));
 
 // ---- the git/GitHub card ghosts against the shell's directory ----------

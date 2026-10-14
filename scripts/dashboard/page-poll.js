@@ -387,6 +387,8 @@ async function pollRevsOnce(){
   // watch compares against the number its own panel last read, so a fire it
   // did not need costs nothing.
   const first = !Object.keys(was).length;
+  // Anything moved: what the back-off below reads.
+  if (first || Object.keys(now).some(k => was[k] !== now[k])) revsMovedAt = Date.now();
   for (const w of revWatch){
     const k = typeof w.key === "function" ? w.key() : w.key;
     if (!k) continue;
@@ -401,8 +403,17 @@ async function pollRevsOnce(){
 // of the phone view. A hidden tab is exactly where a request lands while
 // nobody is watching, and a browser throttles background timers hard anyway;
 // what matters is that whenever the page does get to run, it catches up.
-let revTimer = null;
+// ...and slow while nothing moves (R218 step 2, the pages rule): a second
+// and a half while something changed in the last minute, five seconds
+// after, thirty while hidden. A chain of timeouts rather than an interval,
+// so the next wait is decided after each poll.
+let revTimer = null, revsMovedAt = Date.now();
+const REVS_IDLE_MS = 60000;
+function revsDelay(){
+  if (document.hidden) return 30000;
+  return Date.now() - revsMovedAt > REVS_IDLE_MS ? 5000 : 1500;
+}
 function reschedRevs(){
-  clearInterval(revTimer);
-  revTimer = setInterval(pollRevs, document.hidden ? 30000 : 1500);
+  clearTimeout(revTimer);
+  revTimer = setTimeout(() => { pollRevs().finally(reschedRevs); }, revsDelay());
 }

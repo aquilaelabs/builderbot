@@ -216,6 +216,23 @@ function sectJump(g){
 // inside Pages) take turns among themselves and never close the section
 // holding them.
 const sectLast = new WeakMap();     // a group -> the key of the section last opened in it
+// ...and the same by the group's NAME (the sections' key prefix, "nodes" for
+// nodes:health and the rest): a redraw between a press and the next draw
+// replaces the group's element, and a WeakMap keyed on the old one forgot
+// the press, so the draw opened the prime section instead (B723).
+const sectLastByName = new Map();
+const sectGroupName = g => (sectsOf(g)[0]?.dataset.sect || "").split(":")[0] || "";
+function sectRemember(g, key){
+  sectLast.set(g, key);
+  const n = sectGroupName(g);
+  if (n) sectLastByName.set(n, key);
+}
+function sectRecall(g){
+  const have = sectLast.get(g);
+  if (have !== undefined) return have;
+  const n = sectGroupName(g);
+  return n ? sectLastByName.get(n) : undefined;
+}
 // A group is a view, a tab, a fold holding folds, or a dialog box that says
 // it holds sections (`data-sects`: the project settings, the operator 7 Oct).
 function sectGroup(d){ return d.parentElement?.closest("details.sect, .nbview, .doctab, [data-sects]") || null; }
@@ -229,7 +246,7 @@ const sectDefault = o => !(o.dataset.sect && o.dataset.sect in sectOpen) && !o.h
 function soleOpen(d){
   const g = sectGroup(d);
   if (!sectRuled(g)) return;
-  sectLast.set(g, d.dataset.sect || "");
+  sectRemember(g, d.dataset.sect || "");
   // Recorded now, not when the slide ends: a repaint landing mid-slide read
   // the one sliding shut as still open and kept it over the one just opened.
   if (d.dataset.sect) sectOpen[d.dataset.sect] = true;
@@ -250,7 +267,7 @@ function soleOpen(d){
 function keepOpen(d){
   const g = sectGroup(d);
   if (!sectRuled(g)) return;
-  sectLast.set(g, d.dataset.sect || "");
+  sectRemember(g, d.dataset.sect || "");
   oneOpen(g);
 }
 // After a draw. At a desk nothing anybody chose is moved: every section
@@ -262,12 +279,12 @@ function oneOpen(g){
   if (!sectRuled(g)) return;
   const mine = sectsOf(g);
   for (const o of mine){
-    if (o.hasAttribute("data-lead")){ o.removeAttribute("data-lead"); sectLast.set(g, o.dataset.sect || ""); continue; }
+    if (o.hasAttribute("data-lead")){ o.removeAttribute("data-lead"); sectRemember(g, o.dataset.sect || ""); continue; }
     // Open unless somebody shut it, at a desk (the operator, 8 Oct).
     if (sectDefault(o)) o.open = true;
   }
   if (!isPhone() || mine.length < 2) return;
-  const last = sectLast.get(g);
+  const last = sectRecall(g);
   const keep = mine.find(o => last && (o.dataset.sect || "") === last)
     || mine.find(o => o.hasAttribute("data-prime"))
     || mine.find(o => o.open) || mine[0];

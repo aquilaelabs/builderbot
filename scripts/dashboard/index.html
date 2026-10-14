@@ -879,12 +879,12 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   border-bottom:1px solid var(--line);flex:0 0 auto}
 .switch button{flex:1;min-height:var(--tap)}
 
-main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
-  gap:10px;padding:10px}
+main{flex:1;min-height:0;display:grid;grid-template-columns:56px 340px 1fr;
+  gap:10px;padding:10px 10px 10px 0}
+@media(min-width:1280px){ main{grid-template-columns:84px 340px 1fr} }
 .col{display:flex;flex-direction:column;gap:10px;min-height:0}
 .col.side{overflow:auto;-webkit-overflow-scrolling:touch}
 @media(max-width:900px){
-  .switch{display:flex}
   main{grid-template-columns:1fr;padding:8px;gap:8px}
   body[data-view="terminal"] .col.side{display:none}
   body[data-view="dash"] .col.term{display:none}
@@ -892,6 +892,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 /* First run (R199): the setup panel over the Nodes tab, and nothing else
    until Finish: no sidebar, no tab strip, no bell, at every width. */
 body.firstrun main{grid-template-columns:1fr}
+body.firstrun .rail, body.firstrun .railbar, body.firstrun .railmore{display:none}
 body.firstrun .col.side, body.firstrun .switch, body.firstrun .tabstrip,
 body.firstrun .tabpicklist, body.firstrun #bBell, body.firstrun #bReport{display:none}
 body.firstrun[data-view] .col.term{display:flex}
@@ -2630,6 +2631,67 @@ pre.diff .d-ctx{color:var(--dim)}
   box-shadow:inset 4px 0 0 0 var(--gc);
   border-bottom:1px solid color-mix(in srgb, var(--gc) 50%, var(--line))}
 .dmtab .dmgroup.none{--gc:var(--line)}
+/* ---- the shell (R218 step 2) ---------------------------------------------
+   The rail: one column of groups at the left edge, an icon each, the label
+   under it from 1280px up, the one on show wearing the accent as a bar on
+   its left edge (the rail rule). On a phone the same items are the bar at
+   the foot of the page, five across and More. */
+.rail{display:flex;flex-direction:column;gap:2px;padding:6px 0 6px 6px;min-height:0;overflow:auto;
+  scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.ritem{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  min-height:44px;padding:6px 2px;border:0;border-radius:var(--r-control);background:transparent;
+  color:var(--dim);font:var(--f-note);line-height:1.1;position:relative;cursor:pointer}
+.ritem svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.ritem .rlbl{display:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(min-width:1280px){ .rail .ritem .rlbl{display:block} .rail .ritem{min-height:52px} }
+.ritem:hover{background:var(--btn-hi);color:var(--ink)}
+.ritem.on{color:var(--ink);background:var(--sunk)}
+.rail .ritem.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;
+  border-radius:0 2px 2px 0;background:var(--accent)}
+.ritem:focus-visible{outline:2px solid var(--accent-mid);outline-offset:-2px}
+.railbar{display:none}
+.railmore{display:none}
+@media(max-width:900px){
+  .rail{display:none}
+  .railbar{display:flex;flex:0 0 auto;gap:2px;padding:4px 4px calc(4px + env(safe-area-inset-bottom));
+    background:var(--panel);border-top:1px solid var(--line)}
+  .railbar .ritem{flex:1 1 0;min-width:0;min-height:var(--tap)}
+  .railbar .ritem .rlbl{display:block}
+  .railbar .ritem.on{color:var(--accent);background:transparent}
+  .railmore{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px;
+    position:fixed;left:8px;right:8px;bottom:calc(58px + env(safe-area-inset-bottom));z-index:40;
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+    box-shadow:0 10px 24px rgba(0,0,0,.5);animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+  .railmore[hidden]{display:none}
+  .railmore .ritem{min-height:var(--tap);background:var(--btn);border:1px solid var(--line)}
+  .railmore .ritem .rlbl{display:block}
+}
+/* A page's bar: the group's tools as a segment (the same .pseg the gear's
+   Appearance uses), or the page's name, and no close. */
+.pane .bar.page{padding:4px 6px}
+.pane .bar .pgname{font:var(--f-ui);color:var(--ink)}
+.pane .bar .subnav{display:flex;gap:4px;flex-wrap:wrap}
+.pane .bar .subnav button{min-height:26px;padding:2px 10px;font:var(--f-ui);border:1px solid var(--line);
+  border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
+.pane .bar .subnav button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
+@media(max-width:900px){ .pane .bar .subnav button{min-height:var(--tap)} }
+/* Search in the top bar: a field that jumps, its rows under it. */
+.jump{position:relative;flex:0 1 280px;min-width:0}
+.jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
+.jump input::placeholder{color:var(--dim)}
+@media(max-width:1000px){ .jump{flex:0 1 150px} .meta.host{display:none} }
+.jumplist{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+  box-shadow:0 10px 24px rgba(0,0,0,.5);overflow:hidden}
+.jumplist[hidden]{display:none}
+.jrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:0;
+  background:transparent;color:var(--ink);font:var(--f-ui);text-align:left;min-height:var(--tap)}
+.jrow.on,.jrow:hover{background:var(--btn-hi)}
+.jrow .jw{color:var(--dim);font:var(--f-note);white-space:nowrap}
+@media(max-width:600px){ .jump{flex:1 1 90px} .jump input{padding:4px 8px} }
+
 /* ---- tiles, facts and chips (R216) --------------------------------------
    The 2.0 shapes, one definition each, read by every tab that draws them
    (page-docs.js statTiles, factGrid, chipBar). A tile is a number the tab
@@ -5170,8 +5232,18 @@ body.booting .pane>.loading{margin:auto}
   <h1>BuilderBot</h1>
   <span class="meta host" id="host"></span>
   <span class="pill" id="devtag" title="unvetted features are offered here" hidden>dev</span>
+  <!-- Search (R218 step 2, the top-bar rule): a field that jumps to a page,
+       a project, a container or a node; the rows under it as you type, the
+       first on Enter. It does not search inside notebooks. -->
+  <div class="jump" role="search">
+    <input id="jump" type="search" placeholder="jump to a page, project, container or node"
+           aria-label="jump to a page, project, container or node" autocomplete="off" spellcheck="false">
+    <div id="jumpList" class="jumplist" role="listbox" hidden></div>
+  </div>
   <span class="spacer"></span>
-  <span class="meta" id="uptime"></span>
+  <!-- The uptime is the Settings page's now (the top-bar rule): kept for the
+       About popup, which has carried it all along. -->
+  <span class="meta" id="uptime" hidden></span>
   <!-- The build stamp, as a control. It used to be a bare span whose detail
        lived in a hover tooltip, which a phone cannot hover, and whose text
        truncated there anyway. The label is still the version on a desktop
@@ -5240,12 +5312,18 @@ body.booting .pane>.loading{margin:auto}
 </header>
 <div id="pollWhy" class="pollwhy" role="status" hidden></div>
 
-<div class="switch">
+<!-- The phone's Dashboard | Terminal switch, kept for setView's state and
+     hidden since the rail's bar took its place (R218 step 2). -->
+<div class="switch" hidden>
   <button id="vDash" class="on" onclick="setView('dash')">Dashboard</button>
   <button id="vTerm" onclick="setView('terminal')">Terminal</button>
 </div>
 
 <main>
+  <!-- The rail (R218 step 2): one column of groups down the left edge, each
+       a page with an address; page-shell.js draws it. On a phone it is the
+       bar at the foot of the page, and this column is not drawn. -->
+  <nav id="rail" class="rail" aria-label="pages"></nav>
   <!-- Card headers hold the title and nothing else: the whole header is the
        collapse control and the drag handle, and every control a card used to
        keep up there lives in its body now: a button inside a drag handle is
@@ -5364,6 +5442,10 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </main>
+<!-- The rail on a phone (R218 step 2): five across the foot, More a sheet
+     of the rest and of the open tabs; drawn by page-shell.js. -->
+<div id="railmore" class="railmore" role="menu" aria-label="more pages" hidden></div>
+<nav id="railbar" class="railbar" aria-label="pages"></nav>
 
 <!-- The tab surfaces, BEFORE the script below rather than after it.
      Each declares its state with `let` at the top level: nodesList is the
@@ -5414,6 +5496,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-state.js"></script>
 <script src="page-prose.js"></script>
 <script src="page-tabs.js"></script>
+<script src="page-shell.js"></script>
 <script src="page-tabstrip.js"></script>
 <script src="page-panes.js"></script>
 <script src="page-projsettings.js"></script>
@@ -5496,6 +5579,16 @@ addEventListener("keydown", e => {
   }
 });
 untitleWatch();
+
+// ---- the shell (R218 step 2) ---------------------------------------------
+// Its declarations are page-shell.js; what runs at load is below: the
+// address bar's back and forward open what they name, the search is wired,
+// and the phone's More sheet closes on a tap elsewhere.
+addEventListener("hashchange", () => { if (!openRoute(location.hash)) shellSync(); });
+wireJump();
+document.addEventListener("click", e => {
+  if (railMoreOpen && !e.target.closest("#railmore, [data-railmore]")) railMoreShow(false);
+});
 
 // ---- a menu somebody has open ---------------------------------------------
 // Its declarations are page-tabs.js; what runs at load is below.
@@ -6068,7 +6161,7 @@ document.addEventListener("keydown", e => {
 // stale from the first Up, with a Refresh button as the only way back, which
 // is a page that tells you what used to be running.
 onRev("devapp", () => {
-  if (tabs.some(x => x.kind === "docker")){ dockerList = null; dockerRev++; loadDocker(); }
+  if (shown("docker")){ dockerList = null; dockerRev++; loadDocker(); }
 });
 // Coming back to the tab is the common case, so it is the one that must be
 // instant: read immediately, before any timer has a chance to fire.
@@ -6111,7 +6204,7 @@ onRev("toolchains", () => {
 });
 // Google's image index landing, for the Emulator tab's picker.
 onRev("emulator", () => {
-  if (tabs.some(t => t.kind === "emulator")) loadEmulator();
+  if (shown("emulator")) loadEmulator();
 });
 // The node registry moved: a mutation here, or another browser's. Open
 // views refetch; node data deliberately never rides the status poll
@@ -6121,13 +6214,18 @@ onRev("emulator", () => {
 // (B714). An open nginx tab re-reads around its draft; an open Docker tab
 // re-reads too, since its rows say which ports are routed.
 onRev("nginx", () => {
-  if (tabs.some(t => t.kind === "nginx")) loadNginx();
-  if (tabs.some(t => t.kind === "docker")){ dockerList = null; dockerRev++; loadDocker(); }
+  if (shown("nginx")) loadNginx();
+  if (shown("docker")){ dockerList = null; dockerRev++; loadDocker(); }
 });
 onRev("nodes", () => {
-  if (tabs.some(t => t.kind === "nodes")) loadNodes();
+  // The list is drawn by every page with a node picker, not the Nodes page
+  // alone: re-read for the one on show, and when none is, marked stale, so
+  // the next page to read it loads a fresh one rather than a list from
+  // before a node enrolled or retired.
+  if (["nodes", "toolchains", "emulator", "docker", "projects", "settings"].some(shown)) loadNodes();
+  else nodesStale = true;
   // A node's census carries its images: refetched only when they moved.
-  if (tabs.some(t => t.kind === "emulator")) emuOnNodes();
+  if (shown("emulator")) emuOnNodes();
   // ...and the Runner card, which is drawn off the status poll: a job on a
   // node moves this rev, so the card says "installing now" and then the
   // result inside a second or two instead of at the next fifteen-second poll.
@@ -6136,8 +6234,8 @@ onRev("nodes", () => {
 // The queue moved: a job taken, a step, a result, a cancel. Same rule: an
 // open Jobs tab refetches, and nothing about jobs rides the status poll.
 onRev("jobs", () => {
-  if (tabs.some(t => t.kind === "jobs")) loadJobs();
-  if (tabs.some(t => t.kind === "emulator")) loadEmulator();
+  if (shown("jobs")) loadJobs();
+  if (shown("emulator")) loadEmulator();
 });
 // The Phone tab's data (tab-phone.js): fetched here too, because the bell
 // carries the same asks whether or not the tab is open.
@@ -6159,6 +6257,12 @@ phFetch();
 
 // ---- the document-tab scaffold ------------------------------------------
 // Its declarations are page-docs.js; what runs at load is below.
+// Crossing the phone width re-judges every group's folds (oneOpen): a desk
+// this page is widened to shows them open again, and a phone it is
+// narrowed to keeps one; nothing else redraws a surface whose data has not
+// moved (B723's fix made the phone's one-open stick on the way back up).
+matchMedia("(max-width:900px)").addEventListener("change", () =>
+  document.querySelectorAll(".doctab, .nbview, [data-sects]").forEach(g => oneOpen(g)));
 // Recorded for every keyed fold from one place. `toggle` does not bubble, but
 // it is captured, so a fold needs a key and nothing else to be remembered.
 // Only a fold somebody pressed: markup arriving with `open` on it fires the

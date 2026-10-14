@@ -45,7 +45,7 @@ function openToolchainsOn(id){
 let tcSizeTimer = null;
 async function loadToolchains(){
   const asked = ++tcLoadSeq;
-  if (nodesList === null) await loadNodes();
+  if (nodesList === null || nodesStale) await loadNodes();
   if (asked !== tcLoadSeq) return;           // the node changed under this load
   if (!tcPick()){
     toolchains = {nonode: true};
@@ -475,7 +475,7 @@ function renderToolchainsInto(i){
   // whenever there is a node, one included, so the tab always says whose
   // store it is showing.
   const pnodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
-  if (nodesList === null) loadNodes();
+  if (nodesList === null || nodesStale) loadNodes();
   const onNode = tcNode !== "local";
   // An install is a job on the node, so it waits for the same thing every
   // other agent job waits for: an agent this controller knows how to talk to.

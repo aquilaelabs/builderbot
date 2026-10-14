@@ -113,7 +113,7 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await page.waitForFunction(() => document.querySelectorAll('#commands [data-m]').length > 0, { timeout: 40000 });
-ok(page.url() === URL, 'preemptive basic auth bypasses the login page');
+ok(page.url().split('#')[0] === URL, 'preemptive basic auth bypasses the login page');   // the page's address rides the hash (R218)
 
 // And a browser with no credentials walks the login flow end to end.
 const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 } });

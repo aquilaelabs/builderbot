@@ -985,6 +985,10 @@ for (const kind of kinds){
                    'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash', 'fern'];
   const AA = 4.5;
   const bad = [];
+  // A document in front (R218 step 2): a page on show has no tab in the
+  // strip, and the measure is the strip's active tab.
+  await page.evaluate(() => { const d = tabs.find(t => !isToolKind(t.kind)); if (d) focusTab(d.id); });
+  await sleep(300);
   // ...in both halves of each (R216): the light half writes white on the
   // same darkened accent, and its icons the same.
   for (const [t, mode] of SCHEMES.flatMap(t => [[t, ''], [t, 'light']])) {
@@ -1491,6 +1495,10 @@ for (const kind of kinds){
     await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
     await page.waitForSelector(sel, { timeout: 20000 });
   };
+  // A desk: the page was narrowed to a phone above, where one section is
+  // open by rule, and this block is the desktop's rule (every default open).
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await sleep(300);
   await focus();
   ok(await page.$eval(sel, d => d.open), `[${kind}] a section opens by default on a desktop (${key})`);
   // A press on the summary, not `open = false`: only a fold somebody pressed

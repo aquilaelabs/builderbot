@@ -13,6 +13,11 @@
 "use strict";
 
 let nodesList = null;            // last answer, or null before the first
+// ...and stale when the nodes token moved while no page that draws the list
+// was on show (index.html's watch): the next page to read it loads a fresh
+// one, and meanwhile draws the last, so a picker drawn in the same tick as
+// its dialog opened still has its nodes.
+let nodesStale = false;
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
@@ -61,8 +66,9 @@ async function loadNodes(){
     nodesErr = String(e);
     nodesList = nodesList || [];
   }
+  nodesStale = false;
   nodesRev++;
-  if (tabs.some(t => t.kind === "nodes")) drawPanes();
+  if (shown("nodes")) drawPanes();
 }
 
 // A button that starts something goes dead the moment it is pressed.

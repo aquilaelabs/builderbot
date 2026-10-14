@@ -42,7 +42,10 @@ function openSettingsTab(){
 function renderSettingsInto(i){
   const d = docSurface(i, "settings");
   if (!d) return;
-  d.setBar(`<span class="dim">what this controller does; appearance is in the gear</span>`);
+  // The build and the uptime live here now (R218 step 2, the top-bar rule):
+  // facts in the facts voice, where the header carried them before.
+  d.setBar(`<span class="dim">what this controller does; appearance is in the gear</span><span class="sub dim">up ${
+    esc(shortUptime(state?.uptime || 0))} · ${esc(state?.image?.version || (state?.image?.rev || "").slice(0, 7) || "unstamped")}</span>`);
   // Sections, like every other tab's (the operator, 11 Oct): one fold per
   // group, its status on the heading, a jump bar over them, and each with
   // its own Apply and Revert. The groups' own markup is kept inside (the

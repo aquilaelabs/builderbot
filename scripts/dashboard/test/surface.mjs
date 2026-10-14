@@ -40,6 +40,8 @@ import { dirname, join } from 'node:path';
 // it moved.
 const SURFACE = [
   'adoptCards', 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyCards', 'applyMode', 'applyNow', 'applyTheme',
+  'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
+  'drawRail', 'phoneViewFor', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpGo', 'wireJump', 'revsDelay',
   'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'cardDropIndex', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',

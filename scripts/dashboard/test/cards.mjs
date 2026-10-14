@@ -1484,12 +1484,12 @@ ok(await page.$$eval('.dmtab .row', rs =>
 ok(await page.$$eval('[data-card="tools"] .macros button', bs =>
      bs.length === 10 && bs.every(b => b.querySelector('svg'))),
    'every Tools button carries an icon');
+// ...and its page on the rail (R218 step 2): the Containers item wears it.
 ok(await page.evaluate(() => {
      const btn = document.getElementById('bDocker').querySelector('svg').outerHTML;
-     const tab = [...document.querySelectorAll('#tabbar .tab')]
-       .find(t => /Docker/.test(t.textContent))?.querySelector('.lbl svg')?.outerHTML;
-     return !!tab && tab === btn;
-   }), '...and the Docker tab wears the Docker button\'s icon');
+     const item = document.querySelector('#rail [data-rail="containers"] svg')?.outerHTML;
+     return !!item && item === btn;
+   }), '...and the Containers page on the rail wears the Docker button\'s icon');
 await page.click('#projects #bAllProj');
 await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
 

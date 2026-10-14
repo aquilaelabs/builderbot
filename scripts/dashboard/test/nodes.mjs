@@ -3240,6 +3240,10 @@ ok(page.errors.length === 0,
   await page.evaluate(() => { tcNode = 'local'; });
   await page.click('#bBell');
   await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 10000 });
+  // The panel draws from the page's own poll, which can be a poll behind the
+  // status read above: read the row once it carries both.
+  await page.waitForFunction(id => /2 toolchain updates/.test(document.querySelector(`#bellPanel [data-btc="${id}"]`)?.closest('.bnote')?.textContent || ''),
+                             en.id, { timeout: 20000 }).catch(() => {});
   const tcBell = await page.$eval(`#bellPanel [data-btc="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
   ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
      && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),

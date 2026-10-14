@@ -759,6 +759,19 @@ cookie (a real form, so password managers work) not the browser's own
 credentials dialog, and there is no second prompt for the terminal port
 because there is no second port. The sign-out button beside ↻ and ▤ in the header ends the session (`/logout` does the same).
 
+**The page is a rail, a top bar, a page on show and a strip of documents**
+(R218 step 2). The rail down the left edge is nine groups, each one press:
+Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build
+(Toolchains, Emulator, Phone, CI runner), Jobs, Sessions, People (Users,
+Roles) and Settings (Controller, Profile); a group with several tools shows
+them as a sub-nav at the top of its page. A page has an address
+(`#/containers`, `#/machines/nodes`, `#/projects/NAME`), so a reload, a
+shared link and the back button land on it. The strip above the pane holds
+documents only: terminals and notebooks. On a phone the rail is a bar of
+five across the foot, with More for the rest and for the open tabs. The
+search in the top bar jumps to a page, a project, a container or a node as
+you type; it does not search inside notebooks.
+
 **The bell** in the header is where messages go to stay. A toast says a thing
 once, for four seconds, to whoever happened to be looking: the right deal for
 *saved*, and the wrong one for anything that failed while you were in another
@@ -2912,7 +2925,8 @@ pane commands.
 
 **The tab strip is shared, not per-browser.** It lives on the container, so
 opening the dashboard on a phone shows what the desktop has open, and a change
-on either reaches the other within a poll. The tab cap on the Settings tab
+on either reaches the other within a poll; the pages a rail item opens ride
+in the same saved layout, so the page you were on comes back too. The tab cap on the Settings tab
 (default 12) limits how many can be open at once: each terminal tab is an iframe running a
 full terminal emulator over its own websocket, so the limit is about browser
 memory, not tidiness.

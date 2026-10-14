@@ -19,7 +19,7 @@
 // Each card under its own guard here too: refresh() ends in render(), so a
 // draw that threw here would still take the poll down after the guarded
 // pass above it had kept the page up.
-function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
+function render(){ shellBoot(); drawTabs(); drawPanes(); drawKeys(); drawRail(); shellSync(); saveLayout();
                    // The first draw that had something to draw ends the boot
                    // ground: from here a pane is a terminal's black or a
                    // tab's panel, and the loading line has been replaced.

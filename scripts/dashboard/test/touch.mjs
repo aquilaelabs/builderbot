@@ -50,7 +50,8 @@ ok(await page.evaluate(() => getComputedStyle(document.getElementById('tabbar'))
      && getComputedStyle(document.getElementById('tabL')).display === 'none'
      && getComputedStyle(document.getElementById('tabPick')).display !== 'none'),
    'on a phone the strip and its arrows give way to the tab picker');
-const open = await page.evaluate(() => tabs.length);
+// The documents: a page (a tool) is on the rail, not in the picker (R218 step 2).
+const open = await page.evaluate(() => tabs.filter(t => !isToolKind(t.kind)).length);
 ok(new RegExp(`${open}`).test(await page.$eval('#tabPick .pill', e => e.textContent)),
    `...which names the tab on show and counts the ${open} open`);
 let pb = await (await page.$('#tabPick')).boundingBox();
