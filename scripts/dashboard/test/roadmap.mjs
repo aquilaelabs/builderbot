@@ -1884,9 +1884,10 @@ ok(clashText() === 'read again, then written',
 // ...and the panel is told that it went and read, which is the question the
 // operator has after changing something. Being TOLD is #27's channel and
 // lands on the session's next prompt; this is the act of going to look.
-await refreshUntil(page, () => /last read the roadmap/.test(
-  document.getElementById('nbHere')?.textContent || ''));
-ok(true, 'the notebook says when a session here last read the roadmap');
+// On the Roadmap's own head row (R222), not over every view.
+await refreshUntil(page, () => /read by a session/.test(
+  document.getElementById('roadmapRead')?.textContent || ''));
+ok(true, "the Roadmap's head row says when a session here last read it");
 
 // ---- the view comes back with a reload; closing the tab forgets it --------
 // The strip and the active pane are the saved layout's; which view a

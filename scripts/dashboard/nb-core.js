@@ -347,6 +347,10 @@ function makeNotebook(project){
       const save = bar.querySelector("[data-ssave]"), rv = bar.querySelector("[data-srevert]");
       if (!st || !save || !rv || save.getAttribute("aria-busy")) return;
       const n = st.count();
+      // The Roadmap's bar is the one that sat dead most of the time (R224):
+      // it appears with a reorder or an edit staged, and goes with the Save.
+      // The rest stay, dead, so they do not move under a thumb.
+      if (key === "roadmap") bar.closest(".field").hidden = !(n > 0 || sectDirty(key) || nb.roadmapOrdering);
       save.disabled = !sectDirty(key) || (key === "roadmap" && held);
       rv.disabled = !n;
       rv.title = n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away";
@@ -403,15 +407,16 @@ function makeNotebook(project){
     const bits = nb.nbHere.map(o =>
       `${o.mine ? "your other window" : esc(o.who)}${
         WHERE_IS[o.where] ? ` (${WHERE_IS[o.where]})` : ""}`);
+    const line = bits.length ? "Also open: " + bits.join(", ") : "";
+    el.hidden = !line;
+    el.innerHTML = line ? `<span class="hint">${line}</span>` : "";
     // A session that has gone and read the list, which is a different claim
     // from having been told: being told rides in on its next prompt (#27), and
     // what the operator wants to know after changing something is whether it
-    // has actually looked.
-    const read = nb.nbRead ? `a session here last read the roadmap ${ago(nb.nbRead)}` : "";
-    const line = [bits.length ? "Also open: " + bits.join(", ") : "", read]
-      .filter(Boolean).join(" · ");
-    el.hidden = !line;
-    el.innerHTML = line ? `<span class="hint">${line}</span>` : "";
+    // has actually looked. The Roadmap's fact, on its head row (R222): it
+    // stood over every view.
+    const rd = $("roadmapRead");
+    if (rd) rd.textContent = nb.nbRead ? `· read by a session ${ago(nb.nbRead)}` : "";
   }
 
   // What is unsaved here, in the words the buttons use. Both halves, because
