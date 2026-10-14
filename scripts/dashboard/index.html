@@ -33,7 +33,8 @@
     // ...and whether it is the dark or the light half of it (R216): "system"
     // follows the device, resolved here so the first paint is already right.
     const m = localStorage.getItem("bb.mode");
-    if (m === "light" || (m === "system" && matchMedia("(prefers-color-scheme: light)").matches))
+    if ((m === "light" || (m === "system" && matchMedia("(prefers-color-scheme: light)").matches))
+        && t !== "nostromo")
       document.documentElement.dataset.mode = "light";
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
 
@@ -217,8 +218,8 @@
   }
 }
 /* ---- color schemes ----------------------------------------------------
-   Thirteen, each with a dark half and a light one (the light halves follow,
-   under their own switch). A scheme is nine custom properties and nothing else: every rule in
+   Fourteen, each with a dark half and a light one but Nostromo, which is
+   dark only (the light halves follow, under their own switch). A scheme is nine custom properties and nothing else: every rule in
    the sheet already draws from them, which is what makes a recolor cheap and
    a new one three lines.
 
@@ -266,6 +267,11 @@ html[data-theme="sepia"],.sw[data-theme="sepia"]{
 html[data-theme="ash"],.sw[data-theme="ash"]{
   --bg:#1b1b1b; --panel:#222322; --line:#555955; --ink:#e2e4e0;
   --dim:#a1a59f; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
+/* Fern: Nostromo's colors without the ship (the operator, 14 Oct): green
+   and amber, rounded like the rest, and a light half of its own. */
+html[data-theme="fern"],.sw[data-theme="fern"]{
+  --bg:#101712; --panel:#162018; --line:#405b37; --ink:#d7e3c8;
+  --dim:#95a488; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a}
 /* ---- the light half (R216) -----------------------------------------------
    Every scheme has a light half: the same hue family token for token, with
    the page near white, the ink dark, and the accent and the marks pulled
@@ -293,7 +299,11 @@ html[data-mode="light"]{
 html[data-mode="light"],html[data-mode="light"] .sw[data-theme="default"]{
   --bg:#f1f4f7; --panel:#fcfeff; --line:#c9d2dd; --ink:#242729;
   --dim:#5e646a; --accent:#007c05; --warn:#996200; --bad:#c3131b; --note:#0863b6}
-html[data-mode="light"][data-theme="nostromo"],html[data-mode="light"] .sw[data-theme="nostromo"]{
+/* Nostromo has no light half (the operator, 14 Oct): its hull, its stencil
+   and its amber are a dark room, and a page of it near white would be a
+   different design. The gear keeps the page dark while it is picked. What
+   its light half was is Fern, a scheme of its own with rounded corners. */
+html[data-mode="light"][data-theme="fern"],html[data-mode="light"] .sw[data-theme="fern"]{
   --bg:#f1f4f2; --panel:#fbfefc; --line:#c7d6c2; --ink:#23291c;
   --dim:#5e6657; --accent:#974f00; --warn:#8b6100; --bad:#c11d00; --note:#41721b}
 html[data-mode="light"][data-theme="slate"],html[data-mode="light"] .sw[data-theme="slate"]{

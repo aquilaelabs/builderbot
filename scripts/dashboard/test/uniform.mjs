@@ -982,7 +982,7 @@ for (const kind of kinds){
 // engine actually paints.
 {
   const SCHEMES = ['default', 'nostromo', 'slate', 'carbon', 'nocturne', 'moss',
-                   'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash'];
+                   'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash', 'fern'];
   const AA = 4.5;
   const bad = [];
   // ...in both halves of each (R216): the light half writes white on the

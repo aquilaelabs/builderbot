@@ -834,8 +834,8 @@ if (projOpen){
 // rendered in the scheme it selects.
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
-ok(await page.$$eval('#uiMenu .sw', s => s.length) === 12,
-   'the gear opens a menu of twelve schemes');
+ok(await page.$$eval('#uiMenu .sw', s => s.length) === 13,
+   'the gear opens a menu of thirteen schemes');
 ok(await page.$eval('#uiMenu .sw[data-theme="default"]', b => b.classList.contains('on')),
    '...with the one in use marked, which is Default until something says otherwise');
 // A swatch is the palette itself at 1cm (the stylesheet defines each scheme
@@ -912,15 +912,27 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
      'Light repaints the page on the press, the light half of the same scheme');
   ok(await page.evaluate(() => { try { return localStorage.getItem('bb.mode'); } catch (e) { return 'no storage'; } }) === 'light',
      '...and the browser keeps it, as it keeps the scheme');
-  const swLight = await page.$eval('#uiMenu .sw[data-theme="nostromo"]', b => getComputedStyle(b).backgroundColor);
+  const swLight = await page.$eval('#uiMenu .sw[data-theme="moss"]', b => getComputedStyle(b).backgroundColor);
   ok(await page.$eval('.tab.on .lbl', e => getComputedStyle(e).color) === 'rgb(255, 255, 255)',
      'a filled accent carries white in the light half, where the ink is dark');
+  // Nostromo has no light half: picked while Light is on, the page goes
+  // dark and says why, and Fern, its colors without the ship, has one.
+  await page.click('#uiMenu .sw[data-theme="nostromo"]');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'nostromo' && !document.documentElement.dataset.mode, null, { timeout: 5000 });
+  ok(await page.$eval('#uiMenu .modehint', e => !e.hidden && /dark only/.test(e.textContent)).catch(() => false),
+     'Nostromo under Light keeps the page dark and the gear says it is dark only');
+  await page.click('#uiMenu .sw[data-theme="fern"]');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'fern' && document.documentElement.dataset.mode === 'light', null, { timeout: 5000 });
+  ok(await page.evaluate(() => localStorage.getItem('bb.mode')) === 'light',
+     '...and Fern, the same colors rounded, takes the light half the choice still holds');
+  await page.click('#uiMenu .sw[data-theme="default"]');
+  await page.waitForFunction(() => !document.documentElement.dataset.theme, null, { timeout: 5000 });
   await page.click('#uiMenu [data-mode="dark"]');
   // Past the crossfade, which a loaded box stretches.
   await page.waitForFunction(bg => getComputedStyle(document.body).backgroundColor === bg, darkBg, { timeout: 5000 });
   ok(await page.evaluate(() => document.documentElement.dataset.mode) === undefined && await pageBg() === darkBg,
      '...and Dark puts it back, carrying no attribute at all');
-  ok(swLight !== await page.$eval('#uiMenu .sw[data-theme="nostromo"]', b => getComputedStyle(b).backgroundColor),
+  ok(swLight !== await page.$eval('#uiMenu .sw[data-theme="moss"]', b => getComputedStyle(b).backgroundColor),
      '...the swatches having shown the light half while it was on');
 }
 

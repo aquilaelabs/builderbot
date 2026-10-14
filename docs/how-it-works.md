@@ -799,8 +799,11 @@ arrangement and it survives restarts and image updates. The **▤** button in
 the top bar opens the appearance menu, whose first item puts it all back:
 default order (Doctor on top) with every card expanded.
 
-**Under it, Dark, Light or System, and thirteen color schemes**, each with
-a dark half and a light one. Dark is the page read in a dim room beside a
+**Under it, Dark, Light or System, and fourteen color schemes**, each with
+a dark half and a light one but Nostromo, which is dark only: its hull and
+its amber are a dark room, and while it is picked the page stays dark
+whatever the switch says; Fern is its colors without the ship, rounded,
+with a light half of its own. Dark is the page read in a dim room beside a
 terminal; Light is the same scheme with the page near white, the ink dark
 and the accent pulled down to read on it; System follows the device as it
 changes. The switch is applied on the press like a scheme, kept in the

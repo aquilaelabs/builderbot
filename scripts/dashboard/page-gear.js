@@ -12,7 +12,7 @@
 const THEMES = [
   ["default",  "Default"],
   ["abyss",    "Abyss"],    ["carbon",   "Carbon"],   ["ember", "Ember"],
-  ["ice",      "Ice"],      ["moss",     "Moss"],     ["nocturne", "Nocturne"],
+  ["fern",     "Fern"],     ["ice",      "Ice"],      ["moss",     "Moss"],     ["nocturne", "Nocturne"],
   ["nostromo", "Nostromo"], ["plum",     "Plum"],     ["rust",  "Rust"],
   ["sepia",    "Sepia"],    ["slate",    "Slate"],
 ];
@@ -34,8 +34,12 @@ function currentMode(){
   return MODE_IDS.has(m) ? m : "dark";
 }
 
-// What the page wears for a mode: "system" resolved against the device now.
-const modeHalf = m => m === "light" || (m === "system" && modeMedia && modeMedia.matches) ? "light" : "dark";
+// What the page wears for a mode: "system" resolved against the device
+// now, and always dark under Nostromo, which has no light half (the
+// operator, 14 Oct): the choice is kept and applies to the other schemes.
+const DARK_ONLY = new Set(["nostromo"]);
+const modeHalf = m => DARK_ONLY.has(document.documentElement.dataset.theme || "default") ? "dark"
+  : m === "light" || (m === "system" && modeMedia && modeMedia.matches) ? "light" : "dark";
 
 function applyMode(id, {save = true} = {}){
   const use = MODE_IDS.has(id) ? id : "dark";
@@ -114,6 +118,9 @@ function applyTheme(id){
   }
   if (use === "default") delete root.dataset.theme;
   else root.dataset.theme = use;
+  // The half follows the scheme: Nostromo takes the page dark, and leaving
+  // it gives the chosen half back.
+  applyMode(currentMode(), {save: false});
   // ...with whose it is (B491): a browser's choice wins for the account
   // that made it, and another account signing in here gets its own.
   try{ localStorage.setItem("bb.theme", use); localStorage.setItem("bb.theme.who", state?.me || ""); }catch(e){ /* private mode */ }
@@ -173,6 +180,9 @@ function markUiMenu(){
     b.classList.toggle("on", on);
     b.setAttribute("aria-checked", on ? "true" : "false");
   });
+  // The dark-only note follows the scheme in use, without a rebuild.
+  const hint = document.querySelector("#uiMenu .modehint");
+  if (hint) hint.hidden = !DARK_ONLY.has(cur);
 }
 
 function currentTheme(){
@@ -190,6 +200,7 @@ function drawUiMenu(){
     <div class="pseg modeseg" role="group" aria-label="dark or light">${MODES.map(([id, label]) => `
       <button type="button" data-mode="${id}" class="${id === mode ? "on" : ""}"
         role="menuitemradio" aria-checked="${id === mode}">${esc(label)}</button>`).join("")}</div>
+    <div class="hint modehint"${DARK_ONLY.has(cur) ? "" : " hidden"}>Nostromo is dark only; Light applies to the other schemes.</div>
     <h4>Color scheme</h4>
     <div class="swgrid">${THEMES.map(([id, label]) => `
       <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"

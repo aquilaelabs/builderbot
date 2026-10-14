@@ -246,20 +246,6 @@ Its light half, the same tokens under the mode switch:
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9ad07a` | an informational mark, the low level |
 
-Its light half, the same tokens under the mode switch:
-
-| token | value |
-|---|---|
-| `--bg` | `#f1f4f2` |
-| `--panel` | `#fbfefc` |
-| `--ink` | `#23291c` |
-| `--dim` | `#5e6657` |
-| `--line` | `#c7d6c2` |
-| `--accent` | `#974f00` |
-| `--warn` | `#8b6100` |
-| `--bad` | `#c11d00` |
-| `--note` | `#41721b` |
-
 Nostromo differs from the default in:
 
 - Shape, as the rule corners says:
@@ -402,6 +388,34 @@ Its light half, the same tokens under the mode switch:
 | `--warn` | `#905e00` |
 | `--bad` | `#b2373a` |
 | `--note` | `#2e64a5` |
+
+### Fern (light)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#f1f4f2` | the page |
+| `--panel` | `#fbfefc` | a raised box: a card, a pane, a modal |
+| `--ink` | `#23291c` | the text, and text on a filled accent |
+| `--dim` | `#5e6657` | secondary text and field labels |
+| `--line` | `#c7d6c2` | hairlines and borders, 1px |
+| `--accent` | `#974f00` | the one color that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#8b6100` | a warning, and the amber marks |
+| `--bad` | `#c11d00` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#41721b` | an informational mark, the low level |
+
+Its dark half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#101712` |
+| `--panel` | `#162018` |
+| `--ink` | `#d7e3c8` |
+| `--dim` | `#95a488` |
+| `--line` | `#405b37` |
+| `--accent` | `#ffb000` |
+| `--warn` | `#ffd166` |
+| `--bad` | `#ff5f45` |
+| `--note` | `#9ad07a` |
 
 ## Type
 
