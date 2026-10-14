@@ -1478,6 +1478,13 @@ def ctr_target(name, instance):
         why = f"{nm}, where this container runs, is not answering now"
     elif not isinstance(se, dict) or not se.get("up") or not se.get("port"):
         why = f"{nm} runs no terminal server yet" + (f": {se['why']}" if isinstance(se, dict) and se.get("why") else "")
+    elif se.get("bundle") and nodes.bundle_digest() and se["bundle"] != nodes.bundle_digest():
+        # Its terminals still run the scripts from before this controller's
+        # update, whose bb-tty does not know a container's terminal (B746):
+        # asked to check in now, it takes the new ones in a minute or so.
+        _ask_hello(nid)
+        why = (f"{nm} has not taken this controller's update yet; its terminals restart onto it at "
+               "its next check-in, asked for now, so try again in a minute")
     else:
         return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
