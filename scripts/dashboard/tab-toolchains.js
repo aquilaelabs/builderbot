@@ -509,6 +509,22 @@ function renderToolchainsInto(i){
       : "No toolchain store found."}</div>
     ${pstale ? `<div class="tchead warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div>` : ""}
+    ${
+    // The store at a glance (R216): what is installed, what has an update
+    // due, what a project needs that the store lacks, and the room left.
+    (() => {
+      const items = (d.items || []).filter(x => !x.wrong_platform);
+      if (!items.length) return "";
+      const due = items.filter(x => x.state === "update").length;
+      const need = items.filter(x => (x.pinned_by || []).length && !x.installed).length;
+      return statTiles([
+        {label: "installed", value: items.filter(x => x.installed).length, sub: `of ${items.length} offered`},
+        {label: "updates due", value: due, tone: due ? "warn" : "", omit: !due && !d.checked},
+        {label: "needed by a project", value: need, tone: need ? "warn" : "", omit: !need},
+        {label: "free", value: typeof d.free_mb === "number" ? (d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB") : "",
+         sub: "on the store", omit: typeof d.free_mb !== "number"},
+      ]);
+    })()}
     ${onNode && (d.cleanable || []).length && mayToolchains() ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
       d.cleanable.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</span><span class="sp"></span>
       <button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button></div></div>` : ""}

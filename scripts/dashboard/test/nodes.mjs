@@ -1839,6 +1839,12 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });
     }
 
+    // The images at a glance (R216): tiles of how many, the AVDs on them.
+    await page.evaluate(() => { emu = null; loadEmulator(); });
+    await page.waitForSelector('.emutab .tiles .tile', { timeout: 15000 });
+    ok((await page.$$eval('.emutab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('images'),
+       'the Emulator tab opens on tiles: images held and the AVDs built on them');
+
     // An agent too old to report the field at all is not a node with no
     // images: the tab would otherwise say "no image" for a node never asked.
     const noField = { ...ANDROID }; delete noField.images;

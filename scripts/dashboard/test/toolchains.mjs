@@ -91,6 +91,8 @@ ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed')
    'a scratch root starts with nothing installed');
 ok(await page.$$eval('.doc .tc .nm .pill', ps => ps.length === 0),
    '...so no row carries a size or a version: nothing has been weighed yet');
+ok((await page.$$eval('.doc .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('installed'),
+   'the Toolchains tab opens on tiles: what is installed of what is offered');
 ok((await page.$eval('.tchead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
 // The catalog is a file in the repository, not a list in the server: adding a
