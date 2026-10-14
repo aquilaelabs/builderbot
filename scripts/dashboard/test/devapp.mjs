@@ -4762,6 +4762,13 @@ print(json.dumps(out))`], { encoding: 'utf8' });
     ports: [...e.querySelectorAll('[data-dmngport] option')].map(o => `${o.value}${o.disabled ? '!' : ''}`), add: !e.querySelector('[data-dmngadd]').disabled }));
   ok(line.certs[0] === '' && line.ports.length >= 1 && !line.ports[0].endsWith('!') && line.add,
      `the row offers a certificate (none first), the container's published ports, and Add route (${JSON.stringify(line)})`);
+  // What is typed into the hostname box survives the tab being drawn again
+  // (B729: a redraw between the typing and the press sent no hostname).
+  await page.fill(`${DM} .dmnginxroute [data-dmnghost]`, 'kept.example.test');
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(await page.$eval(`${DM} .dmnginxroute [data-dmnghost]`, e => e.value) === 'kept.example.test',
+     'a hostname typed on the row is still there after the tab is drawn again');
+  await page.fill(`${DM} .dmnginxroute [data-dmnghost]`, '');
   const port = Number(line.ports[0].replace('!', ''));
   await page.click(`${DM} .dmnginxroute [data-dmngadd]`);
   await page.waitForFunction(p => (dockerList?.nginx?.routed || []).includes(p), port, { timeout: 30000 });

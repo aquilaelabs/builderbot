@@ -614,6 +614,10 @@ function dmRouteLine(d){
 //
 // Staged and applied like the route above it, because it is a setting.
 const dmRefDraft = {};
+// The nginx line's three controls as typed and picked, by row (B729): a
+// redraw of the tab (a job ending, a container's state) drew the line from
+// nothing and took the hostname with it, so the press after sent none.
+const dmNginxDraft = {};
 
 // A route to this container through the node's nginx, from its row (R209,
 // the operator, 13 Oct): the certificate the route serves under (its
@@ -627,20 +631,21 @@ function dmNginxLine(d){
   const ports = [...new Set((d.ports || []).map(p => /:(\d+)->/.exec(p)?.[1] || /^(\d+)->/.exec(p)?.[1]).filter(Boolean).map(Number))];
   const routed = ng.routed || [];
   if (!ports.length) return "";
-  const key = `${d.project}|${d.instance}`;
+  const key = `${d.project}|${d.instance}`, dr = dmNginxDraft[key] || {};
   // Add route is an action, not a setting: it writes the route on the press.
   // The hostname box starts on the certificate's own domain and takes a
   // subdomain under it (the operator, 13 Oct); empty with no certificate
-  // means any name on 80.
+  // means any name on 80. What is typed and picked is drawn from the draft,
+  // so a redraw in between leaves it.
   return `<div class="setcell dmnginxroute">${lbl("dmng-" + key, "Route through nginx",
       "A route on this node's nginx tab to one of this container's published ports, at the hostname typed (a subdomain of the "
       + "certificate's domain), or at any hostname on 80 alone with no certificate. A port routed already takes another hostname; the rest of a route is changed on the nginx tab.")}
     <div class="ctl"><select id="${esc("dmng-" + key)}" data-dmngcert="${esc(key)}" aria-label="which certificate the route serves under">
       <option value="">no certificate: any hostname, 80 alone</option>${
-      (ng.certs || []).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select>
-    <input data-dmnghost="${esc(key)}" placeholder="app.example.com" aria-label="the hostname the route serves" autocomplete="off" spellcheck="false">
+      (ng.certs || []).map(c => `<option value="${esc(c)}"${c === dr.cert ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
+    <input data-dmnghost="${esc(key)}" value="${esc(dr.host || "")}" data-was="${esc(dr.was || "")}" placeholder="app.example.com" aria-label="the hostname the route serves" autocomplete="off" spellcheck="false">
     <select data-dmngport="${esc(key)}" aria-label="which port the route goes to">${
-      ports.map(p => `<option value="${p}">${p}${routed.includes(p) ? " (routed)" : ""}</option>`).join("")}</select>
+      ports.map(p => `<option value="${p}"${String(p) === String(dr.port) ? " selected" : ""}>${p}${routed.includes(p) ? " (routed)" : ""}</option>`).join("")}</select>
     <button type="button" data-dmngadd="${esc(key)}" title="write the route on the nginx tab and apply it">Add route</button></div></div>`;
 }
 
@@ -1810,10 +1815,18 @@ function dmWireRows(el, list = dockerList){
   // above it, and as every other setting on the page.
   // The hostname box follows the certificate pick until it is typed in:
   // the pair's domain, which a subdomain is typed under.
+  // ...and each of the three is kept in the row's draft as it changes, so
+  // the line redrawn carries them (B729).
+  const ngDraft = key => (dmNginxDraft[key] = dmNginxDraft[key] || {});
   el.querySelectorAll("[data-dmngcert]").forEach(sel => sel.onchange = () => {
-    const box = el.querySelector(`[data-dmnghost="${CSS.escape(sel.dataset.dmngcert)}"]`);
+    const key = sel.dataset.dmngcert, box = el.querySelector(`[data-dmnghost="${CSS.escape(key)}"]`);
     if (box && (!box.value || box.value === box.dataset.was)) box.value = box.dataset.was = sel.value;
+    Object.assign(ngDraft(key), {cert: sel.value, host: box?.value || "", was: box?.dataset.was || ""});
   });
+  el.querySelectorAll("[data-dmnghost]").forEach(box => box.oninput = () => {
+    Object.assign(ngDraft(box.dataset.dmnghost), {host: box.value, was: box.dataset.was || ""});
+  });
+  el.querySelectorAll("[data-dmngport]").forEach(sel => sel.onchange = () => { ngDraft(sel.dataset.dmngport).port = sel.value; });
   el.querySelectorAll("[data-dmngadd]").forEach(b => b.onclick = async () => {
     const key = b.dataset.dmngadd;
     const cert = el.querySelector(`[data-dmngcert="${CSS.escape(key)}"]`)?.value || "";
@@ -1822,7 +1835,7 @@ function dmWireRows(el, list = dockerList){
     busy(b, "Adding");
     const j = await (await postJSON("/api/nginx", {action: "route-add", node: dockerList?.node || dockerNode || "", cert, host, port})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
-    else notify(`routed ${j.route?.host || "*"} to ${port} on this node's nginx${j.deployed === false ? " (applied once it is deployed)" : ""}`);
+    else { delete dmNginxDraft[key]; notify(`routed ${j.route?.host || "*"} to ${port} on this node's nginx${j.deployed === false ? " (applied once it is deployed)" : ""}`); }
     dockerList = null; dockerRev++; loadDocker();
   });
   // Every setting on a row is staged by its control and written by the
