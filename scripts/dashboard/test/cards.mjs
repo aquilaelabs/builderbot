@@ -1344,8 +1344,11 @@ ok(true, 'pinning it back reads Unpin again');
     await route.continue().catch(() => {});
   });
   // Started, not awaited: the request it sends is the one held open.
+  // Waited on as the held request, not on revsBusy: a poll the page sent
+  // before the route went in sets that too, and the test's own then goes
+  // later as the remembered one, inside the window below.
   await page.evaluate(() => { pollRevs(); });
-  await page.waitForFunction(() => revsBusy, null, { timeout: 10000 });
+  for (const t0 = Date.now(); held < 1 && Date.now() - t0 < 10000;) await new Promise(r => setTimeout(r, 50));
   const before = held;
   await page.evaluate(() => { pollRevs(); pollRevs(); pollRevs(); pollRevs(); });
   await new Promise(r => setTimeout(r, 2000));      // past the 1.5 s timer too
