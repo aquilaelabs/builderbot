@@ -208,7 +208,9 @@ function drawUiMenu(){
         <span class="swp"></span><span class="swn">${esc(label)}</span>
       </button>`).join("")}</div>
     <h4>Account</h4>
-    <button type="button" id="uiProfile">Profile</button>`;
+    <button type="button" id="uiProfile">Profile</button>
+    <button type="button" id="uiReport" class="narrowonly">Report a bug</button>
+    <button type="button" id="uiOut" class="narrowonly">Sign out</button>`;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
   el.querySelectorAll("[data-mode]").forEach(b =>
@@ -219,6 +221,10 @@ function drawUiMenu(){
   // section that used to render here moved with that rule.
   el.querySelector("#uiProfile").onclick = () => { toggleUiMenu(false);
     openProfileTab(); };
+  // On a narrow phone the header's bug and sign-out live here, so the search
+  // beside the logo keeps room to be typed into (B744).
+  el.querySelector("#uiReport").onclick = () => { toggleUiMenu(false); openReport(""); };
+  el.querySelector("#uiOut").onclick = () => { location.href = "/logout"; };
 }
 
 function logSection(){

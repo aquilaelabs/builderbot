@@ -2653,6 +2653,10 @@ pre.diff .d-ctx{color:var(--dim)}
 .jrow.on,.jrow:hover{background:var(--btn-hi)}
 .jrow .jw{color:var(--dim);font:var(--f-note);white-space:nowrap}
 @media(max-width:600px){ .jump{flex:1 1 90px} .jump input{padding:4px 8px} }
+/* Under 600px the header's bug and sign-out move into the gear's menu: six
+   buttons a thumb wide left the search a sliver at 344px (B744). */
+.uimenu .narrowonly{display:none}
+@media(max-width:600px){ .uimenu .narrowonly{display:flex} #bReport,#bOut{display:none} }
 
 /* ---- tiles, facts and chips (R216) --------------------------------------
    The 2.0 shapes, one definition each, read by every tab that draws them

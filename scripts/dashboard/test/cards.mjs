@@ -63,7 +63,7 @@ await ready(page);
 // not overflow can still contain something ellipsised, and that is what the
 // operator saw.
 {
-  const sizes = [320, 360, 390, 412, 430, 768];
+  const sizes = [320, 344, 360, 390, 412, 430, 768];
   const measured = [];
   for (const w of sizes){
     await page.setViewportSize({ width: w, height: 800 });
@@ -77,6 +77,7 @@ await ready(page);
       return {
         w: window.innerWidth,
         over: h.scrollWidth - h.clientWidth,
+        jump: Math.round(document.getElementById('jump').getBoundingClientRect().width),
         clipped: [...h.querySelectorAll('*')]
           .filter(e => e.offsetWidth && e.scrollWidth > e.offsetWidth + 1)
           .map(e => e.id || e.className || e.tagName),
@@ -87,6 +88,28 @@ await ready(page);
   await new Promise(r => setTimeout(r, 250));
   const over = measured.filter(m => m.over > 0);
   const cut = measured.filter(m => m.clipped.length);
+  // ...and the search keeps room to be typed into: six buttons a thumb wide
+  // once left it a sliver at 344px, with nothing overflowing (B744).
+  const narrow = measured.filter(m => m.jump < 80);
+  // The room comes from the gear: on a phone its menu carries Report a bug
+  // and Sign out, and the header does not.
+  await page.setViewportSize({ width: 344, height: 800 });
+  await page.evaluate(() => toggleUiMenu(true));
+  await page.waitForSelector('#uiReport', { timeout: 5000 });
+  const gearPhone = await page.evaluate(() => ({ menu: ['uiReport', 'uiOut'].every(id => document.getElementById(id).offsetWidth > 0),
+    header: ['bReport', 'bOut'].some(id => document.getElementById(id).offsetWidth > 0) }));
+  await page.evaluate(() => toggleUiMenu(false));
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => toggleUiMenu(true));
+  await page.waitForSelector('#uiReport', { state: 'attached', timeout: 5000 });
+  const gearDesk = await page.evaluate(() => ({ menu: ['uiReport', 'uiOut'].some(id => document.getElementById(id).offsetWidth > 0),
+    header: ['bReport', 'bOut'].every(id => document.getElementById(id).offsetWidth > 0) }));
+  await page.evaluate(() => toggleUiMenu(false));
+  ok(gearPhone.menu && !gearPhone.header && !gearDesk.menu && gearDesk.header,
+     `on a phone the gear carries Report a bug and Sign out, at a desk the header does (${JSON.stringify({ gearPhone, gearDesk })})`);
+  ok(narrow.length === 0,
+     `the search in the header keeps room to type at every phone width${
+       narrow.length ? `: ${narrow.map(m => `${m.jump}px at ${m.w}`).join(', ')}` : ` (${measured.map(m => m.jump).join(', ')}px)`}`);
   ok(over.length === 0,
      `the header fits at every phone width${
        over.length ? `: over by ${over.map(m => `${m.over}px at ${m.w}`).join(', ')}` : ''}`);
