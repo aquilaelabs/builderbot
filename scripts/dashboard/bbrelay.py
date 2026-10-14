@@ -190,8 +190,9 @@ def run(me, req, project):
     if argv[:1] == ["git"] and argv[1:2] and argv[1] in gitrelay.VERBS and gitrelay.bad_args(argv[2:]):
         return {"error": gitrelay.bad_args(argv[2:])}, 400
     if argv[:2] == ["git", "push"] and not projects.may_push(project):
-        return {"error": "this project has no push rights: they are granted "
-                         "in the clone dialog, once"}, 403
+        return {"error": "this project has no push rights: the operator grants them "
+                         "in the clone dialog or with Link to a git host on its Projects page; "
+                         "bb git policy says so first"}, 403
     # The tree the session is in: the project directory, or one of its
     # worktrees. Anything else (a path outside the share, a sibling
     # project) runs in the project directory instead of being trusted.

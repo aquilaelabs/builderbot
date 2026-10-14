@@ -337,8 +337,11 @@ delete it only when asked to, after saying whose it is. Your commit identity
 arrives as git's environment, so a commit that cannot find an author is a
 fault to report, not one to fix with `user.name`. Pushing is `bb git push`
 (also `fetch`, `pull`, `ls-remote`): the controller holds the keys, and a
-plain `git push` says so. `bb git policy` prints what you may push: your own
-branches, not a tag, a deletion or a branch only the host has. A push whose
+plain `git push` says so. `bb git policy` prints first whether this project
+can push at all (its rights, and whether its remote has a key or a token
+behind it), then what you may push: your own branches, not a tag, a
+deletion or a branch only the host has. A project that cannot push is the
+operator's to link; say so and commit locally. A push whose
 lines look like a secret or something private (a token, a key, a password,
 an address) is held: the person reads those lines on the bell and approves
 or denies while `bb git push` waits, and an approved line is not asked about

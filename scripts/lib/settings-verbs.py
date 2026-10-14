@@ -38,6 +38,31 @@ def set_field():
         print(f"set {field} for {proj}: {value}")
 
 
+def push_state(state, proj):
+    """{rights, auth}: rights is whether the controller granted a push at all;
+    auth is "ssh", "token", "none" (an https remote with no credential) or
+    "" (no origin)."""
+    try:
+        rights = isinstance(json.load(open(os.path.join(state, "push-rights.json"))).get(proj), dict)
+    except (OSError, ValueError, AttributeError):
+        rights = False
+    tree = os.path.join(os.environ.get("WORKSPACE", "/workspace"), proj)
+    url = helper = ""
+    try:
+        import subprocess
+        url = subprocess.run(["git", "-C", tree, "remote", "get-url", "origin"], capture_output=True, text=True,
+                             timeout=10, check=False).stdout.strip()
+        helper = subprocess.run(["git", "-C", tree, "config", "--local", "--get-all", "credential.helper"],
+                                capture_output=True, text=True, timeout=10, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        pass
+    auth = ("" if not url
+            else "ssh" if url.startswith(("git@", "ssh://")) or (":" in url and "://" not in url)
+            else "token" if "store --file=" in helper
+            else "none")
+    return {"rights": rights, "auth": auth}
+
+
 def show():
     state = os.environ["DASHBOARD_STATE"]
     prefs = dash.load("prefs", here)
@@ -55,6 +80,13 @@ def show():
         locks = []
     rec["locked"] = proj in (locks if isinstance(locks, list) else [])
     rec["project"] = proj
+    # Whether a push can happen at all (B734): the rights the controller
+    # granted (push-rights.json, the clone dialog's or Link to a git host),
+    # and what the remote authenticates with: an ssh address carries its
+    # key, an https one needs the token the controller scoped into the
+    # tree's config, and one with neither is refused by git with a prompt
+    # error, late. Read from the files, never by running git's network half.
+    rec["push"] = push_state(state, proj)
     # The commit identity is the ACCOUNT's (users.py's git_identity), for bb-tty
     # to put in a session's environment: BB_ACCOUNT_UID names the seat, and no
     # seat means the owner's. Read from the store directly rather than through
