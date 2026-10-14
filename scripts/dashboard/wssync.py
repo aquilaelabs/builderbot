@@ -661,7 +661,18 @@ def put(nid, project, q, stream, length):
             sha = h.hexdigest()
             # A git config file is read before it can land (B618): one that
             # sets a key naming a program is refused, the rest go through.
+            # Unless it is the one already here (B732): the controller writes
+            # the project's own credential helper into its config and the
+            # sync carries that down, so the node sending the same bytes back
+            # is handing git nothing it did not have, and refusing it left
+            # the file pending on every tick and every push from the node
+            # refused as behind.
             if ".git" in rel.split("/") and rel.rsplit("/", 1)[-1] in ("config", "config.worktree"):
+                with _lock(project):
+                    _look(project, root, rel)
+                    row = _load(project).get(rel)
+                    if row and not row["gone"] and row["sha"] == sha:
+                        return {"ok": True, "rev": rev_of(project), "sha": sha}, 200
                 bad = git_config_danger(tmp)
                 if bad:
                     why = (f"{rel} sets {bad}, which git would run on the controller"

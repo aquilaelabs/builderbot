@@ -1,6 +1,7 @@
 """A node's projects as a synced copy (R162): the controller's wssync.py and
 the agent's, end to end in one process, over a connection that hands each
 call to the controller's module the way channel.py would."""
+import hashlib
 import io
 import json
 import os
@@ -178,6 +179,29 @@ class Sync(unittest.TestCase):
         self.assertEqual(code, 200, out)
         self.assertEqual(read(f"{self.ws}/alpha/.git/config"), fine.decode())
         self.assertEqual(put("src/link", link="../a.txt")[1], 200, "a link inside the project is fine")
+
+    def test_a_git_config_the_controller_already_holds_comes_back_as_already_so(self):
+        """B732: the controller writes the project's own credential helper
+        into its config and the sync carries that down, so the node sending
+        the same bytes back is not planting anything; refused, the file
+        stayed pending on every tick and every push from the node was
+        refused as behind. The same bytes are already so; different ones
+        that name a program are still refused."""
+        helper = b"[credential]\n\thelper = \n\thelper = store --file=/config/gitcreds/alpha\n"
+        os.makedirs(f"{self.ws}/alpha/.git", exist_ok=True)
+        with open(f"{self.ws}/alpha/.git/config", "wb") as f:
+            f.write(helper)
+        def put(body, base=""):
+            q = {"path": [".git/config"], "base": [base], "mode": ["420"]}
+            return ctl_sync.put("n1", "alpha", q, io.BytesIO(body), len(body))
+        out, code = put(helper)
+        self.assertEqual(code, 200, out)
+        self.assertEqual(out.get("sha"), hashlib.sha256(helper).hexdigest())
+        self.assertEqual(read(f"{self.ws}/alpha/.git/config"), helper.decode())
+        other = helper + b"[core]\n\tfsmonitor = touch /tmp/pwned\n"
+        out, code = put(other, base=out["sha"])
+        self.assertEqual(code, 403, out)
+        self.assertIn("credential.helper", out["error"], "the first key naming a program, as B618 says it")
 
     def test_a_node_bound_to_a_project_is_told_at_once(self):
         """The settings dialog binding a project (or changing what it reads)

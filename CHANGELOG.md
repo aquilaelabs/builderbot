@@ -526,6 +526,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The graphics toolchain says before downloading anything that ImageMagick's AppImage needs glibc 2.35, on a node that has an older one (Rocky 9), instead of failing after the download (f9e5027)
 - A project's Docker view no longer re-reads the manager on every status poll: on an agent node that read ran through the agent and moved the nodes token, which ran the status poll again, 134 requests in 30 seconds; it re-reads when the manager's token moves, as the Docker tab does (3b5a29f)
 - A container's port routed through nginx already takes a second hostname from its Docker row (the site at its domain and at www), and the nginx tab keeps a hostname being typed, and the rest of a draft, across its own re-reads (9b0165e)
+- A push from a node no longer waits forever on the project's own git config: the sync takes back the bytes the controller already holds, so the credential helper it wrote there no longer leaves the node behind (83df0d5)
 
 ### Security
 
