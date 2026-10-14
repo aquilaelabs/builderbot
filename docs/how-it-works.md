@@ -758,7 +758,7 @@ cookie (a real form, so password managers work) not the browser's own
 credentials dialog, and there is no second prompt for the terminal port
 because there is no second port. The sign-out button, last in the header, ends the session (`/logout` does the same).
 
-**The page is a rail, a top bar, a page on show and a strip of documents**
+**The page is a rail, a top bar, a page on show and the dock**
 (R218 step 2). The rail down the left edge is nine groups, each one press:
 Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build
 (Toolchains, Emulator, Phone, CI runner), Jobs, Sessions, People (Users,
@@ -774,6 +774,23 @@ rest), and every page, Home and Projects included, is the one page area
 with the dock at its foot: there is no second view to switch to. The
 search in the top bar jumps to a page, a project, a container or a node as
 you type; it does not search inside notebooks.
+
+**Home is the landing page** (R218 step 5), and the one view that fits on
+one screen. Across the top, six tiles count the whole install: the nodes
+online of those enrolled, the containers running of all of them, the jobs
+running (with how many failed today), the Claude sessions open, the
+updates due and the projects whose CI is red. Each is a link into the page
+that holds the number. The machines and their containers are counted only
+for an account that may read the Nodes page; a node that has not answered
+within a few seconds counts as unknown and the tile says "as last seen".
+Under the tiles, Attention is the bell's own rows (a node behind, a red CI
+run, a file changed in two places), dismissed there as on the bell, and
+Last jobs is the ten newest, each opening its row on the Jobs page with
+the log open. Under those, the pinned projects at a glance, each with its
+branch, its session state and the one notice it carries; Pin and Unpin
+are in a project's menu on the Projects page. Home reads its numbers when
+it opens, and the queue's again when a job moves; the containers are asked
+only on opening, and nothing is read on a timer. A browser with nothing open lands on it.
 
 **A project is a page** (R218 step 3). Its notebook's pane wears the
 project's header: the name, the branch and the node, the session's state

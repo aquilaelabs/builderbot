@@ -19,11 +19,22 @@ let jobsErr = "";
 let jobsActive = false;          // the filter: everything, or only what is not over
 const jobsOpen = new Set();      // ids whose log is unfolded
 const jobsLogs = {};             // id -> the log fetched for an unfolded row
+let jobsFocus = "";              // a row to bring into view on the next draw (openJob)
+let jobsMarked = "";             // ...and to mark, across redraws, until another is opened
 
 function openJobsTab(){
   // The kind's open hook loads; a second load here asked the queue twice
   // for one press (the quiet-page invariant in uniform.mjs holds it now).
   openTab({kind: "jobs", arg: "__jobs", label: "Jobs"});
+}
+
+// One job's row, its log open and brought into view: what a row on Home's
+// Last jobs opens (R218 step 5).
+function openJob(id){
+  jobsOpen.add(id);
+  jobsFocus = jobsMarked = id;
+  openJobsTab();
+  loadJobs();
 }
 
 async function loadJobs(){
@@ -143,7 +154,7 @@ function renderJobsInto(i){
     const open = jobsOpen.has(j.id);
     const over = ["succeeded", "failed", "canceled"].includes(j.state);
     return `
-    <div class="row stack2 jbrow" data-job="${esc(j.id)}" data-state="${esc(j.state)}">
+    <div class="row stack2 jbrow${j.id === jobsMarked ? " focus" : ""}" data-job="${esc(j.id)}" data-state="${esc(j.state)}">
       <div class="grow">
         <div class="name">${jobTitle(j)} ${jobStatePill(j)}
           <span class="dim">· ${esc(j.type)}</span></div>
@@ -186,6 +197,10 @@ function renderJobsInto(i){
   // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.
   paginate(d.list, ":scope > .jbrow", {key: "jbList", noun: "jobs"});
+  if (jobsFocus){
+    const row = d.list.querySelector(`.jbrow[data-job="${CSS.escape(jobsFocus)}"]`);
+    if (row){ row.scrollIntoView({block: "nearest"}); jobsFocus = ""; }
+  }
   d.setFoot(`Cancel stops a job. Nothing here edits one.`);
   wireJobsTab(d.el);
 }

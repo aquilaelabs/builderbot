@@ -27,11 +27,10 @@ const RAIL_ICONS = {
 
 // The nine groups, in the rail's order (the design's rail rule). A group's
 // tools are the tab kinds it holds, the first the one its button opens; a
-// group with several draws them as the page's sub-nav. Home opens the
-// Projects page until Home is built (R218 step 5). Sessions is the panel
-// the pane's Sessions button opens until the dock (step 4).
+// group with several draws them as the page's sub-nav. Sessions is the
+// panel the rail opens.
 const RAIL = [
-  {key: "home", label: "Home", icon: "home", tools: [["projects", "Projects"]]},
+  {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"]]},
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"], ["nginx", "nginx"]]},
@@ -47,10 +46,9 @@ const RAIL_PHONE = ["home", "projects", "containers", "jobs"];
 // A tool kind is a page: it leaves the strip and lives on the rail.
 function isToolKind(kind){ return kind !== "term" && kind !== "notebook"; }
 
-// The group a tab kind is a page of: the first group that lists it, Home
-// aside (Home shares the Projects page).
+// The group a tab kind is a page of: the first group that lists it.
 function groupOf(kind){
-  return RAIL.find(g => g.key !== "home" && (g.tools || []).some(([k]) => k === kind)) || null;
+  return RAIL.find(g => (g.tools || []).some(([k]) => k === kind)) || null;
 }
 
 // Which tool kinds this account may open, from the areas its grants read
@@ -90,9 +88,10 @@ function railOn(){
   return groupOf(kind)?.key || (kind === "notebook" ? "projects" : "");
 }
 
-// Open a group: its first tool as a page (or, for Home, the Projects page),
-// or its panel. A press is a navigation, so the address is pushed.
+// Open a group: its first tool as a page, or its panel. A press is a
+// navigation, so the address is pushed.
 const OPENERS = {
+  home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(),
   toolchains: () => openToolchains(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
@@ -123,7 +122,7 @@ function routeOf(t){
     return "#/projects/" + encodeURIComponent(t.arg) + (v ? "/" + (v === "briefing" ? "overview" : v) : "");
   }
   if (!isToolKind(t.kind)) return "";
-  const g = railWant === "home" && t.kind === "projects" ? RAIL[0] : groupOf(t.kind);
+  const g = groupOf(t.kind);
   if (!g) return "";
   return (g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`;
 }

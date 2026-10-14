@@ -77,6 +77,10 @@ const DRIVERS = {
     open: () => page.evaluate(() => openRunnerTab()),
     readyWhen: '.runnertab .ndconf, .runnertab .hint',
   },
+  home: {
+    open: () => page.evaluate(() => railGo('home')),
+    readyWhen: '.hometab .hometiles .tile',
+  },
   jobs: {
     // Whether the queue has anything in it depends on which suites ran
     // before this one; either drawing carries the bar and the foot band.
@@ -1434,6 +1438,9 @@ for (const kind of kinds){
 {
   const POLLS = new Set(['/api/status', '/api/revs', '/api/presence', '/api/layout', '/api/v1/nodes', '/api/live']);
   await page.evaluate(() => { for (const t of [...tabs]) if (t.kind !== 'term') dropTab(t.id); });
+  // With every page put away the page lands on Home, the landing page, whose
+  // one read on open is an open's and not a poll: counted from after it.
+  await page.waitForFunction(() => tabOf(panes[0])?.kind !== 'home' || (homeData !== null && !homeFetching), null, { timeout: 20000 });
   await page.evaluate(() => { window.__f = {}; const f = window.fetch;
     window.fetch = (...a) => { const u = String(a[0]).split('?')[0]; window.__f[u] = (window.__f[u] || 0) + 1; return f(...a); }; });
   await sleep(8000);

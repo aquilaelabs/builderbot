@@ -2841,6 +2841,7 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 import devapp                                                    # noqa: E402
 devapp.label_of = registry.label
 import devactions                                                # noqa: E402
+import home                                                      # noqa: E402
 import containers                                                # noqa: E402
 import nginxproxy                                                # noqa: E402
 import imagecheck                                                # noqa: E402
@@ -3026,6 +3027,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 # The layer on top of it: the compose runner is its, so it is the one that
 # hands jobs.py the function.
 devactions.configure(runner=jobs if not NODES_OK else None)
+home.configure(nodes_mod=nodes, devapp_mod=devapp)
 devapp.gpu_why = gpu_container_why
 # ...and what its request() needs about who is asking, and who hears.
 devactions.users = users
@@ -3888,6 +3890,7 @@ GET_ROUTES = (
     ("prefix", "/api/storage", "_get_storage"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
+    ("prefix", "/api/home", "_get_home"),
     ("prefix", "/api/docker", "_get_docker"),
     ("prefix", "/api/containers", "_get_containers"),
     ("prefix", "/api/project-job", "_get_project_job"),
@@ -5147,6 +5150,24 @@ class Handler(BaseHTTPRequestHandler):
         # are called (roadmap #27). An administrator sees the registry.
         return self._json(nodes.tab_view(self._nodes_for(nodes.node_list()),
                                          users.may(self._who(), "admin") == ""))
+
+    def _get_home(self):
+        """GET /api/home: home.read, the overview's numbers (R218 step 5).
+        The jobs are the ones this account sees on the Jobs page, scoped the
+        same way; the machines and their containers only for an account
+        that reads the Nodes area."""
+        me = self._who()
+        rows, names = [], {}
+        if not NODES_OK:
+            mine = None if users.may(me, "admin") == "" \
+                else {p["name"] for p in project_list(me)}
+            if mine is not None and not (me or {}).get("session") and self._area_read_why("jobs"):
+                mine = {p for p in mine if roles.level_of(me, "projects", p, users.may_work)}
+            got, _ = nodes.jobs_view("", {"n": ["500"]}, mine)
+            rows, names = got.get("jobs") or [], got.get("nodes") or {}
+        machines = not NODES_OK and not self._area_read_why("nodes")
+        light = urllib.parse.parse_qs(self.path.partition("?")[2]).get("light", [""])[0] == "1"
+        return self._json(*home.read(rows, names, machines, light))
 
     def _get_jobs(self):
         """GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this

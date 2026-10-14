@@ -208,6 +208,11 @@ const TABKINDS = {
               icon: TOOL_ICONS.emulator,
               render: (i) => renderEmulatorInto(i), live: () => `${emuRev}/${nodesRev}`,
               open: () => loadEmulator() },
+  // Home (R218 step 5): its own read on open, and the poll's rows on every
+  // draw, painted only when they changed.
+  home:     { multi: false, label: () => "Home",
+              render: (i) => renderHomeInto(i), live: "always",
+              open: () => loadHome() },
   projects: { multi: false, label: () => "Projects",
               render: (i) => renderProjectsInto(i), live: "always" },
   // nodesRev as well as dockerRev: the node PICKER on this tab is drawn from

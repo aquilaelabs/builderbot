@@ -49,7 +49,7 @@ function dockPlace(t){
 // The layout made to hold: a page in pane 0 and a terminal, or nothing, in
 // pane 1. A layout saved by the strip (a terminal on the left, a document on
 // the right, or a terminal alone) is repaired here rather than refused, and a
-// page is always on show: the first one open, else the Projects page.
+// page is always on show: the first one open, else Home, the landing page.
 function dockSettle(){
   const a = tabOf(panes[0]), b = tabOf(panes[1]);
   if (a && slotFor(a) === 1){
@@ -64,7 +64,7 @@ function dockSettle(){
     const page = tabs.find(t => slotFor(t) === 0);
     if (page) panes[0] = page.id;
     else {
-      const t = {id: "t" + (++seq), kind: "projects", arg: "__projects", label: "Projects"};
+      const t = {id: "t" + (++seq), kind: "home", arg: "__home", label: "Home"};
       tabs.push(t);
       panes[0] = t.id;
     }

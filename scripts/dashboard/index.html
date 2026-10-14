@@ -848,6 +848,29 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 .row:last-child{border-bottom:0}
 /* The CI runner page's list of every node's runner, each row a press that
    picks its node; the one shown wears the accent's edge. */
+/* Home (R218 step 5): its tiles are links, the one place tiles are pressed
+   (the home rule); Attention and Last jobs side by side at a desk, stacked
+   on a phone; the pinned projects as small cards. */
+.hometiles .tile.link{text-align:left;cursor:pointer;color:inherit;text-decoration:none;display:block}
+.hometiles .tile.link > span{display:block}
+@media(hover:hover){ .hometiles .tile.link:hover{border-color:var(--accent-mid)} }
+.homegrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:12px 0}
+@media(max-width:900px){ .homegrid{grid-template-columns:minmax(0,1fr)} }
+.hcard,.hsect{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+  overflow:hidden;min-width:0}
+.hsect{margin:0 0 12px}
+.hcard h3,.hsect h3{margin:0;padding:9px 12px;font:var(--f-sect);border-bottom:1px solid var(--line)}
+.hnone{padding:10px 12px;color:var(--dim);font:var(--f-ui)}
+.hcard .hjob{width:100%;text-align:left;background:none;border:0;border-radius:0;
+  border-bottom:1px solid var(--line);white-space:normal;justify-content:flex-start;min-height:var(--tap)}
+.hcard .hjob:last-child{border-bottom:0}
+.hcard .hjob .sub{display:block}
+.hglance{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:12px}
+.hproj{border:1px solid var(--line);border-radius:var(--r-surface);padding:9px 11px;min-width:0;
+  background:var(--btn)}
+.hproj.pc{box-shadow:inset 3px 0 var(--pc)}
+.hproj .name{font:var(--f-row);font-weight:600}
+.jbrow.focus{box-shadow:inset 3px 0 var(--accent)}
 .runnersall{display:flex;flex-direction:column;border:1px solid var(--line);
   border-radius:var(--r-surface);margin:0 0 10px;overflow:hidden}
 .runnersall .row{width:100%;text-align:left;background:none;border:0;border-radius:0;
@@ -5301,6 +5324,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-tabs.js"></script>
 <script src="page-shell.js"></script>
 <script src="page-dock.js"></script>
+<script src="page-home.js"></script>
 <script src="page-paint.js"></script>
 <script src="page-panes.js"></script>
 <script src="page-projsettings.js"></script>
@@ -5941,15 +5965,17 @@ onRev("nodes", () => {
   else nodesStale = true;
   // A node's census carries its images: refetched only when they moved.
   if (shown("emulator")) emuOnNodes();
-  // ...and the Runner card, which is drawn off the status poll: a job on a
-  // node moves this rev, so the card says "installing now" and then the
-  // result inside a second or two instead of at the next fifteen-second poll.
+  // ...and what is drawn off the status poll (the bell, the doctor): a job
+  // on a node moves this rev, so they say it inside a second or two instead
+  // of at the next fifteen-second poll.
   refresh();
 });
 // The queue moved: a job taken, a step, a result, a cancel. Same rule: an
 // open Jobs tab refetches, and nothing about jobs rides the status poll.
 onRev("jobs", () => {
   if (shown("jobs")) loadJobs();
+  // Home's queue and node counts, its containers kept (R218 step 5).
+  if (shown("home")) loadHome(true);
   if (shown("emulator")) loadEmulator();
 });
 // The Phone tab's data (tab-phone.js): fetched here too, because the bell

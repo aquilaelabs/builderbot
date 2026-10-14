@@ -128,6 +128,36 @@ function attRow(a){
         <a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`;
 }
 
+// What needs doing that is not a question, as rows: the bell's "Needs
+// attention" group and Home's Attention card (R218 step 5) draw the same
+// ones. From the poll, never stored here, so a row leaves the moment it
+// stops being true.
+function needsRows(){
+  const att = state?.attention || [], ciRed = state?.ci_red || [], syncC = state?.sync_conflicts || [];
+  // What needs doing but is not a question: a node behind, a red CI run, a
+  // file changed in two places. One quiet shape (attRow): a title, one line
+  // of what, the action on the row, the long part folded (the operator,
+  // 10 Oct: the amber wall of versions and project names).
+  return [
+    // ...and the nodes. Out of window is red and names the projects it
+    // stops; behind is amber and waits for a press on the Nodes tab.
+    // A window move holds every project at once, so several of these is the
+    // normal case after a minor bump and one row per project was six rows
+    // saying one thing. Collapsed into one, with one press behind it (B93).
+    ...att.map(attRow),
+    ...ciRed.map(c => `<div class="bnote att bad">
+        <div class="bt">CI failing in ${esc(projLabel(c.project))}</div>
+        <div class="bsum">${esc(c.text)}</div>
+        <div class="bfoot"><span>until the check passes again</span>
+          <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
+            <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
+    ...syncC.map(c => `<div class="bnote att">
+        <div class="bt">Changed in two places: ${esc(projLabel(c.project))}</div>
+        <div class="bsum">${esc(c.path)} was changed on ${esc(c.node)} after another copy had changed it; that version is kept as ${esc(c.kept_as)}</div>
+        <div class="bfoot"><span>until that copy is deleted · ${esc(ago(c.at))}</span></div></div>`),
+  ];
+}
+
 function drawBell(){
   const bell = $("bBell"), panel = $("bellPanel");
   if (!bell) return;
@@ -255,28 +285,7 @@ function drawBell(){
         <div class="bfoot"><span>on the notebook</span>
           <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
   ];
-  // What needs doing but is not a question: a node behind, a red CI run, a
-  // file changed in two places. One quiet shape (attRow): a title, one line
-  // of what, the action on the row, the long part folded (the operator,
-  // 10 Oct: the amber wall of versions and project names).
-  const needs = [
-    // ...and the nodes. Out of window is red and names the projects it
-    // stops; behind is amber and waits for a press on the Nodes tab.
-    // A window move holds every project at once, so several of these is the
-    // normal case after a minor bump and one row per project was six rows
-    // saying one thing. Collapsed into one, with one press behind it (B93).
-    ...att.map(attRow),
-    ...ciRed.map(c => `<div class="bnote att bad">
-        <div class="bt">CI failing in ${esc(projLabel(c.project))}</div>
-        <div class="bsum">${esc(c.text)}</div>
-        <div class="bfoot"><span>until the check passes again</span>
-          <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
-            <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
-    ...syncC.map(c => `<div class="bnote att">
-        <div class="bt">Changed in two places: ${esc(projLabel(c.project))}</div>
-        <div class="bsum">${esc(c.path)} was changed on ${esc(c.node)} after another copy had changed it; that version is kept as ${esc(c.kept_as)}</div>
-        <div class="bfoot"><span>until that copy is deleted · ${esc(ago(c.at))}</span></div></div>`),
-  ];
+  const needs = needsRows();
   const said = notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`);
@@ -304,21 +313,6 @@ function drawBell(){
   const clear = $("bellClear");
   // Only the page's own log clears: an ask is not this button's to dismiss.
   if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
-  // Dismiss (bellseen.py): the update to that version, for this account, on
-  // every browser it opens; a newer version notes again.
-  panel.querySelectorAll("[data-bdismiss]").forEach(a => a.onclick = async e => {
-    e.preventDefault();
-    const j = await (await postJSON("/api/bell", {action: "dismiss", keys: a.dataset.bdismiss.split(" ")}))
-      .json().catch(() => ({error: "no answer"}));
-    if (j.error) notify(j.error, true);
-    refresh();
-  });
-  const restore = $("bellRestore");
-  if (restore) restore.onclick = async () => {
-    const j = await (await postJSON("/api/bell", {action: "restore"})).json().catch(() => ({error: "no answer"}));
-    if (j.error) notify(j.error, true);
-    refresh();
-  };
   panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
     e.preventDefault();
     phBusy = "running it"; phRev++; drawPanes();
@@ -343,39 +337,7 @@ function drawBell(){
     openNotebook(a.dataset.bpend);
     openPending(a.dataset.bpend);
   });
-  panel.querySelectorAll("[data-bci]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    toggleBell(false);
-    sectOpen["git:ci"] = true;
-    openNotebook(a.dataset.bci, "git");
-  });
-  // To the node the row is about, at the control it is about (Update agent
-  // in its head bar): the press itself
-  // stays there, beside the state line that says what it does.
-  panel.querySelectorAll("[data-bnode]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    toggleBell(false);
-    openNodesTab(a.dataset.bnode, a.dataset.bwhat);
-  });
-  // ...and a toolchain update to that node's Toolchains tab.
-  panel.querySelectorAll("[data-btc]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    toggleBell(false);
-    openToolchainsOn(a.dataset.btc);
-  });
-  // ...and a container update to the Docker tab on that node.
-  panel.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    toggleBell(false);
-    if (a.dataset.bdocker) dockerNode = a.dataset.bdocker;
-    openDocker();
-  });
-  // ...and an nginx update to the nginx tab on that node.
-  panel.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    toggleBell(false);
-    openNginxTab(a.dataset.bnginx);
-  });
+  wireNeeds(panel, () => toggleBell(false));
 }
 
 function toggleBell(open){
@@ -407,4 +369,57 @@ function toggleBell(open){
     }
   }
   drawBell();
+}
+
+// The presses on those rows, for whichever surface drew them: Dismiss and
+// Show again change the rows where they are; a row's link leaves for the
+// page it is about, and `after` runs as it does (the bell shuts itself).
+function wireNeeds(root, after = () => {}){
+  // Dismiss (bellseen.py): the update to that version, for this account, on
+  // every browser it opens; a newer version notes again.
+  root.querySelectorAll("[data-bdismiss]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const j = await (await postJSON("/api/bell", {action: "dismiss", keys: a.dataset.bdismiss.split(" ")}))
+      .json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    refresh();
+  });
+  root.querySelectorAll("#bellRestore, [data-brestore]").forEach(restore => restore.onclick = async () => {
+    const j = await (await postJSON("/api/bell", {action: "restore"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    refresh();
+  });
+  root.querySelectorAll("[data-bci]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    sectOpen["git:ci"] = true;
+    openNotebook(a.dataset.bci, "git");
+  });
+  // To the node the row is about, at the control it is about (Update agent
+  // in its head bar): the press itself
+  // stays there, beside the state line that says what it does.
+  root.querySelectorAll("[data-bnode]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openNodesTab(a.dataset.bnode, a.dataset.bwhat);
+  });
+  // ...and a toolchain update to that node's Toolchains tab.
+  root.querySelectorAll("[data-btc]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openToolchainsOn(a.dataset.btc);
+  });
+  // ...and a container update to the Docker tab on that node.
+  root.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    if (a.dataset.bdocker) dockerNode = a.dataset.bdocker;
+    openDocker();
+  });
+  // ...and an nginx update to the nginx tab on that node.
+  root.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openNginxTab(a.dataset.bnginx);
+  });
 }

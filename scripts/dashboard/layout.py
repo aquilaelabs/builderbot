@@ -48,7 +48,7 @@ def configure(*, state, write_json, lock):
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
 TAB_KINDS = {"term", "toolchains", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "storage",
-             "nodes", "settings", "jobs", "users", "profile", "phone", "runner"}
+             "nodes", "settings", "jobs", "users", "profile", "phone", "runner", "home"}
 
 
 def _layouts():

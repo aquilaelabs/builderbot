@@ -152,6 +152,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb browser opens Chrome or Firefox with an unpacked extension loaded, headless on a port and profile of its own, and goes, evaluates, takes a picture and stops it from one verb (8345b95)
 - A running container's row on the Containers page has Shell: a terminal inside that container in the dock, for whoever may start and stop it (an administrator alone when the project's Run its container is Deny); on a hosting-only node it says why it cannot open (af727f8)
 - On a node, a container's shell runs on the agent's own container terminal (port 7683, open to the controller only), as the docker account, so the session account stays off docker; the agent opens that port on nodes provisioned before it (7470faf)
+- Home: the landing page, with tiles across the install (nodes online, containers running, jobs running and failed today, sessions open, updates due, CI red), each a link into its page, the bell's attention rows, the last ten jobs and the pinned projects at a glance (e41cdf5)
 
 ### Changed
 
