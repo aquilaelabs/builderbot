@@ -483,7 +483,11 @@ driver, the toolkit and the node's switches are the operator's.
 A container belongs to one project or to none (the operator sets it on its
 Docker tab row), and a session sees and works on its own project's only. `bb
 devapp ls` lists them on this project's node and `bb devapp log NAME` reads
-one. Acting on one is the project's dial (Claude may: Run its container):
+one; `bb devapp probe [--container NAME] [--port N] [--path /x]` says
+whether one answers on its node's loopback, each published port open or
+refused and the HTTP status of the path, a read with no root ask, the way to
+check a container nginx reaches before a route goes in. Acting on one is the
+project's dial (Claude may: Run its container):
 `bb devapp start|stop|restart NAME`, and `--container NAME` on `bb devapp
 rebuild` or `bb devapp env` for one written for this project. You have no
 Docker socket of your own. A container that does not exist yet is an ask

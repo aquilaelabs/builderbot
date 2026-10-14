@@ -211,6 +211,10 @@ bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
                    refusal naming it and nothing runs on the node
 bb devapp          this project's dev instance: what it was built from, whether it is
                    running, and whether its daemon answers
+bb devapp probe [--port N] [--path /x]
+                   whether it answers on its node's loopback: each published port
+                   open or refused, and the HTTP status of a GET of the path; a read,
+                   so no root ask; --container NAME for another of the project's
 bb devapp rebuild [--why "..."]
                    build it and bring it up. Only where the project has handed that
                    over: Claude may: Run its container, in its settings dialog and

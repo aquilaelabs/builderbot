@@ -6255,7 +6255,7 @@ class Handler(BaseHTTPRequestHandler):
             owner = devapp.owner_of(name, want)
             # ...and a session reads what belongs to a project its own reads
             # (B551): the state and the starter env, never a change.
-            reads = {owner} if sess and act in ("state", "starter") and owner and self._reads(owner) else set()
+            reads = {owner} if sess and act in ("state", "starter", "probe") and owner and self._reads(owner) else set()
             if owner not in ({sess} | reads if sess else {p["name"] for p in project_list(me)}):
                 return self._json({"error": containers.not_ours(devapp.pname(name, want), sess)}, 403)
         # Reading is everybody's; changing what is running is not (roadmap
@@ -6263,6 +6263,8 @@ class Handler(BaseHTTPRequestHandler):
         # restricted and is not on this list is a decision somebody has to
         # make, which is the same rule MACROS follows.
         #
+        #   probe: a read too (R248), whether the instance answers on its
+        #     node's loopback, from its own published ports only.
         #   starter, state: reads, returning the project's .env.example and
         #     the row.
         #   rebuild, abort: a user's own work, on purpose. Somebody given a
@@ -6280,7 +6282,7 @@ class Handler(BaseHTTPRequestHandler):
         # decides rather than this gate, since a session never passes this one.
         session = bool(sess)
         dialed = ("env-get", "env-set", "new", "remove") if session else ()
-        if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
+        if act not in ("starter", "state", "probe", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None
         # A compose file edited from the Docker tab is a file in the project's
@@ -6346,7 +6348,7 @@ class Handler(BaseHTTPRequestHandler):
                                             "it puts the project's image on another machine"}, 403)
             if not session and self._refused("node", name):
                 return None
-        if act not in ("starter", "state") and session:
+        if act not in ("starter", "state", "probe") and session:
             on = devapp.instance_node(name, field(req, "instance"))
             mine = devapp.project_daemon(sess)
             # A shipped one is the session's while its node is still under the
@@ -6360,7 +6362,7 @@ class Handler(BaseHTTPRequestHandler):
                                             "and a session works on its own node's. The "
                                             "operator uses or removes it from the Docker "
                                             "manager"}, 403)
-        if act not in ("starter", "state", "test") and session:
+        if act not in ("starter", "state", "probe", "test") and session:
             # The dial is the project's (Claude may: Run its container, in its
             # settings) and covers rebuilding its containers, changing their
             # env and sending the project to Docker, its own container or

@@ -3482,11 +3482,69 @@ HOST_DOCKER = frozenset(("ps", "inspect", "version", "info", "logs", "start", "s
 
 
 def host_exec_ok(type, spec):
-    """Whether an exec is a docker verb a hosting-only node answers."""
+    """Whether an exec is a docker verb a hosting-only node answers, or the
+    port probe (R248), whose program is this controller's own, word for word."""
     argv = spec.get("argv") if isinstance(spec, dict) else None
     if type != "exec" or not isinstance(argv, list) or len(argv) < 2:
         return False
+    if [str(a) for a in argv[:3]] == ["python3", "-c", PROBE]:
+        return True
     return str(argv[0]).rsplit("/", 1)[-1] == "docker" and str(argv[1]) in HOST_DOCKER
+
+
+# Whether a container answers on its node's loopback (R248): a TCP connect
+# to 127.0.0.1 on each port, then an HTTP GET of the path on the ones that
+# took it, one JSON line a port. Run on the node by its agent, as the
+# agent's user, read-only: it opens a connection and reads a status line.
+# Fixed here, word for word, so a hosting-only node accepts this and no
+# other program (host_exec_ok), and nothing a caller sends reaches it but
+# the path and the port numbers, which probe_ports() checks first.
+PROBE = (
+    "import json,socket,sys,time,urllib.request,urllib.error\n"
+    "path=sys.argv[1]\n"
+    "for p in sys.argv[2:]:\n"
+    " o={'port':int(p),'open':False,'http':None,'ms':None,'error':''}\n"
+    " t=time.time()\n"
+    " try:\n"
+    "  socket.create_connection(('127.0.0.1',int(p)),3).close();o['open']=True\n"
+    " except OSError as e:\n"
+    "  o['error']=str(e)[:120]\n"
+    " if o['open']:\n"
+    "  try:\n"
+    "   r=urllib.request.urlopen('http://127.0.0.1:%s%s'%(p,path),timeout=5);o['http']=r.status\n"
+    "  except urllib.error.HTTPError as e:\n"
+    "   o['http']=e.code\n"
+    "  except Exception as e:\n"
+    "   o['error']='not http: '+str(e)[:100]\n"
+    " o['ms']=int((time.time()-t)*1000)\n"
+    " print(json.dumps(o),flush=True)\n")
+
+
+def probe_ports(principal, node_id, ports, path="/", timeout=30):
+    """[{port, open, http, ms, error}] for each port on node_id's loopback,
+    or {"error"}: PROBE run there and waited for, its record dropped once
+    read (a read nobody needs on the Jobs tab)."""
+    ports = [int(p) for p in ports][:16]
+    if not ports:
+        return {"error": "no port to probe"}
+    if not isinstance(path, str) or not path.startswith("/") or len(path) > 200 \
+            or any(c.isspace() or ord(c) < 32 for c in path):
+        return {"error": "a path starts with / and holds no spaces: /health, /v1/stats"}
+    r = run_wait(principal, node_id, ["python3", "-c", PROBE, path] + [str(p) for p in ports],
+                 timeout=timeout, forget=True, title="probe the loopback")
+    if r.get("error"):
+        return r
+    out = []
+    for line in (r.get("out") or "").splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                pass
+    if not out:
+        return {"error": f"the probe said nothing back (exit {r.get('code')}): {(r.get('out') or '').strip()[-200:]}"}
+    return {"ports": out}
 
 
 def host_only(n):

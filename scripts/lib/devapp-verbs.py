@@ -425,7 +425,41 @@ def ctl():
     print(f"[builderbot] {r.get('out') or verb}")
 
 
-VERBS = {"status": status, "rebuild": rebuild, "new": new, "test": test, "edit": edit, "ls": ls, "ctl": ctl}
+def probe():
+    """bb devapp probe [--port N] [--path /x]: whether the instance answers on
+    its node's loopback (R248), each published port: open or refused, and
+    the HTTP status of a GET of the path."""
+    args, port, path = sys.argv[2:], "", "/"
+    while args:
+        a = args.pop(0)
+        if a == "--port" and args:
+            port = args.pop(0)
+        elif a == "--path" and args:
+            path = args.pop(0)
+        else:
+            sys.exit(f"[builderbot] ERROR: bb devapp probe takes --port N and --path /x, not {a}")
+    d = bbapi.call("/api/devapp", {"project": os.environ["BB_DEV_PROJECT"],
+                                   "instance": os.environ.get("BB_DEV_INSTANCE", ""),
+                                   "container": os.environ.get("BB_DEV_CONTAINER", ""),
+                                   "action": "probe", "port": port, "path": path},
+                   auth=os.environ["BB_DEV_AUTH"])
+    if d.get("error"):
+        sys.exit(f"[builderbot] ERROR: {d['error']}")
+    print(f"{d.get('name') or 'the instance'} on {d.get('node') or 'its node'}, from its loopback, GET {path}:")
+    bad = 0
+    for p in d.get("ports") or []:
+        if not p.get("open"):
+            bad += 1
+            print(f"  {p['port']:>5}  refused  {p.get('error') or ''}")
+        elif p.get("http") is None:
+            print(f"  {p['port']:>5}  open     {p.get('error') or 'not http'} ({p.get('ms')} ms)")
+        else:
+            print(f"  {p['port']:>5}  open     HTTP {p['http']} ({p.get('ms')} ms)")
+    raise SystemExit(1 if bad else 0)
+
+
+VERBS = {"status": status, "rebuild": rebuild, "new": new, "test": test, "edit": edit, "ls": ls, "ctl": ctl,
+         "probe": probe}
 
 if __name__ == "__main__":
     VERBS[sys.argv[1]]()

@@ -148,6 +148,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A push is read for secrets before it goes: a token, a key, a password, a private key, an address with a password, an email or IP address in what bb git push or the Git view's Push would send holds it, the bell shows the lines, and an approved line is not asked about again until it changes (986793d)
 - A search in the top bar jumps to a page, a project, a container or a node; the uptime moved to the Settings page (0782f1b)
 - bb proc lists, ends or waits for this account's processes by a word of their command line, never the call's own shell; pgrep -f is refused beside pkill -f, in a loop or a kill as well (ce0a7c3)
+- bb devapp probe says whether a container answers on its node's loopback, each published port open or refused and the HTTP status of a path: a read with no root ask, on a hosting-only node too (8f62c47)
 
 ### Changed
 

@@ -1503,6 +1503,54 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
     return r | {"state": state(project, instance)}, 200
 
 
+def host_ports(ports):
+    """The node-side TCP port numbers of an instance's published ports, as
+    _ports() writes them (127.0.0.1:9090->80/tcp, 9090->80/tcp)."""
+    out = []
+    for p in ports or []:
+        host, _, rest = str(p).partition("->")
+        if rest.endswith("/udp"):
+            continue
+        num = host.rpartition(":")[2]
+        if num.isdigit() and int(num) not in out:
+            out.append(int(num))
+    return out
+
+
+def probe(project, instance, req, principal):
+    """Whether this instance answers on its node's loopback (R248): a TCP
+    connect and an HTTP GET of `path` on each of its published ports, or on
+    the one `port` names, run there by the node's agent. Read-only, so a
+    session reads it as it reads the state, with no root ask: Turing Lens's
+    `bb root run` for exactly this expired unseen after 15 minutes (14 Oct).
+    Only the instance's own ports: the node's others are not this caller's
+    to scan. (payload, status)."""
+    if devapp.queue is None:
+        return {"error": "nodes are not on in this install, so there is no node to probe from"}, 400
+    nid = devapp._instance_node(project, instance)
+    if not nid:
+        return {"error": f"{devapp.pname(project, instance)} has no node to probe on"}, 400
+    mine = host_ports(state_ports(project, instance))
+    if not mine:
+        return {"error": f"{devapp.pname(project, instance)} publishes no TCP port on its node "
+                         "(is it up? bb devapp says)"}, 400
+    want = devapp.field(req, "port")
+    if want not in (None, ""):
+        try:
+            want = int(want)
+        except (TypeError, ValueError):
+            return {"error": "a port is a number"}, 400
+        if want not in mine:
+            return {"error": f"port {want} is not one {devapp.pname(project, instance)} publishes: "
+                             + ", ".join(str(p) for p in mine)}, 400
+        mine = [want]
+    r = devapp.queue.probe_ports(principal, nid, mine, devapp.field(req, "path") or "/")
+    if r.get("error"):
+        return r, 400
+    return {"ok": True, "name": devapp.pname(project, instance), "node": devapp.node_name(nid),
+            "ports": r["ports"]}, 200
+
+
 def request(project, instance, action, req, *, me, principal, dial="", test_cmd=""):
     """One dev-instance verb as the Docker tab and `bb devapp` send it, once
     server.py has decided this caller may: a session whose project's Run
@@ -1512,6 +1560,8 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
     others sharing it would want to know, and the sessions' networks told
     after a container is made, removed or given away. (payload, status)."""
     sess = me.get("session") or ""
+    if action == "probe":
+        return probe(project, instance, req, principal)
     if sess and dial == "ask" and action in ("rebuild", "env-set", "new", "remove"):
         # Aborting is not asked about: it stops a build this session
         # was already allowed to start, and a running build nobody
