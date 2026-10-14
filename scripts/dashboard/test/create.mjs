@@ -195,10 +195,10 @@ ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
 // operator indistinguishable from gone. Unpinning first is what brings the
 // pins file into existence; while there is none, everything is pinned anyway
 // and this would prove nothing.
-await page.evaluate(() => setProjectPinned('beta', false));
+await page.evaluate(() => { setProjectPinned('beta', false); openProjectsTab(); });
+// The page shows every project, pinned or not; the card's menu says which.
 await page.waitForFunction(
-  () => ![...document.querySelectorAll('.pgrid .pcard .name')]
-          .some(n => n.textContent.trim() === 'beta'), { timeout: 15000 });
+  () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-p]')?.textContent.trim() === 'Pin', { timeout: 15000 });
 await newProject();           // zeta's create closed the dialog
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.fill('#pName', 'pinme');
@@ -896,8 +896,8 @@ ok(await page.$eval('#bNewProjTab', b => b.disabled),
    '...and New project is dead while it runs: one job at a time');
 ok(existsSync(`${DIR}/ws/slowclone`),
    'the directory is claimed up front, so a second request cannot take the name');
-ok(await page.$$eval('.pgrid .pcard .name',
-     ns => ns.filter(n => n.textContent === 'slowclone').length === 1),
+ok(await page.$$eval('.projtab .name',
+     ns => ns.filter(n => n.textContent.trim() === 'slowclone').length === 1),
    '...and the half-made directory is not also listed as a broken project');
 
 await page.reload();
@@ -1196,14 +1196,16 @@ writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
 // default (fill:black, stroke:none), which draws nothing at all, because
 // every path in it is an open stroke.
 // (laid out first: measured mid-draw it read no stroke, no fill and 0px, B602)
-await page.waitForFunction(() => document.querySelector('#bTrash svg')?.getBoundingClientRect().width > 0, { timeout: 15000 });
-const binInk = await page.$eval('#bTrash svg', e => {
+// On the Projects page's bar now (R218 step 3).
+await page.evaluate(() => openProjectsTab());
+await page.waitForFunction(() => document.querySelector('#bTrashTab svg')?.getBoundingClientRect().width > 0, { timeout: 15000 });
+const binInk = await page.$eval('#bTrashTab svg', e => {
   const c = getComputedStyle(e);
   return { stroke: c.stroke, fill: c.fill, w: e.getBoundingClientRect().width };
 });
 ok(binInk.stroke !== 'none' && binInk.fill === 'none' && binInk.w >= 12,
    `the bin button's icon is actually drawn (stroke ${binInk.stroke}, fill ${binInk.fill}, ${binInk.w}px)`);
-await page.click('#bTrash');
+await page.click('#bTrashTab');
 await page.waitForSelector('#tmodal:not([hidden])', { timeout: 10000 });
 await page.waitForFunction(() => document.querySelector('#tList .trow'),
                            { timeout: 10000 });

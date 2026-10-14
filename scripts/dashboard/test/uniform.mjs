@@ -1143,11 +1143,12 @@ await page.setViewportSize({ width: 393, height: 851 });
 {
   await page.evaluate(() => openProjectsTab());
   await page.waitForSelector('.pgrid .pcard [data-pmore]', { timeout: 10000 });
-  const unfolded = await animatedDuring(page, async () => {
-    await page.click('.pgrid .pcard [data-pmore]');
-    await page.waitForSelector('.pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
-  });
-  ok(unfolded.length > 0, `a card's menu comes in with a tween on a phone (${unfolded.join(', ') || 'nothing animated'})`);
+  // The menu's entrance is the stylesheet's (menuIn), which animatedDuring
+  // does not see: read the animation on the menu itself.
+  await page.click('.pgrid .pcard [data-pmore]');
+  await page.waitForSelector('.pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
+  const menuAnim = await page.$eval('.pgrid .pcard .actmenu:not([hidden])', m => getComputedStyle(m).animationName);
+  ok(menuAnim === 'menuIn', `a card's menu comes in with a tween on a phone (${menuAnim})`);
   await page.keyboard.press('Escape');
 }
 await page.evaluate(() => setView('terminal'));

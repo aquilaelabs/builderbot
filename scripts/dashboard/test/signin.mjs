@@ -122,9 +122,14 @@ ok(await page.$eval(`[data-signin="${box.id}"] [data-si="out"]`, b => !b.disable
    'signed in, the row names the Anthropic account this node reported and offers Sign out');
 ok(await page.evaluate(([a, b]) => claudeOn(a)?.email === 'tester@example.com' && claudeOn(b)?.email === 'me@example.invalid', [sandbox.id, box.id]),
    '...and another node\'s sign-in is its own: a different Anthropic account there is not this one\'s business');
+// The page is drawn while it is on show: brought to the front, it reads the
+// sign-in that just landed.
+await page.evaluate(() => openProjectsTab());
+await page.waitForFunction(sel => !/not signed in/.test(saidOf(document.querySelector(sel))), PC, { timeout: 15000 }).catch(() => {});
 const tip = await page.$eval(PC, b => saidOf(b));
 ok(!/not signed in/.test(tip) && await page.evaluate(id => claudeSigninFirst('beta', id), box.id) === false,
    `the project's Claude button goes to a session again (${tip.slice(0, 50)})`);
+await page.evaluate(id => { openNodesTab(); nodesPick = id; nodesRev++; drawPanes(); }, box.id);   // back to the node's row
 
 // ---- signing out, on this node ----------------------------------------------
 // Not while this account's own session is open there, said on the row.

@@ -2712,7 +2712,6 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The Projects page (R218 step 3): a searchable grid of cards with status. */
 .projtab .docbarrow #pjSearch{flex:1 1 220px}
 .projtab .docbarrow #bTrashTab{min-width:var(--tap);padding:4px 8px}
-.projtab .docbarrow #bTrashTab svg{width:16px;height:16px}
 /* The Claude chooser drawn in a project page's pane (R218 step 3): as wide
    as its words, never the pane. */
 .pane>.resumemenu{max-width:min(440px,calc(100% - 8px));width:max-content}
@@ -3433,7 +3432,7 @@ button[aria-busy="true"]{opacity:.75}
    .eye alone, the Projects card's trash button (an .ic) got the browser's
    default fill:black/stroke:none, and these paths are open strokes, so it
    drew nothing at all. */
-button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
+button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block;fill:none;
   stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons, the gear (settings) and the sign-out door,
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and

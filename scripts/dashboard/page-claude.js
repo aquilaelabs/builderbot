@@ -18,15 +18,30 @@ let resumeFor = null;
 // or the sidebar's card; it is drawn in that one and positioned under the
 // Claude button there.
 let resumeHost = null;
+// The chooser placed under its button, inside its host. In a project page's
+// pane (R218 step 3) the menu sits on the pane, not in the page's scroller,
+// so scrolling cannot bring it up: one that would fall past the pane's foot
+// opens above its button instead.
+function placeUnder(m, anchor, host){
+  const a = anchor.getBoundingClientRect(), c = host.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
+  const below = a.bottom - c.top + 4;
+  const up = host.classList.contains("pane") && below + m.offsetHeight > Math.min(c.height, innerHeight - c.top);
+  m.style.top = (up ? Math.max(4, a.top - c.top - m.offsetHeight - 4) : below) + "px";
+}
 function resumeHostNow(){
-  return resumeHost?.isConnected ? resumeHost : ($("projects")?.closest(".card") || null);
+  if (resumeHost?.isConnected) return resumeHost;
+  // Asked without a press (openClaude from code, a redraw): the pane where
+  // that project's Claude button is on show, a page's header or its card.
+  const b = resumeFor && [...document.querySelectorAll(`[data-c="${CSS.escape(resumeFor)}"]`)].find(x => x.offsetParent !== null);
+  return b?.closest(".pane") || null;
 }
 // The chooser kept in step with a redraw of its host: the same menu stays
 // where it is (drawn again on every poll, its buttons were replaced under
 // the pointer), a stale one goes, and one asked for is placed.
 function syncResumeMenu(){
   const host = resumeHostNow();
-  if (!host) return;
+  if (!host){ document.querySelectorAll(".resumemenu").forEach(n => n.remove()); return; }
   const keep = resumePick && resumeFor === resumePick.project
     ? host.querySelector(`.resumemenu[data-pick="${CSS.escape(resumePick.project)}"]`) : null;
   const first = resumeFor && !keep
@@ -352,9 +367,7 @@ function resumePicker(p, m, card, anchor, ns, several){
       })
       .catch(() => {});
   }
-  const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
-  m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
-  m.style.top = (a.bottom - c.top + 4) + "px";
+  placeUnder(m, anchor, card);
 }
 
 function placeResumeMenu(){
@@ -435,9 +448,7 @@ function placeResumeMenu(){
     claudeEnd(p.name, ns.find(n => n.id === b.dataset.end) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-restart]").forEach(b => b.onclick = () =>
     claudeRestart(p.name, ns.find(n => n.id === b.dataset.restart) || {id: "", name: ""}, several));
-  const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
-  m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
-  m.style.top = (a.bottom - c.top + 4) + "px";
+  placeUnder(m, anchor, card);
   // ...and brought into the sidebar, which scrolls. Pressing Claude on a
   // project whose session has ENDED opens this chooser instead of a tab;
   // that is the design, and it is the only thing the press does, so a

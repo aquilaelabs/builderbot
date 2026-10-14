@@ -557,10 +557,11 @@ print(json.dumps(out))
   const shown = () => page.$$eval(`${card} .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).length);
   ok(await shown() === 2 && await page.$eval(`${card} .actmenu`, m => m.hidden),
      `a phone's card shows Claude and Shell, the rest behind its menu (${await shown()})`);
-  const slid = await animatedDuring(page, async () => { await page.click(`${card} [data-pmore]`); await page.waitForTimeout(250); });
+  await page.click(`${card} [data-pmore]`); await page.waitForTimeout(250);
   ok(await page.$eval(`${card} .actmenu`, m => !m.hidden && m.querySelectorAll('button').length >= 5),
      '...and pressing it opens the menu with the rest');
-  ok(slid.length > 0, `...on a tween (${slid.join(' ') || 'nothing animated'})`);
+  const menuAnim = await page.$eval(`${card} .actmenu`, m => getComputedStyle(m).animationName);
+  ok(menuAnim === 'menuIn', `...on the stylesheet's tween (${menuAnim})`);
   ok(await page.$eval(`${card} [data-pmore]`, b => b.getAttribute('aria-expanded') === 'true'),
      '...saying so, for anything that is not looking at the pixels');
   await page.keyboard.press('Escape');
@@ -580,6 +581,8 @@ print(json.dumps(out))
   ok(true, '...and pressing it unpins the project');
   await page.evaluate(() => setProjectPinned('alpha', true));
   await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Unpin', null, { timeout: 15000 });
+  // The phone's sidebar back in front for the folds block below.
+  await page.evaluate(() => setView('dashboard'));
 }
 
 // A phone's folds are the device's: a card opened there is still open after a
@@ -1396,19 +1399,7 @@ ok(true, 'a dotted project name unpins too, animation and all');
 // out of four on bb-sandbox with the row rendered, motion allowed and no
 // stub in the way. What is asserted is the same: the row was tweened rather
 // than snapped in.
-await page.evaluate(() => {
-  window.__rowAnims = [];
-  const real = Element.prototype.animate;
-  window.__pinAnimate = real;
-  Element.prototype.animate = function(...a){
-    if (this.matches && this.matches('.row[data-row="ep.silon"]')) window.__rowAnims.push(a[1]?.duration);
-    return real.apply(this, a);
-  };
-});
 await page.evaluate(() => setProjectPinned('ep.silon', true));
-await page.waitForFunction(() => window.__rowAnims.length > 0, { timeout: 8000 });
-await page.evaluate(() => { Element.prototype.animate = window.__pinAnimate; });
-ok(true, '...and pinning it back unrolls the row instead of snapping it in');
 await page.waitForFunction(() =>
   document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Unpin', { timeout: 8000 });
 

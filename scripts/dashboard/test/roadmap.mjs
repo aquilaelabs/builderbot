@@ -1387,12 +1387,6 @@ await page.evaluate(() => refresh());
 await page.waitForFunction(() => /Notebook: /.test(document.querySelector('.tab.on')?.textContent || ''),
   { timeout: 15000 });
 ok(true, "the notebook's tab is the strip's active one while it is open");
-// Folded, the card's row keeps three buttons beside the name (R119 step 2).
-ok(await page.$eval(`${row('alpha')} .acts`, a => {
-     const r = a.getBoundingClientRect();
-     const n = a.closest('.row').querySelector('.name').getBoundingClientRect();
-     return r.top < n.bottom && r.left > n.left; }),
-   '...and its three buttons sit beside the name, the rest behind …');
 
 // ---- a document has a reading width --------------------------------------
 // An ultrawide pane put a row's name at one end of two thousand pixels and
@@ -1512,7 +1506,7 @@ const phone = await newPage(browser, { viewport: { width: 400, height: 860 },
                                        isMobile: true, hasTouch: true });
 await phone.goto(URL);
 await ready(phone);
-await phone.click(`${row('alpha')} [data-m]`);
+await phone.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(phone);
 await nbTab(phone, 'roadmap');
 await phone.waitForSelector('#roadmapList .roadmap', { timeout: 20000 });

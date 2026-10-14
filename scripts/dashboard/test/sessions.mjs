@@ -299,6 +299,8 @@ await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row=
 // iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
 // .slot.on: a pane keeps the terminals behind the visible one loaded, so
 // there is more than one frame in it and only one is on screen.
+// A terminal in front again: the lock checks above opened the Projects page.
+await page.evaluate(() => { const t = tabs.find(x => x.kind === 'term'); if (t) focusTab(t.id); });
 await page.waitForSelector('.slot.on iframe');
 await page.evaluate(() => { window.__loads = 0;
   document.querySelector('.slot.on iframe').addEventListener('load', () => window.__loads++); });
@@ -520,12 +522,15 @@ await phone.waitForFunction(() => !document.querySelector('.resumemenu'));
 // The press is DISPATCHED rather than clicked, because Playwright scrolls a
 // target into view for you and would undo the thing being reproduced.
 await phone.setViewportSize({ width: 400, height: 300 });
+// The card is on the Projects page now (R218 step 3), in the pane: shown,
+// then scrolled so its Claude button sits at the scroller's bottom edge.
+await phone.evaluate(() => { openProjectsTab(); setView('terminal'); });
+await phone.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-c]', { timeout: 15000 });
 await phone.evaluate(() => {
-  // The page's own scroller now (R218 step 3): the card is on the Projects page.
-  const side = document.querySelector('.pane .doc.on');
   const btn = document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]');
-  side.scrollTop += btn.getBoundingClientRect().bottom
-                    - side.getBoundingClientRect().bottom + 6;
+  let side = btn.parentElement;
+  while (side && !(side.scrollHeight > side.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(side).overflowY))) side = side.parentElement;
+  if (side) side.scrollTop += btn.getBoundingClientRect().bottom - side.getBoundingClientRect().bottom + 6;
 });
 await phone.evaluate(() => document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]').click());
 await phone.waitForSelector('.resumemenu', { timeout: 10000 });
@@ -536,10 +541,10 @@ await phone.waitForFunction(() => document.querySelector('.resumemenu')
   ?.getAnimations().every(a => a.playState !== 'running'), null, { timeout: 10000 });
 ok(await phone.$eval('.resumemenu', el => {
      const m = el.getBoundingClientRect();
-     const side = el.closest('.col.side').getBoundingClientRect();
-     return m.top >= side.top - 1 && m.bottom <= side.bottom + 1;
+     const pane = el.closest('.pane').getBoundingClientRect();
+     return m.top >= pane.top - 1 && m.bottom <= Math.min(pane.bottom, innerHeight) + 1;
    }),
-   '...brought into the scrolled sidebar, not left below its fold');
+   '...brought into the scrolled page, not left below its fold');
 await phone.setViewportSize({ width: 400, height: 800 });
 await phone.click('.resumemenu [data-n]');
 // New conversation turns the menu to the model and effort it starts on
@@ -636,7 +641,7 @@ ok(await phone.evaluate(() => !tabs.some(t => t.arg.startsWith('claude:')))
 await phone.evaluate(() => { for (let i = 0; i < 6; i++) newShell(''); });
 await phone.evaluate(() => focusTab(tabs[tabs.length - 1].id));
 await phone.waitForFunction(() => document.querySelector('#tabPick .nm')?.textContent === tabLabels().get(tabs[tabs.length - 1].id)
-  && document.querySelector('#tabPick .pill')?.textContent === String(tabs.length), { timeout: 5000 });
+  && document.querySelector('#tabPick .pill')?.textContent === String(tabs.filter(t => !isToolKind(t.kind)).length), { timeout: 5000 });
 ok(true, 'the picker names the last tab opened and counts them all');
 await phone.click('#tabPick');
 const last = await phone.evaluate(() => tabs[tabs.length - 1].id);

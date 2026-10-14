@@ -378,6 +378,7 @@ ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPho
                              null, { timeout: 15000 });
   ok(await page.$eval('.pgrid .pcard[data-row="alpha"] [data-ph]', b => !b.disabled && /Take your phone back/.test(b.textContent)),
      "the project's card shows the lease, and its menu offers the owner Take your phone back");
+  await page.evaluate(() => openPhoneTab());       // back to the tab the rest reads
   const first = await use('shot');
   ok(first.status === 200 && first.body.asked > 0, `a lent phone's command is an ask, not a run (${JSON.stringify(first.body)})`);
   ok(((await api('/api/phone?node=' + sandbox.id)).body.asks || []).some(a => a.id === first.body.asked && a.kind === 'phone-use'),

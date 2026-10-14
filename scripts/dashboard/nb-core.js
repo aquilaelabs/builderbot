@@ -830,8 +830,8 @@ function projectState(p){
 // The one notice the sidebar's row carried (why nobody can start here, the
 // agent out of window), in the notice voice, or nothing.
 function projectNote(p){
-  const mine = liveSessions().has(myClaude(p.name));
-  return (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked && !mine
+  const here = withMe(p.name).length > 0;
+  return (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked && !here
     ? `<div class="pnote ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(p.session_why || p.held)}</div>` : "";
 }
 // The two actions a project page and its card show, and the rest behind
@@ -852,8 +852,22 @@ function projectActions(p, extra = ""){
     `<button type="button" data-rn="${esc(name)}">Settings</button>`,
     extra,
   ].filter(Boolean).join("");
-  return `${isBroken(p) ? "" : `<button type="button" class="primary" data-c="${esc(name)}"${dead ? " disabled" : ""} title="${
-        esc(notMine(p) ? NOT_MINE_WHY : p.locked ? "locked; you run this one. Unlock lets Claude back in" : heldWhy(p) || p.session_why || "")}">${
+  // What a press does, or why it is dead, in the button's own words (the
+  // sidebar row's chain, kept): a screen reader hears it, and a press on a
+  // dead one is told.
+  const live = liveSessions();
+  const say = notMine(p) ? NOT_MINE_WHY
+    : p.locked ? "locked; you run this one. Unlock lets Claude back in"
+    : heldWhy(p) ? heldWhy(p)
+    : p.session_why ? p.session_why
+    : othersOn(name).length ? `${othersOn(name).join(", ")} also working here, in a checkout of their own: start yours`
+    : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(name))
+      ? `Claude: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
+    : p.session_at ? `Claude: a session on ${p.session_at}, this project's node`
+    : mine ? "Claude: your session is running; open its tab or end it"
+    : p.last_claude ? "Claude: no session running; resume or start one"
+    : "Claude: start a session here";
+  return `${isBroken(p) ? "" : `<button type="button" class="primary" data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Claude" : "Open Claude"}</button>`}
     ${mayShell() ? `<button type="button" data-s="${esc(name)}"${notMine(p) || !gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
