@@ -1267,6 +1267,14 @@ def _clear_marker(project, instance=devapp.MAIN):
 def _job_rebuild(project, instance, run):
     try:
         run.step("building")
+        if devapp.work_tree(project, instance) is not None:
+            # A pinned instance builds from a worktree of its ref, which holds
+            # the files committed there and nothing else: a gitignored file
+            # changed beside the project's checkout is not in this build,
+            # and the log says so before the build rather than after (B595).
+            ref = str(devapp._read_rec(project, instance).get("ref") or "").strip()
+            run.line(f"building from {ref} at {devapp._head(project, instance)[:12] or '?'}: "
+                     "the files committed there; untracked and ignored files of the working tree are not in it\n")
         r = devapp._run(devapp._compose(project, instance, "build"), timeout=3600,
                         env_extra=devapp._dev_data_env(project, instance) | devapp._build_env(project, instance),
                         sink=run.line, hold=run.hold)
