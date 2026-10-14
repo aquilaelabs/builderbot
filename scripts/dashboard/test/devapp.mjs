@@ -3152,6 +3152,10 @@ ok(await page.$('#devSend'),
   ok(/has no compose file docker-compose\.override\.yml/.test(again.error || ''),
      `a file that is not one of its compose files is refused by name (${again.error})`);
   await idle(60000);
+  // Remove is dead while the row's build job runs, and that job outlasts the
+  // minute above in a loaded run (B723): wait for the button itself.
+  await page.waitForFunction(() => { const b = document.querySelector('.dmtab .row[data-inst="ep.silon|ep-silon-site"] [data-dm="remove"]');
+                                     return b && !b.disabled; }, null, { timeout: patience(120000) });
   await pressIn('.dmtab .row[data-inst="ep.silon|ep-silon-site"] [data-dm="remove"]');
   await page.waitForFunction(() => !document.querySelector('.dmtab .row[data-inst="ep.silon|ep-silon-site"]'),
                              null, { timeout: patience(20000) });
