@@ -51,6 +51,7 @@ import statefile  # noqa: E402
 import ids  # noqa: E402
 from fields import field, field_list  # noqa: E402
 import pending  # noqa: E402
+import re
 import time
 from pathlib import Path
 
@@ -945,11 +946,33 @@ def finished(project, limit=None):
     return out[:n] if n else out
 
 
+# The project's last release, read off its changelog's newest release heading
+# ("## 0.7.0: 2026-09-25"): an item finished on or before that day shipped
+# with that version, and reopening it would rewrite a released version's
+# record (the operator, 15 Oct). (version, epoch of the day's end) or None.
+_RELEASE = re.compile(r"^## (\d+\.\d+\.\d+[^:\s]*): (\d{4}-\d{2}-\d{2})\s*$", re.M)
+
+
+def last_release(project):
+    try:
+        text = (Path(os.environ.get("WORKSPACE", "/workspace")) / project / "CHANGELOG.md").read_text(errors="replace")
+    except OSError:
+        return None
+    m = _RELEASE.search(text)
+    if not m:
+        return None
+    try:
+        day = time.mktime(time.strptime(m.group(2), "%Y-%m-%d")) + 86400
+    except ValueError:
+        return None
+    return m.group(1), day
+
+
 def reopen(project, item_id, by="you", who=""):
     """Put a finished item back on the list as its row was, its steps and
-    details with it: for more work found on it after it was ticked off, which
-    used to become a new item naming the old one, a split nobody can follow
-    back (the operator, 15 Oct). Above the shelf, like an item just added."""
+    details with it, for work that is truly part of the same goal and found
+    after it was ticked off; never one a released version shipped. Above the
+    shelf, like an item just added."""
     item_id = _int(item_id)
     if item_id is None:
         return {"error": "not an item"}
@@ -963,6 +986,15 @@ def reopen(project, item_id, by="you", who=""):
         done = _finished_row(d, project, item_id)
         if done is None:
             return _gone(d, project, item_id)
+        # Only the same work, and never across a release: an item a released
+        # version shipped stays in that version's record, and more work on it
+        # is a new item (the operator, 15 Oct).
+        rel = last_release(project)
+        when = max((e.get("at", 0) for e in d.get("history", {}).get(project) or []
+                    if _int(e.get("id")) == item_id and e.get("act") == "done" and e.get("step") is None), default=0)
+        if rel and when and when < rel[1]:
+            return {"error": f"R{item_id} was finished before {rel[0]} was released and shipped with it: "
+                             "it stays closed, and more work on it is a new item (it may name this one)"}
         row = {k: v for k, v in copy.deepcopy(done).items() if k not in ("done_at", "done_by")}
         row.pop("shelved", None)
         rows.insert(sum(1 for r in rows if not r.get("shelved")), row)

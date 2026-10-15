@@ -111,6 +111,29 @@ class Gone(unittest.TestCase):
         roadmap.step_done("alpha", rid, 1)
         self.assertTrue(any(x["id"] == rid for x in roadmap.finished("alpha")), "finished again by its new last step")
 
+    def test_an_item_a_release_shipped_stays_closed(self):
+        # The operator, 15 Oct: never reopen an item a previous version shipped.
+        ws = tempfile.mkdtemp()
+        os.makedirs(os.path.join(ws, "alpha"))
+        old = os.environ.get("WORKSPACE")
+        os.environ["WORKSPACE"] = ws
+        try:
+            rid = roadmap.add("alpha", "shipped work", by="claude")["item"]["id"]
+            roadmap.tick("alpha", rid)
+            with open(os.path.join(ws, "alpha", "CHANGELOG.md"), "w") as f:
+                f.write("# Changelog\n\n## Unreleased\n\n## 1.2.0: 2099-01-01\n\n- shipped\n")
+            err = roadmap.reopen("alpha", rid).get("error", "")
+            self.assertIn("before 1.2.0 was released", err)
+            self.assertIn("new item", err)
+            with open(os.path.join(ws, "alpha", "CHANGELOG.md"), "w") as f:
+                f.write("# Changelog\n\n## Unreleased\n\n## 1.1.0: 2000-01-01\n")
+            self.assertTrue(roadmap.reopen("alpha", rid).get("ok"), "finished since the last release: the same work may reopen")
+        finally:
+            if old is None:
+                os.environ.pop("WORKSPACE", None)
+            else:
+                os.environ["WORKSPACE"] = old
+
     def test_finished_items_outlive_the_trim(self):
         # B768: the log keeps its last MAX_HISTORY events and every finished
         # item, since a done event is the finished item.

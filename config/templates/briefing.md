@@ -302,11 +302,13 @@ A roadmap item is a goal, not a task: one outcome somebody would ask for,
 with the steps that get there in the order they have to happen, written when
 the item is added (`bb roadmap add "goal" --step "..." --step "..."`), each
 step saying what has to be true before the next can start. Work found later
-toward the same goal is a step on that item (`bb roadmap step add`; on one
-already finished, `bb roadmap reopen N` first), and its decisions are the
-item's or the step's `info`. A new item is a new goal: a different outcome,
-something that can be done in any order beside the rest, or a change that
-undoes a finished one. A walk, a proof or a follow-up of an item is a step
+toward the same goal is a step on that item (`bb roadmap step add`), and
+its decisions are the item's or the step's `info`. `bb roadmap reopen N`
+puts a finished item back only when the work is truly part of its goal and
+it finished since the last release: one a released version shipped stays
+closed, and the verb refuses it. A new item is a new goal: a different
+outcome, something that can be done in any order beside the rest, or a
+change to work that has shipped or that undoes a finished one. A walk, a proof or a follow-up of an item is a step
 of it, and a set of findings from one walk is an item per surface they are
 about, each finding a step.
 
