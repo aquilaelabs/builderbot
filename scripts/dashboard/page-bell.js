@@ -266,7 +266,10 @@ function attRow(a){
                                : "nothing works there"} until it is updated` : ""}</div>
     ${a.window && a.projects.length ? `<details class="bdetail"${sectAttr("bell:agent:" + a.id)}><summary>projects</summary><pre>${
       a.projects.map(esc).join(", ")}</pre></details>` : ""}
-    <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
+    ${a.failed ? `<div class="bsum bad">its last update failed: ${esc(a.failed)}</div>` : ""}
+    <div class="bfoot"><span>${a.window ? "work on it is stopped"
+      : a.auto ? (a.failed ? "tried again once the node is idle, or press Update agent there" : "updates itself once the node is idle")
+      : "on the Nodes tab"}</span>
       <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
         <a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`;
 }

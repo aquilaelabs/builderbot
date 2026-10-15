@@ -112,5 +112,57 @@ class Wait(unittest.TestCase):
         lst.close()
 
 
+
+class AgentBehind(unittest.TestCase):
+    """R253: a job refused only because its node's agent is behind waits for
+    the agent's update, which the controller queues itself, and is sent again;
+    nothing was done, so asking again does nothing twice."""
+    def setUp(self):
+        self.port = free_port()
+        self.env = dict(os.environ)
+        os.environ.update(BB_CONTROLLER=f"http://127.0.0.1:{self.port}", BB_CONTROLLER_WAIT="90", BB_PROJECT="")
+        os.environ.pop("BB_CONTROLLER_PIN", None)
+        self.asked = []
+        outer = self
+
+        class Behind(http.server.BaseHTTPRequestHandler):
+            def log_message(self, format, *args):  # noqa: A002 (the base class's name)
+                del format, args
+
+            def do_POST(self):  # noqa: N802 (the base class's name)
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                outer.asked.append(1)
+                ok = len(outer.asked) > 2
+                b = json.dumps({"ok": True, "job": "j_1"} if ok else
+                               {"error": "box runs agent 0.7.1 and this controller ships 0.7.2", "agent_behind": True}).encode()
+                self.send_response(200 if ok else 400)
+                self.send_header("Content-Length", str(len(b)))
+                self.end_headers()
+                self.wfile.write(b)
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), Behind)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.sleep = bbapi.time.sleep
+        bbapi.time.sleep = lambda s: None
+
+    def tearDown(self):
+        bbapi.time.sleep = self.sleep
+        self.srv.shutdown()
+        self.srv.server_close()
+        os.environ.clear()
+        os.environ.update(self.env)
+
+    def test_the_job_waits_for_the_update_and_goes(self):
+        st, got = bbapi.request("/api/devapp", {"action": "rebuild"})
+        self.assertEqual((st, got.get("job")), (200, "j_1"))
+        self.assertEqual(len(self.asked), 3)
+
+    def test_a_hook_is_told_at_once(self):
+        os.environ["BB_CONTROLLER_WAIT"] = "0"
+        st, got = bbapi.request("/api/devapp", {"action": "rebuild"})
+        self.assertEqual(st, 400)
+        self.assertTrue(got.get("agent_behind"))
+        self.assertEqual(len(self.asked), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

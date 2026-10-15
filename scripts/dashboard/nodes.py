@@ -2107,9 +2107,15 @@ def attention(project_nodes):
         # being true.
         if n["kind"] != "agent" or not n.get("live") or not agent_stale(n):
             continue
+        mine = agent_window((n.get("agent") or {}).get("version") or "")
+        auto = bool(mine) and mine == agent_window(ours["version"])
+        # Inside a window the controller updates it once the node is idle
+        # (R253): the row says so, and says why when its last try failed.
+        last = next((j for j in jobs_for(node_id=n["id"], n=5, type="self-update")), None) if auto else None
         out.append({"kind": "agent", "node": n["name"], "id": n["id"],
                     "from": (n.get("agent") or {}).get("version") or "?",
-                    "to": ours["version"], "window": agent_gap(n),
+                    "to": ours["version"], "window": agent_gap(n), "auto": auto,
+                    "failed": (last.get("error") or "it failed") if last and last.get("state") == "failed" else "",
                     "projects": sorted(p for p, nid in project_nodes.items() if nid == n["id"])})
     return out
 
@@ -2132,13 +2138,44 @@ def held_attention(uid, admin):
     return out
 
 
+# An agent behind this controller inside its window is updated by the
+# controller itself as soon as its node is idle (R253): an agent that is behind
+# takes no job but its own update, so every session's job on that node was
+# refused until somebody pressed Update agent, after every controller update.
+# Safe to do unasked: the self-update refuses while other jobs run and
+# re-execs in place, keeping the node's terminals and sessions. Across a window
+# it stays the operator's press, since that one ends the sessions on the node.
+AUTO_UPDATE_EVERY = 120
+_auto_tried = {}
+
+
+def auto_update(nid):
+    """Queue the self-update of an idle node whose agent is behind inside the
+    window, at most once every AUTO_UPDATE_EVERY seconds per node (a busy
+    refusal is asked again on a later idle beat). The job, or None."""
+    n = node(nid)
+    if not n or n["kind"] != "agent" or not agent_stale(n):
+        return None
+    # The same window, known on both sides: an agent from before the window
+    # existed (or a harness's) is never a gap, but it is no proof of one either.
+    mine = agent_window((n.get("agent") or {}).get("version") or "")
+    if not mine or mine != agent_window(agent_file()["version"]):
+        return None
+    now = time.time()
+    if now - _auto_tried.get(nid, 0) < AUTO_UPDATE_EVERY or jobs_for(node_id=nid, n=1, active=True):
+        return None
+    _auto_tried[nid] = now
+    r = node_update_agent("system:auto-update", nid)
+    return r if r.get("ok") else None
+
+
 def node_update_agent(principal, node_id):
     """Queue the self-update for a node's agent: the file this controller
     serves, named by digest so the node can never be handed anything else
     (door 4). The agent replaces itself in place and re-execs, so nothing on
     the node restarts and no running job is interrupted; it refuses while
-    other jobs run. Nothing drives this on its own: the row says when an
-    update is due, and the operator presses."""
+    other jobs run. The operator presses it, and auto_update does inside a
+    window once the node is idle (R253)."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
@@ -3007,6 +3044,8 @@ def heartbeat(nid, sample, addr, running=0):
     _sample_rev[0] += 1
     if json.dumps([ag.get("addr"), *[rep.get(k) for k in HEARTBEAT_NEWS]], sort_keys=True) != was:
         _bump()
+    with contextlib.suppress(Exception):
+        auto_update(nid)
     if moved:
         session_net_nudge()
 
@@ -3293,7 +3332,9 @@ def job_add(principal, placement, type, spec, project="", source=None):
         if type != "self-update" and runner_of(type, n["kind"]) == "node":
             why = agent_stale(n)
             if why:
-                return {"error": why}
+                # Marked, so bb can wait for the update (auto_update queues it
+                # inside a window) rather than give up on the job (R253).
+                return {"error": why, "agent_behind": not agent_gap(n), "node": n["id"]}
     elif pick(probe, node_list()) is None:
         want = ", ".join(f"{k}={v}" for k, v in pl["select"].items())
         return {"error": f"no node fits {want}"}

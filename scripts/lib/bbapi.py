@@ -163,6 +163,8 @@ def request(path, body=None, auth="", method="", timeout=30):
         if not again:
             if said and st is not None:
                 print("[builderbot] the controller is back", file=sys.stderr)
+            if budget and isinstance(got, dict) and got.get("agent_behind"):
+                return _agent_wait(path, body, auth, method, timeout, st, got)
             return st, got
         if not said:
             _gate_down()
@@ -178,6 +180,30 @@ def request(path, body=None, auth="", method="", timeout=30):
                            "it is restarting after an update, or down. Wait and try again; if it stays "
                            "down, write where you are and what is next to your notes and end the turn, "
                            "and the operator checks the container"}
+
+
+# How long a job refused only because its node's agent is behind waits for
+# that agent's update (R253): the controller queues it itself once the node is
+# idle, and it lands in under a minute; the job was refused, so asking again
+# does nothing twice.
+AGENT_WAIT_S = 150
+
+
+def _agent_wait(path, body, auth, method, timeout, st, got):
+    waited = 0
+    print("[builderbot] the node's agent is behind this controller and is being updated: "
+          f"waiting up to {AGENT_WAIT_S}s to send this", file=sys.stderr)
+    while waited < AGENT_WAIT_S:
+        time.sleep(10)
+        waited += 10
+        st, got, _again = _request_once(path, body, auth, method, timeout)
+        if not (isinstance(got, dict) and got.get("agent_behind")):
+            print("[builderbot] the node's agent is current: sent", file=sys.stderr)
+            return st, got
+    got = dict(got)
+    got["error"] = (f"{got.get('error') or 'the node is behind'} (waited {waited}s for its agent's update; "
+                    "if it is still busy, try again once its jobs finish, or press Update agent on its row)")
+    return st, got
 
 
 def _request_once(path, body, auth, method, timeout):
