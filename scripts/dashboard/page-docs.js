@@ -530,11 +530,16 @@ function wireCharts(root, fmtOf = () => v => `${Math.round(v)}%`){
 // the caller keeps which is on for the page's life and nothing is saved.
 // `groups` is [{key, label, count}], `on` the key in force ("" for All).
 function chipBar(groups, on, attr){
+  const chips = chipButtons(groups, on, attr);
+  return chips ? `<div class="field"><div class="chips">${chips}</div></div>` : "";
+}
+// The chips alone, for a band that holds more than them (a list's search
+// beside them, R254 step 1): "" when fewer than two groups have anything.
+function chipButtons(groups, on, attr){
   const gs = (groups || []).filter(g => g && g.count);
   if (gs.length < 2) return "";
   const total = gs.reduce((n, g) => n + g.count, 0);
   const chip = (key, label, count) => `<button type="button" class="chip${(on || "") === key ? " on" : ""}"
     ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}<span class="pill">${count}</span></button>`;
-  return `<div class="field"><div class="chips">${chip("", "All", total)}${
-    gs.map(g => chip(g.key, g.label, g.count)).join("")}</div></div>`;
+  return chip("", "All", total) + gs.map(g => chip(g.key, g.label, g.count)).join("");
 }

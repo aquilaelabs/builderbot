@@ -2835,9 +2835,17 @@ pre.diff .d-ctx{color:var(--dim)}
 .spark{display:block;margin-top:4px;overflow:visible}
 .spark polyline{fill:none;stroke:var(--dim);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;opacity:.7}
 .spark circle{fill:var(--accent);stroke:var(--panel);stroke-width:1.5}
-.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+.chips{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
   padding-bottom:2px;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
 .chips::-webkit-scrollbar{display:none}
+/* A list's narrowing band (R254 step 1): its chips at the left and a search
+   at the right, the search taking the whole width under them on a phone.
+   A row the band leaves out wears .off, so paging counts only what is shown. */
+.lfilter{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lfilter .chips{flex:1 1 auto;min-width:0}
+.lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
+@media(max-width:900px){ .lfilter input[type=search]{flex:1 1 100%} }
+.grp.off,.bug.off{display:none}
 .chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto;
   font:var(--f-ui);padding:0 10px;min-height:var(--ctl);border-radius:99px}
 .chip .pill{font:var(--f-tag);padding:2px 6px}
@@ -3994,9 +4002,6 @@ body.booting .pane>.loading{margin:auto}
          the eye should not have to look in a different place per tab. -->
     <div class="field nbhead vbar"><span class="nbsum"><span id="roadmapHint">loading…</span> <span id="roadmapRead" class="dim"></span></span>
       <span class="sp"></span>
-      <button id="roadmapDone" type="button"
-        title="the items ticked off, with their plans"
-        >Finished</button>
       <button id="roadmapLog" type="button"
         title="every change to this list, by either of you, with when"
         >History</button>
@@ -4027,6 +4032,14 @@ body.booting .pane>.loading{margin:auto}
         <button id="roadmapAdd" class="primary" type="button">Add</button>
       </div>
     </div>
+    <!-- Narrowing the list (R254 step 1): chips for All, Open and Shelved,
+         and a search over the items, their steps and their details, which
+         reaches the Finished section too. A view, never a setting. -->
+    <div class="field lfilter" id="roadmapFilter" hidden>
+      <div class="chips" id="roadmapChips"></div>
+      <input id="roadmapFind" type="search" maxlength="80" autocomplete="off"
+             placeholder="search the roadmap" aria-label="search the roadmap">
+    </div>
     <div class="field" id="roadmapEmpty" hidden>
       <div class="hint nbempty">What goes here is read at the start of every Claude session in this project.</div>
     </div>
@@ -4056,9 +4069,12 @@ body.booting .pane>.loading{margin:auto}
          are on screen at once now, one of them in the sheet. -->
     <div class="field" id="roadmapHist" hidden></div>
     <div class="field" id="roadmapField"><div id="roadmapList"></div>
-      <!-- The finished ones (R78), below the shelved: drawn only while the
-           Finished toggle above is on. -->
-      <div id="roadmapDoneList" hidden></div></div>
+      <!-- The finished ones (R78), a section of their own under the list
+           (R254 step 1), shut until opened and fetched when it is. -->
+      <details class="sect" data-sect="roadmap:finished" id="roadmapDoneSect" hidden>
+        <summary><span class="t">Finished</span><span class="sst" id="roadmapDoneN"></span></summary>
+        <div class="body"><div id="roadmapDoneList"></div></div>
+      </details></div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
          edits, on screen because they are the one input to a session nobody
@@ -4139,11 +4155,15 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="field" id="bugHist" hidden></div>
       <div class="field" id="bugAdd"></div>
-      <!-- Its own row under the header, the same shape the log's filters use.
-           Open before closed is not one of the choices: a tracker is read to
-           find what is outstanding, so that stays the primary key and this
-           orders within it. -->
-      <div class="field histbar" id="bugSortBar">
+      <!-- The band that narrows the list (R254 step 1): chips for All, Open
+           and Closed, a search over a report's words, and the order. Open
+           before closed is not one of the orders: a tracker is read to find
+           what is outstanding, so that stays the primary key and this orders
+           within it. -->
+      <div class="field lfilter" id="bugSortBar">
+        <div class="chips" id="bugChips"></div>
+        <input id="bugFind" type="search" maxlength="80" autocomplete="off"
+               placeholder="search the tracker" aria-label="search the tracker">
         <label for="bugSort">Sort</label>
         <select id="bugSort">
           <option value="severity" selected>severity</option>

@@ -268,21 +268,31 @@ function nbRoadmapView({$, nb}){
       n + (r.shelved || nextStep(r) === null ? 0 : 1), 0);
     const parked = rows.filter(r => r.shelved).length;
     const held = nb.nbUnsaved();
-    // Count first; what the list is for is its empty state (R119 step 4).
+    // Count first, in fragments (R254 step 1, the a-notebook/views rule);
+    // what the list is for is its empty state (R119 step 4). Whether a step
+    // can be sent is the last fragment: unsaved changes or no session hold
+    // the arrows, a running session lights them.
     $("roadmapEmpty").hidden = !!rows.length;
-    $("roadmapHint").textContent = !rows.length
-      ? "nothing yet"
-      : held
-        ? `${left} still to send${parked ? `, ${parked} shelved` : ""}: ${held} `
-          + `not saved, so nothing can be sent until you Save or Revert`
-        : live
-        ? `${left} still to send${parked ? `, ${parked} shelved` : ""}: ${
-            esc(j.session)} is running, so the arrows are live`
-        : `${left} still to send${parked ? `, ${parked} shelved` : ""}: no session `
-          + `is running here, so nothing can be sent yet`;
-    $("roadmapField").hidden = !rows.length && !j.finished_n;
-    $("roadmapDone").textContent = j.finished_n ? `Finished (${j.finished_n})` : "Finished";
-    $("roadmapDone").hidden = !j.finished_n && !nb.roadmapDoneOn;
+    // The finished count rides a read; a redraw from the page's own state
+    // (the search, a chip) keeps the last one.
+    if (j.finished_n !== undefined) nb.roadmapFinishedN = j.finished_n;
+    const finishedN = nb.roadmapFinishedN || 0;
+    const frags = [`${left} to send`, parked ? `${parked} shelved` : "", finishedN ? `${finishedN} finished` : "",
+                   held ? `${held} not saved` : live ? `${j.session} running` : "no session running"].filter(Boolean);
+    setText($("roadmapHint"), !rows.length && !finishedN ? "nothing yet" : frags.join(" · "));
+    $("roadmapField").hidden = !rows.length && !finishedN;
+    // The band that narrows it: All, Open and Shelved, and a search.
+    nb.roadmapChip = ["", "open", "shelved"].includes(nb.roadmapChip) ? nb.roadmapChip : "";
+    const chips = chipButtons([{key: "open", label: "Open", count: rows.length - parked},
+                               {key: "shelved", label: "Shelved", count: parked}], nb.roadmapChip, "data-rmchip");
+    if (paint($("roadmapChips"), chips, true))
+      $("roadmapChips").querySelectorAll("[data-rmchip]").forEach(b => b.onclick = () => {
+        nb.roadmapChip = b.dataset.rmchip; redrawRoadmap(); });
+    setHidden($("roadmapFilter"), rows.length + finishedN < 2);
+    const q = (nb.roadmapFind || "").trim().toLowerCase();
+    const shown = r => (!nb.roadmapChip || (nb.roadmapChip === "shelved") === !!r.shelved) && rmMatch(r, q);
+    setHidden($("roadmapDoneSect"), !finishedN);
+    setText($("roadmapDoneN"), finishedN ? String(finishedN) : "");
     if (nb.roadmapLogOn) nb.drawHistory();
     {
     // A group is a fold, like a bug's row (the operator, 29 Sep): its own
@@ -293,7 +303,7 @@ function nbRoadmapView({$, nb}){
     $("roadmapList").innerHTML = rows.map(r =>
       // The group's own row gets the same `live` as its steps now: its arrow
       // stands for the next one, so it is as clickable as that one is.
-      `<details class="grp${r.shelved ? " shelved" : ""}" data-id="${r.id}"${
+      `<details class="grp${r.shelved ? " shelved" : ""}${shown(r) ? "" : " off"}" data-id="${r.id}"${
         held.has(String(r.id)) || (nb.roadmapSel && String(nb.roadmapSel.id) === String(r.id)) ? " open" : ""}>
         <summary>${stepRow(r, -1, live)}</summary>${
         (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}${
@@ -383,7 +393,7 @@ function nbRoadmapView({$, nb}){
     drawSendBox(live);
     // Groups, not steps: a plan cut in half by a page boundary is a plan
     // nobody can read.
-    paginate($("roadmapList"), ":scope > .grp", {noun: "items"});
+    paginate($("roadmapList"), ":scope > .grp:not(.off)", {noun: "items"});
   }
 
   // What a session can be switched to on the way in. Tables, not free text:
@@ -1032,24 +1042,30 @@ function nbRoadmapView({$, nb}){
   function drawFinished(){
     const host = $("roadmapDoneList");
     if (!host) return;
-    if (!nb.roadmapDoneOn){ host.innerHTML = ""; host.hidden = true; return; }
-    host.hidden = false;
+    if (!$("roadmapDoneSect").open){ host.innerHTML = ""; return; }
+    const q = (nb.roadmapFind || "").trim().toLowerCase();
     const rows = nb.roadmapDone;
     if (rows === null){ host.innerHTML = `<div class="loading">loading…</div>`; return; }
     if (!rows.length){ host.innerHTML = `<div class="empty">nothing finished yet</div>`; return; }
     const when = t => t ? fmtTime(t * 1000, {day: "2-digit", month: "short"}) : "";
-    host.innerHTML = rows.map(r => `<div class="grp done" data-done="${r.id}">
+    host.innerHTML = rows.map(r => `<div class="grp done${rmMatch(r, q) ? "" : " off"}" data-done="${r.id}">
       <div class="roadmap"><span class="rid">R${r.id}</span> <span class="txt">${esc(r.text || "")}</span>
         <span class="dim"> · done${r.done_by ? " by " + esc(r.done_by) : ""}${r.done_at ? " " + esc(when(r.done_at)) : ""}</span></div>${
       (r.steps || []).map((st, i) => `<div class="roadmap step"><span class="rid">${i + 1}.</span> <span class="txt">${esc(st.text || "")}</span></div>`).join("")}
     </div>`).join("");
   }
-  $("roadmapDone").onclick = () => {
-    nb.roadmapDoneOn = !nb.roadmapDoneOn;
-    $("roadmapDone").classList.toggle("on", nb.roadmapDoneOn);
-    if (nb.roadmapDoneOn && nb.roadmapDone === null) loadFinished();
+  // The Finished section is shut until opened, and fetched the first time it
+  // is; the search narrows it as it does the list.
+  $("roadmapDoneSect").addEventListener("toggle", () => {
+    if ($("roadmapDoneSect").open && nb.roadmapDone === null) loadFinished();
     else drawFinished();
-  };
+  });
+  wireSections($("roadmapDoneSect").parentElement);
+  $("roadmapFind").addEventListener("input", () => {
+    nb.roadmapFind = $("roadmapFind").value;
+    redrawRoadmap();
+    drawFinished();
+  });
   nb.drawFinished = drawFinished;
 
   return {cancelSend, drawSendBox, flushPending, loadRoadmap, postRoadmap, redrawRoadmap, revertPending, sendBoxEl, shutSendBoxes};
@@ -1065,6 +1081,15 @@ function nbRoadmapView({$, nb}){
 // Two marks, one question: sent is the dashboard's and says a line went;
 // done is a session's and says the work is finished, sent or not.
 const stepGone = s => !!(s.sent || s.done);
+
+// Whether an item answers a search (R254 step 1): its number (R12 or 12), its
+// words, its steps' and their details, case aside. An empty search is all.
+function rmMatch(r, q){
+  if (!q) return true;
+  if (q === "r" + r.id || q === String(r.id)) return true;
+  return [r.text, r.info, ...(r.steps || []).flatMap(st => [st.text, st.info])]
+    .some(t => String(t || "").toLowerCase().includes(q));
+}
 
 function nextStep(r){
   const steps = r.steps || [];

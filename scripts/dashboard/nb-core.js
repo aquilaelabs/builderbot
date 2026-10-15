@@ -197,7 +197,9 @@ function makeNotebook(project){
     nb.tstSuite = ""; nb.tstFlagged = nb.tstUndoc = false;
     nb.roadmapLogOn = false;
     nb.roadmapLog = null;
-    nb.roadmapDoneOn = false; nb.roadmapDone = null;
+    nb.roadmapDone = null; nb.roadmapChip = ""; nb.roadmapFind = ""; nb.roadmapFinishedN = 0;
+    nb.bugChip = ""; nb.bugFind = "";
+    $("roadmapFind").value = ""; $("bugFind").value = "";
     $("histFind").value = "";
     cancelSend();
     $("roadmapText").value = "";
@@ -595,6 +597,7 @@ function makeNotebook(project){
   root.querySelectorAll(".nbtabs button").forEach(b =>
     b.onclick = async () => { if (await leaveNbView(b.dataset.v)) setNbView(b.dataset.v); });
   $("bugSort").onchange = drawBugs;
+  $("bugFind").addEventListener("input", () => { nb.bugFind = $("bugFind").value; drawBugs(true); });
   // What this notebook watches. Registered once per instance, and only ever
   // acted on while the view in question is actually on screen: a token
   // moving for a tab nobody is looking at is not worth a fetch.

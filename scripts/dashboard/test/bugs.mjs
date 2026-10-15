@@ -218,6 +218,24 @@ ok((await ids()).slice(0, 2).join() === '3,2',
    'title A–Z orders by the words, open ones still first');
 await page.selectOption('#bugSort', 'severity');
 
+// The band narrows the list (R254 step 1): Open and Closed chips, and a
+// search by words or number, reports left out wearing .off.
+const shownIds = () => page.$$eval('#bugList .bug:not(.off)', ds => ds.map(d => d.dataset.id).sort().join());
+await page.click('#bugChips [data-bgchip="closed"]');
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug:not(.off)').length === 1, null, { timeout: 5000 });
+ok(await shownIds() === '1', 'the Closed chip shows the closed report alone');
+await page.click('#bugChips [data-bgchip="open"]');
+ok(await shownIds() === '2,3', '...Open the outstanding ones');
+await page.click('#bugChips [data-bgchip=""]');
+await page.fill('#bugFind', 'graded critical');
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug:not(.off)').length === 1, null, { timeout: 5000 });
+ok(await shownIds() === '3', '...and the search finds a report by its words');
+await page.fill('#bugFind', 'B2');
+await page.waitForFunction(() => document.querySelector('#bugList .bug:not(.off)')?.dataset.id === '2', null, { timeout: 5000 });
+ok(await shownIds() === '2', '...or by its number');
+await page.fill('#bugFind', '');
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug:not(.off)').length === 3, null, { timeout: 5000 });
+
 // Severity is the one sort that means nothing once a bug is closed: "how bad
 // is it" is a question about work outstanding, and a critical fixed months ago
 // above a medium fixed yesterday answers nothing anybody asked. So the closed

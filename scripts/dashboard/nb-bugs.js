@@ -4,6 +4,15 @@
 
 "use strict";
 
+// Whether a report answers a search (R254 step 1): its number (B12 or 12)
+// or any of its words, case aside. An empty search is all.
+function bugMatch(b, q){
+  if (!q) return true;
+  if (q === "b" + b.id || q === String(b.id)) return true;
+  return ["title", "area", "repro", "expected", "actual", "notes", "status_note"]
+    .some(k => String(b[k] || "").toLowerCase().includes(q));
+}
+
 function nbBugsView({$, nb, project}){
   // ---- bugs ----------------------------------------------------------------
   // Write-through, unlike the roadmap: a bug report is a form submitted once,
@@ -193,10 +202,17 @@ function nbBugsView({$, nb, project}){
     // the second bug, when there is an order to choose.
     const sortBar = $("bugSortBar");
     if (sortBar) sortBar.hidden = rows.length < 2;
+    // Narrowed by a chip (All, Open, Closed) and the search (R254 step 1).
+    nb.bugChip = ["", "open", "closed"].includes(nb.bugChip) ? nb.bugChip : "";
+    if (paint($("bugChips"), chipButtons([{key: "open", label: "Open", count: open},
+                                          {key: "closed", label: "Closed", count: rows.length - open}], nb.bugChip, "data-bgchip"), true))
+      $("bugChips").querySelectorAll("[data-bgchip]").forEach(b => b.onclick = () => { nb.bugChip = b.dataset.bgchip; drawBugs(true); });
+    const q = (nb.bugFind || "").trim().toLowerCase();
+    const shown = b => (!nb.bugChip || (nb.bugChip === "open") === (b.status === "open")) && bugMatch(b, q);
     // Which were open before this redraw, so acting on one does not fold it.
     const held = new Set([...list.querySelectorAll(".bug[open]")].map(d => d.dataset.id));
     list.innerHTML = rows.map(b => `
-      <details class="bug" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
+      <details class="bug${shown(b) ? "" : " off"}" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
         <summary>
           <span class="sev ${esc(b.severity)}">${esc(b.severity)}</span>
           <span class="n id" title="bug B${b.id}: a session knows it by that number">B${b.id}</span>
@@ -237,7 +253,7 @@ function nbBugsView({$, nb, project}){
       </details>`).join("")
       // What the tracker is for, as its empty state (R119 step 4).
       || `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`;
-    paginate(list, ":scope > .bug", {key: "bugList", noun: "reports"});
+    paginate(list, ":scope > .bug:not(.off)", {key: "bugList", noun: "reports"});
     list.querySelectorAll(".bug").forEach(d => {
       const id = Number(d.dataset.id);
       // Opened with the same tween the cards and the memories use. Bound on

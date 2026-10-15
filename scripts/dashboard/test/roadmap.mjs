@@ -948,20 +948,32 @@ const finId = String(fin.body.item.id);
 bbRoadmap('done', finId);
 ok(!read().projects.alpha.some(r => String(r.id) === finId),
    'bb roadmap done takes the item off the list rather than fading it in place');
-// ...and the Roadmap tab can still show it (R78): Finished at the top, off by
-// default, draws the ticked-off items with their plans below the list.
+// ...and the Roadmap tab can still show it (R78): a Finished section under
+// the list (R254 step 1), shut until opened, draws the ticked-off items with
+// their plans, and the head counts them.
 await page.evaluate(() => notebooks.get('alpha').reload());
-await page.waitForFunction(() => /Finished \(\d+\)/.test(document.querySelector('.nb #roadmapDone')?.textContent || ''),
-                           null, { timeout: 10000 });
-ok(await page.$eval('.nb #roadmapDoneList', e => e.hidden), 'the finished items are hidden until asked for');
-await page.click('.nb #roadmapDone');
+await page.waitForFunction(() => { const s = document.querySelector('.nb #roadmapDoneSect');
+  return s && !s.hidden && /^\d+$/.test(document.querySelector('.nb #roadmapDoneN')?.textContent || ''); }, null, { timeout: 10000 });
+ok(await page.$eval('.nb #roadmapDoneSect', e => !e.open) && !(await page.$('.nb #roadmapDoneList .grp')),
+   'the finished items are a section shut until asked for');
+ok(/\d+ finished/.test(await page.$eval('.nb #roadmapHint', h => h.textContent)), '...and the head counts them');
+await page.click('.nb #roadmapDoneSect > summary');
 await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"]`, { timeout: 10000 });
 ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] .txt`, e => e.textContent) === 'a job to finish',
    'Finished shows the ticked-off item, struck through, with no arrow');
 ok(await page.evaluate(() => !!(document.querySelector('.nb #roadmapList').compareDocumentPosition(document.querySelector('.nb #roadmapDoneList')) & Node.DOCUMENT_POSITION_FOLLOWING)),
    '...below the live and shelved ones');
-await page.click('.nb #roadmapDone');
-ok(await page.$eval('.nb #roadmapDoneList', e => e.hidden), '...and the toggle folds them away again');
+// The search narrows the list and the Finished section alike, by words or
+// by number, and the chips narrow the live list to its open or its shelved.
+await page.fill('.nb #roadmapFind', 'a job to finish');
+await page.waitForFunction(id => { const done = document.querySelector(`.nb #roadmapDoneList .grp.done[data-done="${id}"]`);
+  return done && !done.classList.contains('off')
+    && [...document.querySelectorAll('.nb #roadmapList > .grp')].every(g => g.classList.contains('off')); }, finId, { timeout: 5000 });
+ok(true, 'searching narrows the list and the finished alike to what matches');
+await page.fill('.nb #roadmapFind', '');
+await page.click('.nb #roadmapDoneSect > summary');
+await page.waitForFunction(() => !document.querySelector('.nb #roadmapDoneSect').open, null, { timeout: 5000 });
+ok(!(await page.$('.nb #roadmapDoneList .grp')), '...and shutting the section folds them away again');
 const afterDone = bbRoadmap('history');
 ok(new RegExp(`done\\s+R${finId}\\s+a job to finish`).test(afterDone),
    '...and writes it into the history, under the word a session used');
@@ -1486,7 +1498,7 @@ tmuxKill('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
   .every(g => g.getAttribute('aria-disabled') === 'true'), null, { timeout: 15000 });
-ok(/no session/.test(await page.$eval('#roadmapHint', h => h.textContent)),
+ok(/no session running/.test(await page.$eval('#roadmapHint', h => h.textContent)),
    'the session going away puts the arrows down, without touching the tab');
 // ...and a dead arrow says why when pressed (B213). It used to be a disabled
 // button, which swallows the press: the reason lived in a hover title a
@@ -1499,7 +1511,7 @@ tmuxNew('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
   .some(g => g.getAttribute('aria-disabled') !== 'true'), null, { timeout: 15000 });
-ok(/is running, so the arrows are live/.test(
+ok(/claude-alpha running/.test(
      await page.$eval('#roadmapHint', h => h.textContent)),
    '...and starting one brings them back, with the notebook left open the whole time');
 
