@@ -40,11 +40,16 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # approval, deny refuses it. Creation only; see pending.py. Kept here
 # because it is a project setting, edited in the same dialog as the rest.
 GATE_KINDS = ("roadmap", "bugs", "rules", "settings", "design", "wiki")
-# The git policy's two questions, and what they read as when nothing is set:
-# a session may push the branch it works on, and may not push to main.
-GITPOL_KEYS = ("push", "main")
+# The git policy's questions, and what they read as when nothing is set:
+# a session may push the branch it works on, may not push to main, and a
+# push that looks sensitive is held.
+GITPOL_KEYS = ("push", "main", "scan")
 GITPOL_MODES = ("allow", "deny")
-GITPOL_DEFAULT = {"push": "allow", "main": "deny"}
+# `scan`: whether a push with lines that look sensitive is held for a
+# person's approval on the bell (R219), or goes without the hold (the
+# operator, 15 Oct: a test's made-up address held a push fifteen minutes).
+GITPOL_KEY_MODES = {"push": GITPOL_MODES, "main": GITPOL_MODES, "scan": ("hold", "off")}
+GITPOL_DEFAULT = {"push": "allow", "main": "deny", "scan": "hold"}
 GATE_MODES = ("auto", "ask", "deny")
 # The modes a gate takes beyond those three, by kind: the wiki may also be
 # hidden, which keeps it from a session altogether, reading included
@@ -284,7 +289,7 @@ def _clean(rec):
             # bb git policy; a local commit or merge cannot be forbidden.
             "gitpol": {k: ((rec.get("gitpol") or {}).get(k)
                            if isinstance(rec.get("gitpol"), dict)
-                           and (rec.get("gitpol") or {}).get(k) in GITPOL_MODES else GITPOL_DEFAULT[k])
+                           and (rec.get("gitpol") or {}).get(k) in GITPOL_KEY_MODES[k] else GITPOL_DEFAULT[k])
                        for k in GITPOL_KEYS},
             "gate": {k: ((rec.get("gate") or {}).get(k)
                          if isinstance(rec.get("gate"), dict)
@@ -661,12 +666,12 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             cur["outputs"] = [str(g).strip()[:200] for g in got if str(g).strip()][:16]
         if gitpol is not None:
             if not isinstance(gitpol, dict):
-                return {"error": "gitpol is {push|main: allow|deny}"}
+                return {"error": "gitpol is {push|main: allow|deny, scan: hold|off}"}
             for k, v in gitpol.items():
                 if k not in GITPOL_KEYS:
                     return {"error": f"not a git policy: {k}; one of {', '.join(GITPOL_KEYS)}"}
-                if v not in GITPOL_MODES:
-                    return {"error": f"{k}: allow or deny, not {v}"}
+                if v not in GITPOL_KEY_MODES[k]:
+                    return {"error": f"{k}: {' or '.join(GITPOL_KEY_MODES[k])}, not {v}"}
                 cur["gitpol"][k] = v
         if gate is not None:
             if not isinstance(gate, dict):

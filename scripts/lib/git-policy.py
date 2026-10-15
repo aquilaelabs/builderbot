@@ -21,6 +21,8 @@ if "rights" in pu:
           else f"yes ({'the key its ssh address carries' if pu['auth'] == 'ssh' else 'the token the controller holds'})")
 print("push its branch:", p.get("push", "allow"))
 print("push to main:   ", p.get("main", "deny"))
+print("hold a sensitive push:", p.get("scan", "hold"), "(a push with lines that look like a secret waits on the bell)"
+      if p.get("scan", "hold") == "hold" else "(the project's policy lets a push go unread)")
 print("Its branches are the ones this tree has, one at a time: a name that is only on the")
 print("remote, a tag, --all, and deleting a branch there stay with the operator whatever")
 print("these say.")

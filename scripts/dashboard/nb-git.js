@@ -23,6 +23,7 @@ function nbGitView({$, nb, project}){
   let gitReveal = "";
   let gitMsgDraft = "", gitBranchDraft = "";      // typed and not sent, across redraws
   let gitPolDraft = {};                            // the policy picked and not applied
+  const GITPOL_DEFAULT = {push: "allow", main: "deny", scan: "hold"};   // prefs.GITPOL_DEFAULT
 
   // Send to Claude: the thing picked and what is asked of it, composed on
   // the controller and typed into the project's session the way a roadmap
@@ -301,9 +302,11 @@ function nbGitView({$, nb, project}){
         <button type="button" class="primary" data-gitask="conflicts"
           title="hand the merge to the project's Claude session to finish">Resolve with Claude</button>
       </div>` : "";
-    // What a session may do with the remote (roadmap R36): the two answers,
+    // What a session may do with the remote (roadmap R36): the answers,
     // staged until Apply like every setting on the page. Enforced on the
     // relay; a local commit or merge cannot be forbidden, and the bar says so.
+    // The third is whether a push with lines that look sensitive waits on
+    // the bell for a person (R219) or goes without the hold.
     const pol = {...((state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {}), ...gitPolDraft};
     const polDirty = Object.keys(gitPolDraft).length > 0;
     const policy = locked ? "" : `<div class="row stack2 gpolicy"><div class="grow">
@@ -312,6 +315,8 @@ function nbGitView({$, nb, project}){
             `<option value="${o}"${(pol.push || "allow") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
           <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${["allow", "deny"].map(o =>
             `<option value="${o}"${(pol.main || "deny") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
+          <label class="pick">Hold a push that looks sensitive <select data-gitpol="scan">${["hold", "off"].map(o =>
+            `<option value="${o}"${(pol.scan || "hold") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
         </div>
         <div class="actbar">
           <span class="state">its own branches, one at a time ${helpIcon("Applies to pushes only. Tags, deletions and remote-only branches stay yours; commits and merges here are always allowed.")}</span>
@@ -323,7 +328,7 @@ function nbGitView({$, nb, project}){
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
       + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
       + ciSection()
-      + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy) : "");
+      + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}${pol.scan === "off" ? " · unheld" : ""}`, policy) : "");
     wireSections(body);
     body.querySelectorAll("[data-cifix]").forEach(b => b.onclick = () => gitAct("ci-fix", {where: b.dataset.cifix}, b, "Fixing"));
     const cl = $("gitCiLook");
@@ -338,7 +343,7 @@ function nbGitView({$, nb, project}){
     };
     body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {
       const saved = (state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {};
-      if (sel.value === (saved[sel.dataset.gitpol] || (sel.dataset.gitpol === "push" ? "allow" : "deny"))) delete gitPolDraft[sel.dataset.gitpol];
+      if (sel.value === (saved[sel.dataset.gitpol] || GITPOL_DEFAULT[sel.dataset.gitpol])) delete gitPolDraft[sel.dataset.gitpol];
       else gitPolDraft[sel.dataset.gitpol] = sel.value;
       const b = $("gitPolApply"); if (b) b.disabled = !Object.keys(gitPolDraft).length;
     });

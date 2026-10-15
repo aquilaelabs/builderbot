@@ -282,7 +282,10 @@ def run(me, req, project):
     # (B148): the controller does it in a repository of its own and
     # hands the tree's half back to the node's bb as `apply`.
     if argv[0] == "git" and argv[1:2] and argv[1] in gitrelay.VERBS:
-        r = gitrelay.run(project, str(cwd), argv[1], argv[2:])
+        # The project's git policy may turn the hold off (the Git view's
+        # "Hold a push that looks sensitive"): the push then goes unread.
+        hold = prefs.get(project)["gitpol"].get("scan") != "off"
+        r = gitrelay.run(project, str(cwd), argv[1], argv[2:], scan=hold)
         if "error" in r:
             return r, 400
         if r.get("held"):

@@ -372,7 +372,8 @@ operator's to link; say so and commit locally. A push whose
 lines look like a secret or something private (a token, a key, a password,
 an address) is held: the person reads those lines on the bell and approves
 or denies while `bb git push` waits, and an approved line is not asked about
-again until it changes. What CI
+again until it changes; a project whose policy turns the hold off (`bb git
+policy` says) pushes without it. What CI
 printed is `bb ci-log` (`--list` for the runs), failed jobs' ends first. The
 controller looks at a project's CI once a day (a moving runner label, an
 action a major behind, a red main branch, GitHub's own notices), and `bb

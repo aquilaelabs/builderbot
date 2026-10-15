@@ -1677,7 +1677,10 @@ them whole, each with its file and line, Approve pushes and Deny drops it,
 and `bb git push` waits on the answer the way `bb root run` does. The Git
 view's Push shows the same lines in a confirm. An approved line in a file
 is okayed for that project (`/config/pushok.json`) and passes from then on;
-a line that changes is asked about again. The **only on `<host>`** fold says of each branch
+a line that changes is asked about again. The hold is the third answer of
+the project's git policy, **Hold a push that looks sensitive**: off, a
+session's push goes without being read, and the Git view's confirm still
+shows what it saw. The **only on `<host>`** fold says of each branch
 whether `main` already has every commit on it, and offers **Delete on
 `<host>`** for the ones where it does, which is the only case where removing
 a branch there can lose nothing. **Revert** and **Branch here**

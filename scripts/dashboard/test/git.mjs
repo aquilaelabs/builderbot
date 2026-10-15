@@ -795,6 +795,23 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      `the Git view's Push shows the same lines in its confirm (${(pv.confirm || pv.error || '').slice(0, 60)})`);
   const pv2 = await act('push', { confirmed: true });
   ok(pv2.ok && top() === 'rotated', `...and confirmed, it pushes and okays them (${JSON.stringify(pv2).slice(0, 60)})`);
+  // The project's policy can turn the hold off (the operator, 15 Oct): a
+  // session's push then goes without being read. Asked as a dry run and the
+  // commit taken back, so no line nobody okayed is left in the history a
+  // later push to another remote would send.
+  // Put together here so this file's own line is not one the scan holds.
+  writeFileSync(`${B}/secrets.env`, `GITHUB_TOKEN=${'ghp' + '_'}${'0123456789abcdef'.repeat(3)}\n`);
+  git('add', 'secrets.env'); git('commit', '-q', '-m', 'unheld');
+  const heldDry = await relay(['git', 'push', '--dry-run', 'origin', cur]);
+  const off = await post('/api/prefs', { project: 'beta', gitpol: { scan: 'off' } });
+  const unheld = await relay(['git', 'push', '--dry-run', 'origin', cur]);
+  ok(heldDry.held && off.gitpol?.scan === 'off' && off.gitpol?.push === 'allow' && unheld.code === 0 && !unheld.held,
+     `with the hold off the same line goes without asking (${JSON.stringify(unheld).slice(0, 70)})`);
+  ok(/hold a sensitive push: off/.test(bb('git', 'policy')), '...and bb git policy says the hold is off');
+  ok((await post('/api/prefs', { project: 'beta', gitpol: { scan: 'allow' } })).error, '...and the hold takes hold or off, nothing else');
+  await post('/api/prefs', { project: 'beta', gitpol: { scan: 'hold' } });
+  if (heldDry.held) await post('/api/phone', { action: 'deny', id: heldDry.held });
+  git('reset', '-q', '--hard', 'HEAD~1');
   ok(stillNot.status === 403 && /its own branches/.test(stillNot.error || ''),
      '...while a branch that is only on the remote stays refused, since that dial names one ref');
   // Push rights hold on the relay itself: a read-only clone's refusing hook
@@ -957,11 +974,11 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await page.waitForFunction(() => {
     const el = document.querySelector('.nb .nbview[data-view="git"]');
     return el && el.querySelector('[data-gitaskfile]') && el.querySelector('#gitDetail [data-gitaskcommit]')
-      && el.querySelectorAll('[data-gitaskbranch]').length >= 1 && el.querySelectorAll('[data-gitpol]').length === 2
+      && el.querySelectorAll('[data-gitaskbranch]').length >= 1 && el.querySelectorAll('[data-gitpol]').length === 3
       && el.querySelector('#gitPolApply')?.disabled === true;
   }, null, { timeout: 10000 }).catch(() => {});
   const v = await look();
-  ok(v.file && v.commit && v.branch >= 1 && v.pol === 2 && v.apply === true,
+  ok(v.file && v.commit && v.branch >= 1 && v.pol === 3 && v.apply === true,
      `the view offers Send to Claude on a change, a commit and a branch, and the policy with its Apply asleep (${JSON.stringify(v)})`);
   // Every Send to Claude asks first (the operator, 6 Oct): what it sends is
   // a prompt Claude starts on at once. Answered no here, so nothing goes.
