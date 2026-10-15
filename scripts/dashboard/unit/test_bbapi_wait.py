@@ -76,6 +76,18 @@ class Wait(unittest.TestCase):
         self.assertEqual((st, got), (200, {"ok": True}))
         self.assertFalse(self.gate()["ok"], "the gate was told the moment nothing answered")
 
+    def test_the_whole_budget_is_waited_not_only_the_steps(self):
+        # B772: the steps add up to 95s, and a longer budget was cut there.
+        os.environ["BB_CONTROLLER_WAIT"] = "2"
+        bbapi.WAIT_STEPS = (0.2, 0.2)
+
+        def up_later():
+            time.sleep(0.8)
+            self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), Ok)
+            self.srv.serve_forever()
+        threading.Thread(target=up_later, daemon=True).start()
+        self.assertEqual(bbapi.request("/api/status"), (200, {"ok": True}))
+
     def test_no_route_to_the_host_is_waited_out_too(self):
         # B771: the gap while builderbot-dev's container was replaced answered
         # EHOSTUNREACH, and every call in it failed at once.

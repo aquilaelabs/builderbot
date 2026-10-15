@@ -28,6 +28,7 @@ import errno
 import secrets
 import hashlib
 import http.client
+import itertools
 import json
 import os
 import ssl
@@ -162,7 +163,9 @@ def request(path, body=None, auth="", method="", timeout=30):
     except ValueError:
         budget = 90
     waited, said = 0, False
-    for step in (*WAIT_STEPS, None):
+    # The steps, then the last one again until the budget is spent (B772:
+    # they add up to 95s, and a longer BB_CONTROLLER_WAIT was cut there).
+    for step in itertools.chain(WAIT_STEPS, itertools.repeat(WAIT_STEPS[-1])):
         st, got, again = _request_once(path, body, auth, method, timeout)
         if not again:
             if said and st is not None:
@@ -172,7 +175,7 @@ def request(path, body=None, auth="", method="", timeout=30):
             return st, got
         if not said:
             _gate_down()
-        if step is None or waited + step > budget:
+        if waited + step > budget:
             break
         if not said:
             print(f"[builderbot] the controller is not answering (restarting after an update?): "
