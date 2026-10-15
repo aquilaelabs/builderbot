@@ -85,6 +85,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => railGo('home')),
     readyWhen: '.hometab .hometiles .tile',
   },
+  // The chat, the dock's Chat tab (R250 step 2): the list, then the page's
+  // rules where they apply to a body in the dock.
+  chat: {
+    open: () => page.evaluate(() => openChatTab()),
+    readyWhen: '.chattab .chatlist .chatrow, .chattab .chatlist .hint',
+  },
   // Sessions, a page of its own (R250 step 1): the table, or the hint on a
   // box with none running.
   sessions: {
@@ -1157,6 +1163,10 @@ for (const kind of kinds){
   };
   for (const kind of tabKinds){
     if (!DRIVERS[kind]) continue;
+    // A dock tab (the chat, R250 step 2) is not a page brought to the front
+    // over another in the same pane: it is the dock's body, which slides up
+    // with the dock, and pressing it while it is in front puts the dock down.
+    if (await page.evaluate(k => slotFor({kind: k}) === 1, kind)) continue;
     const r = await arrive(kind, kind === 'projects' ? 'notebook:roadmap' : 'projects');
     ok(r.ok, `[${kind}] brought to the front, its first frame is its own ground and only its content fades in (${r.said})`);
   }

@@ -26,19 +26,17 @@ const KEYS = [
 // time the viewport crossed the phone breakpoint. They just live here now, at
 // every width: one DOM, one set of handlers, and no breakpoint to be on the
 // wrong side of.
-let showMacros = false, showChat = false;
+let showMacros = false;
 
 // One panel at a time on the phone: opening one closes the others.
 function mobPanel(which){
-  const on = {keys: showKeys, macros: showMacros, chat: showChat}[which];
+  const on = {keys: showKeys, macros: showMacros}[which];
   // The two panels always take turns: they are the same strip of space. The
   // keys row only joins that trade on a phone, where the three of them plus
   // a terminal do not fit, on a desktop it stays where it was put.
   if (which === "keys") showKeys = !on;
   else if (isPhone()) showKeys = false;
   showMacros = which === "macros" ? !on : false;
-  showChat = which === "chat" ? !on : false;
-  if (showChat) loadChat();               // open on something, not on "loading…"
   render();
 }
 
@@ -146,25 +144,15 @@ function drawKeys(){
   const mm = $("mMacros");
   mm.classList.toggle("on", showMacros);
   setHidden(mm, !term);
-  const mc = $("mChat");
-  mc.classList.toggle("on", showChat);
-  // Sessions is a page (R250) and Chat a tab on the dock's line (R218 step
-  // 4): the foot bar keeps what is about the terminal in front, Keys and
-  // Commands, and is not drawn with nothing in it.
-  setHidden(mc, true);
+  // Sessions is a page and Chat the dock's tab (R250): the foot bar keeps
+  // what is about the terminal in front, Keys and Commands, and is not
+  // drawn with nothing in it.
   setHidden($("mobar"), mk.hidden && mm.hidden);
-  // The dot is the whole reason the counts ride the status poll: a chat you
-  // have to open to discover is one nobody opens.
-  const waiting = Object.values(state?.chat?.unread || {}).reduce((a, b) => a + b, 0);
-  mc.classList.toggle("unread", waiting > 0);
-  setAttr(mc, "aria-description", waiting ? `${waiting} unread` : null);
-  drawChat();
   // One panel at a time: whichever is opening slides, and any that is
   // closing in the same breath swaps out under it (see slidePanel).
   // Commands closes with the keys when the tab underneath is not a shell: a
   // flyout of things to type, over something that cannot be typed into.
-  const want = [[el, on], [$("macpanel"), showMacros && term],
-                [$("chatpanel"), showChat]];
+  const want = [[el, on], [$("macpanel"), showMacros && term]];
   const opener = want.find(([p, s]) => s && p.dataset.shown !== "1");
   const landed = opener ? slidePanel(opener[0], true) : null;
   for (const [p, s] of want) if (p !== opener?.[0]) slidePanel(p, s, landed);

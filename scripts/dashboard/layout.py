@@ -49,7 +49,7 @@ def configure(*, state, write_json, lock):
 # report as a document tab beside the notebook's own view of it.
 TAB_KINDS = {"term", "toolchains", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "storage",
              "nodes", "settings", "jobs", "users", "profile", "phone", "runner", "home", "notices",
-             "sessions"}
+             "sessions", "chat"}
 
 
 def _layouts():

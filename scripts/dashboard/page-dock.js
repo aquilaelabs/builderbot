@@ -31,8 +31,9 @@ function dockKeep(){
   }catch(e){ /* private mode */ }
 }
 
-// A terminal is the dock's; every other tab is a page.
-const slotFor = t => t?.kind === "term" ? 1 : 0;
+// A terminal and the chat are the dock's (R250 step 2); every other tab is a
+// page.
+const slotFor = t => t?.kind === "term" || t?.kind === "chat" ? 1 : 0;
 
 // Put a tab where it belongs and give it the keyboard: a terminal brings the
 // dock up.
@@ -99,7 +100,7 @@ function dockToggle(open){
 // and the chevron.
 function dockBar(){
   const cur = panes[1], names = tabLabels();
-  const terms = tabs.filter(t => slotFor(t) === 1);
+  const terms = tabs.filter(t => t.kind === "term");
   const waiting = Object.values(state?.chat?.unread || {}).reduce((a, b) => a + b, 0);
   // A project's terminal wears its color, as its tab on the strip did.
   const tabsHtml = terms.map(t => { const pc = colorAttrs(projectColor(tabProject(t)));
@@ -108,14 +109,15 @@ function dockBar(){
         isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id) || tabLabel(t))}</button>
       <button type="button" class="ic dx" data-min="${esc(t.id)}" aria-label="minimize ${esc(names.get(t.id) || tabLabel(t))}"
         title="minimize: it keeps running, and Sessions reopens it">−</button></span>`; }).join("");
-  const t = tabOf(cur);
+  const t = tabOf(cur), chatOn = t?.kind === "chat";
   return `<div class="dockline" role="tablist" aria-label="terminals and the chat">${tabsHtml}
-      <button type="button" class="dtab dchat${showChat ? " on" : ""}${waiting ? " unread" : ""}" data-dchat
-        title="${waiting ? `${waiting} unread` : "the project's chat"}">Chat</button>
+      <span class="dtab dchat${chatOn ? " on" : ""}${waiting ? " unread" : ""}"><button type="button" class="dlbl" data-dchat
+        role="tab" aria-selected="${chatOn && dockUp}" title="${waiting ? `${waiting} unread` : "people and the projects' channels"}">Chat${
+        waiting ? ` <span class="pill">${waiting}</span>` : ""}</button></span>
       ${mayShell() ? `<button type="button" class="ic dnew" data-dnew aria-label="a new shell" title="a new terminal at /workspace">+</button>` : ""}
     </div>
     <span class="sp"></span>
-    ${t && dockUp && !isPhone() ? `<button type="button" class="ic" data-pop="${esc(t.id)}" title="${t.popped
+    ${t?.kind === "term" && dockUp && !isPhone() ? `<button type="button" class="ic" data-pop="${esc(t.id)}" title="${t.popped
         ? "reattach: bring the terminal back into this page" : "open in its own window"}">${t.popped ? "⧈" : "⧉"}</button>` : ""}
     <button type="button" class="ic dtoggle" data-dtoggle aria-expanded="${dockUp && !!t}"
       aria-label="${dockUp ? "put the dock down" : "pull the dock up"}">${dockUp && t ? "▾" : "▴"}</button>`;
@@ -140,7 +142,7 @@ function wireDockBar(bar){
     const t = tabOf(b.dataset.pop);
     if (t?.popped) reattachTab(t.id, e); else popOut(b.dataset.pop, e);
   });
-  bar.querySelector("[data-dchat]")?.addEventListener("click", e => { e.stopPropagation(); mobPanel("chat"); });
+  bar.querySelector("[data-dchat]")?.addEventListener("click", e => { e.stopPropagation(); openChatTab(); });
   bar.querySelector("[data-dnew]")?.addEventListener("click", e => { e.stopPropagation(); newShell(""); });
   bar.querySelector("[data-dtoggle]")?.addEventListener("click", e => { e.stopPropagation(); dockToggle(); });
   // The dock's top edge is its handle: dragged, the height follows the

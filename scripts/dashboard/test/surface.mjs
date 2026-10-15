@@ -55,7 +55,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyN
   'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hideTab',
   'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
   'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'nodeContainerNetRow', 'nodePortsLocalRow', 'nodeHostRootRow', 'nodeReachRow', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'nodeGpu', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'profileLogs', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeSessNetRow', 'nodeSyncRow', 'nodeHostRow', 'nodeDoorRow', 'openUnenroll', 'nodeProjects', 'nodeProjectsSection', 'nodeProjectRemove', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'groupNodeOptions', 'openRelocate', 'rlSay', 'closeRelocate', 'rlSubmit', 'myProjectNames', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmOwnerLine', 'dmMoveLine', 'dmNginxLine', 'dmSetGrid', 'dmRowDirty', 'dmGroupsHtml', 'dmOtherRowsHtml', 'dmTestLine', 'dmBuilt', 'jobWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
-  'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
+  'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat', 'openChatTab', 'renderChatInto', 'drawChatList', 'drawChatThread',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionRows', 'liveRefresh',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',

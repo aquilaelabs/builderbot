@@ -691,13 +691,15 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     // When each was last here (the operator, 4 Oct): a time for everybody,
     // and the list says it beside the name.
     ok(st.chat.seen && st.chat.seen.test > 0, `...and when each was last here (${JSON.stringify(st.chat.seen)})`);
-    const chatWas = await page.evaluate(() => showChat);
-    await page.evaluate(() => { if (!showChat) mobPanel('chat'); chatWith = null; refresh(); });
+    // The chat is the dock's Chat tab (R250 step 2): opened from the line,
+    // the list beside the conversation.
+    await page.evaluate(() => { chatWith = null; document.querySelector('[data-dchat]')?.click(); refresh(); });
     await page.waitForFunction(() => /\((here now|.*ago|never signed in)\)/.test(
-      document.querySelector('#chat .chatrow[data-who] .chatseen')?.textContent || ''), null, { timeout: 15000 });
-    ok(true, 'the chat list says beside each name when they were last here');
-    // ...and the panel left as it was found: the next check opens it itself.
-    if (!chatWas) await page.evaluate(() => { if (showChat) mobPanel('chat'); });
+      document.querySelector('.chattab .chatlist .chatrow[data-who] .chatseen')?.textContent || ''), null, { timeout: 15000 });
+    const dk = await page.evaluate(() => ({ kind: tabOf(panes[1])?.kind, up: dockUp,
+      on: document.querySelector('.dockline .dtab.dchat')?.classList.contains('on'), panel: !!document.getElementById('chatpanel') }));
+    ok(dk.kind === 'chat' && dk.up && dk.on && !dk.panel,
+       `Chat on the dock's line opens the chat in the dock, the list saying beside each name when they were last here (${JSON.stringify(dk)})`);
     // Reading it clears it, which is the only thing "seen" has to mean.
     await chat(other, { action: 'read', who: 'test' });
     const after = await (await bare('/api/status', { headers: other })).json();
@@ -710,7 +712,7 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     // already there.
     {
       for (let i = 0; i < 40; i++) await chat(owner, { action: 'send', who: 'sharer', text: `an older line ${i}` });
-      await page.evaluate(() => { if (!showChat) mobPanel('chat'); chatOpen({ who: 'sharer' }); });
+      await page.evaluate(() => { if (tabOf(panes[1])?.kind !== 'chat' || !dockUp) openChatTab(); chatOpen({ who: 'sharer' }); });
       await page.waitForFunction(() => document.querySelectorAll('#chatlog .chatmsg').length >= 40, null, { timeout: 15000 });
       const up = await page.evaluate(() => { const l = document.getElementById('chatlog'); l.scrollTop = 0;
                                              return { top: l.scrollTop, tall: l.scrollHeight > l.clientHeight }; });
@@ -724,7 +726,12 @@ print(u.remove("second"))`], { encoding: 'utf8' });
       await page.waitForFunction(() => /the newest line/.test(document.getElementById('chatlog')?.textContent || ''), null, { timeout: 10000 });
       ok(await page.evaluate(() => { const l = document.getElementById('chatlog'); return l.scrollTop + l.clientHeight >= l.scrollHeight - 8; }),
          '...while one at the end is shown the newest message');
-      await page.evaluate(() => { chatWith = null; mobPanel('chat'); drawChat(); });
+      // At a desk the list stays beside the open conversation, which is
+      // marked in it.
+      ok(await page.evaluate(() => { const l = document.querySelector('.chattab .chatlist'), r = l?.querySelector('.chatrow.on');
+                                     return !!r && r.dataset.who === 'sharer' && getComputedStyle(l).display !== 'none'; }),
+         '...and at a desk the list stays beside it, the open one marked');
+      await page.evaluate(() => { chatWith = null; drawChat(); dockToggle(false); });
     }
 
     // The prompt relay, driven the way Claude Code drives it.

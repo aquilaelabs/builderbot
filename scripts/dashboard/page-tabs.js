@@ -218,6 +218,11 @@ const TABKINDS = {
   home:     { multi: false, label: () => "Home",
               render: (i) => renderHomeInto(i), live: "always",
               open: () => homeOpen() },
+  // The chat (R250 step 2): the dock's Chat tab, the list and the open
+  // conversation, read on open and on the chat revision.
+  chat:     { multi: false, label: () => "Chat",
+              render: (i) => renderChatInto(i), live: "always",
+              open: () => loadChat() },
   // Sessions (R250 step 1): the status poll's sessions, painted only when
   // they changed.
   sessions: { multi: false, label: () => "Sessions",

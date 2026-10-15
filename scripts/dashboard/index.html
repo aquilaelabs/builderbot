@@ -3652,10 +3652,10 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .dockline .dtab .dlbl{display:inline-flex;align-items:center;gap:6px;background:none;border:0;min-height:32px;
   padding:2px 8px;font:var(--f-ui);color:inherit;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dockline .dtab .dx{min-height:32px;min-width:30px;border:0;background:none}
-.dockline button.dtab.dchat{min-height:34px;padding:2px 10px;font:var(--f-ui)}
-.dockline .dtab.dchat.unread{position:relative}
-.dockline .dtab.dchat.unread::after{content:"";position:absolute;top:3px;right:3px;width:7px;height:7px;
-  border-radius:50%;background:var(--accent)}
+/* Chat is a tab on the line like a terminal's (R250 step 2), its unread
+   count a pill in it rather than a dot to decode. */
+.dockline .dtab.dchat .dlbl{padding:2px 10px}
+.dockline .dtab.dchat.unread{color:var(--ink)}
 .pane .bar.dockbar .ic{min-height:30px;min-width:30px}
 @media(max-width:900px){
   .panes.dockup .pane:not(.dock){display:none}
@@ -3726,11 +3726,31 @@ body.booting .pane>.loading{margin:auto}
    takes what it needs; the input picks up the global field skin like every
    other control, so nothing is restyled here beyond the layout. */
 .pane .slot:has(.consbar){flex-direction:column}
-/* The chat flyout, in the same box the other three use; it is one strip of
-   space and they take turns (see slidePanel). Only the layout is here: the
-   input picks up the global field skin and .row/.pill/.dot are the page's
-   own, so a chat row looks like every other row on the dashboard. */
-#chat{display:flex;flex-direction:column;min-height:0;height:100%}
+/* The chat, the dock's Chat tab (R250 step 2): the people and the project
+   channels in a column beside the open conversation at a desk, one at a
+   time on a phone (the list until one is picked, then the conversation with
+   ‹ all back to it). Only the layout is here: the input picks up the global
+   field skin and .row/.pill/.dot are the page's own, so a chat row looks
+   like every other row on the dashboard. */
+.pane .doc:has(> .chattab){overflow:hidden;padding:0}
+/* The dock's width, as a terminal takes it: a page's reading cap
+   (.pane .doc > *) left the conversation short of the dock's edge. */
+.pane .doc > .chattab{max-width:none}
+.chattab{display:grid;grid-template-columns:minmax(13rem,18rem) minmax(0,1fr);height:100%;min-height:0}
+.chattab .chatlist{overflow:auto;min-height:0;border-right:var(--hair) solid var(--line);
+  -webkit-overflow-scrolling:touch}
+.chattab .chatlist .chathead{border-bottom:0;padding:var(--row-y) var(--row-x) 4px;color:var(--dim)}
+.chatthread{display:flex;flex-direction:column;min-height:0;height:100%}
+.chatthread > .chatpick{margin:auto;padding:var(--row-y) var(--row-x)}
+.chatrow.on{background:var(--panel)}
+.chatrow.on .grow{color:var(--accent)}
+#chatBack{display:none}
+@media(max-width:900px){
+  .chattab{grid-template-columns:minmax(0,1fr)}
+  .chattab .chatlist{border-right:0}
+  .chattab.open .chatlist,.chattab:not(.open) .chatthread{display:none}
+  #chatBack{display:inline-flex}
+}
 .chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   background:none;border:0;border-bottom:var(--hair) solid var(--line);padding:8px 10px}
 .chatrow:hover{background:var(--panel)}
@@ -3759,11 +3779,6 @@ body.booting .pane>.loading{margin:auto}
 .chatbar{display:flex;gap:6px;padding:6px;border-top:var(--hair) solid var(--line)}
 .chatbar input{flex:1;min-width:0}
 @media(max-width:900px){ @supports (-webkit-touch-callout:none){ .chatbar input{font-size:16px} } }
-/* Something is waiting. The same green the state lights use, as a corner
-   rather than a badge: the bar is four buttons wide on a phone. */
-#mChat.unread::after{content:"";position:absolute;top:4px;right:6px;
-  width:7px;height:7px;border-radius:50%;background:var(--accent)}
-#mChat{position:relative}
 .consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
   border-top:var(--hair) solid var(--line);align-items:center}
 .consbar .consin{flex:1;min-width:0}
@@ -5384,13 +5399,9 @@ body.booting .pane>.loading{margin:auto}
       <div class="lab">custom commands</div>
       <div class="macros" id="custom"></div>
     </div>
-    <div class="mpanel" id="chatpanel">
-      <div id="chat"><div class="loading">loading…</div></div>
-    </div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>
       <button id="mMacros">» Commands</button>
-      <button id="mChat">💬 Chat</button>
     </div>
   </div>
 </main>
@@ -5652,7 +5663,6 @@ window.addEventListener("blur", () => {
 window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
 $("mKeys").onclick     = () => mobPanel("keys");
 $("mMacros").onclick   = () => mobPanel("macros");
-$("mChat").onclick     = () => mobPanel("chat");
 
 // ---- chat ------------------------------------------------------------
 //
@@ -6105,7 +6115,7 @@ onRev("nodes", () => {
 onRev("nodes.sample", () => { if (shown("nodes")) loadNodes(); });
 // A message between accounts (R218 step 10): the chat open on a conversation
 // reads it, and nothing is read while it is shut.
-onRev("chat", () => { if (showChat && chatWith) loadChat(); });
+onRev("chat", () => { if (chatWith && tabOf(panes[1])?.kind === "chat") loadChat(); });
 // The queue moved: a job taken, a step, a result, a cancel. Same rule: an
 // open Jobs tab refetches, and nothing about jobs rides the status poll.
 onRev("jobs", () => {
