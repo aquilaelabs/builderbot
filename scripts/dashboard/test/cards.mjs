@@ -1363,12 +1363,16 @@ await page.click('#rnCancel');
 
 // An invitation waiting on this account sits in the bell with its answer,
 // above the page's own notes, like every other thing waiting on you.
+// The poll held for it (B750): one landing between the write and the read
+// put the server's empty list back.
+await holdPoll(page);
 await page.evaluate(() => { state.invites = [{ id: 7, project: 'beta', by: 'ada', at: Math.floor(Date.now() / 1000) }];
   toggleBell(true); drawBell(); });
 ok(await page.$eval('#bellPanel', e => /invited to beta/.test(e.textContent) && /ada invited you to work on beta/.test(e.textContent))
    && await page.$('#bellPanel [data-binvite="7"][data-yes="1"]') !== null
    && await page.$('#bellPanel [data-binvite="7"][data-yes="0"]') !== null,
    'an invitation to a project is in the bell with Accept and Decline');
+await freePoll(page);
 await page.evaluate(() => { state.invites = []; drawBell(); toggleBell(false); });
 
 // The chain, on a project that already has one. alpha can push (the
@@ -2258,9 +2262,17 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   const readsEnd = await page.$eval('#rnReads', l => [l.classList.contains('scrollup'), l.classList.contains('scrolldown')]);
   ok(reads.room > 0 && reads.down && !reads.up && /inset/.test(reads.shadow) && readsEnd[0] && !readsEnd[1],
      `a list that scrolls, the project's Reads, darkens the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
-  // To the end and kept there while the dialog fills (B741): scrolled once,
-  // a section that landed after the scroll left more below it, and the
-  // bottom shadow was right to stay. The classes follow on the next frame.
+  // To the end once the dialog has stopped growing (B741, B749): its
+  // sections fill in after it opens (the Claude section's content is a
+  // thousand pixels that land late), so a wait that succeeded at the first
+  // height was read after the rest had arrived, with more below. Its height
+  // held still across three polls first; then to the end and kept there,
+  // the classes following on the next frame.
+  await page.waitForFunction(sel => { const l = document.querySelector(sel);
+    if (!l) return false;
+    const h = l.scrollHeight, w = (window.__rnH = window.__rnH || []);
+    w.push(h); if (w.length > 3) w.shift();
+    return w.length === 3 && w.every(x => x === h); }, box, { timeout: 15000, polling: 250 }).catch(() => {});
   await page.waitForFunction(sel => { const l = document.querySelector(sel);
     if (!l) return false;
     l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll'));
