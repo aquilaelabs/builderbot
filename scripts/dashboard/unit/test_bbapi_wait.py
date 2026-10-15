@@ -3,6 +3,7 @@ again with backoff for up to BB_CONTROLLER_WAIT seconds, since the request
 never reached a server; the session's gate is told at once; a hook, at 0,
 is answered at once; and a POST the server may have read is never sent
 twice, where a GET it hung up on is asked again."""
+import errno
 import http.server
 import json
 import os
@@ -74,6 +75,24 @@ class Wait(unittest.TestCase):
         st, got = bbapi.request("/api/status")
         self.assertEqual((st, got), (200, {"ok": True}))
         self.assertFalse(self.gate()["ok"], "the gate was told the moment nothing answered")
+
+    def test_no_route_to_the_host_is_waited_out_too(self):
+        # B771: the gap while builderbot-dev's container was replaced answered
+        # EHOSTUNREACH, and every call in it failed at once.
+        os.environ["BB_CONTROLLER_WAIT"] = "5"
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), Ok)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        real, tries = bbapi._conn, []
+
+        def gap(timeout):
+            tries.append(1)
+            if len(tries) < 3:
+                raise OSError(errno.EHOSTUNREACH, "No route to host")
+            return real(timeout)
+        bbapi._conn = gap
+        self.addCleanup(setattr, bbapi, "_conn", real)
+        self.assertEqual(bbapi.request("/api/status"), (200, {"ok": True}))
+        self.assertEqual(len(tries), 3)
 
     def test_a_hook_is_answered_at_once(self):
         os.environ["BB_CONTROLLER_WAIT"] = "0"

@@ -24,6 +24,7 @@ the lib directory beside bb (BB_LIB) so the checkout's copy runs with the
 checkout's bb.
 """
 import base64
+import errno
 import secrets
 import hashlib
 import http.client
@@ -120,6 +121,8 @@ def call(path, body=None, auth="", method="", timeout=30):
 # failure and changed course. Ninety seconds by default; a hook, which runs
 # under a timeout of its own, sets BB_CONTROLLER_WAIT=0.
 WAIT_STEPS = (2, 3, 5, 5, 10, 10, 15, 15, 15, 15)
+# A connection that reached no server, beside a refused one: worth asking again.
+UNREACHED = frozenset({errno.EHOSTUNREACH, errno.ENETUNREACH})
 
 
 def _gate_down():
@@ -150,8 +153,9 @@ def request(path, body=None, auth="", method="", timeout=30):
     come back as {"error": sentence}, and telling them apart by the wording
     is how bb-gate came to report an expired token as BuilderBot being down.
 
-    A refused connection is waited out (R251): the request never reached a
-    server, so asking again cannot do anything twice. So is a GET the server
+    A refused connection, or one that found no route to the host (B771),
+    is waited out (R251): the request never reached a server, so asking
+    again cannot do anything twice. So is a GET the server
     hung up on before answering; a POST it may have read is not sent again."""
     try:
         budget = max(0, int(os.environ.get("BB_CONTROLLER_WAIT", "90")))
@@ -224,7 +228,14 @@ def _request_once(path, body, auth, method, timeout):
         return None, {"error": str(e)}, True
     except http.client.RemoteDisconnected as e:
         return None, {"error": str(e)}, (method or ("POST" if body is not None else "GET")) == "GET"
-    except (OSError, http.client.HTTPException) as e:
+    except OSError as e:
+        # The gap while a controller's container is replaced can answer "no
+        # route to host" rather than a refusal (B771): no server was reached
+        # either way, so it is waited out the same.
+        if e.errno in UNREACHED:
+            return None, {"error": str(e)}, True
+        return None, {"error": str(e)}, False
+    except http.client.HTTPException as e:
         return None, {"error": str(e)}, False
     if fresh and fresh.startswith("bbs_"):
         keep_token(fresh)
