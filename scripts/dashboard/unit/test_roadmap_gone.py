@@ -94,6 +94,23 @@ class Gone(unittest.TestCase):
         self.assertEqual(([st["text"] for st in done["steps"]], done.get("info")), (["only step"], "item note"))
         self.assertTrue(roadmap.set_info("alpha", rid, "step note", step=0).get("ok"))
 
+    def test_a_finished_item_reopens_as_it_was(self):
+        # More work found on a finished item is its own step, not a new item
+        # naming the old one (the operator, 15 Oct).
+        rid = roadmap.add("alpha", "plan", by="claude", steps=["one"])["item"]["id"]
+        roadmap.set_info("alpha", rid, "a note", step=0)
+        roadmap.step_done("alpha", rid, 0)
+        r = roadmap.reopen("alpha", rid, by="claude")
+        self.assertTrue(r.get("ok"), r)
+        row = next(x for x in roadmap.items("alpha") if x["id"] == rid)
+        self.assertEqual((row["steps"][0]["text"], row["steps"][0].get("info"), bool(row["steps"][0].get("done"))),
+                         ("one", "a note", True))
+        self.assertFalse(any(x["id"] == rid for x in roadmap.finished("alpha")), "no longer under Finished")
+        self.assertTrue(roadmap.add_step("alpha", rid, "the walk found later").get("ok"))
+        self.assertIn("is on the list", roadmap.reopen("alpha", rid)["error"])
+        roadmap.step_done("alpha", rid, 1)
+        self.assertTrue(any(x["id"] == rid for x in roadmap.finished("alpha")), "finished again by its new last step")
+
     def test_finished_items_outlive_the_trim(self):
         # B768: the log keeps its last MAX_HISTORY events and every finished
         # item, since a done event is the finished item.

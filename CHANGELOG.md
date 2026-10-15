@@ -154,6 +154,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a node, a container's shell runs on the agent's own container terminal (port 7683, open to the controller only), as the docker account, so the session account stays off docker; the agent opens that port on nodes provisioned before it (7470faf)
 - Home: the landing page, with tiles across the install (nodes online, containers running, jobs running and failed today, sessions open, updates due, CI red), each a link into its page, the bell's attention rows, the last ten jobs and the pinned projects at a glance (e41cdf5)
 - Notifications: toasts stack at a corner with an icon and a ×, stay under the pointer and are kept for your account; a job started from the page follows itself to its end; the bell is a short list, and See all opens a Notifications page of asks and history (c029be8)
+- bb roadmap reopen N puts a finished item back on the list with its steps and notes, so more work found on it becomes its own step rather than a new item naming the old one (11c1373)
 
 ### Changed
 

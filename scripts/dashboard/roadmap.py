@@ -922,7 +922,8 @@ def finished(project, limit=None):
     (an older one). One entry per item, the newest
     tick of it, and the Roadmap tab shows them below the shelved ones,
     hidden until asked for."""
-    seen, out = set(), []
+    # One reopened since is on the list again, not under Finished.
+    seen, out = {_int(r.get("id")) for r in items(project)}, []
     log = history(project)
     for e in log:
         if e.get("act") != "done" or e.get("step") is not None:
@@ -942,6 +943,35 @@ def finished(project, limit=None):
         out.append(row)
     n = _int(limit)
     return out[:n] if n else out
+
+
+def reopen(project, item_id, by="you", who=""):
+    """Put a finished item back on the list as its row was, its steps and
+    details with it: for more work found on it after it was ticked off, which
+    used to become a new item naming the old one, a split nobody can follow
+    back (the operator, 15 Oct). Above the shelf, like an item just added."""
+    item_id = _int(item_id)
+    if item_id is None:
+        return {"error": "not an item"}
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        if _find(rows, item_id):
+            return {"error": f"R{item_id} is on the list"}
+        if sum(1 for r in rows if not r.get("shelved")) >= MAX_OPEN:
+            return {"error": f"{MAX_OPEN} open items is the limit: finish, park or drop some first"}
+        done = _finished_row(d, project, item_id)
+        if done is None:
+            return _gone(d, project, item_id)
+        row = {k: v for k, v in copy.deepcopy(done).items() if k not in ("done_at", "done_by")}
+        row.pop("shelved", None)
+        rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
+        d["projects"][project] = rows
+        _log(d, project, by, {"act": "reopen", "id": item_id, "text": row.get("text", "")})
+        _touch(d, project)
+        _credit(d, project, who)
+        save(d)
+    return {"ok": True, "item": row}
 
 
 def edit(project, item_id, text, step=None, by="you", was=None, who=""):
@@ -1720,6 +1750,8 @@ def verb(name, act, req, me, *, live, prefix):
                    why=field(req, "why"), was=was, who=who)
     elif act == "restore":
         r = restore(name, req.get("id"), at=req.get("at"), who=who)
+    elif act == "reopen":
+        r = reopen(name, req.get("id"), who=who)
     elif act == "shelve":
         # One direction for a session, the way `bb roadmap shelve` is on
         # the command line: parking something is a thing a session knows

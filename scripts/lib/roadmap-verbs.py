@@ -245,6 +245,14 @@ elif op == "restore":
     n = ident(rest[0]); fresh()
     r = roadmap.restore(proj, n, by="claude", who=_who); bail(r)
     print(f"put back {R(n)}: {r['item']['text']}")
+elif op == "reopen":
+    # A finished item back on the list, steps and details and all: more work
+    # found on it is its own step, not a new item naming the old one.
+    if not rest:
+        print("usage: bb roadmap reopen <n>", file=sys.stderr); sys.exit(1)
+    n = ident(rest[0]); fresh()
+    r = roadmap.reopen(proj, n, by="claude", who=_who); bail(r)
+    print(f"reopened {R(n)}: {r['item']['text']}")
 elif op in ("begin", "commit", "revert"):
     # Working something out is not a series of decisions the operator has to
     # read; it is arriving at one. The work still lands as it happens (hiding
@@ -487,7 +495,7 @@ else:
         sys.exit(1)
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
-          "rm N [WHY]|restore N|shelve N|unshelve N [WHY]|begin|commit|revert|pending|"
+          "rm N [WHY]|restore N|reopen N|shelve N|unshelve N [WHY]|begin|commit|revert|pending|"
           "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)

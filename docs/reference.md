@@ -311,6 +311,7 @@ bb roadmap            this project's roadmap: items are R1, R2, ...; bugs are B1
 bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned
 bb roadmap restore N  put a dropped one back from the history, as it was
+bb roadmap reopen N   put a finished one back on the list, steps and details and all
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap unshelve N [WHY]   ask for one back: held for a person on the project to approve
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
