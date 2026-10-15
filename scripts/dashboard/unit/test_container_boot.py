@@ -66,6 +66,22 @@ class Boot(unittest.TestCase):
         self.assertTrue(g([devapp.DOCKER, "update", "--memory", "1g", "web-1"]))
         self.assertTrue(g([devapp.DOCKER, "update", "--restart", "always;rm", "web-1"]))
 
+    def test_an_instance_of_several_services_is_stopped_together(self):
+        # B770: container_ctl names every container an instance means in one
+        # docker stop, and the guard took exactly one name, so bb devapp stop
+        # builderbot-dev was refused as a bug.
+        containers._targets = lambda name: [{"id": "c1", "name": "dev-ctl-1"}, {"id": "c2", "name": "dev-git-1"}]
+        built = []
+        devapp._run = lambda argv, timeout=None: built.append(argv) or {"code": 0, "out": ""}
+        for what in ("stop", "start", "restart"):
+            self.assertTrue(containers.container_ctl("dev", what).get("ok"))
+        self.assertEqual([a[1:] for a in built], [[w, "dev-ctl-1", "dev-git-1"] for w in ("stop", "start", "restart")])
+        g = devapp._guard
+        self.assertEqual([g(a) for a in built], ["", "", ""])
+        self.assertTrue(g([devapp.DOCKER, "stop"]))
+        self.assertTrue(g([devapp.DOCKER, "stop", "-t", "0", "web-1"]))
+        self.assertTrue(g([devapp.DOCKER, "stop", "web-1", "--rm"]))
+
     def test_boot_on_sets_the_policy_and_keeps_it_for_an_instance(self):
         containers._targets = lambda name: [self.rows[0]]
         r = containers.container_ctl("app-main-web-1", "boot-on")

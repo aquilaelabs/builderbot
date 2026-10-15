@@ -1116,13 +1116,13 @@ def _guard(argv):
                 for op in _DEVDATA_OPS):
             return ""
         return "a `docker run` this module did not build"
-    # Start, stop, restart and the log, each by SHAPE and one container at a
-    # time: the verb, its flags rebuilt here, and a name that looks like a
-    # name. Nothing else can ride along, because the argv is compared against
-    # what this module would have produced rather than scanned for something
-    # bad.
+    # Start, stop, restart and the log, each by SHAPE: the verb and names
+    # that look like names, one or an instance's several (container_ctl
+    # acts on every container the name means; B770). Nothing else can ride
+    # along, because each word is held to a name rather than scanned for
+    # something bad.
     if verb in _CTL_OK:
-        if len(argv) == 3 and _CTR_NAME.match(argv[2]):
+        if argv[2:] and all(_CTR_NAME.match(a) for a in argv[2:]):
             return ""
         return f"a `docker {verb}` this module did not build"
     # Start on boot (R122): the restart policies read for a list, and one set

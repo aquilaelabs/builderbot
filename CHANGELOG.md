@@ -554,6 +554,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb devapp remove waits for the container to come down and says so when it could not, instead of saying removed while it still runs (96acd79)
 - A finished roadmap item can still have its wording and its notes put right with bb roadmap edit and bb roadmap info: it stays under Finished, and only the verbs about doing the work say it is done (9d7fd89)
 - The Notifications page says how long ago each notice was said; every one read 'just now' (B769) (417bccd)
+- Stop, Start and Restart on a container instance with several services (bb devapp stop, the Containers page) act on all of them instead of being refused as a bug (B770) (669a57b)
 
 ### Security
 
