@@ -94,6 +94,16 @@ class Gone(unittest.TestCase):
         self.assertEqual(([st["text"] for st in done["steps"]], done.get("info")), (["only step"], "item note"))
         self.assertTrue(roadmap.set_info("alpha", rid, "step note", step=0).get("ok"))
 
+    def test_finished_items_outlive_the_trim(self):
+        # B768: the log keeps its last MAX_HISTORY events and every finished
+        # item, since a done event is the finished item.
+        old = roadmap.add("alpha", "old work", by="claude")["item"]["id"]
+        roadmap.tick("alpha", old)
+        for k in range(roadmap.MAX_HISTORY + 20):
+            roadmap.add("alpha", f"filler {k}", by="claude")
+            d = roadmap.load(); d["projects"]["alpha"] = []; roadmap.save(d)
+        self.assertTrue(any(x["id"] == old for x in roadmap.finished("alpha")))
+
     def test_a_dropped_one_and_one_never_there_say_so(self):
         rid = roadmap.add("alpha", "to drop", by="claude")["item"]["id"]
         roadmap.remove("alpha", rid, why="not needed", by="operator")

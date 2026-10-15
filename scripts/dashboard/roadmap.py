@@ -239,6 +239,18 @@ def _credit(d, project, who, kind="roadmap"):
 MAX_HISTORY = 300
 
 
+def _trim(h):
+    """The log kept to its last MAX_HISTORY events, less the finished items:
+    an item's done event IS the finished item (its row rides in it), and one
+    trimmed away left the Finished section and bb roadmap show without it
+    (B768). Kept whatever their age, as an archive is; the rest goes."""
+    if len(h) <= MAX_HISTORY:
+        return
+    cut = len(h) - MAX_HISTORY
+    keep = [e for e in h[:cut] if e.get("act") == "done" and e.get("step") is None]
+    h[:cut] = keep
+
+
 def _log(d, project, by, ev):
     """Record one event, in the history or in an open batch.
 
@@ -267,7 +279,7 @@ def _log(d, project, by, ev):
     # makes revert's guard work: it looks there for the operator's hand.
     h = d.setdefault("history", {}).setdefault(project, [])
     h.append(ev)
-    del h[:-MAX_HISTORY]
+    _trim(h)
 
 
 # ---- batches -------------------------------------------------------------
@@ -388,7 +400,7 @@ def commit(project):
         kept = _coalesce(b.get("events") or [])
         h = d.setdefault("history", {}).setdefault(project, [])
         h.extend(kept)
-        del h[:-MAX_HISTORY]
+        _trim(h)
         del d["batch"][project]
         save(d)
     return {"ok": True, "written": len(kept),
