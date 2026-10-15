@@ -32,6 +32,10 @@ function openToolchains(){
 // the driver's row here.
 function openToolchainsOn(id){
   tcNode = id; toolchains = null; tcTicked.clear(); tcDriverPick = "";
+  // A node this page has not listed yet (enrolled a moment ago, named by the
+  // bell before the poll said the nodes moved) is read for first, or tcPick
+  // took it for a retired one and showed another node (B754).
+  if (!(nodesList || []).some(n => n.id === id)) nodesStale = true;
   try{ localStorage.setItem("bb.tcnode", id); }catch(e){ /* private */ }
   openToolchains();
   loadToolchains();

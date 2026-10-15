@@ -3255,8 +3255,12 @@ ok(page.errors.length === 0,
                              en.id, { timeout: 15000 });
   await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 15000 });
   ok(true, '...and Show again brings them back');
+  // The node was enrolled through the API, so the page may not have listed
+  // it yet; the tab still opens on it, not on another (B754).
   await page.click(`#bellPanel [data-btc="${en.id}"]`);
-  await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: 15000 });
+  const went = await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: 15000 })
+    .then(() => '', async () => JSON.stringify({ want: en.id, ...await page.evaluate(() => ({ tcNode, bell: document.getElementById('bellPanel').hidden })) }));
+  ok(!went, `the bell's link names the node and shuts the bell${went ? ` (${went})` : ''}`);
   await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });
   ok(true, '...and its link opens the Toolchains tab on that node, Claude Code\'s row there');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
