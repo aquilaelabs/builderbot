@@ -33,6 +33,14 @@ class Gone(unittest.TestCase):
         again = roadmap.step_done("alpha", rid, 1)
         self.assertIn(f"R{rid} is done already", again["error"])
 
+    def test_a_plan_finished_by_its_last_step_keeps_its_steps(self):
+        # B767: the Finished section showed it as the words alone.
+        rid = roadmap.add("alpha", "a plan", by="claude", steps=["one", "two"])["item"]["id"]
+        roadmap.step_done("alpha", rid, 0)
+        roadmap.step_done("alpha", rid, 1)
+        done = next(r for r in roadmap.finished("alpha") if r["id"] == rid)
+        self.assertEqual([st["text"] for st in done["steps"]], ["one", "two"])
+
     def test_a_dropped_one_and_one_never_there_say_so(self):
         rid = roadmap.add("alpha", "to drop", by="claude")["item"]["id"]
         roadmap.remove("alpha", rid, why="not needed", by="operator")

@@ -1116,9 +1116,11 @@ def step_done(project, item_id, step, by="claude", note="", who=""):
         # off" until somebody typed that.
         if all(st.get("done") for st in steps):
             rows.remove(row)
+            # The whole row, as a tick's carries (B767): finished by its last
+            # step it showed under Finished as the words alone, its plan gone.
             return {"ok": True, "finished": True, "item": row,
                     "log": [ev, {"act": "done", "id": row["id"], "text": row["text"],
-                                 "steps": len(steps)}]}
+                                 "row": copy.deepcopy(row), "steps": len(steps)}]}
         return {"ok": True, "log": ev}
     return _edit(project, item_id, change, by, who=who)
 
