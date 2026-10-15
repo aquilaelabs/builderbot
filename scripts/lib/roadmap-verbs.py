@@ -171,12 +171,18 @@ elif op == "show":
         print("usage: bb roadmap show <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0])
     r = next((x for x in roadmap.items(proj) if x.get("id") == n), None)
+    # A finished item is shown as the Finished section shows it (B766):
+    # finished is how it reads, not a door that shuts on it.
+    if r is None:
+        r = next((x for x in roadmap.finished(proj) if x.get("id") == n), None)
     if r is None:
         print(f"[builderbot] ERROR: no item {R(n)} here", file=sys.stderr)
         sys.exit(1)
     who = " (claude)" if r.get("by") == "claude" else ""
+    when = time.strftime("%d %b", time.localtime(r["done_at"])) if r.get("done_at") else ""
     print(f"  {R(r['id'])}  {r['text']}{who}"
-          + ("  [shelved]" if r.get("shelved") else ""))
+          + ("  [shelved]" if r.get("shelved") else "")
+          + (f"  [finished {when}]" if r.get("done_at") else ""))
     if r.get("info"):
         print("  details: " + r["info"].replace("\n", "\n           "))
     for i, st in enumerate(r.get("steps") or []):

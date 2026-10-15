@@ -78,6 +78,22 @@ class Gone(unittest.TestCase):
         self.assertTrue(roadmap.set_info("alpha", rid, "as built", step=1).get("ok"))
         self.assertEqual(next(r for r in roadmap.finished("alpha") if r["id"] == rid)["steps"][1].get("info"), "as built")
 
+    def test_an_empty_row_an_older_build_saved_gets_its_steps_back(self):
+        # 15 Oct: a note written to such an item by the build before the
+        # rebuild saved a row with no steps into its done event; the steps the
+        # log knows join it, its note stays.
+        rid = roadmap.add("alpha", "plan", by="claude")["item"]["id"]
+        roadmap.add_step("alpha", rid, "only step")
+        roadmap.step_done("alpha", rid, 0)
+        d = roadmap.load()
+        for e in d["history"]["alpha"]:
+            if e.get("act") == "done" and e.get("step") is None:
+                e["row"] = {"id": rid, "text": "plan", "steps": [], "info": "item note"}
+        roadmap.save(d)
+        done = next(r for r in roadmap.finished("alpha") if r["id"] == rid)
+        self.assertEqual(([st["text"] for st in done["steps"]], done.get("info")), (["only step"], "item note"))
+        self.assertTrue(roadmap.set_info("alpha", rid, "step note", step=0).get("ok"))
+
     def test_a_dropped_one_and_one_never_there_say_so(self):
         rid = roadmap.add("alpha", "to drop", by="claude")["item"]["id"]
         roadmap.remove("alpha", rid, why="not needed", by="operator")

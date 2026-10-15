@@ -762,8 +762,12 @@ def _finished_row(d, project, item_id):
             continue
         if e.get("act") != "done":
             return None
-        if not isinstance(e.get("row"), dict):
-            e["row"] = _rebuilt_row(_oldest_first(d.get("history", {}).get(project) or []), item_id, e.get("text", ""))
+        if not isinstance(e.get("row"), dict) or not e["row"].get("steps"):
+            # Kept without its row, or with an empty one a build before the
+            # rebuild wrote (15 Oct): the steps the log knows join it, and its
+            # own words and details stay.
+            got = _rebuilt_row(_oldest_first(d.get("history", {}).get(project) or []), item_id, e.get("text", ""))
+            e["row"] = {**got, **(e["row"] if isinstance(e.get("row"), dict) else {}), "steps": got["steps"]}
         return e["row"]
     return None
 
@@ -918,8 +922,10 @@ def finished(project, limit=None):
         # One kept without its row (finished by its last step before B767) is
         # put back together from the log, oldest first, rather than shown as
         # the words alone.
-        row = copy.deepcopy(e["row"]) if isinstance(e.get("row"), dict) \
-            else _rebuilt_row(_oldest_first(log), i, e.get("text", ""))
+        row = copy.deepcopy(e["row"]) if isinstance(e.get("row"), dict) else {}
+        if not row.get("steps"):
+            got = _rebuilt_row(_oldest_first(log), i, e.get("text", ""))
+            row = {**got, **row, "steps": got["steps"]}
         row.update(id=i, done_at=e.get("at", 0), done_by=e.get("by", ""))
         out.append(row)
     n = _int(limit)
