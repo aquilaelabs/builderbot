@@ -218,6 +218,10 @@ const TABKINDS = {
   home:     { multi: false, label: () => "Home",
               render: (i) => renderHomeInto(i), live: "always",
               open: () => homeOpen() },
+  // Sessions (R250 step 1): the status poll's sessions, painted only when
+  // they changed.
+  sessions: { multi: false, label: () => "Sessions",
+              render: (i) => renderSessionsInto(i), live: "always" },
   projects: { multi: false, label: () => "Projects",
               render: (i) => renderProjectsInto(i), live: "always" },
   // nodesRev as well as dockerRev: the node PICKER on this tab is drawn from

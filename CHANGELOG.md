@@ -339,6 +339,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A Claude session caught by a controller restart waits it out: a bb command that meets a refused connection asks again for up to ninety seconds and says it is waiting, and while BuilderBot is away a session may still write its memory and notes, told to write where it is and stop if the outage lasts; once BuilderBot is back, the bell lists the sessions an update stopped, each with a Resume that tells it to pick up from its note
 - The page no longer redraws itself every few seconds: a poll that brings nothing new changes nothing on screen (Home stopped fading in again, the rail and the page's bar keep the hover under the pointer), a node's heartbeat makes only the Nodes page re-read, the open chat waits for a message instead of asking every four seconds, the status poll waits fifteen seconds after any read and rests while the tab is hidden, and the revisions poll slows down when nothing on show is moving
 - A project's Git view can turn off the hold on a push whose lines look sensitive (Hold a push that looks sensitive: off); on by default, and Approve on the bell works as before when it is on (a994491)
+- Sessions is a page of its own on the rail (#/sessions): a table of your terminals and Claude sessions with their project, node and start, Open or Minimize and End on each row; the pop-up panel is gone (50d0c45)
 
 ### Removed
 

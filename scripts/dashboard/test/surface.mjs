@@ -48,7 +48,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyN
   'currentMode', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'openPopup', 'menuHolds', 'actMore', 'statTiles', 'factGrid', 'chipBar', 'dmChipGroups', 'loadDockerStats', 'dmStatStrip', 'loadRowLog', 'dmFollowTick', 'loadDockerImages', 'dmHealth', 'dmRowWrap', 'dmPorts', 'dmPortsFact', 'dmOpenWhy', 'dmOpenSoon', 'dmRoutesOf', 'dmMatch', 'wireMore', 'closeMore', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'attRow', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
-  'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'drawSessions',
+  'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'renderSessionsInto', 'openSessionsTab', 'sessionProject',
   'drawShellCard', 'drawTrash', 'drawUiMenu', 'dressFrame',
   'dropElsewhere', 'dropTab', 'editCustom', 'endSession',
   'findingsRulesHtml', 'flip', 'focusTab', 'foldHeight',
@@ -138,7 +138,7 @@ ok(added.length === 0,
 // "the list matches" failure does not say which of them the page just lost.
 const REACHED = ['refresh', 'openTab', 'hideTab', 'tabOf', 'sessionOf',
                  'newShell', 'setProjectPinned', 'renameProject', 'drawProjects',
-                 'drawSessions', 'drawBell', 'notify', 'openTrash', 'drawTrash',
+                 'renderSessionsInto', 'drawBell', 'notify', 'openTrash', 'drawTrash',
                  'paint', 'drawUiMenu', 'toggleBell'];
 // NOT the bridges out of makeNotebook: ruleStagedCount and its version
 // equivalents. They are top-level `let`, and `new Function` below cannot see

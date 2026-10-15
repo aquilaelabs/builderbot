@@ -5384,16 +5384,12 @@ body.booting .pane>.loading{margin:auto}
       <div class="lab">custom commands</div>
       <div class="macros" id="custom"></div>
     </div>
-    <div class="mpanel" id="sespanel">
-      <div id="sessions"><div class="loading">loading…</div></div>
-    </div>
     <div class="mpanel" id="chatpanel">
       <div id="chat"><div class="loading">loading…</div></div>
     </div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>
       <button id="mMacros">» Commands</button>
-      <button id="mSessions">☰ Sessions</button>
       <button id="mChat">💬 Chat</button>
     </div>
   </div>
@@ -5656,7 +5652,6 @@ window.addEventListener("blur", () => {
 window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
 $("mKeys").onclick     = () => mobPanel("keys");
 $("mMacros").onclick   = () => mobPanel("macros");
-$("mSessions").onclick = () => mobPanel("sessions");
 $("mChat").onclick     = () => mobPanel("chat");
 
 // ---- chat ------------------------------------------------------------

@@ -1,4 +1,4 @@
-// The Sessions card: every terminal and Claude session this account has,
+// The Sessions page: every terminal and Claude session this account has,
 // the tab each is in, and ending one.
 //
 // One classic script beside index.html (docs/design-language.md, Files),
@@ -8,7 +8,7 @@
 
 "use strict";
 
-// ---- the sessions card --------------------------------------------------
+// ---- the sessions page --------------------------------------------------
 
 // A session tmux knows as "claude-Foo" is the same thing the Projects card
 // opens as "claude:Foo". Opening it under the raw name takes bb-tty's fallback
@@ -37,61 +37,72 @@ function argForSession(name){
   return name;
 }
 
-function drawSessions(ss){
-  const el = $("sessions");
-  if (!ss.length){ paint(el, '<div class="empty">no tmux sessions; nothing is running</div>'); return; }
-  // Named exactly as its tab is: the tmux name and the full path are on hover,
-  // where the detail belongs.
+function openSessionsTab(){
+  openTab({kind: "sessions", arg: "__sessions", label: "Sessions"});
+}
+
+// The project a session belongs to, read the way its tab's argument is:
+// "" for a terminal at the workspace.
+function sessionProject(name){
+  const m = /^(?:claude|shell):(.+)$/.exec(argForSession(name)) || /^sh:\d+:(.*)$/.exec(argForSession(name));
+  return m ? m[1] : "";
+}
+
+// The Sessions page (R250 step 1, the design's tables rule): every terminal
+// and Claude session of this account, here and on the nodes, one row each.
+// The name opens its tab; Open puts a tab back, Minimize takes a shell's off
+// the strip (it keeps running), and End stops one, which closing a tab never
+// does. It reads the status poll's sessions, so it draws on every read and
+// paints only what changed.
+const SESS_COLS = [{label: "Session"}, {label: "Project", w: "minmax(0,.7fr)"}, {label: "Node", w: "minmax(0,.6fr)"},
+                   {label: "Started", w: "7rem"}, {label: "", act: true, w: "10.5rem"}];
+
+function renderSessionsInto(i){
+  const d = docSurface(i, "sessions");
+  if (!d) return;
+  const ss = state?.sessions;
+  if (!ss){ paint(d.list, `<div class="loading">loading…</div>`); return; }
+  const claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  d.setBar(`<span class="dim">${ss.length} session${ss.length === 1 ? "" : "s"}${
+    claudes ? `, ${claudes} of them Claude` : ""}</span>`);
+  // Named exactly as its tab is: the tmux name and the full path are in the
+  // name's description, where the detail belongs.
   const names = sessionLabels();
-  // The name is the way to a session's tab: click it and you are there,
-  // reopened first if it was minimized. The button beside it does the other
-  // thing: green when the tab is on the strip, and then it puts the tab away
-  // (Minimize for a shell; Close for a Claude session, which asks first, the
-  // way the ✕ does, because that one ends the conversation); plain "Open"
-  // when there is no tab. The pill says whether the session is on screen
-  // right now (in the dock: R218 step 4 took the split and its sides).
   const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
-  const fresh = paint(el, ss.map(s => {
+  const rows = ss.map(s => {
     const t = tabFor.get(s.name);
     const claude = tmuxBase(s.name).startsWith("claude-");
-    const shownAt = t ? panes.indexOf(t.id) : -1;
-    // A session on a node says so (roadmap #24): it is in that machine's
-    // tmux, reached through the same tab, ended through its agent.
-    const pill = (shownAt === -1 ? ""
-      : `<span class="pill ok att">attached</span>`)
-      + (s.node ? ` <span class="pill" title="runs on the node ${esc(s.node)}">on ${esc(s.node)}</span>` : "");
-    const tip = tabTitle(t || {kind:"term", arg: argForSession(s.name), label: s.name});
-    return `
-    <div class="row">
-      <div class="grow"><span class="name go" data-go="${esc(s.name)}" title="${esc(tip)}"
-        >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span> ${pill}
-        ${s.claude?.task && s.claude.state === "working"
-          // Only while it IS working. The task comes off the pane title, which
-          // Claude sets as it goes and never clears, so an idle session kept
-          // showing the last thing it happened to be doing, with no age on it
-          // and nothing to make it expire. "done: Nvidia EGL display error"
-          // reads as a status and is a fossil. A session that is not doing
-          // anything has no answer to "what is it doing", and the honest
-          // version of that is a blank line rather than an old one.
-          ? `<div class="sub" title="${esc(s.claude.task)}">working on: ${
-              esc(s.claude.task)}</div>` : ""}</div>
-      ${t ? (claude
-          ? `<button class="primary" data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}" title="end this Claude session: asks first">Close</button>`
-          : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip; it keeps running">Minimize</button>`)
-          : `<button data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
-      <button data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}" title="end this session">✕</button>
-    </div>`; }).join(""));
-  if (!fresh) return;
-  // On a phone the list is a flyout over the terminal, and picking a session
-  // is a request to look at it: the flyout gets out of the way.
-  const goTo = name => { if (isPhone()){ showSessions = false; drawKeys(); }   // even if the
-                         openTab({kind:"term", arg:argForSession(name), label:name}); };  // tab cap refuses
-  el.querySelectorAll("[data-a]").forEach(b => b.onclick = () => goTo(b.dataset.a));
-  el.querySelectorAll("[data-go]").forEach(n => n.onclick = () => goTo(n.dataset.go));
-  el.querySelectorAll("[data-min]").forEach(b => b.onclick = () => hideTab(b.dataset.min));
-  // Closing a terminal tab leaves its session running, so this is where one
-  // actually gets ended: otherwise they would only ever accumulate.
-  el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => killSession(b.dataset.k, b.dataset.kn));
+    const tip = tabTitle(t || {kind: "term", arg: argForSession(s.name), label: s.name});
+    const proj = sessionProject(s.name);
+    // Only while it IS working: the task comes off the pane title, which
+    // Claude sets as it goes and never clears, so an idle session would
+    // keep showing the last thing it happened to be doing.
+    const task = s.claude?.task && s.claude.state === "working"
+      ? `<div class="sub" title="${esc(s.claude.task)}">working on: ${esc(s.claude.task)}</div>` : "";
+    return `<div class="row sessrow" data-sess="${esc(s.name)}">${tblLine(SESS_COLS, [
+      `<span class="name go" data-go="${esc(s.name)}" title="${esc(tip)}">${stateDot(s.claude)}${
+        esc(names.get(s.name) || s.name)}</span>${t && panes.indexOf(t.id) !== -1 ? ` <span class="pill ok">on screen</span>` : ""}${task}`,
+      proj ? esc(projLabel(proj)) : `<span class="dim">workspace</span>`,
+      s.node ? esc(s.node) : `<span class="dim">this controller</span>`,
+      s.created ? esc(ago(s.created)) : "",
+      `<div class="actbar">${t ? (claude ? "" : `<button type="button" data-min="${esc(t.id)}"
+          title="take its tab off the strip; it keeps running">Minimize</button>`)
+        : `<button type="button" data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
+        <button type="button" class="danger" data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}"
+          title="${claude ? "end this Claude session: the transcript is kept" : "end this session and what runs in it"}">End</button></div>`])}</div>`;
+  }).join("");
+  const html = ss.length ? tblWrap(SESS_COLS, rows, "sesstbl")
+    : `<div class="hint">nothing is running: a terminal or a Claude session you open is listed here</div>`;
+  if (!paint(d.list, html)) return;
+  d.setFoot("Yours, here and on the nodes. Closing a tab leaves its session running; End is what stops one.");
+  // Kept from the pane under the page: its click makes the page's pane the
+  // active one, and the terminal just opened in the dock would lose the
+  // keys and the commands to a page that cannot take them.
+  const goTo = (e, name) => { e.stopPropagation(); openTab({kind: "term", arg: argForSession(name), label: name}); };
+  d.list.querySelectorAll("[data-a]").forEach(b => b.onclick = e => goTo(e, b.dataset.a));
+  d.list.querySelectorAll("[data-go]").forEach(n => n.onclick = e => goTo(e, n.dataset.go));
+  d.list.querySelectorAll("[data-min]").forEach(b => b.onclick = () => hideTab(b.dataset.min));
+  d.list.querySelectorAll("[data-k]").forEach(b => b.onclick = () => killSession(b.dataset.k, b.dataset.kn));
 }
 
 // `node` is the id of the node the session runs on, when the row said so:

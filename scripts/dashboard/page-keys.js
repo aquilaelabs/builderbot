@@ -26,19 +26,17 @@ const KEYS = [
 // time the viewport crossed the phone breakpoint. They just live here now, at
 // every width: one DOM, one set of handlers, and no breakpoint to be on the
 // wrong side of.
-let showMacros = false, showSessions = false, showChat = false;
+let showMacros = false, showChat = false;
 
-// One panel at a time on the phone: opening any of the three closes the others.
+// One panel at a time on the phone: opening one closes the others.
 function mobPanel(which){
-  const on = {keys: showKeys, macros: showMacros, sessions: showSessions,
-              chat: showChat}[which];
+  const on = {keys: showKeys, macros: showMacros, chat: showChat}[which];
   // The two panels always take turns: they are the same strip of space. The
   // keys row only joins that trade on a phone, where the three of them plus
   // a terminal do not fit, on a desktop it stays where it was put.
   if (which === "keys") showKeys = !on;
   else if (isPhone()) showKeys = false;
   showMacros = which === "macros" ? !on : false;
-  showSessions = which === "sessions" ? !on : false;
   showChat = which === "chat" ? !on : false;
   if (showChat) loadChat();               // open on something, not on "loading…"
   render();
@@ -148,13 +146,12 @@ function drawKeys(){
   const mm = $("mMacros");
   mm.classList.toggle("on", showMacros);
   setHidden(mm, !term);
-  $("mSessions").classList.toggle("on", showSessions);
   const mc = $("mChat");
   mc.classList.toggle("on", showChat);
-  // Sessions is the rail's and Chat a tab on the dock's line (R218 step 4):
-  // the foot bar keeps what is about the terminal in front, Keys and
+  // Sessions is a page (R250) and Chat a tab on the dock's line (R218 step
+  // 4): the foot bar keeps what is about the terminal in front, Keys and
   // Commands, and is not drawn with nothing in it.
-  setHidden($("mSessions"), true); setHidden(mc, true);
+  setHidden(mc, true);
   setHidden($("mobar"), mk.hidden && mm.hidden);
   // The dot is the whole reason the counts ride the status poll: a chat you
   // have to open to discover is one nobody opens.
@@ -167,7 +164,7 @@ function drawKeys(){
   // Commands closes with the keys when the tab underneath is not a shell: a
   // flyout of things to type, over something that cannot be typed into.
   const want = [[el, on], [$("macpanel"), showMacros && term],
-                [$("sespanel"), showSessions], [$("chatpanel"), showChat]];
+                [$("chatpanel"), showChat]];
   const opener = want.find(([p, s]) => s && p.dataset.shown !== "1");
   const landed = opener ? slidePanel(opener[0], true) : null;
   for (const [p, s] of want) if (p !== opener?.[0]) slidePanel(p, s, landed);

@@ -85,6 +85,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => railGo('home')),
     readyWhen: '.hometab .hometiles .tile',
   },
+  // Sessions, a page of its own (R250 step 1): the table, or the hint on a
+  // box with none running.
+  sessions: {
+    open: () => page.evaluate(() => railGo('sessions')),
+    readyWhen: '.sessionstab .sesstbl, .sessionstab .hint',
+  },
   jobs: {
     // Whether the queue has anything in it depends on which suites ran
     // before this one; either drawing carries the bar and the foot band.

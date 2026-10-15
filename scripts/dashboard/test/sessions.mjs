@@ -1,5 +1,5 @@
-// Sessions card and its relationship to the tab strip: name goes to the tab,
-// the button minimizes/closes/opens, attached pill and pane glyphs, tooltips,
+// The Sessions page and its relationship to the dock: name goes to the tab,
+// the button minimizes/opens, End ends one, the on-screen pill, tooltips,
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
@@ -12,47 +12,23 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
-// Sessions hangs off the terminal now, at every width, so a desktop page has
-// to open the panel before there is a list to click: the sidebar card it
-// used to live in is gone.
-// The rail's Sessions opens it (R218 step 4: the foot bar keeps Keys and
-// Commands only).
-await page.evaluate(() => mobPanel('sessions'));
-await page.waitForFunction(() => document.querySelectorAll('#sessions .row').length >= 2, { timeout: 40000 });
-// On a desktop the flyout is an OVERLAY: the terminal keeps its height, and
-// with it its fit and its scrollback; a resize costs a terminal a refit and a
-// reflow of everything on screen, which is a lot to charge for looking at a
-// list. The phone pushes instead, because there is not the screen to cover one
-// thing with another.
-//
-// Measured on a CLOSE-then-open, not on the first open, and after the strip has
-// stopped moving: the first render that puts a tab pill on the strip grows it
-// by a row, and measuring across that reads 30px of tab strip as if the panel
-// had taken it. Both heights in one task, for the reason at the phone's own
-// version of this below.
-await page.evaluate(() => mobPanel('sessions'));
-await page.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
-await page.waitForFunction(
-  () => !document.getAnimations().some(a => a.playState === 'running'), { timeout: 10000 });
-const deskOpen = await page.evaluate(() => {
-  const panes = document.getElementById('panes');
-  const before = panes.offsetHeight;
-  document.getElementById('mSessions').click();
-  const el = document.getElementById('sespanel');
-  return { before, after: panes.offsetHeight, anim: el.getAnimations().length > 0,
-    over: el.classList.contains('over') && getComputedStyle(el).position === 'absolute' };
-});
-ok(deskOpen.over && deskOpen.anim, 'a desktop flyout opens as an animated overlay');
-ok(deskOpen.after === deskOpen.before,
-   `...and the terminal is not pushed up for it (${deskOpen.after} vs ${deskOpen.before}px)`);
-const row = n => page.locator('#sessions .row', { has: page.locator(`[data-go="${n}"]`) });
+// Sessions is a page of its own under the rail (R250 step 1): a table, one
+// row per session, at #/sessions.
+await page.evaluate(() => railGo('sessions'));
+await page.waitForFunction(() => document.querySelectorAll('.sesstbl .sessrow').length >= 2, { timeout: 40000 });
+const sp = await page.evaluate(() => ({ hash: location.hash, on: document.querySelector('[data-rail="sessions"]')?.classList.contains('on'),
+  head: [...document.querySelectorAll('.sesstbl .thead .th')].map(h => h.textContent.trim()).filter(Boolean),
+  bar: document.querySelector('#mSessions'), panel: document.getElementById('sespanel') }));
+ok(sp.hash === '#/sessions' && sp.on && sp.head.join(',') === 'Session,Project,Node,Started' && !sp.bar && !sp.panel,
+   `the rail's Sessions opens its page at #/sessions, a table of Session, Project, Node, Started, the old panel gone (${JSON.stringify(sp)})`);
+const row = n => page.locator('.sesstbl .sessrow', { has: page.locator(`[data-go="${n}"]`) });
 const btn = n => row(n).locator('button').first();
 
 ok((await btn('shell-9').textContent()).trim() === 'Open', 'minimized session shows Open');
 await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
-ok((await btn('shell-9').textContent()).trim() === 'Minimize' && await btn('shell-9').evaluate(b => b.classList.contains('primary')),
-   'clicking the name opens the tab; button becomes green Minimize');
+ok((await btn('shell-9').textContent()).trim() === 'Minimize',
+   'clicking the name opens the tab; its button becomes Minimize');
 ok(await page.evaluate(() => sessionOf(tabOf(panes[1]).arg) === 'shell-9' && dockUp), '...and goes to it, the dock up');
 // PgUp from the keys row is how a finger scrolls: at a prompt it enters copy
 // mode a page up; PgDn pages back and copy mode ends itself at the bottom.
@@ -61,7 +37,7 @@ await page.waitForFunction(() => true); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '1', 'PgUp at a prompt enters copy mode (scrolls back)');
 await page.evaluate(() => sendKey('pgdn')); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', 'PgDn back at the bottom leaves copy mode by itself');
-ok((await row('shell-9').locator('.pill.att').textContent()).trim() === 'attached', 'attached pill, no pane glyph (the dock has no sides)');
+ok((await row('shell-9').locator('.pill.ok').textContent()).trim() === 'on screen', 'its row says it is on screen');
 ok((await row('shell-9').locator('[data-go]').evaluate(e => saidOf(e))) === await page.$eval('#pane1 .dtab.on .dlbl', el => saidOf(el)),
    "the session row and its tab on the dock's line are described by the same words");
 await btn('shell-9').click();
@@ -103,12 +79,12 @@ await page.evaluate(() => { for (const s of ['shell-alpha', 'shell-ep_silon']){
 
 await row('claude-alpha').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'claude-alpha'));
-ok((await btn('claude-alpha').textContent()).trim() === 'Close', 'claude session on the strip shows Close');
+ok((await btn('claude-alpha').textContent()).trim() === 'End', 'a Claude session with its tab open has End, and no Minimize');
 ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on a Claude tab');
 const nd = page.dialogs.length;
 await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
-ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'Close asked first, then ended the session');
+ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'End asked first, then ended the session');
 
 // The session is gone; a tab still pointing at it takes a Resume's argument
 // so the transcript id reaches the terminal, and the frame is rebuilt for it.
@@ -225,10 +201,9 @@ await page.reload();
 await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
                            { timeout: 30000 });
 ok(true, 'a notebook tab restored from the layout loads itself');
-// A reload closes the flyout, the way it always has on a phone: the panel
-// is a toggle, not a card that is simply there. Open it again for the rest.
-await page.evaluate(() => mobPanel('sessions'));
+// The notebook was the page on show: Sessions in front again for the rest.
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));
+await page.evaluate(() => railGo('sessions'));
 
 // The rest needs shell-9 on the strip; reopen it if the restore above failed.
 await page.evaluate(() => { if (!tabs.some(t => sessionOf(t.arg) === 'shell-9'))
@@ -245,15 +220,18 @@ await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'))
 // A project with a dot in its name: tmux stores its session as claude-ep_silon,
 // and the page must still label it, reopen it and let the server end it.
 tmuxNew('claude-ep_silon');
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
-ok((await page.$eval('#sessions [data-go="claude-ep_silon"]', el => el.textContent.trim())) === 'Claude: ep.silon', 'dotted project: session labeled by its project name');
+await page.evaluate(() => { railGo('sessions'); refresh(); });
+await page.waitForFunction(() => document.querySelector('.sesstbl [data-go="claude-ep_silon"]'), { timeout: 15000 });
+ok((await page.$eval('.sesstbl [data-go="claude-ep_silon"]', el => el.textContent.trim())) === 'Claude: ep.silon', 'dotted project: session labeled by its project name');
+ok((await page.$eval('.sesstbl .sessrow[data-sess="claude-ep_silon"] .td:nth-child(2)', el => el.textContent.trim())) === 'ep.silon',
+   '...and its Project column names the project, dot and all');
 // `on`, not `primary`: the row's controls are icons now, and a live one is
 // lit by color rather than by being a filled button.
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-c]', { timeout: 15000 });
 ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Claude'), 'dotted project: Claude button knows the session is running');
-await page.click('#sessions [data-go="claude-ep_silon"]');
+await page.evaluate(() => railGo('sessions'));
+await page.click('.sesstbl [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
 ok(true, 'dotted project: reopening from Sessions maps back to claude:ep.silon');
 ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' && sessionOf('sh:2:ep.silon') === 'shell-ep_silon-2'), 'sessionOf applies the tmux rewrite');
@@ -278,7 +256,7 @@ await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeou
 await unfold(page, 'ep.silon');
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-k]', { state: 'visible', timeout: 10000 });
 await page.click('.pgrid .pcard[data-row="ep.silon"] [data-k]');            // lock: asks, then the server ends the sessions
-await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
+await page.waitForFunction(() => !state.sessions.some(s => s.name === 'claude-ep_silon'), { timeout: 15000 });
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
 // Either wording is the design's: the other account's session is named when
 // the poll has seen it by the click, and that is timing (B388).
@@ -303,12 +281,12 @@ ok(true, 'a bfcache restore reloads the terminal iframe to reconnect it');
 const nd2 = page.dialogs.length;
 const tb = await (await page.$('#pane1 .dtab.on')).boundingBox();
 await page.mouse.click(tb.x + 20, tb.y + 12, { button: 'middle' });
-await page.waitForFunction(() => !document.querySelector('[data-go="shell-9"]'), { timeout: 15000 });
+await page.waitForFunction(() => !state.sessions.some(s => s.name === 'shell-9'), { timeout: 15000 });
 ok(page.dialogs.length === nd2 + 1, 'middle-click asks, then ends the session and its tab');
 
 const phone = await newPage(browser, { viewport: { width: 400, height: 800 } });
 await phone.goto(URL);
-await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'sespanel', { timeout: 30000 });
+await phone.waitForFunction(() => typeof state !== 'undefined' && state && Array.isArray(state.sessions), { timeout: 30000 });
 // Over a shell tab, opened here: Keys is on the bar over a shell tab and
 // nowhere else, and this page opens on the layout the desktop saved, which
 // has no tab left after the middle-click above (it passed while that save
@@ -360,18 +338,19 @@ await phone.waitForFunction(
 const mid = await phone.evaluate(() => {
   const panes = document.getElementById('panes');
   const before = panes.offsetHeight;
-  document.getElementById('mSessions').click();
-  const el = document.getElementById('sespanel');
+  document.getElementById('mMacros').click();
+  const el = document.getElementById('macpanel');
   return { before, after: panes.offsetHeight,
     show: el.classList.contains('show'), anim: el.getAnimations().length > 0,
     overlay: el.classList.contains('sliding') && getComputedStyle(el).position === 'absolute' };
 });
-ok(mid.show && mid.anim && mid.overlay, 'Sessions opens its panel with a slide, as an overlay');
+ok(mid.show && mid.anim && mid.overlay, 'Commands opens its panel with a slide, as an overlay');
 ok(mid.after === mid.before,
    `the terminal holds still while the panel slides (${mid.after} vs ${mid.before}px)`);
 const paneH0 = mid.before;
-await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('sliding'));
+await phone.waitForFunction(() => !document.getElementById('macpanel').classList.contains('sliding'));
 ok(await phone.$eval('#panes', el => el.offsetHeight) < paneH0, 'then the terminal snaps to make room');
+ok(await phone.$eval('#commands', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
 // Commands wants a shell under it now, and the tab that was open got ended
 // above, so put one there, or this measures the guard instead of the swap.
 await phone.evaluate(() => {
@@ -380,11 +359,12 @@ await phone.evaluate(() => {
   dockPlace(tabs.find(shell));      // a shell in the dock, in front (R218 step 4); dockShow
   render();                         // would put it down if it already was
 });
-await phone.click('#mMacros');
+await phone.click('#mKeys');
 // the close is a slide now: the class drops when the tween lands
-await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
-ok(await phone.$eval('#macpanel', el => el.classList.contains('show')), 'Commands closes it and opens the macros');
-ok(await phone.$eval('#commands', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
+await phone.waitForFunction(() => !document.getElementById('macpanel').classList.contains('show'));
+ok(await phone.$eval('#keys', el => el.classList.contains('show')), 'Keys closes Commands and opens the keys row: one panel at a time');
+await phone.click('#mKeys');
+await phone.waitForFunction(() => !document.getElementById('keys').classList.contains('show'));
 // Claude on a project with a transcript opens the Resume/New chooser, which
 // must be visible on a phone (it once shared the hidden pin menu's class).
 // A Claude session runs on a NODE (R47), so the chooser is what the press
@@ -556,17 +536,17 @@ await phone.evaluate(() => {
   render();
 });
 await phone.waitForFunction(() => document.querySelector('.col.term').getAnimations().length === 0);
-await phone.evaluate(() => mobPanel('sessions'));
-await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('sliding'));
+await phone.evaluate(() => mobPanel('keys'));
+await phone.waitForFunction(() => document.getElementById('keys').classList.contains('show') && !document.getElementById('keys').classList.contains('sliding'));
 const hSess = await phone.$eval('#panes', el => el.offsetHeight);
 await phone.click('#mMacros');
 const swap = await phone.evaluate(() => ({
-  oldShown: document.getElementById('sespanel').classList.contains('show') && !document.getElementById('sespanel').classList.contains('sliding'),
+  oldShown: document.getElementById('keys').classList.contains('show') && !document.getElementById('keys').classList.contains('sliding'),
   newSliding: document.getElementById('macpanel').classList.contains('sliding'),
   paneH: document.getElementById('panes').offsetHeight }));
 ok(swap.oldShown && swap.newSliding && swap.paneH === hSess, 'a flyout swap slides the new one over the old, terminal untouched');
 await phone.waitForFunction(() => !document.getElementById('macpanel').classList.contains('sliding'));
-ok(await phone.$eval('#sespanel', el => !el.classList.contains('show')) && await phone.$eval('#macpanel', el => el.classList.contains('show')),
+ok(await phone.$eval('#keys', el => !el.classList.contains('show')) && await phone.$eval('#macpanel', el => el.classList.contains('show')),
    '...and the old one is gone when the new one lands');
 // A second tap mid-slide reverses from where the panel is, not from full height.
 const hFull = await phone.$eval('#macpanel', el => el.offsetHeight);   // landed, in the flow
@@ -591,19 +571,19 @@ const from = await phone.evaluate(async () => {
 ok(from > 0 && from < hFull, `re-tap mid-slide resumes from the current height (${from} of ${hFull}px)`);
 await phone.waitForFunction(() => !document.getElementById('macpanel').classList.contains('sliding'));
 
-// Picking a session from the flyout closes the flyout: it was covering the
-// very terminal the tap asked to see. (The desktop half ended both fixture
-// sessions above, so make one to pick.)
+// Picking a session on the phone's Sessions page opens its terminal in the
+// dock, up over the page (R250 step 1). (The desktop half ended both
+// fixture sessions above, so make one to pick.)
 tmuxNew('shell-7');
-await phone.evaluate(() => refresh());
-await phone.waitForFunction(() => document.querySelector('#sessions [data-go="shell-7"]'), { timeout: 15000 });
-await phone.evaluate(() => mobPanel('sessions'));
-await phone.waitForFunction(() => document.getElementById('sespanel').classList.contains('show') && !document.getElementById('sespanel').classList.contains('sliding'));
-await phone.click('#sessions [data-go="shell-7"]');
-ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sessions flyout');
+await phone.evaluate(() => { if (showMacros) mobPanel('macros'); railGo('sessions'); refresh(); });
+await phone.waitForFunction(() => document.querySelector('.sesstbl [data-go="shell-7"]'), { timeout: 15000 });
+await phone.click('.sesstbl [data-go="shell-7"]');
+await phone.waitForFunction(() => sessionOf(tabOf(panes[1])?.arg || '') === 'shell-7' && dockUp, { timeout: 10000 }).catch(() => {});
+ok(await phone.evaluate(() => sessionOf(tabOf(panes[1])?.arg || '') === 'shell-7' && dockUp),
+   'picking a session on the phone opens its terminal in the dock');
 
-// Keys over a document tab: not in the bar at all, so Sessions and Chat
-// have it (B460).
+// Keys over a document tab: not in the bar at all, so what is left has
+// the room (B460).
 await phone.evaluate(() => openNotebook('alpha'));
 await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'notebook');
 ok(await phone.$eval('#mKeys', b => b.hidden && getComputedStyle(b).display === 'none'), 'Keys leaves the bar over a document tab');
@@ -688,16 +668,24 @@ ok(!/before the container restarted/.test(tty('shell:nosuchproject:1')),
 // clears, so an idle session kept showing the last thing it had been doing,
 // with no age on it and nothing to expire it. "done: <whatever>" reads as a
 // status and is a fossil.
+// Drawn and read in one task, the poll's own rows put back after, so no
+// read lands between.
+await page.evaluate(() => railGo('sessions'));
+await page.waitForFunction(() => tabOf(panes[0])?.kind === 'sessions');
 const taskLines = await page.evaluate(() => {
-  const seen = {};
-  const rows = () => Array.from(document.querySelectorAll('#sessions .row .sub'))
+  const seen = {}, keep = state.sessions;
+  const rows = () => Array.from(document.querySelectorAll('.sesstbl .sessrow .sub'))
                           .map(d => d.textContent.trim());
-  const s = (state, task) => ({name: 'claude-alpha', attached: false, cwd: '',
-                               claude: {state, task}});
-  drawSessions([s('working', 'reading the emulator log')]);
+  const s = (st, task) => ({name: 'claude-alpha', attached: false, cwd: '',
+                            claude: {state: st, task}});
+  state.sessions = [s('working', 'reading the emulator log')];
+  renderSessionsInto(0);
   seen.working = rows();
-  drawSessions([s('waiting', 'reading the emulator log')]);
+  state.sessions = [s('waiting', 'reading the emulator log')];
+  renderSessionsInto(0);
   seen.idle = rows();
+  state.sessions = keep;
+  renderSessionsInto(0);
   return seen;
 });
 ok(taskLines.working.some(t => /working on: reading the emulator log/.test(t)),

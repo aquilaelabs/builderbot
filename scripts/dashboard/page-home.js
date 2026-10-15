@@ -152,7 +152,7 @@ function renderHomeInto(i){
       </div></div>
       <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${homeGlanceHtml()}</section></div>`)) return;
   const root = d.list;
-  root.querySelectorAll('[data-htile="sessions"]').forEach(a => a.onclick = e => { e.preventDefault(); mobPanel("sessions"); });
+  root.querySelectorAll('[data-htile="sessions"]').forEach(a => a.onclick = e => { e.preventDefault(); railGo("sessions"); });
   // The CI tile's address opens the Git view; its CI section opens with it.
   root.querySelectorAll('[data-htile="ci"]').forEach(a => a.onclick = () => { sectOpen["git:ci"] = true; });
   root.querySelectorAll("[data-hjob]").forEach(b => b.onclick = () => openJob(b.dataset.hjob));

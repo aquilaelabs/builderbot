@@ -27,8 +27,7 @@ const RAIL_ICONS = {
 
 // The nine groups, in the rail's order (the design's rail rule). A group's
 // tools are the tab kinds it holds, the first the one its button opens; a
-// group with several draws them as the page's sub-nav. Sessions is the
-// panel the rail opens.
+// group with several draws them as the page's sub-nav.
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
@@ -36,7 +35,7 @@ const RAIL = [
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"], ["nginx", "nginx"]]},
   {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
-  {key: "sessions", label: "Sessions", icon: "sessions", panel: "sessions"},
+  {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
   {key: "settings", label: "Settings", icon: "settings", tools: [["settings", "Controller"], ["profile", "Profile"]]},
 ];
@@ -71,7 +70,7 @@ function railAllows(kind){
   }
 }
 function railGroups(){
-  return RAIL.filter(g => g.panel || (g.tools || []).some(([k]) => railAllows(k)));
+  return RAIL.filter(g => (g.tools || []).some(([k]) => railAllows(k)));
 }
 
 // What the rail lights: the group somebody pressed, while its page is the
@@ -82,14 +81,14 @@ function railOn(){
   const kind = t?.kind || "";
   if (railWant){
     const g = RAIL.find(x => x.key === railWant);
-    if (g && (g.panel || (g.tools || []).some(([k]) => k === kind))) return railWant;
+    if (g && (g.tools || []).some(([k]) => k === kind)) return railWant;
     railWant = "";
   }
   return groupOf(kind)?.key || (kind === "notebook" ? "projects" : "");
 }
 
-// Open a group: its first tool as a page, or its panel. A press is a
-// navigation, so the address is pushed.
+// Open a group: its first tool as a page. A press is a navigation, so the
+// address is pushed.
 const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
@@ -97,12 +96,12 @@ const OPENERS = {
   toolchains: () => openToolchains(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
+  sessions: () => openSessionsTab(),
 };
 function railGo(key, tool){
   const g = RAIL.find(x => x.key === key);
   if (!g) return;
   railWant = key;
-  if (g.panel){ mobPanel(g.panel); drawRail(); return; }
   const kind = tool && (g.tools || []).some(([k]) => k === tool) ? tool : g.tools[0][0];
   if (!railAllows(kind)) return;
   const was = location.hash;
@@ -144,7 +143,7 @@ function openRoute(hash){
   }
   if (key === "notifications"){ openNotices(); return true; }
   const g = RAIL.find(x => x.key === key);
-  if (!g || g.panel) return false;
+  if (!g) return false;
   const kind = a && (g.tools || []).some(([k]) => k === a) ? a : g.tools[0][0];
   if (!railAllows(kind)) return false;
   railWant = key;
@@ -245,7 +244,6 @@ function jumpItems(q){
   if (!needle) return [];
   const rows = [];
   for (const g of railGroups()){
-    if (g.panel){ rows.push([g.label, "page", () => railGo(g.key)]); continue; }
     for (const [k, label] of g.tools) if (railAllows(k))
       rows.push([label, g.tools.length > 1 ? `${g.label} page` : "page", () => railGo(g.key, k)]);
   }

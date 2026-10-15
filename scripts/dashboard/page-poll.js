@@ -157,7 +157,6 @@ async function refresh(){
       const p = (state.projects || []).find(x => x.name === nb.project);
       if (p) nb.poll(p);
     }));
-    drawCard("sessions", () => drawSessions(state.sessions));
     drawCard(null, gateFindings);
     drawCard("linux", drawLinux);
     drawCard("commands", drawCommands);
