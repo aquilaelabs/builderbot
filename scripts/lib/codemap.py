@@ -598,7 +598,11 @@ class JSScanner:
                 sub = JSScanner(inner, self.sink, self.line, self.enclosing(), self.shape_methods,
                                 self.base + j + 2, self.fn_words, self.words, self.ts, self.jsx)
                 sub.stack = [(n, dp, None) for n, dp, _ in self.stack]
-                if self.exprs and self.exprs[-1][3] == len(self.stack):
+                if self.pending is not None and self.parens > self.paren_at_pending:
+                    # in a default parameter, `function f(fmt = v => `${g(v)}`)`:
+                    # the call is f's, as one outside a template there is (B761)
+                    sub.stack.append((self.pending["name"], -1, None))
+                elif self.exprs and self.exprs[-1][3] == len(self.stack):
                     # inside `x => `...${f()}...``: the call is the arrow's
                     sub.stack.append((self.exprs[-1][0]["name"], -1, None))
                 sub.class_ctx = cls      # `chip ${on ? 'on' : ''}` in a className

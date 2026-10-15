@@ -255,6 +255,17 @@ class FourthPass(unittest.TestCase):
                  "const f = (a, cb = async () => 0) => cb(a);\n", "a.js")
         self.assertEqual({d[0] for d in defs(s)} - {"(anonymous)"}, {"pick", "mock", "f"})
 
+    def test_a_call_in_a_template_in_a_default_is_the_functions(self):
+        # B761: `${Math.round(v)}` in a default parameter's arrow was read as
+        # called from the scope around the function, at file scope and inside
+        # another function alike; a call outside a template there already was f's.
+        s = scan("function chart(id, fmt = v => `${Math.round(v)}%`){\n  return fmt(id);\n}\n"
+                 "function outer(){\n  function inner(x, say = n => `${String(n)}`){ return say(x); }\n}\n", "a.js")
+        got = {(c["name"], c["caller"]) for c in s.calls}
+        self.assertIn(("round", "chart"), got)
+        self.assertIn(("String", "inner"), got)
+        self.assertNotIn(("round", "(top level)"), got)
+
     def test_a_suite_naming_a_directory_reaches_the_files_in_it(self):
         with tempfile.TemporaryDirectory() as d:
             Path(d, "scripts/inner").mkdir(parents=True)
