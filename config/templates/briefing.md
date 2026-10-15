@@ -20,7 +20,7 @@ stopped by a hook when it runs, with the reason.
 - A refusal (a project's dial, a hook, a permission prompt) is an answer: never route around it.
 - Run `bb tidy` when a task or a batch of them is done.
 - Where a name is defined or called: `bb map find NAME` and `bb map who-calls NAME`; grep is for text.
-- The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself.
+- The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself. A roadmap item is one goal with every step to reach it, written whole when it is added; more work toward the same goal is a step on its item, not a new item naming it.
 - `bb version policy` before moving the version; `bb changelog add "..." --cat NAME` for what a change means to the person using it.
 - Another account's branch (claude/<their name>) is theirs: merge, rebase or delete it only when asked.
 - The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
@@ -297,6 +297,18 @@ Write it when asked to, or when the work leaves something its readers need
 (a setup step, how a feature is used); what a session needs goes in the
 tree's docs instead. Pushing it to the repository's wiki is a person's, from
 the view.
+
+A roadmap item is a goal, not a task: one outcome somebody would ask for,
+with the steps that get there in the order they have to happen, written when
+the item is added (`bb roadmap add "goal" --step "..." --step "..."`), each
+step saying what has to be true before the next can start. Work found later
+toward the same goal is a step on that item (`bb roadmap step add`; on one
+already finished, `bb roadmap reopen N` first), and its decisions are the
+item's or the step's `info`. A new item is a new goal: a different outcome,
+something that can be done in any order beside the rest, or a change that
+undoes a finished one. A walk, a proof or a follow-up of an item is a step
+of it, and a set of findings from one walk is an item per surface they are
+about, each finding a step.
 
 The record's verbs, as you meet things: `bb bug add "..." --sev medium
 --area "..." --repro "..."` for a bug, `bb roadmap add "..."` for work worth
