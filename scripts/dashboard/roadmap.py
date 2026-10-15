@@ -710,6 +710,46 @@ def clash(what, stored, was):
             "conflict": {"current": stored}}
 
 
+def _oldest_first(events):
+    """The log in the order things happened: by time, and in the order they
+    were written within one second (a sort on time alone, reversed, read an
+    item's steps before the item that made room for them)."""
+    return [e for _, e in sorted(enumerate(events), key=lambda p: (p[1].get("at", 0), p[0]))]
+
+
+def _rebuilt_row(events, item_id, text):
+    """A finished item's row put back together from the log, for one kept
+    without it (finished by its last step before B767): its steps from their
+    add-step events, with their edits, details and done marks applied. A step
+    made with the item logged only a count, so it says its words are gone."""
+    row = {"id": item_id, "text": text, "steps": []}
+    steps = row["steps"]
+    for e in events:
+        if _int(e.get("id")) != item_id:
+            continue
+        act, i = e.get("act"), _int(e.get("step"))
+        if act == "add":
+            row["text"] = e.get("text") or row["text"]
+            steps[:] = [{"text": f"step {k + 1} (its words were not kept)", "sent": 0}
+                        for k in range(_int(e.get("steps")) or 0)]
+        elif act == "add-step" and i is not None:
+            while len(steps) < i:
+                steps.append({"text": f"step {len(steps) + 1} (its words were not kept)", "sent": 0})
+            steps[i:i + 1] = [{"text": e.get("text", ""), "sent": 0}]
+        elif i is not None and 0 <= i < len(steps):
+            if act == "edit-step":
+                steps[i]["text"] = e.get("text", steps[i]["text"])
+            elif act == "info-step":
+                steps[i]["info"] = e.get("text", "")
+            elif act == "done-step":
+                steps[i]["done"] = e.get("at", 0)
+        elif act == "edit" and i is None:
+            row["text"] = e.get("text") or row["text"]
+        elif act == "info" and i is None:
+            row["info"] = e.get("text", "")
+    return row
+
+
 def _finished_row(d, project, item_id):
     """A finished item's row as the Finished section shows it: the snapshot
     in its newest "done" event, made into one for an older event that kept
@@ -723,7 +763,7 @@ def _finished_row(d, project, item_id):
         if e.get("act") != "done":
             return None
         if not isinstance(e.get("row"), dict):
-            e["row"] = {"id": item_id, "text": e.get("text", ""), "steps": []}
+            e["row"] = _rebuilt_row(_oldest_first(d.get("history", {}).get(project) or []), item_id, e.get("text", ""))
         return e["row"]
     return None
 
@@ -862,18 +902,24 @@ def tick(project, item_id, by="you", who=""):
 def finished(project, limit=None):
     """The items ticked off, newest first, each as it was when it went:
     the "done" events in the history that carry the row (a tick since 23
-    Sep) or the words alone (an older one). One entry per item, the newest
+    Sep, a last step since B767), or the row put back together from the log
+    (an older one). One entry per item, the newest
     tick of it, and the Roadmap tab shows them below the shelved ones,
     hidden until asked for."""
     seen, out = set(), []
-    for e in history(project):
+    log = history(project)
+    for e in log:
         if e.get("act") != "done" or e.get("step") is not None:
             continue
         i = _int(e.get("id"))
         if i is None or i in seen:
             continue
         seen.add(i)
-        row = copy.deepcopy(e["row"]) if isinstance(e.get("row"), dict) else {"id": i, "text": e.get("text", ""), "steps": []}
+        # One kept without its row (finished by its last step before B767) is
+        # put back together from the log, oldest first, rather than shown as
+        # the words alone.
+        row = copy.deepcopy(e["row"]) if isinstance(e.get("row"), dict) \
+            else _rebuilt_row(_oldest_first(log), i, e.get("text", ""))
         row.update(id=i, done_at=e.get("at", 0), done_by=e.get("by", ""))
         out.append(row)
     n = _int(limit)

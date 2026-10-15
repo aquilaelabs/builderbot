@@ -57,6 +57,27 @@ class Gone(unittest.TestCase):
         self.assertFalse(any(r["id"] == rid for r in roadmap.load()["projects"].get("alpha") or []),
                          "and it is still off the open list")
 
+    def test_one_kept_without_its_row_is_put_back_together_from_the_log(self):
+        # Finished by its last step before B767, an item's done event held the
+        # words alone; its steps come back from the log, and its details can
+        # be written into them.
+        rid = roadmap.add("alpha", "older plan", by="claude", steps=["made with it"])["item"]["id"]
+        roadmap.add_step("alpha", rid, "added after")
+        roadmap.set_info("alpha", rid, "the step's note", step=1)
+        roadmap.step_done("alpha", rid, 0)
+        roadmap.step_done("alpha", rid, 1)
+        d = roadmap.load()
+        for e in d["history"]["alpha"]:
+            if e.get("act") == "done" and e.get("step") is None:
+                e.pop("row", None)            # as an event from before B767 reads
+        roadmap.save(d)
+        done = next(r for r in roadmap.finished("alpha") if r["id"] == rid)
+        self.assertEqual([st["text"] for st in done["steps"]], ["step 1 (its words were not kept)", "added after"])
+        self.assertEqual(done["steps"][1].get("info"), "the step's note")
+        self.assertTrue(all(st.get("done") for st in done["steps"]))
+        self.assertTrue(roadmap.set_info("alpha", rid, "as built", step=1).get("ok"))
+        self.assertEqual(next(r for r in roadmap.finished("alpha") if r["id"] == rid)["steps"][1].get("info"), "as built")
+
     def test_a_dropped_one_and_one_never_there_say_so(self):
         rid = roadmap.add("alpha", "to drop", by="claude")["item"]["id"]
         roadmap.remove("alpha", rid, why="not needed", by="operator")
