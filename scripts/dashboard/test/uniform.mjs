@@ -952,6 +952,21 @@ ok(seenSects.size <= 1,
   const icons = hb.filter(b => b.id !== 'bAbout');
   ok(new Set(hb.map(b => b.h)).size === 1 && new Set(icons.map(b => b.w)).size === 1,
      `the header's buttons share one height, and its icon buttons one width (${JSON.stringify(hb)})`);
+  // ...and what an icon button holds sits in its middle (the operator, 15
+  // Oct: the doctor's dot sat at the start of its button on a phone).
+  const offCenter = () => page.$$eval('header > button', bs => bs.filter(b => b.offsetParent && b.id !== 'bAbout').map(b => {
+    const r = b.getBoundingClientRect(), c = b.querySelector('svg, .st, span');
+    if (!c) return null;
+    const q = c.getBoundingClientRect();
+    return Math.abs((q.left + q.width / 2) - (r.left + r.width / 2)) > 1.5 ? b.id : null;
+  }).filter(Boolean));
+  const desk = await offCenter();
+  await page.setViewportSize({ width: 393, height: 851 });
+  await sleep(300);
+  const phone = await offCenter();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await sleep(300);
+  ok(!desk.length && !phone.length, `...and each icon sits in the middle of its button, at a desk and on a phone (${JSON.stringify({ desk, phone })})`);
 }
 ok(seenReds.size <= 1,
    `a verb that cannot be undone is the same color everywhere (${JSON.stringify([...seenReds])})`);
