@@ -677,10 +677,12 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
   const swLight = await page.$eval('#uiMenu .sw[data-theme="moss"]', b => getComputedStyle(b).backgroundColor);
   // The page's sub-nav is the filled accent on show (R218 step 4).
   await page.evaluate(() => railGo('machines', 'nodes'));
-  await page.waitForSelector('.pane .bar .subnav button.on', { timeout: 10000 });
-  await page.waitForTimeout(300);
-  ok(await page.$eval('.pane .bar .subnav button.on', e => getComputedStyle(e).color) === 'rgb(255, 255, 255)',
-     'a filled accent carries white in the light half, where the ink is dark');
+  // Waited for, not slept on (B753): the Light crossfade and the button's
+  // own color transition were still running 300ms in under a whole run.
+  const white = await page.waitForFunction(() => { const e = document.querySelector('.pane .bar .subnav button.on');
+    return e && getComputedStyle(e).color === 'rgb(255, 255, 255)'; }, null, { timeout: 5000 }).then(() => true, () => false);
+  ok(white, `a filled accent carries white in the light half, where the ink is dark (${
+    await page.$eval('.pane .bar .subnav button.on', e => getComputedStyle(e).color).catch(() => 'no button')})`);
   // Nostromo has no light half: picked while Light is on, the page goes
   // dark and says why, and Fern, its colors without the ship, has one.
   await page.click('#uiMenu .sw[data-theme="nostromo"]');
