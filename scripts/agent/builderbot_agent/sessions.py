@@ -820,10 +820,14 @@ class SessionsMixin:
         if now - getattr(self, "published_at", 0) < 60:
             return getattr(self, "published", None)
         self.published_at = now
-        if not os.access(DOCKER_BIN, os.X_OK):
+        # On the PATH, as sessnet looks: DOCKER_BIN is the bare name unless
+        # the environment names a path, and os.access on a bare name looks
+        # in the working directory, so this said None on every node (B764).
+        docker = shutil.which(DOCKER_BIN)
+        if not docker:
             self.published = None
             return None
-        out = _run([DOCKER_BIN, "ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Names}}\t{{.Ports}}'],
+        out = _run([docker, "ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Names}}\t{{.Ports}}'],
                    timeout=15)
         pub = {}
         for line in out.splitlines():
@@ -847,9 +851,10 @@ class SessionsMixin:
         if now - getattr(self, "stats_at", 0) < 60:
             return None
         self.stats_at = now
-        if not os.access(DOCKER_BIN, os.X_OK):
+        docker = shutil.which(DOCKER_BIN)       # on the PATH (B764)
+        if not docker:
             return None
-        out = _run([DOCKER_BIN, "stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}"],
+        out = _run([docker, "stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}"],
                    timeout=20)
         got = {}
         for line in out.splitlines():

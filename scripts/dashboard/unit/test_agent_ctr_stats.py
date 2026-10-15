@@ -31,6 +31,20 @@ class CtrStats(unittest.TestCase):
         # ...and nothing again until the minute is up.
         self.assertIsNone(agent.SessionsMixin.stats_now(me))
 
+    def test_docker_is_found_on_the_path_by_its_bare_name(self):
+        # B764: DOCKER_BIN is "docker" unless the environment names a path,
+        # and os.access on that bare name looked in the working directory.
+        self.fake_docker("web-1\t1.00%\t2.00%\n")
+        d = os.path.dirname(agent.DOCKER_BIN)
+        agent.DOCKER_BIN = "docker"
+        old = os.environ.get("PATH", "")
+        os.environ["PATH"] = d + os.pathsep + old
+        try:
+            self.assertEqual(agent.SessionsMixin.stats_now(types.SimpleNamespace()), {"web-1": [1.0, 2.0]})
+            self.assertIsNotNone(agent.SessionsMixin.published_now(types.SimpleNamespace()))
+        finally:
+            os.environ["PATH"] = old
+
     def test_no_docker_says_nothing(self):
         agent.DOCKER_BIN = "/nonexistent/docker"
         self.assertIsNone(agent.SessionsMixin.stats_now(types.SimpleNamespace()))
