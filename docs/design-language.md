@@ -467,15 +467,17 @@ The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mi
 
 **Every scheme has a light half (R216).** The same nine tokens, hue for hue, with the page near white, the ink dark and the accent and the marks pulled down to AA against the page; `html[data-mode="light"]` is the switch, set by the gear's Dark / Light / System beside the swatches, before first paint from localStorage and on the account. What the dark half derives by lightening the light half derives by darkening (`--btn`, `--sunk`), the purple family and its edges flip with it, and a filled accent carries `--on-fill` (the ink in the dark half, white in the light) rather than the ink itself. Never a hex in a component in either half.
 
+**What is live glows (R218 step 7).** A session dot working or waiting and a pill marking something running (`.pill.live`: a running job, a running container) carry a soft glow in their own color: a 2px ring at a fifth of it and an 8 to 10px blur at about half. One glow, small, so it reads as lit; nothing that is merely fine glows.
+
 ### shape
 
 Applies to: scripts/dashboard/index.html; corner, radius, rounded, hairline, border
 
-Three corners, as tokens: `--r-surface` (8px) for boxes (cards, panes,
+Three corners, as tokens: `--r-surface` (6px, R218 step 7) for boxes (cards, panes,
 modals), `--r-control` (6px) for controls (buttons, fields, tabs), `--r-small`
 (4px) for tags. Never the number: a scheme may square all three, and nostromo
 does. 99px for pills and 50% for dots are not corners and stay round
-everywhere. Hairlines are `1px solid var(--line)`.
+everywhere. Hairlines are `var(--hair) solid var(--line)`: `--hair` is one device pixel on a screen of two or more to the CSS pixel (0.5px there) and 1px elsewhere, so a border is a line and not a stroke (R218 step 7).
 
 A color is a token too, including the ones that look like a one-off: a
 danger edge is `--red2-edge`, a warn edge `--gold-edge`, text on a filled
@@ -498,17 +500,19 @@ inside a section), the one voice above a row's. What a row says is `--f-row` (13
 
 **One step up at a desk (R210).** The sizes above are the phone's, set against a thumb's width; at a desk, `@media(min-width:901px)`, every voice is one pixel larger (`--f-note` 12, `--f-ui` 13, `--f-row` 14, `--f-field` 12 mono, `--f-sect` 15) so the ladder between them is the same ladder at both sizes. A row's mono facts are `--f-data` (12px, 13 at a desk) and a pill's text `--f-pill`; a button speaks in `--f-ui`, never the browser's default (B711). Nothing retypes a size: a voice is named once on `:root` and once in the desk block.
 
+**A big number is in the display face (R218 step 7).** A tile's figure is `--f-stat`, 24px at a phone and 30px at a desk, in `--display` (the platform's display cut where it has one, Segoe UI Variable Display or SF Pro Display, Inter where installed, the system sans otherwise) at 650 with tabular figures and -0.02em tracking, so a row of figures lines up and reads as one set.
+
 ### space
 
 Applies to: scripts/dashboard/index.html; padding, spacing, gap, inset, margin
 
-A band of a document surface is inset `var(--row-y) var(--row-x)`, 11px 14px,
+A band of a document surface is inset `var(--row-y) var(--row-x)`, 12px 16px on the page's 8px rhythm (R218 step 7),
 and `.field` applies it, so a band is a `.field` rather than a local padding.
 A field inside a field does not inset again. Four
 different left edges in one tab is what retyped padding produces.
 
-**Down a dialog there are two gaps and no others**: `var(--field-gap)` (10px)
-between the things in a band, and `var(--label-gap)` (5px) between a label
+**Down a dialog there are two gaps and no others**: `var(--field-gap)` (8px)
+between the things in a band, and `var(--label-gap)` (4px) between a label
 and the control it heads, because those two are one thing. The band owns
 both: it is a flex column, and its children carry no margins of their own.
 This is not a style preference. It was margin arithmetic between bare
@@ -1067,7 +1071,7 @@ As built (R218 step 5, 14 Oct): page-home.js and /api/home (home.py). The tiles:
 
 Applies to: scripts/dashboard/page-bell.js, scripts/dashboard/page-notices.js; toast, toasts, notification, notifications, bell, notice, notices
 
-What the page says to a person is a system, not a box that flashes (R218 step 6, the operator, 14 Oct). A toast is one of a stack at the top right, under the top bar and the page's own bar, whose action at its right end it leaves clear (on a phone, the width of the screen), the newest on top and at most four, and never the bottom right, where a dialog's foot and its primary action are (a toast held there sat on them), each with its kind's icon (information, a warning, a failure), its words and its own ×; it goes after four seconds, seven for a warning or a failure, and its clock stops while the pointer is over the stack, so nothing leaves mid-read. A job started from the page has a toast of its own that stays while the job runs, its line the job's state and step, and takes the outcome's tone when it ends; newer toasts push out the oldest of the others, not it. Every toast is also on the record: the bell's latest for the page, and the account's notices on the server (notices.py), kept across reloads and browsers, newest first, the latest 300.
+What the page says to a person is a system, not a box that flashes (R218 step 6, the operator, 14 Oct). A toast is one of a stack at the bottom left of the page, beside the rail and above the dock's line (on a phone, the width of the screen above the dock's line), the newest at the foot and at most four: the corner with the fewest controls on a page, since a row's actions are at its right and a view's and a page bar's at their right ends. No corner is free of a dialog's, whose buttons sit at the left of its foot on some and the right on others, so while a dialog is open the stack stands in the wider gutter beside its box, and where neither gutter is wide enough (a phone, a narrow window) at the top of the screen, letting every press through and going by its clock, what it said being on the record. On a touch screen a toast lets a tap through but for its ×, each with its kind's icon (information, a warning, a failure), its words and its own ×; it goes after four seconds, seven for a warning or a failure, and its clock stops while the pointer is over the stack, so nothing leaves mid-read. A job started from the page has a toast of its own that stays while the job runs, its line the job's state and step, and takes the outcome's tone when it ends; newer toasts push out the oldest of the others, not it. Every toast is also on the record: the bell's latest for the page, and the account's notices on the server (notices.py), kept across reloads and browsers, newest first, the latest 300.
 
 The bell's panel is a short list: what waits on an answer, then what needs attention, then the five latest of what was said with how many there are, and See all at its foot.
 

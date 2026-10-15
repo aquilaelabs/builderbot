@@ -101,7 +101,9 @@ function jobStatePill(j){
                assigned: "note", canceled: "warn"}[j.state] || "";
   const word = j.state === "running" && j.cancel ? "stopping"
              : j.state === "running" && j.step ? j.step : j.state;
-  return `<span class="pill ${cls} jbstate">${esc(word)}</span>`;
+  // A running job is live, and glows (R218 step 7).
+  const live = j.state === "running" || j.state === "assigned" ? " live" : "";
+  return `<span class="pill ${cls}${live} jbstate">${esc(word)}</span>`;
 }
 
 // Where and when: the node by name, and the timings that are known: a

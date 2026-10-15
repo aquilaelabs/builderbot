@@ -31,15 +31,15 @@ await api('/api/notices', { action: 'clear' });
   const st = await page.evaluate(() => [...document.querySelectorAll('#toast .tst')].map(t => ({
     text: t.querySelector('.tmsg').textContent, cls: t.className, icon: !!t.querySelector('.tic svg'), x: !!t.querySelector('.tx') })));
   ok(st.length === 4 && st.at(-1).text === 'stack 6' && st[0].text === 'stack 3',
-     `the toasts stack, the newest on top and at most four (${st.map(t => t.text).join(', ')})`);
+     `the toasts stack, the newest at the foot and at most four (${st.map(t => t.text).join(', ')})`);
   ok(/\bbad\b/.test(st.at(-1).cls) && /\bwarn\b/.test(st.at(-2).cls) && st.every(t => t.icon && t.x),
      '...each with its kind\'s icon and its own ×, a failure and a warning in their tones');
   const box = await page.$eval('#toast', el => { const r = el.getBoundingClientRect();
-    return { right: innerWidth - r.right, top: r.top, header: document.querySelector('header').getBoundingClientRect().bottom,
-             newestTop: [...el.children].at(-1).getBoundingClientRect().top <= el.firstElementChild.getBoundingClientRect().top }; });
-  const bar = await page.$eval('.pane .bar', b => b.getBoundingClientRect().bottom);
-  ok(box.right < 40 && box.top >= bar && box.top < bar + 30 && box.newestTop,
-     `...at the top right, under the top bar and the page's own, the newest on top (${JSON.stringify({ ...box, bar })})`);
+    return { left: r.left, rail: document.getElementById('rail').getBoundingClientRect().right,
+             bottom: r.bottom, dock: document.querySelector('#pane1 .bar')?.getBoundingClientRect().top ?? innerHeight,
+             newestFoot: [...el.children].at(-1).getBoundingClientRect().top >= el.firstElementChild.getBoundingClientRect().top }; });
+  ok(box.left >= box.rail && box.left < box.rail + 30 && box.bottom <= box.dock && box.newestFoot,
+     `...at the bottom left, beside the rail and above the dock's line, the newest at the foot (${JSON.stringify(box)})`);
   await page.click('#toast .tst:last-child .tx');
   await until(() => page.evaluate(() => ![...document.querySelectorAll('#toast .tmsg')].some(t => t.textContent === 'stack 6')), 3000);
   ok(true, '...and × takes one away');
@@ -52,6 +52,30 @@ await api('/api/notices', { action: 'clear' });
   await page.mouse.move(10, 10);
   await until(() => page.evaluate(() => !document.querySelector('#toast .tst')), 8000);
   ok(await page.evaluate(() => !document.querySelector('#toast .tst')), '...and goes once the pointer leaves');
+}
+
+// ---- a toast never sits on an open dialog ------------------------------------
+// No corner is free of controls: the enroll dialog's buttons are at the left
+// of its foot, and a refusal there landed on its Go. So with a dialog open
+// the stack goes into the gutter beside its box, and where there is none,
+// to the top, letting presses through.
+const offDialog = () => page.evaluate(() => {
+  const b = document.querySelector('#aboutModal > .box').getBoundingClientRect();
+  const ts = [...document.querySelectorAll('#toast .tst')].map(t => t.getBoundingClientRect());
+  const hit = ts.some(t => t.left < b.right && t.right > b.left && t.top < b.bottom && t.bottom > b.top);
+  return { n: ts.length, hit, through: getComputedStyle(document.querySelector('#toast .tst')).pointerEvents === 'none'
+    && getComputedStyle(document.querySelector('#toast .tx')).pointerEvents === 'none',
+    box: [b.left, b.right].map(Math.round), toast: ts.map(t => [t.left, t.right, t.top].map(Math.round)) };
+});
+{
+  await page.evaluate(() => { openAbout(); notify('said over a dialog', 'warn'); });
+  await sleep(300);
+  const d = await offDialog();
+  ok(d.n === 1 && !d.hit, `with a dialog open a toast stands in the gutter beside its box, not on it (${JSON.stringify(d)})`);
+  await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); closeAbout(); notify('and after it'); });
+  ok(await page.$eval('#toast', el => !el.style.cssText && !el.classList.contains('overdlg')),
+     '...and with it shut, the stack is back at its corner');
+  await page.evaluate(() => document.querySelectorAll('#toast .tst').forEach(t => t.remove()));
 }
 
 // ---- every toast is on the record ------------------------------------------
@@ -138,14 +162,20 @@ await api('/api/notices', { action: 'clear' });
   await page.evaluate(() => document.querySelectorAll('#toast .tst').forEach(t => t.remove()));
 }
 
-// ---- on a phone the stack spans the width under the top bar -----------------
+// ---- on a phone the stack spans the width above the dock's line -------------
 {
   await page.setViewportSize({ width: 393, height: 851 });
   await page.evaluate(() => notify('on a phone'));
   await sleep(300);
-  const r = await page.$eval('#toast .tst', t => { const b = t.getBoundingClientRect(); return { l: b.left, r: innerWidth - b.right, top: b.top,
-    header: document.querySelector('header').getBoundingClientRect().bottom }; });
-  ok(r.l <= 12 && r.r <= 12 && r.top >= r.header, `on a phone a toast spans the width, under the top bar (${JSON.stringify(r)})`);
+  const r = await page.$eval('#toast .tst', t => { const b = t.getBoundingClientRect(); return { l: b.left, r: innerWidth - b.right, bottom: b.bottom,
+    dock: document.querySelector('#pane1 .bar')?.getBoundingClientRect().top ?? document.getElementById('railbar').getBoundingClientRect().top }; });
+  ok(r.l <= 12 && r.r <= 12 && r.bottom <= r.dock, `on a phone a toast spans the width, above the dock's line (${JSON.stringify(r)})`);
+  await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); openAbout(); notify('over a phone dialog', true); });
+  await sleep(300);
+  const pd = await offDialog();
+  const top = await page.$eval('#toast .tst', t => t.getBoundingClientRect().top);
+  ok(pd.through && top < 60, `...and over a dialog with no gutter it sits at the top and lets every press through (${JSON.stringify({ ...pd, top })})`);
+  await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); closeAbout(); });
   // ...and the page there shows one section, History while nothing waits.
   await page.evaluate(() => { openNotices(); notify('one for the phone'); });
   await until(() => page.evaluate(() => !!document.querySelector('.noticestab .ntrow')), 10000);

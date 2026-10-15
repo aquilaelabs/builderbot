@@ -507,8 +507,9 @@ ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 // highlight no other list here has, in a hardcoded color no scheme reached.
 ok(await page.$eval('.doc:has(.tc)', e => e.classList.contains('flush')),
    'the Toolchains tab fills its pane, like every other document tab');
-ok(await page.$eval('.tc', e => getComputedStyle(e).padding) === '11px 14px',
-   '...on the same band the notebook uses, so the two do not disagree by two pixels');
+ok(await page.$eval('.tc', e => { const c = getComputedStyle(document.documentElement);
+     return getComputedStyle(e).padding === `${c.getPropertyValue('--row-y').trim()} ${c.getPropertyValue('--row-x').trim()}`; }),
+   '...on the same band the notebook uses (the band tokens), so the two do not disagree by two pixels');
 ok(await page.evaluate(() => {
      const host = document.querySelector('.doc:has(.tc)');
      const bin = document.querySelector('.tc .rm');

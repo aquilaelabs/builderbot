@@ -1462,7 +1462,8 @@ function dmRowsHtml(ins, job, blind){
     const inner = `
       <div class="grow">
         <div class="dmid">
-        <div class="name">${esc(d.name)}<span class="pill stat dmpill${st[1] ? " " + st[1] : ""}">${
+        <div class="name">${esc(d.name)}<span class="pill stat dmpill${st[1] ? " " + st[1] : ""}${
+            !blind && d.running && st[1] === "ok" ? " live" : ""}">${
             esc(st[0])}${dockerList?.stale && !blind ? ", as last seen" : ""}</span></div>
         <div class="sub">${d.source === "file"
           ? `written here: this dashboard holds its compose file`

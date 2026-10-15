@@ -803,9 +803,11 @@ of cards, each with the same state and the same two actions and menu; the
 name opens the page.
 
 **What the page says** (R218 step 6). A toast is one of a stack at the
-top right, under the top bar and the page's own bar, whose action it
-leaves clear (across the screen on a phone), the newest on top and at most
-four, each with its kind's icon and its own ×. It goes after four seconds, seven for a warning or a failure, and stays
+bottom left of the page, beside the rail and above the dock's line (across
+the screen on a phone), the corner that holds the fewest controls; while a dialog is
+open it stands beside the dialog's box instead, or at the top of the
+screen letting presses through where there is no room beside it. The
+newest is at the foot and there are at most four, each with its kind's icon and its own ×. It goes after four seconds, seven for a warning or a failure, and stays
 while the pointer is over the stack. A job started from the page (an agent
 update, a toolchain install) gets a toast of its own that stays while the
 job runs, says its state and its step as the queue reports them, and takes

@@ -107,6 +107,12 @@
      operator, 2 Oct: read like an encyclopedia). The same Android care as
      the mono: Noto Serif is what those devices carry. */
   --serif:"Linux Libertine","Georgia","Times New Roman","Noto Serif","Droid Serif",serif;
+  /* The display face (R218 step 7): a big number's, a tile's figure. The
+     platform's display cut where it has one (Windows 11's Segoe UI Variable
+     Display, a Mac's SF Pro Display), Inter where somebody installed it, the
+     system sans otherwise; set with tabular figures and a touch of negative
+     tracking wherever it is used, so figures line up and read as one. */
+  --display:"Segoe UI Variable Display","SF Pro Display",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   color-scheme:dark;
   --tap:38px;
   /* One height for every control a person types into or presses beside
@@ -121,7 +127,12 @@
      because a machined edge is part of that look and a rounded corner on it
      read as a soft highlight bending round a hard tab. Circles and full
      pills are not these and stay round everywhere. */
-  --r-surface:8px; --r-control:6px; --r-small:4px;
+  --r-surface:6px; --r-control:6px; --r-small:4px;
+  /* A hairline (R218 step 7): one device pixel where the screen has two or
+     more to the CSS pixel, so a border is a line and not a stroke; 1px
+     elsewhere, where half a pixel would round away. Every border drawn in
+     --line is this width. */
+  --hair:1px;
   /* The widest a control, or a row of them, may be on a document surface or
      a sidebar card: a field that runs the whole width of a tab reads as a
      form pretending to be a page (docs/design-language.md, Controls). */
@@ -132,15 +143,15 @@
      sidebar's tighter density by mistake, which is how one tab ends up with
      four different left edges. The sidebar keeps its own, tighter, values;
      this is the roomy one every document surface uses. */
-  --row-y:11px; --row-x:14px;
+  --row-y:12px; --row-x:16px;
   /* The gap between the stacked things inside one band: a label-and-field
      pair, a hint, a row of them. One value, so a dialog cannot invent its
      own rhythm (the sandbox VM dialog had 0, 0, 10, 10, 0 down one form). */
-  --field-gap:10px;
+  --field-gap:8px;
   /* ...and between a label and the control it heads, which is a tighter
      gap because they are one thing. Two values existed for this, 5px on a
      dialog's label and 4px inside .setrow.col. */
-  --label-gap:5px;
+  --label-gap:4px;
   /* The page's three secondary voices, named once. Before this they were
      retyped at every use: 11px/1.4, /1.45, /1.5 and /1.6 all coexisted for
      the same "quiet explainer under a control", which is the kind of drift
@@ -170,7 +181,7 @@
   --f-pill:11px/1 var(--mono);
   /* A tile's number (R216): the one voice above --f-sect, for a figure a
      tab is about, read from across the room. */
-  --f-stat:600 22px/1.1 system-ui,sans-serif;
+  --f-stat:650 24px/1.05 var(--display);
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
      "reference" and "na" stop looking like the same family. */
@@ -180,6 +191,7 @@
   --gold:#d8b25c;   --gold-edge:#4a3c1e;
   --red2:#e0796f;   --red2-edge:#94423d;
 }
+@media(min-resolution:2dppx){ :root{--hair:.5px} }
 /* ONE STEP UP AT A DESK (the operator, 13 Oct: "a lot of text looks too
    small on desktop in a lot of places"). The phone keeps the sizes above,
    which were set against a thumb's width; a desk reads from further away
@@ -196,7 +208,7 @@
     --f-sect:600 15px/1.4 system-ui,sans-serif;
     --f-data:13px/1.4 var(--mono);
     --f-pill:12px/1 var(--mono);
-    --f-stat:600 26px/1.1 system-ui,sans-serif;
+    --f-stat:650 30px/1.05 var(--display);
   }
 }
 /* The cap. A lightness ceiling rather than more black, because "more black"
@@ -466,7 +478,7 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
 ::selection{background:var(--accent-deep);color:var(--on-fill)}
 
 header{display:flex;align-items:center;gap:10px;padding:8px 12px;
-  background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;
+  background:var(--panel);border-bottom:var(--hair) solid var(--line);flex:0 0 auto;
   position:relative}   /* the bell's panel hangs from it */
 header h1{font-size:15px;margin:0;font-weight:600}
 /* Every header button one box, at every width: the bell carried the tap
@@ -588,7 +600,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 }
 .bellpanel{position:absolute;right:8px;top:100%;z-index:40;
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
-  background:var(--panel);border:1px solid var(--line);border-top:0;
+  background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
   animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 /* The header's own menu, under the gear. Same shape and the
@@ -596,7 +608,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    edge, anything else closes it, Escape closes it. */
 .uimenu{position:absolute;right:8px;top:100%;z-index:40;
   width:min(300px,calc(100vw - 16px));
-  background:var(--panel);border:1px solid var(--line);border-top:0;
+  background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px;
   animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 .uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
@@ -668,7 +680,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .setrow.col>input[type=number]{width:7em;flex:0 0 auto}
 .lbl{display:block;font:var(--f-ui);color:var(--dim);margin:0}
 .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
-  margin-left:5px;border-radius:50%;border:1px solid var(--line);color:var(--dim);
+  margin-left:5px;border-radius:50%;border:var(--hair) solid var(--line);color:var(--dim);
   font:11px/1 system-ui,sans-serif;vertical-align:middle;cursor:help;
   transition:color .15s ease,border-color .15s ease}
 .help:hover,.help:focus-visible{color:var(--ink);border-color:var(--ink)}
@@ -681,7 +693,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* What the page cannot say because it cannot reach the container: under
    the header, the light's reason in words (it was the light's tooltip). */
 .pollwhy{padding:4px 12px;color:var(--bad);font:12px/1.45 system-ui,sans-serif;
-  border-bottom:1px solid var(--line);background:var(--bg)}
+  border-bottom:var(--hair) solid var(--line);background:var(--bg)}
 .uadd{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
 .uadd .setrow{flex:1 1 12em}
 .setrow input:not([type=checkbox]):not([type=number]){flex:1 1 12em;min-width:0;width:auto}
@@ -691,7 +703,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    how to save. Dressed as a button so the row reads as three controls. */
 .logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
   flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:var(--r-surface);
-  border:1px solid var(--line);background:var(--btn);color:var(--ink);
+  border:var(--hair) solid var(--line);background:var(--btn);color:var(--ink);
   text-decoration:none;font:var(--f-ui);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
 @media(hover:hover){ .logacts .btnish:hover{background:var(--btn-hi)} }
@@ -704,9 +716,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    at 1cm rather than a hand-kept copy of it. */
 .sw{position:relative;display:block;padding:0;overflow:hidden;
   height:44px;border-radius:var(--r-control);cursor:pointer;
-  background:var(--bg);border:1px solid var(--line)}
+  background:var(--bg);border:var(--hair) solid var(--line)}
 .sw .swp{position:absolute;left:0;right:0;bottom:0;height:16px;
-  background:var(--panel);border-top:1px solid var(--line)}
+  background:var(--panel);border-top:var(--hair) solid var(--line)}
 .sw .swa{position:absolute;left:6px;top:7px;width:10px;height:10px;
   border-radius:50%;background:var(--accent)}
 .sw .swi{position:absolute;left:20px;top:10px;right:6px;height:4px;
@@ -722,7 +734,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   left:0;right:0;top:0;height:3px;
   background:repeating-linear-gradient(-45deg,
     rgba(255,176,0,.6) 0 5px, rgba(0,0,0,0) 5px 10px)}
-.bnote{padding:8px 10px;border-bottom:1px solid var(--line);font:var(--f-ui)}
+.bnote{padding:8px 10px;border-bottom:var(--hair) solid var(--line);font:var(--f-ui)}
 .bnote:last-of-type{border-bottom:0}
 .bnote .bwhy{overflow-wrap:anywhere}
 .bnote.bad .bwhy{color:var(--bad)}
@@ -740,7 +752,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   border-radius:var(--r-small);font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;
   background:var(--warn);color:var(--bg);font-weight:700}
 /* The two answers read as controls, not as links in a sentence. */
-.bnote.ask .acts a{padding:3px 10px;border-radius:var(--r-control);border:1px solid var(--line);
+.bnote.ask .acts a{padding:3px 10px;border-radius:var(--r-control);border:var(--hair) solid var(--line);
   text-decoration:none}
 .bnote.ask .acts a[data-ballow]{background:var(--warn);color:var(--bg);
   border-color:var(--warn);font-weight:600}
@@ -765,7 +777,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    (the operator, 10 Oct: one amber wall). A head is a label, not a row. */
 .bgroup{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;
   font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);
-  border-bottom:1px solid var(--line);background:var(--sunk)}
+  border-bottom:var(--hair) solid var(--line);background:var(--sunk)}
 .bgroup button{margin-left:auto}
 /* What needs doing but is not a question: the bar down its side says how
    much it matters, the words stay in ink, and the long part is folded. */
@@ -775,12 +787,12 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .bnote .bsum{color:var(--dim);margin-top:2px;overflow-wrap:anywhere;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .bnote .bwarn{color:var(--warn);font:var(--f-note);margin-top:3px}
-.bnote.att .acts a{padding:3px 10px;border-radius:var(--r-control);border:1px solid var(--line);
+.bnote.att .acts a{padding:3px 10px;border-radius:var(--r-control);border:var(--hair) solid var(--line);
   text-decoration:none}
 .bfootbar > span{margin-right:auto;color:var(--dim);font:var(--f-note);align-self:center}
 .bempty{padding:14px 10px;color:var(--dim);font:var(--f-note);text-align:center}
 .bfootbar{display:flex;justify-content:flex-end;padding:6px 8px;
-  border-top:1px solid var(--line)}
+  border-top:var(--hair) solid var(--line)}
 .about .aline{display:flex;gap:10px;align-items:baseline;padding:3px 0}
 .about .aline span{flex:0 0 96px;color:var(--dim);font:var(--f-note)}
 .about .aline code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
@@ -828,12 +840,12 @@ body.firstrun main{grid-template-columns:1fr}
 body.firstrun .rail, body.firstrun .railbar, body.firstrun .railmore{display:none}
 body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:none}
 .setup{flex:0 1 auto;max-height:60%;overflow:auto;background:var(--panel);
-  border:1px solid var(--line);border-radius:var(--r-surface);padding:12px 14px}
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:var(--row-y) var(--row-x)}
 .setup .setuphead h2{margin:0 0 4px;font-size:16px}
 .setup .setuphead p{margin:0 0 10px}
 /* What un-enrolling does, in the reset dialog and a node's Un-enroll: a sunk box, the
    same ground as a public key's, so it reads as a note and not a control. */
-.resetwhat{margin:8px 0;background:var(--sunk);border:1px solid var(--line);
+.resetwhat{margin:8px 0;background:var(--sunk);border:var(--hair) solid var(--line);
   border-radius:var(--r-control);padding:8px 10px;font-size:12px;color:var(--dim)}
 .resetwhat ul{margin:4px 0 8px;padding-left:18px}
 .resetwhat b{color:var(--ink)}
@@ -844,7 +856,7 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
   .pane .bar button{min-height:30px}
 }
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
-  border-bottom:1px solid var(--line);flex-wrap:wrap}
+  border-bottom:var(--hair) solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
 /* The CI runner page's list of every node's runner, each row a press that
    picks its node; the one shown wears the accent's edge. */
@@ -857,16 +869,16 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 @media(hover:hover){ .hometiles .tile.link:hover{border-color:var(--accent-mid)} }
 .homegrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 @media(max-width:900px){ .homegrid{grid-template-columns:minmax(0,1fr)} }
-.hcard,.hsect{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+.hcard,.hsect{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   overflow:hidden;min-width:0}
-.hcard h3,.hsect h3{margin:0;padding:9px 12px;font:var(--f-sect);border-bottom:1px solid var(--line)}
+.hcard h3,.hsect h3{margin:0;padding:9px 12px;font:var(--f-sect);border-bottom:var(--hair) solid var(--line)}
 .hnone{padding:10px 12px;color:var(--dim);font:var(--f-ui)}
 .hcard .hjob{width:100%;text-align:left;background:none;border:0;border-radius:0;
-  border-bottom:1px solid var(--line);white-space:normal;justify-content:flex-start;min-height:var(--tap)}
+  border-bottom:var(--hair) solid var(--line);white-space:normal;justify-content:flex-start;min-height:var(--tap)}
 .hcard .hjob:last-child{border-bottom:0}
 .hcard .hjob .sub{display:block}
 .hglance{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:12px}
-.hproj{border:1px solid var(--line);border-radius:var(--r-surface);padding:9px 11px;min-width:0;
+.hproj{border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:9px 11px;min-width:0;
   background:var(--btn)}
 .hproj.pc{box-shadow:inset 3px 0 var(--pc)}
 .hproj .name{font:var(--f-row);font-weight:600}
@@ -877,7 +889,7 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 .ntask .bcmd{font:var(--f-data);color:var(--dim);overflow-wrap:anywhere;margin-top:4px}
 .ntlong summary{font:var(--f-note);color:var(--dim);cursor:pointer;margin-top:6px}
 .ntbox{font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:50vh;overflow:auto;
-  margin:6px 0 0;padding:8px 10px;background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control)}
+  margin:6px 0 0;padding:8px 10px;background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control)}
 .ntrow{align-items:flex-start;flex-wrap:nowrap}
 .ntrow .tic svg{width:16px;height:16px;display:block;margin-top:2px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
@@ -887,10 +899,10 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 .ntrow .grow{min-width:0}
 .ntrow .nttext{display:block;overflow-wrap:anywhere}
 .ntrow .sub{display:block}
-.runnersall{display:flex;flex-direction:column;border:1px solid var(--line);
+.runnersall{display:flex;flex-direction:column;border:var(--hair) solid var(--line);
   border-radius:var(--r-surface);margin:0 0 10px;overflow:hidden}
 .runnersall .row{width:100%;text-align:left;background:none;border:0;border-radius:0;
-  border-bottom:1px solid var(--line);justify-content:flex-start;min-height:var(--tap);
+  border-bottom:var(--hair) solid var(--line);justify-content:flex-start;min-height:var(--tap);
   white-space:normal}
 /* The state on a line of its own, and a long host wraps: on a phone the
    row was one line cut at the screen's edge (B745). */
@@ -942,7 +954,7 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 /* The page's own secondary voice, not the browser's: `font:12px/1 inherit`
    is not valid shorthand (inherit cannot ride inside it), so the whole
    declaration was dropped and every button wore 13.3px Arial (B711). */
-button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
+button{background:var(--btn);color:var(--ink);border:var(--hair) solid var(--line);
   border-radius:var(--r-control);padding:6px 10px;font:var(--f-ui);cursor:pointer;
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
@@ -1059,7 +1071,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
     padding-inline:6px 9px;color:var(--dim);transition:transform .14s}
   select:open::picker-icon{transform:rotate(180deg)}
   select::picker(select){appearance:base-select;background:var(--panel);
-    border:1px solid var(--line);border-radius:var(--r-surface);padding:5px;margin-top:4px;
+    border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;margin-top:4px;
     box-shadow:0 6px 18px rgba(0,0,0,.5);
     /* The cap is what stops a forty-level API list running off the screen;
        the rest of it scrolls. */
@@ -1101,12 +1113,12 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    had a gutter of its own: 12px, applied to a wrapper instead of to the rows,
    which put this tab a couple of pixels out of step with every other one and
    left the bin against the right edge with nothing beyond it. */
-.tchead{margin:0;padding:11px 14px;color:var(--dim);
-  font:var(--f-ui);border-bottom:1px solid var(--line)}
+.tchead{margin:0;padding:var(--row-y) var(--row-x);color:var(--dim);
+  font:var(--f-ui);border-bottom:var(--hair) solid var(--line)}
 .tchead code{font-family:var(--mono);color:var(--ink)}
 .tcs{padding:0}
-.tc{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;margin:0;
-  border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
+.tc{display:flex;gap:10px;align-items:flex-start;padding:var(--row-y) var(--row-x);margin:0;
+  border-bottom:var(--hair) solid var(--line);cursor:pointer;color:var(--ink)}
 .tc:last-child{border-bottom:0}
 .tc input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
 /* The NVIDIA driver's row (R102): a row of the machine's own above the
@@ -1115,7 +1127,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
 .tc.tcdrv{cursor:default}
 .tc.tcdrv label.nm{cursor:pointer;display:block}
 .tc .tcdrvpick{display:flex;align-items:center;gap:8px;margin:6px 0 2px;color:var(--dim);font:var(--f-note)}
-.tcs.tcmachine{border-bottom:1px solid var(--line)}
+.tcs.tcmachine{border-bottom:var(--hair) solid var(--line)}
 .tc .nm{font:600 13px/1.35 system-ui,sans-serif}
 .tc .sub{display:block;color:var(--dim);font:var(--f-note)}
 .tc .where{font-family:var(--mono);overflow-wrap:anywhere}
@@ -1157,7 +1169,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    wide as its longest option unless told otherwise, and
    "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
    which clipped every paragraph on it. */
-.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:11px 14px}
+.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:var(--row-y) var(--row-x)}
 /* Sizing only: the font is the house control font from the .doctab group.
    It carried its own 12px sans here, which the conformance suite flagged the
    first week it ran: two selects on one page in a different voice than every
@@ -1216,10 +1228,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    21px the Projects tab scrolled sideways by. */
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
-.cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
+.cmd{display:inline-flex;align-items:stretch;border:var(--hair) solid var(--line);
   border-radius:var(--r-control);overflow:hidden;background:var(--btn)}
 .cmd button{border:0;border-radius:0;background:transparent;min-height:28px}
-.cmd .tack{padding:4px 6px;color:color-mix(in srgb, var(--dim) 55%, var(--panel));border-left:1px solid var(--line);
+.cmd .tack{padding:4px 6px;color:color-mix(in srgb, var(--dim) 55%, var(--panel));border-left:var(--hair) solid var(--line);
   display:inline-flex;align-items:center}
 .cmd .tack.on{color:var(--accent)}
 .cmd .tack svg{width:13px;height:13px;display:block;fill:none;stroke:currentColor;
@@ -1279,7 +1291,7 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 /* A dialog's box takes the focus as it opens (modalKeys), for a screen
    reader and for Tab to start from; it is not a control, so no ring. */
 .modal>.box:focus{outline:none}
-.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+.modal .box{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
 /* A box that scrolls says so (scrollHints in page-motion.js): a shadow on
@@ -1323,7 +1335,7 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
   .modal .box.sheet{width:100%;height:100%;max-height:none;
     border:0;border-radius:0}
 }
-.modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
+.modal h3{margin:0;padding:var(--row-y) var(--row-x);border-bottom:var(--hair) solid var(--line);
   font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.3px;text-transform:uppercase}
 /* The band inset, once, for every .field. It was scoped to .modal and .nb, so
    the Analysis tab's filter bar carried the class, matched nothing and sat
@@ -1363,7 +1375,7 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
    what is its own: font, padding, size. */
 input:where(:not([type="checkbox"],[type="radio"],[type="range"],[type="file"])),
 textarea,select{
-  background:var(--sunk);color:var(--ink);border:1px solid var(--line);
+  background:var(--sunk);color:var(--ink);border:var(--hair) solid var(--line);
   border-radius:var(--r-control)}
 /* A file field is a button of ours and the picked name; the browser's
    chooser stays hidden (docs/design-language.md, Controls). */
@@ -1454,7 +1466,7 @@ select:focus{outline-offset:-2px}
 .modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:0}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
-.modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
+.modal .foot,.nb .foot{display:flex;gap:8px;padding:var(--row-y) var(--row-x);border-top:var(--hair) solid var(--line);
   flex-wrap:wrap}
 .modal .foot .sp,.nb .foot .sp{flex:1}
 /* A note in a dialog is the quiet explainer, as it is on a row: with no rule
@@ -1498,15 +1510,15 @@ select:focus{outline-offset:-2px}
 /* The jump bar over a long surface (sectJump): its sections' names in a
    line that wraps, each a link to its own. */
 .sectjump{display:flex;flex-wrap:wrap;gap:6px 8px;padding:var(--row-y) var(--row-x);
-  border-bottom:1px solid var(--line);font:var(--f-note)}
+  border-bottom:var(--hair) solid var(--line);font:var(--f-note)}
 /* Chips, not bare words: as links alone they read as one more line of text
    (the operator, 11 Oct). In a dialog the bar is a .field band, whose stack
    is a column; the chips still sit in a row. */
 .field.sectjump,.modal .sectjump{display:flex;flex-direction:row;flex-wrap:wrap}
 .sectjump a{color:var(--accent);text-decoration:none;white-space:nowrap;padding:3px 10px;
-  border:1px solid var(--line);border-radius:99px;line-height:1.2}
+  border:var(--hair) solid var(--line);border-radius:99px;line-height:1.2}
 .sectjump a:hover{text-decoration:none;border-color:var(--accent)}
-.rnsign{padding:6px 0;border-top:1px solid var(--line)}
+.rnsign{padding:6px 0;border-top:var(--hair) solid var(--line)}
 /* A signed build's certificate fingerprint on its Artifacts row (R106):
    the whole of it, wrapping on a phone rather than cut off. */
 .artfp{font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
@@ -1681,7 +1693,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
    no well and no border and no height of its own, because it is read in the
    same window they are and a box inside that window is a box too many. */
 .verlogpane{font:12px/1.6 var(--mono);color:var(--ink);white-space:pre-wrap;
-  overflow-wrap:anywhere;padding:11px 14px}
+  overflow-wrap:anywhere;padding:var(--row-y) var(--row-x)}
 /* The editor above it. A category is a band with its name in it; an entry is
    a row of the same shape as every other row on a document surface, so the
    arrangement reads as a list rather than as a form. The commits are on the
@@ -1690,7 +1702,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 /* white-space, because .clog is drawn INSIDE the .verlogpane and inherited
    its pre-wrap: every line of every hint and label here kept the indentation
    of the template literal it was written in. */
-.clog{padding:11px 14px;display:flex;flex-direction:column;gap:16px;
+.clog{padding:var(--row-y) var(--row-x);display:flex;flex-direction:column;gap:16px;
   white-space:normal}
 .clog .clgroup{display:flex;flex-direction:column;gap:10px}
 /* A category is a HEADING with its two controls, not another field. It was a
@@ -1699,7 +1711,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
    arrangement could not be read at all. It reads as the name of what is under
    it until you put a cursor in it, and then it is a field again. */
 .clog .clhead{display:flex;align-items:center;gap:6px;
-  border-bottom:1px solid var(--line);padding-bottom:5px}
+  border-bottom:var(--hair) solid var(--line);padding-bottom:5px}
 .clog .clhead input.clname{flex:1 1 auto;min-width:0;width:auto;
   background:none;border:1px solid transparent;padding:3px 5px;
   font:600 14px/1.3 system-ui,sans-serif;color:var(--ink)}
@@ -1854,7 +1866,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 /* A hairline where the sections above it end. A section draws its own top
    border and nothing draws a bottom one, so without this the first file in
    dist/ reads as another line of the Version block it happens to follow. */
-#artList,#artBranches{border-top:1px solid var(--line)}
+#artList,#artBranches{border-top:var(--hair) solid var(--line)}
 /* The Git view (roadmap R36). The graph is one SVG down the left edge of
    rows of one height, so an edge between two commits is a curve between
    two known points; the picked commit's detail is a band under the list
@@ -1863,7 +1875,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .gitgraph .glines{flex:0 0 auto;overflow:visible}
 .gitgraph .grows{flex:1 1 auto;min-width:0}
 .grow[data-sha]{display:flex;flex-direction:column;justify-content:center;gap:1px;
-  padding:0 6px;border-bottom:1px solid var(--line);cursor:pointer;min-width:0;
+  padding:0 6px;border-bottom:var(--hair) solid var(--line);cursor:pointer;min-width:0;
   transition:background-color .15s ease}
 .grow[data-sha]:last-child{border-bottom:0}
 @media(hover:hover){ .grow[data-sha]:hover{background:var(--btn)} }
@@ -1874,30 +1886,30 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .glines path{fill:none;stroke-width:2;opacity:.8}
 .glines .gn{fill:var(--panel);stroke-width:2}
 .glines .gn.on{fill:var(--ink)}
-#gitDetail{border-top:1px solid var(--line);padding:var(--row-y) 0 0}
+#gitDetail{border-top:var(--hair) solid var(--line);padding:var(--row-y) 0 0}
 .gcommit .name{font:600 13px/1.4 system-ui,sans-serif;overflow-wrap:anywhere}
 .gmsg{font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;color:var(--dim)}
 .gadd{color:var(--accent)} .gdel{color:var(--bad)}
 .gbranch .name code{font:var(--mono);font-size:13px}
 .gcommitbar,.gbranchbar{padding:0 0 8px}
 .gcommitbar input,.gbranchbar input{flex:1 1 auto;min-width:0}
-.gitnet{border-bottom:1px solid var(--line)}
+.gitnet{border-bottom:var(--hair) solid var(--line)}
 /* A diff: one fold per file, the lines colored, and it scrolls inside its
    own box on a phone rather than the pane. */
-.dfile{border-top:1px solid var(--line);margin-top:6px}
+.dfile{border-top:var(--hair) solid var(--line);margin-top:6px}
 .dfile>summary{cursor:pointer;list-style:none;padding:6px 0;font:var(--f-ui);color:var(--dim)}
 .dfile>summary::-webkit-details-marker{display:none}
 .dfile>summary::before{content:"\25B8";font-size:11px;margin-right:6px}
 .dfile[open]>summary::before{content:"\25BE"}
 pre.diff{margin:0;overflow-x:auto;font:12px/1.5 var(--mono);white-space:pre;
-  background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control);padding:6px 8px}
+  background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);padding:6px 8px}
 pre.diff span{display:block;min-width:max-content;padding:0 4px}
 pre.diff .d-add{background:color-mix(in srgb, var(--accent), transparent 82%)}
 pre.diff .d-del{background:color-mix(in srgb, var(--bad), transparent 82%)}
 pre.diff .d-hunk{color:var(--note);background:color-mix(in srgb, var(--note), transparent 90%)}
 pre.diff .d-ctx{color:var(--dim)}
 .artrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-  border-bottom:1px solid var(--line);padding:9px 2px}
+  border-bottom:var(--hair) solid var(--line);padding:9px 2px}
 .artrow:last-child{border-bottom:0}
 .artrow .grow{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;
   gap:3px;font:13px/1.4 system-ui,sans-serif}
@@ -1908,7 +1920,7 @@ pre.diff .d-ctx{color:var(--dim)}
 /* One fact per line, indented under the line that says what kind they are. */
 .artrow .dim.li{padding-left:12px}
 /* One published port is a link; several is a question, asked in the sheet. */
-.portpick{display:flex;flex-direction:column;gap:8px;padding:12px 14px}
+.portpick{display:flex;flex-direction:column;gap:8px;padding:var(--row-y) var(--row-x)}
 .portpick a.btn{justify-content:flex-start;gap:8px;font:12px/1.4 var(--mono)}
 .artrow .top .state{font:var(--f-note)}
 .artrow .top .state.ok{color:var(--accent)}
@@ -1921,7 +1933,7 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A download is a link wearing the button suit, because the browser has to
    navigate to it: fetch would buffer the file into JS for nothing. */
 .artrow a.btn{display:inline-flex;align-items:center;min-height:var(--tap);
-  padding:6px 12px;background:var(--btn);color:var(--ink);border:1px solid var(--line);
+  padding:6px 12px;background:var(--btn);color:var(--ink);border:var(--hair) solid var(--line);
   border-radius:var(--r-control);font:600 12px/1 system-ui,sans-serif;text-decoration:none}
 @media(hover:hover){ .artrow a.btn:hover{border-color:var(--dim)} }
 .artrow.job .grow{font:var(--f-ui);color:var(--dim)}
@@ -1974,7 +1986,7 @@ pre.diff .d-ctx{color:var(--dim)}
   .roadmapadd input{flex:1 1 100%}
   .roadmapadd button{flex:0 0 auto}
 }
-.grp{border-bottom:1px solid var(--line)}
+.grp{border-bottom:var(--hair) solid var(--line)}
 .grp:last-child{border-bottom:0}
 .roadmap{display:flex;gap:9px;align-items:flex-start;padding:9px 0}
 /* A group's steps sit under its title, indented and hairlined, so the shape
@@ -2006,7 +2018,7 @@ pre.diff .d-ctx{color:var(--dim)}
    design language" quietly stops being the same. */
 .hist .act,.roadmap .who,.mem .mtype,.bug .sev,.bug .bstat{flex:0 0 auto;
   font:var(--f-tag);text-transform:uppercase;letter-spacing:.4px;
-  padding:3px 5px;border-radius:var(--r-small);border:1px solid var(--line);
+  padding:3px 5px;border-radius:var(--r-small);border:var(--hair) solid var(--line);
   color:var(--dim);white-space:nowrap}
 .hist .act.gone{color:var(--red2);border-color:var(--red2-edge)}
 .hist .act.new{color:var(--green2);border-color:var(--green2-edge)}
@@ -2110,7 +2122,7 @@ pre.diff .d-ctx{color:var(--dim)}
    auto computes the OTHER one from visible to auto, so `overflow-x:auto`
    alone made this a vertical scroller too, and the suite caught it. The bar
    is hidden because a scrollbar under a row of tabs reads as a divider. */
-.nbtabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px;
+.nbtabs{display:flex;border-bottom:var(--hair) solid var(--line);padding:0 8px;
   overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
   -webkit-overflow-scrolling:touch}
 .nbtabs::-webkit-scrollbar{display:none}
@@ -2133,12 +2145,12 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The lent phone's screen as a session last saw it (tab-phone.js, R113): a
    picture at a phone's proportions, never wider than a row wants. */
 .phshot{display:block;max-width:min(260px,60vw);height:auto;margin:8px 0 4px;
-  border:1px solid var(--line);border-radius:var(--r-small)}
+  border:var(--hair) solid var(--line);border-radius:var(--r-small)}
 /* ...and the newest recording's reel, a tiled sheet of frames, as wide as
    the row lets it be, in a box of its own height: a glide's reel is eighty
    frames, six screens tall at a desktop's width (5 Oct). */
 .phreelbox{max-height:60vh;overflow:auto;margin:8px 0 4px;
-  border:1px solid var(--line);border-radius:var(--r-small)}
+  border:var(--hair) solid var(--line);border-radius:var(--r-small)}
 .phreel{display:block;max-width:100%;height:auto}
 
 /* Pull to refresh (page-pull.js), drawn as a browser draws its own: a round
@@ -2147,7 +2159,7 @@ pre.diff .d-ctx{color:var(--dim)}
    count, spins while the refresh runs and rises back out of sight. */
 #pullHint{position:fixed;top:58px;left:50%;width:38px;height:38px;margin-top:-38px;z-index:60;opacity:0;
   transform:translate(-50%,0);pointer-events:none;border-radius:50%;background:var(--panel);
-  border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.35);display:grid;place-items:center;color:var(--dim)}
+  border:var(--hair) solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.35);display:grid;place-items:center;color:var(--dim)}
 #pullHint svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 #pullHint.ready{color:var(--accent)}
 #pullHint.back{transition:transform .25s ease,opacity .25s ease}
@@ -2167,22 +2179,22 @@ pre.diff .d-ctx{color:var(--dim)}
 /* No pages yet: no nav, so the empty state is the whole width, not the
    nav's 200px column (B457's walk). */
 .wkreader:not(:has(.wknav)){grid-template-columns:minmax(0,1fr)}
-.wknav{position:sticky;top:0;font-size:var(--f-row);border-right:1px solid var(--line);padding-right:14px}
+.wknav{position:sticky;top:0;font-size:var(--f-row);border-right:var(--hair) solid var(--line);padding-right:14px}
 .wknav ul{list-style:none;margin:0;padding:0}
 .wknav li{margin:0 0 6px}
 .wknav p,.wknav h2,.wknav h3{margin:0 0 6px;font-size:inherit}
 .wknav strong{display:block;color:var(--dim);font-weight:600;margin-bottom:8px}
 .wkpick{display:none}
 .wkarticle{min-width:0;max-width:820px}
-.wktabs{display:flex;gap:4px;align-items:flex-end;border-bottom:1px solid var(--line);margin-bottom:12px}
+.wktabs{display:flex;gap:4px;align-items:flex-end;border-bottom:var(--hair) solid var(--line);margin-bottom:12px}
 .wktabs .sp{flex:1}
 .wktabs .wktab{background:none;border:1px solid transparent;border-bottom:0;border-radius:var(--r-small) var(--r-small) 0 0;
   padding:6px 12px;color:var(--dim);margin-bottom:-1px}
 .wktabs .wktab.on{color:var(--ink);border-color:var(--line);background:var(--bg)}
 .wktabs .wktab.danger{color:var(--bad)}
-.wktitle{font:400 1.75em/1.25 var(--serif);color:var(--ink);margin:4px 0 2px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.wktitle{font:400 1.75em/1.25 var(--serif);color:var(--ink);margin:4px 0 2px;padding-bottom:4px;border-bottom:var(--hair) solid var(--line)}
 .wkmeta{color:var(--dim);font-size:var(--f-note);margin:4px 0 14px}
-.wktoc{display:inline-block;min-width:180px;max-width:100%;border:1px solid var(--line);border-radius:var(--r-small);
+.wktoc{display:inline-block;min-width:180px;max-width:100%;border:var(--hair) solid var(--line);border-radius:var(--r-small);
   background:var(--panel);padding:8px 14px 8px 12px;margin:0 0 16px;font-size:var(--f-row)}
 .wktochead{font-weight:600;text-align:center;margin-bottom:4px;color:var(--ink)}
 .wktoc ol{margin:0;padding-left:1.4em}
@@ -2190,7 +2202,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .wktoc li.l3{margin-left:2em}
 .wkpage{font:1.02rem/1.65 var(--serif);color:var(--ink);overflow-wrap:anywhere;max-width:72ch}
 .wkpage h2,.wkpage h3,.wkpage h4,.wkpage h5,.wkpage h6{font-family:var(--serif);font-weight:400;color:var(--ink);margin:22px 0 8px}
-.wkpage h2{font-size:1.45em;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.wkpage h2{font-size:1.45em;padding-bottom:3px;border-bottom:var(--hair) solid var(--line)}
 .wkpage h3{font-size:1.2em;font-weight:600}
 .wkpage h4{font-size:1.05em;font-weight:600}
 .wkpage p,.wkpage ul,.wkpage ol,.wkpage blockquote,.wkpage pre,.wkpage table{margin:0 0 12px}
@@ -2201,12 +2213,12 @@ pre.diff .d-ctx{color:var(--dim)}
   border-radius:var(--r-small);overflow-x:auto;white-space:pre}
 .wkpage pre code{background:none;padding:0}
 .wkpage table{border-collapse:collapse;display:block;overflow-x:auto;font-family:system-ui,sans-serif;font-size:.92em}
-.wkpage th,.wkpage td{border:1px solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
+.wkpage th,.wkpage td{border:var(--hair) solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
 .wkpage th{background:var(--panel)}
-.wkpage hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+.wkpage hr{border:0;border-top:var(--hair) solid var(--line);margin:16px 0}
 .wkpage a,.wknav a,.wktoc a,.wkfooter a{color:var(--accent);text-decoration:none}
 .wkpage a:hover,.wknav a:hover,.wktoc a:hover{text-decoration:underline}
-.wkfooter{border-top:1px solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font-size:var(--f-note)}
+.wkfooter{border-top:var(--hair) solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font-size:var(--f-note)}
 .wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
 .wklogrow{padding:3px 0;font-size:var(--f-note)}
 #wkWhy{color:var(--bad);font:var(--f-note)}
@@ -2246,9 +2258,9 @@ pre.diff .d-ctx{color:var(--dim)}
    rather than at the far edge of a wide window. */
 .dsctl.grow{flex:1 1 14em;max-width:26em}
 .dsc{display:flex;gap:6px;align-items:center}
-.dschip{width:22px;height:22px;flex:0 0 auto;border-radius:var(--r-small);border:1px solid var(--line)}
+.dschip{width:22px;height:22px;flex:0 0 auto;border-radius:var(--r-small);border:var(--hair) solid var(--line)}
 .dsboard{position:relative;display:grid;gap:4px;padding:6px;box-sizing:border-box;
-  border:1px solid var(--line);border-radius:var(--r-surface);touch-action:none;user-select:none}
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface);touch-action:none;user-select:none}
 /* The board takes the width the tab gives it (the operator, 29 Sep: it was
    a 640px picture in a wide window), with the layers beside it and under
    it where the row is too narrow for both. */
@@ -2263,7 +2275,7 @@ pre.diff .d-ctx{color:var(--dim)}
    under its parent's depth. */
 .dslayers{flex:0 1 24em;min-width:16em;max-height:85vh}
 .dslayers .dslayer{display:flex;gap:6px;align-items:center;min-height:var(--tap);padding:0 6px 0 10px;
-  border-bottom:1px solid var(--line);cursor:pointer}
+  border-bottom:var(--hair) solid var(--line);cursor:pointer}
 .dslayers .dslayer:last-child{border-bottom:0}
 .dslayers .dslayer.on{background:var(--btn)}
 .dslayers .dslayer .t{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--f-row)}
@@ -2308,8 +2320,8 @@ pre.diff .d-ctx{color:var(--dim)}
    bug and memory rows, and the send controls that hand work to a session that
    cannot start here anyway. Reading is untouched: the views, the folds, the
    History, the Analysis tab. */
-.nb.ro .rolock{margin:0;padding:11px 14px;color:var(--warn);font:var(--f-ui);
-  border-bottom:1px solid var(--line)}
+.nb.ro .rolock{margin:0;padding:var(--row-y) var(--row-x);color:var(--warn);font:var(--f-ui);
+  border-bottom:var(--hair) solid var(--line)}
 .nb.ro .sectbar,.nb.ro #roadmapAdd,.nb.ro #roadmapText,
 .nb.ro #bugAdd,.nb.ro #memAdd,.nb.ro .addstep,.nb.ro .memadd,
 .nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .roadmap .go,.nb.ro .roadmap .mv,
@@ -2383,7 +2395,7 @@ pre.diff .d-ctx{color:var(--dim)}
    about the same row. It used to be a bar pinned at the foot of the panel: on
    a phone that put the confirmation for "hand this line over" a screen away
    from the line, with nothing on it naming which one. */
-.sendbox{background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-surface);
+.sendbox{background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   margin:6px 0 2px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
 .sendbox .q{color:var(--ink);font:600 12px/1.4 system-ui,sans-serif}
 .sendbox .q span{font-weight:400;color:var(--dim)}
@@ -2411,7 +2423,7 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A memory is a fold like a bug report and a rule: a line divider, no box.
    The rounded, sunk card it used to be was the one row shape in the notebook
    that did not match the others. */
-.mem{border-top:1px solid var(--line);padding:2px 0}
+.mem{border-top:var(--hair) solid var(--line);padding:2px 0}
 .mem:first-child{border-top:0}
 .mem>summary{padding:8px 2px;min-height:var(--tap);box-sizing:border-box}
 .mem .mname{font:600 12px/1.4 var(--mono);color:var(--ink)}
@@ -2480,7 +2492,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .memadd .actbar{margin-top:10px}
 /* Bugs: one <details> per report, severity leading the line the way type
    leads a memory's. */
-.bug{border-top:1px solid var(--line);padding:2px 0}
+.bug{border-top:var(--hair) solid var(--line);padding:2px 0}
 .bug:first-child{border-top:0}
 .bug>summary{padding:8px 2px}
 .bug .btitle{flex:1;min-width:0;font:var(--f-row);
@@ -2615,16 +2627,16 @@ pre.diff .d-ctx{color:var(--dim)}
 @media(max-width:900px){
   .rail{display:none}
   .railbar{display:flex;flex:0 0 auto;gap:2px;padding:4px 4px calc(4px + env(safe-area-inset-bottom));
-    background:var(--panel);border-top:1px solid var(--line)}
+    background:var(--panel);border-top:var(--hair) solid var(--line)}
   .railbar .ritem{flex:1 1 0;min-width:0;min-height:var(--tap)}
   .railbar .ritem .rlbl{display:block}
   .railbar .ritem.on{color:var(--accent);background:transparent}
   .railmore{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px;
     position:fixed;left:8px;right:8px;bottom:calc(58px + env(safe-area-inset-bottom));z-index:40;
-    background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+    background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
     box-shadow:0 10px 24px rgba(0,0,0,.5);animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
   .railmore[hidden]{display:none}
-  .railmore .ritem{min-height:var(--tap);background:var(--btn);border:1px solid var(--line)}
+  .railmore .ritem{min-height:var(--tap);background:var(--btn);border:var(--hair) solid var(--line)}
   .railmore .ritem .rlbl{display:block}
 }
 /* A page's bar: the group's tools as a segment (the same .pseg the gear's
@@ -2658,7 +2670,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .pgridband{padding-top:12px;padding-bottom:12px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .pgrid .empty{grid-column:1/-1}
-.pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);min-width:0}
+.pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:var(--row-y) var(--row-x);background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);min-width:0}
 .pcard.pc{box-shadow:inset 3px 0 var(--pc)}
 .pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);background:none;border:0;padding:0;min-height:0;text-align:left;cursor:pointer}
@@ -2674,7 +2686,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .pcard .pcacts .more>button{min-width:var(--tap);padding:4px 8px}
 .pcard:has(.actmenu:not([hidden])){z-index:41}
 .pane .bar .subnav{display:flex;gap:4px;flex-wrap:wrap}
-.pane .bar .subnav button{min-height:26px;padding:2px 10px;font:var(--f-ui);border:1px solid var(--line);
+.pane .bar .subnav button{min-height:26px;padding:2px 10px;font:var(--f-ui);border:var(--hair) solid var(--line);
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
 .pane .bar .subnav button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 @media(max-width:900px){ .pane .bar .subnav button{min-height:var(--tap)} }
@@ -2684,7 +2696,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .jump input::placeholder{color:var(--dim)}
 @media(max-width:1000px){ .jump{flex:0 1 150px} .meta.host{display:none} }
 .jumplist{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;display:flex;flex-direction:column;
-  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+  background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   box-shadow:0 10px 24px rgba(0,0,0,.5);overflow:hidden}
 .jumplist[hidden]{display:none}
 .jrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:0;
@@ -2705,9 +2717,9 @@ pre.diff .d-ctx{color:var(--dim)}
    design's rule of the same name and measured by test/uniform.mjs. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:var(--field-gap)}
 @media(max-width:900px){ .tiles{grid-template-columns:repeat(2,1fr)} }
-.tile{background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control);
-  padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:2px}
-.tile .tv{font:var(--f-stat);font-variant-numeric:tabular-nums;color:var(--ink);
+.tile{background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);
+  padding:12px 16px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.tile .tv{font:var(--f-stat);font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--ink);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tile .tv .tu{font:var(--f-ui);color:var(--dim);margin-left:4px}
 .tile .tl{font:var(--f-note);color:var(--dim)}
@@ -2719,7 +2731,7 @@ pre.diff .d-ctx{color:var(--dim)}
    its number in the section voice, four across at a desk and two on a phone. */
 .tiles.mini{grid-template-columns:repeat(auto-fit,minmax(7rem,1fr));margin-top:6px}
 @media(max-width:900px){ .tiles.mini{grid-template-columns:repeat(2,1fr)} }
-.tiles.mini .tile{padding:6px 9px}
+.tiles.mini .tile{padding:8px 12px}
 .tiles.mini .tv{font:var(--f-sect);font-variant-numeric:tabular-nums}
 /* The list view (R216): a container as one line that opens into its card
    (rows-you-open). The line is the name with its state pill, then its
@@ -2737,7 +2749,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .dmtab .dmsumf{font:var(--f-data);color:var(--dim);display:flex;flex-wrap:wrap;gap:2px 12px;min-width:0;flex:1 1 auto}
 .dmtab .dmsumf > span{overflow-wrap:anywhere}
 .dmtab .dmsumf a{color:var(--accent)}
-.dmtab details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:1px solid var(--line)}
+.dmtab details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:var(--hair) solid var(--line)}
 .dmtab .dmpick #dmSearch{flex:1 1 12rem;min-width:8rem;max-width:var(--ctl-w)}
 .dmtab .dmviewseg{display:flex;gap:4px}
 .dmtab .dmviewseg button{min-height:var(--ctl)}
@@ -2776,30 +2788,30 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The findings card's footer: when the reports were written, and which were
    left out of the counts. */
 .fnote{padding:7px 10px;color:var(--dim);font:var(--f-note);
-  border-top:1px solid var(--line)}
+  border-top:var(--hair) solid var(--line)}
 .fnote .warn{color:var(--warn)}
 /* Which daemon, in the quiet voice the notebook uses for the same job: a
    statement of fact above the list, not a warning about one. */
-.dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
-#roadmapBatch{padding:0 14px 8px}
+.dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:var(--hair) solid var(--line)}
+#roadmapBatch{padding:0 var(--row-x) 8px}
 #roadmapBatch button{margin-top:6px}
 /* What a session has waiting for approval (roadmap #27): the same band as
    the batch note (it holds nothing, it asks) with its one verb beside the
    sentence rather than under it, because "Review" is the whole point of the
    line. On the tab buttons, the count for that tab. */
-#nbPending{padding:0 14px 8px}
+#nbPending{padding:0 var(--row-x) 8px}
 #nbPending div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #nbPending div span{flex:1 1 200px}
 .nbtabs .pcount{display:inline-block;margin-left:5px;padding:0 6px;border-radius:9px;
   background:var(--warn);color:var(--bg);font-family:var(--mono);font-size:11px;line-height:16px}
 /* The review modal: one row per held change, its checkbox first, the full
    text under a fold, and the two verbs at the foot with Approve first. */
-#pendList{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-surface)}
+#pendList{max-height:60vh;overflow:auto;border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
 #pendList .pkind{padding:6px 10px;color:var(--dim);font:var(--f-ui);font-size:12px;
-  text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line);
+  text-transform:uppercase;letter-spacing:.04em;border-bottom:var(--hair) solid var(--line);
   background:transparent}
 #pendList .prow{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;padding:8px 10px;
-  border-bottom:1px solid var(--line);align-items:start}
+  border-bottom:var(--hair) solid var(--line);align-items:start}
 #pendList .prow:last-child{border-bottom:0}
 #pendList .prow.dep{padding-left:28px}
 #pendList .prow input{margin-top:3px}
@@ -2825,7 +2837,7 @@ pre.diff .d-ctx{color:var(--dim)}
    called, which suite), and the body is the half somebody wrote by hand.
    Duration leads, because this list is sorted by it and a column of numbers
    you can run your eye down is the whole point of sorting. */
-.tst{border-bottom:1px solid var(--line)}
+.tst{border-bottom:var(--hair) solid var(--line)}
 .tst:last-child{border-bottom:0}
 .tst>summary{padding:var(--row-y) var(--row-x);display:flex;gap:8px;
   align-items:baseline;flex-wrap:wrap;cursor:pointer}
@@ -2852,7 +2864,7 @@ pre.diff .d-ctx{color:var(--dim)}
   color:var(--dim);font:var(--f-note);font-style:italic;overflow-wrap:anywhere}
 /* The rollup: one line per suite, the number first so the column reads down. */
 .tstsuite{display:flex;gap:10px;align-items:baseline;
-  padding:5px var(--row-x);border-bottom:1px solid var(--line)}
+  padding:5px var(--row-x);border-bottom:var(--hair) solid var(--line)}
 .tstsuite:last-child{border-bottom:0}
 .tstsuite .tstms{min-width:5.5em}
 .tstsname{font:var(--f-ui);color:var(--ink);flex:0 0 auto;min-width:9em}
@@ -2867,7 +2879,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .clashpair > div{flex:1 1 220px;min-width:0}
 .clashwho{font:var(--f-tag);letter-spacing:.04em;text-transform:uppercase;
   color:var(--dim);margin:8px 0 4px}
-.clashtext{background:var(--sunk);border:1px solid var(--line);
+.clashtext{background:var(--sunk);border:var(--hair) solid var(--line);
   border-radius:var(--r-control);padding:8px 10px;font:var(--f-ui);color:var(--ink);
   white-space:pre-wrap;overflow-wrap:anywhere;max-height:9em;overflow:auto}
 /* The memory's side is a whole document, not a line: taller, and the only
@@ -2878,7 +2890,7 @@ pre.diff .d-ctx{color:var(--dim)}
    "public key" as an add-an-SSH-key form and then offers itself on every
    field on the page whose label says name, title, label or description
    (B533), whatever data-bwignore says. */
-#pPub,#rnKeyPub{margin-top:8px;background:var(--sunk);border:1px solid var(--line);
+#pPub,#rnKeyPub{margin-top:8px;background:var(--sunk);border:var(--hair) solid var(--line);
   border-radius:var(--r-control);padding:6px 8px;font:11px/1.5 var(--mono);
   color:var(--dim);white-space:pre;overflow-x:auto;user-select:all}
 #pCopy{margin-top:6px}
@@ -2977,7 +2989,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    line under it, because the first project heading below deliberately has no
    top border. (This was written as #fxBar, an id the markup never carried, so
    the bar had no padding at all and its controls sat against the edge.) */
-.fxtab .fxbar{border-bottom:1px solid var(--line)}
+.fxtab .fxbar{border-bottom:var(--hair) solid var(--line)}
 .fxtab .fxbar select{flex:0 1 auto;min-width:0}
 /* A hint in a document tab is a band like any other: it was the Analysis
    tab's own rule, so the same line on the Toolchains tab sat flush against
@@ -2987,7 +2999,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .toolfoot .hint{font:var(--f-note);color:var(--dim);padding:0}
 .fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
   padding:var(--row-y) var(--row-x) 3px;
-  border-top:1px solid var(--line);font-weight:600}
+  border-top:var(--hair) solid var(--line);font-weight:600}
 .fxtab .fxproj:first-of-type{border-top:0}
 .fxtab .fnote,.doctab .fnote{padding:4px var(--row-x) 10px;color:var(--dim);
   font:var(--f-note)}
@@ -3013,7 +3025,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   font:var(--f-note)}
 .ndmeter .lbl{color:var(--dim)}
 .ndmeter .track{height:6px;border-radius:99px;background:var(--sunk);
-  border:1px solid var(--line);overflow:hidden}
+  border:var(--hair) solid var(--line);overflow:hidden}
 .ndmeter .fill{display:block;height:100%;background:var(--accent);
   transition:width .3s ease}
 .ndmeter.warn .fill{background:var(--warn)}
@@ -3028,9 +3040,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    past four so it stays small, never a select multiple or a loose column of
    checkboxes. */
 .lbox{display:flex;flex-direction:column;max-height:calc(4 * var(--tap));overflow-y:auto;
-  border:1px solid var(--line);border-radius:var(--r-control);background:var(--sunk)}
+  border:var(--hair) solid var(--line);border-radius:var(--r-control);background:var(--sunk)}
 .lbox label.lrow{display:flex;gap:8px;align-items:center;min-height:var(--tap);padding:0 10px;
-  margin:0;font:var(--f-ui);color:var(--ink);border-bottom:1px solid var(--line);cursor:pointer}
+  margin:0;font:var(--f-ui);color:var(--ink);border-bottom:var(--hair) solid var(--line);cursor:pointer}
 .lbox label.lrow:last-child{border-bottom:0}
 .lbox label.lrow input{width:15px;height:15px;flex:0 0 auto;margin:0}
 .lbox .lsub{color:var(--dim);font:var(--f-note);margin-left:auto;white-space:nowrap;
@@ -3041,7 +3053,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
    about what runs, with the page's pre skin, inset like a field. */
-.ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:var(--r-control);
+.ndcmd{margin:6px 0;border:var(--hair) solid var(--line);border-radius:var(--r-control);
   background:var(--sunk);user-select:all}
 /* The generated domain XML. `pre` wraps by default, which is right for a
    shell line and wrong for a file somebody is about to paste into a
@@ -3104,7 +3116,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    it, and the suite is what makes "every tab" true rather than hopeful. A
    rule that is genuinely one tab's belongs in that tab's own file, not
    here. */
-.sect{border-top:1px solid var(--line)}
+.sect{border-top:var(--hair) solid var(--line)}
 .sect>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
   padding:var(--row-y) var(--row-x);font:var(--f-ui);color:var(--ink);
   min-height:var(--tap);box-sizing:border-box}
@@ -3211,7 +3223,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .actbar .more{position:relative;display:inline-flex;flex:0 0 auto}
 .actmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:40;
   min-width:11em;width:max-content;max-width:calc(100vw - 32px);
-  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
+  background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   box-shadow:0 8px 22px rgba(0,0,0,.45);padding:6px;
   display:flex;flex-direction:column;gap:4px;
   animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
@@ -3353,7 +3365,7 @@ button[aria-busy="true"]{opacity:.75}
    pull that writes a line per layer per tick does not push the row off the
    screen; it is a window on what is happening, not a log file. */
 .dmlog{margin:6px 0 0;padding:7px 9px;max-height:150px;overflow:auto;
-  background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-control);
+  background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);
   color:var(--dim);font:11px/1.5 var(--mono);white-space:pre-wrap;
   overflow-wrap:anywhere}
 .dmtab .sect .li{overflow-wrap:anywhere}
@@ -3392,6 +3404,15 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   margin-right:6px;vertical-align:baseline}
 .st.working{background:var(--note);animation:pulse 1.6s ease-in-out infinite}
 .st.waiting{background:var(--warn)}
+/* What is live glows, softly, in its own color (R218 step 7): a session
+   working or waiting, a running job, a running container. One glow, small
+   and under half its color, so it reads as lit rather than as a highlight. */
+.st.working{box-shadow:0 0 0 2px color-mix(in srgb, var(--note) 20%, transparent),
+  0 0 8px color-mix(in srgb, var(--note) 55%, transparent)}
+.st.waiting{box-shadow:0 0 0 2px color-mix(in srgb, var(--warn) 20%, transparent),
+  0 0 8px color-mix(in srgb, var(--warn) 50%, transparent)}
+.pill.live{box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+  0 0 10px color-mix(in srgb, var(--accent) 30%, transparent)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @media(prefers-reduced-motion:reduce){ .st.working{animation:none} }
 
@@ -3407,11 +3428,11 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 /* The doctor's panel under its dot in the top bar (R218 step 3). */
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
-#doctor:not([hidden]){border-top:1px solid var(--line)}
+#doctor:not([hidden]){border-top:var(--hair) solid var(--line)}
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
 .doctor .probs:empty{display:none}
 .doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px}
-.doctor .probs:not(:empty)+.chips{border-top:1px solid var(--line)}
+.doctor .probs:not(:empty)+.chips{border-top:var(--hair) solid var(--line)}
 .doctor .probs .sub.bad{color:var(--bad)}
 .doctor .probs .sub.warn{color:var(--warn)}
 /* What the check says after its first line: under it, not only in a title a
@@ -3425,7 +3446,7 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   border-radius:var(--r-control)}
 
 .pill{font:var(--f-pill);padding:3px 7px;border-radius:99px;
-  border:1px solid var(--line);color:var(--dim)}
+  border:var(--hair) solid var(--line);color:var(--dim)}
 /* A STATE on a row's name line is a pill, not a parenthesis: running, stopped,
    down, partly up, unknown, each in the level's color (R210). `.stat`: `.state` is
    the action bar's status line and `.st` the session dot. */
@@ -3470,19 +3491,23 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 
 /* Macros run in the terminal now, so there is no output pane to put a message
    in. Anything the page needs to say is transient and says it here. */
-/* The toast stack (R218 step 6): one column at the top right, under the top
-   bar and the page's own bar (whose action is at its right end, and a toast
-   held over it covered it), the newest on top, each its kind's icon, its words and a ×; over the
-   editor, whose save errors are said here. Not the bottom right: a dialog's
-   foot, its primary action, is there, and a toast held there sat on it. On
-   a phone it spans the width under the top bar. The stack itself takes no
-   pointer where it is empty. */
-#toast{position:fixed;right:14px;top:calc(104px + env(safe-area-inset-top));z-index:80;
-  display:flex;flex-direction:column-reverse;align-items:flex-end;gap:8px;width:min(420px,calc(100vw - 28px));
+/* The toast stack (R218 step 6): one column at the bottom left of the page,
+   just right of the rail and above the dock's line, the newest at the foot;
+   each its kind's icon, its words and a ×; over the editor, whose save
+   errors are said here. That corner because it holds the fewest controls:
+   a dialog's buttons are at the right of its foot, a row's actions at its
+   right, a view's at the right of its head row and a page bar's at its
+   right end, and a toast held over any of those sat on it (the top right,
+   twice, and the bottom right before that). On a phone it spans the width
+   above the dock's line. The stack itself takes no pointer where it is
+   empty, and on a touch screen a toast lets a tap through but for its ×. */
+#toast{position:fixed;left:68px;bottom:calc(60px + env(safe-area-inset-bottom));z-index:80;
+  display:flex;flex-direction:column;align-items:flex-start;gap:8px;width:min(420px,calc(100vw - 96px));
   pointer-events:none}
+@media(min-width:1280px){ #toast{left:96px} }
 #toast .tst{pointer-events:auto;display:flex;align-items:flex-start;gap:8px;width:100%;
   padding:9px 8px 9px 12px;border-radius:var(--r-surface);overflow-wrap:anywhere;
-  background:var(--btn);border:1px solid var(--line);color:var(--ink);
+  background:var(--btn);border:var(--hair) solid var(--line);color:var(--ink);
   font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 #toast .tic svg{width:16px;height:16px;display:block;margin-top:2px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
@@ -3493,7 +3518,11 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 #toast .tst.bad .tic,#toast .tst.bad .tmsg{color:var(--bad)}
 #toast .tmsg{flex:1;min-width:0}
 #toast .tx{flex:0 0 auto;min-height:24px;min-width:24px;padding:0;border:0;background:none;color:var(--dim)}
-@media(max-width:900px){ #toast{right:8px;left:8px;width:auto} }
+@media(max-width:900px){ #toast{right:8px;left:8px;width:auto;bottom:calc(112px + env(safe-area-inset-bottom))} }
+@media(hover:none){ #toast .tst{pointer-events:none} #toast .tx{pointer-events:auto} }
+/* Over a dialog with no gutter beside it (toastPlace): at the top, and every press goes through. */
+#toast.overdlg{top:calc(8px + env(safe-area-inset-top));bottom:auto}
+#toast.overdlg .tst,#toast.overdlg .tx{pointer-events:none}
 @media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.pane .doc.on{animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */
@@ -3510,7 +3539,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    used to snap into place. */
 @keyframes menuIn{from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none}}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
-  border:1px solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
   animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 .pinmenu button{min-height:var(--tap)}
@@ -3524,7 +3553,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 
 /* Panes -------------------------------------------------------------- */
 .panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
-  background:var(--line);border:1px solid var(--line);border-top:0;
+  background:var(--line);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);overflow:hidden}
 /* The dock (R218 step 4): the second pane at the page's foot, one line when
    shut, --dock-h tall when up (half the area to begin with, a drag on its
@@ -3532,7 +3561,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    The strip and the split it replaces are gone. */
 .panes.docked{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;gap:0}
 .panes.docked .pane{min-width:0}
-.panes.docked .pane.dock{border-top:1px solid var(--line)}
+.panes.docked .pane.dock{border-top:var(--hair) solid var(--line)}
 .panes.docked .pane.dock .stack{display:none}
 .panes.dockup{grid-template-rows:minmax(0,1fr) var(--dock-h,50%)}
 .panes.dockup .pane.dock{min-height:120px}
@@ -3546,7 +3575,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    chevron off the screen). */
 .dockline{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
 .pane .bar.dockbar>.ic{flex:0 0 auto}
-.dockline .dtab{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;border:1px solid var(--line);
+.dockline .dtab{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;border:var(--hair) solid var(--line);
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
 .dockline .dtab.on{border-color:var(--accent-mid);color:var(--ink)}
 .dockline .dtab .dlbl{display:inline-flex;align-items:center;gap:6px;background:none;border:0;min-height:32px;
@@ -3575,7 +3604,7 @@ body.booting .pane>.loading{margin:auto}
 .pane.active{outline:2px solid var(--accent-mid);outline-offset:-2px}
 .pane .bar{display:flex;align-items:center;gap:6px;padding:3px 6px;
   background:color-mix(in srgb, var(--bg) 92%, transparent);
-  border-bottom:1px solid var(--line);
+  border-bottom:var(--hair) solid var(--line);
   font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
 .pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:var(--r-small)}
 .pane .bar button{min-height:22px;padding:2px 8px;font-size:11px}
@@ -3632,7 +3661,7 @@ body.booting .pane>.loading{margin:auto}
    own, so a chat row looks like every other row on the dashboard. */
 #chat{display:flex;flex-direction:column;min-height:0;height:100%}
 .chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
-  background:none;border:0;border-bottom:1px solid var(--line);padding:8px 10px}
+  background:none;border:0;border-bottom:var(--hair) solid var(--line);padding:8px 10px}
 .chatrow:hover{background:var(--panel)}
 /* When somebody was last here, beside their name: the quiet note voice. */
 .chatrow .chatseen{font:var(--f-note);color:var(--dim)}
@@ -3648,7 +3677,7 @@ body.booting .pane>.loading{margin:auto}
 .chatrow .dot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
 .chatrow .dot.ok{background:var(--accent)}
 .chathead{display:flex;align-items:center;gap:8px;padding:6px 10px;
-  border-bottom:1px solid var(--line)}
+  border-bottom:var(--hair) solid var(--line)}
 .chatnote{padding:6px 10px;color:var(--dim)}
 .chatlog{flex:1;overflow:auto;padding:6px 10px;min-height:0;
   -webkit-overflow-scrolling:touch}
@@ -3656,7 +3685,7 @@ body.booting .pane>.loading{margin:auto}
 /* What the box noticed, not what somebody typed: dimmer, so a feed of events
    does not read as a wall of people talking. */
 .chatmsg.ev{opacity:.75;font-style:italic}
-.chatbar{display:flex;gap:6px;padding:6px;border-top:1px solid var(--line)}
+.chatbar{display:flex;gap:6px;padding:6px;border-top:var(--hair) solid var(--line)}
 .chatbar input{flex:1;min-width:0}
 @media(max-width:900px){ @supports (-webkit-touch-callout:none){ .chatbar input{font-size:16px} } }
 /* Something is waiting. The same green the state lights use, as a corner
@@ -3665,7 +3694,7 @@ body.booting .pane>.loading{margin:auto}
   width:7px;height:7px;border-radius:50%;background:var(--accent)}
 #mChat{position:relative}
 .consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
-  border-top:1px solid var(--line);align-items:center}
+  border-top:var(--hair) solid var(--line);align-items:center}
 .consbar .consin{flex:1;min-width:0}
 @media(max-width:900px){ @supports (-webkit-touch-callout:none){ .consbar .consin{font-size:16px} } }
 /* An opaque cover over the frame until the terminal is really there.
@@ -3684,7 +3713,7 @@ body.booting .pane>.loading{margin:auto}
 .pane .slot.popped .empty-pane{text-align:center;line-height:2.2}
 
 /* Keys --------------------------------------------------------------- */
-.keys{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);
+.keys{flex:0 0 auto;background:var(--panel);border:var(--hair) solid var(--line);
   border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface);padding:6px;display:none;gap:5px;flex-wrap:wrap}
 .keys.show{display:flex}
 .keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);padding:6px 8px}
@@ -3702,7 +3731,7 @@ body.booting .pane>.loading{margin:auto}
 .mpanel{display:none}
 .mobar[hidden]{display:none}
 .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
-  border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface)}
+  border:var(--hair) solid var(--line);border-top:0;border-radius:0 0 var(--r-surface) var(--r-surface)}
 .mobar button{min-height:var(--tap)}
 .mobar button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
@@ -3717,7 +3746,7 @@ body.booting .pane>.loading{margin:auto}
    edge where it meets the terminal, and a shadow cast up onto it, so where
    it stops is plain on a phone as much as over a desktop's terminal. The bar
    below keeps --panel: the flyout is what it opened, not part of it. */
-.mpanel.show,.keys.show{background:var(--flyout);border:1px solid var(--line);
+.mpanel.show,.keys.show{background:var(--flyout);border:var(--hair) solid var(--line);
   border-top:2px solid var(--accent-mid);box-shadow:0 -6px 18px rgba(0,0,0,.35);
   position:relative;z-index:1}
 /* Mid-slide a flyout is an overlay pinned above the bottom bar (bottom set
@@ -3769,13 +3798,13 @@ body.booting .pane>.loading{margin:auto}
    landed on every row of the to-do list and made it read as a wall of
    bubbles. Inside a tab the divider is the language; the card is for a report
    whose groups really are separate documents. */
-.fx:not(.nbhost) .grp{border:1px solid var(--line);border-radius:var(--r-surface);
+.fx:not(.nbhost) .grp{border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   margin-bottom:10px;background:var(--panel);overflow:hidden}
 .fx .grp>summary{padding:var(--row-y) var(--row-x);font-weight:600;flex-wrap:wrap;
   transition:background-color .15s ease}
 /* A rule is a row that opens (R234): the summary is the closed row, its
    body the places, the description and the message. */
-.fx .rule{border-top:1px solid var(--line);padding:0 var(--row-x)}
+.fx .rule{border-top:var(--hair) solid var(--line);padding:0 var(--row-x)}
 .fx .rule>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:var(--row-y) 0}
 .fx .rule>summary::-webkit-details-marker{display:none}
 .fx .rule>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
