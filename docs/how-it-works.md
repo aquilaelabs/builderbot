@@ -4290,8 +4290,15 @@ with the first call it lets through; the node's agent reports the marks with
 its heartbeat, so once the controller answers again the bell lists each
 session an update stopped, for its own account or an administrator, with a
 Resume that types into it (the roadmap's send, which presses Enter only if
-the line echoed) that BuilderBot is back and to pick up from its note. The compatibility window still holds a project whose *node* runs
-an agent from another window, and the Nodes tab's Update is what clears it.
+the line echoed) that BuilderBot is back and to pick up from its note.
+
+The compatibility window still holds a project whose *node* runs an agent
+from another window, and the Nodes tab's Update is what clears it. Inside a
+window an agent behind the controller is updated by the controller itself
+once its node is idle (R253): until then it takes no job but its own update,
+so a session's job refused for that alone has `bb` wait for the update (up
+to two and a half minutes, saying so) and send it again, and the bell's
+agent row says the update is automatic, and why when its last try failed.
 
 ## Playwright, Android, plugins, publishing
 
