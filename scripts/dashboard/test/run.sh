@@ -290,12 +290,14 @@ if [ -z "${BB_TEST_WORKER:-}" ]; then
 # BB_TEST_WAIT_LOCK=SECONDS waits that long for a run that holds it to end
 # rather than refusing at once: a preflight started in the background met
 # the hand-back hook's own check run, which ends in minutes, and stopped
-# having run nothing (B572).
+# having run nothing (B572). Fifteen minutes by default for every run, not
+# only preflight's: a session's own suite started as a turn ended met the
+# hook's check the same way and was refused (B759); 0 refuses at once.
 waited=0
 for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
     [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$l" ] || continue
     other="$(cat "$l" 2>/dev/null || true)"
-    while [ -n "$other" ] && [ -d "/proc/$other" ] && [ "$waited" -lt "${BB_TEST_WAIT_LOCK:-0}" ]; do
+    while [ -n "$other" ] && [ -d "/proc/$other" ] && [ "$waited" -lt "${BB_TEST_WAIT_LOCK:-900}" ]; do
         [ "$waited" -eq 0 ] && echo "[dashboard-test] waiting for the run that holds the lock (pid $other) to end" >&2
         sleep 5; waited=$((waited + 5))
         other="$(cat "$l" 2>/dev/null || true)"
