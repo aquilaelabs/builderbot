@@ -65,7 +65,7 @@ function nbRulesView({$, nb, project}){
             ${lbl("", "Name", "a short name the rule is known by")}
             <input class="grName" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(ed.r.name || "")}" aria-label="global rule name">
             ${lbl("", "The rule")}
-            <textarea class="grText" spellcheck="false" maxlength="2000">${esc(ed.r.text || "")}</textarea>
+            <textarea class="grText" spellcheck="false" maxlength="8000">${esc(ed.r.text || "")}</textarea>
             <div class="two">
               <div>${lbl("", "Files it covers")}<input class="grPaths" autocomplete="off" spellcheck="false" value="${esc((ed.r.paths || []).join(", "))}" aria-label="paths"></div>
               <div>${lbl("", "Words that raise it")}<input class="grWords" autocomplete="off" spellcheck="false" value="${esc((ed.r.words || []).join(", "))}" aria-label="words"></div>
@@ -172,9 +172,9 @@ function nbRulesView({$, nb, project}){
               placeholder="tests" value="${esc(r.name || "")}"
               aria-label="rule name">
             ${lbl("", "The rule")}
-            <textarea class="rlText" spellcheck="false" maxlength="2000">${esc(r.text || "")}</textarea>
+            <textarea class="rlText" spellcheck="false" maxlength="8000">${esc(r.text || "")}</textarea>
             ${lbl("", "Why", "the reason behind it, kept here and in bb rules show; a session is sent the rule alone")}
-            <textarea class="rlWhy" spellcheck="false" maxlength="2000" rows="2">${esc(r.why || "")}</textarea>
+            <textarea class="rlWhy" spellcheck="false" maxlength="8000" rows="2">${esc(r.why || "")}</textarea>
             <div class="two">
               <div>${lbl("", "Files it covers", "paths or globs, comma-separated; the rule arrives when a session edits one")}
               <input class="rlPaths" autocomplete="off" spellcheck="false"

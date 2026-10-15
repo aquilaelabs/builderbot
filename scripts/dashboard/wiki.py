@@ -44,9 +44,9 @@ parse_url = None
 read_config = None
 git_env = None
 
-MAX_PAGES = 500
+MAX_PAGES = 5000
 MAX_PAGE = 512 * 1024
-MAX_NAME = 100
+MAX_NAME = 200
 # What a page name may not carry: what a file name on any of the three
 # forges, or a path, would read as something else.
 _BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f#%]')

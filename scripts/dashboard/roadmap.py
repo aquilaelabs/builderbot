@@ -116,9 +116,9 @@ _lock = statefile.on(lambda: FILE)
 # a count of it (brief) with the items a prompt names (preamble.mentioned).
 # The limit is on the open ones, and is what a list still is rather than
 # what a prompt holds.
-MAX_OPEN = 200
+MAX_OPEN = 5000
 # What a title is cut to.
-MAX_TEXT = 500
+MAX_TEXT = 4000
 
 # A line may be several lines. A step is one thing to hand over, and one thing
 # is often three sentences and a blank line, and collapsing that to a single
@@ -126,7 +126,7 @@ MAX_TEXT = 500
 # splitting one step into three. Steps are the expensive unit here (each one is
 # a message the operator sends by hand), so the cheap thing has to be able to
 # hold the detail. Bounded so a paste cannot turn a list into a document.
-MAX_LINES = 12
+MAX_LINES = 200
 
 
 def _clean(text, multiline=True, max_lines=None):
@@ -551,8 +551,8 @@ def _took(d, project, n):
 # written so the session that works the step does not start from a cold grep.
 # Longer than a line is allowed to be, because "where in the codebase" is a
 # list, not a sentence.
-MAX_INFO = 2000
-MAX_INFO_LINES = 40
+MAX_INFO = 20000
+MAX_INFO_LINES = 500
 
 
 def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
@@ -599,7 +599,7 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
 # that needs three things done in sequence is not three items: put them out
 # of order and the second one lands on a tree the first was supposed to have
 # made. So a group keeps its steps, and only the next unsent one can be sent.
-MAX_STEPS = 12
+MAX_STEPS = 100
 
 
 def add(project, text, by="you", steps=(), who="", number=None):

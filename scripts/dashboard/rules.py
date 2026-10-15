@@ -136,17 +136,17 @@ NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
 # Long enough for a real rule (the worked example that prompted this is four
 # short paragraphs) and short enough that nobody pastes a document in.
-MAX_TEXT = 2000
+MAX_TEXT = 8000
 # What is kept and what a session is sent are two things (share.py). A
 # standing rule is read whole into every session, so those are the ones
 # counted: forty. A named one costs its name and is read when it fires, so
 # a project may keep many more of them.
 MAX_RULES = 40
-MAX_NAMED = 200
-MAX_TRIGGERS = 12
+MAX_NAMED = 2000
+MAX_TRIGGERS = 100
 # What a rule may refuse outright (R200 step 3): commands as typed, the start
 # of each one a session's Bash call may not run while the rule is on.
-MAX_REFUSE = 24
+MAX_REFUSE = 200
 
 # Global rules (R63) live under a key no project can be called: a project is a
 # directory on the projects share, and `*` is not a name one can have. So the

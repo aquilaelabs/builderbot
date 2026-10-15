@@ -40,9 +40,9 @@ write_json = None
 git_env = None
 
 FILE_PATH = "docs/design-language.md"
-MAX_PAGES = 40
-MAX_BLOCKS = 40
-NOTES_MAX = 4000
+MAX_PAGES = 500
+MAX_BLOCKS = 400
+NOTES_MAX = 20000
 # The design's rules: the prose, cut into named pieces with triggers, the
 # shape the house rules have. A session gets one on the turn it edits a
 # file or is asked about a word the rule names (rules.matching, through the
@@ -50,7 +50,7 @@ NOTES_MAX = 4000
 # thirty thousand characters, and a dump of it on every design question is
 # what nobody reads (the operator, 28 Sep). One without triggers stands in
 # every briefing, as a house rule does.
-RULES_MAX = 60
+RULES_MAX = 500
 RULE_TEXT_MAX = 20000
 RULE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 NAME_MAX = 120
@@ -160,8 +160,8 @@ TOKENS = [
 # A language has one theme or several (light and dark, a few presets), the
 # first being the one the app starts on. Where a theme picker sits is the
 # app's business: a session asked to make one takes the themes from here.
-THEMES_MAX = 16
-COLORS_MAX = 40
+THEMES_MAX = 100
+COLORS_MAX = 100
 MODES = ("dark", "light")
 TOKEN_KEYS = [k for k, _, _ in TOKENS]
 

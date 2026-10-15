@@ -246,7 +246,7 @@ function nbWikiView({$, nb, project}){
     const a = nb.wkAdding;
     const add = a
       ? `<div class="field wkadd">${lbl("wkNewName", "Page name", "Home is the page a wiki opens on; _Sidebar and _Footer frame every page")}
-          <input id="wkNewName" maxlength="100" autocomplete="off" placeholder="${articles().length ? "Getting started" : "Home"}" value="${esc(a.name)}">
+          <input id="wkNewName" maxlength="200" autocomplete="off" placeholder="${articles().length ? "Getting started" : "Home"}" value="${esc(a.name)}">
           ${lbl("wkNewText", "Markdown")}
           <textarea class="wkText" id="wkNewText" spellcheck="true">${esc(a.text)}</textarea>
           <div class="actbar macts"><span class="state">Create writes the page now</span>

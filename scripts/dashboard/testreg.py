@@ -64,7 +64,7 @@ KEEP = 5
 # week and is 4 now", which is the only question the header asks of them.
 KEEP_RUNS = 20
 
-MAX_TEXT = 2000
+MAX_TEXT = 20000
 MAX_TESTS = 4000        # a roster this size is a runner that has run away
 
 

@@ -114,7 +114,7 @@ def unreleased_text(text):
 
 
 CATEGORY = "### "
-MAX_TEXT = 300
+MAX_TEXT = 1000
 
 
 def groups(d):

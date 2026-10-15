@@ -296,7 +296,7 @@ function nbTestsView({$, nb, project}){
         ${t.sits_on ? `
         <label class="ndcap"><input type="checkbox" class="tstAccept"${(draft ? draft.accept : t.accepted) ? " checked" : ""}>
           this test needs ${t.sits_on}s; stop flagging it</label>
-        <textarea class="tstWhy proseline" rows="1" maxlength="300" placeholder="why: a real boot, a timeout being proved"
+        <textarea class="tstWhy proseline" rows="1" maxlength="20000" placeholder="why: a real boot, a timeout being proved"
           ${(draft ? draft.accept : t.accepted) ? "" : "hidden"
             }>${esc(draft ? draft.why : t.accepted)}</textarea>` : ""}
         <div class="actbar"><span class="sp"></span>

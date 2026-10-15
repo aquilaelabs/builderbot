@@ -109,14 +109,14 @@ function nbBugsView({$, nb, project}){
     const v = k => esc(b?.[k] || "");
     return `<div class="memadd bugform">
       <label>Title</label>
-      <textarea class="bfTitle proseline" rows="1" maxlength="200"
+      <textarea class="bfTitle proseline" rows="1" maxlength="1000"
         placeholder="the picker loses its selection on rotate">${v("title")}</textarea>
       <div class="two">
         <div><label>Severity</label>
           <select class="bfSev">${SEVS.map(x =>
             `<option value="${x}"${(b?.severity || "medium") === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
         <div><label>Where<span class="help" data-help="files, component, screen" tabindex="0">?</span></label>
-          <textarea class="bfArea proseline" rows="1" maxlength="200"
+          <textarea class="bfArea proseline" rows="1" maxlength="1000"
             placeholder="scripts/dashboard/index.html, the picker">${v("area")}</textarea></div>
       </div>
       <label>How to reproduce</label>
@@ -124,10 +124,10 @@ function nbBugsView({$, nb, project}){
         placeholder="1. open the picker on a phone&#10;2. rotate">${v("repro")}</textarea>
       <div class="two">
         <div><label>Expected</label>
-          <textarea class="bfExpected proseline" rows="1" maxlength="300"
+          <textarea class="bfExpected proseline" rows="1" maxlength="1000"
             >${v("expected")}</textarea></div>
         <div><label>Actual</label>
-          <textarea class="bfActual proseline" rows="1" maxlength="300"
+          <textarea class="bfActual proseline" rows="1" maxlength="1000"
             >${v("actual")}</textarea></div>
       </div>
       <label>Notes<span class="help" data-help="cause, analysis, fix plan" tabindex="0">?</span></label>
@@ -311,7 +311,7 @@ function nbBugsView({$, nb, project}){
         box.className = "dropbox";
         box.innerHTML = `<div class="q">Delete this report?<span>: it is gone for good;
             to keep a record, close it instead</span></div>
-          <textarea class="proseline" rows="1" maxlength="300"
+          <textarea class="proseline" rows="1" maxlength="1000"
             placeholder="why it should not have been filed (optional, kept in the log)"></textarea>
           <div class="actbar">
             <button type="button" class="stop">Cancel</button>

@@ -409,7 +409,7 @@ function nbRoadmapView({$, nb}){
     box.className = "sendbox";
     box.innerHTML = `<div class="q">${esc(label)}${
         sub ? ` <span>· ${esc(sub)}</span>` : ""}</div>
-    <textarea id="sendMore" rows="2" maxlength="500"
+    <textarea id="sendMore" rows="2" maxlength="4000"
       placeholder="${esc(placeholder)}"></textarea>
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
@@ -682,7 +682,7 @@ function nbRoadmapView({$, nb}){
     const box = document.createElement("div");
     box.className = "dropbox";
     box.innerHTML = `<div class="q">Drop this?${also ? ` <span>· ${esc(also)}</span>` : ""}</div>
-    <textarea class="proseline" rows="1" maxlength="500"
+    <textarea class="proseline" rows="1" maxlength="4000"
       placeholder="why it is going (optional, kept in the history)"></textarea>
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
@@ -717,9 +717,9 @@ function nbRoadmapView({$, nb}){
     box.className = "dropbox editbox";
     box.innerHTML = `<div class="q">${step < 0 ? "Reword it"
         : `Reword step ${step + 1}`}<span>: Enter saves, shift+Enter is a new line</span></div>
-    <textarea maxlength="500" spellcheck="false"></textarea>
+    <textarea maxlength="4000" spellcheck="false"></textarea>
     <div class="q qd"><span>Details: the technical half: files, functions, approach</span></div>
-    <textarea class="dta" maxlength="2000" spellcheck="false"
+    <textarea class="dta" maxlength="20000" spellcheck="false"
       placeholder="mostly Claude's to write; empty is fine"></textarea>
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
@@ -756,7 +756,7 @@ function nbRoadmapView({$, nb}){
   // rather than assembled a dialog at a time.
   function openStepInput(box){
     const id = box.dataset.id;
-    box.innerHTML = `<textarea class="proseline" rows="1" maxlength="500"
+    box.innerHTML = `<textarea class="proseline" rows="1" maxlength="4000"
       placeholder="then…"></textarea><button type="button" class="primary">Add</button>
       <button type="button" class="stop">Cancel</button>`;
     const inp = box.querySelector("textarea"), btn = box.querySelector(".primary");

@@ -576,8 +576,8 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   const alpha = await api('/api/design', { project: P, action: 'save', language: { ...cur,
       themes: [{ ...cur.themes[0], colors: [...cur.themes[0].colors, { name: 'glass', hex: '#1e232be0', means: 'a pane' }] }, ...cur.themes.slice(1)] }, pages: (await api(`/api/design?project=${P}`)).pages });
   ok(alpha.status === 200 && alpha.language.themes[0].colors.some(c => c.hex === '#1e232be0'), 'a color with alpha saves as written');
-  ok(/^The record bb design save takes/.test(bb('schema')) && /at most 16; the first is the default, whose choices and rules are the design's/.test(bb('schema'))
-     && /at most 40, a color name once per theme/.test(bb('schema')) && /RULE is \{ "name"/.test(bb('schema')),
+  ok(/^The record bb design save takes/.test(bb('schema')) && /at most 100; the first is the default, whose choices and rules are the design's/.test(bb('schema'))
+     && /at most 100, a color name once per theme/.test(bb('schema')) && /RULE is \{ "name"/.test(bb('schema')),
      'bb design schema prints the shape with its limits');
   const help = execFileSync('bash', [`${REPO}/scripts/bb`, 'design', 'save', '-h'], { encoding: 'utf8',
     env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: P, XDG_CACHE_HOME: `${DIR}/cache-design` } });

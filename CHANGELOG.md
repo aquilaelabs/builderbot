@@ -340,6 +340,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The page no longer redraws itself every few seconds: a poll that brings nothing new changes nothing on screen (Home stopped fading in again, the rail and the page's bar keep the hover under the pointer), a node's heartbeat makes only the Nodes page re-read, the open chat waits for a message instead of asking every four seconds, the status poll waits fifteen seconds after any read and rests while the tab is hidden, and the revisions poll slows down when nothing on show is moving
 - A project's Git view can turn off the hold on a push whose lines look sensitive (Hold a push that looks sensitive: off); on by default, and Approve on the bell works as before when it is on (a994491)
 - Sessions is a page of its own on the rail (#/sessions): a table of your terminals and Claude sessions with their project, node and start, Open or Minimize and End on each row; the pop-up panel is gone (50d0c45)
+- The notebook's caps are guards against a runaway now, not working limits: a roadmap item takes 100 steps (was 12), 5000 open items and bugs, longer titles, info and rule text, 500 design pages, 100 themes, 5000 wiki pages; a step's lines and a rule's text are no longer cut short (f00c6de)
 
 ### Removed
 

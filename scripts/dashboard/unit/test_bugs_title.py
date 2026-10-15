@@ -1,4 +1,4 @@
-"""A bug's title is one line of at most 300 characters, and a longer one is
+"""A bug's title is one line of at most bugs.MAX_SHORT characters, and a longer one is
 refused with where the rest goes, not cut: cutting it lost whatever followed,
 often the half that said why (B621)."""
 import json
@@ -25,18 +25,19 @@ class Title(unittest.TestCase):
         bugs.configure(write_json=write_json, state=self.tmp, workspace=str(Path(self.tmp) / "ws"))
 
     def test_a_long_title_is_refused_and_says_where_the_rest_goes(self):
-        r = bugs.add("p", "word " * 80)
-        self.assertIn("at most 300 characters (this one is 399)", r.get("error", ""))
+        r = bugs.add("p", "word " * (bugs.MAX_SHORT // 5 + 20))
+        n = len(("word " * (bugs.MAX_SHORT // 5 + 20)).strip())
+        self.assertIn(f"at most {bugs.MAX_SHORT} characters (this one is {n})", r.get("error", ""))
         self.assertIn("repro or a note", r["error"])
 
     def test_one_that_fits_is_kept_whole(self):
-        title = "x" * 300
+        title = "x" * bugs.MAX_SHORT
         r = bugs.add("p", title)
         self.assertTrue(r.get("ok") or r.get("id"), r)
         got = bugs.payload("p")["bugs"][0]
         self.assertEqual(got["title"], title)
-        e = bugs.edit("p", got["id"], title="y " * 200)
-        self.assertIn("at most 300", e.get("error", ""), "an edit is held to it too")
+        e = bugs.edit("p", got["id"], title="y " * bugs.MAX_SHORT)
+        self.assertIn(f"at most {bugs.MAX_SHORT}", e.get("error", ""), "an edit is held to it too")
 
 
 if __name__ == "__main__":

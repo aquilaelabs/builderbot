@@ -1011,12 +1011,14 @@ writeFileSync(FILE, JSON.stringify(many));
 const more = await post({ action: 'add', project: 'gamma', text: 'a thirty-first, beside forty parked' });
 ok(more.status === 200 && !more.body.error,
    'a list of thirty open and forty parked takes another: the parked are not counted and thirty is not the limit');
-many.projects.gamma = Array.from({ length: 200 }, (_, i) =>
+// The cap is a guard against a runaway, not a working limit (the operator,
+// 15 Oct): five thousand open.
+many.projects.gamma = Array.from({ length: 5000 }, (_, i) =>
   ({ id: i + 1, text: `item ${i + 1}`, done: false, added: 1, by: 'you' }));
 writeFileSync(FILE, JSON.stringify(many));
 const over = await post({ action: 'add', project: 'gamma', text: 'one too many' });
-ok(over.status === 400 && /200 open items is the limit: finish, park or drop some first/.test(over.body.error),
-   `...and two hundred open is where it says what to do instead (${over.body.error})`);
+ok(over.status === 400 && /5000 open items is the limit: finish, park or drop some first/.test(over.body.error),
+   `...and five thousand open is where it says what to do instead (${over.body.error})`);
 page.errors = [];
 
 // ---- building a plan in the panel --------------------------------------

@@ -46,7 +46,7 @@ class Wiki(unittest.TestCase):
     def test_names_are_the_forge_files(self):
         self.assertEqual(wiki.file_of("Build and test"), "Build-and-test.md")
         self.assertEqual(wiki.file_of("_Sidebar"), "_Sidebar.md")
-        for bad in ("a/b", "../x", ".hidden", "_mine", "", "x" * 101, "what?"):
+        for bad in ("a/b", "../x", ".hidden", "_mine", "", "x" * (wiki.MAX_NAME + 1), "what?"):
             with self.assertRaises(wiki.Refused, msg=bad):
                 wiki.file_of(bad)
 

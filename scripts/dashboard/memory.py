@@ -154,7 +154,7 @@ MAX_BYTES = 32 * 1024
 # Enough that a real memory directory is never truncated, low enough that a
 # directory someone has filled with something else does not become the whole
 # response.
-MAX_FILES = 200
+MAX_FILES = 2000
 
 
 def memory_dir(project, home=None):

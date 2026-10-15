@@ -125,9 +125,9 @@ STATUS_WORDS = {"open": "open", "fixed": "fixed", "wontfix": "won't fix",
 
 # One line each; the two long fields get room for real repro steps and a real
 # analysis. Capped so a paste cannot turn the tracker into a log file.
-MAX_SHORT = 300
-MAX_LONG = 4000
-MAX_BUGS = 200
+MAX_SHORT = 1000
+MAX_LONG = 20000
+MAX_BUGS = 5000
 
 # What a report may carry besides its title. Fixed here, once: the CLI, the
 # HTTP handler and the editor all consult this list rather than each keeping
