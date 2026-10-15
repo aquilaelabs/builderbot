@@ -86,6 +86,9 @@ def post_hook(body):
     session on a node reaches the feed it cannot write (roadmap #24)."""
     here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.join(here, "..", "lib"))
+    # A hook runs under a timeout of its own: a call here never waits out a
+    # restarting controller (bbapi.request, R251), it says so at once.
+    os.environ["BB_CONTROLLER_WAIT"] = "0"
     import bbapi                                             # noqa: E402
     return bbapi.call("/api/v1/hook", body,
                       auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10) or {}

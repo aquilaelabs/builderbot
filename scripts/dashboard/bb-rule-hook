@@ -47,6 +47,9 @@ def on_node():
 
 
 def post_hook(body):
+    # A hook runs under a timeout of its own: a call here never waits out a
+    # restarting controller (bbapi.request, R251), it says so at once.
+    os.environ["BB_CONTROLLER_WAIT"] = "0"
     import bbapi                                             # noqa: E402
     r = bbapi.call("/api/v1/hook", body, auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10)
     return r if isinstance(r, dict) else {}

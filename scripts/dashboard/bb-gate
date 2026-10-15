@@ -51,6 +51,9 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 try:
+    # A hook runs under a timeout of its own: a call here never waits out a
+    # restarting controller (bbapi.request, R251), it says so at once.
+    os.environ["BB_CONTROLLER_WAIT"] = "0"
     import bbapi                                                    # noqa: E402
 except ImportError:
     bbapi = None
@@ -188,18 +191,46 @@ def main():
     why = ""
     if not controller_answers(project):
         why = ("BuilderBot is not answering: it is restarting after an update, or down. "
-               "Nothing runs until it is back: wait, then try again. If this keeps up, the "
-               "operator checks the container.")
+               "Nothing that needs it runs until it is back: wait a minute, then try again. "
+               "If it stays down, write where you are and what is next to your memory or "
+               "your notes (that is allowed), then end the turn: the operator checks the "
+               "container, and you pick up from your note.")
     try:
         os.makedirs(os.path.dirname(sf), mode=0o700, exist_ok=True)
         with open(sf, "w") as f:
             json.dump({**last, "ok": not why, "at": now}, f)
     except OSError:
         pass
+    if why and own_notes():
+        return 0
     if why:
         sys.stderr.write(why + "\n")
         return 2
     return 0
+
+
+# What a held session may still do (R251): keep its own notes. Its memory and
+# its scratchpad are files on the machine it runs on, nothing the controller
+# serves, and refusing them left a session told to wait with nowhere to say
+# where it was.
+NOTE_TOOLS = {"Write", "Edit", "MultiEdit", "Read", "NotebookEdit"}
+
+
+def own_notes():
+    try:
+        call = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return False
+    tool = str(call.get("tool_name") or "")
+    if tool == "TodoWrite":
+        return True
+    if tool not in NOTE_TOOLS:
+        return False
+    path = os.path.realpath(str((call.get("tool_input") or {}).get("file_path")
+                                or (call.get("tool_input") or {}).get("notebook_path") or ""))
+    home = os.path.realpath(os.environ.get("HOME", "/nonexistent"))
+    return bool(path) and (path.startswith(os.path.join(home, ".claude") + os.sep)
+                           or path.startswith("/tmp/claude-"))
 
 
 if __name__ == "__main__":

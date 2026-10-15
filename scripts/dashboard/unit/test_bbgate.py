@@ -88,3 +88,48 @@ class Answers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HeldNotes(unittest.TestCase):
+    """R251: a session held by the gate may still keep its own notes, its
+    memory and its scratchpad being files on its own machine; anything else
+    is refused, with the sentence saying to write where it is and stop."""
+    def run_gate(self, make_call):
+        import io
+        import json
+        import sys
+        import tempfile
+        home = tempfile.mkdtemp()
+        env, argv = dict(os.environ), sys.argv
+        os.environ.update(HOME=home, BB_ACCOUNT_UID="u_1")
+        os.environ.pop("XDG_CACHE_HOME", None)
+        was_in, was_err, was_answers = sys.stdin, sys.stderr, gate.controller_answers
+        sys.stdin, sys.stderr = io.StringIO(json.dumps(make_call(home))), io.StringIO()
+        gate.controller_answers = lambda project: False
+        sys.argv = ["bb-gate", "alpha", "s"]
+        try:
+            return gate.main(), sys.stderr.getvalue()
+        finally:
+            sys.stdin, sys.stderr, gate.controller_answers, sys.argv = was_in, was_err, was_answers, argv
+            os.environ.clear()
+            os.environ.update(env)
+
+    def test_memory_and_the_scratchpad_are_allowed(self):
+        code, _ = self.run_gate(lambda home: {"tool_name": "Write", "tool_input": {
+            "file_path": home + "/.claude/projects/x/memory/where.md"}})
+        self.assertEqual(code, 0, "its memory")
+        code, _ = self.run_gate(lambda home: {"tool_name": "Edit", "tool_input": {
+            "file_path": "/tmp/claude-99/x/scratchpad/n.md"}})
+        self.assertEqual(code, 0, "its scratchpad")
+        code, _ = self.run_gate(lambda home: {"tool_name": "TodoWrite", "tool_input": {}})
+        self.assertEqual(code, 0, "its to-do list")
+
+    def test_the_rest_is_held_with_what_to_do(self):
+        code, said = self.run_gate(lambda home: {"tool_name": "Bash", "tool_input": {"command": "bb status"}})
+        self.assertEqual(code, 2)
+        self.assertIn("write where you are and what is next", said)
+        code, _ = self.run_gate(lambda home: {"tool_name": "Write", "tool_input": {"file_path": "/workspace/alpha/main.py"}})
+        self.assertEqual(code, 2, "the project's own files are not notes")
+        code, _ = self.run_gate(lambda home: {"tool_name": "Write", "tool_input": {
+            "file_path": home + "/.claude/../elsewhere.txt"}})
+        self.assertEqual(code, 2, "a path that only starts out in ~/.claude is resolved first")

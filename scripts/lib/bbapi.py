@@ -30,6 +30,8 @@ import http.client
 import json
 import os
 import ssl
+import sys
+import time
 import urllib.parse
 
 
@@ -112,6 +114,33 @@ def call(path, body=None, auth="", method="", timeout=30):
     return request(path, body, auth, method, timeout)[1]
 
 
+# How long a call waits for a controller that refuses the connection (R251):
+# it is restarting after an update most of the time, which takes under a
+# minute, and a session that failed there treated the update as a real
+# failure and changed course. Ninety seconds by default; a hook, which runs
+# under a timeout of its own, sets BB_CONTROLLER_WAIT=0.
+WAIT_STEPS = (2, 3, 5, 5, 10, 10, 15, 15, 15, 15)
+
+
+def _gate_down():
+    """Tell the session's gate (bb-gate, the PreToolUse hook) at once that the
+    controller did not answer, so the next tool call is held rather than let
+    through by the twenty seconds a fine check is trusted for (R251)."""
+    project = os.environ.get("BB_PROJECT", "")
+    if not project or "/" in project:
+        return
+    home = os.environ.get("HOME", "")
+    d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
+        or f"/tmp/bb-scope-{os.getuid()}"
+    sf = os.path.join(d, "builderbot", "u", os.environ.get("BB_ACCOUNT_UID") or "_none", "project", project, "gate")
+    try:
+        os.makedirs(os.path.dirname(sf), mode=0o700, exist_ok=True)
+        with open(sf, "w") as f:
+            json.dump({"ok": False, "at": time.time()}, f)
+    except OSError:
+        pass
+
+
 def request(path, body=None, auth="", method="", timeout=30):
     """call(), with the HTTP status beside the answer: (status, answer).
 
@@ -119,7 +148,40 @@ def request(path, body=None, auth="", method="", timeout=30):
     timeout, a pin that did not match. call() cannot say that, because a
     refusal the server words ("not signed in") and a refused connection both
     come back as {"error": sentence}, and telling them apart by the wording
-    is how bb-gate came to report an expired token as BuilderBot being down."""
+    is how bb-gate came to report an expired token as BuilderBot being down.
+
+    A refused connection is waited out (R251): the request never reached a
+    server, so asking again cannot do anything twice. So is a GET the server
+    hung up on before answering; a POST it may have read is not sent again."""
+    try:
+        budget = max(0, int(os.environ.get("BB_CONTROLLER_WAIT", "90")))
+    except ValueError:
+        budget = 90
+    waited, said = 0, False
+    for step in (*WAIT_STEPS, None):
+        st, got, again = _request_once(path, body, auth, method, timeout)
+        if not again:
+            if said and st is not None:
+                print("[builderbot] the controller is back", file=sys.stderr)
+            return st, got
+        if not said:
+            _gate_down()
+        if step is None or waited + step > budget:
+            break
+        if not said:
+            print(f"[builderbot] the controller is not answering (restarting after an update?): "
+                  f"waiting up to {budget}s", file=sys.stderr)
+            said = True
+        time.sleep(step)
+        waited += step
+    return None, {"error": f"the controller did not answer{f' for {waited}s' if waited else ''} ({got.get('error')}): "
+                           "it is restarting after an update, or down. Wait and try again; if it stays "
+                           "down, write where you are and what is next to your notes and end the turn, "
+                           "and the operator checks the container"}
+
+
+def _request_once(path, body, auth, method, timeout):
+    """One attempt: (status, answer, worth asking again)."""
     hdrs = {"Authorization": auth or os.environ.get("BB_AUTH_HEADER", "")}
     data = None
     if body is not None:
@@ -132,16 +194,20 @@ def request(path, body=None, auth="", method="", timeout=30):
         payload = r.read()
         fresh = r.getheader("X-BB-Session", "")
         c.close()
+    except ConnectionRefusedError as e:
+        return None, {"error": str(e)}, True
+    except http.client.RemoteDisconnected as e:
+        return None, {"error": str(e)}, (method or ("POST" if body is not None else "GET")) == "GET"
     except (OSError, http.client.HTTPException) as e:
-        return None, {"error": str(e)}
+        return None, {"error": str(e)}, False
     if fresh and fresh.startswith("bbs_"):
         keep_token(fresh)
     if r.status == 204 or not payload:
-        return r.status, ({} if r.status < 400 else {"error": f"HTTP {r.status}"})
+        return r.status, ({} if r.status < 400 else {"error": f"HTTP {r.status}"}), False
     try:
         got = json.loads(payload)
     except ValueError:
-        return r.status, {"error": f"HTTP {r.status}"}
+        return r.status, {"error": f"HTTP {r.status}"}, False
     if r.status >= 400 and isinstance(got, dict) and not got.get("error"):
         got["error"] = f"HTTP {r.status}"
-    return r.status, got
+    return r.status, got, False

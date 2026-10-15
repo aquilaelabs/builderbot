@@ -4277,7 +4277,14 @@ project with no Android in it is not told how to drive an emulator.
 to generate. **A session is still held to the current environment**: a hook on
 every tool call (`bb-gate`) refuses to run anything while the controller is
 not answering, which is what a restart after an update looks like. That is
-waited out. The compatibility window still holds a project whose *node* runs
+waited out (R251): a `bb` command that meets a refused connection asks again
+for up to ninety seconds (`BB_CONTROLLER_WAIT`; a hook asks once), saying it
+is waiting, since a refused connection never reached a server and asking
+again cannot do anything twice; the first refusal tells the gate at once, so
+the next tool call is held rather than let through by a check from twenty
+seconds before; and a held session may still write its own memory, its
+scratchpad and its to-do list, so the gate's sentence can tell it, when the
+hold lasts, to write where it is and what is next, then end the turn. The compatibility window still holds a project whose *node* runs
 an agent from another window, and the Nodes tab's Update is what clears it.
 
 ## Playwright, Android, plugins, publishing

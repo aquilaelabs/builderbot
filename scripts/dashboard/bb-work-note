@@ -121,6 +121,9 @@ def main():
         # answer is who else has the file, as names, since the
         # controller has the store this script does not.
         sys.path.insert(0, os.path.join(here, "..", "lib"))
+        # A hook runs under a timeout of its own: a call here never waits out a
+        # restarting controller (bbapi.request, R251), it says so at once.
+        os.environ["BB_CONTROLLER_WAIT"] = "0"
         import bbapi                                          # noqa: E402
         sys.path.insert(0, os.path.join(here, "..", "lib"))
         import rulehook                                       # noqa: E402

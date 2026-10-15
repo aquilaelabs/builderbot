@@ -90,7 +90,10 @@ done
 # the name and ownership come from its answer. No answer, no terminal: a node
 # that cannot reach the controller cannot start a session anyway.
 if on_node; then
-    grant="$(BB_TTY_TARGET="$target" BB_URL_TOKEN="$url_tok" python3 - "$(dirname "$(readlink -f "$0")")/../lib" 2>&1 <<'GRANT'
+    # A terminal opening does not wait out a restarting controller (R251):
+    # the tab says so at once. Set on this call alone, so the session it
+    # starts keeps bb's own wait.
+    grant="$(BB_CONTROLLER_WAIT=0 BB_TTY_TARGET="$target" BB_URL_TOKEN="$url_tok" python3 - "$(dirname "$(readlink -f "$0")")/../lib" 2>&1 <<'GRANT'
 import json, os, sys
 sys.path.insert(0, sys.argv[1])
 import bbapi
