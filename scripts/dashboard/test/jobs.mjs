@@ -149,11 +149,12 @@ await ready(page);
   ok(jtiles.includes('running') && jtiles.includes('succeeded'),
      `the Jobs tab opens on tiles of what runs and what finished (${jtiles.join(', ')})`);
   const rows = (await page.$$eval('.jobstab .jbrow', rs => rs.map(r => ({
-    id: r.dataset.job, state: r.dataset.state, text: r.textContent.replace(/\s+/g, ' ') }))))
+    id: r.dataset.job, state: r.dataset.state, text: r.textContent.replace(/\s+/g, ' '),
+    node: r.querySelector('.td[data-th="Node"]')?.textContent.trim() }))))
     .filter(r => mine.has(r.id));
   ok(rows.length >= 5 && rows.some(r => r.state === 'canceled' && /before it started/.test(r.text))
      && rows.some(r => r.state === 'failed' && /exit 7/.test(r.text))
-     && rows.every(r => /on controller/.test(r.text)),
+     && rows.every(r => r.node === 'controller'),
      `the Jobs tab lists them with their state, node and reason (${rows.length} rows)`);
   ok(rows.every(r => !/Cancel/.test(r.text)), 'an ended job offers no Cancel');
 

@@ -548,7 +548,22 @@ async function glance(){
       if (!/monospace|Mono|Menlo|Consolas/i.test(getComputedStyle(dd).fontFamily)) bad.push('a fact value not in mono');
       if (px(getComputedStyle(dt).fontSize) > px(getComputedStyle(dd).fontSize)) bad.push('a fact label larger than its value');
     }
-    return { bad, tiles: box.querySelectorAll('.tiles .tile').length, facts: box.querySelectorAll('dl.facts').length, stat: stat.trim() };
+    // A table (R218 step 8): each row's cells start where the header's do,
+    // and the header is in the note voice under the cells' size.
+    const tbad = [];
+    for (const t of box.querySelectorAll('.tbl')){
+      const head = t.querySelector(':scope > .thead');
+      if (!head || !head.offsetHeight) continue;
+      const hx = [...head.children].map(c => Math.round(c.getBoundingClientRect().left));
+      for (const line of [...t.querySelectorAll(':scope > .row > .tline, :scope > .tline')].filter(l => l.offsetHeight).slice(0, 8)){
+        const lx = [...line.children].map(c => Math.round(c.getBoundingClientRect().left));
+        if (lx.length !== hx.length || lx.some((x, i) => Math.abs(x - hx[i]) > 1)) tbad.push(`a line at ${lx.join('/')} under a header at ${hx.join('/')}`);
+      }
+      const th = head.querySelector('.th');
+      if (th && px(getComputedStyle(th).fontSize) > px(getComputedStyle(t.querySelector('.td') || th).fontSize) + 0.5) tbad.push('a header larger than its cells');
+    }
+    return { bad, tbad, tables: box.querySelectorAll('.tbl').length, tiles: box.querySelectorAll('.tiles .tile').length,
+             facts: box.querySelectorAll('dl.facts').length, stat: stat.trim() };
   });
 }
 
@@ -617,6 +632,9 @@ for (const kind of kinds){
     ok(G.bad.length === 0,
        `[${kind}] its tiles are one height in the stat voice and its facts labels over mono values (${G.tiles} tiles, ${G.facts} grids${
          G.bad.length ? `; ${G.bad.join(', ')}` : ''})`);
+  if (!G.err && G.tables)
+    ok(G.tbad.length === 0, `[${kind}] its tables line every row's cells up under the header (${G.tables} tables${
+      G.tbad.length ? `; ${G.tbad.slice(0, 3).join(', ')}` : ''})`);
 }
 ok(seenBars.size <= 1,
    `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);

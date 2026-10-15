@@ -142,6 +142,7 @@ function rolesPeopleDirty(){
 }
 
 // ---- Roles -------------------------------------------------------------
+const ROLE_AREA_COLS = [{label: "Area"}, {label: "Read", w: "4.5rem"}, {label: "Write", w: "4.5rem"}];
 function rolesFrom(r){
   return r ? {name: r.name, scope: r.scope, perms: {...(r.perms || {})}, note: r.note || "", fresh: false,
               builtin: !!r.builtin, nodes: [...(r.nodes || [])]} : null;
@@ -160,20 +161,22 @@ function rolesRoleBody(){
       <button type="button" id="rolesAdd">Add role</button>` : ""}</div></div>`;
   if (!r) return pick;
   const ro = r.builtin || !d.admin;
-  let said = false;
-  const areas = (d.areas || []).map(([key, label, group, rd, wr]) => {
-    const lvl = r.perms[key] || "";
-    const off = ro || (group === "global" && r.scope !== "global");
-    // Why the rows below are gray, said once above them, in the reason's
-    // color (the design: the reason under a dead control).
-    const why = off && !ro && !said ? (said = true,
-      `<div class="sub bad" id="rolesWhyOff">These are not about one project: only an Everywhere role holds them.</div>`) : "";
-    return `${why}<div class="rarea${off && !ro ? " off" : ""}" data-rarea="${esc(key)}">
-      <div class="grow"><b>${esc(label)}</b><div class="sub dim">Read: ${esc(rd)}. Write: ${esc(wr)}.</div></div>
-      <label class="pick"><input type="checkbox" data-rread="${esc(key)}"${lvl ? " checked" : ""}${off ? " disabled" : ""}> Read</label>
-      <label class="pick"><input type="checkbox" data-rwrite="${esc(key)}"${lvl === "write" ? " checked" : ""}${off || !lvl ? " disabled" : ""}> Write</label>
-    </div>`;
+  // A table (R218 step 8): the area, with what Read and Write let one do
+  // under its name, then its two boxes in their columns.
+  const offOf = group => ro || (group === "global" && r.scope !== "global");
+  const rows = (d.areas || []).map(([key, label, group, rd, wr]) => {
+    const lvl = r.perms[key] || "", off = offOf(group);
+    return tblLine(ROLE_AREA_COLS, [
+      `${esc(label)}<div class="sub dim">Read: ${esc(rd)}. Write: ${esc(wr)}.</div>`,
+      `<input type="checkbox" data-rread="${esc(key)}" aria-label="Read ${esc(label)}"${lvl ? " checked" : ""}${off ? " disabled" : ""}>`,
+      `<input type="checkbox" data-rwrite="${esc(key)}" aria-label="Write ${esc(label)}"${lvl === "write" ? " checked" : ""}${
+        off || !lvl ? " disabled" : ""}>`], "div", `rarea${off && !ro ? " off" : ""}`, `data-rarea="${esc(key)}"`);
   }).join("");
+  // Why some rows are gray, said once above the table, in the reason's
+  // color (the design: the reason under a dead control).
+  const why = !ro && (d.areas || []).some(([, , group]) => offOf(group))
+    ? `<div class="sub bad" id="rolesWhyOff">The gray areas are not about one project: only an Everywhere role holds them.</div>` : "";
+  const areas = why + tblWrap(ROLE_AREA_COLS, rows, "rareas");
   return `${pick}
     <div class="setrow col">${lbl("rolesScope", "Kind", "On a project: given per project under People, and holds there. Everywhere: given to the account, holds on every project and is the only kind that reaches the nodes, toolchains and the controller")}
       <select id="rolesScope"${ro ? " disabled" : ""}>
@@ -186,7 +189,7 @@ function rolesRoleBody(){
       <div class="upick" id="rolesNodes">${d.nodes.map(n => `<label class="pick"><input type="checkbox" data-rnode="${esc(n.id)}"${
         r.nodes.includes(n.id) ? " checked" : ""}${ro ? " disabled" : ""}> ${esc(n.name)}</label>`).join("")}</div>
       <div class="sub dim">${r.nodes.length ? "those areas on the ticked nodes only" : "those areas on every node"}</div></div>` : ""}
-    <div class="rareas">${areas}</div>
+    ${areas}
     ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>` : ""}
     ${ro ? "" : `<div class="actbar"><span class="state">${rolesRoleDirty() ? "unsaved" : ""}</span>
       <button type="button" id="rolesRevert">Revert</button>

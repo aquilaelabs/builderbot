@@ -1594,29 +1594,35 @@ function dmHealth(c){
 // card either way, drawn whole as a row, or behind one line that opens
 // into it (rows-you-open). Which, is this browser's, kept in localStorage.
 let dmView = (() => { try{ return localStorage.getItem("bb.dmview") === "list" ? "list" : "cards"; }catch(e){ return "cards"; } })();
+// In list view each project's group is a table (R218 step 8, the tables
+// rule): the container, its state, whose it is, where it answers (its
+// published ports as links, the address nginx routes to it) and its image,
+// each line opening into the card.
+const DM_COLS = [{label: "Container"}, {label: "State", w: "8.5rem"}, {label: "Project", w: "minmax(0,.7fr)"},
+                 {label: "Ports", w: "minmax(0,.6fr)"}, {label: "Address", w: "minmax(0,.9fr)"},
+                 {label: "Image", w: "minmax(0,1.2fr)"}];
+function dmLineWrap(key, cls, cells, inner){
+  return `<details class="row stack2 dmline${cls}" ${key}${sectAttr(`docker:line:${key.replace(/^data-\w+="|"$/g, "")}`)}>
+    ${tblLine(DM_COLS, cells, "summary", "dmsum")}
+    <div class="dmbody">${inner}</div></details>`;
+}
 function dmRowWrap(d, st, inner, blind){
   const key = `${d.project}|${d.instance}`;
   if (dmView !== "list")
     return `<div class="row stack2${blind ? " off" : ""}" data-inst="${esc(key)}">${inner}</div>`;
-  return `<details class="row stack2 dmline${blind ? " off" : ""}" data-inst="${esc(key)}"${sectAttr(`docker:line:${key}`)}>
-    <summary class="dmsum"><span class="name">${esc(d.name)}<span class="pill stat dmpill${st[1] ? " " + st[1] : ""}">${
-      esc(st[0])}</span></span><span class="dmsumf">${dmLineFacts(d)}</span></summary>
-    <div class="dmbody">${inner}</div></details>`;
+  return dmLineWrap(`data-inst="${esc(key)}"`, blind ? " off" : "", dmLineCells(d, st), inner);
 }
 
-// The line's facts: whose it is, where it answers (its published ports as
-// links, the address nginx routes to it), and its image.
-function dmLineFacts(d){
-  const bits = [];
+// The line's cells: whose it is, where it answers and its image.
+function dmLineCells(d, st){
   const who = d.owner || d.project;
-  if (who) bits.push(`<span>${esc(who === "System" ? "System" : projLabel(who))}</span>`);
-  const ports = dmPorts(d);
-  if (ports.length) bits.push(`<span>${ports.map(p => dmPortLink(p.pub)).join(" ")}</span>`);
-  const routes = dmRoutesOf(d);
-  if (routes.length) bits.push(`<span>${routes.map(dmRouteLink).join(" ")}</span>`);
   const imgs = [...new Set((d.services || []).map(c => (c.image || "").replace(/@sha256:.*$/, "")).filter(Boolean))];
-  if (imgs.length) bits.push(`<span>${esc(imgs.join(", "))}</span>`);
-  return bits.join("");
+  return [`<span class="name">${esc(d.name)}</span>`,
+          `<span class="pill stat dmpill${st[1] ? " " + st[1] : ""}">${esc(st[0])}</span>`,
+          who ? esc(who === "System" ? "System" : projLabel(who)) : "",
+          dmPorts(d).map(p => dmPortLink(p.pub)).join(" "),
+          dmRoutesOf(d).map(dmRouteLink).join(" "),
+          esc(imgs.join(", "))];
 }
 
 // The published ports of an instance: [{pub, target, proto, svc}].
@@ -1689,6 +1695,9 @@ const dmRouteLink = r => {
 // lands: the list redraws on every revision, and the fold a read was
 // started in is often not the fold on the page by the time it ends.
 const dmLoading = new Set();
+const DM_IMG_COLS = [{label: "Image"}, {label: "State", w: "6.5rem"}, {label: "ID", w: "8rem"},
+                     {label: "Size", w: "6rem", num: true}, {label: "Created", w: "minmax(0,.6fr)"}];
+const DM_VOL_COLS = [{label: "Volume"}, {label: "Driver", w: "8rem"}];
 const dmFoldNow = key => document.querySelector(`.dmtab details[data-sect="${CSS.escape(key)}"], .dkrows details[data-sect="${CSS.escape(key)}"]`);
 async function loadDockerImages(det){
   const key = det.dataset.sect;
@@ -1717,15 +1726,18 @@ async function loadDockerImages(det){
     {label: "reclaimable", value: humanBytes((df("Images").reclaimable || 0) + (df("Local Volumes").reclaimable || 0)),
      sub: "by the two prunes", omit: !(j.df || []).length},
   ]).replace(/^<div class="field">|<\/div>$/g, "")
-  + `<div class="dmimgs">${(j.images || []).map(i => `
-      <div class="row dmimg${i.used ? "" : " off"}">
-        <div class="grow"><div class="name">${esc(i.dangling ? "(dangling)" : `${i.repo}:${i.tag}`)}<span class="pill stat${i.used ? " ok" : " off"}">${
-            i.used ? "in use" : "unused"}</span></div>
-          <div class="sub">${esc(i.id)} · ${esc(humanBytes(i.size))} · ${esc(i.created)}</div></div>
-      </div>`).join("") || `<div class="hint">no images on this daemon</div>`}</div>
-    <div class="dmvols">${(j.volumes || []).map(v => `
-      <div class="row dmvol"><div class="grow"><div class="name">${esc(v.name)}</div><div class="sub">${esc(v.driver)} volume</div></div></div>`).join("")
-      || `<div class="hint">no volumes on this daemon</div>`}</div>
+  // Two tables (R218 step 8): each image with its state, id, size and age,
+  // then each volume with its driver.
+  + ((j.images || []).length ? tblWrap(DM_IMG_COLS, j.images.map(i => `
+      <div class="row dmimg${i.used ? "" : " off"}">${tblLine(DM_IMG_COLS, [
+        esc(i.dangling ? "(dangling)" : `${i.repo}:${i.tag}`),
+        `<span class="pill stat${i.used ? " ok" : " off"}">${i.used ? "in use" : "unused"}</span>`,
+        esc(i.id), esc(humanBytes(i.size)), esc(i.created)])}</div>`).join(""), "dmimgs")
+      : `<div class="hint">no images on this daemon</div>`)
+  + ((j.volumes || []).length ? tblWrap(DM_VOL_COLS, j.volumes.map(v => `
+      <div class="row dmvol">${tblLine(DM_VOL_COLS, [esc(v.name), esc(v.driver)])}</div>`).join(""), "dmvols")
+      : `<div class="hint">no volumes on this daemon</div>`)
+  + `
     ${mayDocker() ? `<div class="actbar"><span class="state">a prune removes only what no container uses</span>
       <button type="button" class="danger" data-dmprune="images" title="docker image prune: dangling images">Prune images</button>
       <button type="button" class="danger" data-dmprune="volumes" title="docker volume prune: volumes no container uses">Prune volumes</button></div>` : ""}`;
@@ -2062,10 +2074,11 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
     .filter(Boolean).filter(o => !only || only === o).sort((a, b) => byName(projLabel(a), projLabel(b)));
-  const group = o =>
+  const rowsOf = o =>
     dmRowsHtml(ins.filter(d => (d.owner || "") === o).sort((a, b) => byName(a.name, b.name)), job, blind)
     + dmOtherRowsHtml(cs.filter(c => (c.owner || "") === o)
         .sort((a, b) => byName(a.name || a.id, b.name || b.id)));
+  const group = o => dmView === "list" ? tblWrap(DM_COLS, rowsOf(o), "dmtbl") : rowsOf(o);
   const loose = [...ins, ...cs].some(r => !r.owner) && (!only || only === "none");
   // A deleted project's containers keep its name until it is restored from
   // the trash, or they are moved or given to another project (8 Oct).
@@ -2111,8 +2124,7 @@ function dmBootLine(name, on){
 }
 
 function dmOtherRowsHtml(cs){
-  return cs.map(c => `
-    <div class="row stack2 off dmother" data-ctr="${esc(c.name || c.id)}">
+  return cs.map(c => dmOtherWrap(c, `
       <div class="grow">
         <div class="name">${esc(c.name || c.id)}<span class="pill stat${c.state === "running" ? " ok" : " off"}">${
           esc(c.state || "unknown")}</span> <span class="pill" title="not started by BuilderBot">not ours</span></div>
@@ -2132,8 +2144,16 @@ function dmOtherRowsHtml(cs){
           title="Restart it: docker restart ${esc(c.name || c.id)}">Restart</button>`}
         ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
           title="the last ${esc(String(400))} lines it printed">Log</button>`}
-      </div>
-    </div>`).join("");
+      </div>`)).join("");
+}
+// A container BuilderBot did not start is a line in list view too, with
+// what the daemon says in the same columns, so the table has one shape.
+function dmOtherWrap(c, inner){
+  const name = c.name || c.id;
+  if (dmView !== "list") return `<div class="row stack2 off dmother" data-ctr="${esc(name)}">${inner}</div>`;
+  return dmLineWrap(`data-ctr="${esc(name)}"`, " off dmother", [`<span class="name">${esc(name)}</span>`,
+    `<span class="pill stat${c.state === "running" ? " ok" : " off"}">${esc(c.state || "unknown")}</span>`,
+    c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "", esc((c.ports || []).join(", ")), "", esc(c.image || "")], inner);
 }
 
 function renderDockerInto(i){

@@ -343,7 +343,7 @@ function unbusy(btn, word){
   btn.textContent = word;
 }
 
-// ---- tiles, facts and chips (R216, the 2.0 language) ----------------------
+// ---- tiles, facts, tables and chips (R216, R218, the 2.0 language) --------
 // Three shapes every document tab draws the same way, held by the design's
 // rules tiles, facts and chips and measured by uniform.mjs.
 
@@ -372,6 +372,35 @@ function factGrid(pairs, cls = ""){
   if (!rows.length) return "";
   return `<dl class="facts${cls ? " " + esc(cls) : ""}">${rows.map(([k, v, opt]) => `
     <div class="fact"><dt>${esc(k)}</dt><dd${opt && opt.cls ? ` class="${esc(opt.cls)}"` : ""}>${opt && opt.html ? v : esc(String(v))}</dd></div>`).join("")}</dl>`;
+}
+
+// ---- tables (R218 step 8, the design's tables rule) -----------------------
+// A list whose rows are all the same shape is a table: a header line naming
+// the columns over rows whose first line holds the same columns, so a value
+// is found by looking down a column rather than by reading every row. Each
+// row is still a row: a reason under its line in red, its buttons at the
+// line's right end, what is long (a log, a card) behind its fold. On a phone
+// the header goes and each cell after the first wears its column's name.
+//
+// `cols` is [{label, w, num, act}]: `w` a grid track, a share (the default,
+// minmax(0,1fr)) or a fixed width and never auto, since each line is its own
+// grid and only shares and widths line up across them; `num` right-aligns
+// tabular figures; `act` is the buttons' column, unlabeled.
+function tblTracks(cols){
+  return cols.map(c => c.w || "minmax(0,1fr)").join(" ");
+}
+// The table around its rows, the header line first.
+function tblWrap(cols, rows, cls = ""){
+  return `<div class="tbl${cls ? " " + esc(cls) : ""}" style="--tcols:${tblTracks(cols)}">
+    <div class="thead">${cols.map(c => `<span class="th${c.num ? " num" : ""}${c.act ? " act" : ""}">${
+      c.act ? "" : esc(c.label || "")}</span>`).join("")}</div>${rows}</div>`;
+}
+// One row's line: a cell per column, in order; a cell is markup already.
+// `tag` is "summary" for a row whose line opens its fold, `cls` its own
+// class, `attrs` its own attributes (a data- key a wiring reads).
+function tblLine(cols, cells, tag = "div", cls = "", attrs = ""){
+  return `<${tag} class="tline${cls ? " " + esc(cls) : ""}"${attrs ? " " + attrs : ""}>${cols.map((c, i) => `<span class="td${i === 0 ? " lead" : ""}${
+    c.num ? " num" : ""}${c.act ? " act" : ""}"${i && !c.act && c.label ? ` data-th="${esc(c.label)}"` : ""}>${cells[i] ?? ""}</span>`).join("")}</${tag}>`;
 }
 
 // A row of chips narrowing a list: All first, then one per group with its

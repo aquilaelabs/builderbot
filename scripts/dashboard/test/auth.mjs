@@ -948,8 +948,8 @@ ${code}`], { encoding: 'utf8' }).trim();
   grant(`${DIR}/home/users/${uidOf}`, 'one@example.invalid');
   grant(`${DIR}/home`, 'one@example.invalid');
   await page.evaluate(() => loadUsers());
-  await page.waitForFunction(() => /signed in to Claude as one@example.invalid/.test(
-    document.querySelector('.userstab .urow[data-user="tabmade"]')?.textContent || ''), null, { timeout: 25000 });
+  await page.waitForFunction(() => document.querySelector('.userstab .urow[data-user="tabmade"] .td[data-th="Claude"]')
+    ?.textContent.trim() === 'one@example.invalid', null, { timeout: 25000 });
   rs = await rows();
   ok(/same Claude account as tabmade/.test(rs.find(r => r.name === 'test').text)
      && /same Claude account as test/.test(rs.find(r => r.name === 'tabmade').text),

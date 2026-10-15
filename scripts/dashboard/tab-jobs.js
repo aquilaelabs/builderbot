@@ -108,18 +108,26 @@ function jobStatePill(j){
 
 // Where and when: the node by name, and the timings that are known: a
 // queued job has only its wait so far, a finished one how long it took.
-function jobWhen(j){
-  const node = jobsNodes[j.node] || (j.node ? j.node : "any node that fits");
-  const bits = [`on ${esc(node)}`];
-  if (j.state === "queued") bits.push(`queued ${ago(j.queued)}`);
-  else if (j.started && !j.ended) bits.push(`started ${ago(j.started)}`);
-  else if (j.started && j.ended)
-    bits.push(`${ago(j.queued)}`, `took ${Math.max(1, j.ended - j.started)}s`);
-  else if (j.ended) bits.push(`${ago(j.ended)}`);
-  if (j.exit_code !== null && j.exit_code !== undefined && j.exit_code !== 0)
-    bits.push(`exit ${j.exit_code}`);
-  return bits.join(" · ");
+// The table's cells (R218 step 8): when it last moved, and how long it ran
+// with its exit code when that was not 0.
+function jobNode(j){
+  return esc(jobsNodes[j.node] || (j.node ? j.node : "any node that fits"));
 }
+function jobWhen(j){
+  if (j.state === "queued") return `queued ${ago(j.queued)}`;
+  if (j.started && !j.ended) return `started ${ago(j.started)}`;
+  return ago(j.ended || j.queued);
+}
+function jobTook(j){
+  const took = j.started && j.ended ? `${Math.max(1, j.ended - j.started)}s` : "";
+  // Said once: a reason that already names the exit code keeps it.
+  const code = j.exit_code !== null && j.exit_code !== undefined && j.exit_code !== 0
+    && !String(j.error || "").includes(`exit ${j.exit_code}`) ? `exit ${j.exit_code}` : "";
+  return [took, code].filter(Boolean).join(" · ");
+}
+const JOB_COLS = [{label: "Job"}, {label: "State", w: "7.5rem"}, {label: "Kind", w: "7rem"},
+                  {label: "Node", w: "minmax(0,.7fr)"}, {label: "When", w: "7.5rem"},
+                  {label: "Took", w: "6rem", num: true}, {act: true, w: "11rem"}];
 
 // What a job left behind: the artifacts it delivered into dist/, as the
 // download links the Artifacts tab would offer, and the workspace a failed
@@ -157,27 +165,23 @@ function renderJobsInto(i){
     const over = ["succeeded", "failed", "canceled"].includes(j.state);
     return `
     <div class="row stack2 jbrow${j.id === jobsMarked ? " focus" : ""}" data-job="${esc(j.id)}" data-state="${esc(j.state)}">
-      <div class="grow">
-        <div class="name">${jobTitle(j)} ${jobStatePill(j)}
-          <span class="dim">· ${esc(j.type)}</span></div>
-        <div class="sub">${jobWhen(j)}${j.requested_by && j.requested_by !== "operator"
-          ? ` · asked by ${esc(j.requested_by)}` : ""}</div>
-        ${j.error ? `<div class="sub jberr warn">${esc(j.error)}</div>` : ""}
-        ${jobOutputs(j)}
-        ${open ? `<pre class="dmlog jblog" data-tail="1">${
-            // "yet" only while there could be more. A job that has ENDED
-            // with an empty log is not waiting for anything, and saying it
-            // is sends somebody back to look again at nothing.
-            esc((jobsLogs[j.id] || "").slice(-4000)
-                || (over ? "(this job wrote nothing)" : "(no output yet)"))}</pre>` : ""}
-      </div>
-      <div class="actbar">
-        <button type="button" data-jb="log" title="${open ? "fold the log away" : "what it wrote, the last 4000 characters"}">${
-          open ? "Hide log" : "Log"}</button>
-        ${over || j.cancel ? "" : `<button type="button" class="danger" data-jb="cancel"
-          title="${j.state === "queued" ? "take it off the queue before it starts"
-                   : "stop it where it is: the row moves when the runner reports that it did"}">Cancel</button>`}
-      </div>
+      ${tblLine(JOB_COLS, [jobTitle(j), jobStatePill(j), esc(j.type), jobNode(j), jobWhen(j), jobTook(j),
+        `<div class="actbar">
+          <button type="button" data-jb="log" title="${open ? "fold the log away" : "what it wrote, the last 4000 characters"}">${
+            open ? "Hide log" : "Log"}</button>
+          ${over || j.cancel ? "" : `<button type="button" class="danger" data-jb="cancel"
+            title="${j.state === "queued" ? "take it off the queue before it starts"
+                     : "stop it where it is: the row moves when the runner reports that it did"}">Cancel</button>`}
+        </div>`])}
+      ${j.requested_by && j.requested_by !== "operator" ? `<div class="sub">asked by ${esc(j.requested_by)}</div>` : ""}
+      ${j.error ? `<div class="sub jberr warn">${esc(j.error)}</div>` : ""}
+      ${jobOutputs(j)}
+      ${open ? `<pre class="dmlog jblog" data-tail="1">${
+          // "yet" only while there could be more. A job that has ENDED
+          // with an empty log is not waiting for anything, and saying it
+          // is sends somebody back to look again at nothing.
+          esc((jobsLogs[j.id] || "").slice(-4000)
+              || (over ? "(this job wrote nothing)" : "(no output yet)"))}</pre>` : ""}
     </div>`;
   }).join("");
   // The tab at a glance (R216, the tiles rule): of the jobs listed, how
@@ -192,13 +196,14 @@ function renderJobsInto(i){
      omit: !count(j => j.state === "failed")},
     {label: "succeeded", value: count(j => j.state === "succeeded"), sub: `of ${jobsList.length} listed`},
   ]);
-  d.list.innerHTML = tiles + rows + (!jobsList.length
+  d.list.innerHTML = tiles + (jobsList.length ? tblWrap(JOB_COLS, rows, "jbtbl") : "") + (!jobsList.length
     ? `<div class="empty">${jobsActive ? "nothing is running or waiting"
                                        : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>` : "");
   // Paged like every other long list here. This one grows without bound:
   // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.
-  paginate(d.list, ":scope > .jbrow", {key: "jbList", noun: "jobs"});
+  const tbl = d.list.querySelector(".jbtbl");
+  if (tbl) paginate(tbl, ":scope > .jbrow", {key: "jbList", noun: "jobs"});
   if (jobsFocus){
     const row = d.list.querySelector(`.jbrow[data-job="${CSS.escape(jobsFocus)}"]`);
     if (row){ row.scrollIntoView({block: "nearest"}); jobsFocus = ""; }

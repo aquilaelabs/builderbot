@@ -2760,13 +2760,15 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   await page.waitForFunction(sel => document.querySelector(sel + ' .dmimg'), imgSect, { timeout: 60000 });
   const imgs = await page.evaluate(sel => ({
     tiles: [...document.querySelectorAll(sel + ' .tiles:not(.mini) .tile')].map(t => `${t.querySelector('.tv')?.textContent.trim()} ${t.querySelector('.tl')?.textContent.trim()}`),
-    rows: [...document.querySelectorAll(sel + ' .dmimg')].map(r => `${r.querySelector('.name')?.textContent.trim()}`),
-    vols: [...document.querySelectorAll(sel + ' .dmvol .name')].map(e => e.textContent.trim()),
+    rows: [...document.querySelectorAll(sel + ' .dmimg')].map(r => `${r.querySelector('.tline')?.textContent.replace(/\s+/g, ' ').trim()}`),
+    vols: [...document.querySelectorAll(sel + ' .dmvol .td.lead')].map(e => e.textContent.trim()),
+    heads: [...document.querySelectorAll(sel + ' .tbl > .thead')].map(h => [...h.children].map(c => c.textContent.trim()).join(' ')),
     status: document.querySelector(sel + ' > summary .sst')?.textContent.trim(),
     prunes: document.querySelectorAll(sel + ' [data-dmprune]').length }), imgSect);
   ok(imgs.tiles.some(t => /^2 images/.test(t)) && imgs.rows.some(r => /ep-silon-img:latest.*in use/i.test(r)) && imgs.rows.some(r => /dangling.*unused/i.test(r))
-     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 2,
-     `the Images and volumes section lists the daemon's images in use or not, its volumes, and offers the two prunes (${JSON.stringify(imgs)})`);
+     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 2
+     && imgs.heads[0] === 'Image State ID Size Created' && imgs.heads[1] === 'Volume Driver',
+     `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the two prunes (${JSON.stringify(imgs)})`);
   // The confirmation is accepted by the page's own dialog handler (lib.mjs).
   await page.click(`${imgSect} [data-dmprune="volumes"]`);
   await page.waitForFunction(() => /pruned volumes/.test(document.body.textContent), null, { timeout: 15000 });
@@ -2812,11 +2814,15 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   await page.click('.dmtab [data-dmview="list"]');
   await page.waitForSelector('.dmtab details.dmline[data-inst="ep.silon|staging-two"] > summary.dmsum', { timeout: 10000 });
   const line = await page.$eval('.dmtab details.dmline[data-inst="ep.silon|staging-two"]', d => ({
-    open: d.open, name: d.querySelector('summary .name')?.textContent.trim(), facts: d.querySelector('summary .dmsumf')?.textContent.replace(/\s+/g, ' ').trim(),
+    open: d.open, name: d.querySelector('summary .name')?.textContent.trim(), facts: d.querySelector('summary .td[data-th="Ports"]')?.textContent.replace(/\s+/g, ' ').trim(),
+    head: [...(d.closest('.dmtbl')?.querySelectorAll(':scope > .thead .th') || [])].map(t => t.textContent).join('|'),
     body: !!d.querySelector('.dmbody dl.facts') }));
-  ok(!line.open && /staging-two/.test(line.name || '') && /7475/.test(line.facts || '') && line.body,
-     `in list view a container is one line, its name, state and facts, with its card behind it (${JSON.stringify(line)})`);
-  await page.click('.dmtab details.dmline[data-inst="ep.silon|staging-two"] > summary.dmsum');
+  ok(!line.open && /staging-two/.test(line.name || '') && /7475/.test(line.facts || '') && line.body
+     && /^Container\|State\|Project\|Ports\|Address\|Image$/.test(line.head),
+     `in list view a container is one line of a table under its project, its name, state and facts in columns, with its card behind it (${JSON.stringify(line)})`);
+  // Pressed on its name: the line's middle is its Ports column, and a port
+  // there is a link that answers the press itself.
+  await page.click('.dmtab details.dmline[data-inst="ep.silon|staging-two"] > summary.dmsum .td.lead');
   await page.waitForFunction(() => document.querySelector('.dmtab details.dmline[data-inst="ep.silon|staging-two"]')?.open, null, { timeout: 5000 });
   ok(await page.$eval('.dmtab details.dmline[data-inst="ep.silon|staging-two"] .dmbody .actbar.dmacts', e => e.getBoundingClientRect().height > 0),
      '...which opens into the card with its settings and its action bar');

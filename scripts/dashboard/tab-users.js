@@ -55,40 +55,39 @@ async function usersAct(body){
   await loadUsers();
 }
 
-// One row. The owner's is the one with rules attached, and it says them
-// rather than showing controls that would be refused.
+// One row of the table (R218 step 8): the account, its roles, its projects,
+// its Claude login and when it was last seen, Edit and Remove at the end.
+// The owner's is the one with rules attached, and it says them rather than
+// showing controls that would be refused.
+const USER_COLS = [{label: "Account", w: "minmax(0,.8fr)"}, {label: "Role", w: "minmax(0,.7fr)"},
+                   {label: "Projects", w: "minmax(0,1.1fr)"}, {label: "Claude", w: "minmax(0,1fr)"},
+                   {label: "Last seen", w: "8rem"}, {act: true, w: "10.5rem"}];
 function userRow(u){
   const isOwner = u.role === "owner";
   const isMe = u.name === usersMeta.me;
-  const seen = !u.seen ? "never signed in" : "last seen " + ago(u.seen);
+  const seen = !u.seen ? "never" : ago(u.seen);
   // Its projects and roles are the Roles tab's to set (R152); shown here.
-  const scope = u.projects.length
-    ? `<span class="sub">on</span> ` + u.projects.map(p => `<span class="pill">${esc(projLabel(p))}</span>`).join(" ")
-    : `<span class="sub dim">on no project yet</span>`;
+  const projs = u.projects.map(projLabel);
   const more = (u.roles || []).filter(r => r !== u.role && r !== "user");
+  const roles = [...(u.role === "owner" || u.role === "admin" ? [u.role] : []), ...more];
   return `<div class="row stack2 urow" data-user="${esc(u.name)}">
-    <div class="grow">
-      <div class="name">${esc(u.name)}
-        ${u.role === "owner" || u.role === "admin" ? `<span class="pill">${esc(u.role)}</span>` : ""}${
-        more.map(r => ` <span class="pill note" title="a role, from the Roles tab">${esc(r)}</span>`).join("")}${
-        isMe ? ` <span class="pill">you</span>` : ""}</div>
-      <div class="uscope">${scope}</div>
-      <div class="sub${u.claude_shared_with?.length ? " warn" : " dim"}">${u.claude
-        ? `signed in to Claude as ${esc(u.claude)}${u.claude_shared_with?.length
-            ? `: the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}, allowed only while one person is behind both`
-            : ""}`
-        : "no Claude login yet: its sessions sign in on first use"}</div>
-      ${isOwner ? `<div class="sub dim">The owner cannot be deleted.</div>` : ""}
-    </div>
-    <div class="actbar">
-      <span class="state">${esc(seen)}</span>
-      <button type="button" data-uedit="${esc(u.name)}"
-        title="everything about this account in one dialog, saved together">Edit</button>
-      ${isOwner
-        ? `<button type="button" class="danger" disabled
-             title="the owner cannot be deleted: rename it instead">Remove</button>`
-        : `<button type="button" class="danger" data-uremove="${esc(u.name)}">Remove</button>`}
-    </div>
+    ${tblLine(USER_COLS, [
+      `${esc(u.name)}${isMe ? ` <span class="pill">you</span>` : ""}`,
+      roles.length ? esc(roles.join(", ")) : `<span class="dim">no role</span>`,
+      projs.length ? `<span title="${esc(projs.join(", "))}">${esc(projs.join(", "))}</span>` : "on no project yet",
+      u.claude ? `<span title="signed in to Claude as ${esc(u.claude)}">${esc(u.claude)}</span>` : "no Claude login yet",
+      esc(seen),
+      `<div class="actbar">
+        <button type="button" data-uedit="${esc(u.name)}"
+          title="everything about this account in one dialog, saved together">Edit</button>
+        ${isOwner
+          ? `<button type="button" class="danger" disabled
+               title="the owner cannot be deleted: rename it instead">Remove</button>`
+          : `<button type="button" class="danger" data-uremove="${esc(u.name)}">Remove</button>`}
+      </div>`])}
+    ${u.claude_shared_with?.length ? `<div class="sub warn">the same Claude account as ${u.claude_shared_with.map(esc).join(", ")
+      }, allowed only while one person is behind both</div>` : ""}
+    ${isOwner ? `<div class="sub dim">The owner cannot be deleted.</div>` : ""}
   </div>`;
 }
 
@@ -106,7 +105,7 @@ function renderUsersInto(i){
   }
   d.list.innerHTML = `
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
-    ${usersList.map(userRow).join("")}
+    ${usersList.length ? tblWrap(USER_COLS, usersList.map(userRow).join(""), "utbl") : ""}
     ${docSection("users", "roles", "What an account gets", "", `
         <div class="sub">Each account has its own home, Claude login and memories; two people on one project each work in a worktree of their own, sharing the notebook.</div>
         <div class="sub">A new account holds no role, so it may do nothing until the <b>Roles</b> tab gives it one, Global or on a project, and puts it on projects.</div>

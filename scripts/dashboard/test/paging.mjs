@@ -117,7 +117,7 @@ for (const [what, call] of [
 // so it was the one most in need of paging and the one that had none.
 {
   const jsrc = readFileSync(new globalThis.URL('../tab-jobs.js', import.meta.url), 'utf8');
-  ok(jsrc.includes('paginate(d.list, ":scope > .jbrow"'),
+  ok(jsrc.includes('paginate(tbl, ":scope > .jbrow"'),
      'jobs are paged, by the rows the tab really renders');
 }
 

@@ -662,10 +662,12 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rpickrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .rpickrow select{flex:1 1 12em;width:auto}
 .rolestab .rpickrow input{flex:1 1 12em;width:auto;min-width:0}
-.rareas{display:flex;flex-direction:column;gap:6px}
-.rarea{display:flex;align-items:center;gap:10px}
-.rarea .grow{flex:1 1 auto;min-width:0}
-.rarea .sub{font:var(--f-note)}
+/* A role's areas are a table (R218 step 8): the area with what Read and
+   Write let one do under its name, then the two boxes in their columns. */
+.tbl.rareas .tline{padding:var(--label-gap) 0;border-bottom:var(--hair) solid var(--line)}
+.tbl.rareas .thead{padding-left:0;padding-right:0}
+.rareas .td.lead .sub{font:var(--f-note);font-weight:400}
+.rareas .td:not(.lead),.rareas .th:not(:first-child){text-align:center}
 .rarea.off{opacity:.55}
 /* A node that was un-enrolled, kept on the one project still set to it
    (page-projsettings.js): italic in the list and in the closed picker. */
@@ -2734,21 +2736,19 @@ pre.diff .d-ctx{color:var(--dim)}
 .tiles.mini .tile{padding:8px 12px}
 .tiles.mini .tv{font:var(--f-sect);font-variant-numeric:tabular-nums}
 /* The list view (R216): a container as one line that opens into its card
-   (rows-you-open). The line is the name with its state pill, then its
-   facts in the data voice: whose, its ports as links, where nginx routes
-   it, its image. The bar's search box takes the room the picker leaves. */
+   (rows-you-open), each project's group a table (R218 step 8): the name,
+   its state pill, whose, its ports as links, where nginx routes it, its
+   image. The bar's search box takes the room the picker leaves. */
 .dmtab details.dmline{display:block;padding:0}
-.dmtab details.dmline > summary.dmsum{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
-  cursor:pointer;list-style:none;padding:var(--row-y) var(--row-x);min-height:var(--tap)}
+.dmtab details.dmline > summary.dmsum{cursor:pointer;list-style:none;padding:var(--row-y) var(--row-x);min-height:var(--tap)}
 .dmtab details.dmline > summary.dmsum::-webkit-details-marker{display:none}
-.dmtab details.dmline > summary.dmsum::before{content:"";display:inline-block;width:0;height:0;
-  border:5px solid transparent;border-left:6px solid var(--dim);margin-right:2px;align-self:center;
+/* The fold's mark sits in the lead cell: on the summary it would be a grid
+   item and take the first column. */
+.dmtab details.dmline > summary.dmsum .td.lead::before{content:"";display:inline-block;width:0;height:0;
+  border:5px solid transparent;border-left:6px solid var(--dim);margin-right:4px;
   transition:transform .15s ease}
-.dmtab details.dmline[open] > summary.dmsum::before{transform:rotate(90deg)}
-.dmtab details.dmline > summary.dmsum .name{font-weight:600}
-.dmtab .dmsumf{font:var(--f-data);color:var(--dim);display:flex;flex-wrap:wrap;gap:2px 12px;min-width:0;flex:1 1 auto}
-.dmtab .dmsumf > span{overflow-wrap:anywhere}
-.dmtab .dmsumf a{color:var(--accent)}
+.dmtab details.dmline[open] > summary.dmsum .td.lead::before{transform:rotate(90deg)}
+.dmtab .dmsum .td a{color:var(--accent)}
 .dmtab details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:var(--hair) solid var(--line)}
 .dmtab .dmpick #dmSearch{flex:1 1 12rem;min-width:8rem;max-width:var(--ctl-w)}
 .dmtab .dmviewseg{display:flex;gap:4px}
@@ -2764,6 +2764,29 @@ pre.diff .d-ctx{color:var(--dim)}
 .facts dt{font:var(--f-note);color:var(--dim);margin:0;white-space:nowrap}
 .facts dd{font:var(--f-data);color:var(--ink);margin:0;min-width:0;overflow-wrap:anywhere}
 .facts dd code{font:inherit}
+/* Tables (R218 step 8, the tables rule): the header and every row's line
+   share one set of tracks (--tcols, from tblWrap); a cell holds one line and
+   ends in an ellipsis, the lead cell may wrap. On a phone the header goes,
+   the lead cell takes the line and the rest follow it, each wearing its
+   column's name, the buttons at the right of the last line they fit on. */
+.tbl .thead,.tbl .tline{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);align-items:center;min-width:0}
+.tbl .thead{padding:var(--label-gap) var(--row-x);font:var(--f-note);color:var(--dim);border-bottom:var(--hair) solid var(--line)}
+.tbl .th,.tbl .td{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbl .td.lead{white-space:normal;overflow-wrap:anywhere;font-weight:600}
+.tbl .th.num,.tbl .td.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .td{font:var(--f-data);color:var(--dim)}
+.tbl .td.lead{font:var(--f-ui);font-weight:600;color:var(--ink)}
+.tbl .td.act{overflow:visible;display:flex;justify-content:flex-end}
+.tbl .td .pill{margin:0}
+@media(max-width:900px){
+  .tbl .thead{display:none}
+  .tbl .tline{display:flex;flex-wrap:wrap;gap:var(--label-gap) var(--row-x);align-items:baseline}
+  .tbl .td.lead{flex:1 0 100%}
+  .tbl .td{white-space:normal;overflow:visible}
+  .tbl .td[data-th]::before{content:attr(data-th) " ";font:var(--f-note);color:var(--dim)}
+  .tbl .td:empty{display:none}
+  .tbl .td.act{flex:1 0 auto}
+}
 .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
   padding-bottom:2px;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
 .chips::-webkit-scrollbar{display:none}
