@@ -858,8 +858,13 @@ from the answer it got back. Nobody waits on a clock for a button they are
 looking at.
 
 **Something that arrived from elsewhere** is the revisions poll:
-`/api/revs` every second and a half, which is stats and in-memory counters
-and nothing that shells out. A view says what it depends on with
+`/api/revs`, which is stats and in-memory counters and nothing that shells
+out, every second and a half while something moved in the last minute,
+every five seconds after that and every thirty while the page is hidden. A
+token only one page draws (a node's heartbeat numbers, `nodes.sample`)
+counts toward "something moved" only while that page is on show, and moves
+apart from the token every other page watches, so one node's heartbeat is
+not a re-read on every page (R218 step 10). A view says what it depends on with
 `onRev(key, fn)` and never decides when to re-read; the server publishes a
 token for everything a view watches, and every token it publishes is
 watched. `test/revs.mjs` holds those two sets equal, in both directions,
@@ -879,9 +884,22 @@ takes the write and the panel's number moves when the answer gets back, so a
 poll arriving in between would read the panel's own words as somebody
 else's.
 
-**Everything else is `/api/status`, every fifteen seconds**, and it carries
-only what nothing cheaper can answer: the branch, the sessions, the image,
-the doctor. A revision does not belong on it.
+**Everything else is `/api/status`**, and it carries only what nothing
+cheaper can answer: the branch, the sessions, the image, the doctor. A
+revision does not belong on it. Its clock is a chain, not an interval: the
+next read is due fifteen seconds after the last one, whoever asked for that
+one (an action's read resets it), none is due while the page is hidden, and
+the page coming back reads at once.
+
+**A draw writes only what changed.** The page draws as often as anything
+asks it to, and a draw that finds nothing new touches nothing: a page's
+skeleton (`docSurface`) outlives its draws, every list, bar, foot and the
+rail go through `paint()`, and the frame's small writes through `setText`,
+`setAttr`, `setClass`, `setHidden` and `setDisabled`, each a no-op when the
+value is already there. Written unconditionally, a status read rewrote two
+hundred nodes of the frame and faded the Home page in again each time, the
+pointer losing its hover on whatever it rested on. `uniform.mjs` reads every
+kind through a status read that brings nothing new and fails any write.
 
 **A timer of a view's own is for watching something in flight, never for
 noticing a change.** Noticing is the revisions poll's job, always. The

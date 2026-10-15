@@ -202,7 +202,7 @@ function pJobWire(){
   const nb = $("bNewProjTab"); if (nb) nb.disabled = busy;
   // ...and never re-enabled past the grant (R137 step 4): the busy pass
   // undid the row's disabled for an account without git-auth.
-  document.querySelectorAll(".pgrid [data-l]").forEach(b => b.disabled = busy || state?.can?.["git-auth"] === false);
+  document.querySelectorAll(".pgrid [data-l]").forEach(b => setDisabled(b, busy || state?.can?.["git-auth"] === false));
 }
 
 // ---- a project's job: the clone or the first push -----------------------

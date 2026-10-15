@@ -55,6 +55,20 @@ class Spark(unittest.TestCase):
         self.assertEqual(set(nodes.ctr_spark(self.nid)), {"web-1"})
         self.assertEqual(nodes.ctr_spark(self.nid)["web-1"], [[t0 + 3700, 5.0, 10.0]])
 
+    def test_numbers_alone_move_only_the_samples_token(self):
+        # R218 step 10: the registry's token moved with every sample, and
+        # every page with a node picker re-read the list and the status poll.
+        self.beat(4_000_000, {"cpu_pct": 1, "mem_mb": 2000, "mem_used_mb": 100,
+                              "sessions": [{"name": "s1", "attached": False, "cwd": "/w", "title": "x"}]})
+        r0, s0 = nodes._rev[0], nodes.sample_rev()
+        self.beat(4_000_025, {"cpu_pct": 55, "mem_mb": 2000, "mem_used_mb": 900,
+                              "sessions": [{"name": "s1", "attached": False, "cwd": "/w", "title": "x"}]})
+        self.assertEqual(nodes._rev[0], r0, "new numbers are not registry news")
+        self.assertNotEqual(nodes.sample_rev(), s0)
+        self.beat(4_000_050, {"cpu_pct": 55, "mem_mb": 2000, "mem_used_mb": 900,
+                              "sessions": [{"name": "s2", "attached": True, "cwd": "/w", "title": "y"}]})
+        self.assertNotEqual(nodes._rev[0], r0, "a session appearing is")
+
     def test_the_nodes_read_carries_it(self):
         self.beat(3_000_000, {"cpu_pct": 7, "mem_mb": 2000, "mem_used_mb": 500})
         with mock.patch.object(nodes, "turns_of", lambda n: {}), mock.patch.object(nodes, "node_for", lambda: ""):

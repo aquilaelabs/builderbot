@@ -375,19 +375,21 @@ function drawBell(){
     bell.addEventListener("animationend", e => { if (e.animationName === "bellbad") bell.classList.remove("flash"); }, {once: true});
   }
   bellRedSeen = red;
-  dot.hidden = !(pendingOn || att.length || ciRed.length || syncC.length || unread);
+  setHidden(dot, !(pendingOn || att.length || ciRed.length || syncC.length || unread));
   // An ask outranks every level of record: one is a thing that happened, the
   // other is a thing that has not happened yet because it is waiting on you.
   // A node alert sits between: red when work is stopped, amber when an
   // update merely waits.
-  dot.className = "dot" + (pendingOn ? " ask" : attOn ? " " + attOn : worst ? " " + worst : "");
+  setClass(dot, "dot" + (pendingOn ? " ask" : attOn ? " " + attOn : worst ? " " + worst : ""));
   bell.classList.toggle("has", !!(pendingOn || att.length || ciRed.length || syncC.length || unread));
   bell.classList.toggle("waiting", pendingOn > 0);
-  bell.title = pendingOn
+  // Its description directly, and only when it changed: a title written on
+  // every draw was taken off again by untitle() each time (R218 step 10).
+  setAttr(bell, "aria-description", pendingOn
     ? `${pendingOn} waiting on an answer`
     : att.length + ciRed.length + syncC.length
       ? `${att.length + ciRed.length + syncC.length} need${att.length + ciRed.length + syncC.length === 1 ? "s" : ""} attention`
-    : unread ? `${unread} new` : "notifications";
+    : unread ? `${unread} new` : "notifications");
   // Drawn whenever it is ON SCREEN, which is the question that matters, and
   // not when a flag says it is open; those two disagreed and the panel a
   // reader was looking at stopped updating.

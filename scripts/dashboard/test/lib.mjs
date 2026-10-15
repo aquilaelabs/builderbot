@@ -483,6 +483,9 @@ export const holdPoll = async page => {
 };
 export const freePoll = page => page.evaluate(() => {
   if (window.__heldRefresh){ refresh = window.__heldRefresh; window.__heldRefresh = null; }
+  // The status poll is a chain each read schedules the next of (R218 step
+  // 10): a timer that fired into the held no-op scheduled nothing.
+  if (typeof statusLater === 'function') statusLater();
 });
 
 // One section is open at a time on a tab and in a notebook view (5 and

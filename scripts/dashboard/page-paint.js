@@ -17,6 +17,24 @@
 // difference touches the DOM. Returns whether it did, for the callers that
 // bind handlers or animate only on a real change.
 const painted = new WeakMap();
+
+// The same rule for the frame's small writes (R218 step 10): a text, an
+// attribute, a whole class list or a hidden flag set only when it differs.
+// Written unconditionally, each status poll rewrote the header's words, the
+// doctor's dot, the dock's and the panes' classes and the phone bar's flags
+// with what they already said, two hundred changes a poll that were none.
+function setText(el, s){ if (el && el.textContent !== String(s)) el.textContent = String(s); }
+function setAttr(el, name, v){
+  if (!el) return;
+  if (v === null || v === undefined || v === false){ if (el.hasAttribute(name)) el.removeAttribute(name); }
+  else if (el.getAttribute(name) !== String(v)) el.setAttribute(name, String(v));
+}
+function setClass(el, cls){ if (el && el.className !== cls) el.className = cls; }
+function setHidden(el, off){ if (el && el.hidden !== !!off) el.hidden = !!off; }
+function setDisabled(el, off){ if (el && el.disabled !== !!off) el.disabled = !!off; }
+// A title is taken off by untitle() and kept for a screen reader as the
+// element's description or name, so it is compared against what was kept.
+function setTitle(el, s){ if (el && saidOf(el) !== String(s)) el.title = String(s); }
 // Every redraw on the page goes through here, which is what makes it the one
 // place worth teaching about arriving. It already skips the write when
 // nothing changed; that is what keeps :hover alive and stops a mid-edit
@@ -27,14 +45,20 @@ const painted = new WeakMap();
 // "First" means: nothing has been painted here yet, or what was here was a
 // placeholder saying it had not arrived.
 const WAITING = /class="(loading|empty)[ "]|loading…/;
-function paint(el, html){
-  const was = painted.get(el);
-  if (was === html) return false;
+function paint(el, html, quiet = false){
+  const rec = painted.get(el);
+  // What it left there is what is there: a renderer that wrote the element
+  // directly in between (a "loading…", an error) replaced its children, and
+  // the same markup painted again is then a change (R218 step 10, now that a
+  // page's list outlives its draws). A fold opened or a box ticked since
+  // replaces nothing and still reads as unchanged.
+  const was = rec && rec.first === el.firstChild && rec.n === el.childNodes.length ? rec.html : undefined;
+  if (rec && was === html) return false;
   // Not recorded, so the same markup is still a change on the next poll.
   if (menuHolds(el)) return false;
-  const arriving = was === undefined || WAITING.test(was);
-  painted.set(el, html);
+  const arriving = !rec || WAITING.test(rec.html);
   el.innerHTML = html;
+  painted.set(el, {html, first: el.firstChild, n: el.childNodes.length});
   // ...but never while the card around it is folding. contentIn starts at
   // opacity 0 and takes 180ms, which is exactly the fold's duration, so a
   // repaint landing on a collapsing card blanks its body at full height and
@@ -46,7 +70,9 @@ function paint(el, html){
   // content feel like it arrived; content arriving into something on its way
   // shut has nowhere to arrive, and the fold is the motion that matters.
   const folding = el.closest(".card")?.getAnimations().length > 0;
-  if (arriving && !folding && !WAITING.test(html) && !noMotion()){
+  // `quiet` is the frame's own (the rail, a page's bar and foot): chrome is
+  // there, it does not arrive.
+  if (arriving && !quiet && !folding && !WAITING.test(html) && !noMotion()){
     // Restarted rather than added-once: an element can arrive more than once
     // in a session, and a class already on it would not replay.
     el.classList.remove("justpainted");

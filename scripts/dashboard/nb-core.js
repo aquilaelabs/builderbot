@@ -240,11 +240,11 @@ function makeNotebook(project){
     const el = $("roadmapBatch");
     if (!el) return;
     root.classList.toggle("held", nbHeld());
-    el.hidden = !nb.roadmapBatch && !nb.roadmapStale;
-    if (el.hidden){ el.innerHTML = ""; return; }
+    setHidden(el, !nb.roadmapBatch && !nb.roadmapStale);
+    if (el.hidden){ if (el.firstChild) el.innerHTML = ""; return; }
     const n = nb.roadmapBatch?.changes || 0;
     const mins = nb.roadmapBatch?.at ? Math.max(1, Math.round((Date.now() / 1000 - nb.roadmapBatch.at) / 60)) : 0;
-    el.innerHTML = nb.roadmapBatch?.stale
+    paint(el, nb.roadmapBatch?.stale
       ? `<div>A session started changing this notebook ${mins} min ago and never closed it.
          Nothing is held: your saves go through.${
          state?.can?.admin ? ` <button type="button" id="roadmapBatchClose">Close it</button>` : ""}</div>`
@@ -255,7 +255,7 @@ function makeNotebook(project){
          <button type="button" id="roadmapRecheck">Check now</button></div>`
       : `<div>A session finished changing this notebook. What is on screen was
          read before that, so saving over it would undo the change.
-         <button type="button" id="roadmapReread">Reload the list</button></div>`;
+         <button type="button" id="roadmapReread">Reload the list</button></div>`, true);
     const bc = $("roadmapBatchClose");
     if (bc) bc.onclick = async () => {
       busy(bc, "Closing");
@@ -350,20 +350,20 @@ function makeNotebook(project){
       // The Roadmap's bar is the one that sat dead most of the time (R224):
       // it appears with a reorder or an edit staged, and goes with the Save.
       // The rest stay, dead, so they do not move under a thumb.
-      if (key === "roadmap") bar.closest(".field").hidden = !(n > 0 || sectDirty(key) || nb.roadmapOrdering);
-      save.disabled = !sectDirty(key) || (key === "roadmap" && held);
-      rv.disabled = !n;
-      rv.title = n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away";
-      save.title = key === "roadmap" && held
+      if (key === "roadmap") setHidden(bar.closest(".field"), !(n > 0 || sectDirty(key) || nb.roadmapOrdering));
+      setDisabled(save, !sectDirty(key) || (key === "roadmap" && held));
+      setDisabled(rv, !n);
+      setTitle(rv, n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away");
+      setTitle(save, key === "roadmap" && held
         ? (nb.roadmapBatch ? "a session is part-way through changing this list"
                            : "a session changed this list: reload it before saving over it")
-        : "save this section; a session running here hears about it on its next prompt";
+        : "save this section; a session running here hears about it on its next prompt");
       // A panel holding unsaved work stops re-reading, since a redraw would
       // eat the typing (B199); said where the Save is, once something here
       // has moved under it.
       const state = bar.querySelector(".state");
-      state.textContent = n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
-        : n ? `${n} unsaved` : "";
+      setText(state, n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
+        : n ? `${n} unsaved` : "");
     });
   }
 
@@ -411,8 +411,8 @@ function makeNotebook(project){
       `${o.mine ? "your other window" : esc(o.who)}${
         WHERE_IS[o.where] ? ` (${WHERE_IS[o.where]})` : ""}`);
     const line = bits.length ? "Also open: " + bits.join(", ") : "";
-    el.hidden = !line;
-    el.innerHTML = line ? `<span class="hint">${line}</span>` : "";
+    setHidden(el, !line);
+    paint(el, line ? `<span class="hint">${line}</span>` : "", true);
     // A session that has gone and read the list, which is a different claim
     // from having been told: being told rides in on its next prompt (#27), and
     // what the operator wants to know after changing something is whether it

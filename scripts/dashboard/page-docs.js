@@ -44,22 +44,38 @@ function nodePick(id, nodes, cur, why = () => ""){
 function docSurface(i, kind){
   const el = $("doc" + i);
   if (!el) return null;
-  el.classList.add("flush");
-  el.innerHTML = `<div class="doctab ${esc(kind)}tab">
-    <div class="field histbar docbarrow" hidden></div>
-    <div class="doclist"></div>
-    <div class="fnote" hidden></div>
-  </div>`;
-  const box = el.firstElementChild;
-  const bar = box.querySelector(".docbarrow");
-  const foot = box.querySelector(".fnote");
+  if (!el.classList.contains("flush")) el.classList.add("flush");
+  // Kept when this page is already drawn here (R218 step 10): built afresh on
+  // every draw, a page drawn by the poll was born again each time, its list
+  // fading in as if it had just arrived, its scroll and whatever was under
+  // the pointer lost, though nothing in it had changed. A draw that changes
+  // nothing now writes nothing: the list goes through paint(), and the bar
+  // and the foot are written only when what they say moved.
+  let box = el.firstElementChild;
+  if (!box || el.children.length !== 1 || !box.classList.contains("doctab") || !box.classList.contains(`${kind}tab`)
+      || !box.querySelector(":scope > .doclist")){
+    el.innerHTML = `<div class="doctab ${esc(kind)}tab">
+      <div class="field histbar docbarrow" hidden></div>
+      <div class="doclist"></div>
+      <div class="fnote" hidden></div>
+    </div>`;
+    box = el.firstElementChild;
+  }
+  const bar = box.querySelector(":scope > .docbarrow");
+  const foot = box.querySelector(":scope > .fnote");
+  const slot = (node, html) => {
+    const s = String(html);
+    paint(node, s, true);
+    const off = !s.trim();
+    if (node.hidden !== off) node.hidden = off;
+  };
   // Plain nodes and two explicit setters: a slot written to becomes visible,
   // one left alone costs no empty band. (A Proxy did this implicitly at first
   // and threw Illegal invocation the moment a DOM accessor ran through it;
   // the error boundary caught it, which is the one nice thing it did.)
-  return { root: box, el, bar, foot, list: box.querySelector(".doclist"),
-           setBar(html){ bar.innerHTML = html; bar.hidden = !String(html).trim(); },
-           setFoot(html){ foot.innerHTML = html; foot.hidden = !String(html).trim(); } };
+  return { root: box, el, bar, foot, list: box.querySelector(":scope > .doclist"),
+           setBar(html){ slot(bar, html); },
+           setFoot(html){ slot(foot, html); } };
 }
 
 // A section of a document tab (see "sections and action bars" in the

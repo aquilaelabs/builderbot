@@ -497,6 +497,16 @@ def _bump():
     _rev[0] += 1
 
 
+# The heartbeat's numbers alone (cpu, memory, store headroom): what the Nodes
+# page draws and nothing else does, so a token of their own (R218 step 10).
+_sample_rev = [0]
+HEARTBEAT_NEWS = ("published", "sessions", "sync", "sync_drain", "sync_clean")
+
+
+def sample_rev():
+    return str(_sample_rev[0])
+
+
 def _touch(node_id, principal, action, fields):
     audit(principal, action, node_id, fields)
     _bump()
@@ -2895,9 +2905,13 @@ def heartbeat(nid, sample, addr, running=0):
               for r, v in list(stores.items())[:8]}
     ag = n.get("agent") or {}
     ag["last_seen"] = clean["at"]
+    rep = n.get("reported") or {}
+    # What another page draws from this row, as it stood before this sample:
+    # if none of it moved, the sample's numbers are the only news, and only
+    # the Nodes page, which shows them, is told (R218 step 10).
+    was = json.dumps([ag.get("addr"), *[rep.get(k) for k in HEARTBEAT_NEWS]], sort_keys=True)
     if addr:
         ag["addr"] = addr
-    rep = n.get("reported") or {}
     rep["sample"] = clean
     # What the node publishes, by compose project (R82): the ports another
     # node's session of the same project may reach. A change re-sends every
@@ -2957,9 +2971,15 @@ def heartbeat(nid, sample, addr, running=0):
                 _trim(r, clean["at"], at=lambda x: x[0])
         for key in [k for k, r in rings.items() if not r or r[-1][0] < clean["at"] - SAMPLES_KEEP_S]:
             del rings[key]
-    # Every sample moves the numbers on the row, and the row is the only
-    # place they are shown: one repaint per node per poll is the cost.
-    _bump()
+    # Every sample moves the numbers on the Nodes page, which watches the
+    # sample's own token; the registry's token moves only when something any
+    # other page draws moved with it (a session, a published port, a sync
+    # state, the node's address). It moved with every sample, and every page
+    # with a node picker re-read the node list and the status poll for each
+    # node's every heartbeat (R218 step 10).
+    _sample_rev[0] += 1
+    if json.dumps([ag.get("addr"), *[rep.get(k) for k in HEARTBEAT_NEWS]], sort_keys=True) != was:
+        _bump()
     if moved:
         session_net_nudge()
 

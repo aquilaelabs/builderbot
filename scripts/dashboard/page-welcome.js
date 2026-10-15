@@ -186,11 +186,10 @@ function drawBuild(img){
   // being asked whenever anybody looks at this. The rest moved from a hover
   // tooltip into the About popup: a phone cannot hover, and the truncated
   // string it showed instead answered nothing.
-  el.textContent = ver || (rev ? rev.slice(0, 7) : "unstamped");
-  $("aVer").textContent = ver || "(no version stamp)";
-  $("aRev").textContent = rev
-    || "unstamped: built outside CI, or older than the stamp itself";
-  $("aBuilt").textContent = img?.built || "unknown";
+  setText(el, ver || (rev ? rev.slice(0, 7) : "unstamped"));
+  setText($("aVer"), ver || "(no version stamp)");
+  setText($("aRev"), rev || "unstamped: built outside CI, or older than the stamp itself");
+  setText($("aBuilt"), img?.built || "unknown");
 }
 
 // ---- the welcome panel: the guide, and the changelog ----------------------

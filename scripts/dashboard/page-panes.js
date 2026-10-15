@@ -21,7 +21,7 @@ function paintBar(pane, t, i){
   // The dock's pane wears the dock's line (R218 step 4), with or without a
   // terminal in it.
   if (i === 1){
-    bar.className = "bar dockbar";
+    setClass(bar, "bar dockbar");
     bar.style.removeProperty("--pc");
     // Painted only when it changed: a poll that moves nothing leaves the
     // line's buttons where they are, and a pointer over one keeps its hover.
@@ -38,20 +38,26 @@ function paintBar(pane, t, i){
   // close: the rail is how you leave it. A project (step 3) wears its
   // header: the name, the facts, the session's state and its actions.
   const proj = t.kind === "notebook";
-  bar.innerHTML = isToolKind(t.kind) ? shellBar(t, i) + reload
+  // Painted, and wired, only when it changed (R218 step 10): assigned on
+  // every draw, the page's sub-nav and a project's header were rebuilt by
+  // each poll under the pointer that was about to press them.
+  const fresh = paint(bar, isToolKind(t.kind) ? shellBar(t, i) + reload
     : proj ? projectHeader(t)
-    : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}`;
+    : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}`, true);
   bar.classList.toggle("page", isToolKind(t.kind));
   bar.classList.toggle("proj", proj);
-  wireShellBar(bar);
-  if (proj){ wireProjectHeader(bar); syncResumeMenu(); }
+  if (fresh){
+    wireShellBar(bar);
+    if (proj) wireProjectHeader(bar);
+    bar.querySelectorAll("[data-reload]").forEach(b =>
+      b.onclick = e => { e.stopPropagation();
+        loadFindings(true); });
+  }
+  if (proj) syncResumeMenu();
   // The project's color on the strip too, so a split pane says whose it is.
   const tone = colorTone(projectColor(tabProject(t)));
   bar.classList.toggle("pc", !!tone);
-  bar.style.setProperty("--pc", tone || "");
-  bar.querySelectorAll("[data-reload]").forEach(b =>
-    b.onclick = e => { e.stopPropagation();
-      loadFindings(true); });
+  if (bar.style.getPropertyValue("--pc") !== (tone || "")) bar.style.setProperty("--pc", tone || "");
 }
 
 // Uncover a terminal the moment there is nothing white left to see.
@@ -174,7 +180,7 @@ function drawPanes(){
       .forEach(c => c.remove());
   for (let i = 0; i < 2; i++){
     const pane = $("pane" + i);
-    pane.classList.remove("hidden");
+    pane.classList.toggle("hidden", false);
     pane.classList.toggle("active", i === 1 && active === 1 && dockUp);
     pane.classList.toggle("dock", i === 1);
     if (i === 1 && !isSplit()){
@@ -286,7 +292,7 @@ function drawPanes(){
 function renderNotebookInto(i, project){
   const host = $("doc" + i), nb = getNotebook(project);
   if (!host) return;
-  host.classList.add("nbhost");
+  host.classList.toggle("nbhost", true);
   if (nb.root.parentElement !== host) host.appendChild(nb.root);
   nbReadOnly(nb.root, project);
   nb.shown();

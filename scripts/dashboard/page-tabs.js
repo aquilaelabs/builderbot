@@ -310,7 +310,7 @@ function untitle(el){
   if (!s) return;
   const named = el.hasAttribute("aria-label") || el.hasAttribute("aria-labelledby") || el.labels?.length
     || (el.textContent || "").trim();
-  el.setAttribute(named ? "aria-description" : "aria-label", s);
+  setAttr(el, named ? "aria-description" : "aria-label", s);
 }
 function untitleIn(root){
   if (root.nodeType !== 1) return;

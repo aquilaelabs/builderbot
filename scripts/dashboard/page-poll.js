@@ -125,21 +125,20 @@ async function refresh(){
     // After the boot check above, which drops every Claude tab on a restart:
     // this would otherwise be reaping tabs that have already gone.
     reapDeadTerminals();
-    $("dot").classList.remove("off");
-    $("dot").removeAttribute("aria-label");
+    if ($("dot").classList.contains("off")) $("dot").classList.remove("off");
+    setAttr($("dot"), "aria-label", null);
     // The container's hostname, which answers "which BuilderBot am I looking
     // at", and on the ordinary box, where the container is called builderbot,
     // answers it with the word already three inches to its left. Two of the
     // same word reads as a rendering fault rather than as information, so it
     // is shown only when it says something the title does not.
     const host = state.host || "";
-    $("host").textContent =
-      host.toLowerCase() === "builderbot" ? "" : host;
+    setText($("host"), host.toLowerCase() === "builderbot" ? "" : host);
     // The word that tells two dashboards apart: on when dev features, the
     // ones not yet vetted, are offered here, which production never has.
-    $("devtag").hidden = !state.settings?.settings?.offer_unvetted?.value;
+    setHidden($("devtag"), !state.settings?.settings?.offer_unvetted?.value);
     drawSetup();
-    $("uptime").textContent = "up " + shortUptime(state.uptime);
+    setText($("uptime"), "up " + shortUptime(state.uptime));
     drawBuild(state.image);
     adoptLayout(state.layout);
     // Every part draws on its own from here (bug #44). They used to run as
@@ -223,7 +222,22 @@ async function refresh(){
   }finally{
     refreshBusy = false;
     if (refreshAgain){ refreshAgain = false; refresh(); }
+    else statusLater();
   }
+}
+
+// The status poll's own clock (R218 step 10): the next read is due fifteen
+// seconds after the last one, whoever asked for that one, so an action's
+// read is not followed a moment later by the timer's; none is due while the
+// page is hidden, where a git walk per project buys nothing nobody sees; and
+// coming back to the page reads at once (its visibilitychange listener,
+// beside the revisions poll's). It was a fixed interval: on time whether or
+// not a read had just landed, and on, hidden or not.
+const STATUS_MS = 15000;
+let statusTimer = null;
+function statusLater(){
+  clearTimeout(statusTimer);
+  statusTimer = document.hidden ? null : setTimeout(() => refresh(), STATUS_MS);
 }
 
 // Consecutive failed polls. Zero is healthy; the header's light carries the
@@ -324,8 +338,12 @@ async function pollRevsOnce(){
   // watch compares against the number its own panel last read, so a fire it
   // did not need costs nothing.
   const first = !Object.keys(was).length;
-  // Anything moved: what the back-off below reads.
-  if (first || Object.keys(now).some(k => was[k] !== now[k])) revsMovedAt = Date.now();
+  // Anything moved: what the back-off below reads. A token only one page
+  // draws counts only while that page is on show: a node's heartbeat moves
+  // its numbers every poll, and counted everywhere it kept every page at a
+  // second and a half for good (R218 step 10).
+  if (first || Object.keys(now).some(k => was[k] !== now[k] && (!REVS_PAGE_ONLY[k] || REVS_PAGE_ONLY[k]())))
+    revsMovedAt = Date.now();
   for (const w of revWatch){
     const k = typeof w.key === "function" ? w.key() : w.key;
     if (!k) continue;
@@ -345,6 +363,7 @@ async function pollRevsOnce(){
 // after, thirty while hidden. A chain of timeouts rather than an interval,
 // so the next wait is decided after each poll.
 let revTimer = null, revsMovedAt = Date.now();
+const REVS_PAGE_ONLY = {"nodes.sample": () => shown("nodes")};
 const REVS_IDLE_MS = 60000;
 function revsDelay(){
   if (document.hidden) return 30000;

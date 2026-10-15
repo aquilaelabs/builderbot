@@ -13,10 +13,10 @@ let docShown = false;
 function drawDoctor(){
   const el = $("doctor"), d = state?.doctor;
   const dot = $("docDot");
-  $("docWhen").textContent = d?.running ? "running…" : d?.when ? ago(d.when) : "";
+  setText($("docWhen"), d?.running ? "running…" : d?.when ? ago(d.when) : "");
   if (!d || !d.when){
-    dot.className = "st";
-    $("bDocDot").setAttribute("aria-label", "bb doctor: no verdict yet");
+    setClass(dot, "st");
+    setAttr($("bDocDot"), "aria-label", "bb doctor: no verdict yet");
     paint(el, `<div class="empty">${d?.running ? "running…" : "first run pending…"}</div>`);
     return;
   }
@@ -32,8 +32,8 @@ function drawDoctor(){
 
   const level = probs.some(c => c.level === "FAIL") ? "bad"
               : probs.length ? "warn" : "ok";
-  dot.className = "st " + level;
-  $("bDocDot").setAttribute("aria-label", level === "ok" ? `bb doctor: all ${fine.length} ok`
+  setClass(dot, "st " + level);
+  setAttr($("bDocDot"), "aria-label", level === "ok" ? `bb doctor: all ${fine.length} ok`
     : `bb doctor: ${probs.length} to look at`);
   paint(el,
     `<div class="probs">${probs.map(c =>

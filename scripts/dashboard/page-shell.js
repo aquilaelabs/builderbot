@@ -185,8 +185,11 @@ function drawRail(){
   const item = g => `<button type="button" class="ritem${g.key === on ? " on" : ""}" data-rail="${esc(g.key)}" aria-label="${esc(g.label)}"${
       g.key === on ? ' aria-current="page"' : ""}>${RAIL_ICONS[g.icon] || TOOL_ICONS[g.icon] || ""}<span class="rlbl">${esc(g.label)}</span></button>`;
   const html = groups.map(item).join("");
-  if (rail.innerHTML !== html){
-    rail.innerHTML = html;
+  // Through paint(), which remembers what it wrote: compared against
+  // innerHTML, which the browser writes back its own way (an SVG's
+  // attributes, an entity), it never matched, and the rail was rebuilt on
+  // every draw with the pointer on it (R218 step 10).
+  if (paint(rail, html, true)){
     rail.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => railGo(b.dataset.rail));
   }
   const five = groups.filter(g => RAIL_PHONE.includes(g.key));
@@ -194,8 +197,7 @@ function drawRail(){
   const moreOn = rest.some(g => g.key === on);
   const bhtml = five.map(item).join("") + (rest.length
     ? `<button type="button" class="ritem${moreOn ? " on" : ""}" data-railmore aria-haspopup="menu" aria-expanded="${railMoreOpen}" aria-label="More">${RAIL_ICONS.more}<span class="rlbl">More</span></button>` : "");
-  if (bar.innerHTML !== bhtml){
-    bar.innerHTML = bhtml;
+  if (paint(bar, bhtml, true)){
     bar.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => { railMoreShow(false); railGo(b.dataset.rail); });
     bar.querySelector("[data-railmore]")?.addEventListener("click", () => railMoreShow(!railMoreOpen));
   }
@@ -203,8 +205,7 @@ function drawRail(){
   if (more){
     const mhtml = rest.map(g => `<button type="button" class="ritem${g.key === on ? " on" : ""}" data-rail="${esc(g.key)}">${
         RAIL_ICONS[g.icon] || TOOL_ICONS[g.icon] || ""}<span class="rlbl">${esc(g.label)}</span></button>`).join("");
-    if (more.innerHTML !== mhtml){
-      more.innerHTML = mhtml;
+    if (paint(more, mhtml, true)){
       more.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => { railMoreShow(false); railGo(b.dataset.rail); });
     }
   }

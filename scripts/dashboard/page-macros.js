@@ -44,7 +44,7 @@ function wireMacros(el){
     // GitHub remote.
     const need = b.dataset.need || "";
     const ok = live && (!need || (need === "git" ? ctx.git : ctx.github));
-    b.disabled = !ok;
+    setDisabled(b, !ok);
     // A dead one is ghosted and says nothing (the operator, 11 Oct: no
     // tooltips; a reason on the page is for a warning or an error).
     b.onclick = () => b.dataset.m ? macro(b.dataset.m) : macro(null, b.dataset.run);

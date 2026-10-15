@@ -713,6 +713,27 @@ for (const kind of kinds){
   ok(!F.err && F.bare.length === 0,
      `[${kind}] every fold is remembered across a redraw${
        F.err ? ` (${F.err})` : F.bare.length ? `: ${[...new Set(F.bare)].join('; ')}` : ''}`);
+  // A poll that brings nothing new writes nothing (R218 step 10): the page,
+  // its bar, the rail and the dock stay the very nodes they were, so a
+  // pointer resting on one keeps its hover and nothing fades in again. Read
+  // over a third status read, the first two letting the page's own fetches
+  // land; the header's uptime is the one thing that may move with time.
+  const quietRead = await page.evaluate(async () => {
+    await refresh(); await new Promise(r => setTimeout(r, 600));
+    await refresh(); await new Promise(r => setTimeout(r, 600));
+    const seen = [];
+    const name = e => e ? (e.id ? '#' + e.id : e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/)[0] : '')) : '?';
+    const mo = new MutationObserver(ms => ms.forEach(m => {
+      const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      if (t?.closest('#uptime')) return;
+      seen.push(`${name(t)} ${m.type === 'attributes' ? '@' + m.attributeName : m.type}`);
+    }));
+    mo.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    await refresh(); await new Promise(r => setTimeout(r, 600));
+    mo.disconnect();
+    return [...new Set(seen)];
+  });
+  ok(quietRead.length === 0, `[${kind}] a status read that brings nothing new writes nothing${quietRead.length ? ': ' + quietRead.slice(0, 6).join('; ') : ''}`);
 }
 
 // ---- a setting is written by Save, never by the pick -----------------------
@@ -1469,6 +1490,25 @@ for (const kind of kinds){
   const idle = await page.evaluate(() => window.__f);
   const noise = Object.keys(idle).filter(u => !POLLS.has(u));
   ok(noise.length === 0, `an idle page asks only its polls (${noise.length ? 'also ' + noise.join(', ') : Object.keys(idle).join(', ')})`);
+  // ...and only so often (R218 step 10, against step 1's baseline of the
+  // revisions poll x20, the status poll x5 and the node list x4 in thirty
+  // seconds on every page): a node's heartbeat moves only its numbers' own
+  // token, which only the Nodes page reads, so Home reads neither the node
+  // list nor the status poll for it while the stub beats every five seconds.
+  // Measured on a page of its own, landed on Home and left alone: this one
+  // has walked every kind, and the jobs those started move the node
+  // registry's token as they finish, which is news.
+  const quiet = await newPage(browser, { viewport: { width: 1280, height: 900 } });
+  await quiet.goto(URL); await ready(quiet);
+  await quiet.evaluate(() => railGo('home'));
+  await sleep(5000);
+  await quiet.evaluate(() => { window.__f = {}; const f = window.fetch;
+    window.fetch = (...a) => { const u = String(a[0]).split('?')[0]; window.__f[u] = (window.__f[u] || 0) + 1; return f(...a); }; });
+  await sleep(8000);
+  const calm = await quiet.evaluate(() => window.__f);
+  await quiet.close();
+  ok(!calm['/api/v1/nodes'] && !calm['/api/presence'] && (calm['/api/status'] || 0) <= 1 && (calm['/api/revs'] || 0) <= 6,
+     `...and only so often: no node list or presence off their pages, the status poll at most once and the revisions poll at most six times in eight seconds (${JSON.stringify(calm)})`);
   for (const kind of Object.keys(DRIVERS)){
     if (kind.startsWith('notebook:')) continue;
     await page.evaluate(() => { window.__f = {}; });

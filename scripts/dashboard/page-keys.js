@@ -64,7 +64,7 @@ function mobPanel(which){
 // collision, and closing first would have resized the terminal twice.
 function slidePanel(el, show, swap){
   const was = el.dataset.shown === "1";
-  el.dataset.shown = show ? "1" : "0";
+  setAttr(el, "data-shown", show ? "1" : "0");
   if (was === show) return null;
   // Interrupted mid-slide, the next slide starts from the height the panel
   // is at, not from one end: the second tap on a flyout reverses it.
@@ -144,23 +144,23 @@ function drawKeys(){
   // Sessions and Commands short beside it, to say a thing nobody needed.
   const mk = $("mKeys");
   mk.classList.toggle("on", on);
-  mk.hidden = !term;
+  setHidden(mk, !term);
   const mm = $("mMacros");
   mm.classList.toggle("on", showMacros);
-  mm.hidden = !term;
+  setHidden(mm, !term);
   $("mSessions").classList.toggle("on", showSessions);
   const mc = $("mChat");
   mc.classList.toggle("on", showChat);
   // Sessions is the rail's and Chat a tab on the dock's line (R218 step 4):
   // the foot bar keeps what is about the terminal in front, Keys and
   // Commands, and is not drawn with nothing in it.
-  $("mSessions").hidden = mc.hidden = true;
-  $("mobar").hidden = mk.hidden && mm.hidden;
+  setHidden($("mSessions"), true); setHidden(mc, true);
+  setHidden($("mobar"), mk.hidden && mm.hidden);
   // The dot is the whole reason the counts ride the status poll: a chat you
   // have to open to discover is one nobody opens.
   const waiting = Object.values(state?.chat?.unread || {}).reduce((a, b) => a + b, 0);
   mc.classList.toggle("unread", waiting > 0);
-  mc.title = waiting ? `${waiting} unread` : "";
+  setAttr(mc, "aria-description", waiting ? `${waiting} unread` : null);
   drawChat();
   // One panel at a time: whichever is opening slides, and any that is
   // closing in the same breath swaps out under it (see slidePanel).

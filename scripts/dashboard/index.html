@@ -6039,7 +6039,8 @@ onRev("devapp", () => {
 // instant: read immediately, before any timer has a chance to fire.
 document.addEventListener("visibilitychange", () => {
   reschedRevs();
-  if (!document.hidden) pollRevs();
+  if (!document.hidden){ pollRevs(); refresh(); }
+  else statusLater();
 });
 reschedRevs();
 pollRevs();
@@ -6103,6 +6104,13 @@ onRev("nodes", () => {
   // of at the next fifteen-second poll.
   refresh();
 });
+// A heartbeat's numbers alone (R218 step 10): the Nodes page draws them,
+// its meters and its hour's charts, and no other page does, so no other page
+// re-reads anything for them.
+onRev("nodes.sample", () => { if (shown("nodes")) loadNodes(); });
+// A message between accounts (R218 step 10): the chat open on a conversation
+// reads it, and nothing is read while it is shut.
+onRev("chat", () => { if (showChat && chatWith) loadChat(); });
 // The queue moved: a job taken, a step, a result, a cancel. Same rule: an
 // open Jobs tab refetches, and nothing about jobs rides the status poll.
 onRev("jobs", () => {
@@ -6204,10 +6212,11 @@ document.addEventListener("keydown", e => {
 });
 
 refresh();
-// Through the binding, not the function: the harness holds the poll by
-// replacing `refresh` (lib.mjs holdPoll), and a timer that captured the
-// original kept polling under a planted row (B265).
-setInterval(() => refresh(), 15000);
+// Its next read is the status poll's own business now (page-poll.js,
+// statusLater): fifteen seconds after the last read, none while hidden. The
+// timer calls through the binding, not the function: the harness holds the
+// poll by replacing `refresh` (lib.mjs holdPoll), and a timer that captured
+// the original kept polling under a planted row (B265).
 </script>
 </body>
 </html>

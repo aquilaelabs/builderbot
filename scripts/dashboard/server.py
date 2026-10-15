@@ -3563,6 +3563,12 @@ def revisions(who=None, projects=None):
         # Node and job data never joins the status payload (docs/nodes.md
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),
+        # ...and a heartbeat's numbers alone, which the Nodes page draws and
+        # nothing else does (R218 step 10).
+        "nodes.sample": 0 if NODES_OK else nodes.sample_rev(),
+        # The chat between accounts, bumped on every message (R218 step 10):
+        # an open chat re-reads on it rather than every four seconds.
+        "chat": chat.rev(),
         # The nginx tab's record and hostnames (B714): a route written from
         # a Docker row, bb or another browser.
         "nginx": nginxproxy.rev(),

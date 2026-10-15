@@ -25,13 +25,13 @@ async function loadChat(){
   refreshSoon();                     // the unread counts move with it
 }
 
-// While the panel is open, faster than the fifteen-second poll: a chat at
-// that cadence is a message board. Only while it is open: this is the one
-// surface that wants a tighter loop and it should not cost anything when it
-// is shut.
+// An open chat follows the chat's revision, which every message moves (R218
+// step 10, page-poll.js's watch on "chat"): it read every four seconds while
+// open, a message or not. What is left here is putting away a timer an older
+// build of the page may still hold.
 function chatLoop(){
   clearInterval(chatTimer);
-  chatTimer = showChat ? setInterval(loadChat, 4000) : null;
+  chatTimer = null;
 }
 
 function chatOpen(w){ chatWith = w; chatMsgs = []; chatDrawn = ""; loadChat(); chatLoop(); }

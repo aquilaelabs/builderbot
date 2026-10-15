@@ -156,7 +156,7 @@ function renderProjectsInto(i){
   // band above the grid, where its result will appear.
   const jb = el.querySelector("#pjJob"), jh = projectJobHtml();
   if (paint(jb, jh)) pJobWire();
-  jb.hidden = !jh;
+  setHidden(jb, !jh);
   // The empty case says what to do: an empty workspace is exactly where
   // somebody is about to make their first project.
   if (!ps.length){

@@ -181,7 +181,7 @@ function dockDress(){
   const el = $("panes");
   if (!el) return;
   const up = dockUp && !!panes[1];
-  el.classList.add("docked");
+  el.classList.toggle("docked", true);
   el.classList.toggle("dockup", up);
   if (dockH) el.style.setProperty("--dock-h", dockH + "px");
 }

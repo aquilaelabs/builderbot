@@ -23,7 +23,7 @@ function render(){ shellBoot(); if (state) dockSettle(); drawPanes(); drawKeys()
                    // The first draw that had something to draw ends the boot
                    // ground: from here a pane is a terminal's black or a
                    // tab's panel, and the loading line has been replaced.
-                   if (state) document.body.classList.remove("booting");
+                   if (state) document.body.classList.toggle("booting", false);
                    if (state){ drawCard("sessions", () => drawSessions(state.sessions));
                                drawCard("linux", drawLinux);
                                drawCard("commands", drawCommands); drawCard("git", drawGit);
