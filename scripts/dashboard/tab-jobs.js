@@ -125,9 +125,15 @@ function jobTook(j){
     && !String(j.error || "").includes(`exit ${j.exit_code}`) ? `exit ${j.exit_code}` : "";
   return [took, code].filter(Boolean).join(" · ");
 }
+// Who asked: every job has an asker, so it is a column and not a line
+// under each row; an account is named without its "user:" prefix.
+function jobBy(j){
+  const by = j.requested_by || "";
+  return esc(by.startsWith("user:") ? by.slice(5) : by);
+}
 const JOB_COLS = [{label: "Job"}, {label: "State", w: "7.5rem"}, {label: "Kind", w: "7rem"},
-                  {label: "Node", w: "minmax(0,.7fr)"}, {label: "When", w: "7.5rem"},
-                  {label: "Took", w: "6rem", num: true}, {act: true, w: "11rem"}];
+                  {label: "Node", w: "minmax(0,.7fr)"}, {label: "By", w: "minmax(0,.5fr)"}, {label: "When", w: "7.5rem"},
+                  {label: "Took", w: "5.5rem", num: true}, {act: true, w: "10rem"}];
 
 // What a job left behind: the artifacts it delivered into dist/, as the
 // download links the Artifacts tab would offer, and the workspace a failed
@@ -165,7 +171,7 @@ function renderJobsInto(i){
     const over = ["succeeded", "failed", "canceled"].includes(j.state);
     return `
     <div class="row stack2 jbrow${j.id === jobsMarked ? " focus" : ""}" data-job="${esc(j.id)}" data-state="${esc(j.state)}">
-      ${tblLine(JOB_COLS, [jobTitle(j), jobStatePill(j), esc(j.type), jobNode(j), jobWhen(j), jobTook(j),
+      ${tblLine(JOB_COLS, [jobTitle(j), jobStatePill(j), esc(j.type), jobNode(j), jobBy(j), jobWhen(j), jobTook(j),
         `<div class="actbar">
           <button type="button" data-jb="log" title="${open ? "fold the log away" : "what it wrote, the last 4000 characters"}">${
             open ? "Hide log" : "Log"}</button>
@@ -173,7 +179,6 @@ function renderJobsInto(i){
             title="${j.state === "queued" ? "take it off the queue before it starts"
                      : "stop it where it is: the row moves when the runner reports that it did"}">Cancel</button>`}
         </div>`])}
-      ${j.requested_by && j.requested_by !== "operator" ? `<div class="sub">asked by ${esc(j.requested_by)}</div>` : ""}
       ${j.error ? `<div class="sub jberr warn">${esc(j.error)}</div>` : ""}
       ${jobOutputs(j)}
       ${open ? `<pre class="dmlog jblog" data-tail="1">${
