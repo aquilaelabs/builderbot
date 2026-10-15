@@ -2763,11 +2763,16 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     rows: [...document.querySelectorAll(sel + ' .dmimg')].map(r => `${r.querySelector('.tline')?.textContent.replace(/\s+/g, ' ').trim()}`),
     vols: [...document.querySelectorAll(sel + ' .dmvol .td.lead')].map(e => e.textContent.trim()),
     heads: [...document.querySelectorAll(sel + ' .tbl > .thead')].map(h => [...h.children].map(c => c.textContent.trim()).join(' ')),
+    // Each line's cells under the header's: a plain row once shrank its line.
+    off: [...document.querySelectorAll(sel + ' .tbl')].reduce((n, t) => {
+      const hx = [...t.querySelector(':scope > .thead').children].map(c => Math.round(c.getBoundingClientRect().left));
+      return n + [...t.querySelectorAll(':scope > .row > .tline')].filter(l =>
+        [...l.children].some((c, i) => Math.abs(Math.round(c.getBoundingClientRect().left) - hx[i]) > 1)).length; }, 0),
     status: document.querySelector(sel + ' > summary .sst')?.textContent.trim(),
     prunes: document.querySelectorAll(sel + ' [data-dmprune]').length }), imgSect);
   ok(imgs.tiles.some(t => /^2 images/.test(t)) && imgs.rows.some(r => /ep-silon-img:latest.*in use/i.test(r)) && imgs.rows.some(r => /dangling.*unused/i.test(r))
      && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 2
-     && imgs.heads[0] === 'Image State ID Size Created' && imgs.heads[1] === 'Volume Driver',
+     && imgs.heads[0] === 'Image State ID Size Created' && imgs.heads[1] === 'Volume Driver' && imgs.off === 0,
      `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the two prunes (${JSON.stringify(imgs)})`);
   // The confirmation is accepted by the page's own dialog handler (lib.mjs).
   await page.click(`${imgSect} [data-dmprune="volumes"]`);

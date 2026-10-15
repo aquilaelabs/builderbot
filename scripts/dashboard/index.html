@@ -2769,6 +2769,9 @@ pre.diff .d-ctx{color:var(--dim)}
    ends in an ellipsis, the lead cell may wrap. On a phone the header goes,
    the lead cell takes the line and the rest follow it, each wearing its
    column's name, the buttons at the right of the last line they fit on. */
+/* A table's row is a column whatever else it is (a plain .row is a flex
+   line, which shrank the line to its content): the line spans the table. */
+.tbl > .row{flex-direction:column;align-items:stretch;flex-wrap:nowrap}
 .tbl .thead,.tbl .tline{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);align-items:center;min-width:0}
 .tbl .thead{padding:var(--label-gap) var(--row-x);font:var(--f-note);color:var(--dim);border-bottom:var(--hair) solid var(--line)}
 .tbl .th,.tbl .td{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
