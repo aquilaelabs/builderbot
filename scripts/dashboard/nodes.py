@@ -1020,12 +1020,16 @@ def agent_window(version):
 # three of them were the slowest intervals in the suite. Nothing else sets it.
 POLL_S = int(os.environ.get("BB_NODE_POLL") or 25)
 _wake = threading.Condition(_lock)
-# The last minute of samples per node, for a sparkline (docs/nodes.md §9):
-# memory only, and lost on restart, which is the honest scope: the row keeps
-# the current sample in the DB, and history is /metrics plus whatever the
-# operator points at it.
+# The last hour of samples per node, for its charts (R218 step 9, docs/
+# nodes.md §9), and of each running container's on an agent node, sampled
+# once a minute by the agent: memory only, and lost on restart, which is the
+# honest scope: the row keeps the current sample in the DB, and history
+# longer than an hour is /metrics plus whatever the operator points at it.
+# Kept by time rather than by count, since the poll's interval is a setting.
 _samples = {}
-SAMPLES_KEEP = 60
+_ctr_samples = {}
+SAMPLES_KEEP_S = 3600
+SAMPLES_CAP = 600
 
 
 def _mb(v):
@@ -2851,7 +2855,7 @@ def sync_rows(sent):
 def heartbeat(nid, sample, addr, running=0):
     """One sample per poll: the numbers the operator actually wants to see,
     riding the channel that exists anyway. Written to the row (current
-    value) and to the ring (the last minute); last_seen is what liveness
+    value) and to the ring (the last hour); last_seen is what liveness
     reads. The address is refreshed too; see _addr."""
     n = node(nid)
     if not n:
@@ -2938,7 +2942,21 @@ def heartbeat(nid, sample, addr, running=0):
           (json.dumps(ag), json.dumps(rep), nid))
     ring = _samples.setdefault(nid, [])
     ring.append(clean)
-    del ring[:-SAMPLES_KEEP]
+    _trim(ring, clean["at"])
+    # Each running container's use, once a minute (R218 step 9): name to
+    # [cpu %, memory %], whitelisted like everything a node says.
+    if isinstance(s.get("ctr_stats"), dict):
+        rings = _ctr_samples.setdefault(nid, {})
+        for name, v in list(s["ctr_stats"].items())[:200]:
+            key = re.sub(r"[^A-Za-z0-9_.-]", "", str(name))[:120]
+            if not key or not isinstance(v, (list, tuple)) or len(v) < 2:
+                continue
+            with contextlib.suppress(TypeError, ValueError):
+                r = rings.setdefault(key, [])
+                r.append([clean["at"], round(max(0.0, float(v[0])), 1), round(max(0.0, min(100.0, float(v[1]))), 1)])
+                _trim(r, clean["at"], at=lambda x: x[0])
+        for key in [k for k, r in rings.items() if not r or r[-1][0] < clean["at"] - SAMPLES_KEEP_S]:
+            del rings[key]
     # Every sample moves the numbers on the row, and the row is the only
     # place they are shown: one repaint per node per poll is the cost.
     _bump()
@@ -2986,8 +3004,33 @@ def sessions_report(nid, rows):
     return {"ok": True, "sessions": len(rep["sessions"])}
 
 
+def _trim(ring, now, at=lambda x: x.get("at") or 0):
+    """A ring holds the last hour, and never more than SAMPLES_CAP points."""
+    cut = 0
+    while cut < len(ring) and at(ring[cut]) < now - SAMPLES_KEEP_S:
+        cut += 1
+    del ring[:max(cut, len(ring) - SAMPLES_CAP)]
+
+
 def samples(nid):
     return list(_samples.get(nid, []))
+
+
+def spark_of(nid):
+    """A node's last hour for its charts: [[at, cpu %, memory %], ...]."""
+    out = []
+    for x in _samples.get(nid, []):
+        mem = x.get("mem_mb") or 0
+        out.append([x.get("at") or 0, x.get("cpu_pct") or 0,
+                    round((x.get("mem_used_mb") or 0) / mem * 100, 1) if mem else 0])
+    return out
+
+
+def ctr_spark(nid, names=None):
+    """Each container's last hour on `nid`: {name: [[at, cpu %, memory %], ...]},
+    narrowed to `names` when given."""
+    rings = _ctr_samples.get(nid, {})
+    return {k: list(v) for k, v in rings.items() if names is None or k in names}
 
 
 # ---------------------------------------------------------------------------
@@ -4948,6 +4991,8 @@ def tab_view(rows, admin):
     for n in rows:
         if n.get("kind") == "agent":
             n["turns"] = turns_of(n)
+            # Its last hour, for the charts on its page (R218 step 9).
+            n["spark"] = spark_of(n["id"])
     import systems
     return {"nodes": rows, "agent": agent_shipped() if admin else {},
             "default": node_for() if admin else "",

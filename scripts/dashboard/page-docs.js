@@ -343,7 +343,7 @@ function unbusy(btn, word){
   btn.textContent = word;
 }
 
-// ---- tiles, facts, tables and chips (R216, R218, the 2.0 language) --------
+// ---- tiles, facts, tables, charts and chips (R216, R218, the 2.0 language)
 // Three shapes every document tab draws the same way, held by the design's
 // rules tiles, facts and chips and measured by uniform.mjs.
 
@@ -401,6 +401,112 @@ function tblWrap(cols, rows, cls = ""){
 function tblLine(cols, cells, tag = "div", cls = "", attrs = ""){
   return `<${tag} class="tline${cls ? " " + esc(cls) : ""}"${attrs ? " " + attrs : ""}>${cols.map((c, i) => `<span class="td${i === 0 ? " lead" : ""}${
     c.num ? " num" : ""}${c.act ? " act" : ""}"${i && !c.act && c.label ? ` data-th="${esc(c.label)}"` : ""}>${cells[i] ?? ""}</span>`).join("")}</${tag}>`;
+}
+
+// ---- charts (R218 step 9, the design's charts rule) -----------------------
+// Where a number moves: an hour's line chart on a node's page and a
+// sparkline beside a running container's number, drawn inline with no
+// library. One series to a chart, so no legend: the caption names it. The
+// plot is an SVG stretched to its box with strokes that do not scale; the
+// axis labels and the end dot are HTML, so text keeps its size at every
+// width. A gap longer than three samples' spacing breaks the line rather
+// than drawing across a time nobody measured.
+
+// A sparkline: the values in the quiet voice, the last one a dot in the
+// accent, 96 by 24. `max` is the scale's top (100 for a percentage, more
+// when a container's CPU spans cores).
+function sparkSvg(vals, max = 100, label = ""){
+  const v = (vals || []).filter(x => typeof x === "number");
+  if (v.length < 2) return "";
+  const top = Math.max(max, ...v), W = 96, H = 24, pad = 3;
+  const pt = (x, i) => [pad + i * (W - 2 * pad) / (v.length - 1), H - pad - x / top * (H - 2 * pad)];
+  const pts = v.map(pt), last = pts.at(-1);
+  return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
+    <polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ")}"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3"/></svg>`;
+}
+
+// The hour as a chart: `pts` is [[at, value], ...], `fmt` how a value is
+// said, `max` the scale's top. Its id keeps the crosshair where it was
+// across the redraw a new sample brings.
+const CHART_SPAN = 3600;
+function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100){
+  const p = (pts || []).filter(x => x && typeof x[1] === "number");
+  if (!p.length) return `<figure class="chart" data-chart="${esc(id)}"><figcaption><span class="ct">${esc(title)}</span></figcaption>
+    <div class="hint">no samples yet: the node sends one each poll</div></figure>`;
+  const now = p.at(-1)[0], from = now - CHART_SPAN, vals = p.map(x => x[1]);
+  const top = Math.max(max, ...vals);
+  const X = at => Math.max(0, Math.min(1000, (at - from) / CHART_SPAN * 1000)), Y = v => 100 - v / top * 100;
+  // Runs split where the samples stop: a quiet node is a gap, not a slope.
+  const gaps = p.slice(1).map((x, i) => x[0] - p[i][0]).sort((a, b) => a - b);
+  const step = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 60;
+  const runs = [[p[0]]];
+  for (let i = 1; i < p.length; i++){
+    if (p[i][0] - p[i - 1][0] > step * 3) runs.push([]);
+    runs.at(-1).push(p[i]);
+  }
+  const line = runs.map(r => r.map((x, i) => `${i ? "L" : "M"}${X(x[0]).toFixed(1)},${Y(x[1]).toFixed(1)}`).join("")).join("");
+  const fill = runs.filter(r => r.length > 1).map(r => `M${X(r[0][0]).toFixed(1)},100${
+    r.map(x => `L${X(x[0]).toFixed(1)},${Y(x[1]).toFixed(1)}`).join("")}L${X(r.at(-1)[0]).toFixed(1)},100Z`).join("");
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length, last = p.at(-1);
+  return `<figure class="chart" data-chart="${esc(id)}">
+    <figcaption><span class="ct">${esc(title)}</span><span class="cv">${esc(fmt(last[1]))}</span>
+      <span class="cs">the last hour: low ${esc(fmt(Math.min(...vals)))}, average ${esc(fmt(avg))}, high ${esc(fmt(Math.max(...vals)))}</span></figcaption>
+    <div class="cplot">
+      <div class="cy" aria-hidden="true"><span>${esc(fmt(top))}</span><span>${esc(fmt(top / 2))}</span><span>${esc(fmt(0))}</span></div>
+      <div class="carea" tabindex="0" role="img" aria-label="${esc(`${title} over the last hour, now ${fmt(last[1])}`)}"
+        data-pts="${esc(JSON.stringify(p.map(x => [x[0], x[1]])))}" data-from="${from}">
+        <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
+          <line class="cgrid" x1="0" x2="1000" y1="0" y2="0"/><line class="cgrid" x1="0" x2="1000" y1="50" y2="50"/>
+          <line class="cgrid" x1="0" x2="1000" y1="100" y2="100"/>
+          <path class="cfill" d="${fill}"/><path class="cline" d="${line}"/></svg>
+        <span class="cdot" style="left:${(X(last[0]) / 10).toFixed(2)}%;top:${Y(last[1]).toFixed(2)}%"></span>
+        <span class="chair" hidden></span><span class="ctip" hidden></span>
+        <div class="cx" aria-hidden="true"><span>an hour ago</span><span>30 min</span><span>now</span></div>
+      </div>
+    </div></figure>`;
+}
+
+// The crosshair: it finds the nearest sample to the pointer (or, focused,
+// the one the arrow keys move to) and says its value and its time. Kept by
+// chart id across a redraw, until the pointer leaves.
+let chartHover = {id: "", i: -1};
+function wireCharts(root, fmtOf = () => v => `${Math.round(v)}%`){
+  root.querySelectorAll(".chart .carea").forEach(a => {
+    const fig = a.closest(".chart"), id = fig.dataset.chart, fmt = fmtOf(id);
+    let pts;
+    try{ pts = JSON.parse(a.dataset.pts || "[]"); }catch(e){ pts = []; }
+    if (!pts.length) return;
+    const from = Number(a.dataset.from), hair = a.querySelector(".chair"), tip = a.querySelector(".ctip");
+    const show = i => {
+      if (i < 0){ hair.hidden = tip.hidden = true; return; }
+      const x = Math.max(0, Math.min(100, (pts[i][0] - from) / CHART_SPAN * 100));
+      hair.style.left = tip.style.left = `${x}%`;
+      tip.classList.toggle("flip", x > 70);
+      tip.textContent = "";
+      const b = document.createElement("b"); b.textContent = fmt(pts[i][1]);
+      tip.append(b, " ", new Date(pts[i][0] * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
+      hair.hidden = tip.hidden = false;
+      chartHover = {id, i};
+    };
+    const near = ev => {
+      const r = a.getBoundingClientRect(), at = from + (ev.clientX - r.left) / r.width * CHART_SPAN;
+      let best = 0;
+      pts.forEach((p, i) => { if (Math.abs(p[0] - at) < Math.abs(pts[best][0] - at)) best = i; });
+      return best;
+    };
+    a.onpointermove = ev => show(near(ev));
+    a.onpointerleave = () => { if (document.activeElement !== a){ show(-1); chartHover = {id: "", i: -1}; } };
+    a.onfocus = () => show(chartHover.id === id && chartHover.i >= 0 ? Math.min(chartHover.i, pts.length - 1) : pts.length - 1);
+    a.onblur = () => { show(-1); chartHover = {id: "", i: -1}; };
+    a.onkeydown = ev => {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      ev.preventDefault();
+      const i = chartHover.id === id ? chartHover.i : pts.length - 1;
+      show(Math.max(0, Math.min(pts.length - 1, i + (ev.key === "ArrowLeft" ? -1 : 1))));
+    };
+    if (chartHover.id === id && chartHover.i >= 0) show(Math.min(chartHover.i, pts.length - 1));
+  });
 }
 
 // A row of chips narrowing a list: All first, then one per group with its

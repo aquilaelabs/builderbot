@@ -1269,6 +1269,15 @@ function nodeMeters(n){
 }
 
 
+// Its last hour, CPU and memory, side by side at a desk (R218 step 9): the
+// controller's ring of its samples, one each poll. Small multiples rather
+// than two lines on one chart, so neither needs a legend or a second hue.
+function nodeCharts(n){
+  if (n.kind !== "agent" || !(n.spark || []).length) return "";
+  return `<div class="charts ndcharts">${hourChart(`cpu:${n.id}`, "CPU", n.spark.map(x => [x[0], x[1]]))}${
+    hourChart(`mem:${n.id}`, "Memory", n.spark.map(x => [x[0], x[2]]))}</div>`;
+}
+
 // The node's page: a header band: name, state, where it is, its agent and
 // the one control that is about the agent, then the sections.
 function renderNodesInto(i){
@@ -1400,6 +1409,7 @@ function renderNodesInto(i){
     const health = docSection("nodes", "health", "Health",
       n.kind === "agent" ? (n.live ? "live" : "quiet") : "", `
         ${nodeMeters(n) || `<div class="empty">nothing measured yet</div>`}
+        ${nodeCharts(n)}
         ${nodeTools(n)}
         ${nodeGit(n)}
         ${nodeGpu(n)}
@@ -1565,6 +1575,7 @@ async function nodeProjectRemove(b, name, id){
 
 function wireNodesTab(root){
   wireSignin(root);
+  wireCharts(root);
   root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
   root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
   root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () =>

@@ -3044,6 +3044,7 @@ containers.ask_rebuild = phone.ask_rebuild
 containers.net_nudge = net_nudge
 containers.project_hosts = lambda p: prefs.get(p).get("hosts") or []
 containers.ports_local = nodes.ports_local_on
+containers.ctr_spark = nodes.ctr_spark
 # One nginx per node, from the nginx tab (R171): its records here, the
 # container through containers.py, and the node's own view of its ports.
 imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)

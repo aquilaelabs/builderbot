@@ -2802,6 +2802,39 @@ pre.diff .d-ctx{color:var(--dim)}
   .tbl .td:empty{display:none}
   .tbl .td.act{flex:1 0 auto}
 }
+/* Charts (R218 step 9, the charts rule): one series each, a 2px line in
+   the accent over a tenth-strength wash, hairline grid in --line, the axis
+   and the readout in text tokens. The plot stretches; its strokes do not. */
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--row-x);padding:var(--row-y) 0}
+@media(max-width:900px){ .charts{grid-template-columns:minmax(0,1fr)} }
+.chart{margin:0;min-width:0}
+.chart figcaption{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin-bottom:var(--label-gap)}
+.chart .ct{font:var(--f-ui);font-weight:600;color:var(--ink)}
+.chart .cv{font:var(--f-data);color:var(--ink);font-variant-numeric:tabular-nums}
+.chart .cs{flex:1 0 100%;font:var(--f-note);color:var(--dim)}
+.chart .cplot{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 6px}
+.chart .cy{display:flex;flex-direction:column;justify-content:space-between;height:96px;
+  font:var(--f-note);color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+.chart .cy span{line-height:1;transform:translateY(-1px)}
+.chart .carea{position:relative;height:96px;outline-offset:3px;touch-action:pan-y;cursor:crosshair}
+.chart .carea svg{display:block;width:100%;height:100%;overflow:visible}
+.chart .cgrid{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
+.chart .cline{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.chart .cfill{fill:var(--accent);opacity:.1;stroke:none}
+.chart .cdot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 2px var(--panel);pointer-events:none}
+.chart .chair{position:absolute;top:0;bottom:0;width:0;border-left:var(--hair) solid var(--dim);pointer-events:none}
+.chart .ctip{position:absolute;top:-4px;transform:translate(6px,-100%);white-space:nowrap;pointer-events:none;
+  font:var(--f-note);color:var(--dim);background:var(--panel);border:var(--hair) solid var(--line);
+  border-radius:var(--r-small);padding:2px 6px;z-index:2}
+.chart .ctip.flip{transform:translate(calc(-100% - 6px),-100%)}
+.chart .ctip b{color:var(--ink);font:var(--f-data);font-weight:600}
+.chart .cx{position:absolute;left:0;right:0;top:100%;display:flex;justify-content:space-between;
+  font:var(--f-note);color:var(--dim);padding-top:2px}
+.chart .cplot{padding-bottom:18px}
+.spark{display:block;margin-top:4px;overflow:visible}
+.spark polyline{fill:none;stroke:var(--dim);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;opacity:.7}
+.spark circle{fill:var(--accent);stroke:var(--panel);stroke-width:1.5}
 .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
   padding-bottom:2px;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
 .chips::-webkit-scrollbar{display:none}

@@ -181,6 +181,9 @@ async function loadDocker(){
 // and the list must not wait on it. Kept by node; a row draws its strip
 // from whatever is here, and a daemon that did not answer draws none.
 let dockerStats = {};
+// ...and each container's last hour, where its node's agent samples it
+// once a minute (R218 step 9): {name: [[at, cpu %, memory %], ...]}.
+let dockerSpark = {};
 async function loadDockerStats(list){
   const node = list?.node || dockerNode || "";
   if (!list || list.blind || list.on === false || list.error || !(list.instances || []).some(d => d.running)) return;
@@ -190,6 +193,7 @@ async function loadDockerStats(list){
   }catch(e){ return; }
   if (!got || got.error || !got.stats) return;
   dockerStats[node] = got.stats;
+  dockerSpark[node] = got.spark || {};
   if ((dockerList?.node || dockerNode || "") !== node) return;
   dockerRev++;
   drawPanes();
@@ -203,10 +207,21 @@ function dmStatStrip(d){
   if (!mine.length) return "";
   const sum = k => mine.reduce((n, x) => n + (x[k] || 0), 0);
   const kb = n => humanBytes(n);
+  // The instance's last half hour under its CPU and memory (R218 step 9):
+  // its containers' samples summed minute by minute.
+  const rings = (d.services || []).map(c => (dockerSpark[dockerList?.node || dockerNode || ""] || {})[c.name]).filter(Boolean);
+  const series = col => {
+    const by = new Map();
+    for (const r of rings) for (const x of r.slice(-30)) by.set(x[0], (by.get(x[0]) || 0) + x[col]);
+    return [...by.entries()].sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  };
+  const cpuS = rings.length ? series(1) : [], memS = rings.length ? series(2) : [];
   return `<div class="tiles mini dmstats">
-    <div class="tile"><div class="tv">${esc(sum("cpu").toFixed(sum("cpu") < 10 ? 1 : 0))}<span class="tu">%</span></div><div class="tl">CPU</div></div>
+    <div class="tile"><div class="tv">${esc(sum("cpu").toFixed(sum("cpu") < 10 ? 1 : 0))}<span class="tu">%</span></div><div class="tl">CPU</div>${
+      sparkSvg(cpuS, 100, "CPU over the last half hour")}</div>
     <div class="tile"><div class="tv">${esc(kb(sum("mem")))}</div><div class="tl">memory${
-      sum("mem_limit") ? ` of ${esc(kb(Math.max(...mine.map(x => x.mem_limit || 0))))}` : ""}</div></div>
+      sum("mem_limit") ? ` of ${esc(kb(Math.max(...mine.map(x => x.mem_limit || 0))))}` : ""}</div>${
+      sparkSvg(memS, 100, "memory over the last half hour, as a share of its limit")}</div>
     <div class="tile"><div class="tv">${esc(kb(sum("rx")))}<span class="tu">in</span></div><div class="tl">network, ${esc(kb(sum("tx")))} out</div></div>
     <div class="tile"><div class="tv">${esc(String(sum("pids")))}</div><div class="tl">process${sum("pids") === 1 ? "" : "es"}</div></div>
   </div>`;

@@ -1238,9 +1238,13 @@ Minimal and in the core, because both tiers debug the same way:
   per-store disk headroom, sampled every ~30s and shipped with the heartbeat;
   the channel is already there, so this is a payload, not a feature. The
   controller keeps the current sample per node (in the DB, so the row can
-  show it) and a short in-memory ring for a sparkline; long history is what
-  `/metrics` plus the operator's own stack is for, and the controller does
-  not become a time-series database. The Nodes row shows the numbers; the
+  show it) and an in-memory ring of the last hour, kept by time, which the
+  node's page draws as two small charts (R218 step 9). The agent adds each
+  running container's CPU and memory once a minute (one `docker stats`
+  beside its minute's `docker ps`), kept the same way, and a container's
+  CPU and memory tiles carry its last half hour as a sparkline. Long
+  history is what `/metrics` plus the operator's own stack is for, and the
+  controller does not become a time-series database. The Nodes row shows the numbers; the
   Docker manager shows them beside the node picker, because "is this box
   struggling" is a question you ask while staring at a build.
 

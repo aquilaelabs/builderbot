@@ -324,8 +324,15 @@ def main():
     while True:
         # Long-polled, so a queued job is picked up at once and an idle loop
         # costs one held request rather than a spin.
-        j = call("work", {"sample": {"cpu_pct": 1, "mem_mb": 8192,
-                                     "mem_used_mb": 2048}, "running": len(running),
+        sample = {"cpu_pct": 1, "mem_mb": 8192, "mem_used_mb": 2048}
+        # Each container's use, as the agent sends it once a minute (R218
+        # step 9): whatever a suite planted in ctr-stats.json, every poll.
+        try:
+            with open(os.path.join(CDIR_ROOT, "ctr-stats.json")) as f:
+                sample["ctr_stats"] = json.load(f)
+        except (OSError, ValueError):
+            pass
+        j = call("work", {"sample": sample, "running": len(running),
                           "wait": 5}, timeout=30)
         if isinstance(j, dict) and j.get("id"):
             # On a thread, as the shipped agent runs one (jobs.py), and the

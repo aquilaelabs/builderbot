@@ -837,6 +837,32 @@ class SessionsMixin:
         self.published = {k: sorted(v) for k, v in pub.items()}
         return self.published
 
+    def stats_now(self):
+        """What each running container here uses, by name: [cpu %, memory %],
+        for the hour's ring the controller keeps (R218 step 9). One docker
+        stats a minute, cached between like published_now; None where there
+        is no docker or it did not answer, and absent from the heartbeats
+        between, which the controller reads as no news."""
+        now = time.time()
+        if now - getattr(self, "stats_at", 0) < 60:
+            return None
+        self.stats_at = now
+        if not os.access(DOCKER_BIN, os.X_OK):
+            return None
+        out = _run([DOCKER_BIN, "stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}"],
+                   timeout=20)
+        got = {}
+        for line in out.splitlines():
+            bits = line.split("\t")
+            if len(bits) < 3:
+                continue
+            try:
+                got[bits[0].strip()[:120]] = [float(bits[1].strip().rstrip("%") or 0),
+                                              float(bits[2].strip().rstrip("%") or 0)]
+            except ValueError:
+                continue
+        return got or None
+
     def session_renew(self):
         """Ask the loop to restart the ttyds onto the current bundle with a
         freshly built environment. From a job's thread, so only the flag

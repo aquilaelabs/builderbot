@@ -480,6 +480,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             pub = self.published_now()
             if pub is not None:
                 sample["published"] = pub
+            # ...and what each running container uses, once a minute, for
+            # its hour on the controller (R218 step 9).
+            ctr = self.stats_now()
+            if ctr is not None:
+                sample["ctr_stats"] = ctr
             # ...and what each account here is signed in to Claude as, on its
             # own slower clock, so the controller's record is true without a
             # session having to run (B104). Absent from most heartbeats,

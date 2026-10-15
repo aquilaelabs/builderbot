@@ -2737,6 +2737,25 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     ts => ts.map(t => `${t.querySelector('.tv')?.textContent.trim()} ${t.querySelector('.tl')?.textContent.trim()}`));
   ok(strip.length === 4 && /^1\.3 ?% CPU$/.test(strip[0].replace(/\s+/g, ' ')) && /memory of/.test(strip[1]) && /process/.test(strip[3]),
      `...and a running row carries a strip of what it uses: CPU, memory, network, processes (${strip.join(' | ')})`);
+  // ...with its last half hour under its CPU and memory (R218 step 9): the
+  // node's agent sends each container's use once a minute, and the stub
+  // forwards what is planted, a poll at a time.
+  const names = await page.evaluate(() => ((dockerList?.instances || [])
+    .find(d => `${d.project}|${d.instance}` === 'ep.silon|staging-two')?.services || []).map(c => c.name));
+  for (const [cpu, mem] of [[5, 20], [40, 30]]){
+    writeFileSync(`${DIR}/sandboxdata/ctr-stats.json`, JSON.stringify(Object.fromEntries(names.map(n => [n, [cpu, mem]]))));
+    await sleep(7000);
+  }
+  rmSync(`${DIR}/sandboxdata/ctr-stats.json`, { force: true });
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  const sparks = await (await page.waitForFunction(() => {
+    const ts = [...document.querySelectorAll('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile')];
+    const got = ts.map(t => t.querySelector('svg.spark')).filter(Boolean);
+    return got.length === 2 ? got.map(sv => ({ pts: (sv.querySelector('polyline')?.getAttribute('points') || '').split(' ').length,
+                                               dot: !!sv.querySelector('circle'), label: sv.getAttribute('aria-label') })) : null;
+  }, null, { timeout: 30000 })).jsonValue();
+  ok(sparks.every(x => x.pts >= 2 && x.dot && /last half hour/.test(x.label)),
+     `...its CPU and memory tiles carry the last half hour as a sparkline, the latest a dot (${JSON.stringify(sparks)})`);
   // Its log, in a fold under the row, read when the fold opens, with Follow.
   const logSect = '.dmtab .row[data-inst="ep.silon|staging-two"] details[data-sect="docker:logs:ep.silon|staging-two"]';
   await page.click(`${logSect} > summary`);

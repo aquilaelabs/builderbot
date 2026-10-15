@@ -45,6 +45,8 @@ net_nudge = None
 project_hosts = None
 # Whether a node's published ports are meant to stay on it (nodes.ports_local_on, R190).
 ports_local = None
+# Each container's last hour on a node, by name (nodes.ctr_spark, R218 step 9).
+ctr_spark = None
 
 
 def _targets(name):
@@ -711,7 +713,9 @@ def stats_view(nid, seen):
         got = {"error": got.get("error", ""),
                "stats": {n: v for n, v in (got.get("stats") or {}).items()
                          if any(n == pn or n.startswith(pn + "-") or n.startswith(pn + "_") for pn in mine)}}
-    return {"node": nid, **got}
+    # Each container's last hour, where its node's agent samples it (R218
+    # step 9): the containers this account sees and no others.
+    return {"node": nid, **got, "spark": ctr_spark(nid, set(got.get("stats") or {})) if nid and ctr_spark else {}}
 
 
 def manager_view(nid, seen):

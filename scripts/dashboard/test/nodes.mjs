@@ -685,6 +685,24 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(meters.some(m => m.label === 'gpu' && m.val === '42%' && m.width === '42%')
      && meters.some(m => m.label === 'vram' && m.val === '3072MB / 8192MB' && m.width === '38%'),
      'a node whose card answers shows how busy it is and how much of its memory is taken, as two more meters');
+  // Its last hour (R218 step 9): CPU and memory as two small charts from
+  // the controller's ring of its samples, each naming itself and saying its
+  // latest, low, average and high without a hover.
+  const charts = await page.$$eval(`${ROW} .ndcharts .chart`, cs => cs.map(c => ({
+    t: c.querySelector('.ct')?.textContent, v: c.querySelector('.cv')?.textContent,
+    line: c.querySelector('.cline')?.getAttribute('d') || '', s: c.querySelector('.cs')?.textContent || '' })));
+  ok(charts.length === 2 && charts[0].t === 'CPU' && charts[1].t === 'Memory'
+     && charts.every(c => /^M/.test(c.line) && /%$/.test(c.v) && /low .*, average .*, high /.test(c.s)),
+     `a node's page charts its last hour of CPU and memory (${JSON.stringify(charts.map(c => [c.t, c.v, c.s]))})`);
+  // The crosshair: focused, it says the latest sample's value and time, and
+  // the arrow keys walk it back.
+  await page.focus(`${ROW} .ndcharts .chart .carea`);
+  const tip = await page.$eval(`${ROW} .ndcharts .chart .ctip`, t => ({ hidden: t.hidden, text: t.textContent }));
+  await page.keyboard.press('ArrowLeft');
+  const hair = await page.$eval(`${ROW} .ndcharts .chart .chair`, h => !h.hidden);
+  ok(!tip.hidden && /^\d+% \d{1,2}:\d{2}/.test(tip.text) && hair,
+     `...and focused, its crosshair says the value and the time, the arrow keys moving it (${tip.text})`);
+  await page.evaluate(() => document.activeElement?.blur());
   ok(await page.$eval(`${ROW} .ndtools`, e => /flutter/.test(e.textContent) && /node/.test(e.textContent)),
      'the row shows what is installed on the node, which is what a project bound to it can build');
   // The runner is a tool of its own since R121 (the operator, 4 Oct): the same
