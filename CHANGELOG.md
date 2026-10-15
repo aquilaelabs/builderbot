@@ -544,6 +544,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb git policy says first whether the project can push at all: its rights, and whether its remote has a key or a token behind it (f88f91a)
 - A roadmap verb on an item that is not on the list says why: done already, dropped, or never there (23ba711)
 - bb devapp says what a build was made from as what it is: a commit (with its branch when pinned), or for a container written here its definition, the compose file and env hashed, rather than a hash that reads as a commit (56eba2f)
+- bb devapp remove waits for the container to come down and says so when it could not, instead of saying removed while it still runs (96acd79)
 
 ### Security
 
