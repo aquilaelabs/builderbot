@@ -1234,7 +1234,12 @@ def _attention(who):
     if NODES_OK:
         return [], 0
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
-    rows = (([] if users.may(who, "node") else nodes.attention(where))
+    # The sessions an outage of this controller held come first (R251), for
+    # their own account or an administrator: stopped work waiting on a
+    # person, where the rest is an update that can wait (seen fourth, under
+    # the fold of the bell, in the walk of 15 Oct).
+    rows = (_held_rows(who)
+            + ([] if users.may(who, "node") else nodes.attention(where))
             + [a for a in toolchains.attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
@@ -1244,10 +1249,7 @@ def _attention(who):
                # ...and a container whose registry image moved (imagecheck, R195).
                + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)
                # ...and a copy or move that did not happen (relocate.py).
-               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid))
-            # ...and the sessions an outage of this controller held (R251),
-            # for their own account or an administrator.
-            + _held_rows(who))
+               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
