@@ -561,6 +561,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb waits as long as BB_CONTROLLER_WAIT says for a restarting controller; it gave up at 95 seconds whatever the setting (B772) (4d1d3b6)
 - The bell's Resume on a session a controller restart stopped types into that session, and the row names whose session it is; it answered 'no session is running here' (B773) (167cc8f)
 - A line told to a Claude session on a node (Resume on the bell, Send to Claude) is sent once it shows, even when the session takes a second or two to draw it; it was left unsent in the box (B774) (f05b3a5)
+- bb jobs names a line typed into a Claude session (Resume, a step or a bug sent) with its session and words, where it read as an empty exec (51a2b52)
 
 ### Security
 

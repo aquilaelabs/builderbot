@@ -57,6 +57,11 @@ for j in rows:
             if j["type"] == "image" else
             ("clear " + (f'{s["project"]}\'s caches' if s.get("project") else "every cache"))
             if j["type"] == "cache-clear" else
+            # A line typed into a Claude session (the bell's Resume, a step or
+            # a bug sent, Send to Claude): which session and what it said,
+            # since a failed one is otherwise a mystery (B775).
+            f'tell {s.get("session") or "?"}: "{" ".join(str(s.get("text") or "").split())[:60]}"'
+            if j["type"] == "tell" else
             "exec " + " ".join(s.get("argv") or [])[:60])
     state = j["state"] + (" (stopping)" if j.get("cancel") and j["state"] == "running" else "")
     if j["state"] == "running" and j.get("step"):
