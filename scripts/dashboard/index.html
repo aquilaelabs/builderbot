@@ -2844,7 +2844,13 @@ pre.diff .d-ctx{color:var(--dim)}
 .lfilter{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .lfilter .chips{flex:1 1 auto;min-width:0}
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
-@media(max-width:900px){ .lfilter input[type=search]{flex:1 1 100%} }
+/* A band's order (Sort on Bugs) keeps its label beside its menu. */
+.lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+@media(max-width:900px){
+  .lfilter input[type=search]{flex:1 1 100%}
+  .lfilter .lsort{flex:1 1 100%}
+  .lfilter .lsort select{flex:1 1 auto}
+}
 .grp.off,.bug.off{display:none}
 .chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto;
   font:var(--f-ui);padding:0 10px;min-height:var(--ctl);border-radius:99px}
@@ -4164,14 +4170,14 @@ body.booting .pane>.loading{margin:auto}
         <div class="chips" id="bugChips"></div>
         <input id="bugFind" type="search" maxlength="80" autocomplete="off"
                placeholder="search the tracker" aria-label="search the tracker">
-        <label for="bugSort">Sort</label>
+        <span class="lsort"><label for="bugSort">Sort</label>
         <select id="bugSort">
           <option value="severity" selected>severity</option>
           <option value="newest">newest first</option>
           <option value="oldest">oldest first</option>
           <option value="updated">recently changed</option>
           <option value="title">title A–Z</option>
-        </select>
+        </select></span>
       </div>
       <div class="field" id="bugList"></div>
     </div>

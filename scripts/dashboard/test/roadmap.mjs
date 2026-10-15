@@ -974,6 +974,15 @@ await page.fill('.nb #roadmapFind', '');
 await page.click('.nb #roadmapDoneSect > summary');
 await page.waitForFunction(() => !document.querySelector('.nb #roadmapDoneSect').open, null, { timeout: 5000 });
 ok(!(await page.$('.nb #roadmapDoneList .grp')), '...and shutting the section folds them away again');
+// A Save lit with nothing staged is a change the session has not been told
+// about yet, and the bar says so rather than sitting there unexplained.
+const untold = await post({ action: 'add', project: 'alpha', text: 'an untold change' });
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(() => /not told to the session yet/.test(
+  document.querySelector('.nb .sectbar[data-bar="roadmap"] .state')?.textContent || ''), null, { timeout: 10000 });
+ok(await page.$eval('.nb .sectbar[data-bar="roadmap"] [data-ssave]', b => !b.disabled),
+   'a change no session has heard of lights Save and says why on the bar');
+await post({ action: 'remove', project: 'alpha', id: untold.body.item.id, why: 'only for the check' });
 const afterDone = bbRoadmap('history');
 ok(new RegExp(`done\\s+R${finId}\\s+a job to finish`).test(afterDone),
    '...and writes it into the history, under the word a session used');

@@ -364,8 +364,10 @@ function makeNotebook(project){
       // eat the typing (B199); said where the Save is, once something here
       // has moved under it.
       const state = bar.querySelector(".state");
+      // ...and a Save lit with nothing staged is the change no session has
+      // been told about yet, which says so rather than sitting there unexplained.
       setText(state, n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
-        : n ? `${n} unsaved` : "");
+        : n ? `${n} unsaved` : sectDirty(key) ? "changed, not told to the session yet" : "");
     });
   }
 
