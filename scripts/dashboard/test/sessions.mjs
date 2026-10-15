@@ -321,8 +321,10 @@ await phone.waitForFunction(() => {
   const k = document.getElementById('mKeys');
   return k && !k.hidden && k.offsetParent !== null;
 }, null, { timeout: 30000, polling: 500 });
-ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && !await phone.$('#bKeys'),
-   'the phone bar carries the keys, and the strip has no ⌨ anywhere to hide');
+const mob = await phone.evaluate(() => ({ display: getComputedStyle(document.getElementById('mobar')).display,
+  bKeys: !!document.getElementById('bKeys'), w: innerWidth }));
+ok(mob.display === 'flex' && !mob.bKeys,
+   `the phone bar carries the keys, and the strip has no ⌨ anywhere to hide (${JSON.stringify(mob)})`);
 // A truncated version string answers nothing, so where it will not fit the
 // About control carries the word instead, and exactly one of the two, never
 // both: showing the label on a desktop as well stacked it under the version
