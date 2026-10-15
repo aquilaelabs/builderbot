@@ -620,10 +620,13 @@ class SessionsMixin:
         if self._tmux(["send-keys", "-t", sess, "-l", "--", text]) is None:
             job.say("tmux would not take the line\n")
             return "failed", 1
-        # The same look-window as the controller's: two quarter-second
-        # looks, one more per 120 characters, since a TUI re-renders as it
-        # takes input and a long line is not on screen inside a short one.
-        for _ in range(2 + len(text) // 120):
+        # The same look-window as the controller's (notify.LOOKS): eight
+        # quarter-second looks, one more per 120 characters, since a TUI
+        # re-renders as it takes input and a long line is not on screen
+        # inside a short one. Two looks left the bell's Resume unsent in an
+        # idle session that took a second to draw it (B774); the first look
+        # that sees it sends, so a quick one waits no longer.
+        for _ in range(8 + len(text) // 120):
             time.sleep(0.25)
             if seen() > was:
                 if self._tmux(["send-keys", "-t", sess, "Enter"]) is None:

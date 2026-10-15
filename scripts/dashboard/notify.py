@@ -39,10 +39,11 @@ def configure(*, run, on_node=None, node_tell=None):
 
 
 # Long enough for the TUI to repaint after send-keys, short enough that the
-# request it happens inside does not feel stuck. Two looks, because a first
-# frame can land mid-redraw.
+# request it happens inside does not feel stuck. Eight looks, two seconds at
+# most: two left the bell's Resume unsent in an idle session that took a
+# second to draw the line (B774), and the first look that sees it sends.
 SETTLE = 0.25
-LOOKS = 2
+LOOKS = 8
 
 # How much of the line to look for. A pane is narrow and the text wraps; -J
 # rejoins it, but a long line can still be truncated by a narrow terminal at
