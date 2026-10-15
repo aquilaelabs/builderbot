@@ -2133,7 +2133,8 @@ def held_attention(uid, admin):
             if not admin and h.get("uid") != uid:
                 continue
             out.append({"kind": "held", "id": f"{n['id']}|{h['session']}", "node": n["name"], "node_id": n["id"],
-                        "project": h.get("project", ""), "session": h["session"], "since": h.get("since", 0),
+                        "project": h.get("project", ""), "session": h["session"], "uid": h.get("uid", ""),
+                        "since": h.get("since", 0),
                         "key": f"held:{n['id']}|{h['session']}@{h.get('since', 0)}"})
     return out
 

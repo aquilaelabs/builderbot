@@ -43,7 +43,8 @@ class ControllerKeeps(unittest.TestCase):
 
     def test_held_sessions_are_rows_for_their_account(self):
         r0 = nodes._rev[0]
-        nodes.heartbeat(self.nid, {"held": [{"project": "alpha", "uid": "u_1", "session": "claude-alpha", "since": 50},
+        # The mark names the account, as bb-tty's hook writes it (B773).
+        nodes.heartbeat(self.nid, {"held": [{"project": "alpha", "uid": "u_1", "session": "u_1", "since": 50},
                                              {"project": "../x", "uid": "u 2", "session": "s;rm", "since": "x"},
                                              "junk"]}, "10.0.0.5")
         self.assertNotEqual(nodes._rev[0], r0, "a hold is news for the bell")
@@ -51,7 +52,7 @@ class ControllerKeeps(unittest.TestCase):
             mine = nodes.held_attention("u_1", False)
             theirs = nodes.held_attention("u_9", False)
             admin = nodes.held_attention("u_9", True)
-        self.assertEqual([(r["session"], r["key"]) for r in mine], [("claude-alpha", f"held:{self.nid}|claude-alpha@50")])
+        self.assertEqual([(r["session"], r["uid"], r["key"]) for r in mine], [("u_1", "u_1", f"held:{self.nid}|u_1@50")])
         self.assertEqual(theirs, [], "another account's session is not offered")
         self.assertEqual(len(admin), 2, "an administrator sees every hold")
         self.assertEqual(admin[1]["session"], "srm", "what a node says is whitelisted")

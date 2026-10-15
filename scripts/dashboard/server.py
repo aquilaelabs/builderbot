@@ -1203,15 +1203,27 @@ def _resume_held(who, nid, session):
     if NODES_OK:
         return {"error": "the node store did not open"}, 500
     uid = users.uid_of(who)
-    row = next((r for r in nodes.held_attention(uid, users.may(who, "admin") == "")
-                if r["node_id"] == nid and r["session"] == session), None)
+    row = next((r for r in _held_rows(who) if r["node_id"] == nid and r["session"] == session), None)
     if not row:
         return {"error": "no session held there that is yours to resume"}, 404
-    said = notify.tell(session, RESUME_LINE, sessions_anywhere())
+    said = notify.tell(row["claude"], RESUME_LINE, sessions_anywhere())
     if said.get("error"):
         return said, 409
     bellseen.dismiss(uid, [row["key"]])
     return {"ok": True, **said}, 200
+
+
+def _held_rows(who):
+    """nodes.held_attention for this account, each row with the account's
+    name and its Claude session's name on that project (B773): the gate's
+    mark names the ACCOUNT (bb-tty writes `bb-gate PROJECT ACCOUNT`), and
+    Resume typed into a session called that, which there never is."""
+    names = {u["uid"]: u["name"] for u in users.all_users()}
+    rows = nodes.held_attention(users.uid_of(who), users.may(who, "admin") == "")
+    for r in rows:
+        r["who"] = names.get(r["uid"], "")
+        r["claude"] = users.tmux_prefix({"uid": r["uid"]}) + claude_session(r["project"])
+    return rows
 
 
 def _attention(who):
@@ -1235,7 +1247,7 @@ def _attention(who):
                + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid))
             # ...and the sessions an outage of this controller held (R251),
             # for their own account or an administrator.
-            + nodes.held_attention(users.uid_of(who), users.may(who, "admin") == ""))
+            + _held_rows(who))
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)

@@ -183,18 +183,21 @@ const offDialog = () => page.evaluate(() => {
 {
   const users = await api('/api/users');
   const uid = (users.users || []).find(u => u.name === 'test')?.uid;
-  writeFileSync(`${DIR}/sandboxdata/held.json`, JSON.stringify([{ project: 'alpha', uid, session: 'claude-alpha',
+  // As the gate writes it: bb-tty's hook is `bb-gate PROJECT ACCOUNT`, so the
+  // mark names the account, and Resume finds its Claude session (B773).
+  writeFileSync(`${DIR}/sandboxdata/held.json`, JSON.stringify([{ project: 'alpha', uid, session: uid,
     since: Math.floor(Date.now() / 1000) - 120 }]));
   await page.evaluate(() => toggleBell(true));
   const row = await until(() => page.evaluate(() => {
     refresh();
-    const r = [...document.querySelectorAll('#bellPanel .bnote')].find(n => /stopped for the update/.test(n.textContent));
-    return r ? r.textContent.replace(/\s+/g, ' ').trim() : null;
+    const att = [...document.querySelectorAll('#bellPanel .bnote.att')];
+    const r = att.find(n => /stopped for the update/.test(n.textContent));
+    return r ? `${att.indexOf(r)}: ${r.textContent.replace(/\s+/g, ' ').trim()}` : null;
   }), 30000, 1000);
-  ok(row && /claude-alpha on sandbox/.test(row) && /Resume/.test(row),
-     `a session an outage held is a bell row naming it and where it runs, with Resume (${row})`);
+  ok(row && /test's Claude session on sandbox/.test(row) && /Resume/.test(row),
+     `a session an outage held is a bell row naming whose it is and where it runs, with Resume (${row})`);
   rmSync(`${DIR}/sandboxdata/held.json`, { force: true });
-  await page.click('#bellPanel [data-bheld][data-session="claude-alpha"]');
+  await page.click(`#bellPanel [data-bheld][data-session="${uid}"]`);
   const said = await until(() => page.evaluate(() => [...document.querySelectorAll('#toast .tmsg')]
     .map(t => t.textContent).find(t => /claude-alpha/.test(t))), 15000);
   ok(said && !/no session|not yours/.test(said), `...and Resume types the line into that session (${said})`);

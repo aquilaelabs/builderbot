@@ -557,6 +557,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Stop, Start and Restart on a container instance with several services (bb devapp stop, the Containers page) act on all of them instead of being refused as a bug (B770) (669a57b)
 - bb waits out a controller restart that shows as 'no route to host', as it does a refused connection (B771) (a3ae69c)
 - bb waits as long as BB_CONTROLLER_WAIT says for a restarting controller; it gave up at 95 seconds whatever the setting (B772) (4d1d3b6)
+- The bell's Resume on a session a controller restart stopped types into that session, and the row names whose session it is; it answered 'no session is running here' (B773) (167cc8f)
 
 ### Security
 
