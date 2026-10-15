@@ -697,9 +697,11 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     await page.waitForFunction(() => /\((here now|.*ago|never signed in)\)/.test(
       document.querySelector('.chattab .chatlist .chatrow[data-who] .chatseen')?.textContent || ''), null, { timeout: 15000 });
     const dk = await page.evaluate(() => ({ kind: tabOf(panes[1])?.kind, up: dockUp,
-      on: document.querySelector('.dockline .dtab.dchat')?.classList.contains('on'), panel: !!document.getElementById('chatpanel') }));
+      on: document.querySelector('.dockline .dtab.dchat')?.classList.contains('on'), panel: !!document.getElementById('chatpanel'),
+      first: document.querySelector('.dockline .dtab')?.classList.contains('dchat') }));
     ok(dk.kind === 'chat' && dk.up && dk.on && !dk.panel,
        `Chat on the dock's line opens the chat in the dock, the list saying beside each name when they were last here (${JSON.stringify(dk)})`);
+    ok(dk.first, '...and Chat is the first tab on the line, ahead of the terminals that come and go');
     // Reading it clears it, which is the only thing "seen" has to mean.
     await chat(other, { action: 'read', who: 'test' });
     const after = await (await bare('/api/status', { headers: other })).json();

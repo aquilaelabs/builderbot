@@ -95,8 +95,8 @@ function dockToggle(open){
   render();
 }
 
-// The line: each terminal (a Claude session wears its dot), Chat with its
-// unread mark, + for a shell, the pop-out for the one in front on a desk,
+// The line: Chat with its unread count, each terminal (a Claude session
+// wears its dot), + for a shell, the pop-out for the one in front on a desk,
 // and the chevron.
 function dockBar(){
   const cur = panes[1], names = tabLabels();
@@ -110,10 +110,12 @@ function dockBar(){
       <button type="button" class="ic dx" data-min="${esc(t.id)}" aria-label="minimize ${esc(names.get(t.id) || tabLabel(t))}"
         title="minimize: it keeps running, and Sessions reopens it">−</button></span>`; }).join("");
   const t = tabOf(cur), chatOn = t?.kind === "chat";
-  return `<div class="dockline" role="tablist" aria-label="terminals and the chat">${tabsHtml}
+  // Chat first (the operator, 15 Oct): it is always there while terminals
+  // come and go, so it never scrolls off the start of the line.
+  return `<div class="dockline" role="tablist" aria-label="the chat and terminals">
       <span class="dtab dchat${chatOn ? " on" : ""}${waiting ? " unread" : ""}"><button type="button" class="dlbl" data-dchat
         role="tab" aria-selected="${chatOn && dockUp}" title="${waiting ? `${waiting} unread` : "people and the projects' channels"}">Chat${
-        waiting ? ` <span class="pill">${waiting}</span>` : ""}</button></span>
+        waiting ? ` <span class="pill">${waiting}</span>` : ""}</button></span>${tabsHtml}
       ${mayShell() ? `<button type="button" class="ic dnew" data-dnew aria-label="a new shell" title="a new terminal at /workspace">+</button>` : ""}
     </div>
     <span class="sp"></span>
