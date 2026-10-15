@@ -803,8 +803,9 @@ of cards, each with the same state and the same two actions and menu; the
 name opens the page.
 
 **What the page says** (R218 step 6). A toast is one of a stack at the
-top right under the top bar (across the screen on a phone), the newest on
-top and at most four, each with its kind's icon and its own ×. It goes after four seconds, seven for a warning or a failure, and stays
+top right, under the top bar and the page's own bar, whose action it
+leaves clear (across the screen on a phone), the newest on top and at most
+four, each with its kind's icon and its own ×. It goes after four seconds, seven for a warning or a failure, and stays
 while the pointer is over the stack. A job started from the page (an agent
 update, a toolchain install) gets a toast of its own that stays while the
 job runs, says its state and its step as the queue reports them, and takes
@@ -826,7 +827,7 @@ red) a node from another compatibility window, a red CI run. Those come from
 the state on every poll and leave the moment they stop being true.
 
 **The Notifications page** (See all, at `#/notifications`) has the rest.
-Waiting on you comes first: every ask, invitation and held change as a row
+Waiting on you comes first, when anything is waiting: every ask, invitation and held change as a row
 with its answer on the row, and the long part (a compose file, the lines a
 push flagged, a release's notes) whole in a box that scrolls inside itself.
 History follows: what the page has said to your account, each with its

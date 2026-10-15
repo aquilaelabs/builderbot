@@ -3471,12 +3471,13 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 /* Macros run in the terminal now, so there is no output pane to put a message
    in. Anything the page needs to say is transient and says it here. */
 /* The toast stack (R218 step 6): one column at the top right, under the top
-   bar, the newest on top, each its kind's icon, its words and a ×; over the
+   bar and the page's own bar (whose action is at its right end, and a toast
+   held over it covered it), the newest on top, each its kind's icon, its words and a ×; over the
    editor, whose save errors are said here. Not the bottom right: a dialog's
    foot, its primary action, is there, and a toast held there sat on it. On
    a phone it spans the width under the top bar. The stack itself takes no
    pointer where it is empty. */
-#toast{position:fixed;right:14px;top:calc(56px + env(safe-area-inset-top));z-index:80;
+#toast{position:fixed;right:14px;top:calc(104px + env(safe-area-inset-top));z-index:80;
   display:flex;flex-direction:column-reverse;align-items:flex-end;gap:8px;width:min(420px,calc(100vw - 28px));
   pointer-events:none}
 #toast .tst{pointer-events:auto;display:flex;align-items:flex-start;gap:8px;width:100%;

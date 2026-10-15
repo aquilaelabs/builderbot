@@ -111,8 +111,11 @@ function renderNoticesInto(i){
   d.setBar(`<span class="dim">${all.length} kept</span><span class="sp"></span>
     ${all.length ? `<button type="button" class="danger" id="ntClear">${noticesChip && noticesChip !== "bad" ? `Clear ${esc(NOTICE_KINDS[noticesChip].toLowerCase())}` : "Clear all"}</button>` : ""}`);
   const html = (noticesErr ? `<div class="hint bad">${esc(noticesErr)}</div>` : "")
-    + docSection("notices", "waiting", "Waiting on you", waiting.length ? String(waiting.length) : "nothing",
-                 waiting.length ? waiting.join("") : `<div class="hint">nothing waits on an answer from you</div>`)
+    // Not drawn with nothing in it (the house rule: what has nothing to act
+    // on is not shown); while something waits it opens by itself, and on a
+    // phone, one section at a time, it is the one.
+    + (waiting.length ? docSection("notices", "waiting", "Waiting on you", String(waiting.length), waiting.join(""),
+                                   {loud: true, prime: true}) : "")
     + docSection("notices", "history", "History", String(rows.length),
                  chipBar(groups, noticesChip, "data-ntchip")
                  + (rows.length ? `<div class="ntlist">${rows.map(n => `<div class="row ntrow ${esc(n.level)}" data-nt="${esc(n.id)}">
@@ -122,7 +125,8 @@ function renderNoticesInto(i){
                        ${n.job ? `<button type="button" data-ntjob="${esc(n.job)}">Job</button>` : ""}
                        <button type="button" class="ic" data-ntdel="${esc(n.id)}" aria-label="delete this notice">×</button>
                      </div>`).join("")}</div>`
-                   : `<div class="hint">${all.length ? "none of this kind" : "nothing yet: what the page tells you is kept here"}</div>`));
+                   : `<div class="hint">${all.length ? "none of this kind" : "nothing yet: what the page tells you is kept here"}</div>`),
+                 {prime: !waiting.length});
   if (!paint(d.list, html)) return;
   d.setFoot(`Kept for your account, the newest ${esc(String(300))}; a toast is gone in seconds, and this is where it went.`);
   const list = d.list.querySelector(".ntlist");

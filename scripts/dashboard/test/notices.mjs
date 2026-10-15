@@ -37,8 +37,9 @@ await api('/api/notices', { action: 'clear' });
   const box = await page.$eval('#toast', el => { const r = el.getBoundingClientRect();
     return { right: innerWidth - r.right, top: r.top, header: document.querySelector('header').getBoundingClientRect().bottom,
              newestTop: [...el.children].at(-1).getBoundingClientRect().top <= el.firstElementChild.getBoundingClientRect().top }; });
-  ok(box.right < 40 && box.top >= box.header && box.top < box.header + 30 && box.newestTop,
-     `...at the top right corner under the top bar, the newest on top (${JSON.stringify(box)})`);
+  const bar = await page.$eval('.pane .bar', b => b.getBoundingClientRect().bottom);
+  ok(box.right < 40 && box.top >= bar && box.top < bar + 30 && box.newestTop,
+     `...at the top right, under the top bar and the page's own, the newest on top (${JSON.stringify({ ...box, bar })})`);
   await page.click('#toast .tst:last-child .tx');
   await until(() => page.evaluate(() => ![...document.querySelectorAll('#toast .tmsg')].some(t => t.textContent === 'stack 6')), 3000);
   ok(true, '...and × takes one away');
@@ -145,6 +146,12 @@ await api('/api/notices', { action: 'clear' });
   const r = await page.$eval('#toast .tst', t => { const b = t.getBoundingClientRect(); return { l: b.left, r: innerWidth - b.right, top: b.top,
     header: document.querySelector('header').getBoundingClientRect().bottom }; });
   ok(r.l <= 12 && r.r <= 12 && r.top >= r.header, `on a phone a toast spans the width, under the top bar (${JSON.stringify(r)})`);
+  // ...and the page there shows one section, History while nothing waits.
+  await page.evaluate(() => { openNotices(); notify('one for the phone'); });
+  await until(() => page.evaluate(() => !!document.querySelector('.noticestab .ntrow')), 10000);
+  const open = await page.$$eval('.noticestab details.sect[open]', ds => ds.map(d => d.dataset.sect));
+  ok(open.length === 1 && open[0] === 'notices:history' && !(await page.$('.noticestab details[data-sect="notices:waiting"]')),
+     `on a phone, with nothing waiting, the page is its History, open (${open.join(', ')})`);
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
