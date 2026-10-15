@@ -121,7 +121,7 @@ function renderNoticesInto(i){
                  + (rows.length ? `<div class="ntlist">${rows.map(n => `<div class="row ntrow ${esc(n.level)}" data-nt="${esc(n.id)}">
                        <span class="tic">${TOAST_ICONS[n.level] || TOAST_ICONS.info}</span>
                        <span class="grow"><span class="nttext">${esc(n.text)}</span>
-                         <span class="sub dim">${esc(NOTICE_KINDS[n.kind] || n.kind)} · ${esc(ago(n.at * 1000))}</span></span>
+                         <span class="sub dim">${esc(NOTICE_KINDS[n.kind] || n.kind)} · ${esc(ago(n.at))}</span></span>
                        ${n.job ? `<button type="button" data-ntjob="${esc(n.job)}">Job</button>` : ""}
                        <button type="button" class="ic" data-ntdel="${esc(n.id)}" aria-label="delete this notice">×</button>
                      </div>`).join("")}</div>`

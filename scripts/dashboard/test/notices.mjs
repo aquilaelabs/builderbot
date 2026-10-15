@@ -106,6 +106,19 @@ const offDialog = () => page.evaluate(() => {
   await page.waitForSelector('.noticestab .ntrow', { timeout: 15000 });
   const n0 = await page.$$eval('.noticestab .ntrow', rs => rs.length);
   ok(n0 >= 7, `the history lists what was said (${n0} rows)`);
+  // Each row says how long ago, from the seconds the record keeps (B769:
+  // handed milliseconds, every row landed in the future and read "just now").
+  await page.route('**/api/notices', async r => {
+    const res = await r.fetch(); const j = await res.json();
+    (j.notices || []).forEach(x => { x.at -= 7200; });
+    await r.fulfill({ response: res, json: j });
+  });
+  await page.evaluate(() => loadNotices());
+  const whens = await until(() => page.$$eval('.noticestab .ntrow .sub', rs => rs.map(r => r.textContent))
+    .then(t => t.length && t.every(x => /2 h ago/.test(x)) ? t : null), 5000);
+  await page.unroute('**/api/notices');
+  await page.evaluate(() => loadNotices());
+  ok(whens, `a notice said two hours ago reads "2 h ago" (${(whens || []).slice(0, 1).join('')})`);
   await page.click('.noticestab [data-ntchip="bad"]');
   await page.waitForFunction(() => [...document.querySelectorAll('.noticestab .ntrow')].every(r => r.classList.contains('bad')), null, { timeout: 5000 });
   ok(await page.$$eval('.noticestab .ntrow', rs => rs.length === 1 && /stack 6/.test(rs[0].textContent)),
