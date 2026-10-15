@@ -1136,6 +1136,9 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
 .tcs .td.lead{display:flex;gap:10px;align-items:flex-start;font:inherit}
 .tcs .td.lead .grow{min-width:0}
 .tcs .td .where{font:var(--f-data)}
+/* A version or a size in its column reads as the column's value, not as a
+   badge: the same voice as "installed" beside it. */
+.tcs .td:not(.lead) .pill{border:0;padding:0;background:none;font:var(--f-data);color:inherit}
 .tcs .tcpath{font-family:var(--mono);overflow-wrap:anywhere}
 /* "Installed not installed" on a phone says it twice: the word alone. */
 @media(max-width:900px){ .tcs .td:has(> .where:not(.on))::before{content:none} }
