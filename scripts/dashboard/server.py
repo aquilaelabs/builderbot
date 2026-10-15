@@ -3555,9 +3555,10 @@ def revisions(who=None, projects=None):
         # A phone lent to a project (R113): the lease and its newest shot.
         "phone.lease": phonelease.rev(),
         "toolchains": toolchains.job_rev(),
-        # Google's image index landing; the images themselves ride the node
-        # and job tokens, which the Emulator tab watches as well.
-        "emulator": f"{emulator._choices['at']}:{emulator._choices['loading']}",
+        # Google's image index read ending, landed or not; its start is not
+        # news to the tab that asked (B757). The images themselves ride the
+        # node and job tokens, which the Emulator tab watches as well.
+        "emulator": str(emulator._choices["reads"]),
         # Node and job data never joins the status payload (docs/nodes.md
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),

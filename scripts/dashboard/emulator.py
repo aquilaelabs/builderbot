@@ -31,7 +31,10 @@ NEEDS = ("android-tools", "android:emulator")
 
 # ---- which images exist ----------------------------------------------------
 
-_choices = {"at": 0.0, "rows": [], "flavors": [], "loading": False}
+# `reads` counts the index reads that have ended, landed or not: the
+# emulator revision is it, so a read's start (which the asking tab already
+# knows of, from the answer's "loading") moves nothing and its end does (B757).
+_choices = {"at": 0.0, "rows": [], "flavors": [], "loading": False, "reads": 0}
 _choices_lock = threading.Lock()
 CHOICES_TTL = 3600            # the index changes when Google ships a level
 
@@ -82,6 +85,7 @@ def _load_choices():
         if rows:
             _choices.update(at=time.monotonic(), rows=rows, flavors=flavors)
         _choices["loading"] = False
+        _choices["reads"] += 1
 
 
 def image_kb(image_id):

@@ -256,13 +256,14 @@ function renderEmulatorInto(i){
     await postJSON("/api/v1/jobs", {action: "cancel", id: job.id});
     loadEmulator();
   };
-  // A timer only while a job is in flight (or the index is being read): an
-  // image job can start and finish between two revision polls, and the tab
-  // would go from idle to done without ever saying "adding".
+  // A timer only while a job is in flight: an image job can start and
+  // finish between two revision polls, and the tab would go from idle to
+  // done without ever saying "adding". The index being read is not one: its
+  // landing moves the emulator revision, which reads the tab again, and a
+  // timer beside it made an open ask twice (B757).
   clearTimeout(emuPoll);
-  const ticking = !!job.running || !!d.loading;
-  if (ticking) emuPoll = setTimeout(loadEmulator, job.running ? 1000 : 1500);
-  if (ticking && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
+  if (job.running) emuPoll = setTimeout(loadEmulator, 1000);
+  if ((job.running || d.loading) && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
 }
 
 // The ticks that are still images this node could add: one added since,
