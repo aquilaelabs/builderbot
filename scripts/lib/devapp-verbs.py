@@ -356,6 +356,24 @@ def edit():
               else "[builderbot] allowed, and its env is saved; bb devapp rebuild applies it")
         raise SystemExit(0)
     if verb == "remove":
+        # The down is a job, and the answer only says it was queued: followed
+        # to its end, so a down that failed (a compose file gone from the
+        # tree: "empty compose file") is said as a failure with the container
+        # still up, never as removed (B755, report #111).
+        jid = r.get("job") or ""
+        for _ in range(300 if jid else 0):
+            j = bbapi.call(f"/api/v1/jobs?id={jid}", auth=auth)
+            if j.get("error") and "state" not in j:
+                sys.exit(f"[builderbot] ERROR: {j['error']}")
+            if j.get("state") in ("failed", "canceled"):
+                sys.exit(f"[builderbot] ERROR: not removed, and it is still in the manager: "
+                         f"{j.get('error') or j['state']} (bb jobs {jid} is its log)")
+            if j.get("state") == "succeeded":
+                break
+            time.sleep(1)
+        else:
+            if jid:
+                sys.exit(f"[builderbot] ERROR: the remove is still going after five minutes ({jid} on the Jobs tab)")
         print("[builderbot] removed" + (": its daemon did not answer, so the row is gone and whatever "
                                         "ran there still runs" if r.get("forgot") else "; its env and data stay for a remake"))
     else:
