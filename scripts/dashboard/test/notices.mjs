@@ -4,7 +4,8 @@
 // the account's record; the bell a short list with See all; and the
 // Notifications page, its asks answered on the row with the long part in a
 // scrolling box, its history narrowed by chips, deleted and cleared.
-import { URL, launch, newPage, ok, done, ready, sleep } from './lib.mjs';
+import { URL, DIR, launch, newPage, ok, done, ready, sleep } from './lib.mjs';
+import { writeFileSync, rmSync } from 'node:fs';
 
 const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 const base = URL.replace(/\/$/, '');
@@ -160,6 +161,40 @@ const offDialog = () => page.evaluate(() => {
   const rec = await until(async () => ((await api('/api/notices')).notices || []).find(n => n.kind === 'job' && n.job === q.job));
   ok(rec && rec.level === 'bad', '...and the end is kept on the record as a job\'s, with the job to open');
   await page.evaluate(() => document.querySelectorAll('#toast .tst').forEach(t => t.remove()));
+}
+
+// ---- a session an outage held is offered back -------------------------------
+// R251: a session's gate marks it held while the controller is away, its
+// node's agent reports the mark, and once the controller answers the bell
+// lists it with a Resume that tells it to pick up from its note.
+{
+  const users = await api('/api/users');
+  const uid = (users.users || []).find(u => u.name === 'test')?.uid;
+  writeFileSync(`${DIR}/sandboxdata/held.json`, JSON.stringify([{ project: 'alpha', uid, session: 'claude-alpha',
+    since: Math.floor(Date.now() / 1000) - 120 }]));
+  await page.evaluate(() => toggleBell(true));
+  const row = await until(() => page.evaluate(() => {
+    refresh();
+    const r = [...document.querySelectorAll('#bellPanel .bnote')].find(n => /stopped for the update/.test(n.textContent));
+    return r ? r.textContent.replace(/\s+/g, ' ').trim() : null;
+  }), 30000, 1000);
+  ok(row && /claude-alpha on sandbox/.test(row) && /Resume/.test(row),
+     `a session an outage held is a bell row naming it and where it runs, with Resume (${row})`);
+  rmSync(`${DIR}/sandboxdata/held.json`, { force: true });
+  await page.click('#bellPanel [data-bheld][data-session="claude-alpha"]');
+  const said = await until(() => page.evaluate(() => [...document.querySelectorAll('#toast .tmsg')]
+    .map(t => t.textContent).find(t => /claude-alpha/.test(t))), 15000);
+  ok(said && !/no session|not yours/.test(said), `...and Resume types the line into that session (${said})`);
+  // Read off the bell open again: it draws only while it is on screen, and a
+  // row read off a shut one is the one it held when it shut.
+  const gone = await until(() => page.evaluate(async () => {
+    toggleBell(true); await refresh();
+    const p = document.getElementById('bellPanel');
+    return !p.hidden && ![...p.querySelectorAll('.bnote')].some(n => /stopped for the update/.test(n.textContent));
+  }), 20000, 1000);
+  ok(gone, `...and the row goes (${await page.evaluate(() => [...document.querySelectorAll('#bellPanel .bnote')]
+    .map(n => n.textContent.replace(/\s+/g, ' ').trim().slice(0, 60)).join(' | '))})`);
+  await page.evaluate(() => { toggleBell(false); document.querySelectorAll('#toast .tst').forEach(t => t.remove()); });
 }
 
 // ---- on a phone the stack spans the width above the dock's line -------------

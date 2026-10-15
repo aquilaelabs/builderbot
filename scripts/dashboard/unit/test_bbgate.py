@@ -124,6 +124,21 @@ class HeldNotes(unittest.TestCase):
         code, _ = self.run_gate(lambda home: {"tool_name": "TodoWrite", "tool_input": {}})
         self.assertEqual(code, 0, "its to-do list")
 
+    def test_a_hold_is_marked_and_cleared(self):
+        # R251: the mark its node's agent reports, for the bell's Resume.
+        import json
+        import tempfile
+        home = tempfile.mkdtemp()
+        hf = os.path.join(home, "gate-dir", "held")
+        os.makedirs(os.path.dirname(hf))
+        sf = os.path.join(home, "gate-dir", "gate")
+        gate.held_mark(sf, "claude-alpha", True, 1000)
+        gate.held_mark(sf, "claude-alpha", True, 2000)
+        with open(hf) as f:
+            self.assertEqual(json.load(f), {"session": "claude-alpha", "since": 1000}, "kept from the first refusal")
+        gate.held_mark(sf, "claude-alpha", False, 3000)
+        self.assertFalse(os.path.exists(hf), "gone with the first call let through")
+
     def test_the_rest_is_held_with_what_to_do(self):
         code, said = self.run_gate(lambda home: {"tool_name": "Bash", "tool_input": {"command": "bb status"}})
         self.assertEqual(code, 2)

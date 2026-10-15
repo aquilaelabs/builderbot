@@ -500,7 +500,7 @@ def _bump():
 # The heartbeat's numbers alone (cpu, memory, store headroom): what the Nodes
 # page draws and nothing else does, so a token of their own (R218 step 10).
 _sample_rev = [0]
-HEARTBEAT_NEWS = ("published", "sessions", "sync", "sync_drain", "sync_clean")
+HEARTBEAT_NEWS = ("published", "sessions", "sync", "sync_drain", "sync_clean", "held")
 
 
 def sample_rev():
@@ -2114,6 +2114,24 @@ def attention(project_nodes):
     return out
 
 
+def held_attention(uid, admin):
+    """The bell's rows for the sessions an outage stopped (R251): one per
+    session a node's gates held, for that session's account or an
+    administrator, keyed by the hold so Dismiss puts away this one and not
+    the next. A node that is away is skipped: its Resume could not land."""
+    out = []
+    for n in node_list():
+        if n["kind"] != "agent" or not n.get("live"):
+            continue
+        for h in (n.get("reported") or {}).get("held") or []:
+            if not admin and h.get("uid") != uid:
+                continue
+            out.append({"kind": "held", "id": f"{n['id']}|{h['session']}", "node": n["name"], "node_id": n["id"],
+                        "project": h.get("project", ""), "session": h["session"], "since": h.get("since", 0),
+                        "key": f"held:{n['id']}|{h['session']}@{h.get('since', 0)}"})
+    return out
+
+
 def node_update_agent(principal, node_id):
     """Queue the self-update for a node's agent: the file this controller
     serves, named by digest so the node can never be handed anything else
@@ -2933,6 +2951,15 @@ def heartbeat(nid, sample, addr, running=0):
     # like everything a node says; absent when the agent did not send it.
     if isinstance(s.get("sessions"), list):
         rep["sessions"] = _session_rows(s["sessions"])
+    # The sessions a controller outage held (R251), for the bell's "stopped
+    # by the update" once this answers again; whitelisted, and absent from
+    # an older agent's heartbeat, which keeps what was there.
+    if isinstance(s.get("held"), list):
+        rep["held"] = [{"project": re.sub(r"[^A-Za-z0-9._-]", "", str(h.get("project") or ""))[:100],
+                        "uid": re.sub(r"[^A-Za-z0-9_]", "", str(h.get("uid") or ""))[:40],
+                        "session": re.sub(r"[^A-Za-z0-9_~.:-]", "", str(h.get("session") or ""))[:120],
+                        "since": _mb(h.get("since")) or 0}
+                       for h in s["held"][:32] if isinstance(h, dict) and h.get("session")]
     # Each synced project's state on the node (R162): whether its first
     # copy is done, what is waiting to go up, and why not when it cannot.
     if isinstance(s.get("sync"), dict):

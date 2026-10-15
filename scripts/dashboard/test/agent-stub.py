@@ -332,6 +332,12 @@ def main():
                 sample["ctr_stats"] = json.load(f)
         except (OSError, ValueError):
             pass
+        # ...and the sessions a controller outage held (R251), as planted.
+        try:
+            with open(os.path.join(CDIR_ROOT, "held.json")) as f:
+                sample["held"] = json.load(f)
+        except (OSError, ValueError):
+            sample["held"] = []
         j = call("work", {"sample": sample, "running": len(running),
                           "wait": 5}, timeout=30)
         if isinstance(j, dict) and j.get("id"):

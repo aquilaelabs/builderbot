@@ -203,10 +203,28 @@ def main():
         pass
     if why and own_notes():
         return 0
+    held_mark(sf, (args[1:2] or [""])[0], bool(why), now)
     if why:
         sys.stderr.write(why + "\n")
         return 2
     return 0
+
+
+def held_mark(sf, session, held, now):
+    """Beside the stamp, the mark that this session was held by an outage
+    (R251): its node's agent reports it, so once the controller answers again
+    the bell lists the sessions an update stopped, with a Resume each. Kept
+    from the first refusal; gone with the first call let through after."""
+    hf = os.path.join(os.path.dirname(sf), "held")
+    try:
+        if held:
+            if not os.path.exists(hf) and session:
+                with open(hf, "w") as f:
+                    json.dump({"session": session, "since": int(now)}, f)
+        elif os.path.exists(hf):
+            os.remove(hf)
+    except OSError:
+        pass
 
 
 # What a held session may still do (R251): keep its own notes. Its memory and

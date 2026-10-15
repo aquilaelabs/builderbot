@@ -1,5 +1,6 @@
 """The session half (roadmap #24): Claude's sessions on this node, their ttyds, tokens, firewall and upkeep."""
 import contextlib
+import glob
 import json
 import os
 import re
@@ -840,6 +841,30 @@ class SessionsMixin:
                 pub.setdefault(key, set()).update(ports)
         self.published = {k: sorted(v) for k, v in pub.items()}
         return self.published
+
+    def held_now(self):
+        """The sessions here a controller outage held (R251): each account's
+        gate (bb-gate) leaves a mark beside its stamp while it refuses for an
+        outage and takes it off with the first call it lets through. Read
+        from the session account's home, where every account's cache lives on
+        a node: [{project, uid, session, since}]."""
+        home = SESSION.get("home") or ""
+        if not home:
+            return []
+        out = []
+        for pat in (os.path.join(home, ".cache", "builderbot", "u", "*", "project", "*", "held"),
+                    os.path.join(home, "users", "*", ".cache", "builderbot", "u", "*", "project", "*", "held")):
+            for f in glob.glob(pat)[:32]:
+                parts = f.split(os.sep)
+                try:
+                    with open(f) as fh:
+                        mark = json.load(fh)
+                    out.append({"project": parts[-2], "uid": parts[-4],
+                                "session": str(mark.get("session") or "")[:120],
+                                "since": int(mark.get("since") or 0)})
+                except (OSError, ValueError, TypeError, AttributeError):
+                    continue
+        return out[:32]
 
     def stats_now(self):
         """What each running container here uses, by name: [cpu %, memory %],

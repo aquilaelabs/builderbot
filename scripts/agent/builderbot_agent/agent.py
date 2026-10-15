@@ -485,6 +485,9 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             ctr = self.stats_now()
             if ctr is not None:
                 sample["ctr_stats"] = ctr
+            # ...and the sessions a controller outage held, for the bell's
+            # "stopped by the update" once it answers again (R251).
+            sample["held"] = self.held_now()
             # ...and what each account here is signed in to Claude as, on its
             # own slower clock, so the controller's record is true without a
             # session having to run (B104). Absent from most heartbeats,

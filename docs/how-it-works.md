@@ -4284,7 +4284,13 @@ again cannot do anything twice; the first refusal tells the gate at once, so
 the next tool call is held rather than let through by a check from twenty
 seconds before; and a held session may still write its own memory, its
 scratchpad and its to-do list, so the gate's sentence can tell it, when the
-hold lasts, to write where it is and what is next, then end the turn. The compatibility window still holds a project whose *node* runs
+hold lasts, to write where it is and what is next, then end the turn. The
+gate leaves a `held` mark beside its stamp while it refuses and takes it off
+with the first call it lets through; the node's agent reports the marks with
+its heartbeat, so once the controller answers again the bell lists each
+session an update stopped, for its own account or an administrator, with a
+Resume that types into it (the roadmap's send, which presses Enter only if
+the line echoed) that BuilderBot is back and to pick up from its note. The compatibility window still holds a project whose *node* runs
 an agent from another window, and the Nodes tab's Update is what clears it.
 
 ## Playwright, Android, plugins, publishing

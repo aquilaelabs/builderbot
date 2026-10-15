@@ -1190,6 +1190,30 @@ def gpu_for(project, node_id=""):
     return "on"
 
 
+# What a Resume says to a session an outage held (R251): the gate told it to
+# write where it was and stop, so this is where it picks up.
+RESUME_LINE = ("BuilderBot is back after an update. Pick up where you stopped: read the note you "
+               "left on where you were and what was next, and carry on.")
+
+
+def _resume_held(who, nid, session):
+    """The bell's Resume on a session an outage stopped (R251): the line typed
+    into that session (notify.tell, which presses Enter only if it echoed),
+    for its own account or an administrator, and the row put away."""
+    if NODES_OK:
+        return {"error": "the node store did not open"}, 500
+    uid = users.uid_of(who)
+    row = next((r for r in nodes.held_attention(uid, users.may(who, "admin") == "")
+                if r["node_id"] == nid and r["session"] == session), None)
+    if not row:
+        return {"error": "no session held there that is yours to resume"}, 404
+    said = notify.tell(session, RESUME_LINE, sessions_anywhere())
+    if said.get("error"):
+        return said, 409
+    bellseen.dismiss(uid, [row["key"]])
+    return {"ok": True, **said}, 200
+
+
 def _attention(who):
     """The bell's rows about nodes: an agent behind or from another window
     (nodes.attention) for whoever manages nodes, and a node with a
@@ -1208,7 +1232,10 @@ def _attention(who):
                # ...and a container whose registry image moved (imagecheck, R195).
                + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)
                # ...and a copy or move that did not happen (relocate.py).
-               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
+               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid))
+            # ...and the sessions an outage of this controller held (R251),
+            # for their own account or an administrator.
+            + nodes.held_attention(users.uid_of(who), users.may(who, "admin") == ""))
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
@@ -7705,14 +7732,17 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*notices.act(users.uid_of(who), req))
 
     def _bell(self, req):
-        """Put a bell note away for this account, or bring every one back
-        (bellseen.py). The account's own, so no grant; a session has no bell."""
+        """Put a bell note away for this account, bring every one back
+        (bellseen.py), or resume a session an outage held (R251). The
+        account's own, so no grant; a session has no bell."""
         who = self._who() or {}
         if who.get("session"):
             return self._json({"error": "a session has no bell"}, 403)
         uid = users.uid_of(who)
         if field(req, "action") == "restore":
             return self._json(*bellseen.restore(uid))
+        if field(req, "action") == "resume":
+            return self._json(*_resume_held(who, field(req, "node"), field(req, "session")))
         return self._json(*bellseen.dismiss(uid, req.get("keys")))
 
     def _layout(self, req):

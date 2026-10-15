@@ -218,6 +218,16 @@ function attRow(a){
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
           <a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`;
   }
+  // A session the controller's outage held (R251): it was told to write
+  // where it was and stop; Resume tells it to pick up from that note.
+  if (a.kind === "held"){
+    return `<div class="bnote att warn">
+      <div class="bt">A session in ${esc(projLabel(a.project))} stopped for the update</div>
+      <div class="bsum">${esc(a.session)} on ${esc(a.node)}, held ${a.since ? esc(ago(a.since)) : "while BuilderBot was away"}</div>
+      <div class="bfoot"><span>it left a note of where it was</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bheld="${esc(a.node_id)}" data-session="${esc(a.session)}">Resume</a></span></div></div>`;
+  }
   // A copy or move that did not happen: the reason, which used to sit on
   // the container's row for ever, here where it can be put away.
   if (a.kind === "relocate"){
@@ -551,6 +561,16 @@ function wireNeeds(root, after = () => {}){
     const j = await (await postJSON("/api/bell", {action: "dismiss", keys: a.dataset.bdismiss.split(" ")}))
       .json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
+    refresh();
+  });
+  // Resume (R251): the session an outage held is told to pick up from its
+  // note; the row goes once the line was typed.
+  root.querySelectorAll("[data-bheld]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const j = await (await postJSON("/api/bell", {action: "resume", node: a.dataset.bheld, session: a.dataset.session}))
+      .json().catch(() => ({error: "no answer"}));
+    notify(j.error || (j.sent ? `told ${a.dataset.session} to pick up where it stopped`
+                                : `the line is in ${a.dataset.session}'s input, not sent: a question was on its screen`), !!j.error);
     refresh();
   });
   root.querySelectorAll("#bellRestore, [data-brestore]").forEach(restore => restore.onclick = async () => {

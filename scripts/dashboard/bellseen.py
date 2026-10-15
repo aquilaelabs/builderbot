@@ -104,6 +104,11 @@ def filter_rows(uid, rows):
             if r["key"] in gone:
                 hidden += 1
                 continue
+        elif r.get("kind") == "held":
+            # To the hold (R251): put away until the session is held again.
+            if r.get("key") in gone:
+                hidden += 1
+                continue
         elif r.get("kind") == "nginx":
             # To the digest it would move to (R192): put away until the
             # registry moves the line again.
