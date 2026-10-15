@@ -72,14 +72,16 @@ const rows = () => page.$$eval('.doc .tc', ls => ls.map(l => ({
   installed: !!l.querySelector('.where.on'),
   // Null while a job is on this row: it shows what it is doing in place of
   // where it lives, so anything reading paths has to tolerate their absence.
-  where: l.querySelector('.where')?.textContent.trim() ?? null,
+  // The table's Installed cell, and the path under the name (R218 step 8).
+  where: l.querySelector('.where') ? [l.querySelector('.where').textContent.trim(),
+    l.querySelector('.tcpath')?.textContent.trim()].filter(Boolean).join(' ') : null,
 })));
 let list = await rows();
 ok(list.length >= 6 && list.some(r => r.name === 'flutter') && list.some(r => r.name === 'android:emulator'),
    'the tab lists the toolchains and the android packages');
 ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed'),
    'a scratch root starts with nothing installed');
-ok(await page.$$eval('.doc .tc .nm .pill', ps => ps.length === 0),
+ok(await page.$$eval('.doc .tcs .tc .pill', ps => ps.length === 0),
    '...so no row carries a size or a version: nothing has been weighed yet');
 ok((await page.$$eval('.doc .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('installed'),
    'the Toolchains tab opens on tiles: what is installed of what is offered');
@@ -283,22 +285,24 @@ ok(dots.later !== dots.first && dots.after === dots.later,
 // The installed version is local knowledge and shows without being asked;
 // whether something newer exists is a network question, and until it is asked
 // no row claims anything.
-ok((await page.$$eval('.doc .tc .nm .pill', ps => ps.map(p => p.textContent)))
+ok((await page.$$eval('.doc .tcs .tc .where .pill', ps => ps.map(p => p.textContent)))
      .some(t => t === '1.0'), 'installed versions show without a check');
 ok(await page.$$eval('.doc .tc .upd', us => us.length === 0),
    'no update claims before a check');
 // No size is typed into the catalog (a typed one is wrong the next time
 // upstream ships), so a row carries one only once this box has weighed it,
 // measured by a worker and arriving a moment after the row does.
-const pill = (name, n = 0) => page.$$eval('.doc .tc', (ls, [v, i]) => {
+// A row's pill in one column of the table (R218 step 8): Installed, Latest
+// or Size.
+const pill = (name, col = 'Size') => page.$$eval('.doc .tc', (ls, [v, c]) => {
   const l = ls.find(x => x.querySelector('input').value === v);
-  const ps = l ? l.querySelectorAll('.nm .pill') : [];
-  return ps[i] ? { text: ps[i].textContent, title: saidOf(ps[i]) } : null;
-}, [name, n]);
+  const p = l?.querySelector(`.td[data-th="${c}"] .pill`);
+  return p ? { text: p.textContent, title: saidOf(p) } : null;
+}, [name, col]);
 await page.waitForFunction(() => {
   const l = [...document.querySelectorAll('.doc .tc')]
     .find(x => x.querySelector('input').value === 'flutter');
-  return l && /measured/.test(saidOf(l.querySelector('.nm .pill')));
+  return l && /measured/.test(saidOf(l.querySelector('.td[data-th="Size"] .pill')));
 }, { timeout: 30000 });
 ok(/measured on disk/.test((await pill('flutter')).title),
    'an installed toolchain shows what it takes on disk, and says so');
@@ -328,17 +332,16 @@ ok(!(await page.$eval('.doc .tc input[value="flutter"]', i => i.disabled)),
    '...but an update brings its tick back');
 ok(!(await page.$eval('.doc .tc input[value="swift"]', i => i.disabled)),
    'and something not installed at all is always tickable');
-ok((await pill('flutter', 2)) === null,
+ok((await pill('flutter', 'Latest')) === null,
    '...and an installed row carries no second version: the words below say it');
-// Pill zero, not one: a row this box has never installed carries no size, so
-// the version it would fetch is the first thing on the line.
-ok((await pill('swift', 1)).text === '9.9'
-   && /would fetch/.test((await pill('swift', 1)).title),
+// Its Latest column: a row this box has never installed says what it would fetch.
+ok((await pill('swift', 'Latest')).text === '9.9'
+   && /would fetch/.test((await pill('swift', 'Latest')).title),
    'a toolchain that has never been installed says what Install would fetch');
-// Pill zero on that row is the download: the only size a toolchain this box has
+// Its Size column is the download: the only size a toolchain this box has
 // never had can honestly show, and upstream is the one that knows it.
-ok(/download/.test((await pill('swift', 0)).text)
-   && /from upstream/.test((await pill('swift', 0)).title),
+ok(/download/.test((await pill('swift', 'Size')).text)
+   && /from upstream/.test((await pill('swift', 'Size')).title),
    '...and what the download weighs, asked of upstream rather than guessed');
 // The answers cost a network round trip each, so they are kept on the state
 // volume (a dashboard restart used to wipe every version the tab had been
@@ -384,7 +387,7 @@ print(json.dumps({"at": m._tc_checked, "local": bool(m._tc_local.get("versions")
 }
 ok(await page.$$eval('.doc .tc', ls => ls
      .filter(l => l.querySelector('input').value === 'swift')
-     .every(l => l.querySelectorAll('.nm .pill.warn').length === 0)),
+     .every(l => l.querySelectorAll('.pill.warn').length === 0)),
    '...and says it plainly: only an actual update is amber');
 // Update runs like the others: a job, and the ticks it consumed.
 await page.check('.doc .tc input[value="flutter"]');

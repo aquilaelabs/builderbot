@@ -555,7 +555,7 @@ async function glance(){
       const head = t.querySelector(':scope > .thead');
       if (!head || !head.offsetHeight) continue;
       const hx = [...head.children].map(c => Math.round(c.getBoundingClientRect().left));
-      for (const line of [...t.querySelectorAll(':scope > .row > .tline, :scope > .tline')].filter(l => l.offsetHeight).slice(0, 8)){
+      for (const line of [...t.querySelectorAll(':scope > :not(.thead) > .tline, :scope > .tline')].filter(l => l.offsetHeight).slice(0, 8)){
         const lx = [...line.children].map(c => Math.round(c.getBoundingClientRect().left));
         if (lx.length !== hx.length || lx.some((x, i) => Math.abs(x - hx[i]) > 1)) tbad.push(`a line at ${lx.join('/')} under a header at ${hx.join('/')}`);
       }

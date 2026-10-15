@@ -242,16 +242,19 @@ function tcRow(p, busy, job, managed){
               : job && job.action === "check" ? "checking" : "installing";
   const prog = `<span class="sub prog plain">${esc(doing)}<span class="dots">${
     ".".repeat(tcDots)}</span></span>`;
-  return `<label class="tc${upToDate ? " done" : ""}">
-    <input type="checkbox" value="${esc(p.name)}"${
+  // A line of the table (R218 step 8): the tick and the name with what it
+  // is under it, then what is installed (or what the job is doing), what
+  // Install would fetch, its size, the projects that pin it, and its
+  // uninstall at the end. What is news about it is under the line.
+  const pins = (p.pinned_by || []).map(projLabel);
+  return `<label class="tc${upToDate ? " done" : ""}">${tblLine(TC_COLS, [
+    `<input type="checkbox" value="${esc(p.name)}"${
       busy || noUpgrade ? " disabled" : ""}${
       noUpgrade ? ` checked disabled title="installed; no update in place: a newer version, once a check finds one, is installed in its place"`
       : upToDate ? ` checked disabled title="installed and up to date"`
                : tcTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
-      <span class="nm">${esc(p.label)}${p.size
-        ? ` <span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : ""
-      }${ver}${next}</span>
+      <span class="nm">${esc(p.label)}</span>
       <span class="sub">${esc(p.about)}${
         p.tool ? ` Adds <code>bb tool ${esc(p.tool)}</code> to a session.` : ""}${
         p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
@@ -259,24 +262,25 @@ function tcRow(p, busy, job, managed){
       ${tcTermsLine(p)}
       ${tcSystemLine(p, managed)}
       ${tcNeedsLine(p)}
-      ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
-        // The path is the store's, and the head of the tab already says where
-        // that is, so naming it per row was a repetition, and on a node,
-        // where the census reports no per-toolchain path, it read "installed
-        // at " with nothing after it.
-        p.installed ? (p.path ? "installed at " + esc(p.path) : "installed")
-                      : "not installed"}</span>`}
-      ${upd}${err}${
-        // Sessions that started before this landed still have the old PATH
-        // (toolchains.py counts them); one line, and only while there are any.
-        p.reopen && !mine ? `<span class="sub warn tcreopen">${p.reopen === 1 ? "1 session" : `${p.reopen} sessions`}
-          open here started before this was installed: reopen ${p.reopen === 1 ? "it" : "them"} to use it</span>` : ""}
-    </span>
-    ${p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
+      ${p.installed && p.path && !mine ? `<span class="sub tcpath">at ${esc(p.path)}</span>` : ""}
+    </span>`,
+    // Whatever version is known, installed or reported: a node's own
+    // versions can name one its census summary does not.
+    mine ? prog : `<span class="where${p.installed ? " on" : ""}">${ver || (p.installed ? "installed" : "not installed")}</span>`,
+    next, p.size ? `<span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : "",
+    pins.length ? `<span title="${esc(pins.join(", "))}">${esc(pins.join(", "))}</span>` : "",
+    p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
       busy ? ` disabled title="another toolchain operation is running"`
-           : ` title="uninstall ${esc(p.label)}"`}>${BIN}</button>` : ""}
+           : ` title="uninstall ${esc(p.label)}"`}>${BIN}</button>` : ""], "span", "tcline")}
+    ${upd}${err}${
+      // Sessions that started before this landed still have the old PATH
+      // (toolchains.py counts them); one line, and only while there are any.
+      p.reopen && !mine ? `<span class="sub warn tcreopen">${p.reopen === 1 ? "1 session" : `${p.reopen} sessions`}
+        open here started before this was installed: reopen ${p.reopen === 1 ? "it" : "them"} to use it</span>` : ""}
   </label>`;
 }
+const TC_COLS = [{label: "Toolchain", w: "minmax(0,2fr)"}, {label: "Installed", w: "minmax(0,.6fr)"}, {label: "Latest", w: "6.5rem"},
+                 {label: "Size", w: "5.5rem", num: true}, {label: "Pinned by", w: "minmax(0,.5fr)"}, {act: true, w: "2.75rem"}];
 
 // The NVIDIA driver (R102): a row like the store's, ticked into the same
 // Install selected and asked by the same Check for updates, but this
@@ -550,8 +554,8 @@ function renderToolchainsInto(i){
     })()}
     ${onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
       d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
-    <div class="tcs">${(d.items || []).filter(i => !i.wrong_platform)
-      .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join("")}</div>
+    ${tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
+      .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs")}
     <div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}

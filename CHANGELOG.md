@@ -332,7 +332,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The dock: terminals and the chat at the foot of every page, one line when shut and half the screen pulled up (a drag on its line sets the height), a sheet over the page on a phone; the tab strip and the split are gone (ad180a6)
 - The sidebar is gone: bb doctor's verdict is a dot after the bell that opens its checks, every tool is a page on the rail, the CI runner page lists every node's runner, and a phone has one page area with the dock at its foot instead of a Dashboard and a Terminal side (0d489e6)
 - The look: corners at 6px, hairline borders one device pixel thin on a dense screen, an 8px rhythm in every band and dialog, big numbers in a display face with tabular figures, and a soft glow on what is live (a working session, a running job or container). Toasts stand at the bottom left beside the rail, and beside a dialog while one is open, so neither covers a button (67a215c)
-- Lists whose rows are all the same shape are tables: Jobs, the people on Users, a role's areas, images and volumes, and the Containers list view, each a header naming the columns over rows whose cells line up under it, the buttons at the row's end and its log or card still opening from it; on a phone each cell wears its column's name
+- Lists whose rows are all the same shape are tables: Jobs, the people on Users, a role's areas, the toolchains a node can have, images and volumes, and the Containers list view, each a header naming the columns over rows whose cells line up under it, the buttons at the row's end and its log or card still opening from it; on a phone each cell wears its column's name
 
 ### Removed
 

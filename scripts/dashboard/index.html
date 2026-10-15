@@ -1131,6 +1131,15 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
 .tc .tcdrvpick{display:flex;align-items:center;gap:8px;margin:6px 0 2px;color:var(--dim);font:var(--f-note)}
 .tcs.tcmachine{border-bottom:var(--hair) solid var(--line)}
 .tc .nm{font:600 13px/1.35 system-ui,sans-serif}
+/* The catalog is a table (R218 step 8): the tick beside the name in the
+   lead cell, what it is under the name, the notes under the line. */
+.tcs .td.lead{display:flex;gap:10px;align-items:flex-start;font:inherit}
+.tcs .td.lead .grow{min-width:0}
+.tcs .td .where{font:var(--f-data)}
+.tcs .tcpath{font-family:var(--mono);overflow-wrap:anywhere}
+/* "Installed not installed" on a phone says it twice: the word alone. */
+@media(max-width:900px){ .tcs .td:has(> .where:not(.on))::before{content:none} }
+.tcs .td.act .rm{margin:0}
 .tc .sub{display:block;color:var(--dim);font:var(--f-note)}
 .tc .where{font-family:var(--mono);overflow-wrap:anywhere}
 .tc .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
@@ -2771,7 +2780,7 @@ pre.diff .d-ctx{color:var(--dim)}
    column's name, the buttons at the right of the last line they fit on. */
 /* A table's row is a column whatever else it is (a plain .row is a flex
    line, which shrank the line to its content): the line spans the table. */
-.tbl > .row{flex-direction:column;align-items:stretch;flex-wrap:nowrap}
+.tbl > .row,.tbl > .tc{flex-direction:column;align-items:stretch;flex-wrap:nowrap}
 .tbl .thead,.tbl .tline{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);align-items:center;min-width:0}
 .tbl .thead{padding:var(--label-gap) var(--row-x);font:var(--f-note);color:var(--dim);border-bottom:var(--hair) solid var(--line)}
 .tbl .th,.tbl .td{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
