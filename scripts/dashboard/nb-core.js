@@ -378,6 +378,9 @@ function makeNotebook(project){
   // the least important thing on this page, and nothing else waits for it.
   nb.nbWhere = "briefing"; nb.nbHere = []; nb.nbRead = 0;
 
+  // This notebook is the page on show, not one left behind another page.
+  const nbOnShow = () => { const t = tabOf(panes[0]); return t?.kind === "notebook" && t.arg === project; };
+
   async function beat(leave, keepalive){
     if (!nb.memProj) return;
     try{
@@ -750,7 +753,10 @@ function makeNotebook(project){
   return {
     root, project,
     // First show loads; later shows are just the pane coming back.
-    shown(){ if (!nb.loaded){ nb.loaded = true; openMemory(project); loadPending(); } },
+    shown(){
+      if (!nb.loaded){ nb.loaded = true; openMemory(project); loadPending(); }
+      if (nb.away){ nb.away = false; beat(); }
+    },
     reloadPending: loadPending,
     reload(){ return loadRoadmap(nb.memGen); },
     reloadMemory(){ return loadMemory(nb.memGen); },
@@ -763,7 +769,12 @@ function makeNotebook(project){
     where: () => nb.nbWhere,
     poll(p){
       noteBatch(p.todo_batch); drawBatchNote(); syncSave();
-      beat();                       // and who else is in here (roadmap #26)
+      // ...and who else is in here (roadmap #26), while this is the page on
+      // show: a project page left for another stays in the page model, and
+      // it went on saying this person was in its notebook (B765). Off show,
+      // it says once that it has left; shown again, it says it is back.
+      if (nbOnShow()){ nb.away = false; beat(); }
+      else if (!nb.away){ nb.away = true; beat(true); }
       // A session started (or ended) under an open notebook.
       //
       // Whether a step can be sent is a fact about the session running beside

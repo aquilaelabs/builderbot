@@ -463,6 +463,18 @@ await other.click('.pane .nb .nbtabs [data-v="roadmap"]');
 await refreshUntil(page, () => /Roadmap/.test(
   document.getElementById('nbHere').textContent));
 ok(true, '...and says which view it is on, which is where the collision would be');
+// Leaving for another page is leaving (B765): the project page stays in the
+// page model behind Home, and it went on claiming the seat.
+await other.evaluate(() => railGo('home'));
+await other.evaluate(() => refresh());
+await refreshUntil(page, () => document.getElementById('nbHere').hidden
+  || !/your other window/.test(document.getElementById('nbHere').textContent));
+ok(true, '...and a window that goes to another page is no longer named here');
+await other.evaluate(n => openNotebook(n, 'roadmap'), 'alpha');
+await nbShown(other);
+await other.evaluate(() => refresh());
+await refreshUntil(page, () => /your other window/.test(document.getElementById('nbHere').textContent));
+ok(true, '...and is again once it comes back');
 // Letting go of the notebook says so rather than leaving the seat to time
 // out: a line claiming somebody is here who has just left is worse than no
 // line. Through destroy(), which is what the tab's ✕ calls; closing the tab
