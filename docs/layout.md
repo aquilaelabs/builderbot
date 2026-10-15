@@ -182,6 +182,7 @@ scripts/
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
     idle.py                      ending Claude sessions nobody has used for a while
     home.py                      Home's numbers across the install: nodes online, containers running, jobs running, failed today and the last ten
+    notices.py                   what the page said to each account, kept per account (<state>/notices/UID.json, the newest 300): the Notifications page's history
     projsessions.py              every account's sessions on a project, and an administrator ending one
     reports.py                   problems with BuilderBot reported by any project's session (bb report)
     diag.py                      the Diagnostics section of Controller settings: reports, images, errors, the audit trail, and the download
