@@ -579,7 +579,7 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
             target.pop("info", None)
         ev.update(text=text, **({"was": old} if old else {}))
         return {"ok": True, "item": row, "log": ev}
-    return _edit(project, item_id, change, by, who)
+    return _edit(project, item_id, change, by, who, finished=True)
 
 
 # An item is one thing to do, or several in an order that matters. A change
@@ -710,7 +710,25 @@ def clash(what, stored, was):
             "conflict": {"current": stored}}
 
 
-def _edit(project, item_id, change, by="you", who=""):
+def _finished_row(d, project, item_id):
+    """A finished item's row as the Finished section shows it: the snapshot
+    in its newest "done" event, made into one for an older event that kept
+    only the words. None when it is not a finished item."""
+    for e in reversed(d.get("history", {}).get(project) or []):
+        if _int(e.get("id")) != item_id or e.get("step") is not None:
+            continue
+        # Its words or details put right since: still finished.
+        if e.get("act") in ("info", "edit"):
+            continue
+        if e.get("act") != "done":
+            return None
+        if not isinstance(e.get("row"), dict):
+            e["row"] = {"id": item_id, "text": e.get("text", ""), "steps": []}
+        return e["row"]
+    return None
+
+
+def _edit(project, item_id, change, by="you", who="", finished=False):
     """Run one change against one item, under the lock.
 
     A change hands back its own history entry under "log", which is stripped
@@ -729,9 +747,18 @@ def _edit(project, item_id, change, by="you", who=""):
         d = load()
         rows = d["projects"].get(project) or []
         row = _find(rows, item_id)
+        # A finished item stays finished, and its words and details can still
+        # be put right (B766): the change lands on the row its "done" event
+        # keeps, which is what the Finished section draws. Refused for the
+        # verbs about doing the work, which a finished item has none of.
+        done = row is None and finished and _finished_row(d, project, item_id)
+        if done:
+            row = done
         if row is None:
             return _gone(d, project, item_id)
         out = change(row, rows)
+        if done and isinstance(out, dict) and isinstance(out.get("log"), dict):
+            out["log"]["finished"] = True
         ev = out.pop("log", None) if isinstance(out, dict) else None
         ok = isinstance(out, dict) and not out.get("error")
         if isinstance(out, dict) and out.get("conflict"):
@@ -881,7 +908,7 @@ def edit(project, item_id, text, step=None, by="you", was=None, who=""):
         return {"ok": True, "item": row,
                 "log": {"act": "edit-step", "id": row["id"], "step": i,
                         "text": text, "was": old, "of": row["text"]}}
-    return _edit(project, item_id, change, by, who)
+    return _edit(project, item_id, change, by, who, finished=True)
 
 
 def remove(project, item_id, step=None, by="you", why="", was=None, who=""):

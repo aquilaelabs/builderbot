@@ -549,6 +549,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A roadmap verb on an item that is not on the list says why: done already, dropped, or never there (23ba711)
 - bb devapp says what a build was made from as what it is: a commit (with its branch when pinned), or for a container written here its definition, the compose file and env hashed, rather than a hash that reads as a commit (56eba2f)
 - bb devapp remove waits for the container to come down and says so when it could not, instead of saying removed while it still runs (96acd79)
+- A finished roadmap item can still have its wording and its notes put right with bb roadmap edit and bb roadmap info: it stays under Finished, and only the verbs about doing the work say it is done (9d7fd89)
 
 ### Security
 

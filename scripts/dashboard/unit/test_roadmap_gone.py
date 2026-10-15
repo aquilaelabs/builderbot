@@ -41,6 +41,22 @@ class Gone(unittest.TestCase):
         done = next(r for r in roadmap.finished("alpha") if r["id"] == rid)
         self.assertEqual([st["text"] for st in done["steps"]], ["one", "two"])
 
+    def test_a_finished_item_keeps_its_words_and_details_open(self):
+        # B766: finished is how it shows, not a lock. Its details and its
+        # words can still be put right, and it stays under Finished with them;
+        # the verbs about doing the work still say it is done.
+        rid = roadmap.add("alpha", "a plan", by="claude", steps=["one"])["item"]["id"]
+        self.assertTrue(roadmap.step_done("alpha", rid, 0).get("finished"))
+        self.assertTrue(roadmap.set_info("alpha", rid, "as built: here", step=0).get("ok"))
+        self.assertTrue(roadmap.set_info("alpha", rid, "the item's own note").get("ok"))
+        self.assertTrue(roadmap.edit("alpha", rid, "a plan, said better").get("ok"))
+        done = next(r for r in roadmap.finished("alpha") if r["id"] == rid)
+        self.assertEqual((done["text"], done.get("info"), done["steps"][0].get("info")),
+                         ("a plan, said better", "the item's own note", "as built: here"))
+        self.assertIn(f"R{rid} is done already", roadmap.step_done("alpha", rid, 0)["error"])
+        self.assertFalse(any(r["id"] == rid for r in roadmap.load()["projects"].get("alpha") or []),
+                         "and it is still off the open list")
+
     def test_a_dropped_one_and_one_never_there_say_so(self):
         rid = roadmap.add("alpha", "to drop", by="claude")["item"]["id"]
         roadmap.remove("alpha", rid, why="not needed", by="operator")
