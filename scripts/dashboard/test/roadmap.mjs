@@ -963,6 +963,21 @@ ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] .txt`,
    'Finished shows the ticked-off item, struck through, with no arrow');
 ok(await page.evaluate(() => !!(document.querySelector('.nb #roadmapList').compareDocumentPosition(document.querySelector('.nb #roadmapDoneList')) & Node.DOCUMENT_POSITION_FOLLOWING)),
    '...below the live and shelved ones');
+// A finished item is a fold like an open one, with Reopen where no release
+// has shipped it (R254 step 2). Ticking off stays a session's (bb roadmap
+// done), so the item goes back the way it came.
+await page.click(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] > summary`);
+await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"][open] [data-reopen]`, { state: 'visible', timeout: 5000 });
+await page.click(`.nb #roadmapDoneList [data-reopen="${finId}"]`);
+await page.waitForFunction(id => [...document.querySelectorAll('.nb #roadmapList > .grp')].some(g => g.dataset.id === id), finId, { timeout: 10000 });
+ok(read().projects.alpha.some(r => String(r.id) === finId), 'Reopen on a finished item puts it back on the list, from the page');
+// Read first, as a session does: the reopen moved the list, and bb refuses
+// a change made against an older read of it.
+bbRoadmap();
+const again = bbRoadmap('done', finId);
+ok(/^done R/.test(again.trim()), `...and a session can tick it off again (${again.trim().slice(0, 60)})`);
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"]`, { timeout: 10000 });
 // The search narrows the list and the Finished section alike, by words or
 // by number, and the chips narrow the live list to its open or its shelved.
 await page.fill('.nb #roadmapFind', 'a job to finish');

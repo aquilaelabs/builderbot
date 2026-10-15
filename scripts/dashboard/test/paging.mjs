@@ -99,9 +99,11 @@ const src = ['../index.html', ...readdirSync(new globalThis.URL('..', import.met
     .filter(f => /^(nb|page|tab)-.*\.js$/.test(f)).map(f => '../' + f)]
   .map(f => readFileSync(new globalThis.URL(f, import.meta.url), 'utf8')).join('\n');
 for (const [what, call] of [
-  ['the roadmap', 'paginate($("roadmapList"), ":scope > .grp"'],
+  // Less what the list's band leaves out (R254 step 1), so a page holds
+  // what is shown.
+  ['the roadmap', 'paginate($("roadmapList"), ":scope > .grp:not(.off)"'],
   ['memory', 'paginate($("memList"), ":scope > .mem"'],
-  ['bugs', 'paginate(list, ":scope > .bug"'],
+  ['bugs', 'paginate(list, ":scope > .bug:not(.off)"'],
   // ...in the Files section's body, since the files are a section (6 Oct).
   ['artifacts', 'paginate(list.querySelector(\'[data-sect="artifacts:files"] > .body\'), ":scope > .artrow"'],
   // .rule, which is what findingsRulesHtml emits. This line said .grp (the

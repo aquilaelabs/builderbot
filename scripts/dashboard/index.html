@@ -2096,8 +2096,9 @@ pre.diff .d-ctx{color:var(--dim)}
 .grp.shelved .acts,.grp.shelved button{opacity:.6}
 /* Finished items (R78): below the shelved ones, behind the Finished toggle,
    struck through and quiet, with no arrows: there is nothing left to send. */
-.grp.done{opacity:.55}
-.grp.done .roadmap .txt{text-decoration:line-through}
+/* A finished item (R254 step 2): its title dim and struck, its details,
+   steps and Reopen read as any open row's, so a live button never looks dead. */
+.grp.done > summary .txt{color:var(--dim);text-decoration:line-through}
 .grp.shelved .roadmap .txt{font-style:italic}
 .grp.shelved .who{opacity:.7}
 .roadmap .go{flex:0 0 auto;align-self:flex-start}

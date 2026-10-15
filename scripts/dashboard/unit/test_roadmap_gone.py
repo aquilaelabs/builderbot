@@ -122,11 +122,14 @@ class Gone(unittest.TestCase):
             roadmap.tick("alpha", rid)
             with open(os.path.join(ws, "alpha", "CHANGELOG.md"), "w") as f:
                 f.write("# Changelog\n\n## Unreleased\n\n## 1.2.0: 2099-01-01\n\n- shipped\n")
+            # The page offers Reopen only where it would land (R254 step 2).
+            self.assertFalse(next(r for r in roadmap.finished("alpha") if r["id"] == rid)["reopenable"])
             err = roadmap.reopen("alpha", rid).get("error", "")
             self.assertIn("before 1.2.0 was released", err)
             self.assertIn("new item", err)
             with open(os.path.join(ws, "alpha", "CHANGELOG.md"), "w") as f:
                 f.write("# Changelog\n\n## Unreleased\n\n## 1.1.0: 2000-01-01\n")
+            self.assertTrue(next(r for r in roadmap.finished("alpha") if r["id"] == rid)["reopenable"])
             self.assertTrue(roadmap.reopen("alpha", rid).get("ok"), "finished since the last release: the same work may reopen")
         finally:
             if old is None:

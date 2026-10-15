@@ -198,6 +198,7 @@ function makeNotebook(project){
     nb.roadmapLogOn = false;
     nb.roadmapLog = null;
     nb.roadmapDone = null; nb.roadmapChip = ""; nb.roadmapFind = ""; nb.roadmapFinishedN = 0;
+    nb.roadmapDoneAsking = false;
     nb.bugChip = ""; nb.bugFind = "";
     $("roadmapFind").value = ""; $("bugFind").value = "";
     $("histFind").value = "";

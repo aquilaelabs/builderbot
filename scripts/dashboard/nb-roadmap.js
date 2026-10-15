@@ -293,6 +293,11 @@ function nbRoadmapView({$, nb}){
     const shown = r => (!nb.roadmapChip || (nb.roadmapChip === "shelved") === !!r.shelved) && rmMatch(r, q);
     setHidden($("roadmapDoneSect"), !finishedN);
     setText($("roadmapDoneN"), finishedN ? String(finishedN) : "");
+    // An open section fetches again when what it holds is not what the
+    // count says: forgotten by a reload, or an item finished or reopened
+    // since (a session ticking one off while it is open).
+    if ($("roadmapDoneSect").open && !nb.roadmapDoneAsking
+        && (nb.roadmapDone === null || nb.roadmapDone.length !== finishedN)) loadFinished();
     if (nb.roadmapLogOn) nb.drawHistory();
     {
     // A group is a fold, like a bug's row (the operator, 29 Sep): its own
@@ -1030,12 +1035,18 @@ function nbRoadmapView({$, nb}){
   // fetches them and draws them below the shelved ones, struck through,
   // with no arrows: there is nothing left to send. Off by default, and off
   // again when the notebook reopens.
+  // The newest ask wins: one still out from before a reload or a reopen
+  // would land a list from before it.
   async function loadFinished(){
+    const seq = nb.roadmapDoneSeq = (nb.roadmapDoneSeq || 0) + 1;
+    nb.roadmapDoneAsking = true;
     let j;
     try{
       const r = await postJSON("/api/roadmap", {project: nb.memProj, action: "finished"});
       j = await r.json();
     }catch(e){ j = {error: String(e)}; }
+    if (seq !== nb.roadmapDoneSeq) return;
+    nb.roadmapDoneAsking = false;
     nb.roadmapDone = j.finished || [];
     drawFinished();
   }
@@ -1048,11 +1059,31 @@ function nbRoadmapView({$, nb}){
     if (rows === null){ host.innerHTML = `<div class="loading">loading…</div>`; return; }
     if (!rows.length){ host.innerHTML = `<div class="empty">nothing finished yet</div>`; return; }
     const when = t => t ? fmtTime(t * 1000, {day: "2-digit", month: "short"}) : "";
-    host.innerHTML = rows.map(r => `<div class="grp done${rmMatch(r, q) ? "" : " off"}" data-done="${r.id}">
-      <div class="roadmap"><span class="rid">R${r.id}</span> <span class="txt">${esc(r.text || "")}</span>
-        <span class="dim"> · done${r.done_by ? " by " + esc(r.done_by) : ""}${r.done_at ? " " + esc(when(r.done_at)) : ""}</span></div>${
-      (r.steps || []).map((st, i) => `<div class="roadmap step"><span class="rid">${i + 1}.</span> <span class="txt">${esc(st.text || "")}</span></div>`).join("")}
-    </div>`).join("");
+    // Each the same fold as an open item (R254 step 2): its row, then its
+    // details and its steps with when each was done, and Reopen where a
+    // release has not shipped it yet.
+    const held = new Set([...host.querySelectorAll("details.grp[open]")].map(d => d.dataset.done));
+    host.innerHTML = rows.map(r => `<details class="grp done${rmMatch(r, q) ? "" : " off"}" data-done="${r.id}"${
+        held.has(String(r.id)) ? " open" : ""}>
+      <summary><div class="roadmap"><span class="n id">R${r.id}</span> <span class="body"><span class="txt">${esc(r.text || "")}</span>
+        <span class="sub dim">done${r.done_by ? " by " + esc(r.done_by) : ""}${r.done_at ? " " + esc(when(r.done_at)) : ""}${
+          (r.steps || []).length ? ` · ${r.steps.length} step${r.steps.length === 1 ? "" : "s"}` : ""}</span></span></div></summary>
+      ${r.info ? `<div class="dinfo">${esc(r.info)}</div>` : ""}${
+      (r.steps || []).map((st, i) => `<div class="roadmap step"><span class="n">${st.done ? "✓" : i + 1 + "."}</span>
+        <span class="body"><span class="txt">${esc(st.text || "")}</span>${st.done ? `<span class="sub dim">done ${esc(when(st.done))}</span>` : ""}${
+          st.info ? `<div class="dinfo">${esc(st.info)}</div>` : ""}</span></div>`).join("")}
+      <div class="actbar">${r.reopenable
+        ? `<button type="button" data-reopen="${r.id}" title="put it back on the list as it was, for more work on the same goal">Reopen</button>`
+        : `<span class="state">shipped in a release: more work on it is a new item</span>`}</div>
+    </details>`).join("");
+    host.querySelectorAll("[data-reopen]").forEach(b => b.onclick = async () => {
+      const j = await postRoadmap({action: "reopen", id: b.dataset.reopen});
+      if (!j) return;
+      notify(`R${b.dataset.reopen} is back on the list`);
+      nb.roadmapDone = null;
+      loadFinished();
+    });
+    paginate(host, ":scope > .grp:not(.off)", {key: "roadmapDone", noun: "finished"});
   }
   // The Finished section is shut until opened, and fetched the first time it
   // is; the search narrows it as it does the list.

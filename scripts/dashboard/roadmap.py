@@ -926,6 +926,9 @@ def finished(project, limit=None):
     # One reopened since is on the list again, not under Finished.
     seen, out = {_int(r.get("id")) for r in items(project)}, []
     log = history(project)
+    # Whether reopen would take it (R254 step 2): never one a released
+    # version shipped, so the page offers Reopen only where it will land.
+    rel = last_release(project)
     for e in log:
         if e.get("act") != "done" or e.get("step") is not None:
             continue
@@ -940,7 +943,8 @@ def finished(project, limit=None):
         if not row.get("steps"):
             got = _rebuilt_row(_oldest_first(log), i, e.get("text", ""))
             row = {**got, **row, "steps": got["steps"]}
-        row.update(id=i, done_at=e.get("at", 0), done_by=e.get("by", ""))
+        row.update(id=i, done_at=e.get("at", 0), done_by=e.get("by", ""),
+                   reopenable=not (rel and e.get("at", 0) < rel[1]))
         out.append(row)
     n = _int(limit)
     return out[:n] if n else out
