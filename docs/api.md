@@ -66,7 +66,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/tests` | prefix | `_get_tests` | GET /api/tests. |  |
 | GET | `/api/bugs` | prefix | `_get_bugs` | GET /api/bugs. |  |
 | GET | `/api/pubkeys` | prefix | `_get_pubkeys` | GET /api/pubkeys. | refused: create |
-| POST | `/api/v1/nodes` | prefix | `_nodes` | The Nodes tab's verbs. | refused: nodes-write |
+| POST | `/api/v1/nodes` | prefix | `_nodes` | The Nodes tab's verbs. |  |
 | POST | `/api/v1/jobs` | prefix | `_jobs` | The Jobs tab's one verb, and where `bb run`, `bb build`, `bb test` and `bb emu` land from the controller (nodes.run_job). |  |
 | POST | `/api/v1/bb` | exact | `_bb_relay` | A bb verb from a session on a NODE, run here (roadmap #24). | refused: bb |
 | POST | `/api/v1/claude-login` | exact | `_claude_login` | A node saying what this account is signed in to Claude AS there (R47), or that it is not: never the login itself, which stays on the machine that made it (claudegrant.py says why). |  |
