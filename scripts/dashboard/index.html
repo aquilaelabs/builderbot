@@ -3529,21 +3529,20 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
-/* What a Claude session is doing, at a glance. Blue matches the runner card's
-   "busy" spinner (work in progress) and amber is the color this page
-   already uses for "wants a decision from you". Never green: a session
-   waiting for input on an active (green) tab would vanish into it. */
+/* What a Claude session is doing, at a glance: yellow and breathing while
+   it works, the accent's green once it is idle and ready for you (the
+   operator, 16 Oct; the green tab strip it once vanished into is gone). */
 .st{display:inline-block;width:8px;height:8px;border-radius:50%;flex:0 0 auto;
   margin-right:6px;vertical-align:baseline}
-.st.working{background:var(--note);animation:pulse 1.6s ease-in-out infinite}
-.st.waiting{background:var(--warn)}
+.st.working{background:var(--warn);animation:pulse 1.6s ease-in-out infinite}
+.st.waiting{background:var(--accent)}
 /* What is live glows, softly, in its own color (R218 step 7): a session
    working or waiting, a running job, a running container. One glow, small
    and under half its color, so it reads as lit rather than as a highlight. */
-.st.working{box-shadow:0 0 0 2px color-mix(in srgb, var(--note) 20%, transparent),
-  0 0 8px color-mix(in srgb, var(--note) 55%, transparent)}
-.st.waiting{box-shadow:0 0 0 2px color-mix(in srgb, var(--warn) 20%, transparent),
-  0 0 8px color-mix(in srgb, var(--warn) 50%, transparent)}
+.st.working{box-shadow:0 0 0 2px color-mix(in srgb, var(--warn) 20%, transparent),
+  0 0 8px color-mix(in srgb, var(--warn) 55%, transparent)}
+.st.waiting{box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent),
+  0 0 8px color-mix(in srgb, var(--accent) 50%, transparent)}
 .pill.live{box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
   0 0 10px color-mix(in srgb, var(--accent) 30%, transparent)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
