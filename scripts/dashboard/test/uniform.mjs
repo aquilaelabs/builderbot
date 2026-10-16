@@ -1608,6 +1608,10 @@ for (const kind of kinds){
      `...and only so often: no node list or presence off their pages, the status poll at most once and the revisions poll at most six times in eight seconds (${JSON.stringify(calm)})`);
   for (const kind of Object.keys(DRIVERS)){
     if (kind.startsWith('notebook:')) continue;
+    // The last kind's close lands the page on Home, which is an open of its
+    // own and reads Home: let that land before this kind's count starts, or
+    // Home's own count holds the landing's reads as well as its open's.
+    await settled(page, { quiet: 300, cap: 5000 });
     await page.evaluate(() => { window.__f = {}; });
     await MARK();
     // Attached, not visible: the count is about requests, and a tab that
