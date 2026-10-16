@@ -3720,8 +3720,11 @@ def snapshot(who):
     # everything sees the unowned ones too: terminals opened before accounts,
     # or by something that is not a browser.
     mine, seen = users.uid_of(who), {p["name"] for p in ps}
+    # Judged by what the node calls it: the owner's node sessions are shown
+    # bare (node_tmux_sessions), and by the bare name they read as unowned,
+    # so every account on that project listed the owner's Claude as its own.
     sessions = [s for s in tmux_sessions() + node_tmux_sessions()
-                if _session_visible(s["name"], mine, seen, users.sees_all(who))]
+                if _session_visible(s.get("node_name") or s["name"], mine, seen, users.sees_all(who))]
     login = signin.state(mine)
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell

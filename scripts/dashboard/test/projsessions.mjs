@@ -84,6 +84,27 @@ ok(ended.ok && ended.who === 'w.sess' && (poll.kill_sessions || []).includes(nod
 ok(!((await call('/api/project-sessions?project=alpha')).sessions || []).some(r => r.name === nodeShell),
    '...and it leaves the list at once, not at the next heartbeat');
 
+// ---- the owner's Claude on a node is the owner's alone ------------------------
+// The owner's node sessions are drawn bare, by this container's rule, and by
+// the bare name the status read them as unowned: an account given the
+// project listed the owner's Claude as one of its own, on Sessions and in
+// Sign out's count (the operator, 16 Oct).
+{
+  const ustate = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users;
+  const ownerUid = Object.values(ustate).find(u => u.role === 'owner').uid;
+  const sample = extra => fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + agent.token },
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: extra,
+      sync: { alpha: { ready: true, rev: 1 } } }, running: [], wait: 0 }) });
+  await sample([{ name: `${ownerUid}~claude-alpha`, attached: false, cwd: '/workspace/alpha', title: '' }]);
+  const listed = async h => ((await call('/api/status', null, h)).sessions || [])
+    .filter(x => x.node_id === box.id).map(x => x.name);
+  const watch = await listed(PLAIN), own = await listed(H);
+  ok(!watch.length && own.includes('claude-alpha'),
+     `the owner's Claude session on a node is listed for the owner, bare, and for nobody else given the project (owner ${JSON.stringify(own)}, w.watch ${JSON.stringify(watch)})`);
+  await sample([]);
+}
+
 // ---- the dialog: at its foot, for an administrator -----------------------------
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
