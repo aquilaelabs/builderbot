@@ -457,7 +457,7 @@ function renderToolchainsInto(i){
     surf.setBar(skNodeBar([]));
     surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles"><div class="tile"><span class="tv">${skv(1.4)}</span>
         <span class="tl">installed</span><span class="ts">of ${skv(2)} offered</span></div></div></div>
-      <div class="field tcact"><div class="actbar macros"><span class="state">${skv(9)}</span><span class="sp"></span>
+      <div class="tcact"><div class="actbar macros"><span class="state">${skv(9)}</span><span class="sp"></span>
         <button type="button">Check for updates</button><button type="button" class="primary">Install selected</button></div></div>
       ${skTable(TC_COLS, 6, "tcs")}`);
     return;
@@ -547,7 +547,7 @@ function renderToolchainsInto(i){
     (() => {
       const may = mayToolchains(tcNode);
       const clean = onNode && (d.cleanable || []).length && may ? d.cleanable : [];
-      return `<div class="field tcact"><div class="actbar macros">
+      return `<div class="tcact"><div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       <span class="sp"></span>
       ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}
