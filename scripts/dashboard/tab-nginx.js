@@ -292,7 +292,12 @@ function renderNginxInto(i){
   const d = docSurface(i, "nginx");
   if (!d) return;
   if (nginxList === null){
-    d.list.innerHTML = `${skel("rows", 3)}`;
+    // Its template (R218 step 16): the bar and the state row's words are
+    // the page's own; the node and its routes are on their way.
+    d.setBar(skNodeBar(["Refresh"]));
+    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">nginx on ${skv(6)}</div>
+        <div class="sub">${skv(24)}</div></div></div>${skRows(2)}`);
+    d.setFoot(`One nginx per node, written from here: edit its routes and certificates here, never its file. Deploy and Save build it on the node; its build is on the Docker tab.`);
     loadNginx();
     return;
   }

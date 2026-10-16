@@ -38,7 +38,20 @@ function openPhoneTab(){
 function renderPhoneInto(i){
   const d = docSurface(i, "phone");
   if (!d) return;
-  if (!ph){ d.list.innerHTML = `${skel("rows", 3)}`; return; }
+  if (!ph){
+    // Its template (R218 step 16): the state row's words and the two ways in
+    // (connect, pair) with their labels are the page's own; the node and
+    // its phone are on their way.
+    const fld = (label, em, grow = false) => `<div class="${grow ? "grow " : ""}setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
+    d.setBar(skNodeBar(["Refresh"]));
+    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
+        <div class="sub">${skv(10)}</div></div></div>
+      <div class="row">${fld("Phone IP address", 18, true)}${fld("Port", 7)}<span class="acts"><button type="button" class="primary" disabled>Connect</button></span></div>
+      <div class="row"><div class="grow prefrow">${fld("Pairing port", 9)}${fld("Pairing code", 9)}</div>
+        <span class="acts"><button type="button" disabled>Pair</button></span>
+        <div class="sub">On the phone: Wireless debugging, then <b>Pair device with pairing code</b>. Keep that dialog open.</div></div>`);
+    return;
+  }
   const nodes = ph.nodes || [];
   const n = nodes.find(x => x.id === phNode) || nodes[0];
   d.setBar(`${nodePick("phPick", nodes, n?.id)}<span class="sp"></span>

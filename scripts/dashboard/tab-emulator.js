@@ -147,7 +147,13 @@ function renderEmulatorInto(i){
   const surf = docSurface(i, "emu");
   if (!surf) return;
   const d = emu;
-  if (!d){ surf.list.innerHTML = `${skel("rows", 4)}`; return; }
+  if (!d){
+    // Its template (R218 step 16): the bar and the add list's label are the
+    // page's own; the node's images are on their way.
+    surf.setBar(skNodeBar(["Refresh"]));
+    surf.list.innerHTML = skTpl(`${skRows(2)}<div class="imgadd emadd"><span class="lbl">Images to add</span>${skv(12, "ctl")}</div>${skRows(2)}`);
+    return;
+  }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
     esc("could not read the images: " + d.error)}</div>`; return; }
   if (d.nonode){

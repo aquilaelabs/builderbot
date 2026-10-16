@@ -61,7 +61,12 @@ function renderSessionsInto(i){
   const d = docSurface(i, "sessions");
   if (!d) return;
   const ss = state?.sessions;
-  if (!ss){ paint(d.list, `${skel("rows", 4)}`); return; }
+  if (!ss){
+    d.setBar(`<span class="dim">${skv(6)}</span>`);
+    paint(d.list, skTpl(skTable(SESS_COLS, 3, "sesstbl", "row sessrow")));
+    d.setFoot("Yours, here and on the nodes. Closing a tab leaves its session running; End is what stops one.");
+    return;
+  }
   const claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
   d.setBar(`<span class="dim">${ss.length} session${ss.length === 1 ? "" : "s"}${
     claudes ? `, ${claudes} of them Claude` : ""}</span>`);

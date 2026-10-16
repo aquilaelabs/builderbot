@@ -450,7 +450,15 @@ function renderToolchainsInto(i){
   // tctab class the suite finds it by.
   const surf = docSurface(i, "tc");
   if (!surf) return;
-  if (!d){ surf.list.innerHTML = `${skel("rows", 6)}`; return; }
+  if (!d){
+    // Its template (R218 step 16): the bar, the tile's words and the table's
+    // head are the page's own; the store and its rows are on their way.
+    surf.setBar(skNodeBar(["Refresh"]));
+    surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles"><div class="tile"><span class="tv">${skv(1.4)}</span>
+        <span class="tl">installed</span><span class="ts">of ${skv(2)} offered</span></div></div></div>
+      ${skTable(TC_COLS, 6, "tcs")}`);
+    return;
+  }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
     esc("could not read the toolchain list: " + d.error)}</div>`; return; }
   // No node to install on. Not this container: it builds nothing and keeps

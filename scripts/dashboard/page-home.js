@@ -99,7 +99,7 @@ function homeHref(key){
 function homeTilesHtml(tiles){
   return `<div class="field"><div class="tiles hometiles">${tiles.map(t => `
     <a class="tile link${t.tone ? " " + esc(t.tone) : ""}" href="${esc(homeHref(t.key))}" data-htile="${esc(t.key)}">
-      <span class="tv">${esc(String(t.value ?? "–"))}</span>
+      <span class="tv">${t.wait ? skv(1.4) : esc(String(t.value ?? "–"))}</span>
       <span class="tl">${esc(t.label)}</span>
       ${t.sub ? `<span class="ts${t.subTone ? " " + esc(t.subTone) : ""}">${esc(t.sub)}</span>` : ""}
     </a>`).join("")}</div></div>`;
@@ -129,28 +129,40 @@ function homeGlanceHtml(){
   }).join("")}</div>`;
 }
 
-function renderHomeInto(i){
-  const d = docSurface(i, "home");
-  if (!d) return;
-  if (homeData === null){
-    d.list.innerHTML = `${skel("home")}`;
-    if (!homeFetching) homeOpen();
-    return;
-  }
+// Attention, Last jobs and the pinned projects: the cards under the tiles,
+// with Last jobs' rows handed in (its own, or the shapes of them on the way).
+function homeCards(jobs){
   const needs = needsRows(), hidden = state?.bell_hidden || 0;
-  d.setFoot(`A tile opens its page; a row opens what it is about.`);
-  // Painted only when it changed: Home redraws on every poll (its rows are
-  // the poll's), and an unchanged draw keeps a pointer's hover and a fold.
-  if (!paint(d.list, (homeData.error ? `<div class="hint bad">${esc(homeData.error)}</div>` : "")
-    + homeTilesHtml(homeTiles())
-    + `<div class="field"><div class="homegrid">
+  return `<div class="field"><div class="homegrid">
         <section class="hcard"><h3>Attention</h3>${needs.length ? needs.join("")
           : `<div class="hnone">nothing needs attention</div>`}${hidden
           ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
               <button type="button" data-brestore>Show again</button></div>` : ""}</section>
-        <section class="hcard"><h3>Last jobs</h3>${homeJobsHtml()}</section>
+        <section class="hcard"><h3>Last jobs</h3>${jobs}</section>
       </div></div>
-      <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${homeGlanceHtml()}</section></div>`)) return;
+      <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${homeGlanceHtml()}</section></div>`;
+}
+
+function renderHomeInto(i){
+  const d = docSurface(i, "home");
+  if (!d) return;
+  if (homeData === null){
+    // Its template while /api/home is on its way (R218 step 16): the poll
+    // already holds Attention, the pinned projects and three of the tiles,
+    // so only the node, container and job numbers and Last jobs wait.
+    const tiles = homeTiles().map(t => t.key === "jobs" ? {...t, wait: true, sub: ""} : t);
+    if (railAllows("nodes")) tiles.unshift({key: "nodes", label: "nodes online", wait: true},
+                                           {key: "containers", label: "containers running", wait: true});
+    d.list.innerHTML = skTpl(homeTilesHtml(tiles) + homeCards(skRows(3)), {live: true});
+    wireNeeds(d.list);
+    if (!homeFetching) homeOpen();
+    return;
+  }
+  d.setFoot(`A tile opens its page; a row opens what it is about.`);
+  // Painted only when it changed: Home redraws on every poll (its rows are
+  // the poll's), and an unchanged draw keeps a pointer's hover and a fold.
+  if (!paint(d.list, (homeData.error ? `<div class="hint bad">${esc(homeData.error)}</div>` : "")
+    + homeTilesHtml(homeTiles()) + homeCards(homeJobsHtml()))) return;
   const root = d.list;
   root.querySelectorAll('[data-htile="sessions"]').forEach(a => a.onclick = e => { e.preventDefault(); railGo("sessions"); });
   // The CI tile's address opens the Git view; its CI section opens with it.

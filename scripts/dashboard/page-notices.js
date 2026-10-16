@@ -101,7 +101,11 @@ function renderNoticesInto(i){
   const d = docSurface(i, "notices");
   if (!d) return;
   if (noticesData === null){
-    d.list.innerHTML = `${skel("rows")}`;
+    // Its template (R218 step 16): the History section and its name are the
+    // page's own; what was kept is on its way.
+    d.setBar(`<span class="dim">${skv(4)}</span>`);
+    d.list.innerHTML = skTpl(docSection("notices", "history", "History", "", skRows(5)));
+    d.setFoot(`Kept for your account, the newest ${esc(String(300))}; a toast is gone in seconds, and this is where it went.`);
     if (!noticesFetching) loadNotices();
     return;
   }

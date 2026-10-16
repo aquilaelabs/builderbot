@@ -157,7 +157,7 @@ function nbDesignView({$, nb, project, root}){
 
   function drawDesign(){
     const body = $("dsBody");
-    if (!nb.dsData){ body.innerHTML = `${skel("rows")}`; return; }
+    if (!nb.dsData){ body.innerHTML = skel("design"); return; }
     const sh = shown();
     nb.dsRuleLists = {};
     body.innerHTML = pagesSection(sh.page) + themesSection(sh.theme);

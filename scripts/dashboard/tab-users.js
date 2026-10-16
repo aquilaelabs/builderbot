@@ -95,18 +95,9 @@ function userRow(u){
 // Which projects a `user` account may see. Only the ones the admin doing the
 // giving can see themselves: the server filters again, so this is the honest
 // list rather than the enforcing one.
-function renderUsersInto(i){
-  const d = docSurface(i, "users");
-  if (!d) return;
-  d.setBar(`<span class="dim">who may sign in here, and which projects they see</span>`);
-  if (usersList === null){
-    d.list.innerHTML = skel("rows", 4);
-    loadUsers();
-    return;
-  }
-  d.list.innerHTML = `
-    ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
-    ${usersList.length ? tblWrap(USER_COLS, usersList.map(userRow).join(""), "utbl") : ""}
+// What an account gets, and the form that adds one: the same on every draw.
+function usersSections(){
+  return `
     ${docSection("users", "roles", "What an account gets", "", `
         <div class="sub">Each account has its own home, Claude login and memories; two people on one project each work in a worktree of their own, sharing the notebook.</div>
         <div class="sub">A new account holds no role, so it may do nothing until the <b>Roles</b> tab gives it one, Everywhere or on a project, and puts it on projects.</div>
@@ -128,6 +119,23 @@ function renderUsersInto(i){
         </div>
         <div class="sub">A new account holds no role: give it one on the Roles tab.</div>
         <div class="actbar"><button type="button" class="primary" id="uAdd">Add</button></div>`)}`;
+}
+
+function renderUsersInto(i){
+  const d = docSurface(i, "users");
+  if (!d) return;
+  d.setBar(`<span class="dim">who may sign in here, and which projects they see</span>`);
+  if (usersList === null){
+    // Its template (R218 step 16): the table's head and the two sections
+    // under it are the page's own; the accounts are on their way.
+    d.list.innerHTML = skTpl(skTable(USER_COLS, 2, "utbl") + usersSections());
+    loadUsers();
+    return;
+  }
+  d.list.innerHTML = `
+    ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
+    ${usersList.length ? tblWrap(USER_COLS, usersList.map(userRow).join(""), "utbl") : ""}
+    ${usersSections()}`;
   wireSections(d.list);
   d.setFoot(`Locked out? Run <code>bb users passwd &lt;name&gt;</code> in the
     container to reset a password.`);

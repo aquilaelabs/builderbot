@@ -793,7 +793,14 @@ right, in the ink at a whisper so every scheme tints them its own way (the
 operator, 16 Oct). It is still a `.loading`, so what replaces it fades in
 and a failed poll writes its words over it; the word stays for a screen
 reader, and the light stands still under `prefers-reduced-motion`. A
-`loading…` line is left only where no shape is known.
+page that knows its own shape waits as itself (the operator, 16 Oct): what
+never changes on it (its headings, a tile's label, a table's head, a form's
+labels, its bar's controls) is drawn for real and only the values on their
+way shimmer: `skTpl()` around the page's own markup, `skv()` for a value
+inline (`ctl` for a field's control), `skRows()` and `skTable()` for the
+rows to come, `skNodeBar()` for a node page's bar. It is inert while it
+waits, its actions there and dead, so nothing is typed into a form the real
+one replaces. A `loading…` line is left only where no shape is known.
 
 ### progress
 

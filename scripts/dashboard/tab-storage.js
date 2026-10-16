@@ -169,7 +169,17 @@ function renderStorageInto(i){
   const d = docSurface(i, "storage");
   if (!d) return;
   if (storageList === null){
-    d.list.innerHTML = `${skel("rows", 4)}`;
+    // Its template (R218 step 16): the bar, the state row's words and the
+    // two headings with their hints are the page's own; the node and what
+    // its disks hold are on their way.
+    d.setBar(skNodeBar(storageMay ? ["Measure now", "Refresh"] : ["Refresh"]));
+    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">Storage on ${skv(6)}</div>
+        <div class="sub">${skv(28)}</div></div></div>
+      <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
+      ${skRows(2)}
+      <div class="field">${lbl("", "By project")}<div class="hint">What each project's folders hold: its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.</div></div>
+      ${skRows(3)}`);
+    d.setFoot(`The agent walks each node's disks once an hour at the lowest priority. A project you cannot see is counted under other projects.`);
     loadStorage();
     return;
   }

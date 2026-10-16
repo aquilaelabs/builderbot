@@ -3630,9 +3630,20 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .skel.warn{display:block;padding:9px 11px;font-style:italic}
 .doc .skel.warn{padding:var(--row-y) var(--row-x)}
 .sk-said{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.skel .sk-b{display:block;height:.8em;width:60%;border-radius:var(--r-small);
+.skel .sk-b,.skv{display:block;height:.8em;width:60%;border-radius:var(--r-small);
   background:linear-gradient(100deg,var(--sk) 40%,var(--sk-hi) 50%,var(--sk) 60%) var(--sk);
   background-size:250% 100%;animation:shimmer 1.5s linear infinite}
+/* A page's own template while it waits (skTpl): laid out as the page lays
+   itself out, its real headings and labels, and a value on its way (skv) a
+   bar inline where the value will stand. */
+.skel.skt{display:block;padding:0}
+.skt>.sk-row{padding-left:var(--row-x);padding-right:var(--row-x)}
+.skv{--sk:color-mix(in srgb,var(--ink) 9%,transparent);--sk-hi:color-mix(in srgb,var(--ink) 17%,transparent);
+  display:inline-block;vertical-align:middle;max-width:100%}
+.tile .tv .skv{height:.9em}
+.skv.ctl{display:block;height:var(--tap);border-radius:var(--r-control)}
+.pick .skv.ctl{display:inline-block;margin-left:6px}
+.docbarrow>.skv.ctl{display:inline-block;flex:none}
 @keyframes shimmer{from{background-position:100% 0} to{background-position:0 0}}
 .skel .sk-b.sub{height:.62em;margin-top:9px}
 .sk-row{padding:var(--row-y) 0;border-bottom:var(--hair) solid var(--line);min-height:var(--tap)}
@@ -3665,7 +3676,7 @@ span.skel.sk-word{display:inline-block;vertical-align:middle;padding:0}
 @keyframes contentIn{from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none}}
 .justpainted{animation:contentIn .18s ease}
 @media(prefers-reduced-motion:reduce){
-  .loading{animation:none} .justpainted{animation:none} .skel .sk-b{animation:none}
+  .loading{animation:none} .justpainted{animation:none} .skel .sk-b,.skv{animation:none}
 }
 
 /* Macros run in the terminal now, so there is no output pane to put a message
@@ -4354,7 +4365,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            already runs past a phone at five labels, and a version and the
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
-      <div id="artList" data-skel="rows"></div>
+      <div id="artList" data-skel="artifacts"></div>
       <!-- What a session looked with (R96): reels and emulator shots, in one
            fold apart from what ships, each saying whose it is, and swept
            after the project's "captures kept" days. -->
@@ -4390,7 +4401,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
-      <div id="gitBody" data-skel="rows"></div>
+      <div id="gitBody" data-skel="git"></div>
     </div>
     <div class="nbview" data-view="design" hidden>
       <!-- What the project looks like (design.py, nb-design.js): one design
@@ -4404,7 +4415,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
-      <div id="dsBody" data-skel="rows"></div>
+      <div id="dsBody" data-skel="design"></div>
     </div>
     <div class="nbview" data-view="wiki" hidden>
       <!-- The project's wiki (wiki.py, nb-wiki.js): pages as rows that open

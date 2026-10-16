@@ -199,6 +199,28 @@ ok(await page.evaluate(() => !document.getElementById('dot').classList.contains(
                              && pollFails === 0),
    '...and it all clears the moment a poll lands again');
 
+// ---- a page waits as itself (R218 step 16) ---------------------------------
+// What never changes on a page is drawn while its data is on the way, and
+// only the values shimmer: the Users page with its accounts on the way shows
+// its table's head and its Add somebody form, inert so nothing is typed into
+// a form the real one replaces.
+{
+  await page.evaluate(() => { location.hash = '#/people/users'; });
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'users' && document.querySelector('.doc.on .utbl'), null, { timeout: 15000 });
+  await page.route('**/api/users*', () => {});
+  const t = await page.evaluate(() => { usersList = null; renderUsersInto(0);
+    const tpl = document.querySelector('.doc.on .skt');
+    return { inert: !!tpl?.inert, head: [...(tpl?.querySelectorAll('.thead .th') || [])].map(h => h.textContent.trim()).filter(Boolean),
+             sects: [...(tpl?.querySelectorAll('details.sect summary .t') || [])].map(x => x.textContent),
+             values: tpl?.querySelectorAll('.skv').length || 0, waiting: !!tpl?.classList.contains('loading') }; });
+  ok(t.inert && t.waiting && t.head.includes('Account') && t.head.includes('Last seen') && t.sects.includes('Add somebody') && t.values > 0,
+     `a page waiting on its data draws its own template, its values shimmering, inert until they land (${JSON.stringify(t)})`);
+  await page.unroute('**/api/users*');
+  await page.evaluate(() => { usersList = null; loadUsers(); });
+  await page.waitForFunction(() => !document.querySelector('.doc.on .skt') && document.querySelector('.doc.on .utbl .tline'), null, { timeout: 15000 });
+  ok(true, '...and the real page replaces it once they land');
+}
+
 // ---- one part's draw failing must not strand the rest (bug #44) ----
 // The other shape of the same report: the container answered, one draw threw
 // on the payload, and every part after it kept its initial text under a red

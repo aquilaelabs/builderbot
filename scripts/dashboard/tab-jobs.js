@@ -152,7 +152,14 @@ function renderJobsInto(i){
   const d = docSurface(i, "jobs");
   if (!d) return;
   if (jobsList === null){
-    d.list.innerHTML = `${skel("rows", 8)}`;
+    // Its template (R218 step 16): the bar's filter and the table's head are
+    // the page's own; the count and the rows are on their way.
+    d.setBar(`<span class="dim">${skv(4)}</span><span class="sp"></span>
+      <label class="jbfilter"><input type="checkbox" id="jbActive" ${jobsActive ? "checked" : ""}>
+        only what is running or waiting</label>`);
+    d.list.innerHTML = skTpl(skTable(JOB_COLS, 6, "jbtbl"));
+    d.setFoot(`Cancel stops a job. Nothing here edits one.`);
+    wireJobsTab(d.el);
     loadJobs();
     return;
   }

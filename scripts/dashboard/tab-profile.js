@@ -64,7 +64,16 @@ function renderProfileInto(i){
   const d = docSurface(i, "profile");
   if (!d) return;
   if (!profile){
-    d.list.innerHTML = `${skel("rows", 4)}`;
+    // Its template (R218 step 16): every heading and field label here is the
+    // page's own; what is yours to fill them is on its way.
+    const sec = (h, body) => `<div class="row stack2"><div class="grow"><h4>${esc(h)}</h4><div class="logset">${body}</div></div></div>`;
+    const fld = label => `<div class="logdays setrow col"><span class="lbl">${esc(label)}</span>${skv(18, "ctl")}</div>`;
+    d.setBar(`<span class="dim">${skv(16)}</span>`);
+    d.list.innerHTML = skTpl(sec("What you may do", skRows(3))
+      + sec("Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join(""))
+      + sec("On this browser", fld("Time zone")) + sec("Claude plugins", skRows(2)) + sec("Conversation logs", skRows(2))
+      + sec("Password", fld("Current password") + fld("New password") + fld("New password again")));
+    d.setFoot(`Your commits carry the git name and email above in every session and shell.`);
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};

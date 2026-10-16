@@ -1284,7 +1284,16 @@ function renderNodesInto(i){
   const d = docSurface(i, "nodes");
   if (!d) return;
   if (nodesList === null){
-    d.list.innerHTML = `${skel("rows")}`;
+    // Its template (R218 step 16): the bar, the sections' names and the jump
+    // bar over them are the page's own; the node and what it says are on
+    // their way. A section somebody shut is drawn shut, as it will land.
+    const sects = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["claude", "Claude Code"],
+                   ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+    d.setBar(`<label class="pick">Node ${skv(9, "ctl")}</label><span class="sp"></span>
+      <span class="actbar"><button type="button" disabled>Create sandbox VM</button><button type="button" disabled>Enroll node</button></span>`);
+    d.list.innerHTML = skTpl(`<div class="row"><div class="grow"><div class="name">${skv(7)}</div><div class="sub">${skv(26)}</div></div></div>
+      <nav class="sectjump">${sects.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>
+      ${sects.map(([k, t], j) => docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}`);
     loadNodes();
     return;
   }
@@ -1517,7 +1526,15 @@ function runnerRows(){
 function renderRunnerInto(i){
   const d = docSurface(i, "runner");
   if (!d) return;
-  if (nodesList === null){ d.list.innerHTML = `${skel("rows", 4)}`; return; }
+  if (nodesList === null){
+    // Its template (R218 step 16): the bar and the state row's words are the
+    // page's own; the node and its runners are on their way.
+    d.setBar(skNodeBar(["Refresh"]));
+    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">CI runners on ${skv(6)}</div>
+        <div class="sub">One runner per git host; its labels decide which workflows land here.</div></div></div>
+      <div class="field"><div class="actbar"><button type="button" disabled>Add runner</button></div></div>${skRows(1)}`);
+    return;
+  }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
   const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
   if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";

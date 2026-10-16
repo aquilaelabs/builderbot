@@ -52,6 +52,7 @@ function nodePick(id, nodes, cur, why = () => ""){
 // word (inline, a view's head while its count is coming).
 const SKW = [62, 48, 71, 55, 66, 43, 58, 51];
 function skel(shape = "rows", n = 0, said = "loading…"){
+  if (SKTPLS[shape]) return SKTPLS[shape]();
   const b = (cls, w) => `<i class="sk-b${cls ? " " + cls : ""}"${w ? ` style="width:${w}%"` : ""}></i>`;
   const times = (k, f) => Array.from({length: k}, (_, j) => f(j)).join("");
   const rows = k => times(k, j => `<div class="sk-row">${b("", SKW[j % 8])}${b("sub", SKW[(j + 3) % 8] / 2)}</div>`);
@@ -68,6 +69,49 @@ function skel(shape = "rows", n = 0, said = "loading…"){
   }[shape] || (() => rows(n || 5));
   const tag = shape === "word" ? "span" : "div";
   return `<${tag} class="loading skel sk-${esc(shape)}"><span class="sk-said">${esc(said)}</span>${inner()}</${tag}>`;
+}
+
+// ...and a page that knows its own shape better than that (R218 step 16, the
+// operator 16 Oct): what never changes on it (its headings, a tile's label,
+// a table's head, a form's labels) drawn for real, and only the values on
+// their way shimmering. skTpl() keeps it a .loading, with the word for a
+// screen reader; skv() is one value inline, as wide as a typical one in em
+// ("ctl" for a field's control, the height of one);
+// skRows() rows inside a real section or card.
+function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" style="width:${Number(em) || 5}em"></i>`; }
+function skRows(n = 4){
+  return Array.from({length: n}, (_, j) => `<div class="sk-row"><i class="sk-b" style="width:${SKW[j % 8]}%"></i><i class="sk-b sub" style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("");
+}
+// Inert unless its caller wired what it drew (`live`): a form drawn before
+// its wiring would take typing the real one, landing, throws away.
+function skTpl(html, {said = "loading…", live = false} = {}){
+  return `<div class="loading skel skt"${live ? "" : " inert"}><span class="sk-said">${esc(said)}</span>${html}</div>`;
+}
+
+// The bar a node's page wears (nodePick and its actions at the right) while
+// what it lists is on its way: the picker's box shimmering, the actions
+// there and dead until the page they act on has drawn.
+function skNodeBar(actions = []){
+  return `<label class="pick">Node ${skv(7, "ctl")}</label><span class="sp"></span><span class="actbar">${
+    actions.map(a => `<button type="button" disabled>${esc(a)}</button>`).join("")}</span>`;
+}
+// The notebook views whose sections are always the same, by name, so the
+// markup's placeholders (data-skel) and the views' own waits draw them.
+const SKTPLS = {
+  git: () => skTpl(`<div class="field actbar"><span class="state">${skv(14)}</span><span class="sp"></span>
+      <button type="button" disabled>Fetch</button><button type="button" disabled>Pull</button><button type="button" disabled>Push</button></div>`
+    + [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["ci", "CI"]]
+      .map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")),
+  design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2)) + docSection("design", "themes", "Themes", "", skRows(2))),
+  // Not Version: the view draws that section itself, outside the list.
+  artifacts: () => skTpl([["build", "Build", 1], ["files", "Files", 2]]
+    .map(([k, t, n]) => docSection("artifacts", k, t, "", skRows(n))).join("")),
+};
+// A table on its way: its real head over rows whose cells shimmer, each as
+// wide as its column's values tend to be.
+function skTable(cols, n = 5, cls = "", rowCls = "row stack2"){
+  return tblWrap(cols, Array.from({length: n}, (_, j) => `<div class="${rowCls}">${tblLine(cols, cols.map((c, i) =>
+    c.act ? "" : skv(i === 0 ? 7 + (SKW[j % 8] % 5) : 2.5 + ((i + j) % 3))))}</div>`).join(""), cls);
 }
 
 function docSurface(i, kind){

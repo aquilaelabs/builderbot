@@ -209,7 +209,13 @@ function renderRolesInto(i){
   if (!d) return;
   d.setBar(`<span class="dim">what each account may do: roles given to people, and what each role reads and writes</span>`);
   if (rolesData === null){
-    d.list.innerHTML = skel("rows", 4);
+    // Its template (R218 step 16): the two sections and their fields' labels
+    // are the page's own; who holds what is on its way.
+    const field = (label, em) => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
+    d.list.innerHTML = skTpl(docSection("roles", "people", "People", "", field("Account", 16))
+      + docSection("roles", "roles", "Roles", "", field("Role", 12) + field("Kind", 16) + skRows(6)));
+    d.setFoot(`Roles add up: an account may do what any of its roles allows: an Everywhere role
+    everywhere, a role on a project on that project. Write needs Read, and an area without Read is not shown at all.`);
     loadRoles();
     return;
   }
