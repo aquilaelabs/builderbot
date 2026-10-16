@@ -20,7 +20,7 @@ async function openTrash(){
 
 async function drawTrash(){
   const el = $("tList");
-  el.innerHTML = `<div class="loading">loading…</div>`;
+  el.innerHTML = `${skel("rows", 3)}`;
   let j;
   try{ j = await (await fetch("/api/trash")).json(); }
   catch(e){ el.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; return; }

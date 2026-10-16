@@ -214,7 +214,7 @@ function nbWikiView({$, nb, project}){
           <button type="button" class="stop" id="wkCancel">Cancel</button>
           <button type="button" class="primary" id="wkSave">Save</button></div>`;
     } else if (!pg){
-      body = `<div class="loading">loading…</div>`;
+      body = `${skel("lines", 9)}`;
     } else if (pg.error){
       body = `<div class="hint bad">${esc(pg.error)}</div>`;
     } else {

@@ -35,7 +35,7 @@ function nbMemoryView({$, nb}){
     if (nb.memN !== null) bits.push(nb.memN ? `${nb.memN} ${nb.memN === 1 ? "memory" : "memories"}` : "nothing remembered yet");
     // Count first, like every view's head (R119 step 4); what the view is
     // for is its title, there when a pointer asks.
-    el.textContent = bits.join(" · ") || "loading…";
+    if (bits.length) el.textContent = bits.join(" · "); else el.innerHTML = skel("word");
     el.title = "what every session here starts with";
   }
 

@@ -61,7 +61,7 @@ function renderSessionsInto(i){
   const d = docSurface(i, "sessions");
   if (!d) return;
   const ss = state?.sessions;
-  if (!ss){ paint(d.list, `<div class="loading">loading…</div>`); return; }
+  if (!ss){ paint(d.list, `${skel("rows", 4)}`); return; }
   const claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
   d.setBar(`<span class="dim">${ss.length} session${ss.length === 1 ? "" : "s"}${
     claudes ? `, ${claudes} of them Claude` : ""}</span>`);

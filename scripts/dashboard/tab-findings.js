@@ -197,7 +197,7 @@ function renderFindingsInto(i){
     loadFindings();
   }
   if (!findings || findings.loading){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("rows")}`;
     return;
   }
   if (findings.error){

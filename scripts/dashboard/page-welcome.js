@@ -63,7 +63,7 @@ function abShow(which){
 }
 async function abLoadLog(){
   const el = $("abLog");
-  el.innerHTML = `<div class="loading">loading…</div>`;
+  el.innerHTML = `${skel("lines")}`;
   let j;
   try{ j = await (await fetch("/api/welcome")).json(); }
   catch(e){ el.innerHTML = `<p class="dim">changelog: ${esc(String(e))}</p>`; return; }

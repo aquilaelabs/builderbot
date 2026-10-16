@@ -169,6 +169,16 @@ ok(dead.red && /polls failed in a row/.test(dead.line) && dead.line === dead.tit
 // ...and the case that actually bit: a page whose FIRST poll never lands, so
 // nothing ever draws and every placeholder keeps its initial text.
 await page.reload({ waitUntil: 'domcontentloaded' });
+// Waiting, the page is the shape of what is coming (R218 step 15): the first
+// pane's placeholder is shapes, and no placeholder on show is a line of words.
+const waiting = await page.evaluate(() => {
+  const shown = [...document.querySelectorAll('main .loading')].filter(e => e.getClientRects().length);
+  return { shapes: document.querySelectorAll('#pane0 .skel .sk-b').length,
+           words: shown.filter(e => !e.classList.contains('skel')).map(e => e.textContent.trim().slice(0, 30)),
+           said: document.querySelector('#pane0 .skel .sk-said')?.textContent || '' };
+});
+ok(waiting.shapes > 0 && waiting.words.length === 0 && waiting.said === 'loading…',
+   `before the first snapshot the page waits with shapes, not words, and still says loading to a screen reader (${JSON.stringify(waiting)})`);
 await page.evaluate(() => refresh());
 await page.evaluate(() => refresh());
 await page.waitForTimeout(300);
@@ -177,6 +187,9 @@ const cold = await page.evaluate(() =>
 ok(cold.length > 0 && cold.every(t => /not reaching the container/.test(t)),
    `...and on a page whose first poll never landed, every placeholder says why rather than "loading…" (${
      cold.length}: ${JSON.stringify(cold[0] || '')})`);
+const coldShape = await page.evaluate(() => [...document.querySelectorAll('main .loading.warn')]
+  .filter(e => e.querySelector('.sk-b') || getComputedStyle(e).display !== 'block').length);
+ok(coldShape === 0, `...a line of words where the shapes stood, nothing of them left (${coldShape} still shaped)`);
 await page.unroute('**/api/status*');
 await page.evaluate(() => refresh());
 await page.waitForTimeout(300);

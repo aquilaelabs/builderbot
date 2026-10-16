@@ -1377,7 +1377,7 @@ async function dmLogs(name, node = dockerNode){
   $("dlTitle").textContent = `Log: ${name}`;
   // Its foot from the first frame: a log read on a busy node takes seconds,
   // and a dialog with no Close meanwhile is one you cannot leave (B498).
-  body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>
+  body.innerHTML = `${skel("lines", 8, "reading…")}
     <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
   body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
   modal.hidden = false;
@@ -1584,7 +1584,7 @@ function dmRowsHtml(ins, job, blind){
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", "",
-                   `<div class="wire">reading…</div>`, {open: false})}
+                   `<div class="wire">${skel("rows", 2, "reading…")}</div>`, {open: false})}
       ${
       // What it printed (R216): a fold under the row, read when opened and
       // again on Follow, so the Jobs tab's log of the last action is not
@@ -1593,7 +1593,7 @@ function dmRowsHtml(ins, job, blind){
       d.exists && !blind && (d.services || []).length
         ? docSection("docker", `logs:${d.project}|${d.instance}`, "Log",
                      (d.services || []).length > 1 ? `${d.services.length} containers` : "",
-                     `<div class="dmlogbox">reading…</div>`, {open: false}) : ""}`;
+                     `<div class="dmlogbox">${skel("lines", 5, "reading…")}</div>`, {open: false}) : ""}`;
     return dmRowWrap(d, st, inner, blind);
   }).join("");
 }
@@ -2180,7 +2180,7 @@ function renderDockerInto(i){
   // the length of a build. The last answer for this node stays on screen
   // with a note, and the new one repaints when it lands (B125).
   if (!dockerList && dockerSeen[dockerNode || ""]) dockerList = dockerSeen[dockerNode || ""];
-  if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (!dockerList){ el.innerHTML = `${skel("rows")}`; return; }
   // The daemon did not answer; it is off, it is not a sandbox VM, or the VM
   // is not running. This used to end here, in one error line with no rows: the
   // page threw away everything it could still honestly say, which is most of
@@ -2336,7 +2336,7 @@ function renderDockerInto(i){
     // when opened, for an administrator, with the two prunes that touch
     // nothing a container uses. Blind, there is no daemon to list.
     !blind && state?.can?.admin ? docSection("docker", "images", "Images and volumes", "",
-        `<div class="dmimgbox">reading…</div>`, {open: false}) : ""}
+        `<div class="dmimgbox">${skel("rows", 3, "reading…")}</div>`, {open: false}) : ""}
     </div>`;
   gateDocker(el, off);
   // The asks answer through the phone's endpoint, which holds the one list of

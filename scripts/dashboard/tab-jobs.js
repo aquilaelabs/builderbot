@@ -152,7 +152,7 @@ function renderJobsInto(i){
   const d = docSurface(i, "jobs");
   if (!d) return;
   if (jobsList === null){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("rows", 8)}`;
     loadJobs();
     return;
   }

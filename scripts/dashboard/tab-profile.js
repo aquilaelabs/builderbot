@@ -64,7 +64,7 @@ function renderProfileInto(i){
   const d = docSurface(i, "profile");
   if (!d) return;
   if (!profile){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("rows", 4)}`;
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};

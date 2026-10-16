@@ -209,7 +209,7 @@ function renderRolesInto(i){
   if (!d) return;
   d.setBar(`<span class="dim">what each account may do: roles given to people, and what each role reads and writes</span>`);
   if (rolesData === null){
-    d.list.innerHTML = `<div class="row"><div class="sub">loading<span class="dots"></span></div></div>`;
+    d.list.innerHTML = skel("rows", 4);
     loadRoles();
     return;
   }

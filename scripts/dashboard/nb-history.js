@@ -55,7 +55,7 @@ function nbHistoryView({$, nb, project}){
 
   function drawHistory(){
     if (!nb.roadmapLog){
-      $("roadmapHist").innerHTML = `<div class="loading">loading…</div>`;
+      $("roadmapHist").innerHTML = `${skel("rows")}`;
       return;
     }
     if (!nb.roadmapLog.length){
@@ -173,7 +173,7 @@ function nbHistoryView({$, nb, project}){
     let on = false, timer = null;
     const draw = rows => {
       pane.innerHTML = rows === null
-        ? `<div class="loading">loading…</div>`
+        ? `${skel("rows")}`
         : !rows.length
         ? `<div class="hint">${bar.querySelector("input").value.trim()
              || bar.querySelector(".hwhen").value !== "0"

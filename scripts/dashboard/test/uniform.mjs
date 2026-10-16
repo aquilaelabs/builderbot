@@ -1141,8 +1141,14 @@ for (const kind of kinds){
       return { black: +(black / n).toFixed(3), ground: [mode >> 16, (mode >> 8) & 255, mode & 255] };
     }, png.toString('base64'));
   };
+  // A wait that runs out names what was still moving, rather than a timeout alone.
   const atRest = () => page.waitForFunction(() => !document.querySelector('.pane .doc.on')?.getAnimations().length,
-                                          null, { timeout: 10000 });
+                                          null, { timeout: 10000 }).catch(async e => {
+    const moving = await page.evaluate(() => { const d = document.querySelector('.pane .doc.on');
+      return { doc: d && `${d.id || '?'}.${d.className}`, own: (d?.getAnimations() || []).map(a =>
+        `${a.animationName || a.constructor.name}:${a.playState}@${Math.round(a.currentTime ?? -1)} ${a.effect?.target === d ? 'self' : a.effect?.target?.className}`) }; });
+    throw new Error(`the page on show never came to rest: ${JSON.stringify(moving)}; ${e.message}`);
+  });
   // The switch and the hold in one task, so no frame is painted between them.
   const switchHeld = id => page.evaluate(id => {
     focusTab(id);

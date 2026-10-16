@@ -450,7 +450,7 @@ function renderToolchainsInto(i){
   // tctab class the suite finds it by.
   const surf = docSurface(i, "tc");
   if (!surf) return;
-  if (!d){ surf.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (!d){ surf.list.innerHTML = `${skel("rows", 6)}`; return; }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
     esc("could not read the toolchain list: " + d.error)}</div>`; return; }
   // No node to install on. Not this container: it builds nothing and keeps

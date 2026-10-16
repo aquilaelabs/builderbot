@@ -1085,7 +1085,7 @@ function nbRoadmapView({$, nb}){
     if (!$("roadmapDoneSect").open){ host.innerHTML = ""; return; }
     const q = (nb.roadmapFind || "").trim().toLowerCase();
     const rows = nb.roadmapDone;
-    if (rows === null){ host.innerHTML = `<div class="loading">loading…</div>`; return; }
+    if (rows === null){ host.innerHTML = `${skel("rows")}`; return; }
     if (!rows.length){ host.innerHTML = `<div class="empty">nothing finished yet</div>`; return; }
     const when = t => t ? fmtTime(t * 1000, {day: "2-digit", month: "short"}) : "";
     // Each the same fold as an open item (R254 step 2): its row, then its

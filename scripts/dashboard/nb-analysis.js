@@ -12,7 +12,7 @@ function nbAnalysisView({$, nb, project}){
     const hint = $("anaHint"), list = $("anaList");
     if (!findings || findings.error) await loadFindings(!!findings?.error);
     nb.anaStamp = state?.reports_mtime ?? null;
-    if (!findings || findings.loading){ hint.textContent = "loading…"; return; }
+    if (!findings || findings.loading){ hint.innerHTML = skel("word"); list.innerHTML = skel("rows"); return; }
     if (findings.error){ hint.textContent = "analysis: " + findings.error; return; }
     if (!findings.available){
       hint.textContent = "No scan results: the report folder is not mounted here.";
@@ -88,7 +88,7 @@ function nbAnalysisView({$, nb, project}){
   const nfmt = n => Number(n || 0).toLocaleString();
   function codebaseSection(){
     const d = codeData;
-    let status = "counting", body = `<div class="loading">loading…</div>`;
+    let status = "counting", body = `${skel("rows", 3)}`;
     if (d && d.error){ status = "no count"; body = `<div class="hint">${esc(d.error)}</div>`; }
     else if (d){
       const code = (d.languages || []).filter(l => l.kind === "code");
@@ -133,7 +133,7 @@ function nbAnalysisView({$, nb, project}){
     const d = nb.preData;
     let body, status = "", cls = "";
     if (!d){
-      body = `<div class="field"><div class="loading">loading…</div></div>`;
+      body = skel("rows", 3);
     } else if (d.error){
       body = `<div class="field"><div class="hint bad">${esc(d.error)}</div></div>`;
       status = "unavailable"; cls = "bad";

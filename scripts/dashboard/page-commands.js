@@ -68,7 +68,7 @@ function drawCommands(){
 // data-need for wireMacros to ghost against the active shell's directory.
 function drawShellCard(id, list){
   const el = $(id);
-  if (!list.length){ paint(el, `<div class="loading">loading…</div>`); return; }
+  if (!list.length){ paint(el, `${skel("chips")}`); return; }
   paint(el, list.map(m => `<button data-m="${esc(m.name)}"${
       m.need ? ` data-need="${esc(m.need)}"` : ""
     } title="${esc(m.label)}: runs in the terminal">${esc(m.label)}</button>`).join(""));

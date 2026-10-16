@@ -292,7 +292,7 @@ function renderNginxInto(i){
   const d = docSurface(i, "nginx");
   if (!d) return;
   if (nginxList === null){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("rows", 3)}`;
     loadNginx();
     return;
   }

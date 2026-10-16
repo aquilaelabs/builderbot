@@ -147,7 +147,7 @@ function renderEmulatorInto(i){
   const surf = docSurface(i, "emu");
   if (!surf) return;
   const d = emu;
-  if (!d){ surf.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (!d){ surf.list.innerHTML = `${skel("rows", 4)}`; return; }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
     esc("could not read the images: " + d.error)}</div>`; return; }
   if (d.nonode){

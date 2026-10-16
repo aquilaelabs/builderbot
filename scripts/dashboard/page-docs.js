@@ -41,6 +41,35 @@ function nodePick(id, nodes, cur, why = () => ""){
   }).join("")}</select></label>`;
 }
 
+// What a list, a grid or a page is waiting with (R218 step 15, the operator
+// 16 Oct): shapes laid out the way its content will land, shimmering, where
+// a "loading…" line said the same in words. Still a .loading, so everything
+// that knew a placeholder knows this one: paint() fades in what replaces it,
+// the poll's failure notice writes its words over it, a suite waits for it
+// to go. The words stay for a screen reader. A shape: rows (a list), cards
+// (a grid of cards), tiles (a row of numbers), home (Home's tiles and two
+// cards), lines (a page of text, a log, a diff), chips (a row of buttons),
+// word (inline, a view's head while its count is coming).
+const SKW = [62, 48, 71, 55, 66, 43, 58, 51];
+function skel(shape = "rows", n = 0, said = "loading…"){
+  const b = (cls, w) => `<i class="sk-b${cls ? " " + cls : ""}"${w ? ` style="width:${w}%"` : ""}></i>`;
+  const times = (k, f) => Array.from({length: k}, (_, j) => f(j)).join("");
+  const rows = k => times(k, j => `<div class="sk-row">${b("", SKW[j % 8])}${b("sub", SKW[(j + 3) % 8] / 2)}</div>`);
+  const tiles = k => `<div class="sk-tiles">${times(k, j => `<div class="sk-tile">${b("big", 30 + SKW[j % 8] / 4)}${b("sub", SKW[(j + 2) % 8])}</div>`)}</div>`;
+  const card = j => `<div class="sk-card">${b("", 35 + SKW[j % 8] / 3)}${b("sub", 80)}${b("sub", SKW[(j + 1) % 8])}</div>`;
+  const inner = {
+    rows: () => rows(n || 5),
+    cards: () => `<div class="sk-cards">${times(n || 6, card)}</div>`,
+    tiles: () => tiles(n || 6),
+    home: () => tiles(6) + `<div class="sk-cards two">${times(2, j => `<div class="sk-card">${b("", 30)}${rows(4 - j)}</div>`)}</div>`,
+    lines: () => times(n || 7, j => b("line", j % 4 === 3 ? 30 : 40 + SKW[j % 8] * .7)),
+    chips: () => times(n || 6, j => b("chip", 0)),
+    word: () => b("", 0),
+  }[shape] || (() => rows(n || 5));
+  const tag = shape === "word" ? "span" : "div";
+  return `<${tag} class="loading skel sk-${esc(shape)}"><span class="sk-said">${esc(said)}</span>${inner()}</${tag}>`;
+}
+
 function docSurface(i, kind){
   const el = $("doc" + i);
   if (!el) return null;

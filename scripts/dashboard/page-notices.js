@@ -101,7 +101,7 @@ function renderNoticesInto(i){
   const d = docSurface(i, "notices");
   if (!d) return;
   if (noticesData === null){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("rows")}`;
     if (!noticesFetching) loadNotices();
     return;
   }

@@ -169,7 +169,7 @@ function renderStorageInto(i){
   const d = docSurface(i, "storage");
   if (!d) return;
   if (storageList === null){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("rows", 4)}`;
     loadStorage();
     return;
   }

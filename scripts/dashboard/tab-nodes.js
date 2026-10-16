@@ -1284,7 +1284,7 @@ function renderNodesInto(i){
   const d = docSurface(i, "nodes");
   if (!d) return;
   if (nodesList === null){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("rows")}`;
     loadNodes();
     return;
   }
@@ -1517,7 +1517,7 @@ function runnerRows(){
 function renderRunnerInto(i){
   const d = docSurface(i, "runner");
   if (!d) return;
-  if (nodesList === null){ d.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (nodesList === null){ d.list.innerHTML = `${skel("rows", 4)}`; return; }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
   const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
   if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";

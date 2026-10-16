@@ -3615,13 +3615,53 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 @keyframes waiting{0%,100%{opacity:.35} 50%{opacity:.75}}
 .loading{color:var(--dim);padding:9px 11px;font-style:italic;
   animation:waiting 1.4s ease-in-out infinite}
+/* ...and, where what is coming has a known shape, the shape itself (R218
+   step 15, page-docs.js skel()): bars where the words will be, rows where the
+   rows will be, cards and tiles where they will stand, a light passing over
+   them left to right. Their color is the ink at a whisper, so every scheme
+   tints them its own way; the words stay for a screen reader. A failure
+   notice written over one (the poll's) is a line of words again. */
+.skel{--sk:color-mix(in srgb,var(--ink) 9%,transparent);--sk-hi:color-mix(in srgb,var(--ink) 17%,transparent);
+  font-style:normal;animation:none;display:flex;flex-direction:column;padding-top:0;padding-bottom:0}
+.skel.warn{display:block;padding:9px 11px;font-style:italic}
+.doc .skel.warn{padding:var(--row-y) var(--row-x)}
+.sk-said{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.skel .sk-b{display:block;height:.8em;width:60%;border-radius:var(--r-small);
+  background:linear-gradient(100deg,var(--sk) 40%,var(--sk-hi) 50%,var(--sk) 60%) var(--sk);
+  background-size:250% 100%;animation:shimmer 1.5s linear infinite}
+@keyframes shimmer{from{background-position:100% 0} to{background-position:0 0}}
+.skel .sk-b.sub{height:.62em;margin-top:9px}
+.sk-row{padding:var(--row-y) 0;border-bottom:var(--hair) solid var(--line);min-height:var(--tap)}
+.sk-row:last-child{border-bottom:0}
+/* The shapes start where a loading line's words would (the .loading's own
+   inset, which each surface sets), and in a .field, which is inset already,
+   at its edge rather than a second one in; so in a fold's body. */
+.field>.skel:not(.warn),.sect>.body .skel:not(.warn){padding-left:0;padding-right:0}
+.skel .sk-row:nth-child(3n+3) .sk-b{animation-delay:.12s} .skel .sk-row:nth-child(3n+4) .sk-b{animation-delay:.24s}
+.sk-cards,.sk-tiles{display:grid;gap:12px;padding:var(--row-y) 0}
+.sk-cards{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.sk-cards.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding-top:0}
+.sk-tiles{grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:var(--field-gap)}
+@media(max-width:900px){ .sk-tiles{grid-template-columns:repeat(2,1fr)} .sk-cards.two{grid-template-columns:minmax(0,1fr)} }
+.sk-card{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+  padding:14px 14px 18px;min-height:132px;min-width:0}
+.sk-card>.sk-b:first-of-type{height:1em;margin-bottom:6px}
+.sk-tile{background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);padding:12px 14px;min-height:76px}
+.skel .sk-b.big{height:1.5em}
+.sk-lines{padding-top:var(--row-y);padding-bottom:var(--row-y);gap:.75em}
+.skel .sk-b.line{height:.7em}
+.sk-chips{flex-direction:row;flex-wrap:wrap;gap:6px;padding-top:9px;padding-bottom:9px}
+.skel .sk-b.chip{height:var(--tap);width:7em;border-radius:var(--r-control)}
+.skel .sk-b.chip:nth-child(3n){width:9em} .skel .sk-b.chip:nth-child(4n+1){width:5.5em}
+span.skel.sk-word{display:inline-block;vertical-align:middle;padding:0}
+.sk-word .sk-b{width:8em;height:.75em}
 /* Content, once it is there. Short and only on the first real paint; see
    paint(): a fade on every poll that changed a word would be a flicker, not
    a transition. */
 @keyframes contentIn{from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none}}
 .justpainted{animation:contentIn .18s ease}
 @media(prefers-reduced-motion:reduce){
-  .loading{animation:none} .justpainted{animation:none}
+  .loading{animation:none} .justpainted{animation:none} .skel .sk-b{animation:none}
 }
 
 /* Macros run in the terminal now, so there is no output pane to put a message
@@ -3777,6 +3817,7 @@ body.booting .panes.dockup .pane.dock{animation:none}
    on the first draw that had state to draw. */
 body.booting .pane{background:var(--bg)}
 body.booting .pane>.loading{margin:auto}
+body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .pane.hidden{display:none}
 .pane.active{outline:2px solid var(--accent-mid);outline-offset:-2px}
 .pane .bar{display:flex;align-items:center;gap:6px;padding:3px 6px;
@@ -4105,7 +4146,7 @@ body.booting .pane>.loading{margin:auto}
          one-line summary on the left, its History on the right. It sits above
          the add row rather than under it so all four tabs start the same way:
          the eye should not have to look in a different place per tab. -->
-    <div class="field nbhead vbar"><span class="nbsum"><span id="roadmapHint">loading…</span> <span id="roadmapRead" class="dim"></span></span>
+    <div class="field nbhead vbar"><span class="nbsum"><span id="roadmapHint" data-skel="word">loading…</span> <span id="roadmapRead" class="dim"></span></span>
       <span class="sp"></span>
       <button id="roadmapLog" type="button"
         title="every change to this list, by either of you, with when"
@@ -4168,7 +4209,7 @@ body.booting .pane>.loading{margin:auto}
          #roadmapList, which is why reading it meant the list going away; both
          are on screen at once now, one of them in the sheet. -->
     <div class="field" id="roadmapHist" hidden></div>
-    <div class="field" id="roadmapField"><div id="roadmapList"></div>
+    <div class="field" id="roadmapField"><div id="roadmapList" data-skel="rows"></div>
       <!-- The finished ones (R78), a section of their own under the list
            (R254 step 1), shut until opened and fetched when it is. -->
       <details class="sect" data-sect="roadmap:finished" id="roadmapDoneSect" hidden>
@@ -4218,7 +4259,7 @@ body.booting .pane>.loading{margin:auto}
       <div class="body">
         <div class="field"><div id="memAdd"></div></div>
         <div class="field" id="memListField">
-          <div id="memList"></div>
+          <div id="memList" data-skel="rows"></div>
         </div>
         <!-- The memories' own Save and Revert (the operator, 5 Oct). -->
         <div class="field"><div class="actbar sectbar" data-bar="briefing:memories">
@@ -4233,7 +4274,7 @@ body.booting .pane>.loading{margin:auto}
          a bug report is a form submitted once, not a list curated in place,
          so staging it behind Save would only delay the record. -->
     <div class="nbview" data-view="bugs" hidden>
-      <div class="field nbhead vbar"><span id="bugHint">loading…</span>
+      <div class="field nbhead vbar"><span id="bugHint" data-skel="word">loading…</span>
         <span class="sp"></span>
         <button type="button" id="bugLog"
           title="every change to the tracker, by either of you, with when">History</button>
@@ -4265,7 +4306,7 @@ body.booting .pane>.loading{margin:auto}
           <option value="title">title A–Z</option>
         </select></span>
       </div>
-      <div class="field" id="bugList"></div>
+      <div class="field" id="bugList" data-skel="rows"></div>
     </div>
     <!-- The scanner's findings for this project, read-only: the scan runs on
          the host and bb findings reads the same digest in a terminal. -->
@@ -4285,7 +4326,7 @@ body.booting .pane>.loading{margin:auto}
          useful answer more often: one file dominating is a fact about the
          suite, where one slow test is a fact about one test. -->
     <div class="nbview" data-view="tests" hidden>
-      <div class="field nbhead vbar"><span id="tstHint">loading…</span><span class="sp"></span>
+      <div class="field nbhead vbar"><span id="tstHint" data-skel="word">loading…</span><span class="sp"></span>
         <button type="button" id="tstOut" title="the last run's output in this project's shell, following it while it runs">Open the run's output</button></div>
       <div class="field" id="tstStats" hidden></div>
       <div id="tstFolds"></div>
@@ -4295,10 +4336,10 @@ body.booting .pane>.loading{margin:auto}
         <label class="ndcap"><input type="checkbox" id="tstFlagged"> flagged only</label>
         <label class="ndcap"><input type="checkbox" id="tstUndoc"> undescribed only</label>
       </div>
-      <div class="field" id="tstList"></div>
+      <div class="field" id="tstList" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="artifacts" hidden>
-      <div class="field nbhead vbar"><span id="artHint">loading…</span><span class="sp"></span>
+      <div class="field nbhead vbar"><span id="artHint" data-skel="word">loading…</span><span class="sp"></span>
         <button type="button" id="artSource" title="the code base as a zip, without build output">Download source</button></div>
       <!-- Where this project's compiling happens, or that it has nowhere.
            On this tab because it is the one somebody opens when a build did
@@ -4309,7 +4350,7 @@ body.booting .pane>.loading{margin:auto}
            already runs past a phone at five labels, and a version and the
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
-      <div id="artList"></div>
+      <div id="artList" data-skel="rows"></div>
       <!-- What a session looked with (R96): reels and emulator shots, in one
            fold apart from what ships, each saying whose it is, and swept
            after the project's "captures kept" days. -->
@@ -4323,16 +4364,16 @@ body.booting .pane>.loading{margin:auto}
          project's on the Docker tab. Read from the project's node, which is
          where its work runs. -->
     <div class="nbview" data-view="docker" hidden>
-      <div class="field nbhead vbar"><span id="dkHint">loading…</span><span class="sp"></span>
+      <div class="field nbhead vbar"><span id="dkHint" data-skel="word">loading…</span><span class="sp"></span>
         <button type="button" id="dkOpen" title="every node's containers, and New container">Docker tab</button></div>
-      <div class="dkrows" id="dkList"></div>
+      <div class="dkrows" id="dkList" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="git" hidden>
       <!-- The repository, read out (roadmap R36): what is changed and not
            committed, the history as a graph, and the branches with whose
            worktree sits on which. Reads only in this step; every action a
            later one adds is a fixed git command on the controller. -->
-      <div class="field nbhead vbar"><span id="gitHint">loading…</span>
+      <div class="field nbhead vbar"><span id="gitHint" data-skel="word">loading…</span>
         <span class="sp"></span>
         <button type="button" id="gitRefresh" title="read the repository again now">Refresh</button>
       </div>
@@ -4345,7 +4386,7 @@ body.booting .pane>.loading{margin:auto}
         <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
-      <div id="gitBody"></div>
+      <div id="gitBody" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="design" hidden>
       <!-- What the project looks like (design.py, nb-design.js): one design
@@ -4354,19 +4395,19 @@ body.booting .pane>.loading{margin:auto}
            the notebook's Save like the roadmap; the prompts and the file
            are generated on the server, so the tab, bb design and
            docs/design-language.md say one thing. -->
-      <div class="field nbhead vbar"><span id="dsHint">loading…</span><span class="sp"></span>
+      <div class="field nbhead vbar"><span id="dsHint" data-skel="word">loading…</span><span class="sp"></span>
         <button type="button" id="dsWrite"
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
-      <div id="dsBody"></div>
+      <div id="dsBody" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="wiki" hidden>
       <!-- The project's wiki (wiki.py, nb-wiki.js): pages as rows that open
            to be read, written through like Bugs, kept by the controller as a
            forge-shaped repository so Export is a zip of Markdown and Push is
            the repository's own wiki. -->
-      <div class="field nbhead vbar"><span id="wkHint">loading…</span><span class="sp"></span>
+      <div class="field nbhead vbar"><span id="wkHint" data-skel="word">loading…</span><span class="sp"></span>
         <button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button>
       </div>
       <!-- Where the wiki goes, an action bar of its own as the Git view's is,
@@ -4382,10 +4423,10 @@ body.booting .pane>.loading{margin:auto}
         <button type="button" id="wkPush" class="primary" hidden title="send the wiki to the repository's own wiki">Push</button>
       </div>
       <div class="field" id="wkWhy" hidden></div>
-      <div id="wkBody"></div>
+      <div id="wkBody" data-skel="lines"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
-      <div class="field nbhead vbar"><span id="anaHint">loading…</span>
+      <div class="field nbhead vbar"><span id="anaHint" data-skel="word">loading…</span>
         <span class="sp"></span>
         <button type="button" id="anaLog"
           title="what changed between the last two scans">History</button>
@@ -4398,7 +4439,7 @@ body.booting .pane>.loading{margin:auto}
         </select>
       </div>
       <div class="field" id="anaHist" hidden></div>
-      <div id="anaList"></div>
+      <div id="anaList" data-skel="rows"></div>
     </div>
     <!-- The project's settings (R119 step 3, the operator 4 Oct): the same
          form the settings dialog shows, moved into this view while it is the
@@ -5500,7 +5541,7 @@ body.booting .pane>.loading{margin:auto}
            draw, so the page opened on a big black box wearing the loudest
            border on it, showing nothing, for as long as the first status
            took. It waits with the same quiet line the cards use. -->
-      <div class="pane" id="pane0"><div class="loading">loading…</div></div>
+      <div class="pane" id="pane0"><div class="loading" data-skel="page">loading…</div></div>
       <div class="pane hidden" id="pane1"></div>
     </div>
     <div class="keys" id="keys"></div>
@@ -5512,11 +5553,11 @@ body.booting .pane>.loading{margin:auto}
          remote grays just the gh part. -->
     <div class="mpanel" id="macpanel">
       <div class="lab">linux</div>
-      <div class="macros" id="linux"><div class="loading">loading…</div></div>
+      <div class="macros" id="linux"><div class="loading" data-skel="chips">loading…</div></div>
       <div class="lab">bb commands</div>
-      <div class="macros" id="commands"><div class="loading">loading…</div></div>
+      <div class="macros" id="commands"><div class="loading" data-skel="chips">loading…</div></div>
       <div class="lab">git &amp; github</div>
-      <div class="macros" id="git"><div class="loading">loading…</div></div>
+      <div class="macros" id="git"><div class="loading" data-skel="chips">loading…</div></div>
       <div class="lab">custom commands</div>
       <div class="macros" id="custom"></div>
     </div>
@@ -5624,6 +5665,23 @@ new MutationObserver(ms => {
 // the markup already as well as the ones drawn later. Declarations in
 // page-state.js.
 quietFields(document.documentElement);
+
+// ---- what the page waits with ----------------------------------------------
+// Its declarations are page-docs.js (skel); what runs at load is this: the
+// placeholders in the markup take their shapes (R218 step 15). A view's head
+// keeps its element and takes a bar; a .loading line becomes the shape. The
+// first pane, until the first snapshot lands, is shaped like the page the
+// address names: Home's tiles, the Projects page's cards, rows otherwise.
+// The notebook's markup is a template, so its views' heads are found there.
+[document, ...[...document.querySelectorAll("template")].map(t => t.content)].flatMap(r => [...r.querySelectorAll("[data-skel]")]).forEach(el => {
+  let shape = el.dataset.skel;
+  if (shape === "page"){
+    const h = location.hash.replace(/\/+$/, "");
+    shape = h === "" || h === "#" || h === "#/home" ? "home" : h === "#/projects" ? "cards" : "rows";
+  }
+  if (el.classList.contains("loading")) el.outerHTML = skel(shape);
+  else el.innerHTML = skel(shape);
+});
 
 // ---- what a session is called, and whose it is --------------------------
 // Its declarations are page-state.js; nothing of it runs at load.

@@ -100,7 +100,7 @@ function renderUsersInto(i){
   if (!d) return;
   d.setBar(`<span class="dim">who may sign in here, and which projects they see</span>`);
   if (usersList === null){
-    d.list.innerHTML = `<div class="row"><div class="sub">loading<span class="dots"></span></div></div>`;
+    d.list.innerHTML = skel("rows", 4);
     loadUsers();
     return;
   }

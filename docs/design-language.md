@@ -782,8 +782,18 @@ kind and every scheme, and holds it to the settled tab's own ground.
 the first snapshot lands, and an empty one used to be black and wearing the
 active pane's outline: the loudest element on the page, showing nothing, for
 as long as that took. Until then `body.booting` gives the pane the page's
-ground and the same quiet `loading…` line every other surface waits with, and
-the first draw that had state to draw takes the class off.
+ground and a placeholder shaped like the page its address names (Home's
+tiles, the Projects page's cards, rows otherwise), and the first draw that had
+state to draw takes the class off.
+
+**What is coming is drawn by its shape.** A list, a grid or a view waiting on
+a fetch shows `skel(shape)` (page-docs.js): bars where its words will be,
+rows, cards or tiles where those will stand, a light passing over them left to
+right, in the ink at a whisper so every scheme tints them its own way (the
+operator, 16 Oct). It is still a `.loading`, so what replaces it fades in
+and a failed poll writes its words over it; the word stays for a screen
+reader, and the light stands still under `prefers-reduced-motion`. A
+`loading…` line is left only where no shape is known.
 
 ### progress
 
@@ -1003,7 +1013,8 @@ What a page's surface is, kept from the document tabs: Reading surfaces, not ter
 calls `docSurface(i, kind)`, which builds the standard skeleton (a
 `.doctab.<kind>tab` box capped at `var(--doc-w)`: a filter/actions bar slot,
 the band list, a quiet `.fnote` footer) and returns the slots to fill. States
-are `.loading` / `.empty` / `.hint.bad` inside the list.
+are `.loading` (a `skel()` in the shape of the rows to come) / `.empty` /
+`.hint.bad` inside the list.
 
 **The bar is a band, not a row of controls.** What the tab is about goes at
 its left (a node picker, the filters, a one-line count) and the action on

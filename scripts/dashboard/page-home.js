@@ -133,7 +133,7 @@ function renderHomeInto(i){
   const d = docSurface(i, "home");
   if (!d) return;
   if (homeData === null){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    d.list.innerHTML = `${skel("home")}`;
     if (!homeFetching) homeOpen();
     return;
   }

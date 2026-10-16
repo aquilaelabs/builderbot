@@ -38,7 +38,7 @@ function openPhoneTab(){
 function renderPhoneInto(i){
   const d = docSurface(i, "phone");
   if (!d) return;
-  if (!ph){ d.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (!ph){ d.list.innerHTML = `${skel("rows", 3)}`; return; }
   const nodes = ph.nodes || [];
   const n = nodes.find(x => x.id === phNode) || nodes[0];
   d.setBar(`${nodePick("phPick", nodes, n?.id)}<span class="sp"></span>
@@ -95,7 +95,7 @@ async function phFetch(body, probe){
 // lease, the phones it remembers, and what a session waits on. `n` is that
 // node's row in the phone answer (ph.nodes).
 function phonePanel(n){
-  if (!ph) return `<div class="loading">loading…</div>`;
+  if (!ph) return `${skel("rows", 3)}`;
   phNode = n.id;
   const dev = n?.phone;
   const asks = (ph.asks || []).filter(a => a.kind !== "root" && (!a.node || a.node === n.id));

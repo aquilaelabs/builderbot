@@ -294,7 +294,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         const pane = document.createElement("div");
         pane.className = "verlogpane";
         nb.openSheet(a.name, [pane]);
-        pane.innerHTML = `<div class="loading">loading…</div>`;
+        pane.innerHTML = `${skel("rows", 4)}`;
         try{
           const r = await fetch(`/api/artifact?project=${encodeURIComponent(project)
                                 }&path=${encodeURIComponent(a.path)}&tree=${encodeURIComponent(a.tree)}`);
@@ -372,7 +372,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const pane = document.createElement("div");
       pane.className = "verlogpane";
       nb.openSheet(a.name, [pane]);
-      pane.innerHTML = `<div class="loading">loading…</div>`;
+      pane.innerHTML = `${skel("rows", 4)}`;
       try{
         const r = await fetch(`/api/artifact?project=${encodeURIComponent(project)
                               }&path=${encodeURIComponent(a.path)}`);
@@ -700,7 +700,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       b.classList.add("on");
       nb.openSheet(`Changelog${comp ? ": " + comp : ""}`, [pane],
                 () => b.classList.remove("on"));
-      pane.innerHTML = `<div class="loading">loading…</div>`;
+      pane.innerHTML = `${skel("lines")}`;
       try{
         const r = await fetch(`/api/changelog?project=${encodeURIComponent(project)}`
                               + `&component=${encodeURIComponent(comp)}`);

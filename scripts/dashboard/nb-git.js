@@ -176,7 +176,7 @@ function nbGitView({$, nb, project}){
         <summary><span class="t"><code>${esc(f.path)}</code></span>
           <span class="sst${f.state === "conflict" ? " bad" : f.state === "untracked" ? " note" : ""}">${
             esc(f.state)}${f.staged ? " · staged" : ""}</span></summary>
-        <div class="body gdiff"><div class="loading">loading…</div></div>
+        <div class="body gdiff">${skel("lines", 5)}</div>
         ${locked || tree.barred ? "" : `<div class="body"><div class="actbar">
           ${tree.notMine ? "" : `<button type="button" data-gitaskfile="${esc(f.path)}"
             title="hand this change to the project's Claude session">Send to Claude</button>`}
@@ -270,7 +270,7 @@ function nbGitView({$, nb, project}){
           <span class="sst">${esc(vsMain(b))}</span></summary>
         <div class="body"><div class="sub">${[vsHost(b), `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div>
           ${whoseLine(b)}
-          <div class="gcmpbody"><div class="loading">loading…</div></div>
+          <div class="gcmpbody">${skel("rows", 3)}</div>
           ${acts(b)}</div>
       </details>` : `<div class="row gbranch">
         <div class="grow"><div class="name"><code>${esc(b.name)}</code>${pills(b)}</div>
@@ -480,7 +480,7 @@ function nbGitView({$, nb, project}){
     let box = $("gitDetail");
     if (!box) return;
     box.hidden = false;
-    box.innerHTML = `<div class="loading">loading…</div>`;
+    box.innerHTML = `${skel("lines", 6)}`;
     try{
       const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=show&sha=" + encodeURIComponent(sha));
       const c = await r.json();

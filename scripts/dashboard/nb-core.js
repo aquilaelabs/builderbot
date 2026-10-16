@@ -205,7 +205,7 @@ function makeNotebook(project){
     cancelSend();
     $("roadmapText").value = "";
     $("roadmapForm").hidden = true; $("roadmapAddBar").hidden = false; $("roadmapShow").hidden = false;
-    $("roadmapList").innerHTML = `<div class="loading">loading…</div>`;
+    $("roadmapList").innerHTML = `${skel("rows")}`;
     // Opening it is a re-read: both halves come off disk again, and the card
     // gets the same treatment so the number on the row you just pressed is not
     // the one from the last poll.

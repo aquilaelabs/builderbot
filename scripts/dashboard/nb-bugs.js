@@ -209,7 +209,7 @@ function nbBugsView({$, nb, project}){
   // meanwhile, because `bugs` is still updated underneath.
   function drawBugs(force){
     const list = $("bugList"), hint = $("bugHint");
-    if (!nb.bugs){ hint.textContent = "loading…"; return; }
+    if (!nb.bugs){ hint.innerHTML = skel("word"); list.innerHTML = skel("rows"); return; }
     if (nb.bugs.error){ hint.textContent = "bugs: " + nb.bugs.error; return; }
     if (!force && list.querySelector(".dropbox, .bugform")) return;
     if (nb.bugs.releases !== undefined) nb.bugReleases = nb.bugs.releases;
