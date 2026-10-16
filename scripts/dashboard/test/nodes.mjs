@@ -694,6 +694,24 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(charts.length === 2 && charts[0].t === 'CPU' && charts[1].t === 'Memory'
      && charts.every(c => /^M/.test(c.line) && /%$/.test(c.v) && /low .*, average .*, high /.test(c.s)),
      `a node's page charts its last hour of CPU and memory (${JSON.stringify(charts.map(c => [c.t, c.v, c.s]))})`);
+  // The line holds through a node's uneven reports: bursts seconds apart
+  // while it is busy and one a poll while it idles low are one line, and
+  // only a real silence breaks it (the operator, 16 Oct: the low stretches
+  // drew as dots).
+  const runsOf = await page.evaluate(() => {
+    const t0 = 1_000_000, pts = [];
+    let t = t0;
+    for (let k = 0; k < 6; k++){
+      for (let i = 0; i < 8; i++){ pts.push([t, 40 + i]); t += 3; }
+      for (let i = 0; i < 5; i++){ pts.push([t, 2]); t += 25; }
+    }
+    const steady = new DOMParser().parseFromString(hourChart('t1', 'CPU', pts), 'text/html').querySelector('.cline').getAttribute('d');
+    const silent = pts.concat([[t + 600, 3], [t + 625, 4], [t + 650, 2]]);
+    const broken = new DOMParser().parseFromString(hourChart('t2', 'CPU', silent), 'text/html').querySelector('.cline').getAttribute('d');
+    return { steady: (steady.match(/M/g) || []).length, broken: (broken.match(/M/g) || []).length };
+  });
+  ok(runsOf.steady === 1 && runsOf.broken === 2,
+     `...its line holds through bursts and idle polls alike, and breaks only where the node went silent (${JSON.stringify(runsOf)})`);
   // The crosshair: focused, it says the latest sample's value and time, and
   // the arrow keys walk it back.
   await page.focus(`${ROW} .ndcharts .chart .carea`);

@@ -453,12 +453,16 @@ function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100){
   const now = p.at(-1)[0], from = now - CHART_SPAN, vals = p.map(x => x[1]);
   const top = Math.max(max, ...vals);
   const X = at => Math.max(0, Math.min(1000, (at - from) / CHART_SPAN * 1000)), Y = v => 100 - v / top * 100;
-  // Runs split where the samples stop: a quiet node is a gap, not a slope.
+  // Runs split where the samples stop: a node that went quiet is a gap, not
+  // a slope. Measured against the slow end of its spacing, not the middle:
+  // a busy node reports in bursts seconds apart and an idle one at the
+  // poll, so three of the median broke every idle stretch, which is where
+  // the load sits low, into dots (the operator, 16 Oct).
   const gaps = p.slice(1).map((x, i) => x[0] - p[i][0]).sort((a, b) => a - b);
-  const step = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 60;
+  const slow = gaps.length ? gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * 0.9))] : 60;
   const runs = [[p[0]]];
   for (let i = 1; i < p.length; i++){
-    if (p[i][0] - p[i - 1][0] > step * 3) runs.push([]);
+    if (p[i][0] - p[i - 1][0] > Math.max(slow * 3, 90)) runs.push([]);
     runs.at(-1).push(p[i]);
   }
   const line = runs.map(r => r.map((x, i) => `${i ? "L" : "M"}${X(x[0]).toFixed(1)},${Y(x[1]).toFixed(1)}`).join("")).join("");
