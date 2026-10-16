@@ -1535,12 +1535,26 @@ for (const kind of kinds){
   // With every page put away the page lands on Home, the landing page, whose
   // one read on open is an open's and not a poll: counted from after it.
   await page.waitForFunction(() => tabOf(panes[0])?.kind !== 'home' || (homeData !== null && !homeFetching), null, { timeout: 20000 });
+  // Which revisions moved over a window, read off the page's own tokens: a
+  // re-read a moved token asked for is the page doing its job, not noise
+  // (B757: an earlier kind's job finishing inside the window re-read Home,
+  // the Emulator page and the Docker page, and failed a run in three).
+  // Counted as the page counts them: a token only one page draws (a node's
+  // heartbeat, every poll) only while that page is on show.
+  // A token that appeared in the window (a notebook's, as it opens) moved
+  // nothing: only one there at the start and different at the end counts.
+  const MOVED = () => page.evaluate(() => Object.keys(revs).filter(k => k !== 'boot' && window.__r0 && k in window.__r0 && window.__r0[k] !== revs[k]
+    && (!REVS_PAGE_ONLY[k] || REVS_PAGE_ONLY[k]())));
+  const MARK = () => page.evaluate(() => { window.__r0 = { ...revs }; });
   await page.evaluate(() => { window.__f = {}; const f = window.fetch;
     window.fetch = (...a) => { const u = String(a[0]).split('?')[0]; window.__f[u] = (window.__f[u] || 0) + 1; return f(...a); }; });
+  await MARK();
   await sleep(8000);
   const idle = await page.evaluate(() => window.__f);
-  const noise = Object.keys(idle).filter(u => !POLLS.has(u));
-  ok(noise.length === 0, `an idle page asks only its polls (${noise.length ? 'also ' + noise.join(', ') : Object.keys(idle).join(', ')})`);
+  const idleMoved = await MOVED();
+  // Home re-reads on the jobs token and on nothing else.
+  const noise = Object.keys(idle).filter(u => !POLLS.has(u) && !(u === '/api/home' && idleMoved.includes('jobs')));
+  ok(noise.length === 0, `an idle page asks only its polls (${noise.length ? 'also ' + noise.join(', ') : Object.keys(idle).join(', ')}${idleMoved.length ? '; moved: ' + idleMoved.join(', ') : ''})`);
   // ...and only so often (R218 step 10, against step 1's baseline of the
   // revisions poll x20, the status poll x5 and the node list x4 in thirty
   // seconds on every page): a node's heartbeat moves only its numbers' own
@@ -1563,6 +1577,7 @@ for (const kind of kinds){
   for (const kind of Object.keys(DRIVERS)){
     if (kind.startsWith('notebook:')) continue;
     await page.evaluate(() => { window.__f = {}; });
+    await MARK();
     // Attached, not visible: the count is about requests, and a tab that
     // opens behind a switch on a narrow page has still asked for its data.
     // The driver's own way in first; a tab whose button is ghosted right now
@@ -1578,8 +1593,11 @@ for (const kind of kinds){
     await sleep(1200);
     const f = await page.evaluate(() => window.__f);
     if (!came){ ok(false, `[${kind}] opened for the request count (did not come up: ${Object.keys(f).join(', ') || 'no fetch at all'})`); }
-    const twice = Object.entries(f).filter(([u, n]) => !POLLS.has(u) && n > 1);
-    ok(twice.length === 0, `[${kind}] opening asks each endpoint once (${twice.length ? twice.map(([u, n]) => `${u} x${n}`).join(', ') : Object.keys(f).filter(u => !POLLS.has(u)).join(', ') || 'nothing'})`);
+    // Once for the open, and once more for each revision that moved inside
+    // the window, which the page is right to follow.
+    const moved = await MOVED();
+    const twice = Object.entries(f).filter(([u, n]) => !POLLS.has(u) && n > 1 + moved.length);
+    ok(twice.length === 0, `[${kind}] opening asks each endpoint once (${twice.length ? twice.map(([u, n]) => `${u} x${n}`).join(', ') : Object.keys(f).filter(u => !POLLS.has(u)).join(', ') || 'nothing'}${moved.length ? '; moved: ' + moved.join(', ') : ''})`);
     // ...and closed again, so the tab cap never refuses the next one.
     await page.evaluate(k => { for (const t of [...tabs]) if (t.kind === k) dropTab(t.id); }, kind);
   }
