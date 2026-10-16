@@ -302,7 +302,11 @@ function rnFillNodesMore(){
     + gone.map(id => lrow(id, `${id} (Hosting only)`, "not a hosting node now", first ? true : checked.has(id))).join("");
   // Read-only without the `node` grant, like the primary above (R137 step 4).
   if (state?.can?.node === false) box.querySelectorAll("input").forEach(i => { i.disabled = true; });
-  box.dataset.drawn = "1";
+  // Drawn from what is saved until a draw has had nodes to draw: one made
+  // before the node list arrived listed nothing, and marking it drawn made
+  // the real one read its own empty boxes, so a saved second node came up
+  // unticked and read as one to drop (B796, seen on dev, 16 Oct).
+  if (nodesList !== null) box.dataset.drawn = "1";
   // Also reaches ticks among these, so it is drawn after them.
   rnDrawReach();
 }
@@ -619,12 +623,6 @@ function renameProject(name, mode = "all"){
   settingsOut();
   rnFor = name;
   rnMode = mode;
-  // The Also works on list is drawn from what is saved on its first draw
-  // for this opening, and from its own ticks after: the element outlives a
-  // project, so its mark went stale and the next project's list kept the
-  // last one's ticks, reading a saved node as one to drop (seen on dev,
-  // 16 Oct: Nodes unsaved on opening, and a Save that would remove it).
-  delete $("rnNodesMore").dataset.drawn;
   const p = (state?.projects || []).find(x => x.name === name);
   // One dialog, two doors. The gear is the project's own settings; the chain
   // is the remote's half of them, and opening it there hides everything that
