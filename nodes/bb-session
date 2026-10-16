@@ -459,16 +459,29 @@ def plan(c, a, uid):
         steps.append(("bindro", f"{STAGE}/ws/{r}", f"{ws}/{r}"))
     # The account's transcripts: this project's stay, a read project's are
     # there to read (the account's own conversations there, read-only, the
-    # operator's ask of 29 Sep), and every other project's are empty.
+    # operator's ask of 29 Sep), and every other project's are not there at
+    # all, not even by name (B379): the folder is covered and only those are
+    # put back. This project's own two (its tree and the account's worktree
+    # of it, named as Claude Code names them) are made first where they are
+    # not yet, so a first conversation's folder lands on the disk rather
+    # than on the cover and is kept.
     transcripts = f"{ws}/.claude/{account}/projects"
     if _real_dir(transcripts):
-        for entry in sorted(os.listdir(transcripts)):
-            if not _real_dir(f"{transcripts}/{entry}") or _ours(entry, ws, project):
-                continue
-            if any(_ours(entry, ws, r) for r in reads):
+        mine = {_slug(f"{ws}/{project}"), _slug(f"{ws}/.worktrees/{project}/{account}")}
+        # ...and the folder the session starts in, which is what Claude Code
+        # names its folder after, where that is somewhere inside the two.
+        if cwd and _inside(cwd, (f"{ws}/{project}", f"{ws}/.worktrees/{project}/{account}")):
+            mine.add(_slug(cwd))
+        for name in sorted(mine):
+            if not os.path.lexists(f"{transcripts}/{name}"):
+                steps.append(("make", f"{transcripts}/{name}"))
+        entries = [e for e in sorted(os.listdir(transcripts)) if _real_dir(f"{transcripts}/{e}")]
+        steps.append(("tmpfs", transcripts, "mode=0755,owned"))
+        for entry in sorted(mine | {e for e in entries if _ours(e, ws, project)}):
+            steps.append(("bindmine", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
+        for entry in entries:
+            if not _ours(entry, ws, project) and any(_ours(entry, ws, r) for r in reads):
                 steps.append(("bindro", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
-            else:
-                steps.append(("hide", f"{transcripts}/{entry}"))
     # Homes: the account's own is the only one. The base home is another's
     # (on a node every account is homed under users/, and the session
     # account's own home is the base): in the view it is new, and holds what
@@ -708,7 +721,7 @@ def _mkdirs(path, uid, gid):
 
 def apply(steps, uid, gid):
     for step in steps:
-        kind, target = step[0], step[-1] if step[0] in ("bind", "bindro", "bindrw", "bindfile") else step[1]
+        kind, target = step[0], step[-1] if step[0] in ("bind", "bindmine", "bindro", "bindrw", "bindfile") else step[1]
         if kind == "private":
             _mount(None, "/", None, MS_REC | MS_PRIVATE)
         elif kind == "proc":
@@ -759,6 +772,29 @@ def apply(steps, uid, gid):
             _mount(src, target, None, MS_BIND | MS_REMOUNT)
         elif kind == "hide":
             _mount("tmpfs", target, "tmpfs", MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, "mode=0500")
+        elif kind == "make":
+            # A folder made on the disk, before a cover goes over its parent,
+            # so the bind that puts it back has something to bind (B379). Made
+            # as the session account, the way Claude Code would have made it:
+            # root's mkdir and chown are refused on a share that squashes root.
+            pid = os.fork()
+            if pid == 0:
+                try:
+                    os.setgid(gid)
+                    os.setuid(uid)
+                    os.makedirs(target, 0o755, exist_ok=True)
+                    os._exit(0)
+                except OSError:
+                    os._exit(1)
+            if os.waitpid(pid, 0)[1] != 0:
+                print(f"bb-session: could not make {target}; a conversation started here is not kept", file=sys.stderr)
+        elif kind == "bindmine":
+            # This project's own transcripts put back over the cover; where
+            # the folder could not be made there is nothing to bind, and the
+            # session still starts.
+            if os.path.isdir(step[1]):
+                _mkdirs(target, uid, gid)
+                _mount(step[1], target, None, MS_BIND | MS_REC)
         elif kind == "hidefile":
             _mount("/dev/null", target, None, MS_BIND)
         elif kind == "bindfile":

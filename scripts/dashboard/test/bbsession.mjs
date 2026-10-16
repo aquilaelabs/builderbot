@@ -105,10 +105,16 @@ ok(has('tmpfs', ws, 'mode=0755') && bound(join(ws, 'alpha')) && bound(join(ws, '
    && bound(join(ws, '.claude', me)) && !bound(join(ws, 'beta')) && !bound(join(ws, 'alpha-two'))
    && !bound(join(ws, '.claude', other)),
    'the projects share in the view holds the project, its worktrees and the account\'s Claude share, and no other project or account');
-ok(hidden(join(tr, slug(join(ws, 'beta')))) && hidden(join(tr, slug(join(ws, 'alpha-two'))))
-   && hidden(join(tr, slug(join(ws, '.worktrees', 'alpha-two', me))))
-   && !hidden(join(tr, slug(join(ws, 'alpha')))) && !hidden(join(tr, slug(join(ws, '.worktrees', 'alpha', me)))),
-   '...and the other projects\' transcripts are empty, a project whose name starts another\'s included, while its own stay');
+// Not there at all, not even by name (B379): the account's transcripts are
+// covered and only this project's are put back over the cover.
+const back = t => steps.some(x => x[0] === 'bindmine' && x[2] === t);
+const coverAt = at0('tmpfs', tr, 'mode=0755,owned');
+ok(coverAt > 0 && back(join(tr, slug(join(ws, 'alpha')))) && back(join(tr, slug(join(ws, '.worktrees', 'alpha', me))))
+   && steps.findIndex(x => x[0] === 'bindmine') > coverAt
+   && !steps.some(x => x[2] === join(tr, slug(join(ws, 'beta'))) || x[1] === join(tr, slug(join(ws, 'beta'))))
+   && !steps.some(x => x[2] === join(tr, slug(join(ws, 'alpha-two'))) || x[1] === join(tr, slug(join(ws, 'alpha-two'))))
+   && !steps.some(x => x[2] === join(tr, slug(join(ws, '.worktrees', 'alpha-two', me)))),
+   '...and the other projects\' transcripts are not in the view even by name, a project whose name starts another\'s included, while its own are put back over the cover');
 // A project this one reads (prefs.reads) is in the view too, read-only and
 // nothing of it but the tree; itself, or a name that is no project, refused.
 {
@@ -121,8 +127,8 @@ ok(hidden(join(tr, slug(join(ws, 'beta')))) && hidden(join(tr, slug(join(ws, 'al
   // read-only, while every other project's stay empty (29 Sep).
   const betaTr = join(tr, slug(join(ws, 'beta')));
   ok(rs.some(x => x[0] === 'bindro' && x[2] === betaTr && x[1] === `${STAGE}/ws/.claude/${me}/projects/${slug(join(ws, 'beta'))}`)
-     && !rs.some(x => (x[0] === 'hide') && x[1] === betaTr) && rs.some(x => x[0] === 'hide' && x[1] === join(tr, slug(join(ws, 'alpha-two')))),
-     "...and the account's transcripts on that project are bound read-only rather than hidden, the other projects' still hidden");
+     && !rs.some(x => (x[0] === 'hide') && x[1] === betaTr) && !rs.some(x => x[2] === join(tr, slug(join(ws, 'alpha-two')))),
+     "...and the account's transcripts on that project are bound read-only over the cover, the other projects' still not there");
   const self = plan({ reads: 'alpha' }), none = plan({ reads: 'nowhere' });
   ok(self.code !== 0 && /not a project this one could read/.test(self.out) && none.code !== 0 && /is not a project directory/.test(none.out),
      `...and refuses itself or a name that is no project (${self.out.trim().slice(0, 60)})`);
