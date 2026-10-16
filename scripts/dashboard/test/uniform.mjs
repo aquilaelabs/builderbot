@@ -186,7 +186,12 @@ async function measure(kind){
       .filter(e => !e.parentElement.closest(BANDS));
     const leftOf = e => Math.round(
       e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft));
-    const lefts = [...new Set(bands.map(leftOf))];
+    // A list beside its detail (a project's Settings view, the Roles page's
+    // shape) is two columns: the detail's bands start at one x of their own,
+    // beside the list, and are measured apart from the page's.
+    const inCol = e => !!e.closest('.box.rnview') && !e.closest('.rnnav');
+    const colLefts = [...new Set(bands.filter(inCol).map(leftOf))];
+    const lefts = [...new Set(bands.filter(e => !inCol(e)).map(leftOf))];
     // Which band sits at each x, for the failure: three numbers say a view is
     // ragged and nothing about where, and the fix is in one band's CSS.
     const who = {};
@@ -230,7 +235,7 @@ async function measure(kind){
       // wears the second for its own reasons; both mean "fills the pane".
       flush: host.classList.contains('flush') || host.classList.contains('nbhost'),
       maxw: cs.maxWidth,
-      bands: bands.length, lefts, who,
+      bands: bands.length, lefts, colLefts, who,
       controls: controls.length, offskin,
     };
   }, { BANDS, INDENTED });
@@ -609,6 +614,9 @@ for (const kind of kinds){
   ok(m.bands > 0 && m.lefts.length === 1,
      `[${kind}] every band starts at one x (${m.bands} bands at ${
        JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
+  if (m.colLefts.length) ok(m.colLefts.length === 1,
+     `[${kind}] ...and every band in the column beside its list at one x of its own (${JSON.stringify(m.colLefts)}${
+       m.colLefts.length > 1 ? ': ' + m.colLefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
   ok(m.offskin.length === 0,
      `[${kind}] every control wears the field skin${
        m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${

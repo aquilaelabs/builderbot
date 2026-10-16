@@ -157,6 +157,8 @@ await ready(page);
   await page.click('#bCards');
   const one = await page.evaluate(() => ({ doc: document.getElementById('docPanel').hidden, gear: !document.getElementById('uiMenu').hidden }));
   await page.click('#bBell');
+  // The menu hides at the end of its own closing, so it is waited for.
+  await page.waitForFunction(() => document.getElementById('uiMenu').hidden, null, { timeout: 3000 }).catch(() => {});
   const two = await page.evaluate(() => ({ gear: document.getElementById('uiMenu').hidden, bell: bellOpen }));
   await page.click('#bBell');
   await page.click('#bDocDot');
