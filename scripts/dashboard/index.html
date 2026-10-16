@@ -2669,7 +2669,8 @@ pre.diff .d-ctx{color:var(--dim)}
 @media(max-width:900px){
   .rail{display:none}
   .railbar{display:flex;flex:0 0 auto;gap:2px;padding:4px 4px calc(4px + env(safe-area-inset-bottom));
-    background:var(--panel);border-top:var(--hair) solid var(--line)}
+    background:var(--panel);border-top:var(--hair) solid var(--line);
+    position:relative;z-index:1}   /* over a scheme's texture layer (body::before), not under it */
   .railbar .ritem{flex:1 1 0;min-width:0;min-height:var(--tap)}
   .railbar .ritem .rlbl{display:block}
   .railbar .ritem.on{color:var(--accent);background:transparent}
