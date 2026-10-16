@@ -105,7 +105,6 @@ function renderNoticesInto(i){
     // page's own; what was kept is on its way.
     d.setBar(`<span class="dim">${skv(4)}</span>`);
     d.list.innerHTML = skTpl(docSection("notices", "history", "History", "", skRows(5)));
-    d.setFoot(`Kept for your account, the newest ${esc(String(300))}; a toast is gone in seconds, and this is where it went.`);
     if (!noticesFetching) loadNotices();
     return;
   }
@@ -132,7 +131,6 @@ function renderNoticesInto(i){
                    : `<div class="hint">${all.length ? "none of this kind" : "nothing yet: what the page tells you is kept here"}</div>`),
                  {prime: !waiting.length});
   if (!paint(d.list, html)) return;
-  d.setFoot(`Kept for your account, the newest ${esc(String(300))}; a toast is gone in seconds, and this is where it went.`);
   const list = d.list.querySelector(".ntlist");
   if (list) paginate(list, ":scope > .ntrow", {key: "ntList", noun: "notices"});
   wireNotices(d.el);

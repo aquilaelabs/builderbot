@@ -274,10 +274,9 @@ function phonePanel(n){
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
       </span></div>`);
   const L2 = n.lease;
-  // Refresh is the tab's bar's (R121); this says how a session gets in.
-  rows.push(`<div class="field toolfoot phbar"><div class="hint">${L2
-      ? `Lent to ${esc(projLabel(L2.project))}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.`
-      : "A session reaches this phone only by asking; the request lands with its owner, with its reason."}</div></div>`);
+  // Refresh is the tab's bar's (R121); a lease is said at the foot, and
+  // nothing else is (the operator, 16 Oct: how it works is the docs' to say).
+  if (L2) rows.push(`<div class="field toolfoot phbar"><div class="hint">Lent to ${esc(projLabel(L2.project))}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.</div></div>`);
   if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);
   return `<div class="phonetab">${rows.join("")}</div>`;
 }

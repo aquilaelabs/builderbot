@@ -64,7 +64,6 @@ function renderSessionsInto(i){
   if (!ss){
     d.setBar(`<span class="dim">${skv(6)}</span>`);
     paint(d.list, skTpl(skTable(SESS_COLS, 3, "sesstbl", "row sessrow")));
-    d.setFoot("Yours, here and on the nodes. Closing a tab leaves its session running; End is what stops one.");
     return;
   }
   const claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
@@ -99,7 +98,6 @@ function renderSessionsInto(i){
   const html = ss.length ? tblWrap(SESS_COLS, rows, "sesstbl")
     : `<div class="hint">nothing is running: a terminal or a Claude session you open is listed here</div>`;
   if (!paint(d.list, html)) return;
-  d.setFoot("Yours, here and on the nodes. Closing a tab leaves its session running; End is what stops one.");
   // Kept from the pane under the page: its click makes the page's pane the
   // active one, and the terminal just opened in the dock would lose the
   // keys and the commands to a page that cannot take them.

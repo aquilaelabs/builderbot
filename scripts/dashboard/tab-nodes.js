@@ -401,9 +401,8 @@ function nodeRunnerSection(n, c){
         <div class="sub">One runner per git host; its labels decide which workflows land here.</div></div></div>
       <div class="field">${addbar}</div>
       ${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}
-      <div class="field toolfoot ndrunpin"><div class="hint">${slots.length ? `This node's name pins a job here:
-        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre>`
-        : "A workflow reaches this node through a runner added here."}</div></div>`;
+      ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
+        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div></div>` : ""}`;
 }
 
 // The node's sessions (roadmap #24): whether this machine runs them, what a
@@ -1462,8 +1461,6 @@ function renderNodesInto(i){
   // take the name being typed with it, because this list is not where it is.
   d.list.innerHTML = rows + none
     + (!nodesList.length ? `<div class="empty">The node list could not be read.</div>` : "");
-  d.setFoot(`A node does the work of the projects bound to it: pick one in a project's
-    settings. Jobs run as the enrolled account, never root.`);
   wireNodesTab(d.el);
   nodesReadOnly(d.el);
   // What openNodesTab was asked to show, once it is drawn.

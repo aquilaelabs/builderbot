@@ -297,7 +297,6 @@ function renderNginxInto(i){
     d.setBar(skNodeBar(["Refresh"]));
     d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">nginx on ${skv(6)}</div>
         <div class="sub">${skv(24)}</div></div></div>${skRows(2)}`);
-    d.setFoot(`One nginx per node, written from here: edit its routes and certificates here, never its file. Deploy and Save build it on the node; its build is on the Docker tab.`);
     loadNginx();
     return;
   }
@@ -311,7 +310,6 @@ function renderNginxInto(i){
     <span class="sp"></span><button type="button" id="ngReload" title="read the nodes again">Refresh</button>`);
   d.list.innerHTML = n ? nginxBody(n)
     : `<div class="empty">no node to put nginx on yet: enroll one on the Nodes tab</div>`;
-  d.setFoot(`One nginx per node, written from here: edit its routes and certificates here, never its file. Deploy and Save build it on the node; its build is on the Docker tab.`);
   wireNginxTab(d.el);
 }
 

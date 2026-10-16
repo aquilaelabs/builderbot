@@ -73,7 +73,6 @@ function renderProfileInto(i){
       + sec("Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join(""))
       + sec("On this browser", fld("Time zone")) + sec("Claude plugins", skRows(2)) + sec("Conversation logs", skRows(2))
       + sec("Password", fld("Current password") + fld("New password") + fld("New password again")));
-    d.setFoot(`Your commits carry the git name and email above in every session and shell.`);
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
@@ -159,7 +158,6 @@ function renderProfileInto(i){
         </div>
       </div>
     </div>`;
-  d.setFoot(`Your commits carry the git name and email above in every session and shell.`);
   wireProfile(d.el);
 }
 

@@ -77,7 +77,6 @@ function renderSettingsInto(i){
         <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
       </div>
     </div>`)}`;
-  d.setFoot(`a change applies at once or at the next start: each section says which. Revert puts a section's fields back to what is saved.`);
   sectJump(d.list.querySelector("[data-sects]"));
   wireSections(d.el);
   d.el.querySelectorAll("[data-srevert]").forEach(b => b.onclick = () => {

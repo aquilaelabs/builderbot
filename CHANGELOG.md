@@ -370,6 +370,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Nodes no longer mount the projects share in any form: every node holds its projects as a synced copy, a /workspace mount is refused on the Storage section and by bb-sandbox, and the enroll dialog no longer asks (279c51d)
 - The container takes four settings and nothing else: PUID, PGID, TZ and the dashboard port; SDK_ROOT, DASHBOARD_TTYD_PORT, CHOWN_HOME, CHOWN_PROJECTS and NPM_TOKEN are gone from the template, compose and the env example (a publishing token goes in the secrets folder) (2b922bc)
 - The Users page no longer carries the What an account gets prose; the docs say what an account and its roles may do (fdc6fec)
+- Pages no longer end in a line explaining themselves (Users, Roles, Nodes, Storage, nginx, Jobs, Sessions, Notices, Home, Profile, Settings, Phone, CI runner); a footer is left only where it carries something the page knows, like Analysis's report ages (7198f33)
 
 ### Fixed
 

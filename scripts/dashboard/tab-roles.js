@@ -214,8 +214,6 @@ function renderRolesInto(i){
     const field = (label, em) => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
     d.list.innerHTML = skTpl(docSection("roles", "people", "People", "", field("Account", 16))
       + docSection("roles", "roles", "Roles", "", field("Role", 12) + field("Kind", 16) + skRows(6)));
-    d.setFoot(`Roles add up: an account may do what any of its roles allows: an Everywhere role
-    everywhere, a role on a project on that project. Write needs Read, and an area without Read is not shown at all.`);
     loadRoles();
     return;
   }
@@ -224,8 +222,6 @@ function renderRolesInto(i){
     ${docSection("roles", "people", "People", String((rolesData.people || []).length), rolesPeopleBody())}
     ${docSection("roles", "roles", "Roles", String(Object.keys(rolesData.roles || {}).length), rolesRoleBody())}`;
   wireSections(d.list);
-  d.setFoot(`Roles add up: an account may do what any of its roles allows: an Everywhere role
-    everywhere, a role on a project on that project. Write needs Read, and an area without Read is not shown at all.`);
   wireRoles(d.el);
 }
 

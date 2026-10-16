@@ -158,7 +158,6 @@ function renderJobsInto(i){
       <label class="jbfilter"><input type="checkbox" id="jbActive" ${jobsActive ? "checked" : ""}>
         only what is running or waiting</label>`);
     d.list.innerHTML = skTpl(skTable(JOB_COLS, 6, "jbtbl"));
-    d.setFoot(`Cancel stops a job. Nothing here edits one.`);
     wireJobsTab(d.el);
     loadJobs();
     return;
@@ -220,7 +219,6 @@ function renderJobsInto(i){
     const row = d.list.querySelector(`.jbrow[data-job="${CSS.escape(jobsFocus)}"]`);
     if (row){ row.scrollIntoView({block: "nearest"}); jobsFocus = ""; }
   }
-  d.setFoot(`Cancel stops a job. Nothing here edits one.`);
   wireJobsTab(d.el);
 }
 

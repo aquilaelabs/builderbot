@@ -179,7 +179,6 @@ function renderStorageInto(i){
       ${skRows(2)}
       <div class="field">${lbl("", "By project")}<div class="hint">What each project's folders hold: its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.</div></div>
       ${skRows(3)}`);
-    d.setFoot(`The agent walks each node's disks once an hour at the lowest priority. A project you cannot see is counted under other projects.`);
     loadStorage();
     return;
   }
@@ -198,7 +197,6 @@ function renderStorageInto(i){
     <button type="button" id="stReload" title="read the nodes again">Refresh</button></span>`);
   d.list.innerHTML = n ? storageBody(n, where)
     : `<div class="empty">no node to measure yet: enroll one on the Nodes tab</div>`;
-  d.setFoot(`The agent walks each node's disks once an hour at the lowest priority. A project you cannot see is counted under other projects.`);
   wireStorageTab(d.el);
 }
 

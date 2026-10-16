@@ -133,8 +133,6 @@ function renderUsersInto(i){
     ${usersList.length ? tblWrap(USER_COLS, usersList.map(userRow).join(""), "utbl") : ""}
     ${usersSections()}`;
   wireSections(d.list);
-  d.setFoot(`Locked out? Run <code>bb users passwd &lt;name&gt;</code> in the
-    container to reset a password.`);
   wireUsers(d.el);
 }
 

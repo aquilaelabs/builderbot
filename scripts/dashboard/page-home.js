@@ -158,7 +158,6 @@ function renderHomeInto(i){
     if (!homeFetching) homeOpen();
     return;
   }
-  d.setFoot(`A tile opens its page; a row opens what it is about.`);
   // Painted only when it changed: Home redraws on every poll (its rows are
   // the poll's), and an unchanged draw keeps a pointer's hover and a fold.
   if (!paint(d.list, (homeData.error ? `<div class="hint bad">${esc(homeData.error)}</div>` : "")

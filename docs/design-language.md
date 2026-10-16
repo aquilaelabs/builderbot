@@ -1021,7 +1021,7 @@ Applies to: scripts/dashboard/tab-*.js; tab, document, docsurface, bar
 What a page's surface is, kept from the document tabs: Reading surfaces, not terminals. A new kind does not write its own chrome: it
 calls `docSurface(i, kind)`, which builds the standard skeleton (a
 `.doctab.<kind>tab` box capped at `var(--doc-w)`: a filter/actions bar slot,
-the band list, a quiet `.fnote` footer) and returns the slots to fill. States
+the band list, a quiet `.fnote` footer) and returns the slots to fill. The footer carries what the page knows and the bands do not (when its reports were read, what was counted aside), never an explanation of the page: how a page works is the docs' to say (the operator, 16 Oct), so a page with nothing of that kind has no footer. States
 are `.loading` (a `skel()` in the shape of the rows to come) / `.empty` /
 `.hint.bad` inside the list.
 
