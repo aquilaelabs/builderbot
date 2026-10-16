@@ -105,7 +105,11 @@ def main():
                            # and waiting then running the whole suite behind
                            # them blocked the hand-back on its flakes. Refused,
                            # it is skipped below and runs on the next one.
-                           env={**os.environ, "BB_PROJECT": project, "BB_TEST_WAIT_LOCK": "0"})
+                           # A fresh world, never a kept one (B785): what a
+                           # probe left in a kept fixture (a scheme, a layout)
+                           # is not the change, and a verdict measured it.
+                           env={**os.environ, "BB_PROJECT": project, "BB_TEST_WAIT_LOCK": "0",
+                                "BB_TEST_FRESH": "1"})
     except (OSError, subprocess.SubprocessError):
         return
     out = (r.stdout or "") + (r.stderr or "")
