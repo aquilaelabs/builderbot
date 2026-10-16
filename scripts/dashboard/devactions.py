@@ -1290,6 +1290,17 @@ def _job_rebuild(project, instance, run):
             ref = str(devapp._read_rec(project, instance).get("ref") or "").strip()
             run.line(f"building from {ref} at {devapp._head(project, instance)[:12] or '?'}: "
                      "the files committed there; untracked and ignored files of the working tree are not in it\n")
+        elif devapp._read_rec(project, instance).get("source") == "file":
+            # ...and a container written here that builds from a git URL is
+            # the same: the files committed at that ref, never a working
+            # tree's untracked or ignored ones (B595).
+            try:
+                with open(devapp.compose_file(project, instance), encoding="utf-8") as fh:
+                    urls = devapp.remote_contexts(fh.read())
+            except (OSError, TypeError):
+                urls = []
+            for u in urls:
+                run.line(f"building from {u}: the files committed there; untracked and ignored files of a working tree are not in it\n")
         r = devapp._run(devapp._compose(project, instance, "build"), timeout=3600,
                         env_extra=devapp._dev_data_env(project, instance) | devapp._build_env(project, instance),
                         sink=run.line, hold=run.hold)

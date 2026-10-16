@@ -1817,6 +1817,24 @@ def example_file(project, instance=MAIN):
     return WORKSPACE / project / compose_sub(project, instance) / ".env.example"
 
 
+# A build context Docker fetches rather than reads from disk: a git URL
+# (https://...git#ref, git@host:..., git://, ssh://) or a github.com path.
+_REMOTE_CTX = re.compile(r"^(?:git@|git://|ssh://|https?://\S+?\.git(?:#\S*)?$|(?:https?://)?github\.com/)")
+
+
+def remote_contexts(compose_text):
+    """The git URLs a compose file builds from (B595), read off its `build:`
+    and `context:` lines: a build from one is the files committed at that
+    ref, so an untracked or ignored file changed in a working tree is never
+    in it, and the rebuild's log says so before it builds."""
+    out = []
+    for line in str(compose_text or "").splitlines():
+        m = re.match(r"\s*(?:build|context)\s*:\s*['\"]?([^'\"#\s][^'\"\s]*)['\"]?\s*$", line)
+        if m and _REMOTE_CTX.match(m.group(1)) and m.group(1) not in out:
+            out.append(m.group(1))
+    return out
+
+
 def compose_file(project, instance=MAIN):
     """The compose file behind an instance.
 
