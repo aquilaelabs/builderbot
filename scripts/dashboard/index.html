@@ -2702,7 +2702,6 @@ pre.diff .d-ctx{color:var(--dim)}
    Appearance uses), or the page's name, and no close. */
 .pane .bar.page{padding:4px 6px}
 .nbhead .nbsum{min-width:0;flex:1 1 auto}
-.pane .bar .pgname{font:var(--f-ui);color:var(--ink)}
 /* A project's page (R218 step 3): the bar is its header, one band: the name
    large, the branch and the node in the data face, the session's dot and
    word, and the actions at the right; the one notice under it. */
@@ -2749,11 +2748,6 @@ pre.diff .d-ctx{color:var(--dim)}
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
 .pane .bar .subnav button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 @media(max-width:900px){ .pane .bar .subnav button{min-height:var(--tap)} }
-/* A page with no sub-nav names itself on a line as tall as a sub-nav's
-   buttons, so every page's bar is one height and going from one to another
-   moves nothing under it (the operator, 16 Oct). */
-.pane .bar .pgname{display:inline-flex;align-items:center;min-height:26px}
-@media(max-width:900px){ .pane .bar .pgname{min-height:var(--tap)} }
 /* Search in the top bar: a field that jumps, its rows under it. */
 .jump{position:relative;flex:0 1 280px;min-width:0}
 .jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}

@@ -217,15 +217,16 @@ function railMoreShow(on){
   if (b) b.setAttribute("aria-expanded", String(railMoreOpen));
 }
 
-// The pane's bar for a page: the group's tools as a sub-nav when it has
-// several, else the page's name; a page has no close, the rail is how you
-// leave it (a split pane keeps its own close).
+// The pane's bar for a page: the group's tools as a sub-nav, one button
+// in the accent when the page stands alone (the operator, 16 Oct: a bare
+// name beside the other pages' segments read as a different kind of page);
+// a page has no close, the rail is how you leave it (a split pane keeps its
+// own close).
 function shellBar(t, i){
   const g = groupOf(t.kind);
-  if (!g || (g.tools || []).length < 2)
-    return `<span class="pgname">${esc(g ? g.tools[0][1] : tabLabel(t))}</span>`;
-  return `<span class="subnav pseg" role="tablist" aria-label="${esc(g.label)}">${g.tools.filter(([k]) => railAllows(k)).map(([k, label]) =>
-      `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}" data-subnav="${esc(k)}">${esc(label)}</button>`).join("")}</span>`;
+  const tools = g ? g.tools.filter(([k]) => railAllows(k) || k === t.kind) : [[t.kind, tabLabel(t)]];
+  return `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) =>
+      `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}"${g ? ` data-subnav="${esc(k)}"` : ""}>${esc(label)}</button>`).join("")}</span>`;
 }
 function wireShellBar(bar){
   bar.querySelectorAll("[data-subnav]").forEach(b => b.onclick = () => {
