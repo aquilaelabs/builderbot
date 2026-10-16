@@ -2689,7 +2689,7 @@ pre.diff .d-ctx{color:var(--dim)}
   .railmore{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px;
     position:fixed;left:8px;right:8px;bottom:calc(58px + env(safe-area-inset-bottom));z-index:40;
     background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
-    box-shadow:0 10px 24px rgba(0,0,0,.5);animation:menuUp .14s cubic-bezier(.2,.7,.3,1)}
+    box-shadow:0 10px 24px rgba(0,0,0,.5);animation:menuUp .32s cubic-bezier(.33,1,.68,1)}
   .railmore[hidden]{display:none}
   .railmore .ritem{min-height:var(--tap);background:var(--btn);border:var(--hair) solid var(--line)}
   .railmore .ritem .rlbl{display:block}
@@ -2745,6 +2745,11 @@ pre.diff .d-ctx{color:var(--dim)}
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
 .pane .bar .subnav button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 @media(max-width:900px){ .pane .bar .subnav button{min-height:var(--tap)} }
+/* A page with no sub-nav names itself on a line as tall as a sub-nav's
+   buttons, so every page's bar is one height and going from one to another
+   moves nothing under it (the operator, 16 Oct). */
+.pane .bar .pgname{display:inline-flex;align-items:center;min-height:26px}
+@media(max-width:900px){ .pane .bar .pgname{min-height:var(--tap)} }
 /* Search in the top bar: a field that jumps, its rows under it. */
 .jump{position:relative;flex:0 1 280px;min-width:0}
 .jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
@@ -3653,7 +3658,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 /* Over a dialog with no gutter beside it (toastPlace): at the top, and every press goes through. */
 #toast.overdlg{top:calc(8px + env(safe-area-inset-top));bottom:auto}
 #toast.overdlg .tst,#toast.overdlg .tx{pointer-events:none}
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */
 /* min-width:0 matters: a grid item's min-content width is its widest nowrap
@@ -3661,16 +3666,21 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    between its parts: the panes and the bottom bar are one frame. */
 .col.term{min-height:0;min-width:0;gap:0}
 /* On a phone a pane's caption with nothing to press is dropped; one that
-   carries controls (a sub-nav, a popped terminal's Reattach) stays. */
-@media(max-width:900px){ .pane .bar:not(:has(button)){display:none} }
+   carries controls (a sub-nav, a popped terminal's Reattach) stays, and so
+   does a page's, its name where another page has its sub-nav: every page
+   sits in the same frame, so a switch moves nothing (the operator, 16 Oct:
+   the row coming and going jumped the page under the crossfade). */
+@media(max-width:900px){ .pane .bar:not(.page):not(:has(button)){display:none} }
 
 /* Built fresh each time it is opened, so the animation runs on the element
    coming into being: the Resume/New chooser under a Claude button, which
    used to snap into place. */
 @keyframes menuIn{from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none}}
 /* ...and one that opens upward from what opened it, the bottom bar's More,
-   rises into place rather than dropping (the operator, 16 Oct). */
-@keyframes menuUp{from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none}}
+   rises into place rather than dropping, a sheet's travel rather than a
+   menu's twitch: 16px over .32s on an ease-out cubic, fading the whole way
+   (the operator, 16 Oct). */
+@keyframes menuUp{from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none}}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
@@ -3700,7 +3710,13 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .panes.docked .pane.dock{border-top:var(--hair) solid var(--line)}
 .panes.docked .pane.dock .stack{display:none}
 .panes.dockup{grid-template-rows:minmax(0,1fr) var(--dock-h,50%)}
-.panes.dockup .pane.dock{min-height:120px}
+.panes.dockup .pane.dock{min-height:120px;animation:dockUp .3s cubic-bezier(.33,1,.68,1)}
+/* Up, it slides out of its line rather than appearing (the operator,
+   16 Oct): the pane starts where the line sat, all but the line below the
+   frame, and rises to its height. The ground it uncovers is the page's. */
+@keyframes dockUp{from{transform:translateY(calc(100% - 44px))} to{transform:none}}
+.panes.docked{background:var(--bg)}
+body.booting .panes.dockup .pane.dock{animation:none}
 .panes.dockup .pane.dock .stack{display:block}
 .pane.dock.active{outline:0}
 .pane .bar.dockbar{display:flex;align-items:center;gap:6px;padding:4px 6px;min-height:36px;cursor:default;
@@ -3782,13 +3798,13 @@ body.booting .pane>.loading{margin:auto}
    asks for the name an element already has starts nothing, and Projects,
    drawn that way, snapped to the front while every other document faded. */
 @keyframes docIn{from{opacity:0} to{opacity:1}}
-.pane .doc.on{animation:docIn .14s ease}
-/* ...and the page it replaces fades out over the same frames, a crossfade
-   rather than a blank between them (the operator, 16 Oct): the dip and the
-   rise suited a pane that a terminal shared, and the terminals are the
-   dock's now. */
+.pane .doc.on{animation:docIn .22s cubic-bezier(.33,1,.68,1) .06s backwards}
+/* ...and the page it replaces fades out first, quickly, so the two are
+   never laid over each other at full strength: a fade through, not a double
+   exposure (the operator, 16 Oct: the even crossfade read as muddled). The
+   old page is gone by .09s; the new one starts at .06s and eases in. */
 @keyframes docOut{from{opacity:1} to{opacity:0}}
-.pane .stack > .doc.leaving{visibility:visible;animation:docOut .14s ease forwards}
+.pane .stack > .doc.leaving{visibility:visible;animation:docOut .09s ease-in forwards}
 .pane .doc{overflow:auto;padding:12px;
   -webkit-overflow-scrolling:touch}
 .pane .stack:has(> .doc.on){background:var(--bg)}

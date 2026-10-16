@@ -20,7 +20,11 @@ await page.waitForFunction(w => panes[1] === w && dockUp, want, { timeout: 5000 
 ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane0')).display === 'none'),
    "a tap on a terminal brings the dock's sheet up over the page");
 // Up, it is the full width of the screen, between the header and the
-// bottom bar, which stay (the operator, 16 Oct).
+// bottom bar, which stay (the operator, 16 Oct): measured once its slide
+// up out of the line has ended.
+ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane1')).animationName === 'dockUp'),
+   '...sliding up out of its line as it opens');
+await page.waitForFunction(() => !document.getElementById('pane1').getAnimations().some(a => a.playState === 'running'), null, { timeout: 5000 });
 const up = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect();
   // A shell wears its Keys row under it, between the dock and the bottom bar.
   const d = r('#pane1'), h = r('header'), b = r('#railbar'), m = document.getElementById('mobar');

@@ -276,6 +276,7 @@ function drawPanes(){
       else nudgeTerminals();
     }
     paintBar(pane, t, i);
+    holdLeaving(st);
     // ...and a pane that has just changed tab. Same decision, same place,
     // plus the kind's own open hook, which is what a tab restored from a saved
     // layout needs to fetch what it draws.
@@ -360,14 +361,29 @@ function showInStack(st, key, html){
   }
   el.dataset.seen = String(++stackClock);
   // The page going out stays on show while it fades (docOut), so a switch
-  // between two pages is a crossfade.
+  // between two pages is a fade through rather than a cut.
   const out = [...st.children].find(c => c !== el && c.classList.contains("on"));
-  for (const c of st.children){ c.classList.toggle("on", c === el); c.classList.remove("leaving"); }
+  for (const c of st.children){ c.classList.toggle("on", c === el); c.classList.remove("leaving"); c.style.transform = ""; }
   if (out && out.classList.contains("doc") && el.classList.contains("doc")){
     out.classList.add("leaving");
-    setTimeout(() => out.classList.remove("leaving"), 200);
+    // Where it sat, read before the pane's bar is repainted: holdLeaving
+    // keeps it there if the bar's height moves the stack.
+    out.dataset.y0 = String(out.getBoundingClientRect().top);
+    setTimeout(() => { out.classList.remove("leaving"); out.style.transform = ""; }, 150);
   }
   return { el, fresh };
+}
+
+// The page fading out stays where it was while it goes: a project's header
+// is taller than a page's bar, so the stack under it moves when one replaces
+// the other, and the page going out jumped by that much (the operator,
+// 16 Oct). Called once the pane's bar is painted.
+function holdLeaving(st){
+  const l = st.querySelector(":scope > .leaving");
+  if (!l || !l.dataset.y0) return;
+  const dy = Number(l.dataset.y0) - l.getBoundingClientRect().top;
+  delete l.dataset.y0;
+  if (Math.abs(dy) >= 1) l.style.transform = `translateY(${dy.toFixed(1)}px)`;
 }
 
 // Terminals only, oldest gone first: a document is one per pane already, and

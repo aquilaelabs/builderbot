@@ -96,7 +96,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyN
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnDrawSigning', 'rnFillColor', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnDrawGitPol', 'rnWhyOff', 'rnLoadSigning', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSaveSigning', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
-  'setProjectPinned', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
+  'setProjectPinned', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack', 'holdLeaving',
   'signIn', 'signOut', 'slideBody', 'slideDetails',
   'slideHidden', 'slidePanel', 'swapBox', 'startClaude', 'sendSure', 'launchClaude',   'openBrief', 'closeBrief', 'briefGo', 'pArchivePicked',
   'tabLabel', 'tabLabels', 'tabTitle', 'untitle', 'untitleIn', 'untitleWatch', 'helpToggle', 'cLock', 'dmUnrouted', 'nodeDoorConfig', 'nginxUndeployed', 'resumePicker', 'toggleBell', 'toggleUiMenu', 'unveil', 'watchSignin', 'wireConsole', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
