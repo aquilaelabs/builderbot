@@ -69,8 +69,14 @@
      no color-mix, the mix second where there is one. */
   --btn:#232b34;        --btn:color-mix(in srgb, var(--panel), #ffffff 5%);
   --btn-hi:#2b3540;     --btn-hi:color-mix(in srgb, var(--panel), #ffffff 9%);
-  --accent-mid:#2ea043; --accent-mid:color-mix(in srgb, var(--accent), #000000 14%);
-  --accent-deep:#1f6f36;--accent-deep:color-mix(in srgb, var(--accent), #000000 40%);
+  /* What a lit control is filled with: the scheme's second color (the
+     operator, 16 Oct: a selected tab, a primary button, a button that is on
+     carry the second color, filled; the accent keeps the rail, the dots and
+     the notebook's group row). Every lit surface below is mixed from it, so
+     the names keep "accent" for where they came from. */
+  --lit:var(--note);
+  --accent-mid:#1f6feb; --accent-mid:color-mix(in srgb, var(--lit), #000000 14%);
+  --accent-deep:#1a4f8f;--accent-deep:color-mix(in srgb, var(--lit), #000000 40%);
   /* What is written on a filled accent: the ink in a dark scheme, where the
      ink is light; white in a light one, where the ink is dark and the fill
      is still the darkened accent (R216). */
@@ -231,7 +237,7 @@
    every accent surface on the page with it. */
 @supports (color: oklch(from red calc(min(l, 0.5)) c h)){
   :root{
-    --accent-deep:oklch(from color-mix(in srgb, var(--accent), #000000 40%)
+    --accent-deep:oklch(from color-mix(in srgb, var(--lit), #000000 40%)
                         calc(min(l, 0.48)) c h);
   }
 }
@@ -321,7 +327,7 @@ html[data-mode="light"][data-theme="nostromo"],html[data-mode="light"] .sw[data-
   --dim:#595d60; --accent:#b23a0a; --warn:#8b6100; --bad:#a8002a; --note:#3d7322}
 /* ...its accent the hazard marking's red-orange, filled as itself (white on
    it at 6.4:1) rather than darkened, which made it maroon. */
-html[data-mode="light"][data-theme="nostromo"]{--accent-deep:var(--accent)}
+html[data-mode="light"][data-theme="nostromo"]{--accent-deep:var(--lit)}
 html[data-mode="light"][data-theme="slate"],html[data-mode="light"] .sw[data-theme="slate"]{
   --bg:#f1f3f7; --panel:#fcfdff; --line:#cbd2da; --ink:#24272a;
   --dim:#606468; --accent:#2a61b1; --warn:#905e00; --bad:#b2373a; --note:#4b7512}
@@ -507,7 +513,9 @@ header h1{font-size:15px;margin:0;font-weight:600}
    operator, 5 Oct). The version button is the same height, as wide as its
    text. */
 header>button{min-height:var(--tap);min-width:var(--tap)}
-.logo{width:22px;height:22px;flex:0 0 auto;color:var(--accent);display:block;
+/* The robot in the scheme's second color (the operator, 16 Oct); red when
+   the controller does not answer. */
+.logo{width:22px;height:22px;flex:0 0 auto;color:var(--note);display:block;
   transition:color .2s ease}
 .logo.off{color:var(--bad)}
 @media(prefers-reduced-motion:reduce){
@@ -1039,17 +1047,17 @@ button{background:var(--btn);color:var(--ink);border:var(--hair) solid var(--lin
    specificity and win only by coming later. */
 @media(hover:hover){
   .row .name.go:hover{text-decoration:underline}
-  /* ...and a highlighted button carries the scheme's accent, a tint in its
+  /* ...and a highlighted button carries the scheme's second color (--lit), a tint in its
      fill and its edge, where a resting one stays the plain control (the
      operator, 16 Oct). */
-  button:hover{background:color-mix(in srgb, var(--btn-hi) 80%, var(--accent));
-    border-color:color-mix(in srgb, var(--accent) 65%, var(--line))}
+  button:hover{background:color-mix(in srgb, var(--btn-hi) 80%, var(--lit));
+    border-color:color-mix(in srgb, var(--lit) 65%, var(--line))}
   /* The green buttons kept their color through button:hover (their own rules
      come later and win), which meant no hover at all. A lighter green and a
      brighter border are their version of the same lift. */
   button.primary:hover,button.on:hover{
-    background:color-mix(in srgb, var(--accent), #000000 28%);
-    border-color:var(--accent)}
+    background:color-mix(in srgb, var(--lit), #000000 28%);
+    border-color:var(--lit)}
   /* The notebook's tab strip borrows .on for its active view, but its
      buttons are underlined text, not green blocks: the generic green-button
      hover leaking in here painted the active tab as a filled pill the moment

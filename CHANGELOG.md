@@ -376,6 +376,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The second color now shows on every page: a project's branch on its card, its header and Home, Home's tiles and a node's Memory chart beside its CPU; a button under the pointer takes a tint of the theme's accent (693defa)
 - The Toolchains page's Check for updates and Install selected sit in one band near its top, beside Remove, rather than under every row (693defa)
 - The doctor's dot and its passing checks are the same green in every color theme, as warnings stay yellow and failures red (c0be33a)
+- Lit-up controls (the selected tab, primary buttons like Open Claude, buttons that are on, a hovered button) and the BuilderBot logo wear the theme's second color; the first color keeps the rail, the dots and the notebook's group row (0d49ea3)
 
 ### Removed
 

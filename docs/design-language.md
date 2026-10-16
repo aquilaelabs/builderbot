@@ -409,7 +409,7 @@ and `--dim`, status `--accent` / `--warn` / `--bad` / `--note`, buttons
 `--btn` / `--btn-hi`. Twelve schemes repaint the page by swapping nine of
 them, so a hardcoded hex is a spot the schemes cannot reach.
 
-**A filled accent surface is `--accent-deep`, and what sits on it is `--ink`,
+**A filled lit surface is `--accent-deep` (mixed from the second color, `--lit`, since 16 Oct), and what sits on it is `--ink`,
 never `--dim`.** The active tab, a primary button, a button that is on, a
 view bar's current tab, an open select's chosen row, the text selection: all
 one token, so all one answer. `--accent-deep` carries a lightness cap for
@@ -431,7 +431,7 @@ The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mi
 
 **What is live glows (R218 step 7).** A session dot working or waiting and a pill marking something running (`.pill.live`: a running job, a running container) carry a soft glow in their own color: a 2px ring at a fifth of it and an 8 to 10px blur at about half. One glow, small, so it reads as lit; nothing that is merely fine glows.
 
-**Every scheme has two hues (the operator, 16 Oct).** The accent is what is pressed and what is chosen, and a button under the pointer: a resting button is the plain control, a highlighted one takes a tint of the accent in its fill and its edge; `--note`, the second color, is what one follows or reads by: a link in words (the base `a` rule, the wiki and Help, facts, the jump chips), a project's branch on its card, its header and Home, a Home tile with no news, the second of two charts side by side, the view chosen in a group's row and an info note, and it sits apart from the accent on the wheel and from `--warn` and `--bad`, so it never reads as a warning: green and blue, amber and steel, blue and lime, red and teal, violet and mint, green and lavender, orange and turquoise, teal and orchid, purple and mint, rust and sage, ice and lavender, gold and teal. Both halves hold it at AA on the page and the panel. A swatch shows both, as two dots.
+**Every scheme has two hues (the operator, 16 Oct).** The accent is where one is and what is live: the rail's bar, the session and status dots, the notebook's group row, a pill that runs. The second color, `--note`, is what is lit and what one follows: every filled control (`--lit`, from which `--accent-deep` and `--accent-mid` are mixed: the selected tab, a primary button, a button that is on, an open select's chosen row, the text selection, a checkbox's tick), a button under the pointer (a tint of it in its fill and its edge; a resting button is the plain control), the logo, a link in words, a project's branch, a Home tile with no news, the second of two charts side by side, the view chosen in a group's row and an info note. It sits apart from the accent on the wheel and from `--warn` and `--bad`, so it never reads as a warning: green and blue, amber and steel, blue and lime, red and teal, violet and mint, green and lavender, orange and turquoise, teal and orchid, purple and mint, rust and sage, ice and lavender, gold and teal. Both halves hold it at AA on the page and the panel, and text on its fill at AA too. A swatch shows both, as two dots.
 
 **A pass is one green in every scheme (the operator, 16 Oct).** The doctor's dot and its passing checks wear `--pass`, which no scheme swaps (#3fb950, #1a7f37 in the light half), as a warning stays `--warn` and a failure `--bad`: an accent can be orange or purple, and a verdict must not change color with the scheme.
 
