@@ -118,6 +118,21 @@ def pull_flags(args):
              "--repro": "repro", "--expected": "expected",
              "--actual": "actual", "--notes": "notes"}
     while i < len(args):
+        # Anything else that looks like a flag is asked about or refused, not
+        # glued onto the title: `bb bug add "T" --help` filed "T --help"
+        # (diagnostics #112). After `--` every word is the title's.
+        if args[i] == "--":
+            words.extend(args[i + 1:])
+            break
+        if args[i] in ("--help", "-h"):
+            print("usage: bb bug add TITLE [--sev low|medium|high] [--area AREA] [--repro HOW] "
+                  "[--expected ..] [--actual ..] [--notes ..] [--here]; -- ends the flags")
+            sys.exit(0)
+        if args[i].startswith("--") and args[i] not in names:
+            print(f"[builderbot] ERROR: bb bug add does not take {args[i]} (it takes --sev, --area, --repro, "
+                  "--expected, --actual, --notes and --here; -- before a title word that starts with --)",
+                  file=sys.stderr)
+            sys.exit(1)
         if args[i] in names:
             if i + 1 >= len(args):
                 print(f"[builderbot] ERROR: {args[i]} needs a value after it",
