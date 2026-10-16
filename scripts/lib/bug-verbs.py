@@ -110,6 +110,15 @@ def rows():
     return bugs.payload(proj)["bugs"]
 
 
+def builderbot_tree(root):
+    """Whether a project's tree is BuilderBot's own source (B743): there, a
+    bug that names BuilderBot or bb is this tracker's, since its readers are
+    BuilderBot's maintainers, and sending it to bb report sent it to them by
+    the long way round."""
+    return all(os.path.isfile(os.path.join(root, f)) for f in
+               ("config/templates/briefing.md", "scripts/dashboard/server.py", "scripts/bb"))
+
+
 def pull_flags(args):
     """--sev/--area/--repro/--expected/--actual/--notes out of an argv,
     leaving the words that make the title."""
@@ -215,8 +224,8 @@ elif op == "add":
     # filed rather than said after: said after, a session filed BuilderBot's
     # bug in its own tracker anyway and the operator had to tell it (24 Sep).
     # --here is the answer "it is this project's own". Not where the project
-    # has reporting BuilderBot bugs off, BuilderBot's own among them, whose
-    # tracker it is.
+    # has reporting BuilderBot bugs off, nor on BuilderBot's own tree, whose
+    # tracker it is (B743).
     #
     #
     # What to do comes first in the line, and both ways on are commands to
@@ -226,6 +235,7 @@ elif op == "add":
     import re
     import prefs
     if not here and prefs.get(proj).get("report") != "deny" \
+            and not builderbot_tree(os.path.join(os.environ.get("BB_WORKSPACE", "/workspace"), proj)) \
             and re.search(r"\bbuilder ?bot\b|\bbb\b", said, re.I):
         print("[builderbot] not filed yet. Send it with bb report \"what happened\" [--area A] "
               f"[--repro \"...\"] if it is a problem with BuilderBot itself, or add --here if it is "

@@ -11,13 +11,18 @@ import unittest
 SRC = os.path.join(os.path.dirname(__file__), "..", "..", "lib", "bug-verbs.py")
 
 
-def pull_flags():
+def lift(name):
     """The function alone: the script it lives in runs on import."""
-    tree = ast.parse(open(SRC).read())
-    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "pull_flags")
-    ns = {"sys": sys}
+    with open(SRC) as f:
+        tree = ast.parse(f.read())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
+    ns = {"sys": sys, "os": os}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), SRC, "exec"), ns)  # noqa: S102 (our own source)
-    return ns["pull_flags"]
+    return ns[name]
+
+
+def pull_flags():
+    return lift("pull_flags")
 
 
 class Flags(unittest.TestCase):
@@ -51,6 +56,24 @@ class Flags(unittest.TestCase):
     def test_after_two_dashes_every_word_is_the_title(self):
         got, _, _, _ = self.run_it(["--area", "x", "--", "--weird", "title"])
         self.assertEqual(got, ("--weird title", {"area": "x"}))
+
+
+
+class OwnTree(unittest.TestCase):
+    """B743: on BuilderBot's own tree a bug naming bb is this tracker's."""
+
+    def test_builderbot_source_is_its_own(self):
+        bt = lift("builderbot_tree")
+        self.assertTrue(bt(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
+
+    def test_another_tree_is_not(self):
+        import tempfile
+        bt = lift("builderbot_tree")
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "scripts"))
+            with open(os.path.join(d, "scripts", "bb"), "w") as f:
+                f.write("#!/bin/sh\n")
+            self.assertFalse(bt(d))
 
 
 if __name__ == "__main__":
