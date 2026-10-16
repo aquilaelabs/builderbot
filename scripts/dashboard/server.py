@@ -5246,7 +5246,10 @@ class Handler(BaseHTTPRequestHandler):
                            [{"id": n["id"], "name": n["name"]} for n in nodes.node_list()
                             if n.get("kind") != "local" and n.get("state") != "retired"],
                            "runners": [] if NODES_OK or not can["admin"] else
-                           [{"id": f"{r['id']}/{r['slot']}", "name": r["name"] or r["slot"], "node": r["node"]}
+                           # Named by what it serves: its registered name is
+                           # its node's, which the line already says.
+                           [{"id": f"{r['id']}/{r['slot']}", "node": r["node"],
+                             "name": re.sub(r"^https?://", "", r.get("url") or "") or r["slot"]}
                             for r in runners.listing()]})
 
     def _get_nodes(self):
