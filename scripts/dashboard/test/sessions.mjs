@@ -294,13 +294,17 @@ await phone.waitForFunction(() => typeof state !== 'undefined' && state && Array
 // ...and opened again until it stays: the page adopts the layout the desktop
 // saved, which can land after the tab is opened and take it away again
 // (12 Oct: the tab list read empty when the wait gave up).
-await phone.waitForFunction(() => {
+// Read in the same instant the wait holds (B762, B747): read after it, a
+// layout landing between the two took the tab away again and the bar with it.
+const mob = await phone.waitForFunction(() => {
   if (!tabs.some(t => t.kind === 'term')) openTab({kind: 'term', arg: argForSession('shell-alpha'), label: 'shell-alpha'});
   const k = document.getElementById('mKeys');
-  return k && !k.hidden && k.offsetParent !== null;
-}, null, { timeout: 30000, polling: 500 });
-const mob = await phone.evaluate(() => ({ display: getComputedStyle(document.getElementById('mobar')).display,
-  bKeys: !!document.getElementById('bKeys'), w: innerWidth }));
+  window.__seen = { tabs: tabs.map(t => t.kind), keys: !!k && !k.hidden && k.offsetParent !== null,
+                    display: getComputedStyle(document.getElementById('mobar')).display,
+                    bKeys: !!document.getElementById('bKeys'), w: innerWidth };
+  return window.__seen.keys && window.__seen;
+}, null, { timeout: 30000, polling: 500 }).then(h => h.jsonValue())
+  .catch(async () => (await phone.evaluate(() => window.__seen)) || {});
 ok(mob.display === 'flex' && !mob.bKeys,
    `the phone bar carries the keys, and the strip has no ⌨ anywhere to hide (${JSON.stringify(mob)})`);
 // A truncated version string answers nothing, so where it will not fit the
