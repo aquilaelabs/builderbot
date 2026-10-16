@@ -657,9 +657,11 @@ trap 'cleanup' EXIT
 trap 'exit 0' TERM INT      # so a kept fixture's stop runs the cleanup above
 probes=()
 pid=""
+suite_pid=""
 agent_pid=""
 stub_pid=""
 cleanup() {
+    [ -n "${suite_pid:-}" ] && kill -TERM -- -"$suite_pid" 2>/dev/null || true
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
     [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
     # The server's counts are written on its way out, so the merge waits for
@@ -1673,8 +1675,16 @@ run_file() {
     # open itself hung cards.mjs for four hours, holding the run's lock, with
     # nothing saying so. SUITE_TIMEOUT seconds (1500: the longest file takes
     # about 230 on this node, doubled waits included many times over).
+    # Waited on rather than run in the foreground (B780): timeout puts the
+    # suite in a process group of its own, and bash holds a TERM trap until a
+    # foreground child ends, so a run cut by its group kept its suite going
+    # and itself waiting on it. A wait is interrupted by the trap, and the
+    # cleanup ends the suite's group.
     DASHBOARD_TEST_URL="http://127.0.0.1:$PORT/" DASHBOARD_TEST_CHROME="$CHROME" \
-    DASHBOARD_TEST_DIR="$S" timeout --kill-after=10 "${SUITE_TIMEOUT:-1500}" node "$1" || rc=$?
+    DASHBOARD_TEST_DIR="$S" timeout --kill-after=10 "${SUITE_TIMEOUT:-1500}" node "$1" &
+    suite_pid=$!
+    wait "$suite_pid" || rc=$?
+    suite_pid=""
     [ "$rc" != 124 ] && [ "$rc" != 137 ] \
         || log "FAIL  $(basename "$1") ran out of its ${SUITE_TIMEOUT:-1500} s: something in it waited on nothing"
     # What the suite cost, world and all, for the next run's worker plan
