@@ -183,10 +183,10 @@ const browserNames = await page.evaluate(() => {
   f.remove();
   return [...names];
 });
-const known = new Set(browserNames), uses = [];
+const known = new Set(browserNames), uses = [], whose = new Map();
 for (const s of scripts)
   traverse(babelParse(s.code, s.file.replace(/\.html$/, '.js'), false), {Program(p){
-    Object.keys(p.scope.bindings).forEach(n => known.add(n));
+    Object.keys(p.scope.bindings).forEach(n => { known.add(n); whose.set(n, [...(whose.get(n) || []), s.file]); });
     for (const [n, node] of Object.entries(p.scope.globals))
       uses.push({n, at: `${s.file}:${s.base + (node.loc?.start.line || 0)}`});
     p.stop();
@@ -195,6 +195,15 @@ const stray = uses.filter(u => !known.has(u.n)).map(u => `${u.n} (${u.at})`);
 ok(scripts.length > 2 && known.size > 500 && stray.length === 0,
    `every name the page's ${scripts.length} scripts use is declared by one of them or is the browser's${
      stray.length ? `; declared nowhere: ${stray.join(', ')}` : ''}`);
+
+// One name, one script (B738). A `function` declared at the top level of two
+// classic scripts is one global, and the later script's quietly replaces the
+// earlier's: page-dock.js's placeTab took page-tabstrip.js's drag helper's
+// name on 14 Oct, and only a suite's TypeError said so. (A `let` or `const`
+// declared twice is a SyntaxError on load, which zero console errors holds.)
+const twice = [...whose].filter(([, fs]) => fs.length > 1).map(([n, fs]) => `${n} (${fs.join(', ')})`);
+ok(twice.length === 0,
+   `no top-level name is declared by two scripts${twice.length ? `; declared twice: ${twice.join('; ')}` : ''}`);
 
 // The other half of that seam. A view reaches the notebook's helpers and the
 // other views through the state object (nb.syncSave(), nb.shutSendBoxes), so
