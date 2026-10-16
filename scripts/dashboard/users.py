@@ -560,8 +560,8 @@ def may(u, action, project=None):
         return (f"{project} is read-only from a session on {u['session']}: it reads "
                 f"{project}'s code and notebook, and a session on {project} is what changes them")
     if project is not None and not may_work(u, project):
-        return ("you have not taken this project on: add it to your own list "
-                "on the Users tab" if is_admin(u) else
+        return ("you hold no role on this project: give yourself one on it on the "
+                "Roles tab" if is_admin(u) else
                 "you were not given this project")
     # A session may never write the house rules it is being held to. Ahead of
     # the admin pass, because the operator's OWN session carries a token with
@@ -593,58 +593,47 @@ def may(u, action, project=None):
     if roles.granted(u, action, project, may_work):
         return ""
     if action in USER_DENIES:
-        return {"rename": "renaming a project is an administrator's",
-                "trash": "deleting a project is an administrator's",
-                "lock": "locking a project is an administrator's: it ends whoever's "
-                        "Claude session is running there",
-                "command-pin": "the pinned commands are one set for everybody on this "
-                               "controller, so moving them is an administrator's",
-                "version": "moving a project's version, releasing it or changing who may "
-                           "is an administrator's: a release pushes a tag with the "
-                           "project's own credentials",
-                "jobs": "running a command on a node is an administrator's: a job "
-                        "runs outside every session's view, as the node's own "
-                        "account, so it reaches everything on that machine",
-                "node": "which node a project builds on is an administrator's: "
-                        "a node is shared, so changing it reaches every project "
-                        "on it",
-                # The CI runner tab (R137 step 3, the operator's R136 line):
-                # its status stays on the Tools card for everybody.
-                "runner": "the CI runner's settings are an administrator's: its "
-                          "status is on the Tools card",
-                # The one that makes the rest of the role mean something.
-                # Everything else here is enforced by this server, in Python,
-                # and a shell is the way around all of it: one uid, one tmux
-                # server, and Bash covered by no deny list. Without a terminal
-                # there is no hole to argue about, which is why an account
-                # that may not have one gets a Claude console instead of a
-                # window it could point somewhere else (roadmap #27).
-                # A project this account made would not be in the list an
-                # administrator gave it, so it would vanish on the next
-                # paint, and the create dialog is one of the two places a
-                # git token is written.
-                "create": "making a project is an administrator's: the "
-                          "projects you can work on are the ones you were "
-                          "given",
-                "terminal": "a shell is an administrator's: your Claude "
-                            "session opens as a console instead",
-                "git-auth": "how a project authenticates to its remote is an "
-                            "administrator's: the token is what pushes, and "
-                            "changing the method or clearing it reaches "
-                            "everybody who works on it",
-                "docker-write": "starting and stopping containers is an "
-                                "administrator's: you can see what is "
-                                "running and open it",
-                "toolchains-write": "installing on a node is an administrator's: "
-                                  "these are gigabytes on shared disk",
-                # Named only (roles.NAMED_ONLY): an administrator too is
-                # refused until a role grants it by name (the operator, 6 Oct).
-                "debug": "the debug options are BuilderBot's owner's, or a role's that "
-                         "grants debug by name on the Roles tab",
-                "ftp": "file access over FTP is BuilderBot's owner's, or a role's that "
-                       "grants ftp by name on the Roles tab"}[action]
+        # What the action is and why it is guarded, with what it needs named
+        # (R255 step 2): the area and level a role gives, not "an
+        # administrator's", since a role of anybody's may grant it.
+        what, why = {
+            "rename": ("renaming a project", ""),
+            "trash": ("deleting a project", ""),
+            "lock": ("locking a project", "it ends whoever's Claude session is running there"),
+            "command-pin": ("moving the pinned commands", "they are one set for everybody on this controller"),
+            "version": ("moving a project's version, releasing it or changing who may",
+                        "a release pushes a tag with the project's own credentials"),
+            "jobs": ("running a command on a node", "a job runs outside every session's view, as the "
+                     "node's own account, so it reaches everything on that machine"),
+            "node": ("choosing which node a project builds on",
+                     "a node is shared, so changing it reaches every project on it"),
+            # The CI runner tab (R137 step 3, the operator's R136 line):
+            # its status stays on the Tools card for everybody.
+            "runner": ("the CI runner's settings", "its status is on the Tools card"),
+            # A project this account made would not be in the list it was
+            # given, so it would vanish on the next paint, and the create
+            # dialog is one of the two places a git token is written.
+            "create": ("making a project", "the projects you can work on are the ones you were given"),
+            # The one that makes the rest of the role mean something.
+            # Everything else here is enforced by this server, in Python,
+            # and a shell is the way around all of it: one uid, one tmux
+            # server, and Bash covered by no deny list. Without a terminal
+            # there is no hole to argue about, which is why an account
+            # that may not have one gets a Claude console instead of a
+            # window it could point somewhere else (roadmap #27).
+            "terminal": ("a shell", "your Claude session opens as a console instead"),
+            "git-auth": ("how a project authenticates to its remote", "the token is what pushes, and "
+                         "changing the method or clearing it reaches everybody who works on it"),
+            "docker-write": ("starting and stopping containers", "you can see what is running and open it"),
+            "toolchains-write": ("installing on a node", "these are gigabytes on shared disk"),
+            # Named only (roles.NAMED_ONLY): an administrator too is
+            # refused until a role grants it by name (the operator, 6 Oct).
+            "debug": ("the debug options", "BuilderBot's owner's, or a role's that grants debug by name"),
+            "ftp": ("file access over FTP", "BuilderBot's owner's, or a role's that grants ftp by name"),
+        }[action]
+        return f"{what} {_needs(action, project)}" + (f" ({why})" if why else "")
     if action == "admin":
-        return "that is an administrator's"
+        return f"that {_needs(action, None)}"
     # Everything else, for a person, is what their roles give and nothing
     # more (R152, the operator, 7 Oct: no role, no permission); it used to
     # be allowed to anybody on the project's list. A session keeps its own
@@ -653,6 +642,17 @@ def may(u, action, project=None):
     if not (u or {}).get("session"):
         return _roles_why(action, project)
     return _session_account_why(u, action, project if project is not None else u.get("session"))
+
+
+def _needs(action, project=None):
+    """What an action needs, as a refusal says it (R255 step 2): "needs
+    Projects Write on alpha, which your roles do not give: the Roles tab
+    gives it"."""
+    area, need = roles.CAP_AREA.get(action, ("projects", "write"))
+    label = next((a[1] for a in roles.AREAS if a[0] == area), area)
+    where = f" on {project}" if project else ""
+    return (f"needs {label} {'Write' if need == 'write' else 'Read'}{where}, which your roles do not give: "
+            "the Roles tab gives it")
 
 
 def _roles_why(action, project=None, whose="your"):

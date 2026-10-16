@@ -454,7 +454,7 @@ ${code}`], { encoding: 'utf8' });
 
     const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
     const shell = await term(other, 'sh:1:');
-    ok(shell.status === 403 && /shell is an administrator/.test((await shell.json()).error || ''),
+    ok(shell.status === 403 && /a shell needs .+ Write/.test((await shell.json()).error || ''),
        'a shell is refused at the proxy, not merely hidden on the page');
     ok((await term(other, 'shell:beta')).status === 403,
        '...in every spelling the argument has');
@@ -538,7 +538,7 @@ ${code}`], { encoding: 'utf8' });
 
     // Read-only means it: the writes refuse, by name, with the remedy.
     const r = await post(adm, '/api/roadmap', { project: 'alpha', action: 'add', text: 'x' });
-    ok(r.status === 403 && /taken this project on/.test((await r.json()).error || ''),
+    ok(r.status === 403 && /no role on this project/.test((await r.json()).error || ''),
        'an admin cannot edit the notebook of a project it has not taken on');
     ok((await post(adm, '/api/bugs', { project: 'alpha', action: 'add', title: 'x' })).status === 403,
        '...nor file a bug on it');
@@ -845,8 +845,8 @@ ${code}`], { encoding: 'utf8' }).trim();
   // ...and on a project they DO have, the verbs that reach past it are an
   // administrator's.
   const renamed = await post('/api/rename', { name: 'alpha', to: 'alpha2' });
-  ok(renamed.status === 403 && /administrator/.test((await renamed.json()).error || ''),
-     'renaming their own project is refused, and says whose it is');
+  ok(renamed.status === 403 && /needs .+ Write/.test((await renamed.json()).error || ''),
+     'renaming their own project is refused, and says what it needs (R255 step 2)');
   const trashed = await post('/api/trash', { name: 'alpha' });
   ok(trashed.status === 403, 'so is deleting it');
   const renoded = await post('/api/prefs', { project: 'alpha', node: 'local' });
@@ -1261,7 +1261,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
       const r = await bare('/api/v1/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json',
         Authorization: 'Basic ' + Buffer.from('plainone:plainonepw1').toString('base64') }, body: JSON.stringify(body) });
       const why = r.status === 403 ? ((await r.json()).error || '') : '';
-      ok(r.status === 403 && /administrator's/.test(why),
+      ok(r.status === 403 && /needs Jobs Write/.test(why),
          `a plain account cannot queue a ${body.action} job, which would run outside every view (${r.status}: ${why.slice(0, 50)})`);
     }
     // ...nor stop or clear the project job (B171): a clone or a link is the
@@ -1312,12 +1312,12 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     // version panel is closed to a session's token outright.
     await act(ownerAuth, '/api/users', { action: 'projects', name: 'plainone', projects: ['alpha'] });
     for (const [path, body, why] of [
-        ['/api/lock', { name: 'alpha', locked: true }, /administrator's/],
-        ['/api/pin', { name: 'status', pinned: true }, /administrator's/],
-        ['/api/project-auth', { name: 'alpha' }, /administrator's|rename/],
-        ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /administrator's/],
-        ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /administrator's/],
-        ['/api/signing', { project: 'alpha', action: 'put', route: 'sideload', keystore: 'eA==', password: 'p' }, /administrator's/]]) {
+        ['/api/lock', { name: 'alpha', locked: true }, /needs .+ Write/],
+        ['/api/pin', { name: 'status', pinned: true }, /needs Controller Write/],
+        ['/api/project-auth', { name: 'alpha' }, /needs .+ Write|rename/],
+        ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /needs .+ Write/],
+        ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /needs .+ Write/],
+        ['/api/signing', { project: 'alpha', action: 'put', route: 'sideload', keystore: 'eA==', password: 'p' }, /needs .+ Write/]]) {
       const r = await act(plainAuth, path, body);
       ok(r.status === 403 && why.test(r.error), `a plain account cannot ${path} ${body.action || ''} (${r.status}: ${r.error.slice(0, 50)})`);
     }
