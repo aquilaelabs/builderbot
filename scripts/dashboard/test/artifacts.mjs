@@ -389,8 +389,10 @@ page.errors = [];
 
 // ---- the empty state says what the convention is ---------------------------
 await page.evaluate(n => openNotebook(n), 'beta');
-await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
-await page.click('.nbtabs [data-v="artifacts"]:visible');
+// The notebook on show, not the first visible one: the one it replaced is
+// still drawn for the crossfade's moment, and was the first match.
+await page.waitForSelector('.pane .stack > .doc.on .nbtabs [data-v="artifacts"]', { timeout: 20000 });
+await page.click('.pane .stack > .doc.on .nbtabs [data-v="artifacts"]');
 // Scoped to the pane: alpha's notebook is parked but its own artifacts view
 // is still the active one inside that instance, so an unscoped selector finds
 // the wrong project's rows.
