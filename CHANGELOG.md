@@ -359,6 +359,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Claude button says Start Claude when no session of yours runs there, and turns green and says Open Claude only while one does (e983f54)
 - Every page's bar is the same row of buttons: a page that stands alone (Home, Containers, Jobs, Sessions) shows its name as one green button, where it was plain text (e983f54)
 - A Claude session's status dot is yellow while it works and green once it is idle and ready for you, as on the phone app, where working was blue and idle amber (fdc6fec)
+- A project's views are five groups in one row (Overview, Plan, Code, Ship, Docs), each group's views in a row under it; Settings is in the project's … menu. Every view keeps its address (0973eda)
 
 ### Removed
 

@@ -3,7 +3,7 @@
 // report is a form submitted once, not a list curated in place), and nothing
 // is ever deleted: a bug closes as fixed or wontfix, each with a note, because
 // a closed bug is the record that stops the same report being chased twice.
-import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR, openFold, closeFold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR, openFold, closeFold, nbGo } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -29,7 +29,7 @@ await ready(page);
 const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on the Projects page (R218 step 3)
 await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
-await page.click('.pane .nb .nbtabs [data-v="bugs"]');
+await nbGo(page, 'bugs');
 await page.waitForFunction(() => /^nothing reported$/.test(
   document.getElementById('bugHint')?.textContent || ''), { timeout: 15000 });
 ok(await page.$eval('#bugList .nbempty', e => /reaches every Claude session/.test(e.textContent)),
@@ -455,7 +455,7 @@ const post = body => page.evaluate(async b => {
   // Back on the list: the History above swapped it out, and a fold cannot be
   // measured through a view that is not on screen.
   await page.evaluate(n => openNotebook(n), 'alpha');
-  await page.click('.pane .nb .nbtabs [data-v="bugs"]');
+  await nbGo(page, 'bugs');
   // Waited on the LOAD, not on a row appearing. The view is drawn before its
   // fetch lands, so a wait on `.bug` was a wait on a round trip it could not
   // see, and about one run in three it lost (B99). reloadBugs returns the
@@ -541,7 +541,7 @@ ok(new RegExp(`bb bug fix B${first}`).test(sent),
    '...and says how to close it when it is dealt with');
 // Back into the notebook: the send above lands you in the session's tab.
 await page.evaluate(n => openNotebook(n), 'alpha');
-await page.click('.pane .nb .nbtabs [data-v="bugs"]');
+await nbGo(page, 'bugs');
 await page.waitForSelector('#bugList .bug', { timeout: 15000 });
 // A closed bug is a record, not work. Both halves of that: the button goes
 // dead on the row, and the server refuses even if something asks anyway,

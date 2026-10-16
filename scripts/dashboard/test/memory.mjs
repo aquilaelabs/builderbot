@@ -5,7 +5,7 @@
 //
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
-import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold, animatedDuring, refreshUntil, closePage, patience } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold, animatedDuring, refreshUntil, closePage, patience, nbGo } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
@@ -459,7 +459,7 @@ await nbShown(other);
 await refreshUntil(page, () => !document.getElementById('nbHere').hidden);
 ok(/your other window/.test(await page.$eval('#nbHere', el => el.textContent)),
    'a second window on the same notebook is named as one, not as somebody else');
-await other.click('.pane .nb .nbtabs [data-v="roadmap"]');
+await nbGo(other, 'roadmap');
 await refreshUntil(page, () => /Roadmap/.test(
   document.getElementById('nbHere').textContent));
 ok(true, '...and says which view it is on, which is where the collision would be');

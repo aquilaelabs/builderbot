@@ -1,7 +1,7 @@
 // The notebook's Artifacts view: what a project has built, from its dist/.
 // The convention IS the feature: the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
-import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil, openFold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil, openFold, nbGo } from './lib.mjs';
 import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync, existsSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -87,7 +87,7 @@ await ready(page);
 const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on the Projects page (R218 step 3)
 await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
-await page.click('.nbtabs [data-v="artifacts"]:visible');
+await nbGo(page, 'artifacts');
 await page.waitForSelector('.artrow', { timeout: 15000 });
 
 // The files are a section of their own, like the rest of the view, and open
@@ -391,8 +391,8 @@ page.errors = [];
 await page.evaluate(n => openNotebook(n), 'beta');
 // The notebook on show, not the first visible one: the one it replaced is
 // still drawn for the crossfade's moment, and was the first match.
-await page.waitForSelector('.pane .stack > .doc.on .nbtabs [data-v="artifacts"]', { timeout: 20000 });
-await page.click('.pane .stack > .doc.on .nbtabs [data-v="artifacts"]');
+await page.waitForSelector('.pane .stack > .doc.on .nbtabs', { timeout: 20000 });
+await nbGo(page, 'artifacts', '.pane .stack > .doc.on .nb');
 // Scoped to the pane: alpha's notebook is parked but its own artifacts view
 // is still the active one inside that instance, so an unscoped selector finds
 // the wrong project's rows.

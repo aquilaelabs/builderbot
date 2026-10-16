@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point: something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR, closePage } from './lib.mjs';
+import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR, closePage, nbGo } from './lib.mjs';
 // The add band unrolls the box in its place (R119 step 4): typing a line
 // presses Add to roadmap first, as a person does.
 const unroll = async pg => { if (await pg.$eval('#roadmapForm', f => f.hidden)) await pg.click('#roadmapShow'); };
@@ -294,7 +294,7 @@ ok(page.dialogs.length === nd + 1 && /thrown away/.test(page.dialogs.at(-1)),
    'leaving the tab asks before throwing the unsaved change away');
 ok(!read().projects.alpha.some(r => /staged, deliberately/.test(r.text)),
    '...and it never reached disk, which is what "unsaved" meant');
-await page.click(tab('roadmap'));
+await nbGo(page, 'roadmap');
 await page.waitForFunction(() => !document.querySelector('[data-view="roadmap"]').hidden);
 await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadmap').length > 0);
 ok(!(await open()).some(i => /staged, deliberately/.test(i.text)),

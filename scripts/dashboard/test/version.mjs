@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn, openFold, registerProject } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn, openFold, registerProject, nbGo } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -968,7 +968,7 @@ await page.goto(DURL);
 await ready(page);
 await page.evaluate(() => openNotebook('alpha'));
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
-await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
+await nbGo(page, 'artifacts', NB);
 // One section open at a time in a notebook (the operator, 5 Oct): Build is
 // first, so Version is opened.
 await page.waitForSelector(`${NB} [data-sect="artifacts:version"]`, { timeout: 20000 });
@@ -1100,7 +1100,7 @@ for (let t = 0; t < 30 && !polOpts.length; t++){
                               os => os.map(o => o.value)).catch(() => []);
   if (polOpts.length) break;
   await page.evaluate(() => openNotebook('beta'));
-  await page.click(`${NB} .nbtabs [data-v="artifacts"]`).catch(() => {});
+  await nbGo(page, 'artifacts', NB).catch(() => {});
   await sleep(300);
 }
 ok(polOpts.join(",") === "locked,start,patch,minor,open",
@@ -1126,13 +1126,13 @@ async function initWith(val){
     }, val).catch(() => false);
     if (okc) return;
     await page.evaluate(() => openNotebook('beta'));
-    await page.click(`${NB} .nbtabs [data-v="artifacts"]`).catch(() => {});
+    await nbGo(page, 'artifacts', NB).catch(() => {});
     await sleep(300);
   }
   throw new Error("the init control never became usable");
 }
-await page.waitForSelector(`${NB} .nbtabs [data-v="artifacts"]`, { timeout: 20000 });
-await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
+await page.waitForSelector(`${NB} .nbtabs`, { timeout: 20000 });
+await nbGo(page, 'artifacts', NB);
 await page.waitForSelector(`${NB} #verBox .verln`, { timeout: 20000 });
 const fallback = (await page.$eval(`${NB} #verBox`, e => e.textContent)).replace(/\s+/g, ' ');
 ok(/No version yet/.test(fallback) && /start at/.test(fallback),

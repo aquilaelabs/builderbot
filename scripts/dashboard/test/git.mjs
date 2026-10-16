@@ -1007,19 +1007,20 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
 }
 
 // ---- the strip on a phone -------------------------------------------------
-// Ten views do not fit 393px in one row: the strip wraps, and every tab
-// stays on screen rather than the last two hiding behind an edge.
+// Five groups in one row (R259, the operator 16 Oct: eleven tabs were too
+// many), the open group's views in one row under it, every one on screen.
 await page.setViewportSize({ width: 393, height: 851 });
 await page.waitForFunction(() => document.querySelector('.nb .nbtabs')?.getBoundingClientRect().width > 0);
 const strip = await page.$eval('.nb .nbtabs', el => {
-  const bs = [...el.querySelectorAll('button')].map(b => b.getBoundingClientRect());
-  const box = el.getBoundingClientRect();
-  return { n: bs.length, rows: new Set(bs.map(b => Math.round(b.top))).size,
-           inside: bs.every(b => b.left >= box.left - 1 && b.right <= box.right + 1),
-           over: el.scrollWidth - el.clientWidth };
+  const row = sel => { const bs = [...el.querySelectorAll(sel)].filter(b => b.offsetWidth).map(b => b.getBoundingClientRect());
+    const box = el.getBoundingClientRect();
+    return { n: bs.length, rows: new Set(bs.map(b => Math.round(b.top))).size,
+             inside: bs.every(b => b.left >= box.left - 1 && b.right <= box.right + 1) }; };
+  return { groups: row('.nbgroups button'), views: row('.nbsub button'), over: el.scrollWidth - el.clientWidth };
 });
-ok(strip.n === 11 && strip.rows >= 2 && strip.rows <= 3 && strip.inside && strip.over <= 0,
-   `on a phone the strip wraps into rows and every tab is on screen (${JSON.stringify(strip)})`);
+ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && strip.views.n >= 2 && strip.views.rows === 1
+   && strip.views.inside && strip.over <= 0,
+   `on a phone the strip is five groups in one row and the open group's views in one row under it, every tab on screen (${JSON.stringify(strip)})`);
 
 // bb projects lists what the dashboard lists: a directory carrying .bbignore
 // (the fixture's toolchain store) is not a project, and a worktree, whose .git

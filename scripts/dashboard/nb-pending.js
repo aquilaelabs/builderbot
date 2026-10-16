@@ -29,13 +29,16 @@ function nbPendingView({$, nb, project, root}){
     const n = rows.length;
     // The strip's own counts, per tab: a number where the tab is, so the
     // question "which of these" is answered without opening anything.
+    // A group's button carries its views' sum (R259), so a count is seen
+    // with the group shut; Overview is its own view and counts once.
+    const of = v => { const k = {roadmap: "roadmap", bugs: "bugs", briefing: "rules"}[v]; return k ? (nb.pendData?.counts?.[k] || 0) : 0; };
     for (const b of root.querySelectorAll(".nbtabs button")){
-      const k = {roadmap: "roadmap", bugs: "bugs", briefing: "rules"}[b.dataset.v];
+      const c = b.dataset.v ? of(b.dataset.v)
+        : [...root.querySelectorAll(`.nbtabs .nbsub button[data-in="${CSS.escape(b.dataset.g || "")}"]`)].reduce((n, x) => n + of(x.dataset.v), 0);
       let badge = b.querySelector(".pcount");
-      const c = k ? (nb.pendData?.counts?.[k] || 0) : 0;
       if (!c){ if (badge) badge.remove(); continue; }
       if (!badge){ badge = document.createElement("span"); badge.className = "pcount"; b.appendChild(badge); }
-      badge.textContent = String(c);
+      if (badge.textContent !== String(c)) badge.textContent = String(c);
     }
     el.hidden = !n;
     if (!n){ el.innerHTML = ""; return; }

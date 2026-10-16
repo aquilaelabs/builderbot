@@ -2169,34 +2169,32 @@ pre.diff .d-ctx{color:var(--dim)}
    lose their padding before the words lose their width. */
 @media(max-width:620px){ .roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{padding:5px 4px}
   .roadmap{gap:5px} }
-/* The notebook's own tab strip: three views under one roof. Underlined, not
-   boxed; these switch what the page shows, they do not open anything. */
-/* Scrolls sideways rather than spilling. Five labels are 404px of content in
-   a 360px phone, and flex items will not shrink below their text, so without
-   this the tail of the strip simply hung outside the box, unreachable. A
-   sixth tab is planned, which would make it 544px. Horizontal, so the rule
-   about nothing inside the notebook trapping a VERTICAL scroll still holds,
-   but only because overflow-y is set to hidden by hand. Setting one axis to
-   auto computes the OTHER one from visible to auto, so `overflow-x:auto`
-   alone made this a vertical scroller too, and the suite caught it. The bar
-   is hidden because a scrollbar under a row of tabs reads as a divider. */
-.nbtabs{display:flex;border-bottom:var(--hair) solid var(--line);padding:0 8px;
-  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
-  -webkit-overflow-scrolling:touch}
-.nbtabs::-webkit-scrollbar{display:none}
+/* The notebook's own strip (R259): five groups in a row, underlined, not
+   boxed, since they switch what the page shows; a group's views in a row
+   under it. A row that ever outgrows a desk scrolls sideways rather than
+   spilling, with overflow-y set to hidden by hand: one axis on auto turns
+   the other from visible to auto, and the strip became a vertical scroller
+   too. No scrollbar: under a row of tabs it reads as a divider. */
+.nbtabs{border-bottom:var(--hair) solid var(--line)}
+.nbtabs .nbgroups,.nbtabs .nbsub{display:flex;padding:0 8px;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.nbtabs .nbgroups::-webkit-scrollbar,.nbtabs .nbsub::-webkit-scrollbar{display:none}
 .nbtabs button{background:none;border:0;border-bottom:2px solid transparent;
   color:var(--dim);padding:11px 13px;font:600 12px/1 system-ui,sans-serif;
   min-height:var(--tap);border-radius:0;flex:0 0 auto}
 .nbtabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
-/* Nine labels do not fit a phone, and a strip that scrolls sideways hides
-   its last two behind an edge nobody pulls: it wraps into rows of tabs of
-   one width instead, so every view is on screen (docs/design-language.md,
-   The notebook). */
+/* The open group's views (R259): a row of their own under the groups, on
+   the sunk ground and in the regular weight, so it reads as the group's
+   and not as a second strip of the same rank. */
+.nbtabs .nbsub{background:var(--sunk);border-top:var(--hair) solid var(--line)}
+.nbtabs .nbsub button{font-weight:500;padding:9px 13px;min-height:calc(var(--tap) - 4px)}
+.nbtabs .nbsub[hidden],.nbtabs .nbsub button[hidden]{display:none}
+/* On a phone the five groups share the width in one row, and a group's
+   views share the row under it: every view one press away, nothing behind
+   an edge (docs/design-language.md, The notebook). */
 @media(max-width:600px){
-  .nbtabs{flex-wrap:wrap;overflow:visible;padding:4px 8px 0;gap:2px}
-  /* Four to a row: eleven views in three rows rather than four, and no
-     lone tab stretched across the last (R119, 4 Oct). */
-  .nbtabs button{flex:1 1 22%;text-align:center;padding:9px 4px}
+  .nbtabs .nbgroups,.nbtabs .nbsub{overflow:visible;padding:0 4px}
+  .nbtabs button{flex:1 1 0;text-align:center;padding:9px 2px;min-width:0}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
@@ -4131,24 +4129,36 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          #27). Above the strip like the batch note, because it is about the
          notebook and not one tab of it: the modal it opens lists every tab's. -->
     <div class="field mdrift" id="nbPending" hidden></div>
-    <!-- In the order a project is worked: what to know (Briefing), what it
-         should look like (Design), what to do (Roadmap), what is broken
-         (Bugs), the code as it stands (Git), what it produced (Artifacts,
-         with the version), whether it holds (Tests), and what a scanner
-         says about it (Analysis): the last because it is read least, and
-         only when a report exists. -->
+    <!-- Five groups in the order a project is worked (the operator, 16 Oct:
+         eleven tabs were too many): what to know (Overview), what to do
+         (Plan: Roadmap, Bugs), the code and whether it holds (Code: Git,
+         Tests, Analysis), what it produced and where it runs (Ship:
+         Artifacts, Docker), and what is written about it (Docs: Wiki,
+         Design). A group of several opens its views in the row under it,
+         the way a rail group's page carries its tools; Overview is one view
+         and its own button. Settings is the header's ... menu's, so its
+         button here is never drawn. Every view keeps its data-v and its
+         address. -->
     <div class="nbtabs" role="tablist">
-      <button type="button" data-v="briefing">Overview</button>
-      <button type="button" data-v="design">Design</button>
-      <button type="button" data-v="wiki">Wiki</button>
-      <button type="button" data-v="roadmap">Roadmap</button>
-      <button type="button" data-v="bugs">Bugs</button>
-      <button type="button" data-v="git">Git</button>
-      <button type="button" data-v="artifacts">Artifacts</button>
-      <button type="button" data-v="docker">Docker</button>
-      <button type="button" data-v="tests">Tests</button>
-      <button type="button" data-v="analysis">Analysis</button>
-      <button type="button" data-v="settings">Settings</button>
+      <div class="nbgroups">
+        <button type="button" data-g="overview" data-v="briefing">Overview</button>
+        <button type="button" data-g="plan">Plan</button>
+        <button type="button" data-g="code">Code</button>
+        <button type="button" data-g="ship">Ship</button>
+        <button type="button" data-g="docs">Docs</button>
+      </div>
+      <div class="nbsub" hidden>
+        <button type="button" data-v="roadmap" data-in="plan">Roadmap</button>
+        <button type="button" data-v="bugs" data-in="plan">Bugs</button>
+        <button type="button" data-v="git" data-in="code">Git</button>
+        <button type="button" data-v="tests" data-in="code">Tests</button>
+        <button type="button" data-v="analysis" data-in="code">Analysis</button>
+        <button type="button" data-v="artifacts" data-in="ship">Artifacts</button>
+        <button type="button" data-v="docker" data-in="ship">Docker</button>
+        <button type="button" data-v="wiki" data-in="docs">Wiki</button>
+        <button type="button" data-v="design" data-in="docs">Design</button>
+        <button type="button" data-v="settings" data-in="settings" hidden>Settings</button>
+      </div>
     </div>
     <!-- Who else is in here. Under the strip rather than above it, because
          it is about the whole notebook and not about the batch banner's

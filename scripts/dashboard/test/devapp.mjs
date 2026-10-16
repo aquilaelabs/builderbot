@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold, nbGo } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -66,8 +66,8 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } })
 await page.goto(URL);
 await ready(page);
 await page.evaluate(() => openNotebook('ep.silon'));
-await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
-await page.click('.nbtabs [data-v="artifacts"]:visible');
+await page.waitForSelector('.pane .nb .nbtabs >> visible=true', { timeout: 20000 });
+await nbGo(page, 'artifacts');
 await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
 
 // The controls live on the Docker manager now, and the artifact row only
@@ -656,8 +656,8 @@ writeFileSync(devapps, JSON.stringify({ ...wasBuilt, 'ep.silon': {
 await page.reload();
 await ready(page);
 await page.evaluate(() => openNotebook('ep.silon'));
-await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
-await page.click('.nbtabs [data-v="artifacts"]:visible');
+await page.waitForSelector('.pane .nb .nbtabs >> visible=true', { timeout: 20000 });
+await nbGo(page, 'artifacts');
 await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
 r = await row();
 ok(!/built from/.test(r.text),

@@ -7,7 +7,7 @@
 // a page is named by the rows on it and never by a number. What is tested
 // here is that the helper is wired to every list, that a short list is left
 // whole, and that turning a page never drops rows or their behavior.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, URL, DIR, nbGo } from './lib.mjs';
 import { writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 
 // alpha's tracker, made long enough to page. Written straight to the state
@@ -28,7 +28,7 @@ await page.goto(URL);
 await ready(page);
 await page.evaluate(n => openNotebook(n), 'alpha');
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
-await page.click('.nbtabs [data-v="bugs"]:visible');
+await nbGo(page, 'bugs');
 await page.waitForSelector('#bugList .bug', { timeout: 20000 });
 
 const state = () => page.evaluate(() => {
@@ -77,7 +77,7 @@ ok(st.shown === 25 && /1 to 25 of 40/.test(st.text), 'Previous turns back');
 // nothing, which is why the threshold has slack in it. Waited on the view
 // rather than the list: an empty list is a zero-height div, which is never
 // ":visible" however correctly it is being shown.
-await page.click('.nbtabs [data-v="roadmap"]:visible');
+await nbGo(page, 'roadmap');
 await page.waitForFunction(() => {
   const v = [...document.querySelectorAll('.nbview[data-view="roadmap"]')]
     .find(x => !x.hidden);

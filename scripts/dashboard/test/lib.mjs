@@ -590,8 +590,22 @@ export const nbShown = (page) =>
 // The notebook opens on its first tab (Memory). A file whose subject is one of
 // the others says so once, here, rather than every test in it knowing which
 // tab the panel happens to start on.
+// A notebook view by its button, its group first when the button is in a
+// group that is shut (R259: the strip is five groups, a group's views in a
+// row under it); Settings has no button and is opened as the header's menu
+// opens it. `scope` narrows to one notebook.
+export async function nbGo(page, v, scope = '.pane .nb'){
+  if (v === 'settings') return page.evaluate(() => getNotebook(tabOf(panes[0])?.arg)?.view('settings'));
+  const g = await page.evaluate(({ s, w }) => {
+    const bs = [...document.querySelectorAll(`${s} .nbtabs [data-v="${w}"]`)];
+    const b = bs.find(x => x.closest('.doc.on')) || bs[0];
+    return b && b.hidden && b.dataset.in ? b.dataset.in : '';
+  }, { s: scope, w: v });
+  if (g) await page.click(`${scope} .nbtabs .nbgroups [data-g="${g}"] >> visible=true`);
+  await page.click(`${scope} .nbtabs [data-v="${v}"] >> visible=true`);
+}
 export const nbTab = async (page, v) => {
-  await page.click(`.pane .nb .nbtabs [data-v="${v}"]`);
+  await nbGo(page, v);
   await page.waitForFunction(
     (w) => document.querySelector(`.pane .nb .nbview[data-view="${w}"]`)?.checkVisibility(),
     v, { timeout: 20000 });

@@ -62,6 +62,7 @@ function makeNotebook(project){
   // The notebook's state, one object rather than sixty closure variables,
   // so a view can live in its own file and reach it by name (R60).
   const nb = {};
+  nb.groupLast = {};                 // a view group's last view, so its button returns there (R259)
   // The closure's own functions a view reaches through the state object,
   // late-bound: a view file calls nb.syncSave(), and which function that is
   // does not depend on the order the files loaded in.
@@ -530,13 +531,26 @@ function makeNotebook(project){
     if (nb.nbWhere !== v){ nb.nbWhere = v; beat(); }
     nbViewMemo.keep(project, v);
     shellSync();                    // the address names the view (R218 step 3)
-    root.querySelectorAll(".nbtabs button").forEach(b => {
-      const on = b.dataset.v === v;
-      b.classList.toggle("on", on);
-      // The strip scrolls on a narrow screen, so the tab that just became
-      // current has to be brought into it: arriving on a view whose own tab
-      // is off the end of the strip reads as nothing having happened.
-      if (on) b.scrollIntoView({block: "nearest", inline: "nearest"});
+    // Its group lit in the top row and, for a group of several, the group's
+    // views in the row under it with this one lit (R259); Overview is a
+    // group of one and Settings is the header menu's, so neither has that
+    // second row. The view is the group's to come back to.
+    const me = root.querySelector(`.nbtabs button[data-v="${CSS.escape(v)}"]`);
+    const g = me?.dataset.in || me?.dataset.g || "";
+    if (g) nb.groupLast[g] = v;
+    root.querySelectorAll(".nbtabs .nbgroups button").forEach(b => {
+      const on = b.dataset.g === g;
+      if (b.classList.contains("on") !== on) b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+    const sub = root.querySelector(".nbtabs .nbsub");
+    const several = !!sub && [...sub.children].filter(b => b.dataset.in === g).length > 1;
+    if (sub && sub.hidden === several) sub.hidden = !several;
+    sub?.querySelectorAll("button").forEach(b => {
+      const mine = b.dataset.in === g && g !== "settings", on = b.dataset.v === v;
+      if (b.hidden === mine) b.hidden = !mine;
+      if (b.classList.contains("on") !== on) b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", String(on));
     });
     // The incoming view arrives on the same fade content does: one vocabulary
     // for "this is here now", rather than a tab switch being the one place on
@@ -605,8 +619,14 @@ function makeNotebook(project){
     await loadMemory(nb.memGen);     // drops whatever the editors were holding
     return true;
   }
+  // A view's own button opens it; a group's opens the view it was last on,
+  // else its first (R259).
   root.querySelectorAll(".nbtabs button").forEach(b =>
-    b.onclick = async () => { if (await leaveNbView(b.dataset.v)) setNbView(b.dataset.v); });
+    b.onclick = async () => {
+      const v = b.dataset.v || nb.groupLast[b.dataset.g]
+        || root.querySelector(`.nbtabs .nbsub button[data-in="${CSS.escape(b.dataset.g || "")}"]`)?.dataset.v;
+      if (v && await leaveNbView(v)) setNbView(v);
+    });
   $("bugSort").onchange = drawBugs;
   $("bugFind").addEventListener("input", () => { nb.bugFind = $("bugFind").value; drawBugs(true); });
   // What this notebook watches. Registered once per instance, and only ever
@@ -925,6 +945,12 @@ function projectHeader(t){
 // menu's own button is the one thing the row did differently.
 function wireProjectHeader(bar){
   wireProjectRows(bar);
+  // On the project's own page its menu's Settings is the notebook's Settings
+  // view (R259: the view strip carries no tab for it), not the dialog.
+  bar.querySelectorAll("[data-rn]").forEach(b => b.onclick = () => {
+    const n = getNotebook(b.dataset.rn);
+    if (n) n.view("settings"); else openProjectSettings(b.dataset.rn);
+  });
   bar.querySelectorAll("[data-pmore]").forEach(b => b.onclick = e => {
     e.stopPropagation();
     const m = b.nextElementSibling, open = m.hidden;
