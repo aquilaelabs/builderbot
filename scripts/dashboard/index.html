@@ -2099,6 +2099,10 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A finished item (R254 step 2): its title dim and struck, its details,
    steps and Reopen read as any open row's, so a live button never looks dead. */
 .grp.done > summary .txt{color:var(--dim);text-decoration:line-through}
+/* What the changelog says about an item or a bug (R254 step 4): an entry a
+   line, the release it went out in first, in the data voice. */
+.clrefs{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.clrefs .clin{font:var(--f-data);color:var(--dim);margin-right:6px}
 .grp.shelved .roadmap .txt{font-style:italic}
 .grp.shelved .who{opacity:.7}
 .roadmap .go{flex:0 0 auto;align-self:flex-start}

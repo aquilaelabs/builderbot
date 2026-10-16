@@ -975,6 +975,34 @@ def releases(project):
     return out
 
 
+_REF = re.compile(r"(?<![\w-])([RB])(\d{1,5})(?![\w-])")
+_SECTION = re.compile(r"^## (Unreleased|\d+\.\d+\.\d+[^:\s]*)")
+
+
+def changelog_refs(project, kind="R"):
+    """The changelog entries that name a roadmap item (kind R) or a bug (B),
+    by its id: {"R12": [{"in": "0.7.0" or "Unreleased", "text": ...}]},
+    newest first, at most ten each (R254 step 4), so an item lists what was
+    written about it and the release it went out in."""
+    try:
+        text = (Path(os.environ.get("WORKSPACE", "/workspace")) / project / "CHANGELOG.md").read_text(errors="replace")
+    except OSError:
+        return {}
+    out, where = {}, ""
+    for line in text.splitlines():
+        m = _SECTION.match(line)
+        if m:
+            where = m.group(1)
+            continue
+        if not where or not line.startswith("- "):
+            continue
+        for k, n in {(k, n) for k, n in _REF.findall(line) if k == kind}:
+            got = out.setdefault(f"{k}{int(n)}", [])
+            if len(got) < 10:
+                got.append({"in": where, "text": line[2:].strip()[:240]})
+    return out
+
+
 def last_release(project):
     rel = releases(project)
     return rel[0] if rel else None
@@ -1708,6 +1736,8 @@ def panel(name, live, prefix):
             "finished_n": len(finished(name)),
             # What a time of doing shipped in, for the rows' facts (R254).
             "releases": releases(name),
+            # ...and what the changelog says about each item (R254 step 4).
+            "changelog": changelog_refs(name, "R"),
             # What the poll compares against, handed back with every read
             # AND every write, so this panel's own change never reads as
             # somebody else's on the next poll, and a change that lands

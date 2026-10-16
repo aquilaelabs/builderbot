@@ -767,6 +767,14 @@ function makeNotebook(project){
     reload(){ return loadRoadmap(nb.memGen); },
     reloadMemory(){ return loadMemory(nb.memGen); },
     reloadBugs(){ return loadBugs(); },
+    // A roadmap item or a bug by its id (R12, B34), from a link elsewhere
+    // (the changelog, R254 step 4): its view, its list narrowed to it.
+    find(id){
+      const bug = /^b/i.test(id);
+      setNbView(bug ? "bugs" : "roadmap");
+      if (bug){ nb.bugChip = ""; nb.bugFind = id; $("bugFind").value = id; drawBugs(true); }
+      else { nb.roadmapChip = ""; nb.roadmapFind = id; $("roadmapFind").value = id; redrawRoadmap(); }
+    },
     reloadTests(){ return loadTests(); },
     leaving: notebookLeaving,
     held: nbHeld,

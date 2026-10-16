@@ -982,6 +982,16 @@ ok(await page.evaluate(() => { const rel = [['0.7.0', 2000], ['0.6.0', 1000]];
   return shippedIn(500, rel) === '0.6.0' && shippedIn(1000, rel) === '0.6.0' && shippedIn(1500, rel) === '0.7.0'
     && shippedIn(2500, rel) === null && shippedIn(500, []) === ''; }),
    'what a thing shipped in is the first release dated after it, the next release for one done since');
+// The changelog names items and bugs by id, and each becomes a link that
+// opens its row: the view, its list narrowed to it.
+ok(await page.evaluate(() => { const h = clLinks('fixed (B12, R3), not AB12 or B12x <b>');
+  return /data-clref="B12"/.test(h) && /data-clref="R3"/.test(h) && !/data-clref="B12x"|data-clref="AB12"/.test(h) && /&lt;b&gt;/.test(h); }),
+   'the changelog\'s ids are links, and only whole ids, its text escaped');
+await page.evaluate(id => notebooks.get('alpha').find('R' + id), finId);
+await page.waitForFunction(id => notebooks.get('alpha').where() === 'roadmap' && document.querySelector('.nb #roadmapFind').value === 'R' + id
+  && [...document.querySelectorAll('.nb #roadmapList > .grp:not(.off)')].map(g => g.dataset.id).join() === id, finId, { timeout: 5000 });
+ok(true, '...and following one opens the Roadmap narrowed to that item');
+await page.fill('.nb #roadmapFind', '');
 // Read first, as a session does: the reopen moved the list, and bb refuses
 // a change made against an older read of it.
 bbRoadmap();

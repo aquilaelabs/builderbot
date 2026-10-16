@@ -32,6 +32,16 @@ class Releases(unittest.TestCase):
         self.assertEqual(got[0][1], time.mktime(time.strptime("2026-09-25", "%Y-%m-%d")) + 86400)
         self.assertEqual(roadmap.last_release("alpha"), got[0])
 
+    def test_entries_naming_an_item_or_a_bug_by_its_id(self):
+        with open(os.path.join(self.ws, "alpha", "CHANGELOG.md"), "w") as f:
+            f.write("# Changelog\n\n## Unreleased\n\n### Fixed\n\n- the bell resumes (B773) (abc1234)\n"
+                    "- Sessions is a page (R250 step 1)\n\n## 0.7.0: 2026-09-25\n\n- old fix (B12, B773)\n"
+                    "- not a ref: AB12 or B12x or R-2\n")
+        b = roadmap.changelog_refs("alpha", "B")
+        self.assertEqual([e["in"] for e in b["B773"]], ["Unreleased", "0.7.0"])
+        self.assertEqual(b["B12"], [{"in": "0.7.0", "text": "old fix (B12, B773)"}])
+        self.assertEqual(roadmap.changelog_refs("alpha", "R"), {"R250": [{"in": "Unreleased", "text": "Sessions is a page (R250 step 1)"}]})
+
     def test_none_without_a_changelog(self):
         self.assertEqual(roadmap.releases("alpha"), [])
         self.assertIsNone(roadmap.last_release("alpha"))

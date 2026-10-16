@@ -62,15 +62,16 @@ tell = None
 tmux_name = None
 WORKSPACE = None
 releases = None
+changelog_refs = None
 
 
 def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None,
-              actor=None, releases=None):
+              actor=None, releases=None, changelog_refs=None):
     globals().update(write_json=write_json, STATE=Path(state),
                      tell=tell, tmux_name=tmux_name, actor=actor,
                      # project -> [(version, end of its day)], newest first
                      # (roadmap.releases): what a fix shipped in (R254).
-                     releases=releases,
+                     releases=releases, changelog_refs=changelog_refs,
                      # Where the projects are, for the version stamp below.
                      # bb passes it explicitly; the dashboard too; the
                      # environment is the fallback for whoever forgot.
@@ -381,7 +382,8 @@ def payload(project):
         rev = len((d.get("history") or {}).get(project) or []) + int((d.get("revn") or {}).get(project) or 0)
     rows.sort(key=lambda b: (b.get("status") != "open", -b.get("at", 0)))
     return {"project": project, "bugs": rows, "rev": rev,
-            "releases": releases(project) if releases else []}
+            "releases": releases(project) if releases else [],
+            "changelog": changelog_refs(project, "B") if changelog_refs else {}}
 
 
 def counts():

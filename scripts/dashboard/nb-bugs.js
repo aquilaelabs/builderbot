@@ -17,7 +17,7 @@ function bugMatch(b, q){
 // who reported it and when, the build it was seen in and on, when and how
 // it was closed, the build that closed it and the release that shipped
 // the fix (shippedIn, from the CHANGELOG's dated headings).
-function bugFacts(b, rel, words){
+function bugFacts(b, rel, words, refs){
   const who = x => x === "claude" ? "Claude" : x === "you" ? "you" : x || "";
   const closed = b.status !== "open";
   const shipped = closed && b.status === "fixed" ? shippedIn(b.closed_at, rel) : "";
@@ -27,7 +27,8 @@ function bugFacts(b, rel, words){
     ["Closed", closed ? `${words[b.status] || b.status}${b.closed_at ? ", " + rmDay(b.closed_at) : ""}${
       b.status_by ? `, by ${who(b.status_by)}` : ""}${b.status_note ? `: ${b.status_note}` : ""}` : ""],
     ["Fixed in", closed ? b.fixed_in || "" : ""],
-    ["Shipped in", shipped === null ? "not yet: planned for the next release" : shipped || ""]]);
+    ["Shipped in", shipped === null ? "not yet: planned for the next release" : shipped || ""],
+    ["Changelog", clRefs(refs), {html: true}]]);
 }
 
 function nbBugsView({$, nb, project}){
@@ -241,7 +242,7 @@ function nbBugsView({$, nb, project}){
         <div class="body">
           ${["area", "repro", "expected", "actual", "notes"].map(k => b[k]
             ? `<div class="bfield"><label>${k}</label><div class="bval">${esc(b[k])}</div></div>` : "").join("")}
-          ${bugFacts(b, nb.bugReleases, STATUS_WORDS)}
+          ${bugFacts(b, nb.bugReleases, STATUS_WORDS, (nb.bugs.changelog || {})["B" + b.id])}
           <div class="actbar macts">
             <span class="sp"></span>
             <button type="button" class="bSend"${b.status === "open" ? "" : " disabled"}

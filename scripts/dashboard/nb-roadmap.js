@@ -105,7 +105,8 @@ function nbRoadmapView({$, nb}){
     const steps = r.steps || [];
     return factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${who(r.by)}` : ""],
                      ["Plan", steps.length ? `${steps.filter(x => x.done).length} of ${steps.length} steps done` : ""],
-                     ["Sent", r.sent ? rmDay(r.sent) : ""]]);
+                     ["Sent", r.sent ? rmDay(r.sent) : ""],
+                     ["Changelog", clRefs((nb.roadmapChangelog || {})["R" + r.id]), {html: true}]]);
   }
 
   function stepRow(r, idx, live){
@@ -291,6 +292,7 @@ function nbRoadmapView({$, nb}){
     // (the search, a chip) keeps the last one.
     if (j.finished_n !== undefined) nb.roadmapFinishedN = j.finished_n;
     if (j.releases !== undefined) nb.roadmapReleases = j.releases;
+    if (j.changelog !== undefined) nb.roadmapChangelog = j.changelog;
     const finishedN = nb.roadmapFinishedN || 0;
     const frags = [`${left} to send`, parked ? `${parked} shelved` : "", finishedN ? `${finishedN} finished` : "",
                    held ? `${held} not saved` : live ? `${j.session} running` : "no session running"].filter(Boolean);
@@ -1087,7 +1089,8 @@ function nbRoadmapView({$, nb}){
       ${factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${r.by === "claude" ? "Claude" : "you"}` : ""],
                   ["Finished", r.done_at ? `${rmDay(r.done_at)}${r.done_by ? `, by ${r.done_by === "claude" ? "Claude" : r.done_by === "you" ? "you" : r.done_by}` : ""}` : ""],
                   ["Shipped in", (() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
-                    return v === null ? "not yet: planned for the next release" : v || ""; })()]], "dfacts")}
+                    return v === null ? "not yet: planned for the next release" : v || ""; })()],
+                  ["Changelog", clRefs((nb.roadmapChangelog || {})["R" + r.id]), {html: true}]], "dfacts")}
       ${r.info ? `<div class="dinfo">${esc(r.info)}</div>` : ""}${
       (r.steps || []).map((st, i) => `<div class="roadmap step"><span class="n">${st.done ? "✓" : i + 1 + "."}</span>
         <span class="body"><span class="txt">${esc(st.text || "")}</span>${st.done ? `<span class="sub dim">done ${esc(when(st.done))}</span>` : ""}${
@@ -1144,6 +1147,13 @@ function shippedIn(at, rel){
   if (!at || !rel || !rel.length) return "";
   for (let i = rel.length - 1; i >= 0; i--) if (rel[i][1] >= at) return rel[i][0];
   return null;
+}
+
+// What the changelog says about an item or a bug (R254 step 4), as a fact's
+// value: each entry with the release it went out in, or Unreleased.
+function clRefs(refs){
+  if (!refs || !refs.length) return "";
+  return `<ul class="clrefs">${refs.map(e => `<li><span class="clin">${esc(e.in)}</span> ${esc(e.text)}</li>`).join("")}</ul>`;
 }
 
 // Whether an item answers a search (R254 step 1): its number (R12 or 12), its

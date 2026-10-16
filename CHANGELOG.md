@@ -345,6 +345,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Roadmap and Bugs views narrow their lists: chips for All, Open and Shelved (Closed on Bugs) and a search by words or number; the Roadmap's head counts in fragments and its finished items are a section under the list (b889930)
 - A finished roadmap item opens like an open one, with its details, its steps and when each was done, and Reopen where no release has shipped it yet; the Finished section keeps up with items finished or reopened while it is open (c07a6b9)
 - An opened roadmap item or bug says what it knows as facts: when it was added or reported and by whom, its steps' done dates, when and how it was closed, the build it was seen and fixed in, and the release that shipped it, read from the changelog's dated headings (e41ccc7)
+- A roadmap item or bug lists the changelog entries that name it with the release each went out in, and an R or B number in the released changelog opens that row (905768a)
 
 ### Removed
 

@@ -10,6 +10,13 @@
 const windowMove = (part, cost) =>
   (part === "minor" || part === "major") && (cost?.projects || []).length > 0;
 
+// The changelog's released text with each roadmap item and bug it names a
+// link to that row (R254 step 4): escaped first, then R12 and B34 wrapped.
+function clLinks(text){
+  return esc(text).replace(/(^|[^\w-])([RB])(\d{1,5})(?![\w-])/g,
+    (m, pre, k, n) => `${pre}<a href="#" data-clref="${k}${n}" title="open ${k === "R" ? "roadmap item" : "bug"} ${k}${n}">${k}${n}</a>`);
+}
+
 function nbArtifactsView({$, nb, project, root, sheet}){
   // ---- artifacts -----------------------------------------------------------
   // What this project has built. Fetched on open like Analysis, and polled
@@ -587,7 +594,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
              <div class="actbar"><span class="state" id="clState"></span>
                <button type="button" class="primary" id="clSave">Save</button></div>
            </div>
-           ${dated ? `<div class="verlogpane">${esc(dated)}</div>` : ""}`;
+           ${dated ? `<div class="verlogpane">${clLinks(dated)}</div>` : ""}`;
         wire();
         if (top != null && box) box.scrollTop = top;
         if (keep){
@@ -599,6 +606,12 @@ function nbArtifactsView({$, nb, project, root, sheet}){
 
       const wire = () => {
         const q = (sel, fn) => pane.querySelectorAll(sel).forEach(fn);
+        // An id in the released text opens its row, the sheet put away.
+        q("[data-clref]", a => a.onclick = e => {
+          e.preventDefault();
+          nb.closeSheet();
+          getNotebook(project).find(a.dataset.clref);
+        });
         q("[data-cmv]", b => b.onclick = () => {
           const gi = Number(b.dataset.g);
           swap(gs, gi, b.dataset.cmv === "up" ? -1 : 1);
