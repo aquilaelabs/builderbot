@@ -740,12 +740,19 @@ for (const kind of kinds){
       if (t?.closest('#uptime')) return;
       seen.push(`${name(t)} ${m.type === 'attributes' ? '@' + m.attributeName : m.type}`);
     }));
+    // ...unless it did bring something: a token the page follows that moved
+    // in the window (a node's heartbeat on the Nodes page) is news the page
+    // is right to draw (B789), counted as page-poll.js counts it.
+    const r0 = { ...revs };
     mo.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
     await refresh(); await new Promise(r => setTimeout(r, 600));
     mo.disconnect();
-    return [...new Set(seen)];
+    const moved = Object.keys(revs).filter(k => k !== 'boot' && r0[k] !== revs[k] && (!REVS_PAGE_ONLY[k] || REVS_PAGE_ONLY[k]()));
+    return { seen: [...new Set(seen)], moved };
   });
-  ok(quietRead.length === 0, `[${kind}] a status read that brings nothing new writes nothing${quietRead.length ? ': ' + quietRead.slice(0, 6).join('; ') : ''}`);
+  ok(quietRead.seen.length === 0 || quietRead.moved.length > 0,
+     `[${kind}] a status read that brings nothing new writes nothing${quietRead.seen.length ? ': ' + quietRead.seen.slice(0, 6).join('; ') : ''}${
+       quietRead.moved.length ? '; moved: ' + quietRead.moved.join(', ') : ''}`);
 }
 
 // ---- a setting is written by Save, never by the pick -----------------------
