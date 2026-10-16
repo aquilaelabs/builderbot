@@ -287,14 +287,16 @@ def project_roles_of(u, project):
     return [str(r) for r in got] if isinstance(got, list) else []
 
 
-def level_of(u, area, project=None, on_project=None, node=None):
+def level_of(u, area, project=None, on_project=None, node=None, everywhere=False):
     """The level this account holds on `area` ("", read or write), on
     `project` where one is named. An Everywhere (global) role holds
     everywhere; a role on a project holds on the project it is given on, and
     nowhere through the account's own list since R155 (the operator, 8 Oct:
     one way to give a project role). A global area is only ever an
     Everywhere role's. With no project named, the best it holds anywhere.
-    `on_project` is kept in the signature for the callers that pass it."""
+    `on_project` is kept in the signature for the callers that pass it.
+    `everywhere` counts the Everywhere roles alone, for an action that
+    reaches every project at once."""
     known = all_roles()
     best = ""
 
@@ -313,7 +315,7 @@ def level_of(u, area, project=None, on_project=None, node=None):
             if area in NODE_AREAS and r.get("nodes") and node is not None and node not in r["nodes"]:
                 continue
             take(r)
-    if area in PROJECT_AREAS:
+    if area in PROJECT_AREAS and not everywhere:
         if project is not None:
             names = project_roles_of(u, project)
         else:
@@ -326,6 +328,11 @@ def level_of(u, area, project=None, on_project=None, node=None):
     return best
 
 
+# Actions over every project at once (the daemon's whole container list):
+# a role held on one project is no grant of them; an Everywhere role is.
+EVERYWHERE_ONLY = frozenset({"containers-read"})
+
+
 def granted(u, action, project=None, on_project=None, node=None, nodes_of=None):
     """Whether this account's roles grant `action` (one of today's, through
     CAP_AREA), on `project` where one is named. A node's actions are global
@@ -334,7 +341,7 @@ def granted(u, action, project=None, on_project=None, node=None, nodes_of=None):
     # settings saved) is work on the project, as before R152.
     area, need = CAP_AREA.get(action, ("projects", "write"))
     lvl = level_of(u, area, project if area in PROJECT_AREAS else None, on_project,
-                   node if area in NODE_AREAS else None)
+                   node if area in NODE_AREAS else None, everywhere=action in EVERYWHERE_ONLY)
     return lvl == "write" or (need == "read" and lvl == "read")
 
 

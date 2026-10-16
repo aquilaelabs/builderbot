@@ -3518,7 +3518,7 @@ ok(await page.$('#devSend'),
   // (Route, where the thing is reached from, stays the operator's.)
   for (const act of ['route']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
-    ok(r.status === 403 && /administrator/.test(r.error || ''),
+    ok(r.status === 403 && /starting and stopping containers needs Container/.test(r.error || ''),
        `...and ${act} is not a session's at any setting (${String(r.error).slice(0, 48)})`);
   }
   // Its env and creating its own container are on the setting now (the

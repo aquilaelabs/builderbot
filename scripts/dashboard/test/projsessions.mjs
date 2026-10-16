@@ -117,8 +117,14 @@ await plainPage.goto(URL);
 await ready(plainPage);
 await plainPage.evaluate(() => renameProject('alpha'));
 await plainPage.waitForTimeout(1000);
-ok(await plainPage.$eval('#rnSessField', e => e.hidden),
-   'a plain account opening the same settings gets no sessions section');
+// The section stays, closed, with why under it in red (R255 step 4): the
+// server's words naming what would open it, and nobody's sessions or End.
+const plainSess = await plainPage.waitForFunction(() => { const f = document.getElementById('rnSessField');
+  const why = f && !f.hidden && f.querySelector('#rnSessList .sub.bad');
+  return why ? { why: why.textContent, ends: f.querySelectorAll('button').length } : null; }, null, { timeout: 10000 })
+  .then(h => h.jsonValue(), () => null);
+ok(plainSess && /Project settings Write on alpha/.test(plainSess.why) && plainSess.ends === 0,
+   `a plain account opening the same settings sees the sessions section closed, why in red, and no End (${JSON.stringify(plainSess)})`);
 
 // The administrator's page only: a plain account's settings dialog asks for
 // the remote's credentials and is refused by design, which the browser logs.

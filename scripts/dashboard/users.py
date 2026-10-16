@@ -533,6 +533,18 @@ def may_node(u, action, node_id=""):
     return may(u, action) or "that is not one of your roles' grants on that node"
 
 
+# The actions a session is refused whoever its account is, with what each
+# reaches, for the refusal.
+PERSON_ONLY = {
+    "controller": "the controller's settings, logs and checks",
+    "controller-read": "the controller's logs",
+    "nodes-write": "changing the nodes",
+    "containers-read": "every project's containers",
+    "settings": "a project's settings, sessions and snapshots",
+    "signing": "a project's signing keys",
+}
+
+
 def may(u, action, project=None):
     """Whether this account may do `action`, optionally to `project`.
 
@@ -579,6 +591,13 @@ def may(u, action, project=None):
     if action == "pending" and (u or {}).get("session"):
         return ("what a session has waiting is the operator's to approve or "
                 "deny, on the notebook; a session cannot answer for itself")
+    # ...nor reach what was the administrator's before the areas said who
+    # may (R255 step 3): the controller, its settings and logs, the nodes,
+    # every container, a project's settings, sessions and snapshots, and
+    # its signing keys. A role reaches them for a person; a session's token
+    # carries its account's uid, and is still a session.
+    if action in PERSON_ONLY and (u or {}).get("session"):
+        return f"{PERSON_ONLY[action]} is a person's, not a session's"
     # Setting up a project's file access over FTP (R152 (f)): an
     # administrator's, or the project's own owner's; who may then sign in is
     # File access on their roles, which ftp.login reads.

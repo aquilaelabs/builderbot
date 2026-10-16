@@ -61,6 +61,13 @@ class Model(unittest.TestCase):
         self.assertFalse(self.g(rel, "signing", "beta"))
         self.assertTrue(self.g(hr, "admin"))
         self.assertFalse(self.g(hr, "controller") or self.g(hr, "nodes-write") or self.g(hr, "signing", "alpha"))
+        # Every project's containers at once is an Everywhere role's, not a
+        # role held on one project.
+        roles.set_role("box", scope="projects", perms={"projects": "read", "containers": "read"})
+        boxer = {"name": "b", "role": "user", "roles": [], "projects": ["alpha"], "project_roles": {"alpha": ["box"]}}
+        self.assertFalse(self.g(boxer, "containers-read"))
+        roles.set_role("seer", scope="global", perms={"containers": "read"})
+        self.assertTrue(self.g({"name": "s", "role": "user", "roles": ["seer"], "projects": []}, "containers-read"))
 
     def test_roles_are_named_for_a_person(self):
         # R255 step 1: BuilderBot's owner, an administrator, and the Owner of
@@ -284,6 +291,15 @@ class SessionAndAccount(unittest.TestCase):
         self.assertIn("a session does no more than its account", why)
         self.assertEqual(may(self.sess("u_3", "alpha"), "read", "alpha"), "", "...though it reads there")
         self.assertEqual(may(self.sess("u_1", "alpha"), "work", "alpha"), "", "the owner's session as ever")
+
+    def test_what_was_the_administrators_is_never_a_sessions(self):
+        # R255 step 3 gave these to roles; the owner's own session still
+        # reaches none of them.
+        for action, project in (("settings", "alpha"), ("signing", "alpha"), ("controller", None),
+                                ("controller-read", None), ("nodes-write", None), ("containers-read", None)):
+            why = self.users.may(self.sess("u_1", "alpha"), action, project)
+            self.assertIn("a person's, not a session's", why, action)
+        self.assertEqual(self.users.may(self.users.get("boss"), "settings", "alpha"), "", "...while the person does")
 
     def test_a_project_it_reads_needs_the_account_to_read_it(self):
         may = self.users.may

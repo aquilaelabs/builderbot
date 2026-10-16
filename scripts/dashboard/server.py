@@ -6826,7 +6826,7 @@ class Handler(BaseHTTPRequestHandler):
         # Whether this person may take a backup, so the dialog offers it only
         # where it would be handed over.
         if field(req, "action") == "list" and status == 200:
-            got["may_backup"] = users.is_admin(who) and users.may_work(who, name)
+            got["may_backup"] = not users.may(who, "signing", name)
             got["may_lock"] = users.uid_of(who) == membership.owner_of(name)
         return self._json(got, status)
 
@@ -6876,14 +6876,12 @@ class Handler(BaseHTTPRequestHandler):
     def _signing_backup(self, name, route, key, password):
         if (self._who() or {}).get("session"):
             return self._json({"error": "a session never receives a signing key"}, 403)
+        # The signing area on the project itself (R255 step 3), which asks
+        # for the project on the account's own list too: an administrator
+        # sees every project, and a key should not leave with somebody who
+        # only sees it (the operator, 1 Oct).
         if self._not_project(name) or self._refused("signing", name):
             return None
-        # ...and one who has the project on their own list (the operator,
-        # 1 Oct): an administrator sees every project, and a key is the one
-        # thing there that should not leave with somebody who only sees it.
-        if not users.may_work(self._who(), name):
-            return self._json({"error": f"a signing key's backup goes to an administrator on {name}: "
-                                        "add it to your own projects first"}, 403)
         if password is None and signing.backup_locked(name):
             return self._json({"error": f"{name}'s key backups need their password: Download backup in its "
                                         "settings asks for it"}, 403)

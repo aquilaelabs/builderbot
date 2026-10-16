@@ -34,7 +34,7 @@ await page.evaluate(() => openRolesTab());
 await page.waitForSelector('.rolestab #rolesWho', { timeout: 15000 });
 await openSect('roles:roles');
 const names = await page.$$eval('#rolesPick option', os => os.map(o => o.textContent.trim()));
-ok(names.includes('owner (built in)') && names.includes('admin (built in)') && !names.some(n => /^user\b/.test(n)),
+ok(names.includes("BuilderBot's owner (built in)") && names.includes('Administrator (built in)') && !names.some(n => /^user\b/i.test(n)),
    `owner and admin are built in, and there is no user role (${names.join(', ')})`);
 await page.selectOption('#rolesPick', 'admin');
 ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 15

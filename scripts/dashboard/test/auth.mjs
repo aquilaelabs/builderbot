@@ -1323,7 +1323,7 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
         ['/api/project-auth', { name: 'alpha' }, /needs .+ Write|rename/],
         ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /needs .+ Write/],
         ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /needs .+ Write/],
-        ['/api/signing', { project: 'alpha', action: 'put', route: 'sideload', keystore: 'eA==', password: 'p' }, /needs .+ Write/]]) {
+        ['/api/signing', { project: 'alpha', action: 'put', route: 'sideload', keystore: 'eA==', password: 'p' }, /roles give no Releases and versions Write on alpha/]]) {
       const r = await act(plainAuth, path, body);
       ok(r.status === 403 && why.test(r.error), `a plain account cannot ${path} ${body.action || ''} (${r.status}: ${r.error.slice(0, 50)})`);
     }
@@ -1531,8 +1531,9 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
            && adminSame.status === 200 && adminOff.status === 403 && can === false,
            `only BuilderBot's owner changes which projects a project's sessions may read; an administrator is refused adding or taking one away, may save the rest, and the dialog is told (${adminTry.status}/${ownerTry.status}/${adminSame.status}/${adminOff.status}, can ${can})`);
       }
-      // A key's backup goes to an administrator ON the project (the
-      // operator, 1 Oct): adminone sees alpha and is not on it.
+      // A key's backup goes to a person with Releases write ON the project
+      // (the operator, 1 Oct; R255 step 3): adminone sees alpha and holds no
+      // role on it.
       {
         mkdirSync(`${DIR}/state/signing/alpha/default`, { recursive: true });
         writeFileSync(`${DIR}/state/signing/alpha/default/sideload.ks`, 'k');
@@ -1542,9 +1543,9 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
         const on = await bare('/api/signing-backup?project=alpha&route=sideload', { headers: ownerAuth });
         const listOff = await post(adminAuth, '/api/signing', { action: 'list', project: 'alpha' });
         const listOn = await post(ownerAuth, '/api/signing', { action: 'list', project: 'alpha' });
-        ok(off.status === 403 && /add it to your own projects/.test(offMsg.error || '') && on.status === 200
+        ok(off.status === 403 && /give yourself one on it/.test(offMsg.error || '') && on.status === 200
            && listOff.body.may_backup === false && listOn.body.may_backup === true,
-           `a signing key's backup is an administrator's on the project only, and the dialog offers it only to them (${off.status}/${on.status})`);
+           `a signing key's backup is for a person with a role on the project only, and the dialog offers it only to them (${off.status}/${on.status})`);
         // A backup password, the project's owner's (the operator, 1 Oct):
         // then every download needs it, BuilderBot's owner's included,
         // carried in a POST body and never a URL; five misses hold them.
