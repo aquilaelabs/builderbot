@@ -84,8 +84,11 @@ function skRows(n = 4){
 }
 // Inert unless its caller wired what it drew (`live`): a form drawn before
 // its wiring would take typing the real one, landing, throws away.
+// Its sections lose their keys: drawn open or shut as the real ones will
+// be, but never found by a selector, a wiring or a suite asking for those.
 function skTpl(html, {said = "loading…", live = false} = {}){
-  return `<div class="loading skel skt"${live ? "" : " inert"}><span class="sk-said">${esc(said)}</span>${html}</div>`;
+  return `<div class="loading skel skt"${live ? "" : " inert"}><span class="sk-said">${esc(said)}</span>${
+    html.replace(/ data-sect="[^"]*"/g, "")}</div>`;
 }
 
 // The bar a node's page wears (nodePick and its actions at the right) while
@@ -100,9 +103,13 @@ function skNodeBar(actions = []){
 const SKTPLS = {
   git: () => skTpl(`<div class="field actbar"><span class="state">${skv(14)}</span><span class="sp"></span>
       <button type="button" disabled>Fetch</button><button type="button" disabled>Pull</button><button type="button" disabled>Push</button></div>`
-    + [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["ci", "CI"]]
-      .map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")),
-  design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2)) + docSection("design", "themes", "Themes", "", skRows(2))),
+    + [["changes", "Changes"], ["history", "History"], ["branches", "Branches"]]
+      .map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")
+    // Shut as the view draws them until somebody opens one: CI opens only
+    // when it is red, the Design view's two always start shut.
+    + docSection("git", "ci", "CI", "", skRows(1), {open: false})),
+  design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2), {open: false})
+    + docSection("design", "themes", "Themes", "", skRows(2), {open: false})),
   // Not Version: the view draws that section itself, outside the list.
   artifacts: () => skTpl([["build", "Build", 1], ["files", "Files", 2]]
     .map(([k, t, n]) => docSection("artifacts", k, t, "", skRows(n))).join("")),

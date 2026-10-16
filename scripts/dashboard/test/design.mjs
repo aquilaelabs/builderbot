@@ -73,7 +73,9 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
 
 // ---- the view: add a page, lay it out, save ------------------------------------------
 await page.evaluate(n => openNotebook(n, 'design'), P);
-await page.waitForSelector(`${NB} #dsBody .sect`, { timeout: 20000 });
+// The view's own sections, not its template's (R218 step 16), which stand in
+// a .skt while the design is on its way.
+await page.waitForSelector(`${NB} #dsBody > details.sect`, { timeout: 20000 });
 ok(/no pages yet/.test(await page.$eval(`${NB} #dsHint`, e => e.textContent))
    && !!(await page.$(`${NB} [data-sect="design:pages"] [data-ssave="design:pages"]`))
    && !!(await page.$(`${NB} [data-sect="design:themes"] [data-ssave="design:themes"]`)),
