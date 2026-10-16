@@ -351,6 +351,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - An open bug's bar holds Send to Claude, Edit and Mark fixed, with Won't fix, Not applicable and Remove behind More, so its labels are whole on a phone (014bc1f)
 - Roles are named for a person (BuilderBot's owner, Administrator, Owner of a project), refusals say Everywhere where the Roles tab does, and a project's settings say Project owner (6d9caf6)
 - A refusal says what the action needs (for example 'needs Nodes Write, which your roles do not give: the Roles tab gives it') instead of 'an administrator's', and points at the Roles tab, not the Users tab, for being put on a project (ec517d7)
+- Profile says what your account may do: your roles by name and every area with Read or Write; each account's dialog on Users says the same (be07e15)
 
 ### Removed
 

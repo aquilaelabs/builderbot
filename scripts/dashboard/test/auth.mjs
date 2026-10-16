@@ -1195,6 +1195,12 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   ok(await page.$eval('.profiletab', el => /test/.test(el.textContent) && !!el.querySelector('#pfSave')
                                           && !!el.querySelector('#pfPasswd')),
      'the Profile tab names the account and carries Save and Change password');
+  // ...and says what the account may do, once (R255 step 5): its roles by
+  // name in the bar and every area it holds, with its level.
+  const wm = await page.$eval('.profiletab', el => ({ bar: el.closest('.doc')?.querySelector('.docbarrow')?.textContent || '',
+    facts: Object.fromEntries([...el.querySelectorAll('.facts .fact')].map(f => [f.querySelector('dt').textContent, f.querySelector('dd').textContent])) }));
+  ok(/BuilderBot's owner/.test(wm.bar) && wm.facts['Accounts and roles'] === 'Write' && wm.facts.Projects === 'Write',
+     `...and what it may do: its roles by name, and each area with its level (${JSON.stringify(wm).slice(0, 160)})`);
   ok(await page.evaluate(() => !!document.querySelector('#rail [data-rail="people"]') && railAllows('settings') && railAllows('users')),
      'an administrator is offered People and the controller\'s settings on the rail');
   // The ? beside a label opens its words as a line on the page under the

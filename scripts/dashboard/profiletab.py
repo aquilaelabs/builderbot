@@ -27,6 +27,8 @@ def view(me):
     rec = users.get(me["name"]) or {}
     return {"name": me["name"], "uid": uid,
             "role": rec.get("role", "user"),
+            # What this account may do, said once (R255 step 5).
+            "what_may": users.what_may(me["name"]),
             "profile": users.profile(me),
             "git": users.git_identity(me),
             "git_ready": users.git_ready(me),

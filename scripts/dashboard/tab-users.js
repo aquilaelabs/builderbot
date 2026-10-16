@@ -195,8 +195,9 @@ function usersEditOpen(name){
       : f("ueName", "Account name", u.name, "text", "", "what they sign in with. Changing it signs their browsers out")}
     <div class="field">${lbl("", "Roles and projects", "what this account may do, set on the Roles tab (R152)")}
       <div class="setrow"><span class="hint grow">${isOwner ? "BuilderBot's owner: every area, everywhere"
-        : esc([...(u.roles || []).filter(r => r !== "user"), ...(u.projects || []).map(p => `on ${projLabel(p)}`)].join(", ") || "no role yet")}</span>
-        <button type="button" id="ueRolesGo">Roles</button></div></div>
+        : esc((u.what_may?.roles || []).join(", ") || "no role yet")}</span>
+        <button type="button" id="ueRolesGo">Roles</button></div>
+      ${!isOwner && (u.what_may?.may || []).length ? factGrid(u.what_may.may) : ""}</div>
     ${f("ueFull", "Their name", pf.full_name)}
     ${f("ueEmail", "Their email", pf.email, "email")}
     ${f("ueGitName", "Git name", pf.git_name, "text", "", "on their commits. Blank means their name")}

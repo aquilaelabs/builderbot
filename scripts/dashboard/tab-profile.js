@@ -70,9 +70,16 @@ function renderProfileInto(i){
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
   const val = k => profileDraft[k] ?? p[k] ?? "";
   const dirty = PROFILE_FIELDS.some(([k]) => (profileDraft[k] ?? p[k] ?? "") !== (p[k] ?? ""));
-  d.setBar(`<span class="dim">${esc(profile.name)} · ${esc(profile.role)}${
+  const wm = profile.what_may || {roles: [], may: []};
+  d.setBar(`<span class="dim">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
     profile.claude ? ` · Claude: ${esc(profile.claude)}` : ""}</span>`);
   d.list.innerHTML = `
+    <div class="row stack2">
+      <div class="grow">
+        <h4>What you may do</h4>
+        ${wm.may.length ? factGrid(wm.may) : `<div class="hint">nothing yet: an administrator gives you a role on the Roles tab</div>`}
+      </div>
+    </div>
     <div class="row stack2">
       <div class="grow">
         <h4>Who you are</h4>

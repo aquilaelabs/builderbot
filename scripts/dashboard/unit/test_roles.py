@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import roles  # noqa: E402
@@ -53,6 +54,18 @@ class Model(unittest.TestCase):
         self.assertEqual(roles.label("admin"), "Administrator")
         self.assertEqual(roles.label("alpha_owner"), "Owner of alpha")
         self.assertEqual(roles.label("nosuch"), "nosuch")
+
+    def test_what_an_account_may_do_said_once(self):
+        # R255 step 5: its roles by name and where they hold, and the areas
+        # they add up to, in the Roles tab's order.
+        import users
+        name = roles.ensure_owner_role("alpha")
+        u = {"name": "o", "role": "user", "roles": [], "projects": ["alpha"], "project_roles": {"alpha": [name]}}
+        with mock.patch.object(users, "get", lambda n: u):
+            got = users.what_may("o")
+        self.assertEqual(got["roles"], ["Owner of alpha"])
+        self.assertIn(["Projects", "Write"], got["may"])
+        self.assertNotIn("Nodes", [a for a, _ in got["may"]])
 
     def test_an_owner_role_is_every_project_area_and_can_be_cut_back(self):
         name = roles.ensure_owner_role("alpha")

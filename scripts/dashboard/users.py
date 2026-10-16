@@ -1196,12 +1196,30 @@ def verb(act, req, seen, may_change=None):
     return r
 
 
+def what_may(name):
+    """What an account may do, said once (R255 step 5): its roles by the
+    names a person reads (and where each holds), and the areas they add up
+    to with the best level held anywhere, in the Roles tab's order."""
+    rec = get(name) or {}
+    held = [roles.label(r) for r in roles.roles_of(rec) if r != "user"]
+    for proj, names in sorted((rec.get("project_roles") or {}).items()):
+        held += [f"{roles.label(r)} on {proj}" for r in names if roles.label(r) != f"Owner of {proj}"]
+        held += [roles.label(r) for r in names if roles.label(r) == f"Owner of {proj}"]
+    got = roles.summary(rec)
+    return {"roles": held,
+            "may": [[label, "Write" if got[key] == "write" else "Read"]
+                    for key, label, *_ in roles.AREAS if got.get(key)]}
+
+
 def tab_view(me, projects, logins_of):
     """The Users tab's read, an administrator's: every account with the
     Claude login each is bound to (logins_of, claudegrant's), the owner, who
     is asking, the roles, and the projects this administrator can hand
     out."""
-    return {"users": logins_of(all_users()), "owner": owner_name(),
+    rows = logins_of(all_users())
+    for r in rows:
+        r["what_may"] = what_may(r.get("name"))
+    return {"users": rows, "owner": owner_name(),
             "me": (me or {}).get("name", ""), "roles": list(ROLES),
             # The roles of your own, for the edit dialog's picker (R137).
             "role_names": [n for n in roles.all_roles() if n not in roles.BUILTIN],
