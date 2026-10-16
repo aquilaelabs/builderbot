@@ -72,8 +72,9 @@
   --on-fill:var(--ink);
   /* The shade at a scrolling edge (more below, more above): a deep one on a
      dark page, a faint one on a light page, where the same shade read as a
-     smear of soot (the light half, 13 Oct). */
-  --edge-hint:rgba(0,0,0,.75);
+     smear of soot (the light half, 13 Oct), and a shade lighter on both
+     (the operator, 16 Oct: it read too dark). */
+  --edge-hint:rgba(0,0,0,.55);
   /* ...and capped below, in the block under this one. Every filled accent
      surface on the page draws --ink on --accent-deep: the active tab, a
      primary button, a view bar's current tab, an open select's chosen row,
@@ -298,7 +299,7 @@ html[data-theme="fern"],.sw[data-theme="fern"]{
 html[data-mode="light"]{
   color-scheme:light;
   --on-fill:#ffffff;
-  --edge-hint:rgba(0,0,0,.16);
+  --edge-hint:rgba(0,0,0,.11);
   --btn:#f0f2f5;        --btn:color-mix(in srgb, var(--panel), #000000 4%);
   --btn-hi:#e6e9ee;     --btn-hi:color-mix(in srgb, var(--panel), #000000 8%);
   --sunk:#f3f5f8;       --sunk:color-mix(in srgb, var(--panel), #000000 5%);
@@ -835,7 +836,10 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:56px 1fr;
   gap:10px;padding:10px 10px 10px 0}
 @media(min-width:1280px){ main{grid-template-columns:84px 1fr} }
 .col{display:flex;flex-direction:column;gap:10px;min-height:0}
-@media(max-width:900px){ main{grid-template-columns:1fr;padding:8px;gap:8px} }
+/* On a phone the page's box runs to the screen's edges and meets the header
+   above and the bottom bar below with no gap, so what scrolls goes under
+   both (the operator, 16 Oct); the header's line and the bar's close it. */
+@media(max-width:900px){ main{grid-template-columns:1fr;padding:0;gap:0} main>.col{gap:0} }
 /* First run (R199): the setup panel over the Nodes tab, and nothing else
    until Finish: no rail, no bell, no doctor, at every width. */
 body.firstrun main{grid-template-columns:1fr}
@@ -1308,9 +1312,13 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 .modal .box{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
-/* A box that scrolls says so (scrollHints in page-motion.js): a shadow on
-   each edge with more past it, a darkening as a shadow falls (the operator,
-   30 Sep), and a thin scrollbar where the platform draws one. */
+/* A box that scrolls says so (scrollHints in page-motion.js): each edge with
+   more past it fades (the operator, 30 Sep), and a thin scrollbar where the
+   platform draws one. A page and a sheet fade what they hold, cards and
+   words and all, into the ground under them, a mask rather than a shadow
+   painted under the content that the content then crossed at full strength
+   (the operator, 16 Oct); a dialog's box, whose panel is its own ground,
+   keeps the shadow, since a mask would fade the box itself. */
 .modal .box,.modal .sheetslot,.pane .doc,.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap{
   --hint:var(--edge-hint);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 .modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -34px 26px -24px var(--hint)}
@@ -1320,9 +1328,16 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
    dialog's shadow around a view (B702). */
 .modal.inline .box.scrollup,.modal.inline .box.scrolldown{box-shadow:none}
 .modal .box.scrollup.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 34px 26px -24px var(--hint),inset 0 -34px 26px -24px var(--hint)}
-.modal .sheetslot.scrolldown,.pane .doc.scrolldown{box-shadow:inset 0 -34px 26px -24px var(--hint)}
-.modal .sheetslot.scrollup,.pane .doc.scrollup{box-shadow:inset 0 34px 26px -24px var(--hint)}
-.modal .sheetslot.scrollup.scrolldown,.pane .doc.scrollup.scrolldown{box-shadow:inset 0 34px 26px -24px var(--hint),inset 0 -34px 26px -24px var(--hint)}
+.modal .sheetslot,.pane .doc{--edge-keep:rgba(0,0,0,.3)}  /* what is left of a line at the very edge: faded, not gone */
+.modal .sheetslot.scrolldown,.pane .doc.scrolldown{
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 34px),var(--edge-keep));
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 34px),var(--edge-keep))}
+.modal .sheetslot.scrollup,.pane .doc.scrollup{
+  -webkit-mask-image:linear-gradient(to top,#000 calc(100% - 34px),var(--edge-keep));
+  mask-image:linear-gradient(to top,#000 calc(100% - 34px),var(--edge-keep))}
+.modal .sheetslot.scrollup.scrolldown,.pane .doc.scrollup.scrolldown{
+  -webkit-mask-image:linear-gradient(to bottom,var(--edge-keep),#000 34px,#000 calc(100% - 34px),var(--edge-keep));
+  mask-image:linear-gradient(to bottom,var(--edge-keep),#000 34px,#000 calc(100% - 34px),var(--edge-keep))}
 /* A list is shorter than a dialog, so its shadow is too: a third of a row. */
 :is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrolldown{box-shadow:inset 0 -22px 16px -14px var(--hint)}
 :is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup{box-shadow:inset 0 22px 16px -14px var(--hint)}
@@ -3650,9 +3665,12 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .resumemenu .sub{flex:1 1 100%}
 
 /* Panes -------------------------------------------------------------- */
+/* Closed on every side (the operator, 16 Oct): its top was left open for
+   the tab strip that sat on it, and with the strip gone the box read as
+   open at the top while the dock's line closed its foot. */
 .panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
-  background:var(--line);border:var(--hair) solid var(--line);border-top:0;
-  border-radius:0 0 var(--r-surface) var(--r-surface);overflow:hidden}
+  background:var(--line);border:var(--hair) solid var(--line);
+  border-radius:var(--r-surface);overflow:hidden}
 /* The dock (R218 step 4): the second pane at the page's foot, one line when
    shut, --dock-h tall when up (half the area to begin with, a drag on its
    line changes it); on a phone up is the whole height above the bottom bar.
@@ -3668,6 +3686,9 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .pane .bar.dockbar{display:flex;align-items:center;gap:6px;padding:4px 6px;min-height:36px;cursor:default;
   background:var(--panel);font:var(--f-ui);color:var(--dim)}
 .panes.dockup .pane .bar.dockbar{cursor:ns-resize}
+/* Shut, the line is the box's foot, and the box's own border (the bottom
+   bar's on a phone) closes it: a second line under it read double. */
+.panes.docked:not(.dockup) .pane .bar.dockbar{border-bottom:0}
 /* The line takes the room and scrolls inside itself; the controls after it
    stay at the right edge on every width (a phone's line once pushed the
    chevron off the screen). */
@@ -3685,6 +3706,10 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .dockline .dtab.dchat.unread{color:var(--ink)}
 .pane .bar.dockbar .ic{min-height:30px;min-width:30px}
 @media(max-width:900px){
+  .panes{border:0;border-radius:0}
+  /* Up, the page is not drawn and the header's line is right above: the
+     dock's own top line would make it two. */
+  .panes.dockup .pane.dock{border-top:0}
   .panes.dockup .pane:not(.dock){display:none}
   /* The page is display:none, so it is no grid item: the dock is the one
      row, all of it. */
@@ -3901,6 +3926,7 @@ body.booting .pane>.loading{margin:auto}
   .mobar button{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .mobar button[hidden]{display:none}
   .mobar[hidden]{display:none}
+  .mobar{border:0;border-top:var(--hair) solid var(--line);border-radius:0}   /* its foot is the bottom bar's line */
   .panes{min-height:90px}
 }
 

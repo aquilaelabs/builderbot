@@ -19,11 +19,32 @@ await finger(page, rb.x + 20, rb.y + rb.height / 2, rb.x + 20, rb.y + rb.height 
 await page.waitForFunction(w => panes[1] === w && dockUp, want, { timeout: 5000 });
 ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane0')).display === 'none'),
    "a tap on a terminal brings the dock's sheet up over the page");
+// Up, it is the full width of the screen, between the header and the
+// bottom bar, which stay (the operator, 16 Oct).
+const up = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect();
+  // A shell wears its Keys row under it, between the dock and the bottom bar.
+  const d = r('#pane1'), h = r('header'), b = r('#railbar'), m = document.getElementById('mobar');
+  const under = m.offsetParent ? m.getBoundingClientRect() : b;
+  return { left: Math.round(d.left), right: Math.round(innerWidth - d.right), top: Math.round(d.top - h.bottom), foot: Math.round(under.top - d.bottom), bar: Math.round(b.height) }; });
+ok(!up.left && !up.right && !up.top && !up.foot && up.bar > 0, `...and up it spans the screen's width between the header and the bottom bar ${JSON.stringify(up)}`);
+// One line where two boxes meet, never two (the operator, 16 Oct): the
+// header's over the dock, the bottom bar's under the Keys row.
+const meet = await page.evaluate(() => { const w = (s, side) => getComputedStyle(document.querySelector(s))['border' + side + 'Width'];
+  return { dockTop: w('#pane1', 'Top'), keysFoot: w('#mobar', 'Bottom') }; });
+ok(meet.dockTop === '0px' && meet.keysFoot === '0px', `...with one line at its top and one at its foot ${JSON.stringify(meet)}`);
 const cb = await (await page.$('#pane1 [data-dtoggle]')).boundingBox();
 await finger(page, cb.x + cb.width / 2, cb.y + cb.height / 2, cb.x + cb.width / 2, cb.y + cb.height / 2, 0);
 await page.waitForFunction(() => !dockUp, null, { timeout: 5000 });
 ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane0')).display !== 'none'),
    '...and its chevron puts it down to its line under the page');
+// Down, the page's box runs to both edges of the screen and meets the header
+// and the bottom bar with no gap, so what scrolls goes under them.
+const box = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect();
+  const p = r('#panes'), h = r('header'), b = r('#railbar');
+  return { left: Math.round(p.left), right: Math.round(innerWidth - p.right), top: Math.round(p.top - h.bottom), foot: Math.round(b.top - p.bottom) }; });
+ok(!box.left && !box.right && !box.top && !box.foot, `...and the page's box is flush with the edges, the header and the bottom bar ${JSON.stringify(box)}`);
+ok(await page.evaluate(() => getComputedStyle(document.querySelector('#pane1 > .bar')).borderBottomWidth === '0px'),
+   "...and the dock's line shut on the bottom bar draws no second line under itself");
 await page.evaluate(() => { dockToggle(true); openJobsTab(); });
 await page.waitForFunction(() => !dockUp, null, { timeout: 5000 });
 ok(true, '...and a page opened on a phone puts the sheet down');
