@@ -34,7 +34,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#007c05` |
 | `--warn` | `#996200` |
 | `--bad` | `#c3131b` |
-| `--note` | `#0863b6` |
+| `--note` | `#0069e0` |
 
 ### Abyss (dark)
 
@@ -62,7 +62,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#007480` |
 | `--warn` | `#906700` |
 | `--bad` | `#b53433` |
-| `--note` | `#9b3a8f` |
+| `--note` | `#bb30aa` |
 
 ### Carbon (dark)
 
@@ -90,7 +90,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#b6192c` |
 | `--warn` | `#905e00` |
 | `--bad` | `#bb2933` |
-| `--note` | `#00756a` |
+| `--note` | `#22776c` |
 
 ### Ember (dark)
 
@@ -118,7 +118,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#a34100` |
 | `--warn` | `#8b6100` |
 | `--bad` | `#ba2c25` |
-| `--note` | `#00707a` |
+| `--note` | `#21787d` |
 
 ### Ice (dark)
 
@@ -146,7 +146,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#00708f` |
 | `--warn` | `#886200` |
 | `--bad` | `#b43439` |
-| `--note` | `#6448c0` |
+| `--note` | `#7347ff` |
 
 ### Moss (dark)
 
@@ -174,7 +174,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#00783f` |
 | `--warn` | `#8e6800` |
 | `--bad` | `#b33833` |
-| `--note` | `#6a48b5` |
+| `--note` | `#794ee4` |
 
 ### Nocturne (dark)
 
@@ -202,7 +202,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#6a44c2` |
 | `--warn` | `#916600` |
 | `--bad` | `#b72b4c` |
-| `--note` | `#08765a` |
+| `--note` | `#1b795b` |
 
 ### Nostromo (dark)
 
@@ -284,7 +284,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#8c3a9b` |
 | `--warn` | `#936500` |
 | `--bad` | `#b62b55` |
-| `--note` | `#18773f` |
+| `--note` | `#247b45` |
 
 ### Rust (dark)
 
@@ -312,7 +312,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#a14123` |
 | `--warn` | `#905e00` |
 | `--bad` | `#bc2825` |
-| `--note` | `#16705a` |
+| `--note` | `#247b60` |
 
 ### Sepia (dark)
 
@@ -340,7 +340,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#835c00` |
 | `--warn` | `#8a6900` |
 | `--bad` | `#ac4133` |
-| `--note` | `#0b6c64` |
+| `--note` | `#22776b` |
 
 ### Slate (dark)
 
@@ -368,7 +368,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#2a61b1` |
 | `--warn` | `#905e00` |
 | `--bad` | `#b2373a` |
-| `--note` | `#4b7512` |
+| `--note` | `#4e761e` |
 
 ## Type
 
@@ -434,6 +434,8 @@ The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mi
 **Every scheme has two hues (the operator, 16 Oct).** The accent is where one is and what is live: the rail's bar, the session and status dots, the notebook's group row, a pill that runs. The second color, `--note`, is what is lit and what one follows: every filled control (`--lit`, from which `--accent-deep` and `--accent-mid` are mixed: the selected tab, a primary button, a button that is on, an open select's chosen row, the text selection, a checkbox's tick), a button under the pointer (a tint of it in its fill and its edge; a resting button is the plain control), the logo, a link in words, a project's branch, a Home tile with no news, the second of two charts side by side, the view chosen in a group's row and an info note. It sits apart from the accent on the wheel and from `--warn` and `--bad`, so it never reads as a warning: green and blue, amber and steel, blue and lime, red and teal, violet and mint, green and lavender, orange and turquoise, teal and orchid, purple and mint, rust and sage, ice and lavender, gold and teal. Both halves hold it at AA on the page and the panel, and text on its fill at AA too. A swatch shows both, as two dots.
 
 **A pass is one green in every scheme (the operator, 16 Oct).** The doctor's dot and its passing checks wear `--pass`, which no scheme swaps (#3fb950, #1a7f37 in the light half), as a warning stays `--warn` and a failure `--bad`: an accent can be orange or purple, and a verdict must not change color with the scheme.
+
+**In the light half a lit control is a tint, not a block (the operator, 16 Oct: too dark).** `--accent-deep` there is the panel with 16% of the second color, `--accent-mid` (its edge) the color itself and `--on-fill` the ink, which clears AA on the tint in every scheme; the second color as text is the lightest of its hue that holds AA on the page and the panel.
 
 ### shape
 

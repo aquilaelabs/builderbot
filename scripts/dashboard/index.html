@@ -306,7 +306,14 @@ html[data-theme="sepia"],.sw[data-theme="sepia"]{
 html[data-mode="light"]{
   color-scheme:light;
   --pass:#1a7f37;
-  --on-fill:#ffffff;
+  /* A lit control in the light half is a soft tint of the second color with
+     its edge in the color itself and the ink on it (the operator, 16 Oct:
+     the second color filled, darkened for white text, was too dark). The
+     ink clears AA on the tint in every scheme; the color as text on it would
+     not. */
+  --on-fill:var(--ink);
+  --accent-mid:var(--lit);
+  --accent-deep:color-mix(in srgb, var(--panel), var(--lit) 16%);
   --btn:#f0f2f5;        --btn:color-mix(in srgb, var(--panel), #000000 4%);
   --btn-hi:#e6e9ee;     --btn-hi:color-mix(in srgb, var(--panel), #000000 8%);
   --sunk:#f3f5f8;       --sunk:color-mix(in srgb, var(--panel), #000000 5%);
@@ -318,46 +325,43 @@ html[data-mode="light"]{
 }
 html[data-mode="light"],html[data-mode="light"] .sw[data-theme="default"]{
   --bg:#f1f4f7; --panel:#fcfeff; --line:#c9d2dd; --ink:#242729;
-  --dim:#5e646a; --accent:#007c05; --warn:#996200; --bad:#c3131b; --note:#0863b6}
+  --dim:#5e646a; --accent:#007c05; --warn:#996200; --bad:#c3131b; --note:#0069e0}
 /* Nostromo's light half is the ship's white corridors: cool gray-white
    walls and panels and the hazard marking's red-orange for what is the one
    (the operator, 16 Oct); its graphics are with the dark half's, below. */
 html[data-mode="light"][data-theme="nostromo"],html[data-mode="light"] .sw[data-theme="nostromo"]{
   --bg:#e4e5e2; --panel:#f6f6f3; --line:#bfc1bc; --ink:#232628;
   --dim:#595d60; --accent:#b23a0a; --warn:#8b6100; --bad:#a8002a; --note:#3d7322}
-/* ...its accent the hazard marking's red-orange, filled as itself (white on
-   it at 6.4:1) rather than darkened, which made it maroon. */
-html[data-mode="light"][data-theme="nostromo"]{--accent-deep:var(--lit)}
 html[data-mode="light"][data-theme="slate"],html[data-mode="light"] .sw[data-theme="slate"]{
   --bg:#f1f3f7; --panel:#fcfdff; --line:#cbd2da; --ink:#24272a;
-  --dim:#606468; --accent:#2a61b1; --warn:#905e00; --bad:#b2373a; --note:#4b7512}
+  --dim:#606468; --accent:#2a61b1; --warn:#905e00; --bad:#b2373a; --note:#4e761e}
 html[data-mode="light"][data-theme="carbon"],html[data-mode="light"] .sw[data-theme="carbon"]{
   --bg:#f3f3f5; --panel:#fdfdfe; --line:#d0d0d5; --ink:#262627;
-  --dim:#636367; --accent:#b6192c; --warn:#905e00; --bad:#bb2933; --note:#00756a}
+  --dim:#636367; --accent:#b6192c; --warn:#905e00; --bad:#bb2933; --note:#22776c}
 html[data-mode="light"][data-theme="nocturne"],html[data-mode="light"] .sw[data-theme="nocturne"]{
   --bg:#f2f3f9; --panel:#fdfdff; --line:#cecfe6; --ink:#26252e;
-  --dim:#626173; --accent:#6a44c2; --warn:#916600; --bad:#b72b4c; --note:#08765a}
+  --dim:#626173; --accent:#6a44c2; --warn:#916600; --bad:#b72b4c; --note:#1b795b}
 html[data-mode="light"][data-theme="moss"],html[data-mode="light"] .sw[data-theme="moss"]{
   --bg:#f0f5f3; --panel:#fbfefc; --line:#c8d5cb; --ink:#232823;
-  --dim:#5e6660; --accent:#00783f; --warn:#8e6800; --bad:#b33833; --note:#6a48b5}
+  --dim:#5e6660; --accent:#00783f; --warn:#8e6800; --bad:#b33833; --note:#794ee4}
 html[data-mode="light"][data-theme="ember"],html[data-mode="light"] .sw[data-theme="ember"]{
   --bg:#f6f3f1; --panel:#fffdfb; --line:#dbcfc3; --ink:#2b2520;
-  --dim:#6a6159; --accent:#a34100; --warn:#8b6100; --bad:#ba2c25; --note:#00707a}
+  --dim:#6a6159; --accent:#a34100; --warn:#8b6100; --bad:#ba2c25; --note:#21787d}
 html[data-mode="light"][data-theme="abyss"],html[data-mode="light"] .sw[data-theme="abyss"]{
   --bg:#eff5f6; --panel:#fbfeff; --line:#c3d5d9; --ink:#212829;
-  --dim:#5a6667; --accent:#007480; --warn:#906700; --bad:#b53433; --note:#9b3a8f}
+  --dim:#5a6667; --accent:#007480; --warn:#906700; --bad:#b53433; --note:#bb30aa}
 html[data-mode="light"][data-theme="plum"],html[data-mode="light"] .sw[data-theme="plum"]{
   --bg:#f6f2f8; --panel:#fffcff; --line:#d9cbe1; --ink:#2a242c;
-  --dim:#695f6e; --accent:#8c3a9b; --warn:#936500; --bad:#b62b55; --note:#18773f}
+  --dim:#695f6e; --accent:#8c3a9b; --warn:#936500; --bad:#b62b55; --note:#247b45}
 html[data-mode="light"][data-theme="rust"],html[data-mode="light"] .sw[data-theme="rust"]{
   --bg:#f7f2f1; --panel:#fffdfc; --line:#ddcdca; --ink:#2b2523;
-  --dim:#6a615f; --accent:#a14123; --warn:#905e00; --bad:#bc2825; --note:#16705a}
+  --dim:#6a615f; --accent:#a14123; --warn:#905e00; --bad:#bc2825; --note:#247b60}
 html[data-mode="light"][data-theme="ice"],html[data-mode="light"] .sw[data-theme="ice"]{
   --bg:#f0f4f6; --panel:#fbfeff; --line:#c7d3dd; --ink:#23272b;
-  --dim:#5d6568; --accent:#00708f; --warn:#886200; --bad:#b43439; --note:#6448c0}
+  --dim:#5d6568; --accent:#00708f; --warn:#886200; --bad:#b43439; --note:#7347ff}
 html[data-mode="light"][data-theme="sepia"],html[data-mode="light"] .sw[data-theme="sepia"]{
   --bg:#f5f3f0; --panel:#fffdfb; --line:#d7d0c3; --ink:#2b261c;
-  --dim:#6a6256; --accent:#835c00; --warn:#8a6900; --bad:#ac4133; --note:#0b6c64}
+  --dim:#6a6256; --accent:#835c00; --warn:#8a6900; --bad:#ac4133; --note:#22776b}
 
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolor: the ship itself, a half for
@@ -1058,6 +1062,8 @@ button{background:var(--btn);color:var(--ink);border:var(--hair) solid var(--lin
   button.primary:hover,button.on:hover{
     background:color-mix(in srgb, var(--lit), #000000 28%);
     border-color:var(--lit)}
+  html[data-mode="light"] button.primary:hover,html[data-mode="light"] button.on:hover{
+    background:color-mix(in srgb, var(--panel), var(--lit) 26%)}
   /* The notebook's tab strip borrows .on for its active view, but its
      buttons are underlined text, not green blocks: the generic green-button
      hover leaking in here painted the active tab as a filled pill the moment

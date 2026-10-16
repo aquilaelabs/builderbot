@@ -377,6 +377,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Toolchains page's Check for updates and Install selected sit in one band near its top, beside Remove, rather than under every row (693defa)
 - The doctor's dot and its passing checks are the same green in every color theme, as warnings stay yellow and failures red (c0be33a)
 - Lit-up controls (the selected tab, primary buttons like Open Claude, buttons that are on, a hovered button) and the BuilderBot logo wear the theme's second color; the first color keeps the rail, the dots and the notebook's group row (0d49ea3)
+- In light mode the second color is as light as it can be and stay readable, and a lit control is a soft tint of it with a colored edge rather than a dark block (bd972da)
 
 ### Removed
 
