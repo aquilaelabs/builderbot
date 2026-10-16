@@ -200,7 +200,8 @@ function nbRoadmapView({$, nb}){
         isOpen ? "▾" : "▸"} ${st.info ? "details" : "more"}</button>
       ${(() => { const f = rowFacts(r, idx); return f ? `<div class="dfacts"${isOpen ? "" : " hidden"}>${f}</div>` : ""; })()}
       ${st.info ? `<div class="dinfo"${isOpen ? "" : " hidden"}>${esc(st.info)}</div>` : ""}
-      <div class="rowacts actbar"${isOpen ? "" : " hidden"}>${shelf ? `<button class="x${r.shelved ? " on" : ""}" type="button"
+      <div class="rowacts actbar"${isOpen ? "" : " hidden"}>${idx < 0 ? `<button class="dn" type="button"
+        title="tick it off: it moves to Finished with its plan, and Reopen there puts it back until a release ships it">Done</button>` : ""}${shelf ? `<button class="x${r.shelved ? " on" : ""}" type="button"
         aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
         title="${r.shelved
             ? "take it off the shelf: back among the live ones"
@@ -373,6 +374,16 @@ function nbRoadmapView({$, nb}){
       // it is the reversible answer for anyone who only meant "not this one".
       const rm = row.querySelector(".rm");
       if (rm) rm.onclick = () => openDrop(row, id, step);
+      // Ticking off acts on the press (R254 step 2): Reopen under Finished
+      // undoes it, so it does not ask.
+      const dn = row.querySelector(".dn");
+      if (dn) dn.onclick = async () => {
+        const j = await postRoadmap({action: "done", id});
+        if (!j) return;
+        notify(`R${id} finished: it is under Finished, and Reopen there puts it back`);
+        nb.roadmapDone = null;
+        if ($("roadmapDoneSect").open) loadFinished();
+      };
       // A pencil, and the words themselves. The pencil because a tap target you
       // can see is the only one a thumb finds; the words because that is where
       // the hand goes anyway. Steps too: a plan is written before it is right,

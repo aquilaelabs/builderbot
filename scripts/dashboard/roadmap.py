@@ -1852,6 +1852,12 @@ def verb(name, act, req, me, *, live, prefix):
         r = restore(name, req.get("id"), at=req.get("at"), who=who)
     elif act == "reopen":
         r = reopen(name, req.get("id"), who=who)
+    elif act == "done":
+        # Ticked off from its row by a person (R254 step 2, the operator,
+        # 16 Oct): the roadmap is theirs, and work finishes outside a
+        # session or stops mattering. Logged as theirs; Reopen undoes it
+        # until a release ships it. A session ticks off through bb as before.
+        r = tick(name, req.get("id"), by="claude" if me.get("session") else "you", who=who)
     elif act == "shelve":
         # One direction for a session, the way `bb roadmap shelve` is on
         # the command line: parking something is a thing a session knows

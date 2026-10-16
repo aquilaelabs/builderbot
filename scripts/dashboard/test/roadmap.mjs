@@ -944,8 +944,8 @@ ok(/remove\s+R\d+\s+delete a project/.test(bbRoadmapEarly('history', '-n', '4'))
    '...into the log, with or without a reason typed into the box');
 
 // ---- finishing one -------------------------------------------------------
-// Only a session says a thing is done, through bb, because only a session
-// knows. It comes off the list when it does: a list is read to find out what
+// A session says a thing is done through bb; a person, with Done on its row
+// (R254 step 2, below). It comes off the list when it does: a list is read to find out what
 // is left, and something finished is not left. The log is where it goes, and
 // what tells "ticked off" apart from "dropped".
 const fin = await post({ action: 'add', project: 'alpha', text: 'a job to finish' });
@@ -969,8 +969,7 @@ ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] .txt`,
 ok(await page.evaluate(() => !!(document.querySelector('.nb #roadmapList').compareDocumentPosition(document.querySelector('.nb #roadmapDoneList')) & Node.DOCUMENT_POSITION_FOLLOWING)),
    '...below the live and shelved ones');
 // A finished item is a fold like an open one, with Reopen where no release
-// has shipped it (R254 step 2). Ticking off stays a session's (bb roadmap
-// done), so the item goes back the way it came.
+// has shipped it (R254 step 2).
 await page.click(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] > summary`);
 await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"][open] [data-reopen]`, { state: 'visible', timeout: 5000 });
 await page.click(`.nb #roadmapDoneList [data-reopen="${finId}"]`);
@@ -997,11 +996,16 @@ await page.waitForFunction(id => notebooks.get('alpha').where() === 'roadmap' &&
   && [...document.querySelectorAll('.nb #roadmapList > .grp:not(.off)')].map(g => g.dataset.id).join() === id, finId, { timeout: 5000 });
 ok(true, '...and following one opens the Roadmap narrowed to that item');
 await page.fill('.nb #roadmapFind', '');
-// Read first, as a session does: the reopen moved the list, and bb refuses
-// a change made against an older read of it.
-bbRoadmap();
-const again = bbRoadmap('done', finId);
-ok(/^done R/.test(again.trim()), `...and a session can tick it off again (${again.trim().slice(0, 60)})`);
+// Done on its row ticks it off from the page (R254 step 2, the operator, 16
+// Oct), logged as the person's, and it goes under Finished.
+if (await page.$eval(`.nb #roadmapList > .grp[data-id="${finId}"] .rowacts`, a => a.hidden))
+  await page.click(`.nb #roadmapList > .grp[data-id="${finId}"] > summary .dtog`);
+await page.waitForSelector(`.nb #roadmapList > .grp[data-id="${finId}"] .dn`, { state: 'visible', timeout: 5000 });
+await page.click(`.nb #roadmapList > .grp[data-id="${finId}"] .dn`);
+await page.waitForFunction(id => ![...document.querySelectorAll('.nb #roadmapList > .grp')].some(g => g.dataset.id === id), finId, { timeout: 10000 });
+ok(!read().projects.alpha.some(r => String(r.id) === finId)
+   && read().history.alpha.some(e => e.act === 'done' && String(e.id) === finId && e.by === 'you' && e.step == null),
+   '...and Done on its row ticks it off from the page, logged as the person\'s');
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"]`, { timeout: 10000 });
 // The search narrows the list and the Finished section alike, by words or
@@ -1050,8 +1054,6 @@ for (const [what, body] of [
   ['a project name that is really a path', { action: 'add', project: '../etc', text: 'x' }],
   ['an empty item', { action: 'add', project: 'alpha', text: '   ' }],
   ['an item nobody has', { action: 'edit', project: 'alpha', id: 9999, text: 'x' }],
-  ['ticking one off over the wire: that is a session\'s word, not a button',
-   { action: 'done', project: 'alpha', id: 1 }],
   ['an action nobody offers', { action: 'burn', project: 'alpha' }],
 ]){
   const r = await post(body);

@@ -2270,7 +2270,10 @@ finishes a step says so with `bb roadmap step done N M`: the step it was
 sent, or one it was told to go ahead with in chat, which used to have no mark
 at all. The line is struck the same way but wears a tick instead of its
 number, the frontier moves past it, and the log says a session finished it
-and when. Only a session sets it, as with ticking off an item. Sending a done
+and when. Only a session sets it. A whole item is ticked off by a session
+with `bb roadmap done` or by a person with Done on its row (the operator,
+16 Oct), and goes under Finished, where Reopen puts it back until a release
+ships it. Sending a done
 step again is the override: the mark comes off, and the log shows the send
 after the finish.
 
