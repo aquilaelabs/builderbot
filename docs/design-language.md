@@ -427,6 +427,8 @@ The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mi
 
 **Every scheme has a light half (R216).** The same nine tokens, hue for hue, with the page near white, the ink dark and the accent and the marks pulled down to AA against the page; `html[data-mode="light"]` is the switch, set by the gear's Dark / Light / System beside the swatches, before first paint from localStorage and on the account. What the dark half derives by lightening the light half derives by darkening (`--btn`, `--sunk`), the purple family and its edges flip with it, and a filled accent carries `--on-fill` (the ink in the dark half, white in the light) rather than the ink itself. Never a hex in a component in either half.
 
+**A Claude session's dot is yellow while it works and green once it is idle** (`--warn`, breathing, then the accent: the operator, 16 Oct), as the phone app has it.
+
 **What is live glows (R218 step 7).** A session dot working or waiting and a pill marking something running (`.pill.live`: a running job, a running container) carry a soft glow in their own color: a 2px ring at a fifth of it and an 8 to 10px blur at about half. One glow, small, so it reads as lit; nothing that is merely fine glows.
 
 ### shape
@@ -1406,9 +1408,8 @@ Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blan
   1. Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
   2. List (rows of like things): accounts, across the middle, rows 2 to 4 of 8
   3. Card (a box holding one thing): an account: admin or owner as a pill, its roles as pills, the projects it is on, its Claude sign-in, Edit and Remove, across the middle, row 3 of 8, inside block 2 (List: accounts)
-  4. Text (a block of prose): What an account gets: no role until the Roles tab gives one; admin's shell; PROJECT_owner, across the middle, row 5 of 8
-  5. Form (fields a person fills in): Add somebody: a name, the password twice, a name and an email (optional), and Add; no role, across the middle, rows 6 to 7 of 8
-  6. Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
+  4. Form (fields a person fills in): Add somebody: a name, the password twice, a name and an email (optional), and Add; no role, across the middle, rows 5 to 6 of 8
+  5. Footer (the band at the foot): how a password is set from a shell, across the middle, row 7 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted, under the row, where a dead button would otherwise be the first you heard of it. The add form takes no git identity: that is the person's own, on their Profile (R134). Edit ticks the roles of your own an account carries beside its built-in one (R137). Its roles and projects are set on the Roles tab (R152): the edit dialog says what it holds, with a Roles button that opens the tab on it.
 

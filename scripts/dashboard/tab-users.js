@@ -95,14 +95,10 @@ function userRow(u){
 // Which projects a `user` account may see. Only the ones the admin doing the
 // giving can see themselves: the server filters again, so this is the honest
 // list rather than the enforcing one.
-// What an account gets, and the form that adds one: the same on every draw.
+// The form that adds an account: the same on every draw. What an account
+// gets is the docs' to say (the operator, 16 Oct), not a block of prose here.
 function usersSections(){
   return `
-    ${docSection("users", "roles", "What an account gets", "", `
-        <div class="sub">Each account has its own home, Claude login and memories; two people on one project each work in a worktree of their own, sharing the notebook.</div>
-        <div class="sub">A new account holds no role, so it may do nothing until the <b>Roles</b> tab gives it one, Everywhere or on a project, and puts it on projects.</div>
-        <div class="sub warn">An <b>admin</b> has a shell that reaches every account's files: give that role to people you would give the server to.</div>
-        <div class="sub">A project's owner holds PROJECT_owner on it, which the Roles tab can cut back like any other role.</div>`)}
     ${docSection("users", "add", "Add somebody", "", `
 
         <div class="uadd">

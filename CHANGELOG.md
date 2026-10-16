@@ -357,6 +357,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A page waiting on its data now shows its own layout while it waits: its headings, labels, table columns, form fields and buttons drawn for real, and only the values still coming shimmer (60aea49)
 - A project's Claude button says Start Claude when no session of yours runs there, and turns green and says Open Claude only while one does (e983f54)
 - Every page's bar is the same row of buttons: a page that stands alone (Home, Containers, Jobs, Sessions) shows its name as one green button, where it was plain text (e983f54)
+- A Claude session's status dot is yellow while it works and green once it is idle and ready for you, as on the phone app, where working was blue and idle amber (fdc6fec)
 
 ### Removed
 
@@ -368,6 +369,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A BuilderBot bug report is now a log in the diagnostics that a person reads and clears: bb report file, bb report close and a session's bb report listing are gone, since only an install that hosts BuilderBot's own project could answer one (075362f)
 - Nodes no longer mount the projects share in any form: every node holds its projects as a synced copy, a /workspace mount is refused on the Storage section and by bb-sandbox, and the enroll dialog no longer asks (279c51d)
 - The container takes four settings and nothing else: PUID, PGID, TZ and the dashboard port; SDK_ROOT, DASHBOARD_TTYD_PORT, CHOWN_HOME, CHOWN_PROJECTS and NPM_TOKEN are gone from the template, compose and the env example (a publishing token goes in the secrets folder) (2b922bc)
+- The Users page no longer carries the What an account gets prose; the docs say what an account and its roles may do (fdc6fec)
 
 ### Fixed
 
