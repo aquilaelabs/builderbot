@@ -12,4 +12,7 @@ unraid
 # ...and the changelog, which the welcome panel shows once per image update:
 # it has to travel with the image it describes (the Dockerfile copies it).
 !CHANGELOG.md
+# ...and the docs' Markdown, which the Help page reads (R258); their
+# screenshots stay out.
+!docs/*.md
 .DS_Store

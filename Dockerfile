@@ -309,6 +309,10 @@ COPY nodes/provision-macos.sh /opt/builderbot/nodes/provision-macos.sh
 # its agent installs it (R35).
 COPY nodes/bb-session /opt/builderbot/nodes/bb-session
 COPY nodes/vm/ /opt/builderbot/nodes/vm/
+# BuilderBot's own docs, for the Help page (helpdocs.py, R258): the Markdown
+# alone, two levels above server.py as in a checkout; the screenshots stay
+# out of the image.
+COPY docs/*.md /opt/builderbot/docs/
 # The changelog, for the welcome panel: shown once per image update, so it
 # has to travel with the image it describes. Two levels above server.py,
 # where a checkout keeps it too.

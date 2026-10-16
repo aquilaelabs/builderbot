@@ -2244,6 +2244,16 @@ pre.diff .d-ctx{color:var(--dim)}
 .wknav strong{display:block;color:var(--dim);font-weight:600;margin-bottom:8px}
 .wkpick{display:none}
 .wkarticle{min-width:0;max-width:820px}
+/* Help (R258): BuilderBot's docs in this reader, the one on show marked in
+   the list, the bar's search as wide as a control, and a search's lines as
+   rows that open their doc at their section, the words marked. */
+.helptab .wknav a.on{color:var(--ink);font-weight:600;text-decoration:none}
+.helptab .docbarrow #helpQ{flex:1 1 auto;max-width:var(--ctl-w)}
+.helphit{display:flex;width:100%;text-align:left;background:none;border:0;border-bottom:var(--hair) solid var(--line);
+  border-radius:0;justify-content:flex-start;white-space:normal;min-height:var(--tap);padding:var(--row-y) 0;color:inherit}
+.helphit .sub{display:block;margin-top:2px}
+@media(hover:hover){ .helphit:hover .name{text-decoration:underline} }
+.helphits mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;border-radius:2px;padding:0 1px}
 .wktabs{display:flex;gap:4px;align-items:flex-end;border-bottom:var(--hair) solid var(--line);margin-bottom:12px}
 .wktabs .sp{flex:1}
 .wktabs .wktab{background:none;border:1px solid transparent;border-bottom:0;border-radius:var(--r-small) var(--r-small) 0 0;
@@ -5632,6 +5642,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="page-dock.js"></script>
 <script src="page-home.js"></script>
 <script src="page-notices.js"></script>
+<script src="page-help.js"></script>
 <script src="page-paint.js"></script>
 <script src="page-panes.js"></script>
 <script src="page-projsettings.js"></script>

@@ -759,11 +759,16 @@ credentials dialog, and there is no second prompt for the terminal port
 because there is no second port. The sign-out button, last in the header, ends the session (`/logout` does the same).
 
 **The page is a rail, a top bar, a page on show and the dock**
-(R218 step 2). The rail down the left edge is nine groups, each one press:
+(R218 step 2). The rail down the left edge is ten groups, each one press:
 Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build
 (Toolchains, Emulator, Phone, CI runner), Jobs, Sessions, People (Users,
-Roles) and Settings (Controller, Profile); a group with several tools shows
-them as a sub-nav at the top of its page. A page an account's grants forbid
+Roles), Settings (Controller, Profile) and Help; a group with several tools
+shows them as a sub-nav at the top of its page. **Help** (R258) is these
+docs, read in the wiki's reader: listed in this folder's README groups beside
+the one open, a long one opening on its contents, a link to another doc
+opening it in place at its own address (`#/help/install`), and a search
+across all of them as it is typed, each line found opening its doc at the
+section it is in. A page an account's grants forbid
 is not drawn: People only for an account that may read accounts, Controller
 only for one that may read the controller. A page has an address
 (`#/containers`, `#/machines/nodes`, `#/projects/NAME`), so a reload, a

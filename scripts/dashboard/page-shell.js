@@ -23,9 +23,11 @@ const RAIL_ICONS = {
   people: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.2" cy="5.6" r="2.3"/><path d="M2.4 13c.3-2.6 1.9-4 3.8-4s3.5 1.4 3.8 4"/><circle cx="11.2" cy="6.2" r="1.8"/><path d="M10.4 9.6c1.9 0 3 1.3 3.2 3.4"/></svg>`,
   settings: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/><circle cx="8" cy="8" r="2.1"/></svg>`,
   more: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>`,
+  help: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.3 6.4a1.75 1.75 0 1 1 2.5 1.6c-.55.27-.8.66-.8 1.2v.3"/><path d="M8 11.3v.1"/></svg>`,
 };
 
-// The nine groups, in the rail's order (the design's rail rule). A group's
+// The ten groups, in the rail's order (the design's rail rule); Help, the
+// docs, last (R258). A group's
 // tools are the tab kinds it holds, the first the one its button opens; a
 // group with several draws them as the page's sub-nav.
 const RAIL = [
@@ -38,6 +40,7 @@ const RAIL = [
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
   {key: "settings", label: "Settings", icon: "settings", tools: [["settings", "Controller"], ["profile", "Profile"]]},
+  {key: "help", label: "Help", icon: "help", tools: [["help", "Help"]]},
 ];
 // The five on a phone's bar; the rest are under More.
 const RAIL_PHONE = ["home", "projects", "containers", "jobs"];
@@ -96,7 +99,7 @@ const OPENERS = {
   toolchains: () => openToolchains(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
-  sessions: () => openSessionsTab(),
+  sessions: () => openSessionsTab(), help: () => openHelp(),
 };
 function railGo(key, tool){
   const g = RAIL.find(x => x.key === key);
@@ -123,6 +126,8 @@ function routeOf(t){
   if (!isToolKind(t.kind)) return "";
   // The Notifications page is on no group: the bell's See all opens it.
   if (t.kind === "notices") return "#/notifications";
+  // Help names the doc on show (R258), so a link to one lands on it.
+  if (t.kind === "help") return "#/help" + (helpCur && helpCur !== helpIndex?.home ? "/" + encodeURIComponent(helpCur) : "");
   const g = groupOf(t.kind);
   if (!g) return "";
   return (g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`;
@@ -142,6 +147,14 @@ function openRoute(hash){
     return true;
   }
   if (key === "notifications"){ openNotices(); return true; }
+  if (key === "help"){
+    railWant = "help";
+    const doc = a ? decodeURIComponent(a) : helpIndex?.home || "";
+    if (doc && doc !== helpCur){ helpCur = doc; helpQ = ""; helpHits = null; helpRev++; }
+    openHelp();
+    if (helpIndex && helpCur) helpRead(helpCur);
+    return true;
+  }
   const g = RAIL.find(x => x.key === key);
   if (!g) return false;
   const kind = a && (g.tools || []).some(([k]) => k === a) ? a : g.tools[0][0];

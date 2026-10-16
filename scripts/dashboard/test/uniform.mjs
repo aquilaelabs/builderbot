@@ -85,6 +85,10 @@ const DRIVERS = {
     open: () => page.evaluate(() => railGo('home')),
     readyWhen: '.hometab .hometiles .tile',
   },
+  help: {
+    open: () => page.evaluate(() => railGo('help')),
+    readyWhen: '.helptab .wkarticle .wkpage',
+  },
   // The chat, the dock's Chat tab (R250 step 2): the list, then the page's
   // rules where they apply to a body in the dock.
   chat: {
@@ -1163,7 +1167,7 @@ for (const kind of kinds){
     window.__held.forEach(a => { a.pause(); a.currentTime = 0; });
     return window.__held.map(a => a.animationName || '').filter(Boolean);
   }, id);
-  // Only what is still paused: one the page cancelled meanwhile (a page's
+  // Only what is still paused: one the page canceled meanwhile (a page's
   // docOut, whose .leaving comes off at 150ms, while a slow frame was read)
   // play() would restart detached from its rule, and it then held that page
   // at opacity 0 with an animation that never ends, so a later wait for rest

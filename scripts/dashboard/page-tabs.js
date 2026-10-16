@@ -210,6 +210,10 @@ const TABKINDS = {
               open: () => loadEmulator() },
   // The Notifications page (R218 step 6): the account's record, read on
   // open, and the asks, which ride the phone payload, on every draw.
+  // Help (R258): the docs' list on open, each doc read when it is opened.
+  help:     { multi: false, label: () => "Help",
+              render: (i) => renderHelpInto(i), live: () => helpRev,
+              open: () => loadHelp() },
   notices:  { multi: false, label: () => "Notifications",
               render: (i) => renderNoticesInto(i), live: "always",
               open: () => loadNotices() },

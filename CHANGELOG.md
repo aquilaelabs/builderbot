@@ -155,6 +155,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Home: the landing page, with tiles across the install (nodes online, containers running, jobs running and failed today, sessions open, updates due, CI red), each a link into its page, the bell's attention rows, the last ten jobs and the pinned projects at a glance (e41cdf5)
 - Notifications: toasts stack at a corner with an icon and a ×, stay under the pointer and are kept for your account; a job started from the page follows itself to its end; the bell is a short list, and See all opens a Notifications page of asks and history (c029be8)
 - bb roadmap reopen N puts a finished item back on the list with its steps and notes, so more work found on it becomes its own step rather than a new item naming the old one (11c1373)
+- Help on the rail: BuilderBot's own docs read in the dashboard, listed by section beside each one with its contents, links between them opening in place, and a search across all of them as you type (9bdb3da)
 
 ### Changed
 

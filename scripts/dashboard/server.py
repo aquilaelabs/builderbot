@@ -300,6 +300,8 @@ bellseen.configure(state=STATE, write_json=write_json)
 # ...and what the page has said to each account, kept: notices.py (R218 step 6).
 import notices                                                   # noqa: E402
 notices.configure(state=STATE, write_json=write_json)
+# ...and BuilderBot's own docs, read on the Help page: helpdocs.py (R258).
+import helpdocs                                                  # noqa: E402
 
 
 
@@ -3950,6 +3952,7 @@ GET_ROUTES = (
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/home", "_get_home"),
     ("prefix", "/api/notices", "_get_notices"),
+    ("prefix", "/api/help", "_get_help"),
     ("prefix", "/api/docker", "_get_docker"),
     ("prefix", "/api/containers", "_get_containers"),
     ("prefix", "/api/project-job", "_get_project_job"),
@@ -7731,6 +7734,17 @@ class Handler(BaseHTTPRequestHandler):
         if nid and not nodes.node(nid):
             return self._json({"error": "which node?"}, 400)
         return self._result(imagecheck.check(nid or None))
+
+    def _get_help(self):
+        """GET /api/help: the docs on the Help page (helpdocs.py, R258): the
+        listing, ?doc=NAME one of them, ?q=WORDS a search across them. Any
+        account and any session: they are the docs the image ships."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        if "q" in q:
+            return self._json(*helpdocs.search((q.get("q") or [""])[0]))
+        if "doc" in q:
+            return self._json(*helpdocs.read((q.get("doc") or [""])[0]))
+        return self._json(*helpdocs.listing())
 
     def _get_notices(self):
         """GET /api/notices: notices.listing, this account's own (R218 step 6).
