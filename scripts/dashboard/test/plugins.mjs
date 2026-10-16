@@ -81,7 +81,9 @@ ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a h
   const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
   await page.goto(URL); await ready(page);
   await page.evaluate(() => { profile = null; openProfileTab(); loadProfile(); });
-  await page.waitForFunction(() => /Claude plugins/.test(document.querySelector('.doc.on')?.textContent || ''), null, { timeout: 15000 });
+  // The page itself (its Save), not its template, which names the section
+  // too while the profile is on its way.
+  await page.waitForFunction(() => document.querySelector('.doc.on #pfSave') && /Claude plugins/.test(document.querySelector('.doc.on')?.textContent || ''), null, { timeout: 15000 });
   const text = await page.evaluate(() => [...document.querySelectorAll('.doc.on h4')]
     .find(h => h.textContent === 'Claude plugins')?.nextElementSibling?.textContent.replace(/\s+/g, ' ').trim() || '');
   ok(/On plugbox: code-simplifier 1\.0\.0, feature-dev 1\.0\.0 \(alpha\), pyright-lsp 1\.0\.0 off/.test(text)
