@@ -533,6 +533,31 @@ def may_node(u, action, node_id=""):
     return may(u, action) or "that is not one of your roles' grants on that node"
 
 
+def may_instance(u, action, instance="", name=""):
+    """Whether this account may do `action` on one instance of its area (a
+    node, a runner's NODE_ID/SLOT: roles.INSTANCE_AREAS, R260), "" when it
+    may, else the reason. No `instance` is a new one, which a role holding
+    the area on named instances alone does not reach: it is on none of them
+    yet. `name` is how the refusal names the instance."""
+    if u is ALL:
+        return ""
+    if (why := may(u, action)):
+        return why
+    area, need = roles.CAP_AREA.get(action, ("projects", "write"))
+    if area not in roles.INSTANCE_AREAS or is_admin(u) or (u or {}).get("session"):
+        return ""
+    label = next((a[1] for a in roles.AREAS if a[0] == area), area)
+    lvl, what = ("Write" if need == "write" else "Read"), ("runner" if area == "runner" else "node")
+    if not instance:
+        if roles.nodes_for(u, area, need) is None:
+            return ""
+        return (f"your roles give {label} {lvl} on some {what}s, not on every one, "
+                f"and a new {what} is none of them yet: the Roles tab gives it on every {what}")
+    if roles.granted(u, action, node=instance if area in roles.NODE_AREAS else None, instance=instance):
+        return ""
+    return f"your roles give no {label} {lvl} on {name or instance}: the Roles tab gives one"
+
+
 # The actions a session is refused whoever its account is, with what each
 # reaches, for the refusal.
 PERSON_ONLY = {

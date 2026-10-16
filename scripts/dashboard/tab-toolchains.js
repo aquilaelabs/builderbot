@@ -155,7 +155,7 @@ function tcSystemLine(p, managed){
   // The repair, on the row that needs it: one press puts this row's missing
   // packages on the node and leaves the toolchain alone. Only where the
   // agent administers the machine; a guest node's owner installs them.
-  const fix = p.installed && miss.length && tcSandboxNow && mayToolchains()
+  const fix = p.installed && miss.length && tcSandboxNow && mayToolchains(tcNode)
     ? ` <button type="button" class="link" data-tcsys="${esc(p.name)}">Install them now</button>` : "";
   return `<span class="sub tcsysd${miss.length ? " warn" : ""}">${head}: ${list}.${fix}</span>`;
 }
@@ -167,7 +167,7 @@ function tcNeedsLine(p){
   const gone = p.needs_missing || [];
   if (!gone.length) return "";
   return `<span class="sub warn tcneed">Needs ${esc(gone.join(", "))}, which ${gone.length === 1 ? "is" : "are"} not installed here.${
-    mayToolchains() ? gone.map(n => ` <button type="button" class="link" data-tcneed="${esc(n)}">Install ${esc(n)}</button>`).join("") : ""}</span>`;
+    mayToolchains(tcNode) ? gone.map(n => ` <button type="button" class="link" data-tcneed="${esc(n)}">Install ${esc(n)}</button>`).join("") : ""}</span>`;
 }
 
 // What installing a toolchain is under, on its own row (the operator, 7
@@ -319,7 +319,7 @@ function tcDriverRow(m, busy, job){
   const ver = m.installed || m.loaded;
   const mine = !!(job && job.running && job.action !== "check" && job.current === TC_DRIVER);
   const doing = job && job.action === "remove" ? "removing" : "installing";
-  const may = m.managed && mayToolchains() && m.state !== "unknown";
+  const may = m.managed && mayToolchains(tcNode) && m.state !== "unknown";
   // A tick means "do something to this": install it where there is none,
   // update it where apt has a newer one. Installed and current, its box is
   // dead and ticked, as a toolchain's is.
@@ -376,7 +376,7 @@ function tcToolkitLine(m){
 function tcToolkitRow(m, busy, job){
   const mine = !!(job && job.running && job.action !== "check" && job.current === TC_TOOLKIT);
   const doing = job && job.action === "remove" ? "removing" : "installing";
-  const may = m.managed && mayToolchains() && m.state !== "unknown";
+  const may = m.managed && mayToolchains(tcNode) && m.state !== "unknown";
   // Ticked and dead where it is installed, current and known to Docker;
   // live where a tick has something to do (install, update, configure).
   const upToDate = !mine && m.state === "ready" && !m.newer;
@@ -407,7 +407,7 @@ const TC_CLAUDE = "claude-code";
 function tcClaudeRow(m, busy){
   const mine = !!m.running;
   const doing = m.action === "remove" ? "removing" : m.here ? "updating" : "installing";
-  const may = mayToolchains();
+  const may = mayToolchains(tcNode);
   const upToDate = !mine && m.state === "current";
   const line = mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>`
     : m.here ? `<span class="sub where on">installed</span>`
@@ -537,7 +537,7 @@ function renderToolchainsInto(i){
          sub: "on the store", omit: typeof d.free_mb !== "number"},
       ]);
     })()}
-    ${onNode && (d.cleanable || []).length && mayToolchains() ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
+    ${onNode && (d.cleanable || []).length && mayToolchains(tcNode) ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
       d.cleanable.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</span><span class="sp"></span>
       <button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button></div></div>` : ""}
     ${(() => {
@@ -562,12 +562,12 @@ function renderToolchainsInto(i){
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs")}
     <div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
-      ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
+      ${!mayToolchains(tcNode) ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >Install selected</button>`}
-      ${busy && mayToolchains() ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
+      ${busy && mayToolchains(tcNode) ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-      <button data-tc="check"${busy || pstale || !mayToolchains() ? " disabled" : ""}
+      <button data-tc="check"${busy || pstale || !mayToolchains(tcNode) ? " disabled" : ""}
         title="ask each upstream what it has now">${
         busy && job.action === "check"
           ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`

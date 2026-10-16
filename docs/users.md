@@ -45,6 +45,17 @@ not edited: Copy makes one of your own from a built-in. The page's buttons
 and tabs are drawn from the same answer the server refuses on
 (`state.can`), which is what keeps them consistent.
 
+**An area instance by instance** (R260, 16 Oct). On an Everywhere role the
+areas that reach a machine (Nodes, Toolchains, Jobs, New projects, Storage)
+open on the nodes, and CI runner on each runner, with Read and Write on each.
+The area's own boxes tick or clear every instance, and show partly ticked
+when some are held; every instance ticked at one level is the area on every
+instance, nodes and runners added later included. The server holds each
+action to the instance it touches: a node's verbs to Nodes Write on that
+node, a runner's to CI runner Write on that runner, and making a new node or
+runner to Write on every one, since a new one is none of those named yet.
+Jobs are still listed by project; Jobs per node says where one may be run.
+
 | Role | What it is |
 |---|---|
 | **owner** | The master admin. Exactly one, always. Its username can be changed; it cannot be deleted, demoted, locked or stripped of a project. Every other rule is a guard rail around that sentence. |

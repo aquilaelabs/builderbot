@@ -716,6 +716,17 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rareas .td.lead .sub{font:var(--f-note);font-weight:400}
 .rareas .td:not(.lead),.rareas .th:not(:first-child){text-align:center}
 .rarea.off{opacity:.55}
+/* An area held instance by instance (R260): the count or "each node" a
+   quiet link beside its name that opens the instances under it, each a
+   line of its own indented under the area, its two boxes in the columns. */
+.rareahead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.rareas .rexp{background:none;border:0;padding:0;min-height:0;color:var(--note);font:var(--f-note);cursor:pointer}
+.rareas .rexp::after{content:" \25B8";display:inline-block}
+.rareas .rexp[aria-expanded="true"]::after{content:" \25BE"}
+@media(hover:hover){ .rareas .rexp:hover{text-decoration:underline} }
+.tbl.rareas .tline.rinst{padding:6px 0;border-bottom-style:dashed}
+.rareas .rinst .td.lead{padding-left:var(--row-x)}
+.rareas .rinstname{font:var(--f-data);color:var(--ink)}
 /* A node that was un-enrolled, kept on the one project still set to it
    (page-projsettings.js): italic in the list and in the closed picker. */
 /* One class over the field skin's .nb select and .modal select, whose font

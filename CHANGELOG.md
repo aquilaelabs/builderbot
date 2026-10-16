@@ -156,6 +156,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Notifications: toasts stack at a corner with an icon and a ×, stay under the pointer and are kept for your account; a job started from the page follows itself to its end; the bell is a short list, and See all opens a Notifications page of asks and history (c029be8)
 - bb roadmap reopen N puts a finished item back on the list with its steps and notes, so more work found on it becomes its own step rather than a new item naming the old one (11c1373)
 - Help on the rail: BuilderBot's own docs read in the dashboard, listed by section beside each one with its contents, links between them opening in place, and a search across all of them as you type (9bdb3da)
+- A role's Nodes, Toolchains, Jobs, New projects, Storage and CI runner rows open on each node or runner, Read and Write on each; the area's own boxes tick or clear them all, and the server holds every action to the node or runner it touches (eba3133)
 
 ### Changed
 
@@ -371,6 +372,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Settings is beside Overview in Overview's row again, as well as in the … menu (bf61866)
 - Every session starts its probes and its dev instance's rebuilds in the background as it does its test runs, so a message sent meanwhile is read (bf61866)
 - Builds join test runs, probes and dev rebuilds: every session starts them in the background, so a message sent while one runs is read (c8ab6dc)
+- Every color theme now has two hues: links, the chosen view in a notebook group's row and info tags wear a second color picked to sit apart from the accent, and each swatch shows both (eba3133)
 
 ### Removed
 
@@ -603,6 +605,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session no longer sees the names of the account's other projects in its Claude conversations folder; only its own project's conversations, and those of the projects it reads, are there (2153102)
 - A rail group opens on its first page you may open: Settings opens Profile for an account that may not read the controller, and Build opens Phone for one without Toolchains; the Emulator now needs the Toolchains area, as its images are the store's (6475ae3)
 - The bell's container updates name only the containers of projects you may manage, where they listed every project's (6475ae3)
+- Another account on a project no longer lists the owner's Claude session on a node as its own (Sessions, and Sign out's count) (eba3133)
 
 ### Security
 

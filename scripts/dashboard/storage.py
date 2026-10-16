@@ -52,6 +52,8 @@ def view(nodes, who, *, is_admin, nodes_for, may_see, level_of):
             continue
         if allowed is not None and n["id"] not in allowed:
             continue
-        out.append(node_view(n, lambda name: is_admin(who) or may_see(who, name)))
+        # Whether it may measure this one (R260: Storage held node by node).
+        out.append(dict(node_view(n, lambda name: is_admin(who) or may_see(who, name)),
+                        may_measure=is_admin(who) or level_of(who, "storage", node=n["id"]) == "write"))
     write = is_admin(who) or level_of(who, "storage") == "write"
     return {"nodes": out, "may_measure": write, "where": list(WHERE)}, 200

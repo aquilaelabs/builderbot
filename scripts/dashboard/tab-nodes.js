@@ -308,7 +308,10 @@ function nodeRunnerSection(n, c){
   const recs = n.services?.runners || {};
   const reps = (n.reported?.services?.runners || []).map(r =>
     r.slot || Object.keys(recs).length !== 1 ? r : {...r, slot: Object.keys(recs)[0]});
-  const slots = [...new Set([...Object.keys(recs), ...reps.map(r => r.slot).filter(Boolean)])];
+  // Runner by runner (R260): one this account may not read is left out, one
+  // it may only read keeps its row with its buttons dead and why.
+  const mayOn = slot => n.runner_may ? (n.runner_may[slot] ?? "write") : "write";
+  const slots = [...new Set([...Object.keys(recs), ...reps.map(r => r.slot).filter(Boolean)])].filter(sl => mayOn(sl));
   const tokens = n.runner_tokens || [];
   const d = c.draft;
   if (d.runner === undefined) d.runner = {url: "", token: "", forge: "", labels: ""};
@@ -350,7 +353,8 @@ function nodeRunnerSection(n, c){
     // and what went wrong follows it.
     const late = failed && rep.installed ? ` · reinstall failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}` : "";
     const state = verdict + (detail ? " · " + detail : "") + late + (noToken ? " · " + noToken : "");
-    return `<div class="row stack2 ndrun" data-slot="${esc(slot)}"><div class="grow">
+    const ro = mayOn(slot) !== "write";
+    return `<div class="row stack2 ndrun${ro ? " ndrunro" : ""}" data-slot="${esc(slot)}"><div class="grow">
         <div class="name"><code>${esc(rep.url || want.url || slot)}</code>${hostOf(want, rep) ? ` <span class="pill">${hostOf(want, rep)}</span>` : ""}${
           rep.busy ? ` <span class="pill note ndrunbusy">running a job</span>` : ""}</div>
         <div class="actbar">
@@ -363,7 +367,7 @@ function nodeRunnerSection(n, c){
             title="drop the stored token and this row; a registered runner keeps running">Forget token</button>` : ""}
           ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
             title="${why || (stored ? "deregister it and remove it from this node" : "add a token first")}">Remove runner</button>` : ""}
-        </div></div></div>`;
+        </div>${ro ? `<div class="sub bad ndrunwhy">Your roles give no CI runner Write on this runner: the Roles page gives it.</div>` : ""}</div></div>`;
   }).join("");
   // Adding is a button that unrolls the form in its own band, the shape
   // every view adds with; the form is four fields that wrap to the width
@@ -388,8 +392,9 @@ function nodeRunnerSection(n, c){
           <button type="button" class="primary" data-nrunneradd ${busyNow ? "disabled" : ""}
             title="save the token and add the runner to this node">Add runner</button></div>
       </div></div>`
-    : `<div class="addbar" data-add="runner"><button type="button" data-nrunnershow ${busyNow ? "disabled" : ""}
-        title="a runner for another git host, or this one's under another address">Add runner</button></div>`;
+    : `<div class="addbar" data-add="runner"><button type="button" data-nrunnershow ${busyNow || n.runner_new === false ? "disabled" : ""}
+        title="a runner for another git host, or this one's under another address">Add runner</button>${
+        n.runner_new === false ? `<div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div>` : ""}</div>`;
   const status = !slots.length ? "none" : worst === "bad" ? "attention" : worst === "note" ? "working"
     : reps.some(r => r.busy) ? "busy" : reps.some(r => r.active) ? "listening" : "asked for";
   const pill = {attention: "bad", working: "note", busy: "ok", listening: "ok"}[status] || "";
@@ -682,7 +687,7 @@ function nodeClaudeSection(n){
       <span class="state">${!se?.up ? "No session account here, so nothing runs Claude Code."
         : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out` : ""}: the ${pageLink("toolchains", "Toolchains page")} updates it.`
         : `Not installed: a Claude session cannot start here until the ${pageLink("toolchains", "Toolchains page")} installs it.`}</span>
-      ${se?.up && mayToolchains() ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
+      ${se?.up && mayToolchains(n.id) ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
     </div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
 }
@@ -1435,7 +1440,7 @@ function renderNodesInto(i){
           <code class="dim ndid" title="this node's id: the one in its enroll script's name">${esc(n.id)}</code></div>
         <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
         ${keepLine(n)}
-        ${state?.can?.admin === false ? `<div class="sub warn ndreadonly">An administrator changes a node's settings. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
+        ${nodeMay(n) !== "write" ? `<div class="sub warn ndreadonly">Your roles give no Nodes Write on ${esc(n.name)}, so its settings are read here. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
         ${agentBar}${pendingBar}
       </div>
       <div class="ndsections">
@@ -1542,6 +1547,7 @@ function renderRunnerInto(i){
     ? `${runnerRows()}<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
     : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
+  d.list.querySelectorAll(".ndrunro button").forEach(b => { b.disabled = true; });
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
   const pick = d.el.querySelector("#rnrPick");
   if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
@@ -1552,13 +1558,20 @@ function renderRunnerInto(i){
 // its own Claude sign-in, and the row says why (the operator, 30 Sep). Once,
 // after the draw and its wiring, rather than in each section: a control a
 // later section adds is dead for that account without anybody remembering.
+// Node by node since R260: a role may write one node and read another, so
+// a row is dead where the server says its account may only read it (the
+// row's `may`), and the page's own controls only when it may write none.
+const nodeMay = n => n?.may || (state?.can?.admin === false ? "read" : "write");
 function nodesReadOnly(root){
-  if (state?.can?.admin !== false) return;
-  root.querySelectorAll("button, input, select, textarea").forEach(c => {
+  const dead = el => el.querySelectorAll("button, input, select, textarea").forEach(c => {
     // A phone is its owner's, any account's (tab-phone.js): its section
     // stays live, and the server holds who may press what there.
     if (c.id !== "ndPick" && !c.closest("[data-signin]") && !c.closest(".phonetab")) c.disabled = true;
   });
+  root.querySelectorAll(".ndrow[data-node]").forEach(r => {
+    if (nodeMay((nodesList || []).find(x => x.id === r.dataset.node)) !== "write") dead(r);
+  });
+  if (!(nodesList || []).some(n => nodeMay(n) === "write")) dead(root);
 }
 
 // Remove a project from this node: its settings saved with the node out of

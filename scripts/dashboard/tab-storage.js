@@ -192,7 +192,7 @@ function renderStorageInto(i){
   // The tab's two actions side by side at the right of the bar (R203):
   // Measure now asks the node for a fresh walk, Refresh re-reads the record.
   d.setBar(`${nodePick("stNodeSel", pnodes, storageNode)}
-    <span class="sp"></span><span class="actbar">${storageMay && n ? `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
+    <span class="sp"></span><span class="actbar">${storageMay && n && n.may_measure !== false ? `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
       n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>` : ""}
     <button type="button" id="stReload" title="read the nodes again">Refresh</button></span>`);
   d.list.innerHTML = n ? storageBody(n, where)

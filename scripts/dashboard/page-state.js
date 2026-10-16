@@ -115,7 +115,10 @@ const NOT_MINE_WHY = "read-only: you hold no role on this project; the Roles tab
 // DRAWN; every one of these is refused again on the server.
 const mayShell = () => state?.can?.terminal !== false;
 const mayDocker = () => state?.can?.["docker-write"] !== false;
-const mayToolchains = () => state?.can?.["toolchains-write"] !== false;
+// ...on that node where one is named (R260: Toolchains held node by node),
+// read off the node's row; a node not drawn yet is the server's to refuse.
+const mayToolchains = nid => state?.can?.["toolchains-write"] !== false
+  && (!nid || ((typeof nodesList === "undefined" ? null : nodesList)?.find(x => x.id === nid)?.areas_may?.toolchains ?? "write") === "write");
 // THIS account's Claude session on a project. Prefixed like a shell since
 // roadmap #24: more than one person may work a project at once, each in a
 // worktree of their own, so the name has to say whose conversation it is,

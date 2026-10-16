@@ -19,7 +19,8 @@ let rolesErr = "";
 let rolesWho = "";               // the account the People section is on
 let rolesPeopleDraft = null;     // {roles, project_roles} being edited
 let rolesPick = "";              // the role the Roles section is on
-let rolesDraft = null;           // {name, scope, perms, note, fresh} being edited
+let rolesDraft = null;           // {name, scope, perms, note, fresh, only} being edited
+const rolesExp = new Set();      // the areas opened on their instances (R260)
 
 function openRolesTab(){
   openTab({kind: "roles", arg: "__roles", label: "Roles"});
@@ -187,7 +188,39 @@ function rolesPeopleDirty(){
 const ROLE_AREA_COLS = [{label: "Area"}, {label: "Read", w: "4.5rem"}, {label: "Write", w: "4.5rem"}];
 function rolesFrom(r){
   return r ? {name: r.name, scope: r.scope, perms: {...(r.perms || {})}, note: r.note || "", fresh: false,
-              builtin: !!r.builtin, nodes: [...(r.nodes || [])]} : null;
+              builtin: !!r.builtin, only: JSON.parse(JSON.stringify(r.only || {}))} : null;
+}
+
+// ---- an area instance by instance (R260) ----
+// An Everywhere role's node areas open on the nodes, the CI runner's on each
+// runner, Read and Write on each (the operator, 16 Oct). The draft keeps an
+// area held on every instance as its level alone, and one held on some as
+// `only[area]`, {instance: level}: every instance at one level folds back to
+// the level alone, which holds on instances added later too.
+function rolesInsts(key){
+  const d = rolesData;
+  if (!(d.instance_areas || []).includes(key)) return [];
+  return key === "runner" ? (d.runners || []).map(r => ({id: r.id, name: `${r.name} on ${r.node}`}))
+                          : (d.nodes || []);
+}
+function rolesLvlAt(key, id){
+  const m = rolesDraft.only?.[key];
+  return m ? (m[id] || "") : (rolesDraft.perms[key] || "");
+}
+// Every instance's level at once, folded as above.
+function rolesSetAll(key, levelOf){
+  const r = rolesDraft, insts = rolesInsts(key);
+  const map = Object.fromEntries(insts.map(i => [i.id, levelOf(i.id, rolesLvlAt(key, i.id))]));
+  const vals = new Set(Object.values(map));
+  r.only = r.only || {};
+  if (vals.size === 1){
+    const v = [...vals][0];
+    delete r.only[key];
+    if (v) r.perms[key] = v; else delete r.perms[key];
+    return;
+  }
+  r.only[key] = Object.fromEntries(Object.entries(map).filter(([, v]) => v));
+  r.perms[key] = vals.has("write") ? "write" : "read";
 }
 
 function rolesRoleBody(){
@@ -215,13 +248,30 @@ function rolesRoleBody(){
   // A table (R218 step 8): the area, with what Read and Write let one do
   // under its name, then its two boxes in their columns.
   const offOf = group => ro || (group === "global" && r.scope !== "global");
+  const box = (attr, key, label, on, part, dead) => `<input type="checkbox" ${attr}="${esc(key)}" aria-label="${esc(label)}"${
+    on ? " checked" : ""}${part ? " data-part" : ""}${dead ? " disabled" : ""}>`;
   const rows = (d.areas || []).map(([key, label, group, rd, wr]) => {
-    const lvl = r.perms[key] || "", off = offOf(group);
-    return tblLine(ROLE_AREA_COLS, [
-      `${esc(label)}<div class="sub dim">Read: ${esc(rd)}. Write: ${esc(wr)}.</div>`,
-      `<input type="checkbox" data-rread="${esc(key)}" aria-label="Read ${esc(label)}"${lvl ? " checked" : ""}${off ? " disabled" : ""}>`,
-      `<input type="checkbox" data-rwrite="${esc(key)}" aria-label="Write ${esc(label)}"${lvl === "write" ? " checked" : ""}${
-        off || !lvl ? " disabled" : ""}>`], "div", `rarea${off && !ro ? " off" : ""}`, `data-rarea="${esc(key)}"`);
+    const off = offOf(group);
+    // Opened on its instances only where it can be changed: an Everywhere
+    // role this account may edit, with instances to name.
+    const insts = !off && r.scope === "global" ? rolesInsts(key) : [];
+    const lv = insts.length ? insts.map(i => rolesLvlAt(key, i.id)) : [r.perms[key] || ""];
+    const rAll = lv.every(Boolean), rSome = lv.some(Boolean);
+    const wAll = lv.every(x => x === "write"), wSome = lv.some(x => x === "write");
+    const open = insts.length && rolesExp.has(key);
+    const what = key === "runner" ? "runner" : "node";
+    const exp = insts.length ? `<button type="button" class="rexp" data-rexp="${esc(key)}" aria-expanded="${open ? "true" : "false"}"
+      aria-label="${esc(label)} on each ${what}">${rSome && !rAll ? `${lv.filter(Boolean).length} of ${insts.length} ${what}s` : `each ${what}`}</button>` : "";
+    const head = tblLine(ROLE_AREA_COLS, [
+      `<span class="rareahead">${esc(label)}${exp}</span><div class="sub dim">Read: ${esc(rd)}. Write: ${esc(wr)}.</div>`,
+      box("data-rread", key, `Read ${label}`, rAll, rSome && !rAll, off),
+      box("data-rwrite", key, `Write ${label}`, wAll, wSome && !wAll, off || !rSome)],
+      "div", `rarea${off && !ro ? " off" : ""}`, `data-rarea="${esc(key)}"`);
+    return head + (open ? insts.map(i => { const at = rolesLvlAt(key, i.id), k = `${key}|${i.id}`;
+      return tblLine(ROLE_AREA_COLS, [`<span class="rinstname">${esc(i.name)}</span>`,
+        box("data-riread", k, `Read ${label} on ${i.name}`, !!at, false, false),
+        box("data-riwrite", k, `Write ${label} on ${i.name}`, at === "write", false, !at)],
+        "div", "rarea rinst", `data-rinst="${esc(k)}"`); }).join("") : "");
   }).join("");
   // Why some rows are gray, said once above the table, in the reason's
   // color (the design: the reason under a dead control).
@@ -235,11 +285,6 @@ function rolesRoleBody(){
         <option value="global"${r.scope === "global" ? " selected" : ""}>Everywhere</option>
       </select></div>
     ${ro ? "" : `<div class="setrow col">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
-    ${r.scope === "global" && !r.builtin && (d.nodes || []).length ? `<div class="setrow col">${lbl("", "On these nodes",
-        "Nodes, Toolchains, Jobs and New projects hold on the nodes ticked here; none ticked is every node")}
-      <div class="upick" id="rolesNodes">${d.nodes.map(n => `<label class="pick"><input type="checkbox" data-rnode="${esc(n.id)}"${
-        r.nodes.includes(n.id) ? " checked" : ""}${ro ? " disabled" : ""}> ${esc(n.name)}</label>`).join("")}</div>
-      <div class="sub dim">${r.nodes.length ? "those areas on the ticked nodes only" : "those areas on every node"}</div></div>` : ""}
     ${areas}
     ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>` : ""}
     ${ro ? "" : `<div class="actbar"><span class="state">${rolesRoleDirty() ? "unsaved" : ""}</span>
@@ -335,35 +380,52 @@ function wireRoles(el){
     const name = (nm?.value || "").trim();
     if (!name) return notify("a name for the role", true);
     if (rolesData.roles[name]) return notify(`${name} is a role already`, true);
-    rolesDraft = {name, scope: "projects", perms: {}, note: "", fresh: true, builtin: false, nodes: []};
+    rolesDraft = {name, scope: "projects", perms: {}, note: "", fresh: true, builtin: false, only: {}};
     rolesOpen.roles = true;
     rolesRedraw();
   };
   const sc = el.querySelector("#rolesScope");
   if (sc) sc.onchange = () => {
     rolesDraft.scope = sc.value;
-    if (sc.value !== "global") rolesDraft.nodes = [];
+    if (sc.value !== "global") rolesDraft.only = {};
     // A role on the user's projects holds project areas only.
     if (sc.value !== "global")
       for (const [key, , group] of rolesData.areas) if (group === "global") delete rolesDraft.perms[key];
     rolesRedraw();
   };
-  el.querySelectorAll("[data-rnode]").forEach(cb => cb.onchange = () => {
-    const n = cb.dataset.rnode;
-    rolesDraft.nodes = cb.checked ? [...new Set([...rolesDraft.nodes, n])] : rolesDraft.nodes.filter(x => x !== n);
+  // A box ticked on one row in three, partly (R260).
+  el.querySelectorAll("input[data-part]").forEach(cb => { cb.indeterminate = true; });
+  el.querySelectorAll("[data-rexp]").forEach(b => b.onclick = () => {
+    const k = b.dataset.rexp;
+    if (rolesExp.has(k)) rolesExp.delete(k); else rolesExp.add(k);
     rolesRedraw();
   });
   const note = el.querySelector("#rolesNote");
   if (note) note.oninput = () => { rolesDraft.note = note.value; };
+  // The area's own boxes say it for every instance: Read ticked reads on
+  // every one (keeping Write where it was), cleared reads on none; Write
+  // ticked writes on every one, cleared leaves each reading.
   el.querySelectorAll("[data-rread]").forEach(cb => cb.onchange = () => {
     const k = cb.dataset.rread;
-    if (cb.checked) rolesDraft.perms[k] = rolesDraft.perms[k] || "read";
-    else delete rolesDraft.perms[k];      // no Read, no Write
+    if (rolesInsts(k).length && rolesDraft.scope === "global")
+      rolesSetAll(k, (id, at) => cb.checked ? (at || "read") : "");
+    else if (cb.checked) rolesDraft.perms[k] = rolesDraft.perms[k] || "read";
+    else { delete rolesDraft.perms[k]; if (rolesDraft.only) delete rolesDraft.only[k]; }   // no Read, no Write
     rolesRedraw();
   });
   el.querySelectorAll("[data-rwrite]").forEach(cb => cb.onchange = () => {
     const k = cb.dataset.rwrite;
-    rolesDraft.perms[k] = cb.checked ? "write" : "read";
+    if (rolesInsts(k).length && rolesDraft.scope === "global")
+      rolesSetAll(k, (id, at) => cb.checked ? "write" : (at ? "read" : ""));
+    else rolesDraft.perms[k] = cb.checked ? "write" : "read";
+    rolesRedraw();
+  });
+  // ...and an instance's say it for that one.
+  el.querySelectorAll("[data-riread],[data-riwrite]").forEach(cb => cb.onchange = () => {
+    const [k, one] = (cb.dataset.riread || cb.dataset.riwrite).split(/\|(.*)/s);
+    const read = "riread" in cb.dataset;
+    rolesSetAll(k, (id, at) => id !== one ? at
+      : read ? (cb.checked ? (at || "read") : "") : (cb.checked ? "write" : (at ? "read" : "")));
     rolesRedraw();
   });
   const rr = el.querySelector("#rolesRevert");
@@ -373,7 +435,7 @@ function wireRoles(el){
     busy(rs, "Saving");
     const r = rolesDraft;
     if (await rolesAct({action: "set", name: r.name, scope: r.scope, perms: r.perms, note: r.note,
-                        nodes: r.scope === "global" ? r.nodes : []}, `${r.name} saved`)){
+                        only: r.scope === "global" ? r.only : {}}, `${r.name} saved`)){
       rolesPick = r.name; rolesDraft = null;
     }
     rolesRedraw();

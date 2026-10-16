@@ -143,24 +143,43 @@ ok(ownerRole.includes('alpha_owner'), `the account that owns alpha holds alpha_o
 await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
 
 // Making projects on one node (the operator, 7 Oct): New projects is its
-// own area, and a Global role may hold its node areas on named nodes.
+// own area, and an Everywhere role holds a node area node by node, the
+// area's row opened on the nodes, Read and Write on each (R260, 16 Oct).
 {
   const sandbox = (await api('/api/v1/nodes')).body.nodes.find(n => n.kind !== 'local');
+  // A second node, so one ticked of two is not every node.
+  const other = (await api('/api/v1/nodes', { action: 'enroll', name: 'roles-other' })).body;
   await page.evaluate(() => loadRoles());
   await openSect('roles:roles');
   await page.fill('#rolesNewName', 'creator');
   await page.click('#rolesAdd');
   await page.waitForSelector('#rolesScope');
   await page.selectOption('#rolesScope', 'global');
-  await page.waitForSelector(`[data-rnode="${sandbox.id}"]`);
+  await page.waitForSelector('[data-rexp="newprojects"]');
+  ok(!(await page.$('[data-rexp="accounts"]')) && !(await page.$('[data-rexp="projects"]')),
+     'only an area with instances opens on them: not Accounts, not a project area');
+  await page.click('[data-rexp="newprojects"]');
+  await page.waitForSelector(`[data-riread="newprojects|${sandbox.id}"]`);
+  // The area's own Read ticks every node, and clearing it clears them.
   await page.check('[data-rread="newprojects"]');
-  await page.check('[data-rwrite="newprojects"]');
-  await page.check(`[data-rnode="${sandbox.id}"]`);
+  ok(await page.$$eval('[data-riread^="newprojects|"]', bs => bs.length >= 2 && bs.every(b => b.checked)),
+     "the area's Read box ticks Read on every node under it");
+  await page.uncheck('[data-rread="newprojects"]');
+  ok(await page.$$eval('[data-riread^="newprojects|"]', bs => bs.every(b => !b.checked)), '...and clearing it clears them all');
+  // One node, to write: the area's boxes show it held on some.
+  await page.check(`[data-riread="newprojects|${sandbox.id}"]`);
+  await page.check(`[data-riwrite="newprojects|${sandbox.id}"]`);
+  const part = await page.$eval('[data-rarea="newprojects"]', r => ({
+    read: r.querySelector('[data-rread]').indeterminate, write: r.querySelector('[data-rwrite]').indeterminate,
+    said: r.querySelector('[data-rexp]').textContent.trim() }));
+  ok(part.read && part.write && /^1 of \d+ nodes/.test(part.said),
+     `...one node ticked shows the area's boxes partly ticked and the count beside its name (${JSON.stringify(part)})`);
   await page.click('#rolesSave');
   await page.waitForFunction(() => rolesData?.roles?.creator, null, { timeout: 15000 });
   const cr = (await api('/api/roles')).body.roles.creator;
-  ok(cr.scope === 'global' && cr.perms.newprojects === 'write' && JSON.stringify(cr.nodes) === JSON.stringify([sandbox.id]),
-     `a Global role saves New projects on the node ticked (${JSON.stringify(cr)})`);
+  ok(cr.scope === 'global' && cr.perms.newprojects === 'write'
+     && JSON.stringify(cr.only) === JSON.stringify({ newprojects: { [sandbox.id]: 'write' } }),
+     `an Everywhere role saves New projects to write on the node ticked alone (${JSON.stringify(cr)})`);
   await api('/api/roles', { action: 'assign', name: 'dep', roles: ['creator'] });
   const elsewhere = await api('/api/create', { name: 'nowhere-made', node: 'n_nowhere' }, depAuth);
   const nowhere = await api('/api/create', { name: 'nowhere-made' }, depAuth);
@@ -168,8 +187,22 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
      `a project on another node, or on none, is refused by name (${elsewhere.status} ${elsewhere.body.error || ''})`);
   const here = await api('/api/create', { name: '', node: sandbox.id }, depAuth);
   ok(here.status !== 403, `...and on the node the role names it passes the gate (${here.status} ${here.body.error || ''})`);
+  // Nodes Write on one node: the Nodes tab's verbs held to the node they
+  // touch, and a new node to Write on every one.
+  await api('/api/roles', { action: 'set', name: 'creator', scope: 'global', perms: { nodes: 'write' },
+                            only: { nodes: { [sandbox.id]: 'write', [other.id]: 'read' } } });
+  const onOther = await api('/api/v1/nodes', { action: 'disable', id: other.id }, depAuth);
+  const fresh = await api('/api/v1/nodes', { action: 'add', name: 'by-dep' }, depAuth);
+  ok(onOther.status === 403 && /Nodes Write on roles-other/.test(onOther.body.error || '')
+     && fresh.status === 403 && /every node/.test(fresh.body.error || ''),
+     `Nodes Write on one node refuses a verb on another by name, and a new node (${onOther.body.error} | ${fresh.body.error})`);
+  const rows = (await api('/api/v1/nodes', undefined, depAuth)).body.nodes || [];
+  const may = Object.fromEntries(rows.map(n => [n.id, n.may]));
+  ok(may[sandbox.id] === 'write' && may[other.id] === 'read',
+     `...and the Nodes list carries each node's level for the page (${JSON.stringify(may)})`);
   await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
   await api('/api/roles', { action: 'remove', name: 'creator' });
+  await api('/api/v1/nodes', { action: 'retire', id: other.id });
 }
 
 // An area without Read is refused and hidden (R152 step 3): a role that

@@ -133,7 +133,9 @@ class Model(unittest.TestCase):
         # scoped as they were before R152.
         r = roles.set_role("creator", "global", {"newprojects": "write", "toolchains": "write", "controller": "read"},
                            nodes=["n1"])
-        self.assertEqual(r["nodes"], ["n1"])
+        # The list from before R260 reads as each node area on those nodes at
+        # its own level.
+        self.assertEqual(r["only"], {"newprojects": {"n1": "write"}, "toolchains": {"n1": "write"}})
         c = {"name": "c", "role": "user", "roles": ["creator"], "projects": []}
         self.assertTrue(roles.granted(c, "create", node="n1"))
         self.assertFalse(roles.granted(c, "create", node="n2"), "not a node it names")
@@ -143,8 +145,34 @@ class Model(unittest.TestCase):
         self.assertEqual(roles.nodes_for(c, "newprojects"), ["n1"])
         self.assertIsNone(roles.nodes_for(ADMIN, "newprojects"), "admin: every node")
         self.assertEqual(roles.CAP_AREA["create"], ("newprojects", "write"), "its own area, not Controller's")
-        self.assertEqual(roles.set_role("p", "projects", {"projects": "read"}, nodes=["n1"])["nodes"], [],
+        self.assertEqual(roles.set_role("p", "projects", {"projects": "read"}, nodes=["n1"])["only"], {},
                          "only a Global role names nodes")
+
+    def test_an_area_held_instance_by_instance(self):
+        # The operator, 16 Oct: an area's row opens on its nodes or runners,
+        # Read or Write on each.
+        r = roles.set_role("ops", "global", {"nodes": "read", "runner": "read", "controller": "read"},
+                           only={"nodes": {"n1": "write", "n2": "read"}, "runner": {"n1/a": "read"},
+                                 "storage": {}, "controller": {"x": "write"}})
+        self.assertEqual(r["only"], {"nodes": {"n1": "write", "n2": "read"}, "runner": {"n1/a": "read"}},
+                         "instance areas alone, an empty map dropped")
+        self.assertEqual(r["perms"]["nodes"], "write", "the area at the best of its instances")
+        o = {"name": "o", "role": "user", "roles": ["ops"], "projects": []}
+        self.assertEqual(roles.level_of(o, "nodes", node="n1"), "write")
+        self.assertEqual(roles.level_of(o, "nodes", node="n2"), "read")
+        self.assertEqual(roles.level_of(o, "nodes", node="n3"), "", "a node it does not name")
+        self.assertEqual(roles.level_of(o, "nodes"), "write", "anywhere: the best")
+        self.assertTrue(roles.granted(o, "nodes-write", node="n1"))
+        self.assertFalse(roles.granted(o, "nodes-write", node="n2"), "read on n2, not write")
+        self.assertEqual(roles.level_of(o, "runner", instance="n1/a"), "read")
+        self.assertEqual(roles.level_of(o, "runner", instance="n2/a"), "")
+        self.assertEqual(roles.nodes_for(o, "nodes"), ["n1", "n2"])
+        self.assertEqual(roles.nodes_for(o, "nodes", "write"), ["n1"])
+        self.assertEqual(roles.nodes_for(o, "runner"), ["n1/a"])
+        roles.set_role("all", "global", {"nodes": "read"})
+        o["roles"].append("all")
+        self.assertIsNone(roles.nodes_for(o, "nodes"), "a role holding it on every node: every node")
+        self.assertEqual(roles.level_of(o, "nodes", node="n3"), "read")
 
     def test_a_role_given_on_one_project_holds_there_alone(self):
         roles.set_role("releaser", "projects", {"projects": "read", "releases": "write"})

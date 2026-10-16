@@ -1602,6 +1602,28 @@ def _term_arg(rest):
     return ""
 
 
+def _runner_level(who, inst):
+    """This account's level on one runner: write, read or ""."""
+    if users.is_admin(who) or not users.may_instance(who, "runner", inst):
+        return "write"
+    return "read" if roles.level_of(who, "runner", instance=inst) else ""
+
+
+def _runners_for(who):
+    """The CI runners this account may read, each with `may`, read or write
+    (R260: a role holds the CI runner area runner by runner)."""
+    who = who or {}
+    if not (users.is_admin(who) or roles.level_of(who, "runner")):
+        return []
+    lim = None if users.is_admin(who) else roles.nodes_for(who, "runner")
+    out = []
+    for r in runners.listing():
+        inst = f"{r['id']}/{r['slot']}"
+        if lim is None or inst in lim:
+            out.append(dict(r, may=_runner_level(who, inst) or "read"))
+    return out
+
+
 def _session_visible(name, mine, seen, all_of_them):
     owner, base = tmux_owner(name), tmux_base(name)
     if owner:
@@ -3788,7 +3810,7 @@ def snapshot(who):
         # Every node with a runner on it: the Runner card is a view of these
         # and nothing else, since CI left this container (phase 7). Read from
         # the census, which already carries it.
-        "node_runners": runners.listing(),
+        "node_runners": _runners_for(who),
         "reports": findings.mounted(),
         "reports_mtime": findings.reports_mtime(),
         "findings_counts": _findings_counts(who, ps),
@@ -4327,9 +4349,14 @@ class Handler(BaseHTTPRequestHandler):
         other projects' names (roadmap #27).
         """
         me = self._who()
-        if not users.may(me, "node"):
+        # Read on every node is the registry too (R260), and Read on named
+        # nodes those besides its projects'; an administrator's or a
+        # session's answer is as it was.
+        lim = None if users.is_admin(me or {}) or (me or {}).get("session") \
+            else roles.nodes_for(me or {}, "nodes")
+        if lim is None and (not users.may(me, "node") or roles.level_of(me or {}, "nodes")):
             return None
-        want = set()
+        want = set(lim or ())
         for p in project_list(me):
             pr = prefs.get(p["name"])
             want.update([pr["node"], *(pr.get("nodes") or [])])
@@ -4362,9 +4389,21 @@ class Handler(BaseHTTPRequestHandler):
         # Which of each node's runners has a token stored: asked of the
         # helper once, which names slots and never a token.
         tokens = runners.tokens() if any(n.get("kind") == "agent" for n in rows) else {}
+        me = self._who() or {}
         for n in rows:
             if n.get("kind") == "agent":
                 n["runner_tokens"] = sorted(tokens.get(n["id"], set()))
+            # What this account may do to it (R260), so the page leaves a
+            # node it may only read without its controls.
+            n["may"] = "read" if users.may_instance(me, "nodes-write", n["id"]) else "write"
+            n["areas_may"] = {a: "write" if users.is_admin(me) or me.get("session")
+                              else roles.level_of(me, a, node=n["id"]) for a in sorted(roles.NODE_AREAS)}
+            # ...and to each of its runners, and whether it may add one: ""
+            # for a runner it may not read, which the page leaves out.
+            if n.get("kind") == "agent":
+                slots = set(nodes.runners_of(n)) | {r.get("slot") for r in nodes.runners_reported(n) if r.get("slot")}
+                n["runner_may"] = {sl: _runner_level(me, f"{n['id']}/{sl}") for sl in sorted(slots)}
+                n["runner_new"] = users.may_instance(me, "runner", "") == ""
         # Whether THIS account's Claude login has been given to each node,
         # answered here rather than by handing the page a uid to compare
         # against: the grant list is every account that has one, which is
@@ -5199,9 +5238,16 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
                            "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
                            "owner": users.owner_name() or "", "node_areas": sorted(roles.NODE_AREAS),
+                           # What an area's row opens on (R260): the nodes for
+                           # a node area, each runner (NODE_ID/SLOT) for the
+                           # CI runner's.
+                           "instance_areas": sorted(roles.INSTANCE_AREAS),
                            "nodes": [] if NODES_OK or not can["admin"] else
                            [{"id": n["id"], "name": n["name"]} for n in nodes.node_list()
-                            if n.get("kind") != "local" and n.get("state") != "retired"]})
+                            if n.get("kind") != "local" and n.get("state") != "retired"],
+                           "runners": [] if NODES_OK or not can["admin"] else
+                           [{"id": f"{r['id']}/{r['slot']}", "name": r["name"] or r["slot"], "node": r["node"]}
+                            for r in runners.listing()]})
 
     def _get_nodes(self):
         """GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to
@@ -5878,9 +5924,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def _nodes(self, req):
         """The Nodes tab's verbs. Thin on purpose: an administrator's, and
-        nodes.verb says what each one means and writes its audit row."""
-        if self._refused("nodes-write"):
-            return
+        nodes.verb says what each one means and writes its audit row.
+
+        Each held to the instance it touches (R260): a node's verbs to Nodes
+        Write on that node, and making one (add, the VM's XML) to Nodes
+        Write on every node; a runner's to CI runner Write on that runner,
+        a new one to it on every runner. A runner is a person's to change,
+        as the node verbs it used to be gated with are."""
+        me, act, nid = self._who() or {}, field(req, "action"), field(req, "id")
+        nname = ((nodes.node(nid) or {}).get("name") or nid) if nid and not NODES_OK else nid
+        if act in ("runner", "runner-token", "runner-forget"):
+            slot = (nodes.runner_slot(field(req, "url").strip()) if act == "runner-token"
+                    else re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60])
+            have = {r["slot"] for r in runners.listing() if r["id"] == nid} if not NODES_OK else set()
+            why = (users.may(me, "nodes-write") if me.get("session") else "") or users.may_instance(
+                me, "runner", f"{nid}/{slot}" if slot in have else "", f"{slot} on {nname}")
+        else:
+            why = users.may_instance(me, "nodes-write", "" if act in ("add", "vm-xml") else nid, nname)
+        if why:
+            return self._json({"error": why}, 403)
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
@@ -7129,7 +7191,7 @@ class Handler(BaseHTTPRequestHandler):
         # node, is refused by name. Its node is then the account's to set at
         # making it, though setting a node later is the Nodes area's.
         nid = field(req, "node")
-        limited = roles.nodes_for(me, "newprojects")
+        limited = roles.nodes_for(me, "newprojects", "write")
         if limited is not None and nid not in limited:
             names = [n["name"] for n in ([] if NODES_OK else nodes.node_list()) if n["id"] in limited] or limited
             return self._json({"error": f"a project you make goes on {', '.join(names)}: pick "
@@ -7401,7 +7463,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._result(roles.set_role(field(req, "name"), field(req, "scope") or "projects",
                                                    req.get("perms") if isinstance(req.get("perms"), dict) else {},
                                                    field(req, "note"),
-                                                   nodes=req.get("nodes") if isinstance(req.get("nodes"), list) else []))
+                                                   nodes=req.get("nodes") if isinstance(req.get("nodes"), list) else [],
+                                                   only=req.get("only") if isinstance(req.get("only"), dict) else {}))
             return self._result(roles.set_role(field(req, "name"), grants=req.get("grants"), note=field(req, "note")))
         if act == "remove":
             return self._result(roles.remove(field(req, "name")))
@@ -7427,6 +7490,9 @@ class Handler(BaseHTTPRequestHandler):
         if NODES_OK:
             return self._json({"error": "the node store did not open"}, 500)
         action, nid = req.get("action"), field(req, "node")
+        # ...on that node (R260): a role holding Toolchains on named nodes.
+        if (why := users.may_node(self._who(), "toolchains-write", nid)):
+            return self._json({"error": why}, 403)
         iid = req.get("images") if isinstance(req.get("images"), list) else field(req, "image")
         if action not in ("add", "remove"):
             return self._json({"error": "an image is added or removed"}, 400)

@@ -107,7 +107,7 @@ function emuAddRows(d, why){
     <div class="tcs emaddrows">${mine.map(r => {
       const now = writing.has(r.id);
       return `<label class="tc emnew">
-        <input type="checkbox" value="${esc(r.id)}"${why || job.running || !mayToolchains() ? " disabled" : ""}${
+        <input type="checkbox" value="${esc(r.id)}"${why || job.running || !mayToolchains(emuNode) ? " disabled" : ""}${
           emuTicked.has(r.id) || now ? " checked" : ""}>
         <span class="grow">
           <span class="nm">API ${esc(r.api)}${r.size ? ` <span class="pill">${esc(r.size)}</span>` : ""}</span>
@@ -134,7 +134,7 @@ function emuRow(im, why){
       <span class="sub where on">${esc(im.id)}</span>
       ${avds}
     </span>
-    ${mayToolchains() ? `<button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
+    ${mayToolchains(emuNode) ? `<button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
       why ? ` disabled title="${esc(why)}"`
            : ` title="remove this system image"`}>${BIN}</button>` : ""}
   </label>`;
@@ -217,7 +217,7 @@ function renderEmulatorInto(i){
     ${d.wrong_platform ? "" : `<div class="hint tcterms">Adding an image accepts
       <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
       Android SDK terms</a>.</div>`}
-    ${d.wrong_platform || !mayToolchains() ? "" : `<div class="actbar macros">
+    ${d.wrong_platform || !mayToolchains(emuNode) ? "" : `<div class="actbar macros">
       ${job.running ? `<span class="state tcworking">${job.action === "remove" ? "Removing" : "Adding"} ${
         esc(job.current || job.image || "")}<span class="dots"></span></span>` : ""}
       ${held && !job.running ? `<span class="state bad">${esc(held)}</span>` : ""}
