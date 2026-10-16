@@ -2368,6 +2368,15 @@ tests_verdict() {
     BB_VERDICT_LOG="$1" python3 "$BB_LIB/tests-verdict.py"
 }
 
+# BB_REPO from the working tree's top when it is not set, so a test verb run
+# from inside the checkout finds the checkout (B778).
+bb_repo_top() {
+    [ -n "${BB_REPO:-}" ] && return
+    local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+    [ -x "$top/scripts/dashboard/test/run.sh" ] && export BB_REPO="$top"
+    return 0
+}
+
 cmd_tests() {
     # The test registry's CLI half: the side a session drives, and the only
     # side that can ingest, because ingesting means reading what a runner
@@ -2383,6 +2392,10 @@ cmd_tests() {
     # a suite actually runs on.
     local py
     py="$(dirname "$(readlink -f "$0")")/dashboard/testreg.py"
+    # The checkout is the working tree's top, not the working directory:
+    # from scripts/dashboard every verb looked for scripts/dashboard/scripts/
+    # and said there was no harness (B778).
+    bb_repo_top
     # The lab suites (roadmap R54): the ones that need a real service, run
     # against the lab's Gitea and skipped in one line without it. Not
     # recorded in the registry: a lab run is a proof, not a timing.
@@ -4236,6 +4249,7 @@ cmd_dashboard() {
             # The repo's harness, not the image's: the point is to test the
             # checkout you are editing. Falls back to the installed copy for a
             # bare `bb dashboard test` outside a checkout.
+            bb_repo_top
             local here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
             [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
             [ -x "$here" ] || die "no dashboard test harness at $here"
