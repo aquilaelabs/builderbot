@@ -1156,7 +1156,15 @@ for (const kind of kinds){
     window.__held.forEach(a => { a.pause(); a.currentTime = 0; });
     return window.__held.map(a => a.animationName || '').filter(Boolean);
   }, id);
-  const release = () => page.evaluate(() => { (window.__held || []).forEach(a => a.play()); window.__held = []; });
+  // Only what is still paused: one the page cancelled meanwhile (a page's
+  // docOut, whose .leaving comes off at 150ms, while a slow frame was read)
+  // play() would restart detached from its rule, and it then held that page
+  // at opacity 0 with an animation that never ends, so a later wait for rest
+  // ran out on a different kind each run.
+  const release = () => page.evaluate(() => {
+    (window.__held || []).forEach(a => { if (a.playState === 'paused') a.play(); });
+    window.__held = [];
+  });
   const tabIdOf = kind => page.evaluate(k => tabs.find(t => t.kind === k)?.id, kind);
   // Only the two document tabs switched between: bring() makes room under
   // the page's tab ceiling by closing one, and the one it closed could be
