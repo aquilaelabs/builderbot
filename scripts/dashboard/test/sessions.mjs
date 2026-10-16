@@ -229,7 +229,14 @@ ok((await page.$eval('.sesstbl .sessrow[data-sess="claude-ep_silon"] .td:nth-chi
 // lit by color rather than by being a filled button.
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-c]', { timeout: 15000 });
-ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Claude'), 'dotted project: Claude button knows the session is running');
+ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Open Claude' && b.classList.contains('primary')),
+   'dotted project: Claude button knows the session is running (Open Claude, green)');
+{
+  const idle = await page.evaluate(() => [...document.querySelectorAll('.pgrid .pcard [data-c]')]
+    .filter(b => !liveSessions().has(myClaude(b.dataset.c))).map(b => [b.textContent.trim(), b.classList.contains('primary')]));
+  ok(idle.length > 0 && idle.every(([t, green]) => t === 'Start Claude' && !green),
+     `...and one with no session of yours says Start Claude, not green (${JSON.stringify(idle.slice(0, 3))})`);
+}
 await page.evaluate(() => railGo('sessions'));
 await page.click('.sesstbl [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));

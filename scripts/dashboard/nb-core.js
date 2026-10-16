@@ -844,8 +844,8 @@ function makeNotebook(project){
 // A project is a page: its pane's bar is the header the design names (the
 // a-notebook/project-page rule): the name large, the branch and the node in
 // the data face, the session's state as the dot and a word, and at the
-// right the actions the sidebar's row carried: Open Claude (the chooser
-// under it), Shell, and the rest behind one menu (link, phone, report,
+// right the actions the sidebar's row carried: Start Claude, or Open
+// Claude in green while yours runs (the chooser under it), Shell, and the rest behind one menu (link, phone, report,
 // lock, pin, settings). Drawn by paintBar on every pass like every bar; the
 // chooser sits on the pane, not in the bar, so a repaint leaves it up.
 // The session's state as the dot and a word: this account's session
@@ -900,8 +900,11 @@ function projectActions(p, extra = ""){
     : mine ? "Claude: your session is running; open its tab or end it"
     : p.last_claude ? "Claude: no session running; resume or start one"
     : "Claude: start a session here";
-  return `${isBroken(p) ? "" : `<button type="button" class="primary" data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
-        mine ? "Claude" : "Open Claude"}</button>`}
+  // Green only while your session runs, and then it opens it; otherwise a
+  // plain Start Claude (the operator, 16 Oct: green on every card read as
+  // running everywhere).
+  return `${isBroken(p) ? "" : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
+        mine ? "Open Claude" : "Start Claude"}</button>`}
     ${mayShell() ? `<button type="button" data-s="${esc(name)}"${notMine(p) || !gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }

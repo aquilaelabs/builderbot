@@ -794,8 +794,8 @@ only on opening, and nothing is read on a timer. A browser with nothing open lan
 
 **A project is a page** (R218 step 3). Its notebook's pane wears the
 project's header: the name, the branch and the node, the session's state
-as a dot and a word, and its actions: Open Claude with the chooser under
-it, Shell, and the rest (link, phone, report, lock, pin, settings) behind
+as a dot and a word, and its actions: Start Claude (Open Claude, in green,
+while your session runs) with the chooser under it, Shell, and the rest (link, phone, report, lock, pin, settings) behind
 one menu. The views are the page's sub-nav, Overview
 first, and the address names the view (`#/projects/web/bugs`), so a link
 to a project's bug list lands on it. The Projects page is a searchable grid
@@ -916,7 +916,8 @@ What the pages and each project carry:
   and `bb drift` is the other half: what a checkout has changed that the
   running container is not serving.
 - the **Projects** page: every project under `/workspace` as a card with its
-  branch and node, and **Open Claude** and **Shell** on each. A problem is
+  branch and node, and **Start Claude** (green **Open Claude** while your
+  session runs) and **Shell** on each. A problem is
   said on the card rather than hidden: an **error** in red, a directory the
   container user cannot read/write/enter (with the `chown` that fixes it) or
   one holding no valid git repository, and a **warning** in amber, because
