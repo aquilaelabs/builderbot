@@ -110,9 +110,11 @@ CAP_AREA = {
 
 _ALL = {a: "write" for a in AREA_KEYS}
 BUILTIN = {
-    "owner": {"scope": "global", "perms": dict(_ALL), "builtin": True, "nodes": [],
+    # Named for a person (R255 step 1): BuilderBot's owner is not a
+    # project's, and neither is the Owner of X role a project's owner holds.
+    "owner": {"scope": "global", "perms": dict(_ALL), "builtin": True, "nodes": [], "label": "BuilderBot's owner",
               "note": "the account every other rule is a guard rail around"},
-    "admin": {"scope": "global", "perms": dict(_ALL), "builtin": True, "nodes": [],
+    "admin": {"scope": "global", "perms": dict(_ALL), "builtin": True, "nodes": [], "label": "Administrator",
               "note": "everything the owner may do, except change the owner's account or roles"},
 }
 # There is no built-in user role (the operator, 7 Oct): an account on `user`
@@ -206,7 +208,16 @@ def all_roles():
     with _lock:
         for n, r in sorted(_load().items()):
             out[n] = dict(r, name=n)
+            # A project's owner role reads as whose it is, not as its key.
+            if str(r.get("note") or "").startswith("the owner of ") and n.endswith("_owner"):
+                out[n]["label"] = "Owner of " + str(r["note"])[len("the owner of "):]
     return out
+
+
+def label(name):
+    """How a role is named to a person: its label, or its name."""
+    r = all_roles().get(str(name or ""))
+    return (r or {}).get("label") or str(name or "")
 
 
 def get(name):
@@ -228,7 +239,7 @@ def set_role(name, scope="projects", perms=None, note="", grants=None, nodes=Non
     if r["scope"] == "projects" and any(a not in PROJECT_AREAS for a in r["perms"]):
         bad = ", ".join(a for a in r["perms"] if a not in PROJECT_AREAS)
         return {"error": f"a role on the user's projects holds project areas only, not {bad}: "
-                         "make it Global for those"}
+                         "make it an Everywhere role for those"}
     with _lock:
         d = _load()
         d[name] = r

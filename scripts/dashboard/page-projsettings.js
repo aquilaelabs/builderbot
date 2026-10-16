@@ -631,9 +631,9 @@ function rnDrawPeople(){
   $("rnPeopleField").hidden = false;
   $("rnPeople").innerHTML = `
     <div class="setrow">${v.may_manage
-      ? `<label class="ndcap" for="rnOwner">Owner</label>
+      ? `<label class="ndcap" for="rnOwner">Project owner</label>
          <select id="rnOwner">${v.accounts.map(n => `<option value="${esc(n)}"${n === owner ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>`
-      : `<span>Owner: ${esc(v.owner || "BuilderBot's owner")}</span>`}</div>
+      : `<span>Project owner: ${esc(v.owner || "BuilderBot's owner")}</span>`}</div>
     ${v.may_manage && !v.bb_owner && d.owner && d.owner !== v.owner
       ? `<div class="sub">Saving offers it to ${esc(d.owner)}, who becomes its owner on accepting from their bell.</div>` : ""}
     ${v.offer ? `<div class="rninvite">Ownership offered to ${esc(v.offer.name)} <span class="dim">${esc(ago(v.offer.at))}, waiting for them to accept</span>

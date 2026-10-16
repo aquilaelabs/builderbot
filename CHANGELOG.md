@@ -349,6 +349,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - History reads better: words for every change, a reorder as one line from place to place, each day headed with the release its work went out in, ids that open their rows, a bug's filing and closing kept for good, and one way to page with no count to pick (1e1da7f)
 - Closing a bug asks for its note in the row, in the same box Delete uses, not in the browser's prompt; the send box names a bug as B12 (81f0447)
 - An open bug's bar holds Send to Claude, Edit and Mark fixed, with Won't fix, Not applicable and Remove behind More, so its labels are whole on a phone (014bc1f)
+- Roles are named for a person (BuilderBot's owner, Administrator, Owner of a project), refusals say Everywhere where the Roles tab does, and a project's settings say Project owner (6d9caf6)
 
 ### Removed
 

@@ -1205,6 +1205,8 @@ def tab_view(me, projects, logins_of):
             "me": (me or {}).get("name", ""), "roles": list(ROLES),
             # The roles of your own, for the edit dialog's picker (R137).
             "role_names": [n for n in roles.all_roles() if n not in roles.BUILTIN],
+            # How each role is named to a person (R255 step 1).
+            "role_labels": {n: roles.label(n) for n in roles.all_roles()},
             "projects": projects}
 
 
@@ -1246,7 +1248,7 @@ def assign(me, name, global_roles=None, project_roles=None):
             return {"error": "the owner's roles and projects are the owner's alone"}, 403
         if global_roles is not None:
             if not can["admin"]:
-                return {"error": "Global roles are an administrator's to give"}, 403
+                return {"error": "Everywhere roles are an administrator's to give"}, 403
             want = [str(r) for r in global_roles if str(r) in known and str(r) != "owner"]
             # Everywhere roles only: a role on a project is given on it (R155).
             onp = [r for r in want if r not in roles.BUILTIN and known[r].get("scope") != "global"]

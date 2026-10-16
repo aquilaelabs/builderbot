@@ -14,7 +14,7 @@
 let usersList = null;            // last answer, or null before the first
 let usersRev = 0;                // bumped when it changes, so panes repaint
 let usersErr = "";
-let usersMeta = {owner: "", me: "", roles: [], role_names: [], projects: []};
+let usersMeta = {owner: "", me: "", roles: [], role_names: [], projects: [], role_labels: {}};
 // What is typed into Add somebody, kept across the repaints a reload brings:
 // the form is drawn afresh each time, and a reload landing between typing
 // and Add emptied it, so Add said only "a name and a password" and sent
@@ -32,7 +32,8 @@ async function loadUsers(){
     usersErr = j.error || "";
     usersList = j.users || [];
     usersMeta = {owner: j.owner || "", me: j.me || "",
-                 roles: j.roles || [], role_names: j.role_names || [], projects: j.projects || []};
+                 roles: j.roles || [], role_names: j.role_names || [], projects: j.projects || [],
+                 role_labels: j.role_labels || {}};
   }catch(e){
     usersErr = String(e);
     usersList = usersList || [];
@@ -73,7 +74,7 @@ function userRow(u){
   return `<div class="row stack2 urow" data-user="${esc(u.name)}">
     ${tblLine(USER_COLS, [
       `${esc(u.name)}${isMe ? ` <span class="pill">you</span>` : ""}`,
-      roles.length ? esc(roles.join(", ")) : `<span class="dim">no role</span>`,
+      roles.length ? esc(roles.map(r => usersMeta.role_labels?.[r] || r).join(", ")) : `<span class="dim">no role</span>`,
       projs.length ? `<span title="${esc(projs.join(", "))}">${esc(projs.join(", "))}</span>` : "on no project yet",
       u.claude ? `<span title="signed in to Claude as ${esc(u.claude)}">${esc(u.claude)}</span>` : "no Claude login yet",
       esc(seen),
@@ -108,7 +109,7 @@ function renderUsersInto(i){
     ${usersList.length ? tblWrap(USER_COLS, usersList.map(userRow).join(""), "utbl") : ""}
     ${docSection("users", "roles", "What an account gets", "", `
         <div class="sub">Each account has its own home, Claude login and memories; two people on one project each work in a worktree of their own, sharing the notebook.</div>
-        <div class="sub">A new account holds no role, so it may do nothing until the <b>Roles</b> tab gives it one, Global or on a project, and puts it on projects.</div>
+        <div class="sub">A new account holds no role, so it may do nothing until the <b>Roles</b> tab gives it one, Everywhere or on a project, and puts it on projects.</div>
         <div class="sub warn">An <b>admin</b> has a shell that reaches every account's files: give that role to people you would give the server to.</div>
         <div class="sub">A project's owner holds PROJECT_owner on it, which the Roles tab can cut back like any other role.</div>`)}
     ${docSection("users", "add", "Add somebody", "", `

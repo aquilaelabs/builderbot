@@ -45,6 +45,15 @@ class Model(unittest.TestCase):
         for cap in ("read", "work", "roadmap", "terminal"):
             self.assertFalse(self.g(USER, cap, "alpha"), cap)
 
+    def test_roles_are_named_for_a_person(self):
+        # R255 step 1: BuilderBot's owner, an administrator, and the Owner of
+        # a project told apart by name, not by their keys.
+        roles.ensure_owner_role("alpha")
+        self.assertEqual(roles.label("owner"), "BuilderBot's owner")
+        self.assertEqual(roles.label("admin"), "Administrator")
+        self.assertEqual(roles.label("alpha_owner"), "Owner of alpha")
+        self.assertEqual(roles.label("nosuch"), "nosuch")
+
     def test_an_owner_role_is_every_project_area_and_can_be_cut_back(self):
         name = roles.ensure_owner_role("alpha")
         self.assertEqual(name, "alpha_owner")
