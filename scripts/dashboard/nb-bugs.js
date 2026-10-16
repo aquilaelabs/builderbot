@@ -13,6 +13,23 @@ function bugMatch(b, q){
     .some(k => String(b[k] || "").toLowerCase().includes(q));
 }
 
+// What a report knows (R254 step 3), as facts in place of a dotted line:
+// who reported it and when, the build it was seen in and on, when and how
+// it was closed, the build that closed it and the release that shipped
+// the fix (shippedIn, from the CHANGELOG's dated headings).
+function bugFacts(b, rel, words){
+  const who = x => x === "claude" ? "Claude" : x === "you" ? "you" : x || "";
+  const closed = b.status !== "open";
+  const shipped = closed && b.status === "fixed" ? shippedIn(b.closed_at, rel) : "";
+  return factGrid([
+    ["Reported", `${b.at ? rmDay(b.at) : ""}${b.by ? `, by ${who(b.by)}` : ""}`],
+    ["Seen in", b.seen_in || ""], ["Seen on", b.seen_on || ""],
+    ["Closed", closed ? `${words[b.status] || b.status}${b.closed_at ? ", " + rmDay(b.closed_at) : ""}${
+      b.status_by ? `, by ${who(b.status_by)}` : ""}${b.status_note ? `: ${b.status_note}` : ""}` : ""],
+    ["Fixed in", closed ? b.fixed_in || "" : ""],
+    ["Shipped in", shipped === null ? "not yet: planned for the next release" : shipped || ""]]);
+}
+
 function nbBugsView({$, nb, project}){
   // ---- bugs ----------------------------------------------------------------
   // Write-through, unlike the roadmap: a bug report is a form submitted once,
@@ -194,6 +211,7 @@ function nbBugsView({$, nb, project}){
     if (!nb.bugs){ hint.textContent = "loading…"; return; }
     if (nb.bugs.error){ hint.textContent = "bugs: " + nb.bugs.error; return; }
     if (!force && list.querySelector(".dropbox, .bugform")) return;
+    if (nb.bugs.releases !== undefined) nb.bugReleases = nb.bugs.releases;
     const rows = sortedBugs();
     const open = rows.filter(b => b.status === "open").length;
     // Count first; what the tracker is for is its empty state (R119 step 4).
@@ -223,13 +241,9 @@ function nbBugsView({$, nb, project}){
         <div class="body">
           ${["area", "repro", "expected", "actual", "notes"].map(k => b[k]
             ? `<div class="bfield"><label>${k}</label><div class="bval">${esc(b[k])}</div></div>` : "").join("")}
+          ${bugFacts(b, nb.bugReleases, STATUS_WORDS)}
           <div class="actbar macts">
-            <span class="state">reported by ${esc(b.by)} · ${ago(b.at)}${
-              b.seen_in ? ` · in ${esc(b.seen_in)}` : ""}${
-              b.status !== "open" && b.status_note
-                ? ` · ${esc(STATUS_WORDS[b.status] || b.status)}: ${esc(b.status_note)}`
-                : ""}${
-              b.status !== "open" && b.fixed_in ? ` · closed in ${esc(b.fixed_in)}` : ""}</span>
+            <span class="sp"></span>
             <button type="button" class="bSend"${b.status === "open" ? "" : " disabled"}
               title="${b.status === "open"
                 ? `send this bug to the running session`

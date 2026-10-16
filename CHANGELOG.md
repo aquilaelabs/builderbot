@@ -344,6 +344,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The chat is the dock's Chat tab: people and the projects' channels beside the open conversation at a desk, one at a time on a phone, unread counts on the tab and the list; the floating panel is gone (0a86067)
 - The Roadmap and Bugs views narrow their lists: chips for All, Open and Shelved (Closed on Bugs) and a search by words or number; the Roadmap's head counts in fragments and its finished items are a section under the list (b889930)
 - A finished roadmap item opens like an open one, with its details, its steps and when each was done, and Reopen where no release has shipped it yet; the Finished section keeps up with items finished or reopened while it is open (c07a6b9)
+- An opened roadmap item or bug says what it knows as facts: when it was added or reported and by whom, its steps' done dates, when and how it was closed, the build it was seen and fixed in, and the release that shipped it, read from the changelog's dated headings (e41ccc7)
 
 ### Removed
 

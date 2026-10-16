@@ -61,12 +61,16 @@ FILE = None
 tell = None
 tmux_name = None
 WORKSPACE = None
+releases = None
 
 
 def configure(*, write_json, state, tell=None, tmux_name=None, workspace=None,
-              actor=None):
+              actor=None, releases=None):
     globals().update(write_json=write_json, STATE=Path(state),
                      tell=tell, tmux_name=tmux_name, actor=actor,
+                     # project -> [(version, end of its day)], newest first
+                     # (roadmap.releases): what a fix shipped in (R254).
+                     releases=releases,
                      # Where the projects are, for the version stamp below.
                      # bb passes it explicitly; the dashboard too; the
                      # environment is the fallback for whoever forgot.
@@ -376,7 +380,8 @@ def payload(project):
         # later token (B201).
         rev = len((d.get("history") or {}).get(project) or []) + int((d.get("revn") or {}).get(project) or 0)
     rows.sort(key=lambda b: (b.get("status") != "open", -b.get("at", 0)))
-    return {"project": project, "bugs": rows, "rev": rev}
+    return {"project": project, "bugs": rows, "rev": rev,
+            "releases": releases(project) if releases else []}
 
 
 def counts():
@@ -700,9 +705,12 @@ def set_status(project, bug_id, status, note="", by="you"):
             bug.pop("status_note", None)
             bug.pop("status_by", None)
             bug.pop("fixed_in", None)          # it turned out not to be true
+            bug.pop("closed_at", None)
         else:
             bug["status_note"] = note_
             bug["status_by"] = "claude" if by == "claude" else "you"
+            # When, for the row's facts and what release shipped it (R254).
+            bug["closed_at"] = int(time.time())
             if closed_in:
                 bug["fixed_in"] = closed_in[:80]
         return {"ok": True, "bug": bug,

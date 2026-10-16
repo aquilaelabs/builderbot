@@ -2604,7 +2604,8 @@ import presence                                                  # noqa: E402
 import bugs                                                      # noqa: E402
 
 bugs.configure(write_json=write_json, state=STATE, tell=notify.tell,
-               tmux_name=tmux_name, workspace=WORKSPACE, actor=writer_name)
+               tmux_name=tmux_name, workspace=WORKSPACE, actor=writer_name,
+               releases=lambda p: roadmap.releases(p))
 
 # The notebook's fourth view keeps a log too, and it is the odd one: nothing
 # here writes findings, so the entries are derived by comparing one read of

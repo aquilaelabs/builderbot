@@ -95,6 +95,19 @@ function nbRoadmapView({$, nb}){
     return !!st && (idx === nextStep(r) || stepGone(st));
   }
 
+  // What a row knows (R254 step 3): an item's when-added and by whom, how
+  // far its plan has got and when it was last sent; a step's when-done and
+  // when-sent. Drawn in the row's fold, with its details and its actions.
+  function rowFacts(r, idx){
+    const st = idx < 0 ? r : (r.steps || [])[idx] || {};
+    const who = b => b === "claude" ? "Claude" : "you";
+    if (idx >= 0) return factGrid([["Done", st.done ? rmDay(st.done) : ""], ["Sent", st.sent ? rmDay(st.sent) : ""]]);
+    const steps = r.steps || [];
+    return factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${who(r.by)}` : ""],
+                     ["Plan", steps.length ? `${steps.filter(x => x.done).length} of ${steps.length} steps done` : ""],
+                     ["Sent", r.sent ? rmDay(r.sent) : ""]]);
+  }
+
   function stepRow(r, idx, live){
     const steps = r.steps || [];
     const nxt = nextStep(r);
@@ -184,6 +197,7 @@ function nbRoadmapView({$, nb}){
       ${nb.roadmapOrdering ? "" : `<button type="button" class="dtog" aria-expanded="${isOpen}"
         title="${st.info ? "the technical half: files, functions, approach, and what can be done to this line" : "what can be done to this line"}">${
         isOpen ? "▾" : "▸"} ${st.info ? "details" : "more"}</button>
+      ${(() => { const f = rowFacts(r, idx); return f ? `<div class="dfacts"${isOpen ? "" : " hidden"}>${f}</div>` : ""; })()}
       ${st.info ? `<div class="dinfo"${isOpen ? "" : " hidden"}>${esc(st.info)}</div>` : ""}
       <div class="rowacts actbar"${isOpen ? "" : " hidden"}>${shelf ? `<button class="x${r.shelved ? " on" : ""}" type="button"
         aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
@@ -276,6 +290,7 @@ function nbRoadmapView({$, nb}){
     // The finished count rides a read; a redraw from the page's own state
     // (the search, a chip) keeps the last one.
     if (j.finished_n !== undefined) nb.roadmapFinishedN = j.finished_n;
+    if (j.releases !== undefined) nb.roadmapReleases = j.releases;
     const finishedN = nb.roadmapFinishedN || 0;
     const frags = [`${left} to send`, parked ? `${parked} shelved` : "", finishedN ? `${finishedN} finished` : "",
                    held ? `${held} not saved` : live ? `${j.session} running` : "no session running"].filter(Boolean);
@@ -365,7 +380,7 @@ function nbRoadmapView({$, nb}){
       // decision and this is the workings, wanted when the work starts.
       const dt = row.querySelector(".dtog");
       if (dt) dt.onclick = () => {
-        const info = row.querySelector(".dinfo"), acts = row.querySelector(".rowacts");
+        const info = row.querySelector(".dinfo"), acts = row.querySelector(".rowacts"), fx = row.querySelector(".dfacts");
         const show = acts.hidden, key = `${id}:${step}`;
         if (show) nb.roadmapOpen.add(key); else nb.roadmapOpen.delete(key);
         // The caret turns with the slide rather than after it, so the row reads
@@ -373,6 +388,7 @@ function nbRoadmapView({$, nb}){
         dt.textContent = `${show ? "▾" : "▸"} ${info ? "details" : "more"}`;
         dt.setAttribute("aria-expanded", String(show));
         if (info) slideHidden(info, show);
+        if (fx) slideHidden(fx, show);
         slideHidden(acts, show);
       };
       // Guarded like every other control on this row: reordering replaces all
@@ -1066,8 +1082,12 @@ function nbRoadmapView({$, nb}){
     host.innerHTML = rows.map(r => `<details class="grp done${rmMatch(r, q) ? "" : " off"}" data-done="${r.id}"${
         held.has(String(r.id)) ? " open" : ""}>
       <summary><div class="roadmap"><span class="n id">R${r.id}</span> <span class="body"><span class="txt">${esc(r.text || "")}</span>
-        <span class="sub dim">done${r.done_by ? " by " + esc(r.done_by) : ""}${r.done_at ? " " + esc(when(r.done_at)) : ""}${
-          (r.steps || []).length ? ` · ${r.steps.length} step${r.steps.length === 1 ? "" : "s"}` : ""}</span></span></div></summary>
+        <span class="sub dim">done ${r.done_at ? esc(when(r.done_at)) : ""}${(() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
+          return v ? ` · in ${esc(v)}` : ""; })()}</span></span></div></summary>
+      ${factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${r.by === "claude" ? "Claude" : "you"}` : ""],
+                  ["Finished", r.done_at ? `${rmDay(r.done_at)}${r.done_by ? `, by ${r.done_by === "claude" ? "Claude" : r.done_by === "you" ? "you" : r.done_by}` : ""}` : ""],
+                  ["Shipped in", (() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
+                    return v === null ? "not yet: planned for the next release" : v || ""; })()]], "dfacts")}
       ${r.info ? `<div class="dinfo">${esc(r.info)}</div>` : ""}${
       (r.steps || []).map((st, i) => `<div class="roadmap step"><span class="n">${st.done ? "✓" : i + 1 + "."}</span>
         <span class="body"><span class="txt">${esc(st.text || "")}</span>${st.done ? `<span class="sub dim">done ${esc(when(st.done))}</span>` : ""}${
@@ -1112,6 +1132,19 @@ function nbRoadmapView({$, nb}){
 // Two marks, one question: sent is the dashboard's and says a line went;
 // done is a session's and says the work is finished, sent or not.
 const stepGone = s => !!(s.sent || s.done);
+
+// A day as the rows' facts say it ("15 Oct"), from epoch seconds.
+function rmDay(t){ return t ? fmtTime(t * 1000, {day: "2-digit", month: "short"}) : ""; }
+
+// The release a thing done at `at` shipped in (R254 step 4), from the
+// CHANGELOG's dated headings, newest first as [version, end of its day]: the
+// oldest release whose day ends after it. null for one done after the newest
+// release (planned for the next), "" where the project has no releases.
+function shippedIn(at, rel){
+  if (!at || !rel || !rel.length) return "";
+  for (let i = rel.length - 1; i >= 0; i--) if (rel[i][1] >= at) return rel[i][0];
+  return null;
+}
 
 // Whether an item answers a search (R254 step 1): its number (R12 or 12), its
 // words, its steps' and their details, case aside. An empty search is all.

@@ -957,19 +957,27 @@ def finished(project, limit=None):
 _RELEASE = re.compile(r"^## (\d+\.\d+\.\d+[^:\s]*): (\d{4}-\d{2}-\d{2})\s*$", re.M)
 
 
-def last_release(project):
+def releases(project):
+    """Every released version in the project's CHANGELOG, newest first, each
+    with the end of its day (R254 step 4): a thing done before that end and
+    after the one before it shipped in that version, and one done after the
+    newest is planned for the next. Derived, never typed."""
     try:
         text = (Path(os.environ.get("WORKSPACE", "/workspace")) / project / "CHANGELOG.md").read_text(errors="replace")
     except OSError:
-        return None
-    m = _RELEASE.search(text)
-    if not m:
-        return None
-    try:
-        day = time.mktime(time.strptime(m.group(2), "%Y-%m-%d")) + 86400
-    except ValueError:
-        return None
-    return m.group(1), day
+        return []
+    out = []
+    for m in _RELEASE.finditer(text):
+        try:
+            out.append((m.group(1), time.mktime(time.strptime(m.group(2), "%Y-%m-%d")) + 86400))
+        except ValueError:
+            continue
+    return out
+
+
+def last_release(project):
+    rel = releases(project)
+    return rel[0] if rel else None
 
 
 def reopen(project, item_id, by="you", who=""):
@@ -1698,6 +1706,8 @@ def panel(name, live, prefix):
             # How many are finished, for the toggle's label (R78): the
             # items themselves come when it is pressed.
             "finished_n": len(finished(name)),
+            # What a time of doing shipped in, for the rows' facts (R254).
+            "releases": releases(name),
             # What the poll compares against, handed back with every read
             # AND every write, so this panel's own change never reads as
             # somebody else's on the next poll, and a change that lands

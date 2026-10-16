@@ -106,16 +106,17 @@ ok(read().find(b => b.id === 1).status === 'fixed'
    && read().find(b => b.id === 1).status_note === 'the select re-measures on rotate now',
    'marking one fixed asks what fixed it, and keeps the answer on the bug');
 ok(!/picker loses/.test(bbBug()), '...and it leaves the open list');
-// The row's verbs are an action bar: who reported it on a line of its own,
-// the buttons under it, and the one that cannot be undone last. It was six
-// buttons in a plain div with Delete third, where the thumb goes.
+// What a report knows is facts above its verbs (R254 step 3): who reported
+// it and when, how it was closed and when, with the note; the verbs are an
+// action bar with the one that cannot be undone last. It was six buttons in
+// a plain div with Delete third, where the thumb goes.
 {
-  const bar = await page.$eval('#bugList .bug[data-id="1"] .macts', el => ({
-    bar: el.classList.contains('actbar'),
-    state: el.querySelector('.state')?.textContent || '',
-    last: el.querySelector('button:last-of-type')?.className || '' }));
-  ok(bar.bar && /reported by/.test(bar.state),
-     'a report\'s verbs are an action bar, with who filed it as its status line');
+  const bar = await page.$eval('#bugList .bug[data-id="1"]', el => ({
+    bar: el.querySelector('.macts')?.classList.contains('actbar'),
+    facts: Object.fromEntries([...el.querySelectorAll('.facts .fact')].map(f => [f.querySelector('dt').textContent, f.querySelector('dd').textContent])),
+    last: el.querySelector('.macts button:last-of-type')?.className || '' }));
+  ok(bar.bar && /, by /.test(bar.facts.Reported || '') && /^fixed, .+, by you: the select re-measures on rotate now$/.test(bar.facts.Closed || ''),
+     `a report's facts say who reported it, and when and how it was closed with its note (${JSON.stringify(bar.facts)})`);
   ok(/bRm/.test(bar.last),
      '...and Delete is last, being the one that cannot be undone');
 }

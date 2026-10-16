@@ -971,6 +971,17 @@ await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"]
 await page.click(`.nb #roadmapDoneList [data-reopen="${finId}"]`);
 await page.waitForFunction(id => [...document.querySelectorAll('.nb #roadmapList > .grp')].some(g => g.dataset.id === id), finId, { timeout: 10000 });
 ok(read().projects.alpha.some(r => String(r.id) === finId), 'Reopen on a finished item puts it back on the list, from the page');
+// Its fold carries what it knows (R254 step 3): when it was added and by
+// whom; and what shipped a thing is read off the CHANGELOG's dated
+// releases, never typed (step 4).
+await page.click(`.nb #roadmapList > .grp[data-id="${finId}"] > summary .dtog`);
+await page.waitForSelector(`.nb #roadmapList > .grp[data-id="${finId}"] .dfacts:not([hidden])`, { timeout: 5000 });
+ok(/Added.+, by you/.test(await page.$eval(`.nb #roadmapList > .grp[data-id="${finId}"] .dfacts`, e => e.textContent.replace(/\s+/g, ' '))),
+   '...and its fold says when it was added and by whom');
+ok(await page.evaluate(() => { const rel = [['0.7.0', 2000], ['0.6.0', 1000]];
+  return shippedIn(500, rel) === '0.6.0' && shippedIn(1000, rel) === '0.6.0' && shippedIn(1500, rel) === '0.7.0'
+    && shippedIn(2500, rel) === null && shippedIn(500, []) === ''; }),
+   'what a thing shipped in is the first release dated after it, the next release for one done since');
 // Read first, as a session does: the reopen moved the list, and bb refuses
 // a change made against an older read of it.
 bbRoadmap();
