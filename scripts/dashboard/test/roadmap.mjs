@@ -718,11 +718,16 @@ await page.waitForFunction(() => /matches that/.test(
   document.getElementById('roadmapHist').textContent), { timeout: 10000 });
 ok(true, '...and says so plainly when nothing does');
 await page.fill('#histFind', '');
-await page.selectOption('#histN', '25');
 await page.waitForFunction(() => document.querySelectorAll('#roadmapHist .hist').length > 1,
                            { timeout: 10000 });
-const capped = await page.$$eval('#roadmapHist .hist', hs => hs.length);
-ok(capped <= 25, `the window caps what comes back (${capped} of them)`);
+// One way to page it (R254 step 5): a page at a time, no count to pick; a
+// day's first line carries the day, and each id is a link to its row.
+const before = await page.$$eval('#roadmapHist .hist', hs => hs.length);
+const hv = await page.$$eval('#roadmapHist .hist', hs => ({ shown: hs.filter(h => !h.hidden).length,
+  day: !!hs[0].querySelector('.hday'), ids: hs.filter(h => h.querySelector('a.hid[data-hid^="R"]')).length,
+  pick: !!document.getElementById('histN') }));
+ok(hv.shown <= 30 && hv.day && hv.ids > 0 && !hv.pick,
+   `the log pages itself with no count to pick, heads each day, and links each item (${JSON.stringify(hv)})`);
 // A wait on the answer, not a half-second sleep: under a loaded whole run
 // the list was read mid-redraw with fewer lines than it ends with (B413).
 const answered = page.waitForResponse(r => /"action":"history"/.test(r.request().postData() || ''),
@@ -730,7 +735,7 @@ const answered = page.waitForResponse(r => /"action":"history"/.test(r.request()
 await page.selectOption('#histWhen', '0');
 await answered;
 const widened = await page.waitForFunction(n => document.querySelectorAll('#roadmapHist .hist').length >= n,
-                                           capped, { timeout: 10000 }).then(() => true, () => false);
+                                           before, { timeout: 10000 }).then(() => true, () => false);
 ok(widened, '...and widening it to all time brings back at least as much');
 
 // It opens OVER the list rather than in place of it: the line you wanted to

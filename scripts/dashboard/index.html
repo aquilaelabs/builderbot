@@ -2101,6 +2101,11 @@ pre.diff .d-ctx{color:var(--dim)}
 .grp.done > summary .txt{color:var(--dim);text-decoration:line-through}
 /* What the changelog says about an item or a bug (R254 step 4): an entry a
    line, the release it went out in first, in the data voice. */
+/* A log's day, at the head of its first line (R254 step 5): the day, and
+   the release that day's work went out in. */
+.hist:has(> .hday){flex-wrap:wrap}
+.hist .hday{flex:1 1 100%;font:var(--f-note);color:var(--dim);font-weight:600;padding:6px 0 2px}
+.hist .hid{font:inherit}
 .clrefs{margin:0;padding:0;list-style:none;display:grid;gap:4px}
 .clrefs .clin{font:var(--f-data);color:var(--dim);margin-right:6px}
 .grp.shelved .roadmap .txt{font-style:italic}
@@ -4069,11 +4074,6 @@ body.booting .pane>.loading{margin:auto}
         <option value="7" selected>7 days</option>
         <option value="30">30 days</option>
       </select>
-      <select id="histN" aria-label="how many">
-        <option value="25" selected>25</option>
-        <option value="100">100</option>
-        <option value="0">all</option>
-      </select>
     </div>
     <!-- Its own pane rather than the list's. The log used to be written into
          #roadmapList, which is why reading it meant the list going away; both
@@ -4111,10 +4111,6 @@ body.booting .pane>.loading{margin:auto}
         <select class="hwhen" aria-label="how far back">
           <option value="0">all time</option><option value="1">today</option>
           <option value="7" selected>7 days</option><option value="30">30 days</option>
-        </select>
-        <select class="hn" aria-label="how many">
-          <option value="25" selected>25</option><option value="100">100</option>
-          <option value="0">all</option>
         </select>
       </div>
       <div class="field" id="memHist" hidden></div>
@@ -4158,10 +4154,6 @@ body.booting .pane>.loading{margin:auto}
         <select class="hwhen" aria-label="how far back">
           <option value="0">all time</option><option value="1">today</option>
           <option value="7" selected>7 days</option><option value="30">30 days</option>
-        </select>
-        <select class="hn" aria-label="how many">
-          <option value="25" selected>25</option><option value="100">100</option>
-          <option value="0">all</option>
         </select>
       </div>
       <div class="field" id="bugHist" hidden></div>
@@ -4314,10 +4306,6 @@ body.booting .pane>.loading{margin:auto}
         <select class="hwhen" aria-label="how far back">
           <option value="0">all time</option><option value="1">today</option>
           <option value="7" selected>7 days</option><option value="30">30 days</option>
-        </select>
-        <select class="hn" aria-label="how many">
-          <option value="25" selected>25</option><option value="100">100</option>
-          <option value="0">all</option>
         </select>
       </div>
       <div class="field" id="anaHist" hidden></div>

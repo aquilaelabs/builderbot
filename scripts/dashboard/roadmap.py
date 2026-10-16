@@ -252,6 +252,28 @@ def _trim(h):
     h[:cut] = keep
 
 
+# How long a run of moves of one item is one line in the log (R254 step 5):
+# a reorder is a move at a time, and a line per press drowned the rest.
+MOVE_FOLD_S = 600
+
+
+def _moved(d, project, by, row, i, j):
+    """An item moved from place i to place j (0-based): logged, and folded
+    into the last line when that was the same item moved by the same hand
+    a moment ago, so one reorder reads as one line, from where it started
+    to where it ended."""
+    h = d.setdefault("history", {}).setdefault(project, [])
+    last = h[-1] if h else None
+    if (last and last.get("act") == "moved" and _int(last.get("id")) == _int(row.get("id"))
+            and last.get("by") == by and time.time() - last.get("at", 0) < MOVE_FOLD_S):
+        last.update(to=j + 1, at=int(time.time()))
+        if last.get("from") == last.get("to"):
+            h.pop()
+        return
+    _log(d, project, by, {"act": "moved", "id": _int(row.get("id")), "text": row.get("text", ""),
+                          "from": i + 1, "to": j + 1})
+
+
 def _log(d, project, by, ev):
     """Record one event, in the history or in an open batch.
 
@@ -1160,11 +1182,13 @@ def move(project, item_id, step=None, dir=0, by="you", who=""):
             shelf = sum(1 for r in rows if not r.get("shelved"))
             if (i < shelf) != (i + dir < shelf):
                 return {"error": "shelved items stay at the bottom"}
+            row = rows[i]
             out = swap(rows, i)
             if out.get("ok"):
                 d["projects"][project] = rows
                 _touch(d, project)
                 _credit(d, project, who)
+                _moved(d, project, by, row, i, i + dir)
                 save(d)
         return out
 

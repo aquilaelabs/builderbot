@@ -182,6 +182,19 @@ def _clean(text, limit):
 # log: two people write this, and the tracker itself only shows the present
 # tense. Capped per project alongside the bugs it describes.
 MAX_HISTORY = 300
+# What the trim keeps whatever its age (R254 step 5): a report's filing and
+# its closing, so its history says when it came and how it went, as the
+# roadmap keeps a finished item's.
+KEEP_ACTS = ("filed", "fixed", "wontfix", "na")
+
+
+def _trim(h):
+    """The tracker's log to its last MAX_HISTORY events, less the filings
+    and closings, which stay."""
+    if len(h) <= MAX_HISTORY:
+        return
+    cut = len(h) - MAX_HISTORY
+    h[:cut] = [e for e in h[:cut] if e.get("act") in KEEP_ACTS]
 
 
 def _log(d, project, by, ev):
@@ -207,7 +220,7 @@ def _log(d, project, by, ev):
     # makes revert's guard work: it looks there for the operator's hand.
     h = d.setdefault("history", {}).setdefault(project, [])
     h.append(ev)
-    del h[:-MAX_HISTORY]
+    _trim(h)
 
 
 # ---- the tracker's half of a notebook batch ------------------------------
@@ -307,7 +320,7 @@ def commit(project):
         kept = _coalesce(b.get("events") or [])
         h = d.setdefault("history", {}).setdefault(project, [])
         h.extend(kept)
-        del h[:-MAX_HISTORY]
+        _trim(h)
         del d["batch"][project]
         save(d)
     return {"ok": True, "written": len(kept),

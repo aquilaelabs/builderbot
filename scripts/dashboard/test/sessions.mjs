@@ -175,8 +175,8 @@ ok(!await page.$eval('.pane .nb #anaList', el => el.hidden)
    && await page.$eval('.pane .nb #anaHist', el => el.closest('.sheetslot') !== null),
    'Analysis has a History, opening over the findings the way the other three do');
 ok((await page.$eval('.pane .nb #anaHistBar input', i => i.placeholder)).includes('search')
-   && await page.$$eval('.pane .nb #anaHistBar select', ss => ss.length === 2),
-   '...with the same search box and the same two filters');
+   && await page.$$eval('.pane .nb #anaHistBar select', ss => ss.length === 1),
+   '...with the same search box and the same window (paged, with no count to pick: R254 step 5)');
 // At "all time" with nothing to show, this log says why it is empty rather
 // than reusing the shared line about a notebook nobody has written in; no
 // one writes this one at all.

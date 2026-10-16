@@ -25,6 +25,8 @@ function nbHistoryView({$, nb, project}){
     restored:      ["put back", "new"],
     done:          ["ticked off", ""],
     undone:        ["reopened", ""],
+    reopen:        ["reopened", ""],
+    moved:         ["moved", ""],
     info:          ["detailed", ""],
     "info-step":   ["detailed", ""],
     sent:          ["sent", ""],
@@ -37,6 +39,19 @@ function nbHistoryView({$, nb, project}){
   // In this browser's time zone (Profile), like every time on the page.
   const stamp = t => fmtTime(t * 1000,
     {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false});
+  // A log read by day and by release (R254 step 5): a heading at the head of
+  // each day's first line, saying which release that day's work went out in
+  // where the project has releases, and each id a link to its row.
+  const dayOf = t => fmtTime(t * 1000, {weekday: "short", day: "2-digit", month: "short"});
+  const dayHead = (e, prev, rel) => {
+    const day = dayOf(e.at || 0);
+    if (prev && dayOf(prev.at || 0) === day) return "";
+    const v = shippedIn(e.at || 0, rel);
+    return `<div class="hday">${esc(day)}${v === null ? " · unreleased" : v ? ` · in ${esc(v)}` : ""}</div>`;
+  };
+  const idLink = id => `<a href="#" class="hid" data-hid="${esc(id)}" title="open ${esc(id)}">${esc(id)}</a>`;
+  const wireIds = pane => pane.querySelectorAll("[data-hid]").forEach(a => a.onclick = e => {
+    e.preventDefault(); nb.closeSheet(); getNotebook(project).find(a.dataset.hid); });
 
   function drawHistory(){
     if (!nb.roadmapLog){
@@ -51,16 +66,17 @@ function nbHistoryView({$, nb, project}){
          and drop lands here from now on.`}</div>`;
       return;
     }
-    $("roadmapHist").innerHTML = nb.roadmapLog.map(e => {
+    $("roadmapHist").innerHTML = nb.roadmapLog.map((e, k, all) => {
       const [word, tone] = ACT[e.act] || [e.act || "changed", ""];
       // R on the number, as everywhere an item is named (ids.py): a log line
       // is exactly where a bare number could be read against the bug tracker.
-      const where = e.step != null ? `step ${e.step + 1} of R${e.id}` : `R${e.id}`;
-      return `<div class="hist">
+      const where = e.step != null ? `step ${e.step + 1} of ${idLink("R" + e.id)}` : idLink("R" + e.id);
+      return `<div class="hist">${dayHead(e, all[k - 1], nb.roadmapReleases)}
       <span class="when">${esc(stamp(e.at || 0))}</span>
       <span class="act ${tone}">${esc(word)}</span>
-      <span class="what">${esc(where)} · ${esc(e.text || "")}${
+      <span class="what">${where} · ${esc(e.text || "")}${
           e.was ? ` <span class="was">${esc(e.was)}</span>` : ""}${
+          e.act === "moved" ? ` <span class="was" style="text-decoration:none">(place ${esc(String(e.from))} to ${esc(String(e.to))})</span>` : ""}${
           e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}
         <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
           // Which person. "you" and "claude" say a person or a session; the
@@ -82,6 +98,7 @@ function nbHistoryView({$, nb, project}){
       const j = await nb.postRoadmap({action: "restore", id: Number(b.dataset.id), at: Number(b.dataset.at)});
       if (j) loadHistory(); else unbusy(b, "Put back");
     });
+    wireIds($("roadmapHist"));
     // Paged like the other three, now that it has a pane to page.
     paginate($("roadmapHist"), ":scope > .hist", {key: "roadmapHist", noun: "entries"});
   }
@@ -93,7 +110,6 @@ function nbHistoryView({$, nb, project}){
   function histQuery(){
     const days = Number($("histWhen").value) || 0;
     return {action: "history",
-            limit: Number($("histN").value) || 0,
             since: days ? Math.floor(Date.now() / 1000) - days * 86400 : 0,
             find: $("histFind").value.trim()};
   }
@@ -122,7 +138,6 @@ function nbHistoryView({$, nb, project}){
     }
   };
   $("histWhen").onchange = loadHistory;
-  $("histN").onchange = loadHistory;
 
   $("roadmapLog").onclick = () => {
     if (nb.roadmapLogOn){ nb.closeSheet(); return; }
@@ -139,6 +154,10 @@ function nbHistoryView({$, nb, project}){
   // same bar: search, a window, a cap. One helper because "functionally the
   // same" should be structurally the same: a divergence here is a bug
   // somebody has to notice by feel.
+  // ...each as a word (R254 step 5): the tracker's states as the page says
+  // them elsewhere, not their stored names.
+  const LOG_WORDS = {wontfix: "won't fix", na: "not applicable", reopened: "reopened", filed: "filed",
+                     fixed: "fixed", edited: "edited", noted: "noted", sent: "sent", deleted: "deleted"};
   const LOG_ACTS = {
     filed: "new", fixed: "", wontfix: "gone", reopened: "",
     wrote: "new", forgot: "gone", edited: "", noted: "", deleted: "gone",
@@ -149,7 +168,7 @@ function nbHistoryView({$, nb, project}){
 
   // `letter` is the tab's own on a numbered entry, B for the tracker,
   // and nothing for logs whose entries are named rather than numbered.
-  function logPane({btnId, barId, paneId, title, fetchLog, emptyText, letter = ""}){
+  function logPane({btnId, barId, paneId, title, fetchLog, emptyText, letter = "", releases = () => null}){
     const btn = $(btnId), bar = $(barId), pane = $(paneId);
     let on = false, timer = null;
     const draw = rows => {
@@ -160,15 +179,16 @@ function nbHistoryView({$, nb, project}){
              || bar.querySelector(".hwhen").value !== "0"
              ? "Nothing in the log matches that. Widen the window, or clear the search."
              : emptyText || "Nothing has happened here through the notebook yet."}</div>`
-        : rows.map(e => `<div class="hist">
+        : rows.map((e, k) => `<div class="hist">${dayHead(e, rows[k - 1], releases())}
             <span class="when">${esc(stamp(e.at || 0))}</span>
-            <span class="act ${LOG_ACTS[e.act] || ""}">${esc(e.act || "changed")}</span>
-            <span class="what">${e.id != null ? `${letter}${e.id} · ` : ""}${esc(e.text || "")}
+            <span class="act ${LOG_ACTS[e.act] || ""}">${esc(LOG_WORDS[e.act] || e.act || "changed")}</span>
+            <span class="what">${e.id != null ? `${letter ? idLink(letter + e.id) : esc(String(e.id))} · ` : ""}${esc(e.text || "")}
               <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
               e.who ? ` · ${esc(e.who)}` : ""}${
               e.approved ? ", approved by you" : ""}</span>${
               e.note ? `<span class="note">${esc(e.note)}</span>` : ""}</span>
           </div>`).join("");
+      if (rows) wireIds(pane);
       // Every history through one pane means one place to page them.
       paginate(pane, ":scope > .hist", {key: paneId, noun: "entries"});
     };
@@ -176,7 +196,6 @@ function nbHistoryView({$, nb, project}){
       draw(null);
       const days = Number(bar.querySelector(".hwhen").value) || 0;
       const j = await fetchLog({
-        limit: Number(bar.querySelector(".hn").value) || 0,
         since: days ? Math.floor(Date.now() / 1000) - days * 86400 : 0,
         find: bar.querySelector("input").value.trim()});
       draw(j?.history || []);
@@ -200,13 +219,12 @@ function nbHistoryView({$, nb, project}){
       }
     };
     bar.querySelector(".hwhen").onchange = load;
-    bar.querySelector(".hn").onchange = load;
   }
 
   logPane({btnId: "memLog", barId: "memHistBar", paneId: "memHist",
            title: "Memory: history",
            fetchLog: q => nb.postMemory({action: "history", ...q})});
-  logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist", letter: "B",
+  logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist", letter: "B", releases: () => nb.bugReleases,
            title: "Bugs: history",
            fetchLog: q => nb.postBug({action: "history", ...q})});
 

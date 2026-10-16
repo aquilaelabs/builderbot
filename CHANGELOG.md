@@ -346,6 +346,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A finished roadmap item opens like an open one, with its details, its steps and when each was done, and Reopen where no release has shipped it yet; the Finished section keeps up with items finished or reopened while it is open (c07a6b9)
 - An opened roadmap item or bug says what it knows as facts: when it was added or reported and by whom, its steps' done dates, when and how it was closed, the build it was seen and fixed in, and the release that shipped it, read from the changelog's dated headings (e41ccc7)
 - A roadmap item or bug lists the changelog entries that name it with the release each went out in, and an R or B number in the released changelog opens that row (905768a)
+- History reads better: words for every change, a reorder as one line from place to place, each day headed with the release its work went out in, ids that open their rows, a bug's filing and closing kept for good, and one way to page with no count to pick (1e1da7f)
 
 ### Removed
 
