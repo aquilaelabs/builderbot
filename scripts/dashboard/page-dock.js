@@ -174,10 +174,28 @@ function wireDockBar(bar){
 // itself: with more tabs than fit, the one in front sat past its end (B740).
 function dockReveal(bar){
   const line = bar.querySelector(".dockline"), on = line?.querySelector(".dtab.on");
-  if (!on) return;
-  const lr = line.getBoundingClientRect(), r = on.getBoundingClientRect();
-  if (r.left < lr.left) line.scrollLeft -= lr.left - r.left;
-  else if (r.right > lr.right) line.scrollLeft += r.right - lr.right;
+  if (!line) return;
+  line.onscroll = () => dockEdges(line);
+  // ...and when the line's own width changes, a window or the rail moving.
+  if (!line.bbEdges && window.ResizeObserver){
+    line.bbEdges = new ResizeObserver(() => dockEdges(line));
+    line.bbEdges.observe(line);
+  }
+  if (on){
+    const lr = line.getBoundingClientRect(), r = on.getBoundingClientRect();
+    if (r.left < lr.left) line.scrollLeft -= lr.left - r.left;
+    else if (r.right > lr.right) line.scrollLeft += r.right - lr.right;
+  }
+  dockEdges(line);
+}
+
+// The line fades at an edge with more tabs past it, one side at a time
+// (the operator, 16 Oct, as the strip it replaced did): hard against an
+// end, that edge shows a whole tab and is left sharp.
+function dockEdges(line){
+  const max = line.scrollWidth - line.clientWidth;
+  line.classList.toggle("fadeL", line.scrollLeft > 1);
+  line.classList.toggle("fadeR", line.scrollLeft < max - 1);
 }
 
 // The pane's classes and height for the dock's state, each draw.

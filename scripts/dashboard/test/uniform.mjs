@@ -1166,7 +1166,12 @@ for (const kind of kinds){
     const id = await tabIdOf(kind);
     if (!id) return { ok: false, said: `no ${kind} tab to switch to` };
     const held = await switchHeld(id);
+    // The page going out is still drawn in this frame, fading over it (a
+    // crossfade, the operator, 16 Oct): set aside for the reading, so the
+    // frame read is the ground the arriving page stands on.
+    await page.evaluate(() => document.querySelectorAll('.pane .stack > .doc.leaving').forEach(e => { e.style.visibility = 'hidden'; }));
     const first = await frame();
+    await page.evaluate(() => document.querySelectorAll('.pane .stack > .doc.leaving').forEach(e => { e.style.visibility = ''; }));
     await release();
     await atRest();
     await sleep(150);
@@ -1184,6 +1189,21 @@ for (const kind of kinds){
     if (await page.evaluate(k => slotFor({kind: k}) === 1, kind)) continue;
     const r = await arrive(kind, kind === 'projects' ? 'notebook:roadmap' : 'projects');
     ok(r.ok, `[${kind}] brought to the front, its first frame is its own ground and only its content fades in (${r.said})`);
+  }
+  // ...and the page it replaces fades out over the same frames: a crossfade,
+  // not a blank between the two (the operator, 16 Oct).
+  {
+    await onlyDocs(['projects', 'notebook']);
+    await bring('notebook:roadmap');
+    await bring('projects');
+    await atRest();
+    const held = await switchHeld(await tabIdOf('notebook'));
+    const out = await page.evaluate(() => { const l = document.querySelector('.pane .stack > .doc.leaving');
+      return l ? getComputedStyle(l).visibility : 'none'; });
+    await release();
+    await atRest();
+    ok(held.includes('docIn') && held.includes('docOut') && out === 'visible',
+       `a switch between two pages is a crossfade, the one going out fading as the one coming in does (${held.join(', ') || 'nothing'}; out ${out})`);
   }
   const schemes = await page.evaluate(() => THEMES.map(t => t[0]));
   const bad = [];

@@ -359,7 +359,14 @@ function showInStack(st, key, html){
     el.dataset.key = key;
   }
   el.dataset.seen = String(++stackClock);
-  for (const c of st.children) c.classList.toggle("on", c === el);
+  // The page going out stays on show while it fades (docOut), so a switch
+  // between two pages is a crossfade.
+  const out = [...st.children].find(c => c !== el && c.classList.contains("on"));
+  for (const c of st.children){ c.classList.toggle("on", c === el); c.classList.remove("leaving"); }
+  if (out && out.classList.contains("doc") && el.classList.contains("doc")){
+    out.classList.add("leaving");
+    setTimeout(() => out.classList.remove("leaving"), 200);
+  }
   return { el, fresh };
 }
 

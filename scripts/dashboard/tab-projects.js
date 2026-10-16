@@ -144,7 +144,6 @@ function renderProjectsInto(i){
         <span class="actbar"><button type="button" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button>
         <button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button></span>`);
     d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div class="field pgridband"><div id="pjGrid" class="pgrid"></div></div>`;
-    d.setFoot("A project is a page: its name opens it. Pin decides what Home shows at a glance.");
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");

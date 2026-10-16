@@ -98,6 +98,13 @@ await ready(page);
   await page.waitForSelector('#uiReport', { timeout: 5000 });
   const gearPhone = await page.evaluate(() => ({ menu: ['uiReport', 'uiOut'].every(id => document.getElementById(id).offsetWidth > 0),
     header: ['bReport', 'bOut'].some(id => document.getElementById(id).offsetWidth > 0) }));
+  // ...on one row: Profile across it, the two beside it square icons, as the
+  // header draws them (the operator, 16 Oct).
+  const acct = await page.evaluate(() => ['uiProfile', 'uiReport', 'uiOut'].map(id => {
+    const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }));
+  ok(acct.every(a => a[0] === acct[0][0]) && acct.slice(1).every(a => Math.abs(a[1] - a[2]) <= 1) && acct[0][1] > 2 * acct[1][1]
+     && await page.evaluate(() => !!document.querySelector('#uiReport svg') && !!document.querySelector('#uiOut svg')),
+     `...on one row, Profile across it and the two beside it square icons (${JSON.stringify(acct)})`);
   await page.evaluate(() => toggleUiMenu(false));
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.evaluate(() => toggleUiMenu(true));

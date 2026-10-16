@@ -73,8 +73,9 @@
   /* The shade at a scrolling edge (more below, more above): a deep one on a
      dark page, a faint one on a light page, where the same shade read as a
      smear of soot (the light half, 13 Oct), and a shade lighter on both
-     (the operator, 16 Oct: it read too dark). */
-  --edge-hint:rgba(0,0,0,.55);
+     (the operator, 16 Oct: it read too dark), then shorter and a touch
+     darker again the same day. */
+  --edge-hint:rgba(0,0,0,.65);
   /* ...and capped below, in the block under this one. Every filled accent
      surface on the page draws --ink on --accent-deep: the active tab, a
      primary button, a view bar's current tab, an open select's chosen row,
@@ -299,7 +300,7 @@ html[data-theme="fern"],.sw[data-theme="fern"]{
 html[data-mode="light"]{
   color-scheme:light;
   --on-fill:#ffffff;
-  --edge-hint:rgba(0,0,0,.11);
+  --edge-hint:rgba(0,0,0,.13);
   --btn:#f0f2f5;        --btn:color-mix(in srgb, var(--panel), #000000 4%);
   --btn-hi:#e6e9ee;     --btn-hi:color-mix(in srgb, var(--panel), #000000 8%);
   --sunk:#f3f5f8;       --sunk:color-mix(in srgb, var(--panel), #000000 5%);
@@ -615,6 +616,13 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
   text-transform:uppercase;color:var(--dim)}
 .uimenu>button{width:100%;min-height:var(--tap);justify-content:flex-start}
+/* Profile across the row, and on a narrow phone the header's bug and sign
+   out beside it as the square icons they are in the header (the operator,
+   16 Oct), not two more full-width rows of words. */
+.uimenu .acctrow{display:flex;gap:6px}
+.uimenu .acctrow>button{min-height:var(--tap)}
+.uimenu .acctrow #uiProfile{flex:1 1 auto}
+.uimenu .acctrow .narrowonly{flex:0 0 var(--tap);width:var(--tap);padding:0;justify-content:center}
 /* Four across on a desktop, three on a phone, so a swatch stays a tap target
    rather than becoming a pixel. */
 .swgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -1321,8 +1329,8 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
    keeps the shadow, since a mask would fade the box itself. */
 .modal .box,.modal .sheetslot,.pane .doc,.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap{
   --hint:var(--edge-hint);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
-.modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -34px 26px -24px var(--hint)}
-.modal .box.scrollup{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 34px 26px -24px var(--hint)}
+.modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -24px 18px -16px var(--hint)}
+.modal .box.scrollup{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 24px 18px -16px var(--hint)}
 /* ...and never on a box shown inline (the notebook's Settings view borrows
    the dialog's): a hint class that rode along with it is no reason for a
    dialog's shadow around a view (B702). */
@@ -1343,9 +1351,9 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
   -webkit-mask-image:linear-gradient(to bottom,var(--edge-keep),#000 22px,#000 calc(100% - 22px),var(--edge-keep));
   mask-image:linear-gradient(to bottom,var(--edge-keep),#000 22px,#000 calc(100% - 22px),var(--edge-keep))}
 /* A list is shorter than a dialog, so its shadow is too: a third of a row. */
-:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrolldown{box-shadow:inset 0 -22px 16px -14px var(--hint)}
-:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup{box-shadow:inset 0 22px 16px -14px var(--hint)}
-:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup.scrolldown{box-shadow:inset 0 22px 16px -14px var(--hint),inset 0 -22px 16px -14px var(--hint)}
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrolldown{box-shadow:inset 0 -16px 12px -10px var(--hint)}
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup{box-shadow:inset 0 16px 12px -10px var(--hint)}
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup.scrolldown{box-shadow:inset 0 16px 12px -10px var(--hint),inset 0 -16px 12px -10px var(--hint)}
 /* The memory book holds prose, not form fields: 520px wraps a description
    every other line. */
 .modal .box.wide{width:min(760px,100%)}
@@ -2681,7 +2689,7 @@ pre.diff .d-ctx{color:var(--dim)}
   .railmore{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px;
     position:fixed;left:8px;right:8px;bottom:calc(58px + env(safe-area-inset-bottom));z-index:40;
     background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
-    box-shadow:0 10px 24px rgba(0,0,0,.5);animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+    box-shadow:0 10px 24px rgba(0,0,0,.5);animation:menuUp .14s cubic-bezier(.2,.7,.3,1)}
   .railmore[hidden]{display:none}
   .railmore .ritem{min-height:var(--tap);background:var(--btn);border:var(--hair) solid var(--line)}
   .railmore .ritem .rlbl{display:block}
@@ -3501,7 +3509,7 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 /* The header's icon buttons, the gear (settings) and the sign-out door,
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
-#bOut svg.out,#bCards svg.out,#bReport svg.out{width:15px;height:15px;display:block;margin:auto;
+#bOut svg.out,#bCards svg.out,#bReport svg.out,.uimenu .acctrow svg.out{width:15px;height:15px;display:block;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
   stroke-linecap:round;stroke-linejoin:round}
 /* The same drawing for About's ?, but WITHOUT display: whether it is shown is
@@ -3645,7 +3653,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 /* Over a dialog with no gutter beside it (toastPlace): at the top, and every press goes through. */
 #toast.overdlg{top:calc(8px + env(safe-area-inset-top));bottom:auto}
 #toast.overdlg .tst,#toast.overdlg .tx{pointer-events:none}
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.pane .doc.on{animation:none} .help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */
 /* min-width:0 matters: a grid item's min-content width is its widest nowrap
@@ -3660,6 +3668,9 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    coming into being: the Resume/New chooser under a Claude button, which
    used to snap into place. */
 @keyframes menuIn{from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none}}
+/* ...and one that opens upward from what opened it, the bottom bar's More,
+   rises into place rather than dropping (the operator, 16 Oct). */
+@keyframes menuUp{from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none}}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
@@ -3702,6 +3713,13 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    stay at the right edge on every width (a phone's line once pushed the
    chevron off the screen). */
 .dockline{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.dockline.fadeL{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px);
+  mask-image:linear-gradient(to right,transparent 0,#000 20px)}
+.dockline.fadeR{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 20px);
+  mask-image:linear-gradient(to left,transparent 0,#000 20px)}
+.dockline.fadeL.fadeR{
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
+  mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%)}
 .pane .bar.dockbar>.ic{flex:0 0 auto}
 .dockline .dtab{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;border:var(--hair) solid var(--line);
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
@@ -3763,8 +3781,14 @@ body.booting .pane>.loading{margin:auto}
    that paint() drew straight into wears .justpainted for good, a class that
    asks for the name an element already has starts nothing, and Projects,
    drawn that way, snapped to the front while every other document faded. */
-@keyframes docIn{from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none}}
-.pane .doc.on{animation:docIn .18s ease}
+@keyframes docIn{from{opacity:0} to{opacity:1}}
+.pane .doc.on{animation:docIn .14s ease}
+/* ...and the page it replaces fades out over the same frames, a crossfade
+   rather than a blank between them (the operator, 16 Oct): the dip and the
+   rise suited a pane that a terminal shared, and the terminals are the
+   dock's now. */
+@keyframes docOut{from{opacity:1} to{opacity:0}}
+.pane .stack > .doc.leaving{visibility:visible;animation:docOut .14s ease forwards}
 .pane .doc{overflow:auto;padding:12px;
   -webkit-overflow-scrolling:touch}
 .pane .stack:has(> .doc.on){background:var(--bg)}

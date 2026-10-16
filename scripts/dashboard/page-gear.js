@@ -208,9 +208,11 @@ function drawUiMenu(){
         <span class="swp"></span><span class="swn">${esc(label)}</span>
       </button>`).join("")}</div>
     <h4>Account</h4>
-    <button type="button" id="uiProfile">Profile</button>
-    <button type="button" id="uiReport" class="narrowonly">Report a bug</button>
-    <button type="button" id="uiOut" class="narrowonly">Sign out</button>`;
+    <div class="acctrow">
+      <button type="button" id="uiProfile">Profile</button>
+      <button type="button" id="uiReport" class="narrowonly" aria-label="report a bug" title="report a bug in BuilderBot: it goes to the diagnostics">${$("bReport")?.querySelector("svg")?.outerHTML || "Report a bug"}</button>
+      <button type="button" id="uiOut" class="narrowonly" aria-label="sign out" title="sign out: back to the login page">${$("bOut")?.querySelector("svg")?.outerHTML || "Sign out"}</button>
+    </div>`;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
   el.querySelectorAll("[data-mode]").forEach(b =>
