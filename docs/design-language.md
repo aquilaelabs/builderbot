@@ -1121,6 +1121,7 @@ Notes:
 This page's own rules:
   a-notebook/views: scripts/dashboard/nb-*.js; notebook, view, head, row, strip (`bb design show a-notebook/views` reads it)
   a-notebook/project-page: The header is one band: the name large, the branch and the node in --f-data beside it, the session's state as the dot and a word, and at the right the actions a project's card carries: Open Claude (the chooser under it as before), Shell, and the … menu (link, phone, report, lock, pin, settings). The sub-nav under it is the notebook's view strip under its own rule (views): one row at a desk, wrapped into rows of equal tabs on a phone, every view visible at every width; Overview is the Briefing view under its new name and first. The view below opens with its head row as every notebook view does. The address names the view (#/projects/web/bugs), so a link to a bug's list lands on it.
+  a-notebook/roadmap-and-bugs: scripts/dashboard/nb-roadmap.js, scripts/dashboard/nb-bugs.js, scripts/dashboard/nb-history.js; roadmap, bug, bugs, finished, history, chips, facts, release, changelog (`bb design show a-notebook/roadmap-and-bugs` reads it)
 
 #### Rules of a notebook's own
 
@@ -1225,6 +1226,12 @@ The Roadmap's exception (R224): its section bar is absent, not dead, while nothi
 ##### a-notebook/project-page
 
 The header is one band: the name large, the branch and the node in --f-data beside it, the session's state as the dot and a word, and at the right the actions a project's card carries: Open Claude (the chooser under it as before), Shell, and the … menu (link, phone, report, lock, pin, settings). The sub-nav under it is the notebook's view strip under its own rule (views): one row at a desk, wrapped into rows of equal tabs on a phone, every view visible at every width; Overview is the Briefing view under its new name and first. The view below opens with its head row as every notebook view does. The address names the view (#/projects/web/bugs), so a link to a bug's list lands on it.
+
+##### a-notebook/roadmap-and-bugs
+
+Applies to: scripts/dashboard/nb-roadmap.js, scripts/dashboard/nb-bugs.js, scripts/dashboard/nb-history.js; roadmap, bug, bugs, finished, history, chips, facts, release, changelog
+
+The Roadmap and Bugs views are read to find what is left and what happened to it (R254, the operator, 15 Oct). Under the add band, one band narrows the list: chips (All, Open, Shelved on the Roadmap; All, Open, Closed on Bugs) and a search by words or by number (R12, B34), Bugs' Sort beside them; a row the band leaves out is not drawn and paging counts only what is shown. The Roadmap's head counts in fragments ('4 to send · 1 shelved · 12 finished · claude-alpha running'), and a Save lit with nothing staged says on its bar that a change has not been told to the session. Finished items are a section under the list, shut until opened and fetched then, each the same fold as an open item, with Reopen where no release has shipped it and the reason where one has. An opened row says what it knows as facts (factGrid), never a dotted line: an item's Added, Plan and Sent, a step's Done and Sent, a finished item's Finished and Shipped in, a bug's Reported, Seen in, Seen on, Closed (when, by, the note), Fixed in and Shipped in, and the changelog entries that name it with their release. What shipped a thing is read off the CHANGELOG's dated headings, never typed: the first release dated after it, the next release for one done since. A question a row asks (a close note, a drop) unrolls in the row, never the browser's prompt, and a bug's bar holds five at most with the rest behind More, Remove last. A History reads by day, each day's first line headed with the day and the release that day's work went out in; its verbs are words, a reorder is one line from place to place, every R and B id is a link that opens its row, and it pages with paginate alone.
 
 ### the dashboard on a phone (Web app)
 

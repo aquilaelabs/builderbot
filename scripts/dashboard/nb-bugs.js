@@ -252,23 +252,25 @@ function nbBugsView({$, nb, project}){
               >Send to Claude</button>
             <button type="button" class="bEdit">Edit</button>
             ${b.status === "open"
+              // Five at most on a bar, the rest behind More (R210): six
+              // were cut short at 344px (R254 step 7). Mark fixed stays on
+              // the bar, the other closes and Remove go under it, Remove
+              // last as the one that cannot be undone.
               ? `<button type="button" class="bFix">Mark fixed</button>
-                 <button type="button" class="bWont">Won't fix</button>
-                 <button type="button" class="bNa"
-                   title="it was real and stopped applying: the feature went away"
-                   >Not applicable</button>`
-              : `<button type="button" class="bReopen">Reopen</button>`}
-            <!-- Last, because it is the one that cannot be undone. It used to
-                 sit third, between Edit and the closes, where the thumb goes
-                 for the verb it is next to. -->
-            <button type="button" class="danger bRm"
-              title="for a report that should not exist: mis-filed, a duplicate, the wrong project">Remove</button>
+                 ${actMore([`<button type="button" class="bWont">Won't fix</button>`,
+                   `<button type="button" class="bNa" title="it was real and stopped applying: the feature went away">Not applicable</button>`,
+                   `<button type="button" class="danger bRm" title="for a report that should not exist: mis-filed, a duplicate, the wrong project">Remove</button>`])}`
+              : `<button type="button" class="bReopen">Reopen</button>
+                 <!-- Last, because it is the one that cannot be undone. -->
+                 <button type="button" class="danger bRm"
+                   title="for a report that should not exist: mis-filed, a duplicate, the wrong project">Remove</button>`}
           </div>
         </div>
       </details>`).join("")
       // What the tracker is for, as its empty state (R119 step 4).
       || `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`;
     paginate(list, ":scope > .bug:not(.off)", {key: "bugList", noun: "reports"});
+    wireMore(list);
     list.querySelectorAll(".bug").forEach(d => {
       const id = Number(d.dataset.id);
       // Opened with the same tween the cards and the memories use. Bound on
@@ -280,6 +282,7 @@ function nbBugsView({$, nb, project}){
       // below and the roadmap's drop open, not the browser's prompt: one
       // shape for every question this view asks, and one a phone lays out.
       const ask = (status, q, verb) => {
+        closeMore();
         const body = d.querySelector(".body");
         if (body.querySelector(".dropbox")) return;
         const box = document.createElement("div");
@@ -355,6 +358,7 @@ function nbBugsView({$, nb, project}){
       // can be undone, so the only thing between a deleted report and its
       // being filed again is a note saying why it went.
       d.querySelector(".bRm")?.addEventListener("click", () => {
+        closeMore();
         const body = d.querySelector(".body");
         if (body.querySelector(".dropbox")) return;
         const box = document.createElement("div");

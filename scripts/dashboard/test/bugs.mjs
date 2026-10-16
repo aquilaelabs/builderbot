@@ -284,6 +284,7 @@ await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').leng
 // closed bug stops the same report being chased twice. This is for the report
 // that should never have been filed, and it says so in the log.
 await openFold(page, '#bugList .bug[data-id="3"]');
+await page.click('#bugList .bug[data-id="3"] .macts .more > button');   // an open report's Remove is under More (R254 step 7)
 await page.click('#bugList .bug[data-id="3"] .bRm');
 await page.waitForSelector('.bug .dropbox textarea', { timeout: 10000 });
 ok(read().some(b => b.id === 3),
@@ -305,6 +306,7 @@ await page.click('.bug .dropbox .stop');
 await page.waitForFunction(() => !document.querySelector('.bug .dropbox'),
                            null, { timeout: 10000 });
 ok(read().some(b => b.id === 3), 'Cancel closes it and deletes nothing');
+await page.click('#bugList .bug[data-id="3"] .macts .more > button');   // an open report's Remove is under More (R254 step 7)
 await page.click('#bugList .bug[data-id="3"] .bRm');
 await page.waitForSelector('.bug .dropbox textarea', { timeout: 10000 });
 await page.fill('.bug .dropbox textarea', 'filed against the wrong project');
@@ -332,6 +334,7 @@ await page.evaluate(() => notebooks.get('alpha').reloadBugs());
 await page.waitForFunction(n => !!document.querySelector(`#bugList .bug[data-id="${n}"]`),
                            naId, { timeout: 10000 });
 await openFold(page, `#bugList .bug[data-id="${naId}"]`);
+await page.click(`#bugList .bug[data-id="${naId}"] .macts .more > button`);
 await page.click(`#bugList .bug[data-id="${naId}"] .bNa`);
 await page.waitForSelector(`#bugList .bug[data-id="${naId}"] .dropbox textarea`, { timeout: 5000 });
 await page.fill(`#bugList .bug[data-id="${naId}"] .dropbox textarea`, 'the picker was removed entirely');

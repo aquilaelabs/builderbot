@@ -348,6 +348,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A roadmap item or bug lists the changelog entries that name it with the release each went out in, and an R or B number in the released changelog opens that row (905768a)
 - History reads better: words for every change, a reorder as one line from place to place, each day headed with the release its work went out in, ids that open their rows, a bug's filing and closing kept for good, and one way to page with no count to pick (1e1da7f)
 - Closing a bug asks for its note in the row, in the same box Delete uses, not in the browser's prompt; the send box names a bug as B12 (81f0447)
+- An open bug's bar holds Send to Claude, Edit and Mark fixed, with Won't fix, Not applicable and Remove behind More, so its labels are whole on a phone (014bc1f)
 
 ### Removed
 
