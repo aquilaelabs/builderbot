@@ -484,12 +484,24 @@ let rnHost = null;
 function settingsOut(){
   if (!rnHost) return;
   const box = rnHost.querySelector(":scope > .box");
+  rnViewOff(box);
   if (box) $("rnmodal").appendChild(box);
   rnHost = null;
   $("rnCancel").hidden = false;
 }
 function settingsInto(name, host){
   if (!host) return;
+  // Already here for this project: nothing to move, and redoing it would
+  // put every field back and hide People until its read lands again (the
+  // operator, 16 Oct: People there one time and not the next).
+  if (rnHost === host && rnFor === name && host.querySelector(":scope > .box")){
+    // ...but what others may have changed is read again, in place: the
+    // days kept, who is on it, the sessions running.
+    rnLoadSnapshots(name, true);
+    rnLoadPeople(name, true);
+    if (typeof rnSessionsLoad === "function") rnSessionsLoad(name);
+    return;
+  }
   renameProject(name);
   $("rnmodal").hidden = true;
   const box = $("rnmodal").querySelector(":scope > .box");
@@ -504,6 +516,101 @@ function settingsInto(name, host){
   // In place there is nothing to close: each section's Revert puts its
   // fields back.
   $("rnCancel").hidden = true;
+  if (box) rnViewOn(box);
+}
+
+// ---- the Settings view: the sections as a list beside the one picked ----
+// The operator, 16 Oct: twelve sections open one under another were hard to
+// find a setting in. In the notebook the sections are the Roles page's
+// shape: a list of them, each with what is in it, beside the one picked; on
+// a phone the list, then the section with Back. The dialog (the Git view's
+// remote door) keeps its sections open under a jump bar.
+const RN_LIST = {
+  project: "name and color", people: "owner, who is on it, invitations",
+  claude: "what its sessions do on their own, ask about, or may not",
+  yours: "your replies, questions and commit name here",
+  repo: "how it pushes and pulls", runs: "where it builds, tests and runs",
+  build: "commands, outputs, and what is kept", sees: "other projects, shares, addresses, logs",
+  files: "its files over FTP and in an editor", snapshots: "the days kept, and putting one back",
+  signing: "the keys its builds are signed with", sessions: "every account's sessions here, to end",
+};
+const rnPick = {};               // the section picked in each project's Settings view
+let rnOpenPhone = false;         // on a phone, the section is over the list
+let rnNavWatch = null;
+
+function rnViewOn(box){
+  box.classList.add("rnview");
+  let nav = box.querySelector(":scope > .rnnav");
+  if (!nav){
+    nav = document.createElement("div");
+    nav.className = "rlist rnnav";
+    nav.setAttribute("role", "tablist");
+    nav.setAttribute("aria-label", "settings sections");
+    box.insertBefore(nav, box.firstChild);
+    const back = document.createElement("button");
+    back.type = "button"; back.className = "rback rnback"; back.textContent = "‹ Settings";
+    back.onclick = () => { rnOpenPhone = false; rnViewDraw(box); };
+    box.insertBefore(back, nav.nextSibling);
+    // A section shows or hides itself as what it holds arrives (People
+    // after its read, Snapshots for whoever may restore): the list follows.
+    rnNavWatch = new MutationObserver(() => rnViewDraw(box));
+    box.querySelectorAll(":scope > details.rngroup").forEach(d =>
+      rnNavWatch.observe(d, {attributes: true, attributeFilter: ["hidden"]}));
+    box.addEventListener("input", () => rnNavMarks(box));
+    box.addEventListener("change", () => rnNavMarks(box));
+  }
+  rnOpenPhone = false;
+  rnViewDraw(box);
+}
+
+// Back in the dialog: the list goes and every section shows again.
+function rnViewOff(box){
+  if (!box?.classList.contains("rnview")) return;
+  box.classList.remove("rnview", "rnopen");
+  box.querySelectorAll(":scope > details.rngroup").forEach(d => d.classList.remove("rncur"));
+}
+
+function rnViewDraw(box){
+  if (!box.classList.contains("rnview")) return;
+  const shown = [...box.querySelectorAll(":scope > details.rngroup")].filter(d => !d.hidden);
+  const key = d => d.dataset.sect.slice(3);
+  // The one picked, or the first shown while it is hidden (its list being
+  // read again), without forgetting it: it comes back when it shows.
+  let pick = rnPick[rnFor];
+  if (!shown.some(d => key(d) === pick)) pick = shown[0] ? key(shown[0]) : "";
+  const nav = box.querySelector(":scope > .rnnav");
+  const html = shown.map(d => { const k = key(d), on = k === pick;
+    return `<button type="button" class="rrow${on ? " on" : ""}" role="tab" aria-selected="${on}" data-rnpick="${esc(k)}">
+      <span class="name">${esc(d.querySelector(":scope > summary .t")?.textContent || k)}</span>
+      <span class="rtags"><span class="dim">${esc(RN_LIST[k] || "")}</span><span class="rnunsaved" hidden>unsaved</span></span></button>`; }).join("");
+  if (nav.dataset.drawn !== html){
+    nav.innerHTML = html; nav.dataset.drawn = html;
+    nav.querySelectorAll("[data-rnpick]").forEach(b => b.onclick = () => {
+      rnPick[rnFor] = b.dataset.rnpick; rnOpenPhone = true; rnViewDraw(box);
+      box.closest(".nbview")?.scrollIntoView?.({block: "start"});
+    });
+  }
+  shown.concat([...box.querySelectorAll(":scope > details.rngroup[hidden]")]).forEach(d => {
+    const on = key(d) === pick;
+    d.classList.toggle("rncur", on);
+    if (on && !d.open) d.open = true;
+  });
+  box.classList.toggle("rnopen", rnOpenPhone);
+  rnNavMarks(box);
+}
+
+// Which sections hold something typed and not saved, said on their row so
+// moving to another section does not hide it.
+function rnNavMarks(box){
+  if (!rnPrefWas) return;
+  let enc;
+  try { enc = rnEnc(); } catch { return; }
+  box.querySelectorAll(".rnnav [data-rnpick]").forEach(b => {
+    const k = b.dataset.rnpick;
+    const dirty = RN_SECTS.includes(k) && rnSectChanges(k, enc).said.length > 0;
+    const m = b.querySelector(".rnunsaved");
+    if (m && m.hidden === dirty) m.hidden = !dirty;
+  });
 }
 // A project's settings: its notebook's Settings view.
 function openProjectSettings(name){ openNotebook(name, "settings"); }
@@ -626,15 +733,21 @@ function rnDrawGitPol(name){
   $("rnGitPolGo").onclick = () => { closeRename(); openNotebook(name, "git"); };
 }
 
-function rnLoadPeople(name){
-  rnPeople = null; rnPeopleDraft = {};
-  $("rnPeopleField").hidden = true;
-  setHidden($("rnPeopleField").closest("details"), true);
+// `keep`: read again in place, and drawn only when nothing there is being
+// changed, so a staged owner or Invite only is not put back under the hand.
+function rnLoadPeople(name, keep = false){
+  if (!keep){
+    rnPeople = null; rnPeopleDraft = {};
+    $("rnPeopleField").hidden = true;
+    setHidden($("rnPeopleField").closest("details"), true);
+  }
   rnDrawGitPol(name);
   if (rnMode === "git") return;
   postJSON("/api/members", {action: "view", project: name})
     .then(r => r.json())
-    .then(j => { if (rnFor !== name || j.error) return; rnPeople = j; rnDrawPeople(); })
+    .then(j => { if (rnFor !== name || j.error) return;
+                 if (keep && Object.keys(rnPeopleDraft).length) return;
+                 rnPeople = j; rnDrawPeople(); })
     .catch(() => {});
 }
 
@@ -751,7 +864,7 @@ function rnDrawFtp(){
     <label class="ndcap"><input type="checkbox" id="rnFtpOn"${on ? " checked" : ""}> Serve this project's files over FTPS</label>
     <label class="ndcap"><input type="checkbox" id="rnFtpEditor"${editor ? " checked" : ""}> Open them in an editor with BuilderBot for VS Code</label>
     ${editor ? `<div class="hint">Through this controller, as each person's own account: no share and no port of its own.</div>` : ""}
-    ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Where it runs.</div>`}
+    ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Nodes.</div>`}
     <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-help="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
       <input id="rnFtpPort" type="number" min="1024" max="65526" step="1" inputmode="numeric" value="${esc(String(port))}" aria-label="the port its FTP server listens on">
       <span class="dim">and the ${v.span - 1} after it</span></div>
@@ -839,9 +952,9 @@ const rnFp = sha => sha ? `${sha.slice(0, 8)}…${sha.slice(-8)}` : "";
 // it is, so the line it leaves says how to undo it.
 let rnSnap = null;
 
-function rnLoadSnapshots(name){
-  rnSnap = null;
-  $("rnSnapField").hidden = true;
+// `keep`: read again in place, the section left as it is until the answer.
+function rnLoadSnapshots(name, keep = false){
+  if (!keep){ rnSnap = null; $("rnSnapField").hidden = true; }
   if (rnMode === "git") return;
   fetch("/api/snapshots?project=" + encodeURIComponent(name))
     .then(r => r.json())

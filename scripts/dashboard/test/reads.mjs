@@ -171,8 +171,8 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   ok(await page.$eval('#rnGpu', e => e.value === 'on' && [...e.options].map(o => o.value).join() === 'on,off'
                         && /The node's GPU/.test(e.closest('label').textContent)),
      "the dialog carries The node's GPU, on by default");
-  ok(await page.$eval('#rnGpu', e => e.closest('.rngroup')?.querySelector('summary .t')?.textContent) === 'Where it runs',
-     "...under Where it runs, with the node it is about");
+  ok(await page.$eval('#rnGpu', e => e.closest('.rngroup')?.querySelector('summary .t')?.textContent) === 'Nodes',
+     "...under Nodes, with the node it is about");
   await page.selectOption('#rnGpu', 'off');
   await page.fill('#rnSees', '/mnt/media');
   await saveDialog(page);

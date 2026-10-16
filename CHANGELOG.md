@@ -378,6 +378,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The doctor's dot and its passing checks are the same green in every color theme, as warnings stay yellow and failures red (c0be33a)
 - Lit-up controls (the selected tab, primary buttons like Open Claude, buttons that are on, a hovered button) and the BuilderBot logo wear the theme's second color; the first color keeps the rail, the dots and the notebook's group row (0d49ea3)
 - In light mode the second color is as light as it can be and stay readable, and a lit control is a soft tint of it with a colored edge rather than a dark block (bd972da)
+- A project's Settings are a list of sections beside the one picked, each saying what is in it and marked unsaved when it holds a change, with plainer names (General, Nodes, What sessions reach, Just for you, Running sessions) and the most used first; on a phone the list, then the section with Back (6098e71)
 
 ### Removed
 
@@ -612,6 +613,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The bell's container updates name only the containers of projects you may manage, where they listed every project's (6475ae3)
 - Another account on a project no longer lists the owner's Claude session on a node as its own (Sessions, and Sign out's count) (eba3133)
 - Only one of the bell, the doctor and the gear menu is open at a time (693defa)
+- A project's Settings keep People, the section picked and anything typed when asked for again (6098e71)
 
 ### Security
 

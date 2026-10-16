@@ -409,8 +409,17 @@ export const patience = ms => Math.round(ms * SLOW);
 // Save, keep it running and Save and end it at once. sectSave presses one
 // section's and waits for it to finish: "" when it saved, else what its bar
 // says went wrong. `end` picks Save and end it where the bar offers it.
+// A project's Settings view shows one section at a time, picked from the
+// list beside it (the operator, 16 Oct); the dialog shows them all. A suite
+// picks the section before it touches a field there; in the dialog this
+// does nothing.
+export async function rnSect(page, sect){
+  await page.evaluate(s => document.querySelector(`.rnview .rnnav [data-rnpick="${s}"]`)?.click(), sect);
+}
+
 export async function sectSave(page, sect, { end = false, timeout = 15000 } = {}){
   timeout = patience(timeout);
+  await rnSect(page, sect);
   const bar = `.rnbar[data-rnbar="${sect}"]`;
   const which = await page.$eval(bar, (b, end) => b.querySelector('[data-rnkeep]').hidden ? 'data-rnsave'
                                                    : end ? 'data-rnend' : 'data-rnkeep', end);
@@ -515,6 +524,10 @@ export async function openFold(page, sel){
   // replaced by an equal one and the click lands on a detached node. Nothing
   // is wrong with the page when that happens, so re-resolve and go again rather
   // than making the suite's honesty depend on that gap staying narrow.
+  // A settings section in a project's Settings view is picked from its
+  // list rather than unfolded (rnSect).
+  const rn = /data-sect="rn:(\w+)"/.exec(sel);
+  if (rn) await rnSect(page, rn[1]);
   let last;
   for (let attempt = 0; attempt < 4; attempt++){
     const el = await page.$(sel);

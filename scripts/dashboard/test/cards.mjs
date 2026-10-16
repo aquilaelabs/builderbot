@@ -708,9 +708,15 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
   await page.evaluate(() => railGo('machines', 'nodes'));
   // Waited for, not slept on (B753): the Light crossfade and the button's
   // own color transition were still running 300ms in under a whole run.
+  // A lit control in the light half is a soft tint of the second color with
+  // the ink on it (the operator, 16 Oct: the darkened fill was too dark).
   const white = await page.waitForFunction(() => { const e = document.querySelector('.pane .bar .subnav button.on');
-    return e && getComputedStyle(e).color === 'rgb(255, 255, 255)'; }, null, { timeout: 5000 }).then(() => true, () => false);
-  ok(white, `a filled accent carries white in the light half, where the ink is dark (${
+    if (!e) return false;
+    const c = getComputedStyle(e), x = document.createElement('canvas').getContext('2d');
+    x.fillStyle = c.backgroundColor; x.fillRect(0, 0, 1, 1);
+    const [r, g, b] = x.getImageData(0, 0, 1, 1).data;
+    return c.color === getComputedStyle(document.body).color && (r + g + b) / 3 > 190; }, null, { timeout: 5000 }).then(() => true, () => false);
+  ok(white, `a lit control in the light half is a light tint with the ink on it (${
     await page.$eval('.pane .bar .subnav button.on', e => getComputedStyle(e).color).catch(() => 'no button')})`);
   // Nostromo's light half is the ship's white corridors: rounded like the
   // rest, its own wall panels rather than the deck, no steel rail (the
@@ -1307,7 +1313,7 @@ ok(/Folder: \/workspace\/alpha · project #\d+/.test(await page.$eval('#rnHint',
   ok(!shut(gear) && gear.filter(f => f.shown).length > 3,
      `the settings are sections, every one open (${shut(gear) || 'none shut'})`);
   const jumps = await page.$$eval('#rnmodal .sectjump a', as => as.map(a => a.textContent));
-  ok(jumps.includes('The project') && jumps.includes('Claude may'),
+  ok(jumps.includes('General') && jumps.includes('Claude may'),
      `...with a jump bar naming them (${jumps.join(', ')})`);
   await page.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
   await page.waitForFunction(() => !document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});

@@ -706,8 +706,30 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   min-height:var(--tap);color:var(--ink)}
 .rrow .name{font-weight:600}
 .rrow .rtags{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font:var(--f-note)}
-@media(hover:hover){ .rolestab .rrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
-.rolestab .rrow.on,.rolestab .rrow.on:hover{background:color-mix(in srgb,var(--accent) 13%,transparent);border-bottom-color:var(--line)}
+@media(hover:hover){ .rolestab .rrow:hover:not(.on),.rnnav .rrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
+/* The picked row is lit, so it wears the second color (--lit) as every lit
+   control does. */
+.rolestab .rrow.on,.rolestab .rrow.on:hover,.rnnav .rrow.on,.rnnav .rrow.on:hover{
+  background:color-mix(in srgb,var(--lit) 14%,transparent);border-bottom-color:var(--line)}
+/* A project's Settings view (page-projsettings.js rnViewOn, the operator,
+   16 Oct): the sections a list beside the one picked, the Roles page's
+   shape, the picked section's heading a heading rather than a fold. On a
+   phone the list, then the section with Back over it. */
+.box.rnview{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
+.box.rnview>*{grid-column:2;min-width:0}
+.box.rnview>.rnnav{grid-column:1;grid-row:1 / span 60;align-self:stretch}
+.box.rnview>h3,.box.rnview>.sectjump,.box.rnview>.rnback{display:none}
+.box.rnview>details.rngroup:not(.rncur){display:none}
+.box.rnview>details.rngroup>summary{pointer-events:none}
+.box.rnview>details.rngroup>summary::before,.box.rnview>details.rngroup>summary::marker{display:none;content:""}
+.rnnav .rnunsaved{color:var(--warn);font-weight:600}
+@media(max-width:900px){
+  .box.rnview{grid-template-columns:minmax(0,1fr)}
+  .box.rnview>.rnnav{grid-column:1;grid-row:auto;border-right:0}
+  .box.rnview:not(.rnopen)>:not(.rnnav){display:none}
+  .box.rnview.rnopen>.rnnav{display:none}
+  .box.rnview.rnopen>.rnback{display:inline-flex;justify-self:start;margin:var(--row-y) var(--row-x) 0}
+}
 .rdetail{min-width:0;padding:0 0 0 var(--row-x)}
 .rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
 .rdetail>.rhead .dim{font:var(--f-ui)}
@@ -4683,7 +4705,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          the project is and who it belongs to, where it runs, what a
          session sees, how it builds, its signing keys, what Claude may
          do, what is yours, and who is in it now (the operator, 1 Oct). -->
-    <details class="sect rngroup" data-sect="rn:project"><summary><span class="t">The project</span></summary><div class="body">
+    <details class="sect rngroup" data-sect="rn:project"><summary><span class="t">General</span></summary><div class="body">
     <div class="field" id="rnNameField">
       <label for="rnName">Name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
@@ -4707,208 +4729,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <div class="field" id="rnPeopleField" hidden>
       <label id="rnPeopleLabel">People<span class="help" data-help="its owner, who is on it, and who is invited. Any administrator can add people, themselves included; invite only means people join by accepting an invitation, and its owner decides that. Who holds which role here is what the Roles tab sets: a role on this project is what puts somebody on it." tabindex="0">?</span></label>
       <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
-    </div>
-    </div></details>
-    <details class="sect rngroup" data-sect="rn:repo"><summary><span class="t">Its repository</span></summary><div class="body">
-    <!-- What this project pushes with. Reached by the chain on its row, which
-         is where the remote lives for a project that has one and for a
-         project that has not: the gear is the project's own settings, and a
-         credential is the remote's. -->
-    <div class="field" id="rnGitNone" hidden><div class="hint"></div></div>
-    <div class="field" id="rnTokenField" hidden>
-      <label for="rnToken">Access token<span class="help" data-help="leave empty to keep the current one" tabindex="0">?</span></label>
-      <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
-             placeholder="ghp_… or github_pat_…">
-      <!-- A stored token is not shown and not typed over: the field is closed
-           and this is the way in. Clearing is staged like everything else in
-           this dialog: pressing it changes what the dialog says, and Rename
-           is what changes the project. -->
-      <button type="button" id="rnTokenClear" class="link" hidden></button>
-      <div class="hint" id="rnTokenHint"></div>
-    </div>
-    <!-- Its own deploy key, made or pasted here rather than only dropped into
-         /secrets/ssh by hand (the operator, 12 Oct). Acts at the press, like
-         Test: the private half goes to the root-only helper and is never
-         shown again; the public half is shown to add on the host. -->
-    <div class="field" id="rnKeyField" hidden>
-      <label id="rnKeyLabel">Deploy key<span class="help" data-help="made or pasted here, kept where sessions can push with it and never read it" tabindex="0">?</span></label>
-      <div id="rnKeyPub" tabindex="0" aria-label="the deploy key's public half" hidden></div>
-      <textarea id="rnKeyPaste" rows="4" autocomplete="off" spellcheck="false" data-bwignore hidden
-                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
-      <div class="logdays setrow"><span class="hint grow" id="rnKeyHint"></span>
-        <button type="button" id="rnKeyMake">Make a key</button>
-        <button type="button" id="rnKeyPasteBtn">Paste a key</button>
-        <button type="button" id="rnKeyCopy" hidden>Copy public key</button>
-        <button type="button" id="rnKeyForget" class="danger" hidden>Forget</button></div>
-      <div class="hint" id="rnKeyOut" hidden></div>
-    </div>
-    <!-- Which of the two credentials git actually reaches for. A project can
-         hold both (a deploy key in the agent and a token in /config) and
-         until this existed, storing the token was all you could do: git never
-         asks a credential helper about an ssh remote, so the key went on
-         winning and the only way to change that was `git remote set-url` by
-         hand. Switching here removes neither, so it is a switch and not a
-         migration. -->
-    <div class="field" id="rnAuthField" hidden>
-      <label id="rnAuthLabel">Authentication</label>
-      <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
-        <button id="rnAuthNone" type="button">Disabled</button>
-        <button id="rnAuthKey" type="button">Deploy key</button>
-        <button id="rnAuthToken" type="button">Access token</button>
-      </div>
-      <div class="hint" id="rnAuthHint"></div>
-    </div>
-    <!-- Test (the operator, 7 Oct): whether what it authenticates with can
-         read and push, and what it is missing when it cannot, said under the
-         button in red, never only in a tooltip (projects.auth_test). A token
-         typed and not saved is what is tested, so it can be checked first. -->
-    <div class="field" id="rnTestField" hidden>
-      <div class="logdays setrow"><span class="hint grow" id="rnTestHint">Test tries a read and a dry-run push with this, which sends nothing.</span>
-        <button type="button" id="rnTest">Test</button></div>
-      <div class="hint" id="rnTestOut" hidden></div>
-    </div>
-    <!-- Where the remote points, for the same repository at a new address:
-         an owner or an organization renamed on the host. Before this the
-         way to move was Unlink, which takes the token and the push rights
-         with it (projects.set_address). -->
-    <div class="field" id="rnAddrField" hidden>
-      <label for="rnAddr">Repository address<span class="help" data-help="the same repository's new address after its owner was renamed on the host; its token, key and push rights move with it" tabindex="0">?</span></label>
-      <input id="rnAddr" type="text" autocomplete="off" spellcheck="false" inputmode="url">
-      <div class="hint" id="rnAddrHint">Change it after renaming your account or organization on the host. Saving checks it is this repository: another one is refused.</div>
-    </div>
-    </div></details>
-    <details class="sect rngroup" data-sect="rn:runs"><summary><span class="t">Where it runs</span></summary><div class="body">
-    <!-- The project's node: where everything it does on a node goes:
-         containers, builds, tests, CI, emulation. One setting, by decision
-         (docs/nodes.md §13): per-role pickers were more control than anybody
-         wanted. Send-to-Docker preselects it, and an instance still remembers
-         the node it was actually created on. -->
-    <div class="field" id="rnNodeField" hidden>
-      <label for="rnNode">Node<span class="help" data-help="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
-      <select id="rnNode"></select>
-      <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
-      <!-- One list for the rest of the set and the hosting-only nodes (the
-           operator, 13 Oct): a node marked Hosting only is prefs.hosts (its
-           containers alone, built on the project's node and shipped there),
-           the rest prefs.nodes. Drawn by rnFillNodesMore. -->
-      <label id="rnNodesLabel" hidden>Also works on</label>
-      <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Claude may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
-      <!-- What the project may use there (R102): the card, and where its
-           tests run when it has a dev instance. -->
-      <div class="prefrow">
-        <label class="pick wide">The node's GPU <select id="rnGpu"
-          aria-label="whether this project's sessions, builds and tests may compute on its node's NVIDIA card">
-          <option value="on">may be computed on, where the node has one and allows it</option>
-          <option value="off">is not for this project: it runs as if the machine had none</option>
-        </select></label>
-      </div>
-      <!-- Where the tests run, which is this project's business and used to
-           be set on the Docker tab, a machine surface it has no other reason
-           to visit (R68 step 6). Only for a project that HAS a container to
-           run in: rnFill hides it otherwise. -->
-      <div id="rnTestWhere" hidden>
-        <label for="rnDevTest">Tests run<span class="help" data-help="inside the dev instance only when its image carries the tests" tabindex="0">?</span></label>
-        <select id="rnDevTest">
-          <option value="node">on the node, never in its dev instance</option>
-          <option value="up">in its dev instance when it is up, else on the node</option>
-          <option value="only">only in its dev instance, never on the node</option>
-        </select>
-      </div>
-    </div>
-    </div></details>
-    <details class="sect rngroup" data-sect="rn:files"><summary><span class="t">File access</span></summary><div class="body">
-    <!-- The project's tree over FTPS from outside BuilderBot (R151, ftp.py):
-         on, the port, and each account's access. Set by an account with the
-         ftp grant (the owner, until a role names it); anybody else sees
-         whether it is on and where. Staged until Save, like the rest. -->
-    <div class="field" id="rnFtpField" hidden>
-      <label id="rnFtpLabel">Over FTP<span class="help" data-help="an FTPS server on the project's node, rooted at its tree; each account signs in with its own BuilderBot name and password" tabindex="0">?</span></label>
-      <div id="rnFtp" role="group" aria-labelledby="rnFtpLabel"></div>
-    </div>
-    </div></details>
-    <details class="sect rngroup" data-sect="rn:sees"><summary><span class="t">What a session sees</span></summary><div class="body">
-    <!-- The projects a session here may read (prefs.reads): their trees
-         bound read-only into its view on a node, their notebooks answering
-         to bb from inside them, every write refused. The operator's to
-         name, never a session's. -->
-    <div class="field" id="rnReadsField" hidden>
-      <label id="rnReadsLabel">Reads<span class="help" data-help="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
-      <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
-      <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
-      <div class="hint bad" id="rnReadsWhy" hidden>Only BuilderBot's owner chooses which other projects a project's sessions may read.</div>
-    </div>
-    <!-- The places on its node a session here is shown (prefs.sees). A
-         session's view is built from what it is given, so a share mounted
-         on the node is out of it unless it is named here. Whoever may set
-         the project's node may name one. -->
-    <div class="field" id="rnSeesField" hidden>
-      <label for="rnSees">Also sees<span class="help" data-help="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
-      <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
-    </div>
-    <!-- Addresses a session here may still reach where its node keeps each
-         session to its own project's network (prefs.reaches, the operator,
-         7 Oct): a machine, or one port on it, without making the project
-         read another. An administrator's; applied without a restart. -->
-    <div class="field" id="rnReachField" hidden>
-      <label id="rnReachLabel">Also reaches<span class="help" data-help="on a node that keeps each session to its own project's network, other machines a session here may still reach: an address for the whole machine, or address:port for one service, on the project's nodes you tick. Sessions already running get it at once" tabindex="0">?</span></label>
-      <div id="rnReachRows" role="group" aria-labelledby="rnReachLabel"></div>
-      <div class="rnreachadd"><button type="button" id="rnReachAdd">Add an address</button></div>
-      <div class="hint" id="rnReachHint"></div>
-    </div>
-    <!-- What a session here may read for debugging (prefs.log_from,
-         prefs.diag): nodes' machine logs and the controller's diagnostics.
-         Per project since 6 Oct, set by an account with the debug grant,
-         and not drawn for one without it. -->
-    <div class="field" id="rnDebugField" hidden>
-      <label id="rnDebugLabel">Debug<span class="help" data-help="what a session here may read while debug mode is on: the controller's diagnostics and these nodes' machine logs" tabindex="0">?</span></label>
-      <div class="lbox" id="rnDebug" role="group" aria-labelledby="rnDebugLabel"></div>
-      <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
-    </div>
-    </div></details>
-    <details class="sect rngroup" data-sect="rn:build"><summary><span class="t">Build and test</span></summary><div class="body">
-    <div class="field" id="rnBuildField">
-      <label for="rnBuildCmd">Commands<span class="help" data-help="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
-      <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
-             placeholder="build, e.g. ./gradlew assembleDebug">
-      <input id="rnTestCmd" autocomplete="off" spellcheck="false"
-             placeholder="test, e.g. ./gradlew test">
-      <input id="rnOutputs" autocomplete="off" spellcheck="false"
-             placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
-      <div class="hint">Run from the tree's root on the node; files matching the outputs land in dist/.</div>
-      <!-- What a session looks with lands in dist/ too (a reel's sheet, an
-           emulator shot), under the Artifacts tab's Captures fold, and goes
-           by age rather than by need: nothing can tell whether another
-           session is still reading one (R96). -->
-      <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-help="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
-        <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
-      <!-- The project's daily snapshots (R165): what a node gone wrong, or
-           compromised, through its synced copy is undone from. -->
-      <div class="logdays setrow"><label class="ndcap" for="rnSnapDays">Snapshots kept for<span class="help" data-help="the project's tree is snapshotted once a day on the controller, where no node reaches, and each day is kept this long; 0 takes none. Restored from Snapshots below" tabindex="0">?</span></label>
-        <input id="rnSnapDays" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="days a snapshot is kept"> <span class="dim">days</span></div>
-      <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-help="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
-        <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
-    </div>
-    </div></details>
-    <details class="sect rngroup" data-sect="rn:snapshots"><summary><span class="t">Snapshots</span></summary><div class="body">
-    <!-- The days kept of the project's tree (R165), an administrator's:
-         restoring the whole tree or one file acts on the press, after a
-         confirmation, and snapshots the tree first so it can be undone. -->
-    <div class="field" id="rnSnapField" hidden>
-      <label id="rnSnapLabel">Days kept<span class="help" data-help="each a copy of every file the project's nodes can change, as it was that day; a restore writes it back on the controller and every node follows" tabindex="0">?</span></label>
-      <div id="rnSnapRows" role="group" aria-labelledby="rnSnapLabel"></div>
-      <div class="hint" id="rnSnapHint"></div>
-    </div>
-    </div></details>
-    <details class="sect rngroup" data-sect="rn:signing"><summary><span class="t">Android signing</span></summary><div class="body">
-    <!-- A project's Android signing keys (R106), an administrator's: kept
-         by the controller, never in the tree and never in a session's view.
-         Staged like the rest of this dialog: a picked keystore or a removal
-         is sent when Save is pressed. Download backup is an action. -->
-    <div class="field" id="rnSignField" hidden>
-      <label id="rnSignLabel">Keys<span class="help" data-help="kept by the controller and used by bb sign on the project's node; a session never receives the key or its password" tabindex="0">?</span></label>
-      <div id="rnSignRows" role="group" aria-labelledby="rnSignLabel"></div>
-      <div class="hint" id="rnSignHint"></div>
     </div>
     </div></details>
     <details class="sect rngroup" data-sect="rn:claude"><summary><span class="t">Claude may</span></summary><div class="body">
@@ -4986,7 +4806,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" id="rnGitPolGo">Git view</button></div>
     </div>
 </div></details>
-    <details class="sect rngroup" data-sect="rn:yours"><summary><span class="t">Yours on this project</span></summary><div class="body">
+    <details class="sect rngroup" data-sect="rn:yours"><summary><span class="t">Just for you</span></summary><div class="body">
     <!-- YOURS, not the project's, and last so that is legible from the
          shape of the dialog rather than only from the words. Everything
          above changes what the project does for everybody; nothing here
@@ -4995,7 +4815,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          model and as git's environment for the author. -->
     <div class="field" id="rnMineField">
       <label id="rnMineLabel">Your sessions and commits<span class="help" data-help="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
-      <div class="hint">Yours alone; everything above is the project's.</div>
+      <div class="hint">Yours alone; the other sections are the project's, for everybody on it.</div>
       <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Replies <select id="rnReply"
           aria-label="how wordy Claude's replies to you are here">
@@ -5022,7 +4842,209 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="hint" id="rnGitHint"></div>
     </div>
     </div></details>
-    <details class="sect rngroup" data-sect="rn:sessions"><summary><span class="t">Sessions on this project</span></summary><div class="body">
+    <details class="sect rngroup" data-sect="rn:repo"><summary><span class="t">Repository</span></summary><div class="body">
+    <!-- What this project pushes with. Reached by the chain on its row, which
+         is where the remote lives for a project that has one and for a
+         project that has not: the gear is the project's own settings, and a
+         credential is the remote's. -->
+    <div class="field" id="rnGitNone" hidden><div class="hint"></div></div>
+    <div class="field" id="rnTokenField" hidden>
+      <label for="rnToken">Access token<span class="help" data-help="leave empty to keep the current one" tabindex="0">?</span></label>
+      <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
+             placeholder="ghp_… or github_pat_…">
+      <!-- A stored token is not shown and not typed over: the field is closed
+           and this is the way in. Clearing is staged like everything else in
+           this dialog: pressing it changes what the dialog says, and Rename
+           is what changes the project. -->
+      <button type="button" id="rnTokenClear" class="link" hidden></button>
+      <div class="hint" id="rnTokenHint"></div>
+    </div>
+    <!-- Its own deploy key, made or pasted here rather than only dropped into
+         /secrets/ssh by hand (the operator, 12 Oct). Acts at the press, like
+         Test: the private half goes to the root-only helper and is never
+         shown again; the public half is shown to add on the host. -->
+    <div class="field" id="rnKeyField" hidden>
+      <label id="rnKeyLabel">Deploy key<span class="help" data-help="made or pasted here, kept where sessions can push with it and never read it" tabindex="0">?</span></label>
+      <div id="rnKeyPub" tabindex="0" aria-label="the deploy key's public half" hidden></div>
+      <textarea id="rnKeyPaste" rows="4" autocomplete="off" spellcheck="false" data-bwignore hidden
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+      <div class="logdays setrow"><span class="hint grow" id="rnKeyHint"></span>
+        <button type="button" id="rnKeyMake">Make a key</button>
+        <button type="button" id="rnKeyPasteBtn">Paste a key</button>
+        <button type="button" id="rnKeyCopy" hidden>Copy public key</button>
+        <button type="button" id="rnKeyForget" class="danger" hidden>Forget</button></div>
+      <div class="hint" id="rnKeyOut" hidden></div>
+    </div>
+    <!-- Which of the two credentials git actually reaches for. A project can
+         hold both (a deploy key in the agent and a token in /config) and
+         until this existed, storing the token was all you could do: git never
+         asks a credential helper about an ssh remote, so the key went on
+         winning and the only way to change that was `git remote set-url` by
+         hand. Switching here removes neither, so it is a switch and not a
+         migration. -->
+    <div class="field" id="rnAuthField" hidden>
+      <label id="rnAuthLabel">Authentication</label>
+      <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
+        <button id="rnAuthNone" type="button">Disabled</button>
+        <button id="rnAuthKey" type="button">Deploy key</button>
+        <button id="rnAuthToken" type="button">Access token</button>
+      </div>
+      <div class="hint" id="rnAuthHint"></div>
+    </div>
+    <!-- Test (the operator, 7 Oct): whether what it authenticates with can
+         read and push, and what it is missing when it cannot, said under the
+         button in red, never only in a tooltip (projects.auth_test). A token
+         typed and not saved is what is tested, so it can be checked first. -->
+    <div class="field" id="rnTestField" hidden>
+      <div class="logdays setrow"><span class="hint grow" id="rnTestHint">Test tries a read and a dry-run push with this, which sends nothing.</span>
+        <button type="button" id="rnTest">Test</button></div>
+      <div class="hint" id="rnTestOut" hidden></div>
+    </div>
+    <!-- Where the remote points, for the same repository at a new address:
+         an owner or an organization renamed on the host. Before this the
+         way to move was Unlink, which takes the token and the push rights
+         with it (projects.set_address). -->
+    <div class="field" id="rnAddrField" hidden>
+      <label for="rnAddr">Repository address<span class="help" data-help="the same repository's new address after its owner was renamed on the host; its token, key and push rights move with it" tabindex="0">?</span></label>
+      <input id="rnAddr" type="text" autocomplete="off" spellcheck="false" inputmode="url">
+      <div class="hint" id="rnAddrHint">Change it after renaming your account or organization on the host. Saving checks it is this repository: another one is refused.</div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:runs"><summary><span class="t">Nodes</span></summary><div class="body">
+    <!-- The project's node: where everything it does on a node goes:
+         containers, builds, tests, CI, emulation. One setting, by decision
+         (docs/nodes.md §13): per-role pickers were more control than anybody
+         wanted. Send-to-Docker preselects it, and an instance still remembers
+         the node it was actually created on. -->
+    <div class="field" id="rnNodeField" hidden>
+      <label for="rnNode">Node<span class="help" data-help="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
+      <select id="rnNode"></select>
+      <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
+      <!-- One list for the rest of the set and the hosting-only nodes (the
+           operator, 13 Oct): a node marked Hosting only is prefs.hosts (its
+           containers alone, built on the project's node and shipped there),
+           the rest prefs.nodes. Drawn by rnFillNodesMore. -->
+      <label id="rnNodesLabel" hidden>Also works on</label>
+      <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Claude may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
+      <!-- What the project may use there (R102): the card, and where its
+           tests run when it has a dev instance. -->
+      <div class="prefrow">
+        <label class="pick wide">The node's GPU <select id="rnGpu"
+          aria-label="whether this project's sessions, builds and tests may compute on its node's NVIDIA card">
+          <option value="on">may be computed on, where the node has one and allows it</option>
+          <option value="off">is not for this project: it runs as if the machine had none</option>
+        </select></label>
+      </div>
+      <!-- Where the tests run, which is this project's business and used to
+           be set on the Docker tab, a machine surface it has no other reason
+           to visit (R68 step 6). Only for a project that HAS a container to
+           run in: rnFill hides it otherwise. -->
+      <div id="rnTestWhere" hidden>
+        <label for="rnDevTest">Tests run<span class="help" data-help="inside the dev instance only when its image carries the tests" tabindex="0">?</span></label>
+        <select id="rnDevTest">
+          <option value="node">on the node, never in its dev instance</option>
+          <option value="up">in its dev instance when it is up, else on the node</option>
+          <option value="only">only in its dev instance, never on the node</option>
+        </select>
+      </div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:build"><summary><span class="t">Build and test</span></summary><div class="body">
+    <div class="field" id="rnBuildField">
+      <label for="rnBuildCmd">Commands<span class="help" data-help="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
+      <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
+             placeholder="build, e.g. ./gradlew assembleDebug">
+      <input id="rnTestCmd" autocomplete="off" spellcheck="false"
+             placeholder="test, e.g. ./gradlew test">
+      <input id="rnOutputs" autocomplete="off" spellcheck="false"
+             placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
+      <div class="hint">Run from the tree's root on the node; files matching the outputs land in dist/.</div>
+      <!-- What a session looks with lands in dist/ too (a reel's sheet, an
+           emulator shot), under the Artifacts tab's Captures fold, and goes
+           by age rather than by need: nothing can tell whether another
+           session is still reading one (R96). -->
+      <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-help="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
+        <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
+      <!-- The project's daily snapshots (R165): what a node gone wrong, or
+           compromised, through its synced copy is undone from. -->
+      <div class="logdays setrow"><label class="ndcap" for="rnSnapDays">Snapshots kept for<span class="help" data-help="the project's tree is snapshotted once a day on the controller, where no node reaches, and each day is kept this long; 0 takes none. Restored from Snapshots below" tabindex="0">?</span></label>
+        <input id="rnSnapDays" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="days a snapshot is kept"> <span class="dim">days</span></div>
+      <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-help="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
+        <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:sees"><summary><span class="t">What sessions reach</span></summary><div class="body">
+    <!-- The projects a session here may read (prefs.reads): their trees
+         bound read-only into its view on a node, their notebooks answering
+         to bb from inside them, every write refused. The operator's to
+         name, never a session's. -->
+    <div class="field" id="rnReadsField" hidden>
+      <label id="rnReadsLabel">Reads<span class="help" data-help="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
+      <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
+      <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
+      <div class="hint bad" id="rnReadsWhy" hidden>Only BuilderBot's owner chooses which other projects a project's sessions may read.</div>
+    </div>
+    <!-- The places on its node a session here is shown (prefs.sees). A
+         session's view is built from what it is given, so a share mounted
+         on the node is out of it unless it is named here. Whoever may set
+         the project's node may name one. -->
+    <div class="field" id="rnSeesField" hidden>
+      <label for="rnSees">Also sees<span class="help" data-help="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
+      <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
+    </div>
+    <!-- Addresses a session here may still reach where its node keeps each
+         session to its own project's network (prefs.reaches, the operator,
+         7 Oct): a machine, or one port on it, without making the project
+         read another. An administrator's; applied without a restart. -->
+    <div class="field" id="rnReachField" hidden>
+      <label id="rnReachLabel">Also reaches<span class="help" data-help="on a node that keeps each session to its own project's network, other machines a session here may still reach: an address for the whole machine, or address:port for one service, on the project's nodes you tick. Sessions already running get it at once" tabindex="0">?</span></label>
+      <div id="rnReachRows" role="group" aria-labelledby="rnReachLabel"></div>
+      <div class="rnreachadd"><button type="button" id="rnReachAdd">Add an address</button></div>
+      <div class="hint" id="rnReachHint"></div>
+    </div>
+    <!-- What a session here may read for debugging (prefs.log_from,
+         prefs.diag): nodes' machine logs and the controller's diagnostics.
+         Per project since 6 Oct, set by an account with the debug grant,
+         and not drawn for one without it. -->
+    <div class="field" id="rnDebugField" hidden>
+      <label id="rnDebugLabel">Debug<span class="help" data-help="what a session here may read while debug mode is on: the controller's diagnostics and these nodes' machine logs" tabindex="0">?</span></label>
+      <div class="lbox" id="rnDebug" role="group" aria-labelledby="rnDebugLabel"></div>
+      <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:files"><summary><span class="t">File access</span></summary><div class="body">
+    <!-- The project's tree over FTPS from outside BuilderBot (R151, ftp.py):
+         on, the port, and each account's access. Set by an account with the
+         ftp grant (the owner, until a role names it); anybody else sees
+         whether it is on and where. Staged until Save, like the rest. -->
+    <div class="field" id="rnFtpField" hidden>
+      <label id="rnFtpLabel">Over FTP<span class="help" data-help="an FTPS server on the project's node, rooted at its tree; each account signs in with its own BuilderBot name and password" tabindex="0">?</span></label>
+      <div id="rnFtp" role="group" aria-labelledby="rnFtpLabel"></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:snapshots"><summary><span class="t">Snapshots</span></summary><div class="body">
+    <!-- The days kept of the project's tree (R165), an administrator's:
+         restoring the whole tree or one file acts on the press, after a
+         confirmation, and snapshots the tree first so it can be undone. -->
+    <div class="field" id="rnSnapField" hidden>
+      <label id="rnSnapLabel">Days kept<span class="help" data-help="each a copy of every file the project's nodes can change, as it was that day; a restore writes it back on the controller and every node follows" tabindex="0">?</span></label>
+      <div id="rnSnapRows" role="group" aria-labelledby="rnSnapLabel"></div>
+      <div class="hint" id="rnSnapHint"></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:signing"><summary><span class="t">Android signing</span></summary><div class="body">
+    <!-- A project's Android signing keys (R106), an administrator's: kept
+         by the controller, never in the tree and never in a session's view.
+         Staged like the rest of this dialog: a picked keystore or a removal
+         is sent when Save is pressed. Download backup is an action. -->
+    <div class="field" id="rnSignField" hidden>
+      <label id="rnSignLabel">Keys<span class="help" data-help="kept by the controller and used by bb sign on the project's node; a session never receives the key or its password" tabindex="0">?</span></label>
+      <div id="rnSignRows" role="group" aria-labelledby="rnSignLabel"></div>
+      <div class="hint" id="rnSignHint"></div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:sessions"><summary><span class="t">Running sessions</span></summary><div class="body">
     <!-- Every account's sessions on the project, for an administrator, each
          with End (page-projsessions.js). At the foot because the operator
          asked for it there, and apart from the settings: End acts at once. -->

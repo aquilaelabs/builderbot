@@ -191,7 +191,7 @@ def save(project, req, by):
         if rec["on"]:
             if not node:
                 return {"error": "this project has no node to run its file access on: "
-                                 "pick one under Where it runs"}, 400
+                                 "pick one under Nodes in its settings"}, 400
             why = _port_why(project, rec["port"], node, d)
             if why:
                 return {"error": f"port {rec['port']}: {why}"}, 400

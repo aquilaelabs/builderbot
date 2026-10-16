@@ -6,7 +6,7 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, saveDialog, sectSave, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, sectSave, rnSect, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -389,8 +389,28 @@ ok(elsewhere.git_name === 'T. Person',
   const inView = await page.evaluate(() => ({ name: $('rnName').value, modal: $('rnmodal').hidden,
     close: $('rnCancel').hidden, shown: $('rnName').checkVisibility(),
     bars: [...document.querySelectorAll('.nbsettings .rnbar')].filter(b => b.checkVisibility()).length }));
-  ok(inView.name === 'alpha' && inView.modal && inView.close && inView.shown && inView.bars >= 5,
-     `the notebook's Settings view holds the form, the dialog shut, each section with its own Save and Revert (${JSON.stringify(inView)})`);
+  ok(inView.name === 'alpha' && inView.modal && inView.close && inView.shown && inView.bars === 1,
+     `the notebook's Settings view holds the form, the dialog shut, the section on show with its own Save and Revert (${JSON.stringify(inView)})`);
+  // The sections a list beside the one picked (the operator, 16 Oct: too
+  // many open at once to find a setting in): each row names what is in it,
+  // a press shows that section alone, and People is on the list.
+  // People joins the list when its read lands.
+  await page.waitForSelector('.nbsettings .rnnav [data-rnpick="people"]', { timeout: 15000 }).catch(() => {});
+  const list = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .rnnav [data-rnpick]')]
+    .map(b => ({ k: b.dataset.rnpick, on: b.classList.contains('on'), said: b.querySelector('.rtags .dim')?.textContent || '' })));
+  ok(list.length >= 8 && list[0].k === 'project' && list[0].on && list.every(r => r.said) && list.some(r => r.k === 'people'),
+     `...its sections a list beside the one picked, each saying what is in it, General first, People among them (${list.map(r => r.k).join(', ')})`);
+  await rnSect(page, 'claude');
+  const one = await page.evaluate(() => [...document.querySelectorAll('.nbsettings details.rngroup')]
+    .filter(d => d.checkVisibility()).map(d => d.dataset.sect));
+  ok(one.join() === 'rn:claude', `...a row pressed shows its section alone (${one.join()})`);
+  // People stays when the view is asked for again (B: the form was put back
+  // and People hidden until its read landed, on every ask).
+  await page.evaluate(() => openProjectSettings('alpha'));
+  await page.waitForTimeout(300);
+  const still = await page.evaluate(() => ({ people: !document.querySelector('details[data-sect="rn:people"]').hidden,
+    pick: document.querySelector('.nbsettings .rnnav .rrow.on')?.dataset.rnpick }));
+  ok(still.people && still.pick === 'claude', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
   // The box borrowed from the dialog brings no dialog shadow into the view
   // (B702): the scroll-hint class it wore in the dialog is dropped on the way
   // in, and an inline box gets no shadow from that class however it arrives.
@@ -407,8 +427,13 @@ ok(elsewhere.git_name === 'T. Person',
      `...and wears no dialog shadow, with or without the dialog's scroll-hint class (${JSON.stringify(shade)})`);
   // A section's Save writes that section alone, and what is typed in another
   // stays typed (the operator, 10 Oct: one Save for eleven sections).
+  await rnSect(page, 'build');
   await page.fill('#rnBuildCmd', 'make one');
+  await rnSect(page, 'claude');
   await page.selectOption('#rnGateRoadmap', 'deny');
+  const marks = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .rnnav [data-rnpick]')]
+    .filter(b => !b.querySelector('.rnunsaved').hidden).map(b => b.dataset.rnpick).sort().join());
+  ok(marks === 'build,claude', `...each section holding a change says unsaved on its row (${marks})`);
   const err = await sectSave(page, 'build');
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make one', { timeout: 20000 });
   const after = await page.evaluate(() => ({ gate: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.roadmap || 'auto',
@@ -416,6 +441,7 @@ ok(elsewhere.git_name === 'T. Person',
     build: document.querySelector('.rnbar[data-rnbar="build"] [data-rnsave]').disabled }));
   ok(!err && after.gate === 'auto' && after.typed === 'deny' && after.claude && after.build,
      `...Build and test's Save stores the build command and nothing of Claude may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
+  await rnSect(page, 'claude');
   await page.click('.rnbar[data-rnbar="claude"] [data-rnrevert]');
   ok(await page.evaluate(() => $('rnGateRoadmap').value === 'auto'
        && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled

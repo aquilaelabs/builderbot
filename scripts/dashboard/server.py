@@ -5859,7 +5859,7 @@ class Handler(BaseHTTPRequestHandler):
                        if str(n).strip() and not nodes.host_only(str(n).strip())]
                 if bad:
                     return self._json({"error": f"{', '.join(bad)} is not a hosting-only node: a node the "
-                                                "project works on takes its containers already, from Where it runs"}, 400)
+                                                "project works on takes its containers already, from Nodes in its settings"}, 400)
         # Which other projects a session here may read is BuilderBot's
         # owner's alone (the operator, 6 Oct): it hands one project's sessions
         # another's code and notebook, which no administrator or user grants
