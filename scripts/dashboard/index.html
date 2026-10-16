@@ -75,7 +75,6 @@
      smear of soot (the light half, 13 Oct), and a shade lighter on both
      (the operator, 16 Oct: it read too dark), then shorter and a touch
      darker again the same day. */
-  --edge-hint:rgba(0,0,0,.65);
   /* ...and capped below, in the block under this one. Every filled accent
      surface on the page draws --ink on --accent-deep: the active tab, a
      primary button, a view bar's current tab, an open select's chosen row,
@@ -296,7 +295,6 @@ html[data-theme="sepia"],.sw[data-theme="sepia"]{
 html[data-mode="light"]{
   color-scheme:light;
   --on-fill:#ffffff;
-  --edge-hint:rgba(0,0,0,.13);
   --btn:#f0f2f5;        --btn:color-mix(in srgb, var(--panel), #000000 4%);
   --btn-hi:#e6e9ee;     --btn-hi:color-mix(in srgb, var(--panel), #000000 8%);
   --sunk:#f3f5f8;       --sunk:color-mix(in srgb, var(--panel), #000000 5%);
@@ -1324,22 +1322,20 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 .modal .box{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
-/* A box that scrolls says so (scrollHints in page-motion.js): each edge with
-   more past it fades (the operator, 30 Sep), and a thin scrollbar where the
-   platform draws one. A page and a sheet fade what they hold, cards and
-   words and all, into the ground under them, a mask rather than a shadow
-   painted under the content that the content then crossed at full strength
-   (the operator, 16 Oct); a dialog's box, whose panel is its own ground,
-   keeps the shadow, since a mask would fade the box itself. */
+/* A box that scrolls says so (scrollHints in page-motion.js), with a thin
+   scrollbar where the platform draws one. A page and a sheet fade what they
+   hold into the ground under them at the edge with more past it, a mask and
+   not a painted band; a dialog pins its title and buttons; a list draws a
+   hairline at that edge. */
 .modal .box,.modal .sheetslot,.pane .doc,.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap{
-  --hint:var(--edge-hint);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
-.modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -24px 18px -16px var(--hint)}
-.modal .box.scrollup{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 24px 18px -16px var(--hint)}
-/* ...and never on a box shown inline (the notebook's Settings view borrows
-   the dialog's): a hint class that rode along with it is no reason for a
-   dialog's shadow around a view (B702). */
-.modal.inline .box.scrollup,.modal.inline .box.scrolldown{box-shadow:none}
-.modal .box.scrollup.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 24px 18px -16px var(--hint),inset 0 -24px 18px -16px var(--hint)}
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+/* A dialog that scrolls keeps its title and its buttons where they are and
+   its content passes under them, each with the hairline it always had: the
+   frame says there is more, with no band of shade painted over what is
+   being read (the operator, 16 Oct: the black fades read as dirt). Not in a
+   box shown inline, which is a view's and scrolls with the page (B702). */
+.modal:not(.inline) .box>h3{position:sticky;top:0;z-index:2;background:var(--panel)}
+.modal:not(.inline) .box>.foot{position:sticky;bottom:0;z-index:2;background:var(--panel)}
 .modal .sheetslot,.pane .doc{--edge-keep:rgba(0,0,0,.18)}  /* what is left of a line at the very edge: faded, not gone */
 /* Never while it holds an open dialog: a mask makes the box a stacking
    context and clips what it paints, so a dialog opened from a page (the
@@ -1354,10 +1350,12 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 .modal .sheetslot.scrollup.scrolldown:not(:has(.modal:not([hidden]):not(.inline))),.pane .doc.scrollup.scrolldown:not(:has(.modal:not([hidden]):not(.inline))){
   -webkit-mask-image:linear-gradient(to bottom,var(--edge-keep),#000 22px,#000 calc(100% - 22px),var(--edge-keep));
   mask-image:linear-gradient(to bottom,var(--edge-keep),#000 22px,#000 calc(100% - 22px),var(--edge-keep))}
-/* A list is shorter than a dialog, so its shadow is too: a third of a row. */
-:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrolldown{box-shadow:inset 0 -16px 12px -10px var(--hint)}
-:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup{box-shadow:inset 0 16px 12px -10px var(--hint)}
-:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup.scrolldown{box-shadow:inset 0 16px 12px -10px var(--hint),inset 0 -16px 12px -10px var(--hint)}
+/* A list or a log that scrolls inside a page has no title or buttons of its
+   own to pin: the edge with more past it is drawn as a hairline instead,
+   where the next line is cut, and nothing is shaded. */
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrolldown{box-shadow:inset 0 -1px 0 var(--line)}
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup{box-shadow:inset 0 1px 0 var(--line)}
+:is(.lbox,#roadmapList,#memList,#pendList,.dllog,.dmlog,.chatlog,.mpanel,.abpage,.dsboardwrap).scrollup.scrolldown{box-shadow:inset 0 1px 0 var(--line),inset 0 -1px 0 var(--line)}
 /* The memory book holds prose, not form fields: 520px wraps a description
    every other line. */
 .modal .box.wide{width:min(760px,100%)}
@@ -2745,6 +2743,8 @@ pre.diff .d-ctx{color:var(--dim)}
 .pcard .pcunpinned{font:var(--f-ui)}
 .pcard .pcfacts{font:var(--f-data);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pcard .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
+/* Yours first, then each other person's with a session here, one dot each. */
+.pstates{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 14px;min-width:0}
 .pcard .pnote{font:var(--f-ui)}
 .pcard .pnote.bad{color:var(--bad)} .pcard .pnote.warn{color:var(--warn)} .pcard .pnote.dim{color:var(--dim)}
 .pcard .pcacts{margin-top:auto;padding:6px 0 0;border:0;background:none}
@@ -3911,8 +3911,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .chattab .chatlist .chathead{border-bottom:0;padding:var(--row-y) var(--row-x) 4px;color:var(--dim)}
 .chatthread{display:flex;flex-direction:column;min-height:0;height:100%}
 .chatthread > .chatpick{margin:auto;padding:var(--row-y) var(--row-x)}
-.chatrow.on{background:var(--panel)}
-.chatrow.on .grow{color:var(--accent)}
 #chatBack{display:none}
 @media(max-width:900px){
   .chattab{grid-template-columns:minmax(0,1fr)}
@@ -3922,7 +3920,15 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 }
 .chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   background:none;border:0;border-bottom:var(--hair) solid var(--line);padding:8px 10px}
-.chatrow:hover{background:var(--panel)}
+/* The channel on show is a quiet tint of the accent, and stays that under
+   the pointer; every other channel answers the pointer with a fainter tint
+   of the ink (the operator, 16 Oct: the open one lit up bright on hover and
+   the rest did nothing). Above the page's button hover, which is a
+   control's and too loud for a row of a list. */
+.chattab .chatrow{background:none}
+@media(hover:hover){ .chattab .chatrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
+.chattab .chatrow.on,.chattab .chatrow.on:hover{background:color-mix(in srgb,var(--accent) 13%,transparent)}
+.chatrow.on .grow{color:var(--accent)}
 /* When somebody was last here, beside their name: the quiet note voice. */
 .chatrow .chatseen{font:var(--f-note);color:var(--dim)}
 /* Taken on, or merely visible. A channel that is yours reads as ordinary text;
@@ -4527,6 +4533,20 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <button type="button" onclick="$('devEnvModal').hidden = true">Cancel</button>
       <button type="button" class="primary">Save</button>
     </div>
+  </div>
+</div>
+<!-- Sign out, asked first (the operator, 16 Oct): a press on the header's
+     button or the gear's is not a sign-out by itself, and the sessions an
+     account has running go on without it unless this ends them too. -->
+<div id="outModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="outTitle">
+  <div class="box">
+    <h3 id="outTitle">Sign out</h3>
+    <div class="field"><div class="sub">Sign out of BuilderBot on this browser?</div></div>
+    <div class="field" id="outEndRow" hidden><label class="ndcap"><input type="checkbox" id="outEnd"> <span id="outEndSaid">Also end my sessions</span></label>
+      <div class="hint">Unticked, they keep running and are there when you sign in again.</div></div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" id="outCancel">Cancel</button>
+      <button type="button" class="primary" id="outGo">Sign out</button></div>
   </div>
 </div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
@@ -5883,7 +5903,7 @@ $("mMacros").onclick   = () => mobPanel("macros");
 // ---- findings --------------------------------------------------------
 // Its declarations are tab-findings.js; nothing of it runs at load.
 
-$("bOut").onclick = () => { location.href = "/logout"; };
+$("bOut").onclick = () => askSignOut();
 
 // ---- long lists, shown a page at a time ---------------------------------
 // Not numbered pages. These lists are read in an order that means something:

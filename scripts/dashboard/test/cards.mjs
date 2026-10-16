@@ -2274,19 +2274,22 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
 }
 // ---- a dialog that scrolls says so, and opens at its top -------------------
 // On a short screen the project's settings dialog is taller than the room:
-// a shadow on its bottom edge says there is more, a shadow on the top one
-// once it has scrolled, none at the end; and closed and opened again it is
-// back at its top, however far down it was (the operator, 30 Sep).
+// its title and its buttons stay put with their hairlines while what is
+// between them scrolls (the operator, 16 Oct: no black fades), it still
+// knows which edge has more (the classes a list's hairline follows); and
+// closed and opened again it is back at its top, however far down it was
+// (the operator, 30 Sep).
 {
   await page.setViewportSize({ width: 420, height: 560 });
   const box = '#rnmodal > .box';
   const cls = () => page.$eval(box, b => ({ up: b.classList.contains('scrollup'), down: b.classList.contains('scrolldown'),
-    top: b.scrollTop, room: b.scrollHeight - b.clientHeight, shadow: getComputedStyle(b).boxShadow }));
+    top: b.scrollTop, room: b.scrollHeight - b.clientHeight, shadow: getComputedStyle(b).boxShadow,
+    pinned: ['h3', '.foot'].map(q => getComputedStyle(b.querySelector(':scope > ' + q)).position).join() }));
   await page.evaluate(() => renameProject('alpha'));
   await page.waitForFunction(s => document.querySelector(s)?.classList.contains('scrolldown'), box, { timeout: 10000 });
   const a = await cls();
-  ok(a.room > 50 && a.down && !a.up && a.top === 0 && /inset/.test(a.shadow),
-     `a dialog taller than the screen opens at its top with a shadow on the edge that has more (${JSON.stringify({ ...a, shadow: a.shadow.slice(0, 40) })})`);
+  ok(a.room > 50 && a.down && !a.up && a.top === 0 && a.pinned === 'sticky,sticky' && !/inset/.test(a.shadow),
+     `a dialog taller than the screen opens at its top, its title and buttons pinned and nothing shaded (${JSON.stringify({ ...a, shadow: a.shadow.slice(0, 40) })})`);
   // ...and a list inside it that scrolls, the project's Reads, says so the
   // same way, on its own edges.
   await page.waitForFunction(() => document.getElementById('rnReads')?.classList.contains('scrolldown'), null, { timeout: 10000 });
@@ -2295,7 +2298,7 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   await page.$eval('#rnReads', l => { l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll')); });
   const readsEnd = await page.$eval('#rnReads', l => [l.classList.contains('scrollup'), l.classList.contains('scrolldown')]);
   ok(reads.room > 0 && reads.down && !reads.up && /inset/.test(reads.shadow) && readsEnd[0] && !readsEnd[1],
-     `a list that scrolls, the project's Reads, darkens the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
+     `a list that scrolls, the project's Reads, draws a hairline on the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
   // To the end once the dialog has stopped growing (B741, B749): its
   // sections fill in after it opens (the Claude section's content is a
   // thousand pixels that land late), so a wait that succeeded at the first
@@ -2312,7 +2315,7 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
     l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll'));
     return l.classList.contains('scrollup') && !l.classList.contains('scrolldown'); }, box, { timeout: 5000, polling: 200 }).catch(() => {});
   const b = await cls();
-  ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down, top: b.top, room: b.room })})`);
+  ok(b.up && !b.down, `...scrolled to its end, it knows the top edge has more and the bottom none (${JSON.stringify({ up: b.up, down: b.down, top: b.top, room: b.room })})`);
   await page.evaluate(() => closeRename());
   await page.waitForFunction(() => document.getElementById('rnmodal').hasAttribute('hidden'), null, { timeout: 5000 });
   await page.evaluate(() => renameProject('alpha'));

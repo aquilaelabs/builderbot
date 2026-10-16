@@ -360,6 +360,11 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every page's bar is the same row of buttons: a page that stands alone (Home, Containers, Jobs, Sessions) shows its name as one green button, where it was plain text (e983f54)
 - A Claude session's status dot is yellow while it works and green once it is idle and ready for you, as on the phone app, where working was blue and idle amber (fdc6fec)
 - A project's views are five groups in one row (Overview, Plan, Code, Ship, Docs), each group's views in a row under it; Settings is in the project's … menu. Every view keeps its address (0973eda)
+- Sign out asks first, in a dialog that can also end your sessions on the way out; unticked, they keep running for when you sign back in (46e031b)
+- A project's card and page show everybody with a Claude session there, each with their own dot, after yours (46e031b)
+- A dialog that scrolls keeps its title and buttons in place while its content passes under them, and a scrolling list draws a hairline at the edge with more past it, where both had black fades (46e031b)
+- Chat's channel list: the open channel is a quiet tint that stays put under the pointer, and every other channel answers the pointer (46e031b)
+- Every session on every project is told, and held to it, that a background test run says when it ends: waiting on it with a foreground loop is refused, so a message sent meanwhile is read (46e031b)
 
 ### Removed
 

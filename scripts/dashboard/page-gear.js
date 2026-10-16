@@ -218,7 +218,7 @@ function drawUiMenu(){
   // On a narrow phone the header's bug and sign-out live here, so the search
   // beside the logo keeps room to be typed into (B744).
   el.querySelector("#uiReport").onclick = () => { toggleUiMenu(false); openReport(""); };
-  el.querySelector("#uiOut").onclick = () => { location.href = "/logout"; };
+  el.querySelector("#uiOut").onclick = () => askSignOut();
 }
 
 function logSection(){
@@ -325,4 +325,30 @@ function toggleUiMenu(open){
                      {opacity: 0, transform: "translateY(-10px)"}],
                     {duration: 120, easing: "ease"}).onfinish = hide;
   }
+}
+
+// ---- sign out, asked --------------------------------------------------------
+// The header's Sign out and the gear's open this first (the operator, 16
+// Oct): Sign out leaves for /logout, and with the box ticked ends the
+// account's sessions on the way, here and on the nodes, the same End the
+// Sessions page presses. With none running the box is not offered.
+function askSignOut(){
+  const m = $("outModal");
+  if (!m) { location.href = "/logout"; return; }
+  const ss = state?.sessions || [];
+  const claude = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  $("outEndRow").hidden = !ss.length;
+  $("outEnd").checked = false;
+  $("outEndSaid").textContent = `Also end my sessions (${ss.length} running${claude ? `, ${claude} of them Claude` : ""})`;
+  const go = $("outGo");
+  unbusy(go, "Sign out");
+  go.onclick = async () => {
+    busy(go, "Signing out");
+    if ($("outEnd").checked)
+      await Promise.all(ss.map(s => endSession(s.name, s.node_id || "").catch(() => {})));
+    location.href = "/logout";
+  };
+  $("outCancel").onclick = () => { m.hidden = true; };
+  m.onclick = e => { if (e.target === m) m.hidden = true; };
+  m.hidden = false;
 }

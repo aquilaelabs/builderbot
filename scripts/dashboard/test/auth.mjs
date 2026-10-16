@@ -135,7 +135,13 @@ ok(await page2.$eval('#bOut', b => {
   const c = document.getElementById('bCards').getBoundingClientRect();
   return Math.abs(r.height - c.height) < 2 && Math.abs(r.width - c.width) < 8;
 }), "sign out sits in the header at its neighbors' size");
+// Asked first (the operator, 16 Oct): a dialog, its Also end my sessions
+// unticked, and Sign out in it is what leaves.
 await page2.click('#bOut');
+await page2.waitForSelector('#outModal:not([hidden])', { timeout: 5000 });
+ok(await page2.evaluate(() => location.pathname !== '/login' && !document.getElementById('outEnd').checked),
+   'sign out asks first, ending no session unless that is ticked');
+await page2.click('#outGo');
 await page2.waitForURL('**/login**');
 await page2.goto(URL);
 await page2.waitForURL('**/login**');

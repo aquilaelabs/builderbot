@@ -874,11 +874,13 @@ function makeNotebook(project){
 function projectState(p){
   const name = p.name, mine = liveSessions().has(myClaude(name));
   const busy = new Set((state?.claude_busy || {})[name] || []);
-  const who = withMe(name);
-  const st = mine ? (busy.has(state?.me) ? ["working", "working"] : ["waiting", "waiting for you"])
-    : who.length ? ["waiting", who.length === 1 ? `${who[0]}'s session here` : `${who.length} sessions here`]
-    : ["", "no session"];
-  return `<span class="pstate">${st[0] ? `<span class="st ${st[0]}"></span>` : ""}${esc(st[1])}</span>`;
+  const one = (st, word, cls = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}</span>`;
+  // Yours first, then everybody else's with a session here, each with its
+  // own dot (the operator, 16 Oct: the card had stopped saying who else is
+  // working in the project, which the sidebar's rows used to).
+  const me = mine ? (busy.has(state?.me) ? one("working", "working") : one("waiting", "waiting for you")) : "";
+  const them = othersOn(name).map(n => one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
+  return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
 }
 // The one notice the sidebar's row carried (why nobody can start here, the
 // agent out of window), in the notice voice, or nothing.
