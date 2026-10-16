@@ -287,7 +287,7 @@ ok(await page.$('.sendbox') === null,
    '...and no box opens, because there is nothing it could honestly send');
 
 const nd = page.dialogs.length;
-await page.click(tab('briefing'));
+await nbGo(page, 'briefing');
 await page.waitForFunction(() => !document.querySelector('[data-view="briefing"]').hidden,
                            null, { timeout: 15000 });
 ok(page.dialogs.length === nd + 1 && /thrown away/.test(page.dialogs.at(-1)),
@@ -1604,7 +1604,7 @@ const strip = await phone.evaluate(() => {
 ok(strip.clipped && strip.onScreen,
    'the notebook strip scrolls rather than spilling, with the current tab in view');
 
-await phone.click('.pane .nb .nbtabs [data-v="briefing"]'); // every control on screen at once
+await nbGo(phone, 'briefing'); // every control on screen at once
 await phone.evaluate(() => { document.getElementById('memSect').open = true; });
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
@@ -1988,7 +1988,7 @@ await page.evaluate(() => hideTab(tabs.find(x => x.kind === 'notebook').id));
 await nbGone(page);
 await page.evaluate(() => openNotebook('alpha'));
 await nbShown(page);
-ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb .nbtabs button').dataset.v),
+ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb .nbtabs [data-v]').dataset.v),
    '...and a notebook closed and opened again starts on the strip\'s first view');
 
 // B198: a batch its session never closes. Killed mid-way, or the container

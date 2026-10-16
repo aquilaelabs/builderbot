@@ -531,10 +531,11 @@ function makeNotebook(project){
     if (nb.nbWhere !== v){ nb.nbWhere = v; beat(); }
     nbViewMemo.keep(project, v);
     shellSync();                    // the address names the view (R218 step 3)
-    // Its group lit in the top row and, for a group of several, the group's
-    // views in the row under it with this one lit (R259); Overview is a
-    // group of one and Settings is the header menu's, so neither has that
-    // second row. The view is the group's to come back to.
+    // Its group lit in the top row and the group's views in the row under it
+    // with this one lit (R259), one button for a group of one, so the row
+    // is always there and every view's head at one height; Settings is the
+    // header menu's, lights no group and has its own button in that row.
+    // The view is the group's to come back to.
     const me = root.querySelector(`.nbtabs button[data-v="${CSS.escape(v)}"]`);
     const g = me?.dataset.in || me?.dataset.g || "";
     if (g) nb.groupLast[g] = v;
@@ -544,10 +545,8 @@ function makeNotebook(project){
       b.setAttribute("aria-selected", String(on));
     });
     const sub = root.querySelector(".nbtabs .nbsub");
-    const several = !!sub && [...sub.children].filter(b => b.dataset.in === g).length > 1;
-    if (sub && sub.hidden === several) sub.hidden = !several;
     sub?.querySelectorAll("button").forEach(b => {
-      const mine = b.dataset.in === g && g !== "settings", on = b.dataset.v === v;
+      const mine = b.dataset.in === g, on = b.dataset.v === v;
       if (b.hidden === mine) b.hidden = !mine;
       if (b.classList.contains("on") !== on) b.classList.toggle("on", on);
       b.setAttribute("aria-selected", String(on));

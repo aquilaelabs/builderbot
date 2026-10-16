@@ -70,7 +70,7 @@ function nbPendingView({$, nb, project, root}){
   {
     const was = nbViewMemo.read()[project];
     nb.setNbView((was && root.querySelector(`.nbtabs button[data-v="${CSS.escape(was)}"]`)
-                 ? was : root.querySelector(".nbtabs button").dataset.v));
+                 ? was : root.querySelector(".nbtabs [data-v]").dataset.v));
   }
 
   // The project's containers, from the manager's own answer for the

@@ -150,8 +150,8 @@ const undriven = tabKinds.filter(k => !DRIVERS[k]);
 // here, read off the strip the page draws rather than kept as a list, for
 // the same reason the tab kinds are.
 const NB_VIEWS = await page.evaluate(() =>
-  [...document.getElementById('nbTpl').content.querySelectorAll('.nbtabs button[data-v]')]
-    .map(b => b.dataset.v));
+  [...new Set([...document.getElementById('nbTpl').content.querySelectorAll('.nbtabs button[data-v]')]
+    .map(b => b.dataset.v))]);
 for (const v of NB_VIEWS)
   DRIVERS[`notebook:${v}`] = {
     open: () => page.evaluate(w => openNotebook('alpha', w), v),
@@ -300,7 +300,7 @@ async function bring(kind){
 // fixture is too short to draw one.
 // ...and a segmented switch (.pseg: Deploy key / Access token, Dark / Light,
 // Cards / List) is one choice, not a set of verbs (R216).
-const NOT_A_BAR = ['nbtabs', 'foot', 'pagemore', 'pseg'];
+const NOT_A_BAR = ['nbtabs', 'nbgroups', 'nbsub', 'foot', 'pagemore', 'pseg'];
 
 async function language(){
   return page.evaluate(({ NOT_A_BAR }) => {
@@ -1697,7 +1697,7 @@ for (const kind of kinds){
 // a driver here, so a new dialog with none FAILS by its id, which is the
 // price of adding one.
 const DIALOGS = {
-  about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
+  about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(), out: () => askSignOut(),
   pending: () => openPending('alpha'), report: () => openReport('alpha'),
   phonelend: () => openPhoneLend('alpha'),
   newcontainer: () => openNewContainer(), custom: () => editCustom(),

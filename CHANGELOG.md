@@ -365,6 +365,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A dialog that scrolls keeps its title and buttons in place while its content passes under them, and a scrolling list draws a hairline at the edge with more past it, where both had black fades (46e031b)
 - Chat's channel list: the open channel is a quiet tint that stays put under the pointer, and every other channel answers the pointer (46e031b)
 - Every session on every project is told, and held to it, that a background test run says when it ends: waiting on it with a foreground loop is refused, so a message sent meanwhile is read (46e031b)
+- The Roles page is a list beside its detail: accounts with their roles as tags beside the picked one's Everywhere roles, the projects it is actually on and an Add to project, and what it can do as a grid; roles with their kind and holders beside the picked one's areas. On a phone, the list then the detail with Back (f37c706)
 
 ### Removed
 

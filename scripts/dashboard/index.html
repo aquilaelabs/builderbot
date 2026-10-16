@@ -666,15 +666,44 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    built-in role's summary above it speaks in. A .sub is sized only inside
    a .row, and these are field rows, so the sentence fell back to body
    text and the tab spoke in two sizes (5 Oct). */
-/* The Roles tab (R152): a project per row with its roles under it; a role
-   picker with Add role beside it; an area per row, its sentence and its
-   Read and Write. */
+/* The Roles tab (R152, R255 step 9): each section a list beside the one
+   picked, the list a column of rows (a name and its tags), the picked row
+   in the accent's tint; on a phone the list, then the detail over it with
+   Back. The detail: the projects an account is on, a row each (its name,
+   its roles there, x), Add to project under them, what it adds up to as a
+   grid; a role's areas a row each, its sentence and its Read and Write. */
 .rolestab label.pick{font:var(--f-ui);color:var(--ink)}
-.rprojects{display:flex;flex-direction:column;gap:8px}
-.rproj .upick{margin:4px 0 0 0}
-.rpickrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.rpickrow select{flex:1 1 12em;width:auto}
-.rolestab .rpickrow input{flex:1 1 12em;width:auto;min-width:0}
+.rsplit{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
+.rlist{display:flex;flex-direction:column;border-right:var(--hair) solid var(--line);min-width:0}
+.rrow{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;white-space:normal;
+  background:none;border:0;border-bottom:var(--hair) solid var(--line);border-radius:0;padding:var(--row-y) var(--row-x);
+  min-height:var(--tap);color:var(--ink)}
+.rrow .name{font-weight:600}
+.rrow .rtags{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font:var(--f-note)}
+@media(hover:hover){ .rolestab .rrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
+.rolestab .rrow.on,.rolestab .rrow.on:hover{background:color-mix(in srgb,var(--accent) 13%,transparent);border-bottom-color:var(--line)}
+.rdetail{min-width:0;padding:0 0 0 var(--row-x)}
+.rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
+.rdetail>.rhead .dim{font:var(--f-ui)}
+.rback{display:none}
+.raddrole{display:flex;gap:6px;padding:var(--row-y) var(--row-x);border-bottom:var(--hair) solid var(--line)}
+.raddrole input{flex:1 1 auto;min-width:0;width:auto}
+.rprojects{display:flex;flex-direction:column}
+.rproj{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:6px 0;border-bottom:var(--hair) solid var(--line)}
+.rproj .rprojname{min-width:8rem}
+.rproj .upick{flex:1 1 auto;margin:0}
+.raddon{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.raddon select{flex:1 1 10em;width:auto;min-width:0}
+.rlvl{font:var(--f-note);font-weight:600;color:var(--dim)}
+.rlvl.write{color:var(--accent)}
+.rcan .td:not(.lead),.rcan .th:not(:first-child){text-align:center}
+@media(max-width:900px){
+  .rsplit{grid-template-columns:minmax(0,1fr)}
+  .rlist{border-right:0}
+  .rdetail{padding:0}
+  .rsplit.open>.rlist,.rsplit:not(.open)>.rdetail{display:none}
+  .rback{display:inline-flex;margin:var(--row-y) 0 0}
+}
 /* A role's areas are a table (R218 step 8): the area with what Read and
    Write let one do under its name, then the two boxes in their columns. */
 .tbl.rareas .tline{padding:var(--label-gap) 0;border-bottom:var(--hair) solid var(--line)}
@@ -4140,20 +4169,21 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          (Plan: Roadmap, Bugs), the code and whether it holds (Code: Git,
          Tests, Analysis), what it produced and where it runs (Ship:
          Artifacts, Docker), and what is written about it (Docs: Wiki,
-         Design). A group of several opens its views in the row under it,
-         the way a rail group's page carries its tools; Overview is one view
-         and its own button. Settings is the header's ... menu's, so its
-         button here is never drawn. Every view keeps its data-v and its
-         address. -->
+         Design). A group's views are the row under it, the way a rail
+         group's page carries its tools, one button where the group is one
+         view, so every view's head sits at one height. Settings is the
+         header's ... menu's and has no group; its row is its own button.
+         Every view keeps its data-v and its address. -->
     <div class="nbtabs" role="tablist">
       <div class="nbgroups">
-        <button type="button" data-g="overview" data-v="briefing">Overview</button>
+        <button type="button" data-g="overview">Overview</button>
         <button type="button" data-g="plan">Plan</button>
         <button type="button" data-g="code">Code</button>
         <button type="button" data-g="ship">Ship</button>
         <button type="button" data-g="docs">Docs</button>
       </div>
-      <div class="nbsub" hidden>
+      <div class="nbsub">
+        <button type="button" data-v="briefing" data-in="overview">Overview</button>
         <button type="button" data-v="roadmap" data-in="plan">Roadmap</button>
         <button type="button" data-v="bugs" data-in="plan">Bugs</button>
         <button type="button" data-v="git" data-in="code">Git</button>

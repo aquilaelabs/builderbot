@@ -990,8 +990,8 @@ ${code}`], { encoding: 'utf8' }).trim();
      'the edit dialog refuses an email that is not one, and stays open');
   await page.fill('#umodal #ueEmail', 'tab@example.invalid');
   await page.click('#umodal #ueRolesGo');
-  await page.waitForSelector('.rolestab #rolesWho', { timeout: 15000 });
-  ok(await page.$eval('#rolesWho', s => s.value) === 'tabmade' && await page.$eval('#umodal', m => m.hidden),
+  await page.waitForSelector('.rolestab [data-rwho="tabmade"].on', { timeout: 15000 });
+  ok(await page.evaluate(() => rolesWho) === 'tabmade' && await page.$eval('#umodal', m => m.hidden),
      '...and its Roles button opens the Roles tab on that account');
   {
     const post = (b) => page.evaluate(async (body) => (await fetch('/api/roles', { method: 'POST',
@@ -1629,10 +1629,11 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       ok(gOwner && /^owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
          `a project's owner role carries its project (${JSON.stringify(gOwner || {}).slice(0, 80)})`);
       await page.evaluate(() => openRolesTab());
-      await page.waitForSelector('#rolesWho', { timeout: 15000 });
-      await page.selectOption('#rolesWho', 'plainone');
-      await page.waitForFunction(n => document.querySelectorAll(`[data-rprole="${n}"]`).length > 0, gOwner?.name || '', { timeout: 10000 }).catch(() => {});
-      const where = await page.evaluate(n => [...document.querySelectorAll(`[data-rprole="${n}"]`)].map(e => e.closest('.rproj')?.dataset.rproject), gOwner?.name || '');
+      await page.waitForSelector('.rolestab [data-rwho]', { timeout: 15000 });
+      await page.click('.rolestab [data-rwho="plainone"]');
+      // Where the role is offered, as the Add to project row fills its
+      // role picker for each project (R255 step 9).
+      const where = await page.evaluate(n => (rolesData.projects || []).filter(pn => rolesOnProject(pn).some(r => r.name === n)), gOwner?.name || '');
       ok(where.length === 1 && where[0] === 'gamma',
          `...and the People section offers it under gamma alone (${JSON.stringify(where)})`);
       await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'test' });

@@ -596,11 +596,10 @@ export const nbShown = (page) =>
 // opens it. `scope` narrows to one notebook.
 export async function nbGo(page, v, scope = '.pane .nb'){
   if (v === 'settings') return page.evaluate(() => getNotebook(tabOf(panes[0])?.arg)?.view('settings'));
-  const g = await page.evaluate(({ s, w }) => {
-    const bs = [...document.querySelectorAll(`${s} .nbtabs [data-v="${w}"]`)];
-    const b = bs.find(x => x.closest('.doc.on')) || bs[0];
-    return b && b.hidden && b.dataset.in ? b.dataset.in : '';
-  }, { s: scope, w: v });
+  // Found as Playwright finds it, so a scope in its own selector language
+  // (version.mjs's :text-is) works here as it does in a click.
+  const el = await page.$(`${scope} .nbtabs [data-v="${v}"]`);
+  const g = el ? await el.evaluate(b => b.hidden && b.dataset.in ? b.dataset.in : '') : '';
   if (g) await page.click(`${scope} .nbtabs .nbgroups [data-g="${g}"] >> visible=true`);
   await page.click(`${scope} .nbtabs [data-v="${v}"] >> visible=true`);
 }

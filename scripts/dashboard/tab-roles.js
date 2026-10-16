@@ -1,8 +1,10 @@
 // The Roles tab (R152, the operator, 7 Oct): everything an account may do,
 // set here and nowhere else, in two sections with a Save and a Revert each.
-// People: an account picked, its Everywhere roles, the roles it holds on
-// each project (holding one is being on the project, R155), and what that
-// adds up to. Roles: a role picked or added, its kind (Everywhere, or On a
+// Each a list beside the one picked (R255 step 9). People: the accounts,
+// and for the one picked its Everywhere roles, the projects it is on with
+// its roles there (holding one is being on the project, R155), Add to
+// project, and what that adds up to. Roles: the roles with their kind and
+// holders, and for the one picked or added its kind (Everywhere, or On a
 // project) and Read and Write per area, Write needing Read. Owner and admin are built in and read only. A project's
 // owner who is not an administrator sees the people of the projects they
 // own and gives those projects' roles; the server holds every rule
@@ -59,50 +61,92 @@ function rolesPeopleFrom(p){
               project_roles: JSON.parse(JSON.stringify(p.project_roles || {}))} : null;
 }
 
+// ---- a list beside the one picked ----------------------------------------
+// Both sections are a list and the picked one's detail side by side at a
+// desk (R255 step 9, the operator 16 Oct: every project listed for an
+// account that is on none of them, and half the desk empty); on a phone the
+// list, then the detail over it with a way back.
+const rolesOpen = {people: false, roles: false};
+function rolesSplit(which, list, detail){
+  return `<div class="rsplit${rolesOpen[which] ? " open" : ""}" data-rsplit="${which}">
+    <div class="rlist">${list}</div>
+    <div class="rdetail"><button type="button" class="rback" data-rback="${which}">‹ ${which === "people" ? "Every account" : "Every role"}</button>${detail}</div>
+  </div>`;
+}
+const rolesLabel = n => rolesData.roles?.[n]?.label || n;
+
+// An account's row: its name, and what it holds as tags.
+function rolesPersonRow(x){
+  const on = Object.values(x.project_roles || {}).filter(v => (v || []).length).length;
+  const tags = x.role === "owner" ? [`<span class="pill ok">BuilderBot's owner</span>`]
+    : [...(x.roles || []).map(n => `<span class="pill">${esc(rolesLabel(n))}</span>`),
+       on ? `<span class="dim">on ${on} project${on === 1 ? "" : "s"}</span>` : ""].filter(Boolean);
+  return `<button type="button" class="rrow${x.name === rolesWho ? " on" : ""}" data-rwho="${esc(x.name)}"${x.name === rolesWho ? ' aria-current="true"' : ""}>
+    <span class="name">${esc(x.name)}</span><span class="rtags">${tags.join("") || `<span class="dim">no role</span>`}</span></button>`;
+}
+
+// The roles a project offers: every role on a project, and its own owner
+// role there and nowhere else (B726).
+const rolesOnProject = pn => Object.values(rolesData.roles || {}).filter(r => r.scope === "projects" && (!r.project || r.project === pn));
+
 function rolesPeopleBody(){
   const d = rolesData, people = d.people || [];
   if (!rolesWho && people.length) rolesWho = people[0].name;
   const p = rolesPerson();
   if (p && !rolesPeopleDraft) rolesPeopleDraft = rolesPeopleFrom(p);
   const dr = rolesPeopleDraft;
-  const all = Object.values(d.roles || {});
-  const onProject = all.filter(r => r.scope === "projects");
+  const list = people.map(rolesPersonRow).join("") || `<div class="empty">nobody yet</div>`;
+  if (!p) return rolesSplit("people", list, `<div class="empty">nobody to show</div>`);
+  const head = `<div class="rhead"><b>${esc(p.name)}</b></div>`;
   // The owner holds everything and is nobody's to change, its own too.
-  const locked = p && p.role === "owner";
-  const pick = `<div class="setrow col">${lbl("rolesWho", "Account")}
-    <select id="rolesWho">${people.map(x => `<option value="${esc(x.name)}"${x.name === rolesWho ? " selected" : ""}>${
-      esc(x.name)}${x.role === "owner" ? " (owner)" : ""}</option>`).join("")}</select></div>`;
-  if (!p) return pick + `<div class="sub">nobody to show</div>`;
-  if (locked) return pick + `<div class="sub">${esc(p.name)} is BuilderBot's owner: every area, everywhere, and not changed here.</div>`;
-  const everywhere = all.filter(r => r.scope === "global" && r.name !== "owner");
+  if (p.role === "owner")
+    return rolesSplit("people", list, `${head}<div class="sub">${esc(p.name)} is BuilderBot's owner: every area, everywhere, and not changed here.</div>`);
+  const everywhere = Object.values(d.roles || {}).filter(r => r.scope === "global" && r.name !== "owner");
   const global = d.admin ? `<div class="setrow col">${lbl("", "Everywhere roles", "hold on every project and on BuilderBot itself, as far as each one's areas say")}
       <div class="upick" id="rolesGlobal">${everywhere.map(r => `<label class="pick"><input type="checkbox" data-rglobal="${esc(r.name)}"${
         dr.roles.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("")}</div></div>` : "";
-  // Holding a role on a project is being on it (R155): no separate box.
-  const projects = (d.projects || []).map(pn => {
+  // The projects it is on, and only those: holding a role on a project is
+  // being on it (R155), and a row of every project it is not on said
+  // nothing a picker does not.
+  const all = d.projects || [];
+  const on = all.filter(pn => (dr.project_roles[pn] || []).length);
+  const rows = on.map(pn => {
     const have = dr.project_roles[pn] || [];
-    // A role that is one project's (its owner role, B726) is offered
-    // under that project and no other.
-    const here = onProject.filter(r => !r.project || r.project === pn);
     return `<div class="rproj" data-rproject="${esc(pn)}">
-      <div class="rprojname"><b>${esc(projLabel(pn))}</b> <span class="dim">${have.length ? "" : "not on it"}</span></div>
-      <div class="upick">${here.length ? here.map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
-        have.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("") : `<span class="dim">no roles on a project yet: add one under Roles</span>`}</div>
+      <b class="rprojname">${esc(projLabel(pn))}</b>
+      <span class="upick">${rolesOnProject(pn).map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
+        have.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("")}</span>
+      <button type="button" class="ic" data-rprojoff="${esc(pn)}" aria-label="take ${esc(p.name)} off ${esc(projLabel(pn))}" title="take off this project">×</button>
     </div>`;
   }).join("");
-  return `${pick}${global}
-    <div class="setrow col">${lbl("", d.admin ? "Projects" : "Your projects", "a role ticked on a project puts the account on it; none ticked, it is not on it")}
-      <div class="rprojects">${projects || `<span class="dim">no projects</span>`}</div></div>
+  const off = all.filter(pn => !on.includes(pn));
+  const addPn = off.includes(rolesAddProj) ? rolesAddProj : off[0] || "";
+  // No role on a project at all: there is nothing to put it on a project
+  // with, and the place that makes one is named instead of an empty picker.
+  const anyProjRole = Object.values(d.roles || {}).some(r => r.scope === "projects");
+  const add = off.length && !anyProjRole ? `<div class="sub dim raddon">No role on a project yet: one made under Roles puts ${esc(p.name)} on a project.</div>`
+    : off.length ? `<div class="raddon">
+      <select id="rolesAddProj" aria-label="the project">${off.map(pn => `<option value="${esc(pn)}"${pn === addPn ? " selected" : ""}>${esc(projLabel(pn))}</option>`).join("")}</select>
+      <select id="rolesAddRole" aria-label="the role there">${rolesOnProject(addPn).map(r => `<option value="${esc(r.name)}">${esc(r.label || r.name)}</option>`).join("")}</select>
+      <button type="button" id="rolesAddOn"${rolesOnProject(addPn).length ? "" : " disabled"}>Add to project</button></div>` : "";
+  const detail = `${head}${global}
+    <div class="setrow col">${lbl("", d.admin ? "Projects" : "Your projects", "a role on a project puts the account on it; taken off, it is not on it")}
+      <div class="rprojects">${rows || `<div class="empty">on no project yet</div>`}</div>${add}</div>
     ${rolesCanDo(p.name, dr)}
     <div class="actbar"><span class="state">${rolesPeopleDirty() ? "unsaved" : ""}</span>
       <button type="button" id="rolesPeopleRevert">Revert</button>
       <button type="button" class="primary" id="rolesPeopleSave">Save</button></div>`;
+  return rolesSplit("people", list, detail);
 }
+let rolesAddProj = "";
 
 // What an account's roles add up to, worked out from the draft so it moves
-// as boxes are ticked (R155, the operator: "why can't they..." at a glance).
-// Per project the areas it reads and writes, then the areas that are not
-// about a project. An administrator's answer is "everything", said as such.
+// as boxes are ticked (R155, the operator: "why can't they..." at a glance):
+// a grid of the project areas it holds, a column for what its Everywhere
+// roles give on every project and one per project it is on, then the areas
+// that are not about a project in a line. An administrator's answer is
+// "everything", said as such.
+const ROLES_LVL = {write: "Write", read: "Read"};
 function rolesCanDo(name, dr){
   const d = rolesData, areas = d.areas || [];
   const per = names => {
@@ -117,23 +161,21 @@ function rolesCanDo(name, dr){
   if (dr.roles.includes("admin"))
     return `<div class="setrow col">${lbl("", `What ${name} can do`)}<div class="sub">everything but change the owner: admin holds every area</div></div>`;
   const glob = per(dr.roles);
-  const say = (got, keys) => {
-    const w = keys.filter(k => got[k] === "write"), r = keys.filter(k => got[k] === "read");
-    const nm = k => (areas.find(a => a[0] === k) || [])[1] || k;
-    return [w.length ? `writes ${w.map(nm).join(", ")}` : "", r.length ? `reads ${r.map(nm).join(", ")}` : ""]
-      .filter(Boolean).join("; ");
-  };
+  const nm = k => (areas.find(a => a[0] === k) || [])[1] || k;
   const projKeys = areas.filter(a => a[2] !== "global").map(a => a[0]);
   const globKeys = areas.filter(a => a[2] === "global").map(a => a[0]);
-  const rows = (d.projects || []).map(pn => {
-    const got = per([...dr.roles, ...(dr.project_roles[pn] || [])]);
-    const line = say(got, projKeys);
-    return line ? `<div class="sub"><b>${esc(projLabel(pn))}</b>: ${esc(line)}</div>` : "";
-  }).filter(Boolean);
-  const g = say(glob, globKeys);
+  const on = (d.projects || []).filter(pn => (dr.project_roles[pn] || []).length);
+  const cols = [{label: "Every project", got: glob}, ...on.map(pn => ({label: projLabel(pn), pn, got: per([...dr.roles, ...dr.project_roles[pn]])}))];
+  const keys = projKeys.filter(k => cols.some(c => c.got[k]));
+  const tcols = [{label: "Area"}, ...cols.map(c => ({label: c.label, w: "minmax(5rem,.5fr)"}))];
+  const grid = keys.length ? tblWrap(tcols, keys.map(k => `<div class="row" data-rcan="${esc(k)}">${tblLine(tcols, [esc(nm(k)),
+      ...cols.map(c => c.got[k] ? `<span class="rlvl ${c.got[k]}"${c.pn ? ` data-rcanp="${esc(c.pn)}"` : ""}>${ROLES_LVL[c.got[k]]}</span>` : `<span class="dim">·</span>`)])}</div>`).join(""), "rcan")
+    : `<div class="empty">nothing on any project</div>`;
+  const w = globKeys.filter(k => glob[k] === "write"), r = globKeys.filter(k => glob[k] === "read");
+  const beyond = [w.length ? `writes ${w.map(nm).join(", ")}` : "", r.length ? `reads ${r.map(nm).join(", ")}` : ""].filter(Boolean).join("; ");
   return `<div class="setrow col">${lbl("", `What ${name} can do`, "worked out from the boxes above, saved or not")}
-    ${rows.join("") || `<div class="empty">nothing on any project</div>`}
-    <div class="sub">${g ? `<b>Beyond projects</b>: ${esc(g)}` : `<span class="dim">nothing beyond projects</span>`}</div></div>`;
+    ${grid}
+    <div class="sub">${beyond ? `<b>Beyond projects</b>: ${esc(beyond)}` : `<span class="dim">nothing beyond projects</span>`}</div></div>`;
 }
 
 function rolesPeopleDirty(){
@@ -154,12 +196,21 @@ function rolesRoleBody(){
   if (!rolesPick && names.length) rolesPick = names[0];
   if (!rolesDraft || (!rolesDraft.fresh && rolesDraft.name !== rolesPick)) rolesDraft = rolesFrom(d.roles[rolesPick]);
   const r = rolesDraft;
-  const pick = `<div class="setrow col">${lbl("rolesPick", "Role")}
-    <div class="rpickrow"><select id="rolesPick">${names.map(n => `<option value="${esc(n)}"${n === rolesPick && !r?.fresh ? " selected" : ""}>${
-      esc(d.roles[n].label || n)}${d.roles[n].builtin ? " (built in)" : ""}</option>`).join("")}${r?.fresh ? `<option selected>${esc(r.name)} (new)</option>` : ""}</select>
-      ${d.admin ? `<input id="rolesNewName" placeholder="a new role's name" autocomplete="off" aria-label="a new role's name">
-      <button type="button" id="rolesAdd">Add role</button>` : ""}</div></div>`;
-  if (!r) return pick;
+  // Who holds each role, for its row and its detail.
+  const holders = n => (d.people || []).filter(x => (x.roles || []).includes(n)
+    || Object.values(x.project_roles || {}).some(v => (v || []).includes(n))).map(x => x.name);
+  const kind = x => x.builtin ? "built in" : x.scope === "global" ? "Everywhere" : x.project ? `on ${projLabel(x.project)}` : "on a project";
+  const list = (d.admin ? `<div class="raddrole"><input id="rolesNewName" placeholder="a new role's name" autocomplete="off" aria-label="a new role's name">
+      <button type="button" id="rolesAdd">Add role</button></div>` : "")
+    + (r?.fresh ? `<button type="button" class="rrow on" aria-current="true"><span class="name">${esc(r.name)}</span><span class="rtags"><span class="dim">new, not saved</span></span></button>` : "")
+    + names.map(n => { const x = d.roles[n], h = holders(n).length, on = n === rolesPick && !r?.fresh;
+        return `<button type="button" class="rrow${on ? " on" : ""}" data-rpick="${esc(n)}"${on ? ' aria-current="true"' : ""}>
+          <span class="name">${esc(x.label || n)}</span><span class="rtags"><span class="pill">${esc(kind(x))}</span><span class="dim">${
+            h ? `${h} ${h === 1 ? "person" : "people"}` : "nobody"}</span></span></button>`; }).join("");
+  if (!r) return rolesSplit("roles", list, `<div class="empty">no role picked</div>`);
+  const who = r.fresh ? [] : holders(r.name);
+  const pick = `<div class="rhead"><b>${esc(r.fresh ? r.name : (d.roles[r.name]?.label || r.name))}</b>${
+    r.fresh ? "" : ` <span class="dim">${who.length ? `held by ${esc(who.join(", "))}` : "held by nobody yet"}</span>`}</div>`;
   const ro = r.builtin || !d.admin;
   // A table (R218 step 8): the area, with what Read and Write let one do
   // under its name, then its two boxes in their columns.
@@ -177,7 +228,7 @@ function rolesRoleBody(){
   const why = !ro && (d.areas || []).some(([, , group]) => offOf(group))
     ? `<div class="sub bad" id="rolesWhyOff">The gray areas are not about one project: only an Everywhere role holds them.</div>` : "";
   const areas = why + tblWrap(ROLE_AREA_COLS, rows, "rareas");
-  return `${pick}
+  return rolesSplit("roles", list, `${pick}
     <div class="setrow col">${lbl("rolesScope", "Kind", "On a project: given per project under People, and holds there. Everywhere: given to the account, holds on every project and is the only kind that reaches the nodes, toolchains and the controller")}
       <select id="rolesScope"${ro ? " disabled" : ""}>
         <option value="projects"${r.scope !== "global" ? " selected" : ""}>On a project</option>
@@ -194,7 +245,7 @@ function rolesRoleBody(){
     ${ro ? "" : `<div class="actbar"><span class="state">${rolesRoleDirty() ? "unsaved" : ""}</span>
       <button type="button" id="rolesRevert">Revert</button>
       <button type="button" class="primary" id="rolesSave">Save</button>
-      ${r.fresh ? "" : `<button type="button" class="danger" id="rolesRemove">Remove</button>`}</div>`}`;
+      ${r.fresh ? "" : `<button type="button" class="danger" id="rolesRemove">Remove</button>`}</div>`}`);
 }
 
 function rolesRoleDirty(){
@@ -211,9 +262,10 @@ function renderRolesInto(i){
   if (rolesData === null){
     // Its template (R218 step 16): the two sections and their fields' labels
     // are the page's own; who holds what is on its way.
+    const split = detail => `<div class="rsplit"><div class="rlist">${skRows(4)}</div><div class="rdetail">${detail}</div></div>`;
     const field = (label, em) => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
-    d.list.innerHTML = skTpl(docSection("roles", "people", "People", "", field("Account", 16))
-      + docSection("roles", "roles", "Roles", "", field("Role", 12) + field("Kind", 16) + skRows(6)));
+    d.list.innerHTML = skTpl(docSection("roles", "people", "People", "", split(field("Everywhere roles", 18) + field("Projects", 22)))
+      + docSection("roles", "roles", "Roles", "", split(field("Kind", 16) + skRows(5))));
     loadRoles();
     return;
   }
@@ -229,8 +281,31 @@ function renderRolesInto(i){
 function rolesRedraw(){ rolesRev++; drawPanes(); }
 
 function wireRoles(el){
-  const who = el.querySelector("#rolesWho");
-  if (who) who.onchange = () => { rolesWho = who.value; rolesPeopleDraft = null; rolesRedraw(); };
+  // An account or a role picked from its list (on a phone, the detail
+  // comes over the list), and Back to the list.
+  el.querySelectorAll("[data-rwho]").forEach(b => b.onclick = () => {
+    if (b.dataset.rwho !== rolesWho && rolesPeopleDirty() && !confirm(`Leave ${rolesWho}'s changes unsaved?`)) return;
+    rolesWho = b.dataset.rwho; rolesPeopleDraft = null; rolesOpen.people = true; rolesRedraw();
+  });
+  el.querySelectorAll("[data-rpick]").forEach(b => b.onclick = () => {
+    if (b.dataset.rpick !== rolesPick && rolesRoleDirty() && !confirm(`Leave the changes to ${rolesDraft.name} unsaved?`)) return;
+    rolesPick = b.dataset.rpick; rolesDraft = null; rolesOpen.roles = true; rolesRedraw();
+  });
+  el.querySelectorAll("[data-rback]").forEach(b => b.onclick = () => { rolesOpen[b.dataset.rback] = false; rolesRedraw(); });
+  // Off a project: every role it held there goes, which is being off it.
+  el.querySelectorAll("[data-rprojoff]").forEach(b => b.onclick = () => {
+    delete rolesPeopleDraft.project_roles[b.dataset.rprojoff];
+    rolesRedraw();
+  });
+  // On a project: the one picked, with the role picked for it there.
+  const ap = el.querySelector("#rolesAddProj"), ar = el.querySelector("#rolesAddRole"), ao = el.querySelector("#rolesAddOn");
+  if (ap) ap.onchange = () => { rolesAddProj = ap.value; rolesRedraw(); };
+  if (ao) ao.onclick = () => {
+    if (!ap?.value || !ar?.value) return;
+    rolesPeopleDraft.project_roles[ap.value] = [ar.value];
+    rolesAddProj = "";
+    rolesRedraw();
+  };
   el.querySelectorAll("[data-rglobal]").forEach(cb => cb.onchange = () => {
     const dr = rolesPeopleDraft, n = cb.dataset.rglobal;
     dr.roles = cb.checked ? [...new Set([...dr.roles, n])] : dr.roles.filter(x => x !== n);
@@ -255,14 +330,13 @@ function wireRoles(el){
     rolesRedraw();
   };
 
-  const rp = el.querySelector("#rolesPick");
-  if (rp) rp.onchange = () => { rolesPick = rp.value; rolesDraft = null; rolesRedraw(); };
   const add = el.querySelector("#rolesAdd"), nm = el.querySelector("#rolesNewName");
   if (add) add.onclick = () => {
     const name = (nm?.value || "").trim();
     if (!name) return notify("a name for the role", true);
     if (rolesData.roles[name]) return notify(`${name} is a role already`, true);
     rolesDraft = {name, scope: "projects", perms: {}, note: "", fresh: true, builtin: false, nodes: []};
+    rolesOpen.roles = true;
     rolesRedraw();
   };
   const sc = el.querySelector("#rolesScope");

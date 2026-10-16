@@ -31,12 +31,14 @@ const openSect = async id => {
 // From a clean slate: a kept fixture may hold these from a run before.
 for (const n of ['deployer', 'installer']) await api('/api/roles', { action: 'remove', name: n });
 await page.evaluate(() => openRolesTab());
-await page.waitForSelector('.rolestab #rolesWho', { timeout: 15000 });
+await page.waitForSelector('.rolestab [data-rwho]', { timeout: 15000 });
 await openSect('roles:roles');
-const names = await page.$$eval('#rolesPick option', os => os.map(o => o.textContent.trim()));
+// The roles a list beside the one picked (R255 step 9): each row its name,
+// its kind and who holds it.
+const names = await page.$$eval('.rolestab [data-rpick]', rs => rs.map(r => `${r.querySelector('.name').textContent.trim()} (${r.querySelector('.pill').textContent.trim()})`));
 ok(names.includes("BuilderBot's owner (built in)") && names.includes('Administrator (built in)') && !names.some(n => /^user\b/i.test(n)),
    `owner and admin are built in, and there is no user role (${names.join(', ')})`);
-await page.selectOption('#rolesPick', 'admin');
+await page.click('.rolestab [data-rpick="admin"]');
 ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 15
      && [...t.querySelectorAll('[data-rread]')].every(c => c.disabled)),
    '...a built-in one reads as every area, with nothing to change and no Save');
@@ -54,7 +56,7 @@ await page.check('[data-rread="releases"]');
 await page.check('[data-rwrite="releases"]');
 await page.fill('#rolesNote', 'moves versions');
 await page.click('#rolesRevert');
-ok(!(await page.$$eval('#rolesPick option', os => os.map(o => o.textContent))).some(t => /deployer/.test(t)),
+ok(!(await page.$$eval('.rolestab .rrow', rs => rs.map(r => r.textContent))).some(t => /deployer/.test(t)),
    'Revert drops a role that was never saved');
 await page.fill('#rolesNewName', 'deployer');
 await page.click('#rolesAdd');
@@ -86,14 +88,22 @@ const depAuth = asUser('dep', 'deppass11');
 await page.evaluate(() => loadRoles());
 await page.waitForFunction(() => (rolesData?.people || []).some(p => p.name === 'dep'), null, { timeout: 10000 });
 await openSect('roles:people');
-await page.selectOption('#rolesWho', 'dep');
+await page.click('.rolestab [data-rwho="dep"]');
 // Holding a role on a project is being on it (R155): no separate box, and
 // a project role is not offered among the Everywhere ones.
 ok(!(await page.$$('[data-ron]')).length && !(await page.$$('[data-rglobal="deployer"]')).length,
    'a project role is given on a project alone, and there is no separate "on it" box');
-await page.check('[data-rproject="alpha"] [data-rprole="deployer"]');
-await page.waitForFunction(() => /alpha: writes Releases and versions; reads Projects/.test(document.querySelector('.rolestab')?.innerText || ''));
-ok(true, 'What dep can do says it, as the box is ticked and before Save');
+// Only the projects an account is on are listed; Add to project puts it on
+// one with a role there (R255 step 9).
+ok(!(await page.$$('.rolestab [data-rproject]')).length && await page.$eval('#rolesAddProj', s => [...s.options].some(o => o.value === 'alpha')),
+   'an account on no project lists none, and Add to project offers them');
+await page.selectOption('#rolesAddProj', 'alpha');
+await page.selectOption('#rolesAddRole', 'deployer');
+await page.click('#rolesAddOn');
+await page.waitForSelector('.rolestab [data-rproject="alpha"] [data-rprole="deployer"]:checked');
+await page.waitForFunction(() => document.querySelector('[data-rcan="releases"] [data-rcanp="alpha"]')?.textContent === 'Write'
+  && document.querySelector('[data-rcan="projects"] [data-rcanp="alpha"]')?.textContent === 'Read');
+ok(true, 'What dep can do says it in its grid, alpha writing Releases and reading Projects, before Save');
 await page.click('#rolesPeopleSave');
 await page.waitForFunction(() => rolesData?.people?.find(p => p.name === 'dep')?.project_roles?.alpha, null, { timeout: 10000 });
 const onAlpha = await api('/api/version', { project: 'alpha', action: 'nothing-much' }, depAuth);
