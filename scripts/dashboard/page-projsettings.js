@@ -619,6 +619,12 @@ function renameProject(name, mode = "all"){
   settingsOut();
   rnFor = name;
   rnMode = mode;
+  // The Also works on list is drawn from what is saved on its first draw
+  // for this opening, and from its own ticks after: the element outlives a
+  // project, so its mark went stale and the next project's list kept the
+  // last one's ticks, reading a saved node as one to drop (seen on dev,
+  // 16 Oct: Nodes unsaved on opening, and a Save that would remove it).
+  delete $("rnNodesMore").dataset.drawn;
   const p = (state?.projects || []).find(x => x.name === name);
   // One dialog, two doors. The gear is the project's own settings; the chain
   // is the remote's half of them, and opening it there hides everything that

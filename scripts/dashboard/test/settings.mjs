@@ -448,6 +448,27 @@ ok(elsewhere.git_name === 'T. Person',
        && $('rnBuildCmd').value === 'make one'),
      '...and its Revert puts Claude may back alone');
   await post('/api/prefs', { project: 'alpha', build: '' });
+  // Also works on is drawn from what is saved each opening: the list's
+  // element outlives a project, and its stale mark left the next project's
+  // list with the last one's ticks, so a saved node read as one to drop
+  // (seen on dev, 16 Oct).
+  {
+    const ns = await page.evaluate(async () => (await (await fetch('/api/v1/nodes')).json()).nodes);
+    const first = ns.find(n => n.kind !== 'local');
+    const other = (await post('/api/v1/nodes', { action: 'enroll', name: 'also-works' })).body;
+    await post('/api/prefs', { project: 'alpha', node: first.id, nodes: [first.id, other.id] });
+    await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.nodes?.length === 2, { timeout: 20000 });
+    await page.evaluate(async () => { await loadNodes(); openProjectSettings('beta'); });
+    await page.waitForTimeout(800);
+    await page.evaluate(() => openProjectSettings('alpha'));
+    await page.waitForTimeout(800);
+    const also = await page.evaluate(id => ({ ticked: !!document.querySelector(`#rnNodesMore input[value="${id}"]`)?.checked,
+      unsaved: !document.querySelector('.rnnav [data-rnpick="runs"] .rnunsaved')?.hidden }), other.id);
+    ok(also.ticked && !also.unsaved,
+       `a project's second node is ticked under Also works on after another project's settings were open, and Nodes holds nothing unsaved (${JSON.stringify(also)})`);
+    await post('/api/prefs', { project: 'alpha', node: first.id, nodes: [first.id] });
+    await post('/api/v1/nodes', { action: 'retire', id: other.id });
+  }
   await page.evaluate(() => getNotebook('alpha').view('roadmap'));
   ok(await page.evaluate(() => !!document.querySelector('#rnmodal > .box') && $('rnmodal').hidden),
      '...and picking another view puts the form back where the dialog keeps it');

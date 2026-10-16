@@ -614,6 +614,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Another account on a project no longer lists the owner's Claude session on a node as its own (Sessions, and Sign out's count) (eba3133)
 - Only one of the bell, the doctor and the gear menu is open at a time (693defa)
 - A project's Settings keep People, the section picked and anything typed when asked for again (6098e71)
+- A project's Nodes settings no longer show its second node unticked after another project's settings were open, where saving would have removed it (78f5678)
 
 ### Security
 
