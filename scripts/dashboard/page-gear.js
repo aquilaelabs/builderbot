@@ -196,7 +196,7 @@ function drawUiMenu(){
       <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
         role="menuitemradio" aria-checked="${id === cur}"
         aria-label="${esc(label)}" title="${esc(label)}">
-        <span class="swa"></span><span class="swi"></span>
+        <span class="swa"></span><span class="swb"></span><span class="swi"></span>
         <span class="swp"></span><span class="swn">${esc(label)}</span>
       </button>`).join("")}</div>
     <h4>Account</h4>

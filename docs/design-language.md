@@ -20,7 +20,7 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--accent` | `#3fb950` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d29922` | a warning, and the amber marks |
 | `--bad` | `#f8524a` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#58a6ff` | an informational mark, the low level |
+| `--note` | `#58a6ff` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -48,7 +48,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#2fb8c6` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d7ab4c` | a warning, and the amber marks |
 | `--bad` | `#ef6a63` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#6fb3e0` | an informational mark, the low level |
+| `--note` | `#e391d9` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -62,7 +62,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#007480` |
 | `--warn` | `#906700` |
 | `--bad` | `#b53433` |
-| `--note` | `#236a93` |
+| `--note` | `#9b3a8f` |
 
 ### Carbon (dark)
 
@@ -76,7 +76,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#e64e53` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ff6b6b` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#7aa2f7` | an informational mark, the low level |
+| `--note` | `#3cc6b5` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -90,7 +90,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#b6192c` |
 | `--warn` | `#905e00` |
 | `--bad` | `#bb2933` |
-| `--note` | `#3c5fae` |
+| `--note` | `#00756a` |
 
 ### Ember (dark)
 
@@ -104,7 +104,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#f0873f` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e8bb50` | a warning, and the amber marks |
 | `--bad` | `#ef5f52` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#8fb4d9` | an informational mark, the low level |
+| `--note` | `#4cc9d0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -118,7 +118,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#a34100` |
 | `--warn` | `#8b6100` |
 | `--bad` | `#ba2c25` |
-| `--note` | `#446688` |
+| `--note` | `#00707a` |
 
 ### Ice (dark)
 
@@ -132,7 +132,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#58c7e8` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d3ab52` | a warning, and the amber marks |
 | `--bad` | `#ee6a68` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#7cc0ff` | an informational mark, the low level |
+| `--note` | `#b8a2ff` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -146,7 +146,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#00708f` |
 | `--warn` | `#886200` |
 | `--bad` | `#b43439` |
-| `--note` | `#2167a0` |
+| `--note` | `#6448c0` |
 
 ### Moss (dark)
 
@@ -160,7 +160,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#63c98a` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d6ad4e` | a warning, and the amber marks |
 | `--bad` | `#e8695f` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#74b3d8` | an informational mark, the low level |
+| `--note` | `#b49cf0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -174,7 +174,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#00783f` |
 | `--warn` | `#8e6800` |
 | `--bad` | `#b33833` |
-| `--note` | `#2b6a8c` |
+| `--note` | `#6a48b5` |
 
 ### Nocturne (dark)
 
@@ -188,7 +188,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#9d7cff` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e0b24d` | a warning, and the amber marks |
 | `--bad` | `#f2637b` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#7cb0ff` | an informational mark, the low level |
+| `--note` | `#5fdcb4` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -202,7 +202,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#6a44c2` |
 | `--warn` | `#916600` |
 | `--bad` | `#b72b4c` |
-| `--note` | `#3262aa` |
+| `--note` | `#08765a` |
 
 ### Nostromo (dark)
 
@@ -216,7 +216,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#ffb000` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e0913a` | a warning, and the amber marks |
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#6fa8dc` | an informational mark, the low level |
+| `--note` | `#6fa8dc` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -270,7 +270,7 @@ This scheme squares all three corner tokens in its dark half; its light half is 
 | `--accent` | `#c874d8` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#dfae52` | a warning, and the amber marks |
 | `--bad` | `#ee6183` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#83aee8` | an informational mark, the low level |
+| `--note` | `#7dd8a0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -284,7 +284,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#8c3a9b` |
 | `--warn` | `#936500` |
 | `--bad` | `#b62b55` |
-| `--note` | `#3d6499` |
+| `--note` | `#18773f` |
 
 ### Rust (dark)
 
@@ -298,7 +298,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#cf6a4c` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#e8544a` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#7fa8c9` | an informational mark, the low level |
+| `--note` | `#6cc2a8` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -312,7 +312,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#a14123` |
 | `--warn` | `#905e00` |
 | `--bad` | `#bc2825` |
-| `--note` | `#416886` |
+| `--note` | `#16705a` |
 
 ### Sepia (dark)
 
@@ -326,7 +326,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#d3a94f` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e3c069` | a warning, and the amber marks |
 | `--bad` | `#e0705f` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#9db98c` | an informational mark, the low level |
+| `--note` | `#5fbdb0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -340,7 +340,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#835c00` |
 | `--warn` | `#8a6900` |
 | `--bad` | `#ac4133` |
-| `--note` | `#536c43` |
+| `--note` | `#0b6c64` |
 
 ### Slate (dark)
 
@@ -354,7 +354,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#6ea8fe` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ef6f6c` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#7fb8ff` | an informational mark, the low level |
+| `--note` | `#a6d96a` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
 
@@ -368,7 +368,7 @@ Its light half, the same tokens under the mode switch:
 | `--accent` | `#2a61b1` |
 | `--warn` | `#905e00` |
 | `--bad` | `#b2373a` |
-| `--note` | `#2e64a5` |
+| `--note` | `#4b7512` |
 
 ## Type
 
@@ -430,6 +430,8 @@ The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mi
 **A Claude session's dot is yellow while it works and green once it is idle** (`--warn`, breathing, then the accent: the operator, 16 Oct), as the phone app has it.
 
 **What is live glows (R218 step 7).** A session dot working or waiting and a pill marking something running (`.pill.live`: a running job, a running container) carry a soft glow in their own color: a 2px ring at a fifth of it and an 8 to 10px blur at about half. One glow, small, so it reads as lit; nothing that is merely fine glows.
+
+**Every scheme has two hues (the operator, 16 Oct).** The accent is what is pressed and what is chosen; `--note`, the second color, is a link in words (the base `a` rule, the wiki and Help, facts, the jump chips), the view chosen in a group's row and an info note, and it sits apart from the accent on the wheel and from `--warn` and `--bad`, so it never reads as a warning: green and blue, amber and steel, blue and lime, red and teal, violet and mint, green and lavender, orange and turquoise, teal and orchid, purple and mint, rust and sage, ice and lavender, gold and teal. Both halves hold it at AA on the page and the panel. A swatch shows both, as two dots.
 
 ### shape
 
