@@ -100,7 +100,12 @@ def main():
         r = subprocess.run(["bash", "-c", 'eval "$(bash "$0" toolchains env 2>/dev/null)"; exec bash "$0" rules check',
                             bb], cwd=cwd, capture_output=True,
                            text=True, timeout=3600,
-                           env={**os.environ, "BB_PROJECT": project})
+                           # Never waiting for a run that holds the test lock
+                           # (B759): a session's own suites are what holds it,
+                           # and waiting then running the whole suite behind
+                           # them blocked the hand-back on its flakes. Refused,
+                           # it is skipped below and runs on the next one.
+                           env={**os.environ, "BB_PROJECT": project, "BB_TEST_WAIT_LOCK": "0"})
     except (OSError, subprocess.SubprocessError):
         return
     out = (r.stdout or "") + (r.stderr or "")
@@ -124,9 +129,13 @@ def main():
         except OSError:
             pass
         return
+    # The failing checks first, by name: the tail alone was the lint's
+    # passing lines, and the FAIL lines above them were cut off (B759).
+    fails = [ln for ln in out.splitlines() if ln.lstrip().startswith("FAIL")][:20]
     tail = out.strip()[-1500:]
     reason = ("A house rule's check failed on what you changed. Fix it, or "
-              "say plainly why it cannot pass, before handing this back:\n" + tail)
+              "say plainly why it cannot pass, before handing this back:\n"
+              + ("\n".join(fails) + "\n...\n" if fails else "") + tail)
     print(json.dumps({"decision": "block", "reason": reason}))
 
 

@@ -567,6 +567,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A line told to a Claude session on a node (Resume on the bell, Send to Claude) is sent once it shows, even when the session takes a second or two to draw it; it was left unsent in the box (B774) (f05b3a5)
 - bb jobs names a line typed into a Claude session (Resume, a step or a bug sent) with its session and words, where it read as an empty exec (51a2b52)
 - The doctor's dot sits in the middle of its button in the top bar, as the icons beside it do; on a phone it sat at the start (9f648f0)
+- The end-of-turn house-rule check skips while a session's own tests hold the test lock instead of running the whole suite behind them, and when it blocks it names the failing checks first (b0cc295)
 
 ### Security
 
