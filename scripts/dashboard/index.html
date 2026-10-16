@@ -3506,6 +3506,10 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
    button's height: the exact thing the comment up there warns about. */
 #bAbout svg.alab{width:15px;height:15px;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
+/* ...and the More button's three dots, which are filled rather than stroked:
+   left to the browser they were black on every dark scheme and sat on the
+   text baseline, high in the button (the operator, 16 Oct). */
+.more>button svg{width:16px;height:16px;display:block;margin:auto;fill:currentColor;stroke:none}
   stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
