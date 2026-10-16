@@ -97,7 +97,7 @@ def settle(session, tries=12, quiet=2):
     return False
 
 
-def tell(session, text, sessions=()):
+def tell(session, text, sessions=(), who="dashboard"):
     """Type one line into a session and submit it if it visibly arrived.
 
     Returns {"sent": True} when the line went in and Enter followed,
@@ -114,7 +114,7 @@ def tell(session, text, sessions=()):
     if run(["tmux", "has-session", "-t", "=" + session], timeout=10)["code"] != 0:
         row = on_node(session) if on_node else None
         if row and node_tell:
-            return node_tell(row["node_id"], row["node_name"], text)
+            return node_tell(row["node_id"], row["node_name"], text, who=who)
         return {"error": "no session is running here"}
     # Counted before, not merely looked for after. The same line may already be
     # on the screen (it is the second send of a step that did not take, and

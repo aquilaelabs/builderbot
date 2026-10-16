@@ -567,13 +567,17 @@ function wireNeeds(root, after = () => {}){
     refresh();
   });
   // Resume (R251): the session an outage held is told to pick up from its
-  // note; the row goes once the line was typed.
+  // note; the row goes once the line was sent. One send at a time: a second
+  // press while the first is out typed the line twice (B775).
   root.querySelectorAll("[data-bheld]").forEach(a => a.onclick = async e => {
     e.preventDefault();
+    if (a.getAttribute("aria-busy") === "true") return;
+    a.setAttribute("aria-busy", "true");
     const j = await (await postJSON("/api/bell", {action: "resume", node: a.dataset.bheld, session: a.dataset.session}))
       .json().catch(() => ({error: "no answer"}));
+    a.removeAttribute("aria-busy");
     notify(j.error || (j.sent ? `told ${a.dataset.claude} to pick up where it stopped`
-                                : `the line is in ${a.dataset.claude}'s input, not sent: a question was on its screen`), !!j.error);
+                                : `the line is in ${a.dataset.claude}'s input, not sent: it was busy (a turn or its check running) or a question was on its screen; Enter in it sends it`), !!j.error);
     refresh();
   });
   root.querySelectorAll("#bellRestore, [data-brestore]").forEach(restore => restore.onclick = async () => {

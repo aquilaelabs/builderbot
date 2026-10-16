@@ -1206,10 +1206,14 @@ def _resume_held(who, nid, session):
     row = next((r for r in _held_rows(who) if r["node_id"] == nid and r["session"] == session), None)
     if not row:
         return {"error": "no session held there that is yours to resume"}, 404
-    said = notify.tell(row["claude"], RESUME_LINE, sessions_anywhere())
+    said = notify.tell(row["claude"], RESUME_LINE, sessions_anywhere(), who=who)
     if said.get("error"):
         return said, 409
-    bellseen.dismiss(uid, [row["key"]])
+    # Put away only once it went (B775): a line typed into a session busy in
+    # a turn or its Stop hook sits unsent in the box, and the row put away
+    # with it left nothing saying the session was still waiting.
+    if said.get("sent"):
+        bellseen.dismiss(uid, [row["key"]])
     return {"ok": True, **said}, 200
 
 
@@ -2492,7 +2496,7 @@ notify.configure(run=run,
                  # told through its agent (roadmap #24). Resolved at call
                  # time: the nodes module is imported further down.
                  on_node=lambda s: next((x for x in node_tmux_sessions() if x["name"] == s), None),
-                 node_tell=lambda *a: nodes.tell_wait(*a))
+                 node_tell=lambda *a, **k: nodes.tell_wait(*a, **k))
 
 # ---- signing in ------------------------------------------------------------
 # The flow runs as a job on a NODE, the machine Claude Code is installed on

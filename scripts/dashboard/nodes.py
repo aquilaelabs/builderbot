@@ -3454,16 +3454,17 @@ def _no_answer(job_id, node_id, timeout):
             f"the node is {n.get('state') or 'unknown'} and its agent last dialed in {ago}")
 
 
-def tell_wait(node_id, session, text, timeout=20):
+def tell_wait(node_id, session, text, timeout=20, who="dashboard"):
     """One line into a Claude session on a node, waited for: a `tell` job
     the agent runs as notify.tell runs here (type, look for the echo, Enter
     only if it appeared), answered in the same shape. {"sent": True} when
     it went, {"typed": True} when it was left unsent in the box, or
-    {"error"}."""
+    {"error"}. `who` is the job's principal: the account that asked, where
+    one did (B775: two Resume lines nobody remembered sending)."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
-    r = job_add("dashboard", {"node": node_id}, "tell",
+    r = job_add(who or "dashboard", {"node": node_id}, "tell",
                 {"session": str(session), "text": str(text), "timeout": int(timeout)})
     if r.get("error"):
         return {"error": r["error"]}

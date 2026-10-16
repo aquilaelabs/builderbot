@@ -198,10 +198,15 @@ const offDialog = () => page.evaluate(() => {
   ok(row && /test's Claude session on sandbox/.test(row) && /Resume/.test(row),
      `a session an outage held is a bell row naming whose it is and where it runs, with Resume (${row})`);
   rmSync(`${DIR}/sandboxdata/held.json`, { force: true });
-  await page.click(`#bellPanel [data-bheld][data-session="${uid}"]`);
+  // Pressed twice before the first send is back: one line, not two (B775).
+  await page.evaluate(sel => { const a = document.querySelector(sel); a.click(); a.click(); },
+                      `#bellPanel [data-bheld][data-session="${uid}"]`);
   const said = await until(() => page.evaluate(() => [...document.querySelectorAll('#toast .tmsg')]
     .map(t => t.textContent).find(t => /claude-alpha/.test(t))), 15000);
   ok(said && !/no session|not yours/.test(said), `...and Resume types the line into that session (${said})`);
+  await sleep(1500);
+  const sends = await page.evaluate(() => [...document.querySelectorAll('#toast .tmsg')].filter(t => /claude-alpha/.test(t.textContent)).length);
+  ok(sends === 1, `...once, however fast it is pressed again while the first is out (${sends} sends)`);
   // Read off the bell open again: it draws only while it is on screen, and a
   // row read off a shut one is the one it held when it shut.
   const gone = await until(() => page.evaluate(async () => {
