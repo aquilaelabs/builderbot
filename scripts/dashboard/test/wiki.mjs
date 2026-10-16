@@ -112,6 +112,22 @@ ok(await page.$eval(`${NB} .wknav`, n => getComputedStyle(n).display === 'none')
    && await page.$eval(`${NB} .wkpick`, n => getComputedStyle(n).display !== 'none'),
    'on a phone the pages are a picker over the article');
 await page.setViewportSize({ width: 1280, height: 1000 });
+// Rename asks in a box under the article's tabs, not the browser's prompt
+// (R256 step 4): the name to change in it, Enter to rename, Escape to leave.
+{
+  const nd = page.dialogs.length;
+  await page.click(`${NB} #wkRename`);
+  await page.waitForSelector(`${NB} .askline input`, { timeout: 5000 });
+  const was = await page.$eval(`${NB} .askline input`, i => i.value);
+  await page.keyboard.press('Escape');
+  const gone = !(await page.$(`${NB} .askline`));
+  await page.click(`${NB} #wkRename`);
+  await page.fill(`${NB} .askline input`, 'Building it');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /Building it/.test(document.querySelector('.nb .wkarticle .wktitle')?.textContent || ''), null, { timeout: 15000 });
+  ok(was === 'Build and test' && gone && page.dialogs.length === nd,
+     `Rename asks in a box in the page with the name to change, Escape leaves it and Enter renames (${was})`);
+}
 await api('/api/prefs', { project: P, gate: { wiki: 'ask' } });
 ok(/held for the operator's approval/.test(bb('save', 'Faq', src)) && /no page called/.test(bbErr('show', 'Faq')),
    'under ask a session\'s page is held, not written');

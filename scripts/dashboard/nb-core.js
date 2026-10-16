@@ -624,7 +624,7 @@ function makeNotebook(project){
     b.onclick = async () => {
       const v = b.dataset.v || nb.groupLast[b.dataset.g]
         || root.querySelector(`.nbtabs .nbsub button[data-in="${CSS.escape(b.dataset.g || "")}"]`)?.dataset.v;
-      if (v && await leaveNbView(v)) setNbView(v);
+      if (v && await leaveNbView(v)) navPush(() => setNbView(v));
     });
   $("bugSort").onchange = drawBugs;
   $("bugFind").addEventListener("input", () => { nb.bugFind = $("bugFind").value; drawBugs(true); });
@@ -776,7 +776,7 @@ function makeNotebook(project){
     dkSeen = key;
     // What the view is for, as its empty state (R119 step 4).
     $("dkList").innerHTML = (dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others))
-      || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from the Artifacts tab, or pick it on a container's row on the Docker tab.</div></div>`;
+      || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from ${pageLink("", "Artifacts", `#/projects/${encodeURIComponent(project)}/artifacts`)}, or pick it on a container's row on the ${pageLink("docker", "Containers page")}.</div></div>`;
     dmWireRows($("dkList"), got);
   }
   $("dkOpen").onclick = () => openDocker();
@@ -808,6 +808,9 @@ function makeNotebook(project){
     unsaved: nbUnsaved,
     view: setNbView,
     where: () => nb.nbWhere,
+    // The wiki page on show, for the address, and set from one (R256 step 3).
+    wikiPage: () => nb.wkCur,
+    wikiAt: name => nb.wikiAt(name),
     poll(p){
       noteBatch(p.todo_batch); drawBatchNote(); syncSave();
       // ...and who else is in here (roadmap #26), while this is the page on

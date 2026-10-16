@@ -649,10 +649,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             // line goes three places in three presses rather than three hunts.
             draw(e, `[data-emv="${b.dataset.emv}"]`);
           });
-          row.querySelector(".clcat").onchange = ev => {
+          row.querySelector(".clcat").onchange = async ev => {
             let to = ev.target.value;
             if (to === "\u0000new"){
-              to = (prompt("Name the new category") || "").trim();
+              to = await askInline(row, {label: "The new category's name", ok: "Make it"});
               if (!to){ draw(); return; }
             }
             g.entries.splice(g.entries.indexOf(e), 1);

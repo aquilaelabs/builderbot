@@ -224,7 +224,7 @@ function nginxBody(n){
   const count = (n.routes || []).length;
   const pill = n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
     : `<span class="pill ok">deployed</span>`;
-  const sub = `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the Docker tab, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`;
+  const sub = `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`;
   // The image it is pinned to, the newest line, and Update when behind
   // (R192): its own action bar, since Check now and Update are two verbs.
   const im = n.image || {}, lt = nginxLatest || {};
@@ -294,7 +294,7 @@ function renderNginxInto(i){
   if (nginxList === null){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
-    d.setBar(skNodeBar(["Refresh"]));
+    d.setBar(skNodeBar([]));
     d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">nginx on ${skv(6)}</div>
         <div class="sub">${skv(24)}</div></div></div>${skRows(2)}`);
     loadNginx();
@@ -307,9 +307,9 @@ function renderNginxInto(i){
   const n = nginxPick();
   const pnodes = nginxList.map(x => ({id: x.node, name: x.name, live: x.live}));
   d.setBar(`${nodePick("ngNodeSel", pnodes, nginxNode)}
-    <span class="sp"></span><button type="button" id="ngReload" title="read the nodes again">Refresh</button>`);
+`);
   d.list.innerHTML = n ? nginxBody(n)
-    : `<div class="empty">no node to put nginx on yet: enroll one on the Nodes tab</div>`;
+    : `<div class="empty">no node to put nginx on yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
   wireNginxTab(d.el);
 }
 
@@ -334,8 +334,6 @@ function nginxReadDraft(sect, n){
 }
 
 function wireNginxTab(root){
-  const rl = root.querySelector("#ngReload");
-  if (rl) rl.onclick = () => { busy(rl, "Refreshing"); loadNginx(); };
   const psel = root.querySelector("#ngNodeSel");
   if (psel) psel.onchange = () => { nginxNode = psel.value;
                                     try{ localStorage.setItem("bb.ngnode", nginxNode); }catch(e){ /* private */ }

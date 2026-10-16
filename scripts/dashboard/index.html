@@ -4439,7 +4439,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            later one adds is a fixed git command on the controller. -->
       <div class="field nbhead vbar"><span id="gitHint" data-skel="word">loading…</span>
         <span class="sp"></span>
-        <button type="button" id="gitRefresh" title="read the repository again now">Refresh</button>
+
       </div>
       <!-- The network half, one bar: fetch and pull bring the remote's
            commits down, push sends this branch up through the controller's
@@ -6362,6 +6362,10 @@ onRev("nodes", () => {
   else nodesStale = true;
   // A node's census carries its images: refetched only when they moved.
   if (shown("emulator")) emuOnNodes();
+  // ...and a page that said no node yet looks again (R256 step 1: its
+  // Refresh went, since the page follows its revisions).
+  if (shown("toolchains") && toolchains?.nonode) loadToolchains();
+  if (shown("emulator") && emu?.nonode) loadEmulator();
   // ...and what is drawn off the status poll (the bell, the doctor): a job
   // on a node moves this rev, so they say it inside a second or two instead
   // of at the next fifteen-second poll.

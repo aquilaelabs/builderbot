@@ -43,7 +43,7 @@ function renderPhoneInto(i){
     // (connect, pair) with their labels are the page's own; the node and
     // its phone are on their way.
     const fld = (label, em, grow = false) => `<div class="${grow ? "grow " : ""}setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
-    d.setBar(skNodeBar(["Refresh"]));
+    d.setBar(skNodeBar(["Check now"]));
     d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
         <div class="sub">${skv(10)}</div></div></div>
       <div class="row">${fld("Phone IP address", 18, true)}${fld("Port", 7)}<span class="acts"><button type="button" class="primary" disabled>Connect</button></span></div>
@@ -55,9 +55,9 @@ function renderPhoneInto(i){
   const nodes = ph.nodes || [];
   const n = nodes.find(x => x.id === phNode) || nodes[0];
   d.setBar(`${nodePick("phPick", nodes, n?.id)}<span class="sp"></span>
-    <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button>`);
+    <button type="button" id="phRefresh" title="ask the node's adb about the phone now">Check now</button>`);
   d.list.innerHTML = n ? phonePanel(n)
-    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the Toolchains tab.</div>`;
+    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("toolchains", "Toolchains page")}.</div>`;
   if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
   wirePhoneTab(d.el);
 }

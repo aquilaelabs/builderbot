@@ -518,9 +518,9 @@ function nbGitView({$, nb, project}){
       });
       box.querySelectorAll("[data-gitaskcommit]").forEach(b => b.onclick = () =>
         gitAsk(box.querySelector("[data-gitaskkind]")?.value || "review", {sha: b.dataset.gitaskcommit}, gitBusy(b)));
-      box.querySelectorAll("[data-gitbranchat]").forEach(b => b.onclick = () => {
-        const name = prompt(`A branch starting at ${c.short}. Its name:`);
-        if (name && name.trim()) gitAct("branch", {name: name.trim(), at: b.dataset.gitbranchat, switch: true}, gitBusy(b), "Creating");
+      box.querySelectorAll("[data-gitbranchat]").forEach(b => b.onclick = async () => {
+        const name = await askInline(b.closest(".actbar") || b, {label: `A branch starting at ${c.short}: its name`, ok: "Make the branch"});
+        if (name) gitAct("branch", {name, at: b.dataset.gitbranchat, switch: true}, gitBusy(b), "Creating");
       });
     }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; revealCommit(box, sha); }
   }
@@ -534,8 +534,6 @@ function nbGitView({$, nb, project}){
     // way down.
     box.scrollIntoView({block: "start"});
   }
-  const rf = $("gitRefresh");
-  if (rf) rf.onclick = () => { busy(rf, "Refreshing"); loadGit().finally(() => { if (rf.isConnected) unbusy(rf, "Refresh"); }); };
 
   return {loadGit};
 }

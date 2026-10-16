@@ -52,21 +52,13 @@ ok(!!await page.$('.pane .doc.on .tc'),
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'toolchains')
      && tabOf(panes[active])?.kind === 'toolchains'),
    'Toolchains opens a tab, and lands on it');
-// Refresh belongs to the TAB's own bar (the scaffold's slot, where the Phone
-// and Nodes tabs keep theirs), with the picker it re-reads at the left of the
-// same bar. The pane's title bar is the tab's name and its close control on
-// every kind, so a button in it was a shape this tab alone had.
-ok(await page.$('.pane .bar [data-reload]') === null,
-   'the pane bar carries no button of its own');
-ok(await page.$eval('.doc .docbarrow #tcRefresh', b => b.textContent.trim()) === 'Refresh',
-   '...and Refresh sits in the tab\'s bar, where every other tab keeps its action');
-// The Toolchains tab's own bar: the Projects page parked in the pane has one too now (R218 step 3).
-ok(await page.$eval('.doc .tctab .docbarrow', el => {
-     const kids = [...el.children];
-     return kids.indexOf(el.querySelector('#tcRefresh')) === kids.length - 1
-            && kids.indexOf(el.querySelector('#tcNodeSel').closest('.pick')) === 0;
-   }),
-   '...at its right end, with the node picker at the left');
+// No Refresh (R256 step 1): the page follows the toolchains and nodes
+// revisions, so its bar is the node picker at the left and nothing to press
+// for a re-read; the pane's title bar carries no button of its own either.
+ok(await page.$('.pane .bar [data-reload]') === null && await page.$('.doc .tctab #tcRefresh') === null,
+   'neither the pane bar nor the tab\'s bar carries a Refresh');
+ok(await page.$eval('.doc .tctab .docbarrow', el => [...el.children].indexOf(el.querySelector('#tcNodeSel').closest('.pick')) === 0),
+   '...and the node picker sits at the bar\'s left');
 const rows = () => page.$$eval('.doc .tc', ls => ls.map(l => ({
   name: l.querySelector('input').value,
   installed: !!l.querySelector('.where.on'),

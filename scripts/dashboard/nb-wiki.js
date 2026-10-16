@@ -158,10 +158,19 @@ function nbWikiView({$, nb, project}){
     if (!p){ notify(`no page called ${name} yet: New page makes it`); return; }
     if (wikiDirty() && !confirm("Leave the page you are editing? What you typed is not saved.")) return;
     nb.wikiClear();
-    nb.wkCur = p.name;
+    // A history entry (R256 step 3): the address names the page, and Back
+    // returns to the one before.
+    navPush(() => { nb.wkCur = p.name; shellSync(); });
     if (!nb.wkPages[p.name]) readPage(p.name); else drawWiki();
     $("wkBody")?.querySelector(".wkarticle")?.scrollIntoView({block: "nearest"});
   }
+  // The page an address names: before the wiki is read, it is the page the
+  // read lands on; after, it is opened as a press would.
+  nb.wikiAt = name => {
+    if (!nb.wkData){ nb.wkCur = name; return; }
+    const p = byName(name);
+    if (p && p.name !== nb.wkCur){ nb.wkCur = p.name; if (!nb.wkPages[p.name]) readPage(p.name); else drawWiki(); }
+  };
 
   function head(){
     const d = nb.wkData || {};
@@ -316,7 +325,9 @@ function nbWikiView({$, nb, project}){
       }
     });
     on("wkRename", async () => {
-      const to = prompt("Rename the page to:", byName(name)?.title || name);
+      const at = $("wkBody")?.querySelector(".wktabs");
+      const to = at ? await askInline(at, {label: "The page's new name", value: byName(name)?.title || name, ok: "Rename"})
+        : prompt("Rename the page to:", byName(name)?.title || name);
       if (!to || !to.trim()) return;
       const j = await post({action: "rename", name, to});
       if (j){ nb.wkCur = j.name; loadWiki(); }

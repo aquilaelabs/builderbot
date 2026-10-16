@@ -196,7 +196,7 @@ function renderStorageInto(i){
       n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>` : ""}
     <button type="button" id="stReload" title="read the nodes again">Refresh</button></span>`);
   d.list.innerHTML = n ? storageBody(n, where)
-    : `<div class="empty">no node to measure yet: enroll one on the Nodes tab</div>`;
+    : `<div class="empty">no node to measure yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
   wireStorageTab(d.el);
 }
 

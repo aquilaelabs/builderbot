@@ -114,6 +114,38 @@ const SKTPLS = {
   artifacts: () => skTpl([["build", "Build", 1], ["files", "Files", 2]]
     .map(([k, t, n]) => docSection("artifacts", k, t, "", skRows(n))).join("")),
 };
+// A word the page needs, asked in a box in the row (R256 step 4) where
+// window.prompt was: its label, the field, Cancel and OK, under the control
+// that asked; Enter is OK and Escape is Cancel. Resolves with what was typed,
+// trimmed, or null. One at a time: a second ask takes the first one's place.
+function askInline(after, {label, value = "", ok = "OK"} = {}){
+  return new Promise(resolve => {
+    document.querySelectorAll(".askline").forEach(x => x.__done?.(null));
+    const box = document.createElement("div");
+    box.className = "field askline";
+    box.innerHTML = `<label class="lbl">${esc(label)}</label><div class="askrow actbar"><input type="text" autocomplete="off" spellcheck="false" aria-label="${esc(label)}">
+      <button type="button" data-askno>Cancel</button><button type="button" class="primary" data-askok>${esc(ok)}</button></div>`;
+    after.insertAdjacentElement("afterend", box);
+    const inp = box.querySelector("input");
+    inp.value = value;
+    inp.focus(); inp.select();
+    const done = v => { box.remove(); resolve(v); };
+    box.__done = done;
+    box.querySelector("[data-askok]").onclick = () => done(inp.value.trim() || null);
+    box.querySelector("[data-askno]").onclick = () => done(null);
+    inp.onkeydown = e => {
+      if (e.key === "Enter"){ e.preventDefault(); done(inp.value.trim() || null); }
+      else if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(null); }
+    };
+  });
+}
+
+// A pointer to another page is a link to it (R256 step 2): the address that
+// page answers at, so a press goes there as the rail does and Back returns.
+const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains"};
+function pageLink(page, words, hash = PAGE_AT[page]){
+  return `<a href="${esc(hash || "#")}" class="pagelink">${esc(words)}</a>`;
+}
 // A table on its way: its real head over rows whose cells shimmer, each as
 // wide as its column's values tend to be.
 function skTable(cols, n = 5, cls = "", rowCls = "row stack2"){

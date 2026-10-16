@@ -366,6 +366,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Chat's channel list: the open channel is a quiet tint that stays put under the pointer, and every other channel answers the pointer (46e031b)
 - Every session on every project is told, and held to it, that a background test run says when it ends: waiting on it with a foreground loop is refused, so a message sent meanwhile is read (46e031b)
 - The Roles page is a list beside its detail: accounts with their roles as tags beside the picked one's Everywhere roles, the projects it is actually on and an Add to project, and what it can do as a grid; roles with their kind and holders beside the picked one's areas. On a phone, the list then the detail with Back (f37c706)
+- No Refresh on pages that follow their own changes (nginx, CI runner, Toolchains, Emulator, the Git view); the Phone page's is now Check now, since it asks the phone. A mention of another page is a link to it. Back steps through a notebook's views and its wiki pages, and a node page's address names the node it shows. Naming a branch, a changelog category or a wiki page asks in a box in the page, not the browser's prompt (f2085d1)
 
 ### Removed
 

@@ -113,15 +113,38 @@ function railGo(key, tool){
   if (to && to !== was) history.pushState(null, "", to);
 }
 
-// The address a tab is reached at: #/group, #/group/tool, #/projects/NAME.
-// A terminal has none.
+// A node page's picked node, read and set by the address (R256 step 3): the
+// node is the address's last part, so a reload, a link and Back land on it.
+const NODE_PICKED = {nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
+  toolchains: () => tcNode === "local" ? "" : tcNode, emulator: () => emuNode, phone: () => phNode,
+  runner: () => runnerNode, docker: () => dockerNode};
+const NODE_SET = {nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
+  toolchains: v => { tcNode = v; }, emulator: v => { emuNode = v; }, phone: v => { phNode = v; },
+  runner: v => { runnerNode = v; }, docker: v => { dockerNode = v; }};
+
+// A move inside a page (a notebook view, a wiki page) is a history entry,
+// so Back returns to where it was (R256 step 3): the draw replaces the
+// address as it always does, and the one before is put back and the new
+// one pushed after it.
+function navPush(fn){
+  const was = location.hash;
+  fn();
+  const to = routeOf(tabOf(panes[0]));
+  if (to && to !== was){ history.replaceState(null, "", was || location.pathname + location.search); history.pushState(null, "", to); }
+}
+
+// The address a tab is reached at: #/group, #/group/tool, #/projects/NAME,
+// with a node page's node and the open wiki page on the end. A terminal has
+// none.
 function routeOf(t){
   if (!t) return "";
   if (t.kind === "notebook"){
     // ...and the view it is on (R218 step 3): Overview is the Briefing
     // view's name on the page, so the address says overview.
-    const v = notebooks.get(t.arg)?.where?.() || "";
-    return "#/projects/" + encodeURIComponent(t.arg) + (v ? "/" + (v === "briefing" ? "overview" : v) : "");
+    const n = notebooks.get(t.arg), v = n?.where?.() || "";
+    const page = v === "wiki" ? n?.wikiPage?.() || "" : "";
+    return "#/projects/" + encodeURIComponent(t.arg) + (v ? "/" + (v === "briefing" ? "overview" : v) : "")
+      + (page ? "/" + encodeURIComponent(page) : "");
   }
   if (!isToolKind(t.kind)) return "";
   // The Notifications page is on no group: the bell's See all opens it.
@@ -130,20 +153,22 @@ function routeOf(t){
   if (t.kind === "help") return "#/help" + (helpCur && helpCur !== helpIndex?.home ? "/" + encodeURIComponent(helpCur) : "");
   const g = groupOf(t.kind);
   if (!g) return "";
-  return (g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`;
+  const node = NODE_PICKED[t.kind]?.() || "";
+  return ((g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`) + (node ? "/" + encodeURIComponent(node) : "");
 }
 
 // Open what an address names; nothing happens for one that names nothing.
 function openRoute(hash){
-  const m = /^#\/([a-z]+)(?:\/([^/]+))?(?:\/([^/]+))?/.exec(hash || "");
+  const m = /^#\/([a-z]+)(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?/.exec(hash || "");
   if (!m) return false;
-  const [, key, a, b] = m;
+  const [, key, a, b, c] = m;
   if (key === "projects" && a && !RAIL[1].tools.some(([k]) => k === a)){
     const name = decodeURIComponent(a);
     if (!(state?.projects || []).some(p => p.name === name)) return false;
     railWant = "projects";
     const v = b ? decodeURIComponent(b) : "";
     openNotebook(name, v ? (v === "overview" ? "briefing" : v) : undefined);
+    if (v === "wiki" && c) notebooks.get(name)?.wikiAt?.(decodeURIComponent(c));
     return true;
   }
   if (key === "notifications"){ openNotices(); return true; }
@@ -157,9 +182,13 @@ function openRoute(hash){
   }
   const g = RAIL.find(x => x.key === key);
   if (!g) return false;
+  const multi = (g.tools || []).length > 1;
   const kind = a && (g.tools || []).some(([k]) => k === a) ? a : g.tools[0][0];
   if (!railAllows(kind)) return false;
   railWant = key;
+  // The node the address names, set before the page draws (R256 step 3).
+  const node = multi ? b : a;
+  if (node && NODE_SET[kind]) NODE_SET[kind](decodeURIComponent(node));
   OPENERS[kind]?.();
   return true;
 }

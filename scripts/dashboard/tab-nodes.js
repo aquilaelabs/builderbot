@@ -234,14 +234,14 @@ function nodeTools(n){
   const names = Object.keys(tc);
   if (n.kind !== "agent") return "";
   if (!names.length)
-    return `<div class="sub ndtools dim">no toolchains yet: install them from the Toolchains tab</div>`;
+    return `<div class="sub ndtools dim">no toolchains yet: install them from the ${pageLink("toolchains", "Toolchains page")}</div>`;
   // Held recipes whose system libraries this machine lacks (roadmap R51),
   // said here rather than left for a build to fail on: the store is shared,
   // the libraries are each machine's own, and the Tools tab installs them.
   const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
   const sys = unmet.length
     ? `<div class="sub ndsys warn">System packages missing for ${unmet.map(([r, ps]) =>
-        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the Toolchains tab</div>` : "";
+        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the ${pageLink("toolchains", "Toolchains page")}</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
       esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
@@ -680,8 +680,8 @@ function nodeClaudeSection(n){
     ${signinBlock(n)}
     <div class="actbar">
       <span class="state">${!se?.up ? "No session account here, so nothing runs Claude Code."
-        : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out` : ""}: the Toolchains tab updates it.`
-        : "Not installed: a Claude session cannot start here until the Toolchains tab installs it."}</span>
+        : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out` : ""}: the ${pageLink("toolchains", "Toolchains page")} updates it.`
+        : `Not installed: a Claude session cannot start here until the ${pageLink("toolchains", "Toolchains page")} installs it.`}</span>
       ${se?.up && mayToolchains() ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
     </div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
@@ -1526,7 +1526,7 @@ function renderRunnerInto(i){
   if (nodesList === null){
     // Its template (R218 step 16): the bar and the state row's words are the
     // page's own; the node and its runners are on their way.
-    d.setBar(skNodeBar(["Refresh"]));
+    d.setBar(skNodeBar([]));
     d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">CI runners on ${skv(6)}</div>
         <div class="sub">One runner per git host; its labels decide which workflows land here.</div></div></div>
       <div class="field"><div class="actbar"><button type="button" disabled>Add runner</button></div></div>${skRows(1)}`);
@@ -1537,7 +1537,7 @@ function renderRunnerInto(i){
   if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";
   const n = ns.find(x => x.id === runnerNode);
   d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>
-    <button type="button" id="rnrRefresh" title="read the nodes again">Refresh</button>`);
+`);
   d.list.innerHTML = n
     ? `${runnerRows()}<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
     : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
@@ -1545,8 +1545,6 @@ function renderRunnerInto(i){
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
   const pick = d.el.querySelector("#rnrPick");
   if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
-  const rf = d.el.querySelector("#rnrRefresh");
-  if (rf) rf.onclick = () => { busy(rf, "Refreshing"); loadNodes(); };
 }
 
 // An account that does not administer sees a node's settings and changes

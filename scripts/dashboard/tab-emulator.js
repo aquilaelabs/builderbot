@@ -150,17 +150,17 @@ function renderEmulatorInto(i){
   if (!d){
     // Its template (R218 step 16): the bar and the add list's label are the
     // page's own; the node's images are on their way.
-    surf.setBar(skNodeBar(["Refresh"]));
+    surf.setBar(skNodeBar([]));
     surf.list.innerHTML = skTpl(`${skRows(2)}<div class="imgadd emadd"><span class="lbl">Images to add</span>${skv(12, "ctl")}</div>${skRows(2)}`);
     return;
   }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
     esc("could not read the images: " + d.error)}</div>`; return; }
   if (d.nonode){
-    surf.setBar(`<span class="sp"></span><button type="button" id="emuRefresh">Refresh</button>`);
+    surf.setBar("");
     surf.list.innerHTML = `<div class="empty">The emulator runs on a node, and none is
       enrolled: the Nodes tab's <b>Enroll node</b> makes one.</div>`;
-    el.querySelector("#emuRefresh").onclick = e => { busy(e.currentTarget, "Refreshing"); nodesList = null; loadEmulator(); };
+
     return;
   }
   const pnodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
@@ -175,7 +175,7 @@ function renderEmulatorInto(i){
   // The one node switcher (page-docs.js nodePick, R121).
   surf.setBar(`${nodePick("emuNodeSel", pnodes, emuNode)}
     <span class="sp"></span>
-    <button type="button" id="emuRefresh" title="read this node's images again">Refresh</button>`);
+`);
   const free = typeof d.free_mb === "number"
     ? `, ${d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : "";
   surf.list.innerHTML = `
@@ -211,7 +211,7 @@ function renderEmulatorInto(i){
       ? `<div class="tcs">${d.images.map(im => emuRow(im, held)).join("")}</div>`
       : d.wrong_platform ? ""
       : `<div class="tchead">${d.known === false
-          ? `${esc(d.name)}'s agent is too old to report its system images: update it from the Nodes tab.`
+          ? `${esc(d.name)}'s agent is too old to report its system images: update it from the ${pageLink("nodes", "Nodes page")}.`
           : `No image yet: ${esc(d.name)}'s emulator has nothing to boot.`}</div>`}
     ${d.wrong_platform ? "" : emuAddRows(d, held)}
     ${d.wrong_platform ? "" : `<div class="hint tcterms">Adding an image accepts
@@ -230,7 +230,7 @@ function renderEmulatorInto(i){
   if (sel) sel.onchange = () => { emuNode = sel.value; emu = null; emuTicked.clear();
                                   try{ localStorage.setItem("bb.emunode", emuNode); }catch(e){ /* private */ }
                                   emuRev++; drawPanes(); loadEmulator(); };
-  el.querySelector("#emuRefresh").onclick = e => { busy(e.currentTarget, "Refreshing"); loadEmulator(); };
+
   const toTc = el.querySelector("#emuToTc");
   if (toTc) toTc.onclick = e => { e.preventDefault(); tcNode = emuNode; openToolchains(); };
   const fl = el.querySelector("#imgFlavor");

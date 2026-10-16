@@ -301,7 +301,7 @@ function tcDriverLine(m){
     case "update": return `<span class="sub warn">${esc(m.installed)} is installed and takes over from ${esc(m.loaded)} when the machine restarts.${nodesBtn}</span>`;
     case "leaving": return `<span class="sub warn">removed; it keeps the card until the machine restarts, when nouveau takes it back.${nodesBtn}</span>`;
     case "loaded": return `<span class="sub where on">installed, and running the card</span>`;
-    default: return `<span class="sub warn">this node's agent does not report the driver yet: update it on the Nodes tab.${nodesBtn}</span>`;
+    default: return `<span class="sub warn">this node's agent does not report the driver yet: update it on the ${pageLink("nodes", "Nodes page")}.${nodesBtn}</span>`;
   }
 }
 // One option's words: the version first, since that is what is being
@@ -370,7 +370,7 @@ function tcToolkitLine(m){
     case "ready": return m.driver_loaded
       ? `<span class="sub where on">installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)</span>`
       : `<span class="sub warn">installed; a container sees the card once the driver above is running it</span>`;
-    default: return `<span class="sub warn">this node's agent does not report the container toolkit yet: update it on the Nodes tab.${nodesBtn}</span>`;
+    default: return `<span class="sub warn">this node's agent does not report the container toolkit yet: update it on the ${pageLink("nodes", "Nodes page")}.${nodesBtn}</span>`;
   }
 }
 function tcToolkitRow(m, busy, job){
@@ -445,7 +445,8 @@ function renderToolchainsInto(i){
   el.classList.add("flush");
   const d = toolchains;
   // The shared scaffold, like every other document kind: the bar slot holds
-  // the picker and the Refresh that re-reads it, so the action sits where a
+  // the picker (no Refresh: the page follows the toolchains and nodes
+  // revisions, R256 step 1), so the action sits where a
   // tab's action sits rather than in a band this tab invented. `tc` makes the
   // tctab class the suite finds it by.
   const surf = docSurface(i, "tc");
@@ -453,7 +454,7 @@ function renderToolchainsInto(i){
   if (!d){
     // Its template (R218 step 16): the bar, the tile's words and the table's
     // head are the page's own; the store and its rows are on their way.
-    surf.setBar(skNodeBar(["Refresh"]));
+    surf.setBar(skNodeBar([]));
     surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles"><div class="tile"><span class="tv">${skv(1.4)}</span>
         <span class="tl">installed</span><span class="ts">of ${skv(2)} offered</span></div></div></div>
       ${skTable(TC_COLS, 6, "tcs")}`);
@@ -465,12 +466,9 @@ function renderToolchainsInto(i){
   // nothing but the browsers its boot put there, so there is no list to show
   // and no button that would be honest to offer.
   if (d.nonode){
-    surf.setBar(`<span class="sp"></span>
-      <button type="button" id="tcRefresh" title="look again for a node">Refresh</button>`);
+    surf.setBar("");
     surf.list.innerHTML = `<div class="empty tcnone">No node yet. Toolchains install on a node:
-        enroll one from the Nodes tab.</div>`;
-    const pre = el.querySelector("#tcRefresh");
-    if (pre) pre.onclick = () => { busy(pre, "Refreshing"); nodesList = null; toolchains = null; loadToolchains(); };
+        enroll one from the ${pageLink("nodes", "Nodes page")}.</div>`;
     return;
   }
 
@@ -500,9 +498,7 @@ function renderToolchainsInto(i){
   const pstale = onNode && nodeStale(pnodes.find(n => n.id === tcNode) || {});
   // The one node switcher (page-docs.js nodePick, R121).
   surf.setBar(`${nodePick("tcNodeSel", pnodes, tcNode)}
-    <span class="sp"></span>
-    <button type="button" id="tcRefresh"
-      title="read this store again: what is installed, and how big it is">Refresh</button>`);
+`);
   surf.list.innerHTML = `
     <div class="tchead">${onNode
       ? (d.root
@@ -586,8 +582,6 @@ function renderToolchainsInto(i){
   if (psel) psel.onchange = () => { tcNode = psel.value; toolchains = null; tcTicked.clear(); tcDriverPick = "";
                                     try{ localStorage.setItem("bb.tcnode", tcNode); }catch(e){ /* private */ }
                                     tcRev++; drawPanes(); loadToolchains(); };
-  const pre = el.querySelector("#tcRefresh");
-  if (pre) pre.onclick = () => { busy(pre, "Refreshing"); loadToolchains(); };
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));

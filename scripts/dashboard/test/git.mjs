@@ -1022,6 +1022,23 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
    && strip.views.inside && strip.over <= 0,
    `on a phone the strip is five groups in one row and the open group's views in one row under it, every tab on screen (${JSON.stringify(strip)})`);
 
+// Back goes back (R256 step 3): a view switched to is a history entry, and
+// a node page's address names the node it shows.
+{
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const before = await page.evaluate(() => location.hash);
+  await page.click('.pane .nb .nbgroups [data-g="plan"] >> visible=true');
+  await page.waitForFunction(b => location.hash !== b && /\/roadmap$/.test(location.hash), before, { timeout: 10000 });
+  await page.goBack();
+  await page.waitForFunction(b => location.hash === b, before, { timeout: 10000 });
+  const view = await page.evaluate(() => getNotebook(tabOf(panes[0])?.arg)?.where());
+  ok(/\/git$/.test(before) && view === 'git', `a view switched to is a history entry, and Back returns to the one before (${before}, ${view})`);
+  await page.evaluate(() => railGo('build', 'toolchains'));
+  await page.waitForFunction(() => /^#\/build\/toolchains\/[^/]+$/.test(location.hash), null, { timeout: 15000 });
+  const tc = await page.evaluate(() => ({ hash: location.hash, node: tcNode }));
+  ok(tc.hash.endsWith('/' + encodeURIComponent(tc.node)), `a node page's address names its node (${tc.hash})`);
+}
+
 // bb projects lists what the dashboard lists: a directory carrying .bbignore
 // (the fixture's toolchain store) is not a project, and a worktree, whose .git
 // is a file naming its repository, is one and has a branch (B122).
