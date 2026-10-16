@@ -1191,7 +1191,9 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   // The Profile tab itself, on the owner's page, and the Administration card
   // beside it: the card is an administrator's and this page is one.
   await page.evaluate(() => openProfileTab());
-  await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
+  // Its own Save, not its template's fields (R218 step 16), which stand in
+  // while the profile is on its way.
+  await page.waitForSelector('.profiletab #pfSave', { timeout: 15000 });
   ok(await page.$eval('.profiletab', el => /test/.test(el.textContent) && !!el.querySelector('#pfSave')
                                           && !!el.querySelector('#pfPasswd')),
      'the Profile tab names the account and carries Save and Change password');
