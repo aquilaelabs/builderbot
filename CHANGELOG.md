@@ -572,6 +572,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The doctor's dot sits in the middle of its button in the top bar, as the icons beside it do; on a phone it sat at the start (9f648f0)
 - The end-of-turn house-rule check skips while a session's own tests hold the test lock instead of running the whole suite behind them, and when it blocks it names the failing checks first (b0cc295)
 - A History's search and its window sit side by side in its sheet at a desk; they stacked on two lines (B776) (b92d756)
+- The notebook's 'Also open' line says each person on each view once, with how many windows, where it repeated them (B777) (b1b66e2)
 
 ### Security
 

@@ -412,8 +412,16 @@ function makeNotebook(project){
   function drawHere(){
     const el = $("nbHere");
     if (!el) return;
-    const bits = nb.nbHere.map(o =>
-      `${o.mine ? "your other window" : esc(o.who)}${
+    // One line per person per view, counted (B777): three of your windows on
+    // Bugs read "your other window (Bugs)" three times over.
+    const seen = new Map();
+    for (const o of nb.nbHere){
+      const k = `${o.mine ? "" : o.who}\0${o.where || ""}`;
+      seen.set(k, {o, n: (seen.get(k)?.n || 0) + 1});
+    }
+    const bits = [...seen.values()].map(({o, n}) =>
+      `${o.mine ? (n > 1 ? `your ${n} other windows` : "your other window")
+                : `${esc(o.who)}${n > 1 ? ` in ${n} windows` : ""}`}${
         WHERE_IS[o.where] ? ` (${WHERE_IS[o.where]})` : ""}`);
     const line = bits.length ? "Also open: " + bits.join(", ") : "";
     setHidden(el, !line);
