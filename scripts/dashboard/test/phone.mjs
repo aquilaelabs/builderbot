@@ -38,7 +38,9 @@ ok(sandbox && sandbox.reported?.toolchains?.adb,
 await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 
 await page.evaluate(() => openPhoneTab());
-await page.waitForSelector('.phonetab .row', { timeout: 20000 });
+// The page itself (its Node picker), not its template's rows (R218 step 16).
+await page.waitForSelector('.doc.on .phonetab .row', { timeout: 20000 });
+await page.waitForSelector('.doc.on #phPick', { timeout: 20000 });
 // A phone is a tool of its own again (R121, the operator 4 Oct): a page
 // under Build with a Node picker of the nodes that carry adb; the Nodes
 // tab, a machine's configuration, only points at it.
