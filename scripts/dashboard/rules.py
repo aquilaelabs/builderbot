@@ -222,14 +222,15 @@ ALWAYS = [
     # with run_in_background is what the line asks for (the operator, 12 Oct:
     # a run held every reply, so a new ask could never cut into it).
     {"name": "tests-in-the-background",
-     "text": "Start a test run, a probe or a dev instance's rebuild in the background"
+     "text": "Start a build, a test run, a probe or a dev instance's rebuild in the background"
              " (run_in_background) and wait on its notification, answering meanwhile: one in the"
              " foreground holds every reply until it ends, so a new ask cannot cut into it the way"
              " the project's While a test runs setting says. The unit tier (bb tests unit) is quick"
              " enough to run either way.",
-     # A probe is a run against the kept fixture, and a rebuild is minutes of
-     # a job (the operator, 16 Oct: messages queued behind both).
-     "refuse": ["bb test", "bb tests run", "bb tests preflight", "bb tests lab", "bb tests coverage",
+     # A probe is a run against the kept fixture, a rebuild is minutes of a
+     # job, and a build can be longer than either (the operator, 16 Oct:
+     # messages queued behind them, on every project as on this one).
+     "refuse": ["bb build", "bb test", "bb tests run", "bb tests preflight", "bb tests lab", "bb tests coverage",
                 "bb tests probe", "bb devapp rebuild",
                 "bb dashboard test", "*/dashboard/test/run.sh",
                 "!bb tests preflight* --dry*"],          # the plan only: nothing runs (B698)

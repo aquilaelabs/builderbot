@@ -32,8 +32,8 @@ stopped by a hook when it runs, with the reason.
 
 <!-- BUILDERBOT:READS -->
 
-Start a test run, a probe or a dev instance's rebuild in the background and
-answer while it runs; its notification
+Start a build, a test run, a probe or a dev instance's rebuild in the
+background and answer while it runs; its notification
 says when it ends, so never wait for it with a foreground loop over its log,
 which holds every reply the same way. What a change
 asked for meanwhile does is this project's setting (Claude may, "While a

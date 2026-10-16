@@ -370,6 +370,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Long lists (the roadmap, bugs, jobs, notices, artifacts) load more as you scroll to their foot instead of turning pages with Previous and Next; a Show more stays at the foot for the keyboard (6475ae3)
 - A project's Settings is beside Overview in Overview's row again, as well as in the … menu (bf61866)
 - Every session starts its probes and its dev instance's rebuilds in the background as it does its test runs, so a message sent meanwhile is read (bf61866)
+- Builds join test runs, probes and dev rebuilds: every session starts them in the background, so a message sent while one runs is read (c8ab6dc)
 
 ### Removed
 
