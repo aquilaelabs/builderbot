@@ -300,7 +300,10 @@ async function bring(kind){
 // fixture is too short to draw one.
 // ...and a segmented switch (.pseg: Deploy key / Access token, Dark / Light,
 // Cards / List) is one choice, not a set of verbs (R216).
-const NOT_A_BAR = ['nbtabs', 'nbgroups', 'nbsub', 'foot', 'pagemore', 'pseg'];
+// ...nor a list of rows you open (the Roles tab's accounts and roles, R255
+// step 9: the rows-you-open rule), whose rows are rows that happen to be
+// pressed, not verbs.
+const NOT_A_BAR = ['nbtabs', 'nbgroups', 'nbsub', 'foot', 'pagemore', 'pseg', 'rlist'];
 
 async function language(){
   return page.evaluate(({ NOT_A_BAR }) => {
@@ -389,7 +392,7 @@ async function spanning(){
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).
-    const NAV = '.nbtabs, .switch, .subnav';
+    const NAV = '.nbtabs, .switch, .subnav, .rlist';
     const vis = e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0;
     const out = [];
     const seen = new Set();
@@ -466,7 +469,7 @@ async function lineup(){
     };
     const ctls = [...box.querySelectorAll(CTL)]
       .filter(e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0
-                   && !e.closest('.slot, .dmlog, .pagemore') && !folded(e) && shown(e))
+                   && !e.closest('.slot, .dmlog, .pagemore, .rlist') && !folded(e) && shown(e))
       .map(e => ({ e, r: e.getBoundingClientRect() }))
       .sort((a, b) => a.r.top - b.r.top);
     // One line = boxes whose vertical spans overlap by more than half the
