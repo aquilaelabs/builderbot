@@ -209,7 +209,7 @@ const sysBtns = await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', 
   has: [...r.querySelectorAll('.dmacts [data-dm]')].map(b => b.dataset.dm), rel: !!r.querySelector('[data-dmrel]'),
   line: r.querySelector('.dmmanaged')?.textContent || '' }));
 ok(['up', 'down', 'remove', 'nginx-update'].every(b => sysBtns.has.includes(b)) && !sysBtns.has.includes('edit') && !sysBtns.has.includes('rebuild') && !sysBtns.rel
-   && /nginx tab/.test(sysBtns.line),
+   && /nginx page/.test(sysBtns.line),
    `BuilderBot's nginx row keeps Up, Down, Remove and the update and loses Edit, Rebuild and Copy or move (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
 ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
      && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),

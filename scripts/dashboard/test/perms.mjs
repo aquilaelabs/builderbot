@@ -199,6 +199,10 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   // A group opens on its first page this account may open (the operator,
   // 16 Oct: Settings did nothing for an account the Controller page is not
   // drawn for, though Profile is in it).
+  // A new account is shown the guide on its first poll; it is put away, as
+  // the person would, before the rail is pressed under it.
+  await dp.waitForFunction(() => welcomed, null, { timeout: 15000 });
+  await dp.evaluate(() => { if (!document.getElementById('aboutModal').hidden) closeAbout(); });
   await dp.click('#rail [data-rail="settings"]');
   await dp.waitForFunction(() => tabOf(panes[0])?.kind === 'profile', null, { timeout: 10000 });
   ok(await dp.evaluate(() => location.hash === '#/settings/profile'
