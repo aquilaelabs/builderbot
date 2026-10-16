@@ -457,6 +457,8 @@ function renderToolchainsInto(i){
     surf.setBar(skNodeBar([]));
     surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles"><div class="tile"><span class="tv">${skv(1.4)}</span>
         <span class="tl">installed</span><span class="ts">of ${skv(2)} offered</span></div></div></div>
+      <div class="field tcact"><div class="actbar macros"><span class="state">${skv(9)}</span><span class="sp"></span>
+        <button type="button">Check for updates</button><button type="button" class="primary">Install selected</button></div></div>
       ${skTable(TC_COLS, 6, "tcs")}`);
     return;
   }
@@ -537,9 +539,31 @@ function renderToolchainsInto(i){
          sub: "on the store", omit: typeof d.free_mb !== "number"},
       ]);
     })()}
-    ${onNode && (d.cleanable || []).length && mayToolchains(tcNode) ? `<div class="field"><div class="actbar tcclean"><span class="state">On this store and used by no node: ${
-      d.cleanable.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</span><span class="sp"></span>
-      <button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button></div></div>` : ""}
+    ${
+    // The page's actions in one band near its top (the operator, 16 Oct:
+    // Install selected and Check for updates down at the foot, under every
+    // row): what is running or when it was checked at the left, then Remove
+    // for what no node uses any more (R196), Abort, Check and Install.
+    (() => {
+      const may = mayToolchains(tcNode);
+      const clean = onNode && (d.cleanable || []).length && may ? d.cleanable : [];
+      return `<div class="field tcact"><div class="actbar macros">
+      ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
+      <span class="sp"></span>
+      ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}
+      ${busy && may ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
+        job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+      <button data-tc="check"${busy || pstale || !may ? " disabled" : ""}
+        title="ask each upstream what it has now">${
+        busy && job.action === "check"
+          ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
+        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
+      ${!may ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
+        ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
+        >Install selected</button>`}
+    </div>${clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
+      clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""}</div>`;
+    })()}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
       // R51): the libraries are the machine's own, outside the store, and
@@ -560,19 +584,7 @@ function renderToolchainsInto(i){
       d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
     ${tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs")}
-    <div class="actbar macros">
-      ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
-      ${!mayToolchains(tcNode) ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
-        ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
-        >Install selected</button>`}
-      ${busy && mayToolchains(tcNode) ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
-        job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-      <button data-tc="check"${busy || pstale || !mayToolchains(tcNode) ? " disabled" : ""}
-        title="ask each upstream what it has now">${
-        busy && job.action === "check"
-          ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
-        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
-    </div>`;
+`;
 
   el.querySelectorAll(".tc input").forEach(b => b.onchange = () => {
     b.checked ? tcTicked.add(b.value) : tcTicked.delete(b.value);

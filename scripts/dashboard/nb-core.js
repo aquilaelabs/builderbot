@@ -938,7 +938,7 @@ function projectHeader(t){
   return `<div class="phead">
     <span class="pname">${esc(p.label || name)}${p.locked || notMine(p)
       ? ` <span class="lockmark">${LOCK}${p.locked ? "locked" : "read-only"}</span>` : ""}</span>
-    <span class="pfacts">${p.git ? `git: ${esc(p.git)}` : ""}${p.git && node ? " · " : ""}${esc(node)}</span>
+    <span class="pfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>` : ""}${p.git && node ? " · " : ""}${esc(node)}</span>
     ${projectState(p)}
     <span class="sp"></span>
     ${projectActions(p)}

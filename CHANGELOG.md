@@ -373,6 +373,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every session starts its probes and its dev instance's rebuilds in the background as it does its test runs, so a message sent meanwhile is read (bf61866)
 - Builds join test runs, probes and dev rebuilds: every session starts them in the background, so a message sent while one runs is read (c8ab6dc)
 - Every color theme now has two hues: links, the chosen view in a notebook group's row and info tags wear a second color picked to sit apart from the accent, and each swatch shows both (eba3133)
+- The second color now shows on every page: a project's branch on its card, its header and Home, Home's tiles, a node's Memory chart beside its CPU, and a control's edge under the pointer (693defa)
+- The Toolchains page's Check for updates and Install selected sit in one band near its top, beside Remove, rather than under every row (693defa)
 
 ### Removed
 
@@ -606,6 +608,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A rail group opens on its first page you may open: Settings opens Profile for an account that may not read the controller, and Build opens Phone for one without Toolchains; the Emulator now needs the Toolchains area, as its images are the store's (6475ae3)
 - The bell's container updates name only the containers of projects you may manage, where they listed every project's (6475ae3)
 - Another account on a project no longer lists the owner's Claude session on a node as its own (Sessions, and Sign out's count) (eba3133)
+- Only one of the bell, the doctor and the gear menu is open at a time (693defa)
 
 ### Security
 

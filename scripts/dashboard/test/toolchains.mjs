@@ -340,6 +340,12 @@ ok(/download/.test((await pill('swift', 'Size')).text)
 // told) and dated, because a number with no date on it goes quietly stale.
 ok(/versions checked/.test(await page.$eval('.doc.on .macros', el => el.textContent)),
    '...and the tab says how old the answers are');
+// Its actions near the top, above every row (the operator, 16 Oct): Check
+// and Install selected in the band, Install at its right.
+ok(await page.$eval('.doc.on .tcact', b => { const t = b.closest('.doc').querySelector('.tbl.tcs');
+     const btns = [...b.querySelectorAll('button')].map(x => x.dataset.tc || x.textContent.trim());
+     return t && (b.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) && btns.at(-1) === 'install' && btns.includes('check'); }),
+   '...Check for updates and Install selected in one band above the rows, Install last');
 const stored = JSON.parse(readFileSync(`${DIR}/state/toolchain-versions.json`, 'utf8'));
 ok(stored.at > 0 && stored.items.flutter.status === 'update',
    '...and they are on disk, to outlive the process that asked');
@@ -823,11 +829,11 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
                    cleanable: [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }] };
     tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
     const clean = document.querySelector('.tcclean')?.textContent.replace(/\s+/g, ' ') || '';
-    const rm = !!document.querySelector('.tcclean [data-tcclean].danger');
+    const rm = !!document.querySelector('.tcact [data-tcclean].danger');
     tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
     return { clean, rm };
   });
-  ok(/On this store and used by no node: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
+  ok(/Remove takes off the store what no node uses: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
      `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
 }
 

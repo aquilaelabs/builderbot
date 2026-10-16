@@ -477,6 +477,9 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
    is the accent's (the operator, 16 Oct: every scheme but the default was
    shades of one color). Without this a link was the browser's own blue. */
 a{color:var(--note)}
+/* A project's branch, on its card, its notebook's header and Home: what it
+   is on, in the second color beside the accent's buttons. */
+.pbr{color:var(--note)}
 /* The selection, in the scheme's own colors. It was the one color on the
    page the schemes could not reach: left unstyled, Chrome draws it in the
    DEVICE's accent, so on an Android with an amber Material You palette a
@@ -1030,7 +1033,9 @@ button{background:var(--btn);color:var(--ink);border:var(--hair) solid var(--lin
    specificity and win only by coming later. */
 @media(hover:hover){
   .row .name.go:hover{text-decoration:underline}
-  button:hover{background:var(--btn-hi)}
+  /* ...and its edge in the second color, so a pointer over any control
+     shows the scheme's other hue (the operator, 16 Oct). */
+  button:hover{background:var(--btn-hi);border-color:color-mix(in srgb, var(--note) 60%, var(--line))}
   /* The green buttons kept their color through button:hover (their own rules
      come later and win), which meant no hover at all. A lighter green and a
      brighter border are their version of the same lift. */
@@ -2841,6 +2846,9 @@ pre.diff .d-ctx{color:var(--dim)}
 .tile .tl{font:var(--f-note);color:var(--dim)}
 .tile .ts{font:var(--f-note);color:var(--dim);opacity:.85}
 .tile.ok .tv{color:var(--accent)}
+/* A tile that is a link and carries no news is the second color: it is a
+   way to its page, as a link in words is. */
+.tile.link:not(.ok):not(.warn):not(.bad) .tv{color:var(--note)}
 .tile.warn .tv{color:var(--warn)}
 .tile.bad .tv{color:var(--bad)}
 /* The strip on a row (what a container uses now): the same tile, smaller,
@@ -2921,9 +2929,12 @@ pre.diff .d-ctx{color:var(--dim)}
 .chart .carea{position:relative;height:96px;outline-offset:3px;touch-action:pan-y;cursor:crosshair}
 .chart .carea svg{display:block;width:100%;height:100%;overflow:visible}
 .chart .cgrid{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
-.chart .cline{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
-.chart .cfill{fill:var(--accent);opacity:.1;stroke:none}
-.chart .cdot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--accent);
+/* A second chart beside the first (a node's Memory beside its CPU) is drawn
+   in the second color, so the pair reads as two measures. */
+.charts .chart + .chart{--chart-c:var(--note)}
+.chart .cline{fill:none;stroke:var(--chart-c, var(--accent));stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.chart .cfill{fill:var(--chart-c, var(--accent));opacity:.1;stroke:none}
+.chart .cdot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--chart-c, var(--accent));
   box-shadow:0 0 0 2px var(--panel);pointer-events:none}
 .chart .chair{position:absolute;top:0;bottom:0;width:0;border-left:var(--hair) solid var(--dim);pointer-events:none}
 .chart .ctip{position:absolute;top:-4px;transform:translate(6px,-100%);white-space:nowrap;pointer-events:none;
