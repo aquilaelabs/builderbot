@@ -98,6 +98,18 @@ class ImageCheck(unittest.TestCase):
         self.assertEqual(imagecheck.of("radarr")["behind"], [], "Update pulled it")
         self.assertEqual(imagecheck.attention(lambda nid: nid), [])
 
+    def test_the_bell_row_holds_only_the_projects_the_account_may_act_on(self):
+        imagecheck.check()
+        self.assertEqual(imagecheck.of("radarr")["project"], "radarr", "the check records whose it is")
+        self.assertEqual(imagecheck.attention(lambda nid: nid, allowed=lambda p: p == "site"), [],
+                         "radarr's update is news only to who may act on radarr")
+        self.assertEqual(len(imagecheck.attention(lambda nid: nid, allowed=lambda p: p == "radarr")), 1)
+        # An answer from before the check recorded the project: found by name.
+        d = json.loads(imagecheck._file().read_text())
+        d["radarr"].pop("project")
+        write_json(imagecheck._file(), d)
+        self.assertEqual(len(imagecheck.attention(lambda nid: nid, allowed=lambda p: p == "radarr")), 1)
+
     def test_an_image_never_pulled_is_not_compared_and_a_registry_that_will_not_say_is_said(self):
         self.dv.pulled.pop("mariadb:11")
         write_json(imagecheck.DIGESTS_FILE, {"lscr.io/linuxserver/radarr:latest": self.A})

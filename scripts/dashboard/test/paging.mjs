@@ -42,36 +42,35 @@ const state = () => page.evaluate(() => {
 
 let st = await state();
 ok(st.total === 40 && st.shown === 25,
-   'a list past the threshold shows one page, not all of it');
-ok(/1 to 25 of 40 reports/.test(st.text),
-   '...saying which of it is on screen');
-ok(st.bars === 1 && !/Previous/.test(st.text), '...with exactly one footer, and no Previous on the first page');
+   'a list past the threshold shows its first page, not all of it');
+ok(/25 of 40 reports/.test(st.text) && st.bars === 1 && /Show more/.test(st.text),
+   '...with one quiet foot saying how much of it is on screen, and a Show more');
 
-await page.click('#bugList:visible .pagemore .next');
+// More as the reader gets there (the operator, 16 Oct): the foot scrolled
+// into view brings the rest under the rows already there, with no press.
+const top = await page.$eval('#bugList:visible .bug:nth-of-type(1)', e => e.getBoundingClientRect().top);
+await page.$eval('#bugList:visible .pagemore', e => e.scrollIntoView({ block: 'end' }));
+await page.waitForFunction(() => { const l = [...document.querySelectorAll('#bugList')].find(x => x.offsetParent);
+  return [...l.querySelectorAll(':scope > .bug')].every(r => !r.hidden); }, null, { timeout: 5000 });
 st = await state();
-ok(st.shown === 15 && /26 to 40 of 40 reports/.test(st.text) && !/Next/.test(st.text),
-   'Next turns to the second page, the same rows or fewer, and stops offering a page that is not there');
-ok(await page.$eval('#bugList:visible .bug:nth-of-type(1)', e => e.hidden)
-   && !await page.$eval('#bugList:visible .bug:nth-of-type(26)', e => e.hidden),
-   '...and the first page is off screen, not above the second: the list did not grow');
+ok(st.shown === 40 && st.bars === 0, `scrolled to its foot the rest arrives by itself, and with all of it shown there is no foot (${JSON.stringify(st)})`);
+ok(!await page.$eval('#bugList:visible .bug:nth-of-type(1)', e => e.hidden) && Number.isFinite(top),
+   '...the rows that were there stay, the list growing under them');
 
 // The rows revealed are real rows, not decoration: a report opened after
-// paging still opens.
+// they arrive still opens.
 await page.click('#bugList:visible .bug:nth-of-type(30) > summary');
 ok(await page.$eval('#bugList:visible .bug:nth-of-type(30)', e => e.open),
-   'a row revealed by paging still behaves like a row');
+   'a row that arrived still behaves like a row');
 
-// Redrawing keeps the operator where they were rather than snapping back to
-// page one: a list that repaints under a poll must not steal the view.
+// Redrawing keeps what was shown rather than cutting back to the first page:
+// a list that repaints under a poll must not take the reader's place.
 await page.evaluate(() => {
   const l = [...document.querySelectorAll('#bugList')].find(x => x.offsetParent);
   paginate(l, ':scope > .bug', { key: 'bugList', noun: 'reports' });
 });
 st = await state();
-ok(st.shown === 15 && /26 to 40/.test(st.text), 'a redraw keeps the page that was open');
-await page.click('#bugList:visible .pagemore .prev');
-st = await state();
-ok(st.shown === 25 && /1 to 25 of 40/.test(st.text), 'Previous turns back');
+ok(st.shown === 40, 'a redraw keeps what had been shown');
 
 // A short list is left whole: a footer hiding one row is a click for
 // nothing, which is why the threshold has slack in it. Waited on the view
@@ -151,7 +150,7 @@ for (const [what, call] of [
   await page.evaluate(() => document.querySelector(
     '.nb[data-project="alpha"] .nbview[data-view="artifacts"] .pagemore .next')?.click());
   const opened = await shown();
-  ok(opened === 9, `Next turns to the second page, 9 of the 34 files (${opened} rows)`);
+  ok(opened === 34, `Show more brings the rest, all 34 files (${opened} rows)`);
   // beta's SHORT list redraws, which is all a poll does on a box where
   // another project's view keeps moving.
   await page.evaluate(() => { const n = getNotebook('beta'); n?.view('bugs'); n?.view('artifacts'); });

@@ -186,7 +186,8 @@ def check(node=None):
                     continue
                 try:
                     out[devapp._pname(project, inst)] = check_instance(project, inst) | {
-                        "node": devapp._instance_node(project, inst) or ""}
+                        "node": devapp._instance_node(project, inst) or "",
+                        "project": devapp.owner_of(project, inst) or project}
                 except Exception as e:   # noqa: BLE001 (one container's trouble is not the check's)
                     print(f"[imagecheck] {project}/{inst}: {type(e).__name__}: {e}", flush=True)
         with _lock:
@@ -221,12 +222,29 @@ def forget(name):
             write_json(_file(), d)
 
 
-def attention(node_name):
+def _project_of(name, v):
+    """The project a checked container is one of: as the check recorded it,
+    or, for an answer from before it did, found by the container's name."""
+    if (v or {}).get("project"):
+        return v["project"]
+    for project, insts in devapp._load().items():
+        for inst in insts:
+            if devapp._pname(project, inst) == name:
+                return devapp.owner_of(project, inst) or project
+    return ""
+
+
+def attention(node_name, allowed=None):
     """The bell's rows: one per node with a container behind, kind image,
-    keyed by bellseen on the digests it would move to."""
+    keyed by bellseen on the digests it would move to. `allowed(project)`
+    keeps the containers of the projects this account may act on: a row of
+    another project's updates is news about containers it cannot touch, and
+    names what it may not see (the operator, 16 Oct)."""
     by = {}
     for name, v in _load().items():
         if name.startswith("_") or not (v or {}).get("behind"):
+            continue
+        if allowed is not None and not allowed(_project_of(name, v)):
             continue
         by.setdefault(v.get("node") or "", []).append((name, v["behind"]))
     out = []

@@ -63,7 +63,8 @@ function railAllows(kind){
   switch (kind){
     case "settings": return !!a.controller;
     case "users": case "roles": return !!a.accounts;
-    case "toolchains": return !!a.toolchains;
+    // The Emulator's images are the toolchain store's, so the same area.
+    case "toolchains": case "emulator": return !!a.toolchains;
     case "jobs": return !!a.jobs;
     // The nginx tab is the Nodes tab's area (R171); Storage its own (R169).
     case "nodes": case "nginx": return !!a.nodes;
@@ -74,6 +75,13 @@ function railAllows(kind){
 }
 function railGroups(){
   return RAIL.filter(g => (g.tools || []).some(([k]) => railAllows(k)));
+}
+// The page a group opens on: the one asked for when this account may open
+// it, else the group's first that it may. Settings opens Profile for an
+// account the Controller page is not drawn for, where it opened nothing.
+function railTool(g, want){
+  const ok = (g.tools || []).filter(([k]) => railAllows(k)).map(([k]) => k);
+  return want && ok.includes(want) ? want : ok[0] || "";
 }
 
 // What the rail lights: the group somebody pressed, while its page is the
@@ -105,8 +113,8 @@ function railGo(key, tool){
   const g = RAIL.find(x => x.key === key);
   if (!g) return;
   railWant = key;
-  const kind = tool && (g.tools || []).some(([k]) => k === tool) ? tool : g.tools[0][0];
-  if (!railAllows(kind)) return;
+  const kind = railTool(g, tool);
+  if (!kind) return;
   const was = location.hash;
   OPENERS[kind]?.();
   const to = routeOf(tabOf(panes[0]));
@@ -183,8 +191,8 @@ function openRoute(hash){
   const g = RAIL.find(x => x.key === key);
   if (!g) return false;
   const multi = (g.tools || []).length > 1;
-  const kind = a && (g.tools || []).some(([k]) => k === a) ? a : g.tools[0][0];
-  if (!railAllows(kind)) return false;
+  const kind = railTool(g, a);
+  if (!kind) return false;
   railWant = key;
   // The node the address names, set before the page draws (R256 step 3).
   const node = multi ? b : a;

@@ -367,6 +367,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every session on every project is told, and held to it, that a background test run says when it ends: waiting on it with a foreground loop is refused, so a message sent meanwhile is read (46e031b)
 - The Roles page is a list beside its detail: accounts with their roles as tags beside the picked one's Everywhere roles, the projects it is actually on and an Add to project, and what it can do as a grid; roles with their kind and holders beside the picked one's areas. On a phone, the list then the detail with Back (f37c706)
 - No Refresh on pages that follow their own changes (nginx, CI runner, Toolchains, Emulator, the Git view); the Phone page's is now Check now, since it asks the phone. A mention of another page is a link to it. Back steps through a notebook's views and its wiki pages, and a node page's address names the node it shows. Naming a branch, a changelog category or a wiki page asks in a box in the page, not the browser's prompt (f2085d1)
+- Long lists (the roadmap, bugs, jobs, notices, artifacts) load more as you scroll to their foot instead of turning pages with Previous and Next; a Show more stays at the foot for the keyboard (6475ae3)
 
 ### Removed
 
@@ -597,6 +598,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A locked or read-only project's padlock on the Projects page is drawn as an outline with the word locked or read-only beside it, where it was a black blob saying nothing (2153102)
 - The bell's Resume sends its line once however fast it is pressed again, and keeps its row when the line was typed into a busy session but not sent (2153102)
 - A session no longer sees the names of the account's other projects in its Claude conversations folder; only its own project's conversations, and those of the projects it reads, are there (2153102)
+- A rail group opens on its first page you may open: Settings opens Profile for an account that may not read the controller, and Build opens Phone for one without Toolchains; the Emulator now needs the Toolchains area, as its images are the store's (6475ae3)
+- The bell's container updates name only the containers of projects you may manage, where they listed every project's (6475ae3)
 
 ### Security
 

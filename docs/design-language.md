@@ -729,30 +729,11 @@ What a person acts on or decides by is on the row, at every width, and never onl
 
 Applies to: scripts/dashboard/nb-*.js, scripts/dashboard/tab-*.js; list, page, paginate, pagination
 
-A list that can outgrow a screen shows a page at a time, through `paginate`
-and nothing else: one helper applied to the DOM after a list draws, rather
-than each renderer growing its own. It draws a `.pagemore` footer: which
-rows are on screen of the total ("26 to 50 of 80 bugs"), then Previous and
-Next, each only when there is a page for it to go to. It is a bar the
-framework owns, so it is exempt from the action-bar rule and its shape is
-the same on every list.
+A list that can outgrow a screen shows its first page and brings in more as the reader gets to its foot, through `paginate` and nothing else: one helper applied to the DOM after a list draws, rather than each renderer growing its own (the operator, 16 Oct: in place of Previous and Next). While more is to come it draws a quiet `.pagemore` foot saying how much is on screen of the whole ("50 of 80 bugs") with a Show more for a keyboard or a reader who would rather press, and the next page arrives by itself as that foot scrolls into view; with all of it shown there is no foot. It is a bar the framework owns, so it is exempt from the action-bar rule and its shape is the same on every list.
 
-Pages, not a list that grows. The footer used to add a page below the last
-one, and after two presses it was a screen away from the head: the same
-number of rows is on screen whichever page is open, and turning a page
-brings its top into view. The order still means something (bugs by
-severity, the roadmap in the order the work has to happen in), so a page
-is named by the rows it holds and never by a number.
+The rows already on screen never move as more arrive under them, and a redraw keeps what had been shown rather than cutting back to the first page. The order still means something (bugs by severity, the roadmap in the order the work has to happen in).
 
-Two judgements are yours. A list that only just crosses the line is left
-whole, which `paginate` does for you. And a list somebody SCANS for a name
-rather than reads in order (the toolchain catalog) is not paged at all,
-because hiding half of it behind a control is worse than a long page.
-
-The state is per list and per notebook. A notebook is a clone of one
-template, so its ids belong to every open notebook at once; a key that
-forgets which notebook it is in is one bucket shared by all of them, which
-is how a page came to turn itself back.
+Two judgements are yours. A list that only just crosses the line is left whole, which `paginate` does for you. And a list somebody SCANS for a name rather than reads in order (the toolchain catalog) is not cut at all, because hiding half of it behind a control is worse than a long page.
 
 ### motion
 

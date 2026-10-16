@@ -221,13 +221,15 @@ const pillIs = async (want) => {
   // whole run can land after the rows the poll drew, or bring back as "the
   // daemon did not answer" once, and a read that did not wait crashed the
   // file at its first check (B334). Asked for again once if it has not come.
-  await page.waitForSelector('.dmtab .dmsrc', { timeout: 20000 }).catch(async () => {
+  await page.waitForFunction(() => !!dockerList?.src, null, { timeout: 20000 }).catch(async () => {
     await page.evaluate(() => { dockerList = null; loadDocker(); });
-    await page.waitForSelector('.dmtab .dmsrc', { timeout: 20000 });
+    await page.waitForFunction(() => !!dockerList?.src, null, { timeout: 20000 });
   });
-  const src = await page.$eval('.dmtab .dmsrc', e => e.textContent.replace(/\s+/g, ' ').trim());
-  ok(/^on sandbox, through its agent/.test(src),
-     `the manager's header names an agent node's daemon by the node, through its agent (${src.slice(0, 60)})`);
+  // Through its agent, the ordinary case, says nothing the picker has not
+  // (R227 step 1), and never an address it does not dial.
+  const src = await page.evaluate(() => ({ agent: !!dockerList.src.agent, line: document.querySelector('.dmtab .dmsrc')?.textContent.replace(/\s+/g, ' ').trim() || '' }));
+  ok(src.agent && !/ at |ssh:/.test(src.line),
+     `an agent node's daemon is named by the picker alone, never by an address it does not dial (${JSON.stringify(src).slice(0, 80)})`);
 }
 
 // The word at the foot is for a fetch that has been slow, not for every
@@ -3095,7 +3097,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   ok(/"3001:3000"/.test(onDisk), '...with the ports quoted, since YAML would read one as a number');
 }
 
-ok(/written here: this dashboard holds its compose file/.test(await page.$eval(
+ok(/written here/.test(await page.$eval(
      '.dmtab .row[data-inst="radarr|main"]', r => r.textContent))
    && await page.evaluate(() => {
      // The heading a row sits under is the last one before it.

@@ -1481,7 +1481,7 @@ function dmRowsHtml(ins, job, blind){
             !blind && d.running && st[1] === "ok" ? " live" : ""}">${
             esc(st[0])}${dockerList?.stale && !blind ? ", as last seen" : ""}</span></div>
         <div class="sub">${d.source === "file"
-          ? `written here: this dashboard holds its compose file`
+          ? `written here`
           : `from ${esc(projLabel(d.project))}'s compose file${
               d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}</div>
         </div>
@@ -1492,8 +1492,8 @@ function dmRowsHtml(ins, job, blind){
         // one container, B252), its containers and how each is, what it
         // was built from and the file it is made from.
         factGrid([
-          ["Image", (d.services || []).length === 1 ? d.services[0].image || "" : ""],
-          ["Images", (d.services || []).length > 1 ? [...new Set(d.services.map(c => c.image).filter(Boolean))].join(", ") : ""],
+          ["Image", (d.services || []).length === 1 ? dmImage(d.services[0].image) : "", {html: true}],
+          ["Images", (d.services || []).length > 1 ? [...new Set(d.services.map(c => c.image).filter(Boolean))].map(dmImage).join(", ") : "", {html: true}],
           ["Ports", d.ports.length ? dmPortsFact(d) : "", {html: true, cls: "dmports"}],
           ["Route", dmRoutesOf(d).map(dmRouteLink).join(" · "), {html: true, cls: "dmroute"}],
           ["Containers", (d.services || []).length > 1 ? d.services.map(c =>
@@ -1504,7 +1504,7 @@ function dmRowsHtml(ins, job, blind){
           ["Compose file", d.compose_path ? `<code>${esc(d.compose_path)}</code>` : "", {html: true}],
         ], "dmfacts")}
         ${blind ? "" : dmStatStrip(d)}
-        ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: its routes and certificates are the nginx tab's, and Deploy there makes it again</div>` : ""}
+        ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: routes, certificates and Deploy on the ${pageLink("", "nginx page", "#/machines/nginx")}</div>` : ""}
         ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : d.relocating.archive ? "note" : "bad"} dmreloc">${esc(d.relocating.line)}${
           d.relocating.busy ? '<span class="dots"></span>'
           : d.relocating.archive && mayDocker() && !busy ? ` <a href="#" data-dmunpack>unpack it now</a>` : ""}</div>` : ""}
@@ -2104,9 +2104,9 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   return owners.map(o => gone(o)
       ? head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
       : o === "System"
-        ? head("System", "BuilderBot's own deployments; no Claude session sees these", null) + group(o)
+        ? head("System", "BuilderBot's own · no session sees these", null) + group(o)
         : head(projLabel(o), "", colorTone(projectColor(o))) + group(o)).join("")
-    + (loose ? head("No project", "no Claude session sees these", null) + group("") : "");
+    + (loose ? head("No project", "no session sees these", null) + group("") : "");
 }
 
 // The groups the chips offer: each project with containers here, by its
@@ -2169,6 +2169,16 @@ function dmOtherWrap(c, inner){
   return dmLineWrap(`data-ctr="${esc(name)}"`, " off dmother", [`<span class="name">${esc(name)}</span>`,
     `<span class="pill stat${c.state === "running" ? " ok" : " off"}">${esc(c.state || "unknown")}</span>`,
     c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "", esc((c.ports || []).join(", ")), "", esc(c.image || "")], inner);
+}
+
+// An image as a fact (R227 step 2): its tag, and a pinned digest's first
+// twelve in code with the whole of it as its title, where the whole printed
+// over three lines.
+function dmImage(img){
+  const s = String(img || ""), at = s.indexOf("@sha256:");
+  if (at < 0) return esc(s);
+  const dg = s.slice(at + 8);
+  return `${esc(s.slice(0, at))} <code class="dmdigest" title="${esc(s.slice(at + 1))}">${esc(dg.slice(0, 12))}</code>`;
 }
 
 function renderDockerInto(i){
@@ -2258,8 +2268,10 @@ function renderDockerInto(i){
   // default node, so on any other one this line named a machine the tab was
   // not talking to, in an address, which reads as proof.
   const src = dockerList?.src || state?.docker || {};
-  const srcLine = !note && src.kind
-    ? `<div class="dmsrc">${src.agent ? `on ${esc(src.kind)}, through its agent`
+  // Through its agent, the ordinary case, the picker has said already; a
+  // daemon reached at an address, or a mapped path not mounted, is news.
+  const srcLine = !note && src.kind && (!src.agent || (src.strays || []).length)
+    ? `<div class="dmsrc">${src.agent ? `on ${esc(src.kind)}`
                                        : `on ${esc(src.kind)} at <code>${esc(src.where)}</code>`}${
         // A mapped path this container does not have. Not a fault: it can be a
         // share the daemon mounts and BuilderBot has no business reading. It is
@@ -2295,13 +2307,14 @@ function renderDockerInto(i){
       <button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button></div>${
       // Adding at the top, in the add band every view adds with, where a
       // phone finds it without scrolling past every container (R119 step 5).
-      mayDocker() ? `<div class="field"><div class="addbar" data-add="container">
-        <button type="button" id="bDockerNew">New container</button></div></div>` : ""}${
-      // Registry images against what their registries serve now (R195):
-      // weekly by itself, or now; a row that is behind says so with Update.
-      mayDocker() && !blind ? `<div class="field"><div class="actbar dmimgbar"><span class="state">${
-        dockerList?.images_at ? `registry images checked ${esc(ago(dockerList.images_at))}` : "registry images not checked yet"}</span>
-        <span class="sp"></span><button type="button" id="bDockerCheck">Check for updates</button></div></div>` : ""}`;
+      // ...and, in the same band rather than one each (R227 step 1: six rows
+      // before the first container on a phone), the registry images against
+      // what their registries serve now (R195): weekly by itself, or now; a
+      // row that is behind says so with Update.
+      mayDocker() ? `<div class="field"><div class="actbar addbar dmimgbar" data-add="container">
+        <button type="button" id="bDockerNew">New container</button><span class="sp"></span>${!blind ? `<span class="state">${
+        dockerList?.images_at ? `images checked ${esc(ago(dockerList.images_at))}` : "images not checked yet"}</span>
+        <button type="button" id="bDockerCheck">Check for updates</button>` : ""}</div></div>` : ""}`;
   // What a session is waiting on, above everything else: somebody is blocked
   // on these, and this is the tab whose dial sent them here. The bell carries
   // them too, the way root asks sit on the Nodes tab and in the bell.
