@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="320" viewBox="0 0 440 320">
+  <!-- The light half's wall behind the page: large panels with chamfered
+       corners, a recessed line inside each, the seams between them, and a
+       short vent grille low on one; every line pressed in (a gray edge with
+       a white one a pixel under it). Tiles at 440 by 320, big enough to read
+       as a wall rather than a pattern. Faint, baked in as the plate's is. -->
+  <g fill="none" stroke-linejoin="round">
+    <g stroke="#ffffff" stroke-opacity="0.8" stroke-width="1.4" transform="translate(0 1.2)">
+      <path d="M26 6H254L274 26V294L254 314H26L6 294V26Z"/>
+      <path d="M40 22H240L258 40V280L240 298H40L22 280V40Z"/>
+      <path d="M306 6H414L434 26V134L414 154H306L286 134V26Z"/>
+      <path d="M306 166H414L434 186V294L414 314H306L286 294V186Z"/>
+      <path d="M312 262h92M312 270h92M312 278h92M312 286h92"/>
+    </g>
+    <g stroke="#4f5458" stroke-opacity="0.15" stroke-width="1.4">
+      <path d="M26 6H254L274 26V294L254 314H26L6 294V26Z"/>
+      <path d="M40 22H240L258 40V280L240 298H40L22 280V40Z" stroke-opacity="0.09"/>
+      <path d="M306 6H414L434 26V134L414 154H306L286 134V26Z"/>
+      <path d="M306 166H414L434 186V294L414 314H306L286 294V186Z"/>
+      <path d="M312 262h92M312 270h92M312 278h92M312 286h92" stroke-opacity="0.22"/>
+    </g>
+  </g>
+</svg>

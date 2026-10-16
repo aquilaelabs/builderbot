@@ -27,14 +27,14 @@
   // of the default followed by a jump. Written straight onto <html> because
   // <body> does not exist yet: a matching selector pair below reads either.
   try{
-    const t = localStorage.getItem("bb.theme");
+    let t = localStorage.getItem("bb.theme");
+    if (t === "fern") t = "nostromo";   // a stored Fern is Nostromo's light half; applyTheme writes it back
     if (t && t !== "default" && /^[a-z]{2,12}$/.test(t))
       document.documentElement.dataset.theme = t;
     // ...and whether it is the dark or the light half of it (R216): "system"
     // follows the device, resolved here so the first paint is already right.
     const m = localStorage.getItem("bb.mode");
-    if ((m === "light" || (m === "system" && matchMedia("(prefers-color-scheme: light)").matches))
-        && t !== "nostromo")
+    if (m === "light" || (m === "system" && matchMedia("(prefers-color-scheme: light)").matches))
       document.documentElement.dataset.mode = "light";
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
 
@@ -81,8 +81,8 @@
      primary button, a view bar's current tab, an open select's chosen row,
      the text selection, and forty percent of black is not enough darkening
      when the scheme's accent is a bright one. MEASURED across the twelve:
-     nostromo's label sat at 3.56:1, moss at 4.17, sepia 4.23, ice 4.25, ash
-     4.43, all of them under AA, and the tab's icons at --dim were 2.5 to 3.1
+     nostromo's label sat at 3.56:1, moss at 4.17, sepia 4.23, ice 4.25,
+     all of them under AA, and the tab's icons at --dim were 2.5 to 3.1
      against the same fill. */
   /* The sunk surface: a field, a memory row, a send box; anything that reads
      as set INTO the panel rather than sitting on it. Hardcoded as #161b22 in
@@ -232,8 +232,8 @@
   }
 }
 /* ---- color schemes ----------------------------------------------------
-   Fourteen, each with a dark half and a light one but Nostromo, which is
-   dark only (the light halves follow, under their own switch). A scheme is nine custom properties and nothing else: every rule in
+   Twelve, each with a dark half and a light one (the light halves follow,
+   under their own switch). A scheme is nine custom properties and nothing else: every rule in
    the sheet already draws from them, which is what makes a recolor cheap and
    a new one three lines.
 
@@ -245,8 +245,12 @@
    are the same in every scheme and a scheme that had to restate them would
    invite them apart. */
 html[data-theme="nostromo"],.sw[data-theme="nostromo"]{
-  --bg:#101712; --panel:#162018; --line:#405b37; --ink:#d7e3c8;
-  --dim:#95a488; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a;
+  --bg:#0b0f13; --panel:#121920; --line:#33404c; --ink:#d3dbe3;
+  --dim:#8b98a5; --accent:#ffb000; --warn:#e0913a; --bad:#ff5f45; --note:#6fa8dc}
+/* Square corners are the dark half's, the hallways (the operator,
+   16 Oct); the light half, the white corridors, is rounded like every other
+   scheme. */
+html[data-theme="nostromo"]:not([data-mode="light"]),html:not([data-mode="light"]) .sw[data-theme="nostromo"]{
   --r-surface:0; --r-control:0; --r-small:0}
 html[data-theme="slate"],.sw[data-theme="slate"]{
   --bg:#181c23; --panel:#1f242d; --line:#4f5a68; --ink:#dfe5ec;
@@ -278,14 +282,6 @@ html[data-theme="ice"],.sw[data-theme="ice"]{
 html[data-theme="sepia"],.sw[data-theme="sepia"]{
   --bg:#1f1b14; --panel:#272219; --line:#63563e; --ink:#ece0cb;
   --dim:#b0a28c; --accent:#d3a94f; --warn:#e3c069; --bad:#e0705f; --note:#9db98c}
-html[data-theme="ash"],.sw[data-theme="ash"]{
-  --bg:#1b1b1b; --panel:#222322; --line:#555955; --ink:#e2e4e0;
-  --dim:#a1a59f; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
-/* Fern: Nostromo's colors without the ship (the operator, 14 Oct): green
-   and amber, rounded like the rest, and a light half of its own. */
-html[data-theme="fern"],.sw[data-theme="fern"]{
-  --bg:#101712; --panel:#162018; --line:#405b37; --ink:#d7e3c8;
-  --dim:#95a488; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a}
 /* ---- the light half (R216) -----------------------------------------------
    Every scheme has a light half: the same hue family token for token, with
    the page near white, the ink dark, and the accent and the marks pulled
@@ -313,13 +309,15 @@ html[data-mode="light"]{
 html[data-mode="light"],html[data-mode="light"] .sw[data-theme="default"]{
   --bg:#f1f4f7; --panel:#fcfeff; --line:#c9d2dd; --ink:#242729;
   --dim:#5e646a; --accent:#007c05; --warn:#996200; --bad:#c3131b; --note:#0863b6}
-/* Nostromo has no light half (the operator, 14 Oct): its hull, its stencil
-   and its amber are a dark room, and a page of it near white would be a
-   different design. The gear keeps the page dark while it is picked. What
-   its light half was is Fern, a scheme of its own with rounded corners. */
-html[data-mode="light"][data-theme="fern"],html[data-mode="light"] .sw[data-theme="fern"]{
-  --bg:#f1f4f2; --panel:#fbfefc; --line:#c7d6c2; --ink:#23291c;
-  --dim:#5e6657; --accent:#974f00; --warn:#8b6100; --bad:#c11d00; --note:#41721b}
+/* Nostromo's light half is the ship's white corridors: cool gray-white
+   walls and panels and the hazard marking's red-orange for what is the one
+   (the operator, 16 Oct); its graphics are with the dark half's, below. */
+html[data-mode="light"][data-theme="nostromo"],html[data-mode="light"] .sw[data-theme="nostromo"]{
+  --bg:#e4e5e2; --panel:#f6f6f3; --line:#bfc1bc; --ink:#232628;
+  --dim:#595d60; --accent:#b23a0a; --warn:#8b6100; --bad:#a8002a; --note:#3d7322}
+/* ...its accent the hazard marking's red-orange, filled as itself (white on
+   it at 6.4:1) rather than darkened, which made it maroon. */
+html[data-mode="light"][data-theme="nostromo"]{--accent-deep:var(--accent)}
 html[data-mode="light"][data-theme="slate"],html[data-mode="light"] .sw[data-theme="slate"]{
   --bg:#f1f3f7; --panel:#fcfdff; --line:#cbd2da; --ink:#24272a;
   --dim:#606468; --accent:#2a61b1; --warn:#905e00; --bad:#b2373a; --note:#2e64a5}
@@ -350,117 +348,125 @@ html[data-mode="light"][data-theme="ice"],html[data-mode="light"] .sw[data-theme
 html[data-mode="light"][data-theme="sepia"],html[data-mode="light"] .sw[data-theme="sepia"]{
   --bg:#f5f3f0; --panel:#fffdfb; --line:#d7d0c3; --ink:#2b261c;
   --dim:#6a6256; --accent:#835c00; --warn:#8a6900; --bad:#ac4133; --note:#536c43}
-html[data-mode="light"][data-theme="ash"],html[data-mode="light"] .sw[data-theme="ash"]{
-  --bg:#f3f3f3; --panel:#fdfdfd; --line:#cfd2cf; --ink:#262725;
-  --dim:#626461; --accent:#5d6945; --warn:#8d6800; --bad:#ae3e34; --note:#466979}
 
 /* ---- Nostromo -----------------------------------------------------------
-   The one scheme that is more than a recolor. Amber phosphor on a green-black
-   hull, after the ship's own screens. The flare is gradients; the hull's
-   plating, the binding rings down the gutter and the
-   glyph strip in the header are three hand-written SVG files under
-   static/nostromo, text in the tree like the favicon's source, served by
-   the same allow-list. No raster: a PNG would be a binary in the repository,
-   shipped in the layer that gets rebuilt weekly, for something a few paths
-   say.
+   The one scheme that is more than a recolor: the ship itself, a half for
+   each of its interiors (the operator, 16 Oct). Its dark half is the
+   hallways: cold blue-black steel, grated deck, silver pipe under amber
+   lamps, a chamfered bulkhead, copper seams, square corners. Its light half,
+   below, is the white corridors. The graphics are hand-written SVG under
+   static/nostromo, text in the tree like the favicon's source, served by the
+   same allow-list, each one's opacity baked into its file. No raster: a PNG
+   would be a binary in the repository for something a few paths say.
 
-   Loud enough to be seen on a phone, which the first cut was not: each
-   decal's opacity is baked into its file, the plating at a fifth, the marks
-   and glyphs about a half, and the plating is the only thing that goes
-   under text, on the document panes. A card's own face stays clean: that
-   is where a stack trace is read. */
+   Only the deck goes under text, through the smoked glass of the panes;
+   a card's own face stays clean: that is where a stack trace is read. */
 
-/* Hazard striping, at the one place a ship would actually put a decal: the
-   bottom edge of the header, where the chrome ends and the work begins. */
-/* The border stays. Dropping it for the decal changed the header's height by
-   a pixel, so choosing a scheme nudged the whole page, and a color scheme
-   that moves the layout is a color scheme you can feel. The stripe is drawn
-   over the border instead. */
-/* Its own element rather than a background on the header: an inset box-shadow
-   paints ABOVE the background image, so the first version drew the stripe and
-   then covered it with the hairline that was supposed to sit under it. Four
-   pixels and a 12px period, at three it read as a solid line, which is a
-   different thing from a decal. */
-html[data-theme="nostromo"] header::after{
-  content:"";position:absolute;left:0;right:0;bottom:0;height:4px;z-index:1;
-  background:repeating-linear-gradient(-45deg,
-    rgba(255,176,0,.75) 0 6px, rgba(0,0,0,.55) 6px 12px)}
+/* Smoked glass: the pane bars and the ground under a document let the deck
+   show, at three tenths (the operator, 24 Sep). The stack's ground, so the
+   document fading in does not take its glass with it; a terminal keeps its
+   own solid ground: output read through a pattern is output misread. */
+html[data-theme="nostromo"]:not([data-mode="light"]){--glass:color-mix(in srgb, var(--panel) 70%, transparent)}
+html[data-theme="nostromo"]:not([data-mode="light"]) .pane .bar{background:var(--glass)}
+html[data-theme="nostromo"]:not([data-mode="light"]) .pane{background:transparent}
+html[data-theme="nostromo"]:not([data-mode="light"]) .pane .stack:has(> .doc.on){background-color:var(--glass)}
 
-/* Smoked glass: the pane bars and the ground under a document let the hull
-   show, at three tenths (the operator, 24 Sep). One value. */
-html[data-theme="nostromo"]{--glass:color-mix(in srgb, var(--panel) 70%, transparent)}
-/* Each pane's bar and the ground under a document (the stack's, so the
-   document fading in does not take its glass with it), with the pane behind
-   them left open so it is the hull that shows. A terminal keeps its own
-   solid ground, drawn by the terminal itself: output read through a pattern
-   is output misread. */
-html[data-theme="nostromo"] .pane .bar{background:var(--glass)}
-html[data-theme="nostromo"] .pane{background:transparent}
-html[data-theme="nostromo"] .pane .stack:has(> .doc.on){background-color:var(--glass)}
-
-/* CRT scanlines, on the panels only: never over a terminal pane, where they
-   would sit on top of somebody's actual output at the exact size of its text.
-   3px pitch and 4% black: visible on a flat fill, gone under text.
-   The notebook's are on the pane's BOX, not on the tall content inside it
-   (bug #57). A repeating gradient on the content is rasterized across the
-   whole scroll height: a long roadmap is thousands of pixels of 1px stripes
-   for the GPU to tile, and Firefox for Android was painting some of those
-   tiles as yellow striped blocks. On the box it is one viewport of
-   gradient, painted once, and the lines hold still under the scrolling text
-   the way a screen's would. The stack's box, with the glass, since they are
-   the ground a notebook arrives on and not part of what fades in. */
-html[data-theme="nostromo"] .modal>.box,
-html[data-theme="nostromo"] .pane .stack:has(> .doc.on > .nb){
-  background-image:repeating-linear-gradient(180deg,
-    rgba(0,0,0,.04) 0 1px, rgba(0,0,0,0) 1px 3px)}
-
-/* Weathering on the page itself: a slow vignette so the hull darkens at the
-   edges. Behind everything, pointer-events off; it must never be the thing
-   a click lands on.
-   ABSOLUTE, not fixed, and the difference is only ever about compositing:
-   body is height:100% and overflow:hidden, so nothing at this level ever
-   scrolls and the two resolve to the same rectangle, but `fixed` promotes a
-   full-viewport layer that Chrome re-composites against every scrolling
-   surface on the page, which is the shape of glitch bug #57 describes on a
-   phone. Same pixels, one fewer layer. */
-html[data-theme="nostromo"] body::before{
+/* The hallway behind the page: two amber lamps up in the ceiling, a cold
+   blue haze down the corridor's far end, the dark closing in at the edges,
+   a bulkhead's frame at the foot and the deck grating under it all.
+   ABSOLUTE, not fixed: body never scrolls, so the two are the same
+   rectangle, and `fixed` promoted a full-viewport layer Chrome
+   re-composited against every scrolling surface (bug #57). */
+html[data-theme="nostromo"]:not([data-mode="light"]) body::before{
   content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
-  background:radial-gradient(120% 100% at 50% 0%,
-    rgba(255,176,0,.05) 0%, rgba(0,0,0,0) 45%),
-    radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%),
-    url(/static/nostromo/plate.svg) repeat}
+  background:radial-gradient(38% 30% at 18% 0%, rgba(255,176,0,.09) 0%, rgba(255,176,0,0) 70%),
+    radial-gradient(38% 30% at 82% 0%, rgba(255,176,0,.07) 0%, rgba(255,176,0,0) 70%),
+    radial-gradient(50% 40% at 50% 55%, rgba(80,130,190,.06) 0%, rgba(80,130,190,0) 70%),
+    radial-gradient(140% 120% at 50% 110%, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 60%),
+    url(/static/nostromo/bulkhead.svg) right -60px bottom -60px / 340px no-repeat,
+    url(/static/nostromo/grate.svg) repeat}
 
-/* The plate mark that sat in an open card's bottom-right corner is gone
-   (the operator, 28 Sep): the hull, the rings and the glyphs stay. */
+/* The header is a steel ceiling: a sheen down its face and, at a desk, the
+   pipe runs and their lamp across its empty middle, kept out from under the
+   title and the controls by two flat bands of panel. Its foot is a steel
+   rail drawn over the border, which stays, so choosing the scheme moves
+   nothing by a pixel. */
+html[data-theme="nostromo"]:not([data-mode="light"]) header{background-image:linear-gradient(180deg, rgba(200,220,240,.05), rgba(0,0,0,.22))}
 @media(min-width:901px){
-  /* The ship's glyphs across the header's empty middle. The two flat bands
-     of panel color keep them out from under the title on the left and the
-     controls on the right, so nothing is ever read through them. */
-  html[data-theme="nostromo"] header{
+  html[data-theme="nostromo"]:not([data-mode="light"]) header{
     background-image:linear-gradient(90deg, var(--panel) 0 300px,
         rgba(0,0,0,0) 300px calc(100% - 480px), var(--panel) calc(100% - 480px)),
-      url(/static/nostromo/glyphs.svg);
+      url(/static/nostromo/pipes.svg),
+      linear-gradient(180deg, rgba(200,220,240,.05), rgba(0,0,0,.22));
+    background-repeat:no-repeat,repeat-x,no-repeat;background-position:0 0,0 center,0 0}
+}
+html[data-theme="nostromo"]:not([data-mode="light"]) header::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:3px;z-index:1;
+  background:linear-gradient(180deg, #5f6d7a, #c9d5df 45%, #2a333c)}
+
+/* Brushed metal, not drawn: a sheen down each button and a cold highlight
+   along its top edge, the way light catches a machined plate. */
+html[data-theme="nostromo"]:not([data-mode="light"]) button:not(.link){
+  background-image:linear-gradient(180deg, rgba(200,220,240,.06), rgba(0,0,0,.14));
+  box-shadow:inset 0 1px 0 0 rgba(200,220,240,.14)}
+
+/* Square, not rounded: the corner tokens are 0 in this half. The title in
+   stencil, amber as the lamps are, and the tab in front lit by one: a soft
+   bloom of its own color rather than a fill, under 0.35 alpha. */
+html[data-theme="nostromo"]:not([data-mode="light"]) header h1{
+  text-transform:uppercase;letter-spacing:2px;font-size:13px;color:var(--accent)}
+html[data-theme="nostromo"]:not([data-mode="light"]) .dockline .dtab.on{
+  box-shadow:0 0 10px 0 color-mix(in srgb, var(--accent) 35%, transparent)}
+html[data-theme="nostromo"]:not([data-mode="light"]) .dockline .dtab.pc.on{
+  box-shadow:0 0 10px 0 color-mix(in srgb, var(--pc) 45%, transparent)}
+
+/* ---- Nostromo's light half: the ship's white corridors (the operator,
+   16 Oct) ------------------------------------------------------------------
+   Rounded like every scheme, and a ship of its own: large chamfered wall
+   panels behind the page, one wall panel's octagon relief set into its foot,
+   the ceiling's grilles and light panels across the header's middle, the
+   buttons with a lit top edge, and the door's red and white stripe on its
+   swatch. The bars and the ground under a document are smoked as the dark
+   half's are, a little more opaque, since dark ink reads through less. */
+html[data-mode="light"][data-theme="nostromo"]{--glass:color-mix(in srgb, var(--panel) 80%, transparent)}
+html[data-mode="light"][data-theme="nostromo"] .pane .bar{background:var(--glass)}
+html[data-mode="light"][data-theme="nostromo"] .pane{background:transparent}
+html[data-mode="light"][data-theme="nostromo"] .pane .stack:has(> .doc.on){background-color:var(--glass)}
+html[data-mode="light"][data-theme="nostromo"] body::before{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(120% 70% at 50% 0%, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 55%),
+    radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.07) 0%, rgba(0,0,0,0) 60%),
+    url(/static/nostromo/relief.svg) right -40px bottom -40px / 300px no-repeat,
+    url(/static/nostromo/panels.svg) repeat}
+@media(min-width:901px){
+  html[data-mode="light"][data-theme="nostromo"] header{
+    background-image:linear-gradient(90deg, var(--panel) 0 300px,
+        rgba(0,0,0,0) 300px calc(100% - 480px), var(--panel) calc(100% - 480px)),
+      url(/static/nostromo/vents.svg);
     background-repeat:no-repeat,repeat-x;background-position:0 0,0 center}
 }
+html[data-mode="light"][data-theme="nostromo"] header{box-shadow:0 2px 8px rgba(0,0,0,.06)}
+html[data-mode="light"][data-theme="nostromo"] button:not(.link){
+  box-shadow:inset 0 1px 0 0 rgba(255,255,255,.95),inset 0 -1px 0 0 rgba(0,0,0,.06)}
+html[data-mode="light"][data-theme="nostromo"] header h1{
+  text-transform:uppercase;letter-spacing:2px;font-size:13px}
+/* The one scheme whose swatch shows what it is, a half each (the operator,
+   16 Oct): the dark one a strip of the hallway, silver pipe over the deck
+   grating with an amber lamp on the pipe; the light one the corridor, a
+   pale panel with the door's red and white stripe along its top. */
+html:not([data-mode="light"]) .sw[data-theme="nostromo"]{
+  background:url(/static/nostromo/grate.svg) 0 0 / 16px, var(--bg)}
+html:not([data-mode="light"]) .sw[data-theme="nostromo"]::after{content:"";position:absolute;
+  left:0;right:0;top:0;height:5px;
+  background:radial-gradient(circle at 70% 50%, #ffb000 0 2px, rgba(255,176,0,0) 3px),
+    linear-gradient(180deg, #1c232b, #9fb0bf 30%, #e3ebf2 45%, #4f5d6a 75%, #151a20)}
+html[data-mode="light"] .sw[data-theme="nostromo"]{
+  background:linear-gradient(180deg, rgba(255,255,255,.7), rgba(0,0,0,.04)), var(--bg)}
+html[data-mode="light"] .sw[data-theme="nostromo"]::after{content:"";position:absolute;
+  left:0;right:0;top:0;height:3px;
+  background:repeating-linear-gradient(-45deg,
+    rgba(196,38,28,.75) 0 5px, rgba(255,255,255,.95) 5px 10px)}
 
-/* The buttons read as machined rather than drawn: a hairline highlight along
-   the top edge, which is what makes a flat rectangle look like a keycap. */
-html[data-theme="nostromo"] button:not(.link){
-  box-shadow:inset 0 1px 0 0 rgba(255,176,0,.12)}
-
-/* Square, not rounded: the three corner tokens are 0 in this scheme's block,
-   which is what makes a tab's colored bar end in a hard edge instead of
-   bending round a radius. The rest of the ship's look on top of that:
-   the title in the stencil face the card headers already wear, and the tab
-   in front glowing the way phosphor does, a soft bloom of its own color
-   rather than a fill. Under 0.35 alpha and one element: the restraint rule
-   at the top of this block still holds. */
-html[data-theme="nostromo"] header h1{
-  text-transform:uppercase;letter-spacing:2px;font-size:13px;color:var(--accent)}
-html[data-theme="nostromo"] .dockline .dtab.on{
-  box-shadow:0 0 10px 0 color-mix(in srgb, var(--accent) 35%, transparent)}
-html[data-theme="nostromo"] .dockline .dtab.pc.on{
-  box-shadow:0 0 10px 0 color-mix(in srgb, var(--pc) 45%, transparent)}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);display:flex;
@@ -739,12 +745,6 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   display:flex;align-items:center;justify-content:center}
 .sw.on{outline:2px solid var(--accent);outline-offset:1px}
 @media(hover:hover){ .sw:hover{border-color:var(--ink)} }
-/* The one scheme whose swatch shows what it is: the same hazard stripe the
-   header wears, along the top of the chip. */
-.sw[data-theme="nostromo"]::after{content:"";position:absolute;
-  left:0;right:0;top:0;height:3px;
-  background:repeating-linear-gradient(-45deg,
-    rgba(255,176,0,.6) 0 5px, rgba(0,0,0,0) 5px 10px)}
 .bnote{padding:8px 10px;border-bottom:var(--hair) solid var(--line);font:var(--f-ui)}
 .bnote:last-of-type{border-bottom:0}
 .bnote .bwhy{overflow-wrap:anywhere}
@@ -3506,6 +3506,10 @@ button[aria-busy="true"]{opacity:.75}
    drew nothing at all. */
 button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block;fill:none;
   stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
+/* ...and the More button's three dots, which are filled rather than stroked:
+   left to the browser they were black on every dark scheme and sat on the
+   text baseline, high in the button (the operator, 16 Oct). */
+.more>button svg{width:16px;height:16px;display:block;margin:auto;fill:currentColor;stroke:none}
 /* The header's icon buttons, the gear (settings) and the sign-out door,
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
@@ -3519,10 +3523,6 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
    button's height: the exact thing the comment up there warns about. */
 #bAbout svg.alab{width:15px;height:15px;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
-/* ...and the More button's three dots, which are filled rather than stroked:
-   left to the browser they were black on every dark scheme and sat on the
-   text baseline, high in the button (the operator, 16 Oct). */
-.more>button svg{width:16px;height:16px;display:block;margin:auto;fill:currentColor;stroke:none}
   stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 

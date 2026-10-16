@@ -865,11 +865,14 @@ saying how many earlier releases it is not showing. The question it answers is
 release forever and is where the rest of them are. Cutting a new minor takes
 the previous one off that page in the same gesture, with nothing pruned.
 
-**Under the gear in the header, Dark, Light or System, and fourteen color
+**Under the gear in the header, Dark, Light or System, and twelve color
 schemes**, with Profile below them; each scheme has a dark half and a light
-one but Nostromo, which is dark only: its hull and its amber are a dark
-room, and while it is picked the page stays dark whatever the switch says.
-Fern is its colors without the ship, rounded, with a light half of its own. Dark is the page read in a dim room beside a
+one. Nostromo is the ship in both: its dark half the metal hallways, cold
+blue-black steel, deck grating, silver pipe under amber lamps, a bulkhead's
+frame and square corners; its light half the white corridors, gray-white walls with large chamfered panels, an
+octagon relief at the page's foot, the ceiling's vents and light panels
+across the header and the hazard marking's red-orange, rounded like the
+rest. Dark is the page read in a dim room beside a
 terminal; Light is the same scheme with the page near white, the ink dark
 and the accent pulled down to read on it; System follows the device as it
 changes. The switch is applied on the press like a scheme, kept in the
@@ -882,11 +885,13 @@ stopping at the background. Each swatch is defined for `.sw[data-theme=…]` as
 well as for the page, which means the preview *is* the palette rather than a
 second copy of it that can drift.
 
-**Nostromo** is the one that is more than a recolor: amber phosphor on a
-green-black hull, with a hazard decal along the header's bottom edge, faint
-scanlines on the panels and a vignette on the page. All of it drawn: gradients and one pseudo-element, no image files. That
-is the persistence rule rather than taste: an image would be a binary in the
-repository, re-shipped in a weekly rebuild, for something two gradients say.
+**Nostromo** is the one that is more than a recolor: the ship's interiors,
+the metal hallways in its dark half and the white corridors in its light
+one, each with graphics of its own (the deck, the pipes and a bulkhead; the
+wall panels, the vents and an octagon relief) drawn as hand-written SVG in
+the tree under `static/nostromo`, served by the page's allow-list. No raster
+image: that would be a binary in the repository, re-shipped in a weekly
+rebuild, for something a few paths say.
 Nothing in it moves the layout, so switching schemes never nudges the page.
 
 The scheme is kept the same way: in the browser (`localStorage`, `bb.theme`,

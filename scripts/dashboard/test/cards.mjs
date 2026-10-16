@@ -600,8 +600,8 @@ ok(all.includes('vendored-junk'),
 // selects.
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
-ok(await page.$$eval('#uiMenu .sw', s => s.length) === 13,
-   'the gear opens a menu of thirteen schemes');
+ok(await page.$$eval('#uiMenu .sw', s => s.length) === 12,
+   'the gear opens a menu of twelve schemes');
 ok(await page.$eval('#uiMenu .sw[data-theme="default"]', b => b.classList.contains('on')),
    '...with the one in use marked, which is Default until something says otherwise');
 // A swatch is the palette itself at 1cm (the stylesheet defines each scheme
@@ -629,27 +629,24 @@ const switched = await page.evaluate(async () => {
 });
 ok(switched.theme === 'nostromo' && switched.who === 'test',
    `another account's choice in this browser gives way to this account's own scheme (${JSON.stringify(switched)})`);
-// Nostromo's flare is drawn, not fetched: no image files in a repo whose
-// image is rebuilt weekly. The header's decal is the visible half.
-ok(await page.evaluate(() => {
-     const st = getComputedStyle(document.querySelector('header'), '::after');
-     return /repeating-linear-gradient/.test(st.backgroundImage);
-   }), '...and Nostromo brings its hazard stripe with it, as a gradient');
-// The notebook's scanlines sit on the pane's box, not on the tall content
-// inside it (bug #57): a gradient rasterized across a long roadmap's whole
-// scroll height is what Firefox for Android was painting as yellow striped
-// tiles. One viewport of gradient, on the box that stays put: the stack
-// under the document, with the glass, since both are the ground the
-// notebook arrives on rather than part of what fades in.
+// Nostromo's dark half is the ship's hallways (the operator, 16 Oct): a
+// steel rail along the header's foot, drawn, and the deck grating and a
+// bulkhead on the page's own layer behind everything.
+const hall = await page.evaluate(() => ({ rail: /linear-gradient/.test(getComputedStyle(document.querySelector('header'), '::after').backgroundImage),
+  deck: /grate\.svg/.test(getComputedStyle(document.body, '::before').backgroundImage),
+  frame: /bulkhead\.svg/.test(getComputedStyle(document.body, '::before').backgroundImage) }));
+ok(hall.rail && hall.deck && hall.frame, `...and Nostromo brings its hallway: the steel rail, the deck and the bulkhead (${JSON.stringify(hall)})`);
+// The deck is on that layer, one viewport, and never on the tall content
+// of a notebook (bug #57): a pattern rasterized across a long roadmap's
+// whole scroll height is what Firefox for Android painted as striped tiles.
 await page.evaluate(() => openNotebook(state.projects[0].name));
 await page.waitForSelector('.pane .doc > .nb');
 const scan = await page.evaluate(() => {
   const nb = document.querySelector('.pane .doc > .nb');
-  const g = e => /repeating-linear-gradient/.test(getComputedStyle(e).backgroundImage);
-  return { box: g(nb.closest('.stack')), content: g(nb) || g(nb.parentElement) };
+  const g = e => /url\(|repeating-linear-gradient/.test(getComputedStyle(e).backgroundImage);
+  return { content: g(nb) || g(nb.parentElement) };
 });
-ok(scan.box && !scan.content,
-   `...and the notebook's scanlines are on the pane's box, not across the scroll height (${JSON.stringify(scan)})`);
+ok(!scan.content, `...and no pattern runs down a notebook's scroll height (${JSON.stringify(scan)})`);
 // A surface that stops following the scheme does it silently: the text
 // fields, the memory folds and the pane's title bar all sat in the default
 // scheme's blue-gray through the first twelve because their color was typed
@@ -690,16 +687,25 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
     return e && getComputedStyle(e).color === 'rgb(255, 255, 255)'; }, null, { timeout: 5000 }).then(() => true, () => false);
   ok(white, `a filled accent carries white in the light half, where the ink is dark (${
     await page.$eval('.pane .bar .subnav button.on', e => getComputedStyle(e).color).catch(() => 'no button')})`);
-  // Nostromo has no light half: picked while Light is on, the page goes
-  // dark and says why, and Fern, its colors without the ship, has one.
+  // Nostromo's light half is the ship's white corridors: rounded like the
+  // rest, its own wall panels rather than the deck, no steel rail (the
+  // operator, 16 Oct); the dark half keeps its hallway.
   await page.click('#uiMenu .sw[data-theme="nostromo"]');
-  await page.waitForFunction(() => document.documentElement.dataset.theme === 'nostromo' && !document.documentElement.dataset.mode, null, { timeout: 5000 });
-  ok(await page.$eval('#uiMenu .modehint', e => !e.hidden && /dark only/.test(e.textContent)).catch(() => false),
-     'Nostromo under Light keeps the page dark and the gear says it is dark only');
-  await page.click('#uiMenu .sw[data-theme="fern"]');
-  await page.waitForFunction(() => document.documentElement.dataset.theme === 'fern' && document.documentElement.dataset.mode === 'light', null, { timeout: 5000 });
-  ok(await page.evaluate(() => localStorage.getItem('bb.mode')) === 'light',
-     '...and Fern, the same colors rounded, takes the light half the choice still holds');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'nostromo' && document.documentElement.dataset.mode === 'light', null, { timeout: 5000 });
+  const ship = () => page.evaluate(() => ({ r: getComputedStyle(document.documentElement).getPropertyValue('--r-control').trim(),
+    stripe: getComputedStyle(document.querySelector('header'), '::after').content,
+    hull: getComputedStyle(document.body, '::before').backgroundImage.includes('grate'),
+    wall: getComputedStyle(document.body, '::before').backgroundImage.includes('panels') }));
+  const lightShip = await ship();
+  ok(lightShip.r !== '0' && lightShip.r !== '0px' && lightShip.stripe === 'none' && !lightShip.hull && lightShip.wall,
+     `Nostromo under Light is the white corridor: rounded, its wall panels and not the deck (${JSON.stringify(lightShip)})`);
+  await page.click('#uiMenu [data-mode="dark"]');
+  await page.waitForFunction(() => !document.documentElement.dataset.mode, null, { timeout: 5000 });
+  const darkShip = await ship();
+  ok((darkShip.r === '0' || darkShip.r === '0px') && darkShip.stripe !== 'none' && darkShip.hull,
+     `...and its dark half keeps the hallway, square with the rail and the deck (${JSON.stringify(darkShip)})`);
+  await page.click('#uiMenu [data-mode="light"]');
+  await page.waitForFunction(() => document.documentElement.dataset.mode === 'light', null, { timeout: 5000 });
   await page.click('#uiMenu .sw[data-theme="default"]');
   await page.waitForFunction(() => !document.documentElement.dataset.theme, null, { timeout: 5000 });
   await page.click('#uiMenu [data-mode="dark"]');

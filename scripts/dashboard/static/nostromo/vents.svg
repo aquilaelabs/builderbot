@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="22" viewBox="0 0 320 22">
+  <!-- The light half's ceiling, for the header's empty middle: a vent
+       grille, a light panel, a smaller grille, a light panel, repeating
+       every 320px. The panels are lit (white, with a soft edge); the grilles
+       are slats in a rounded frame. -->
+  <g fill="none" stroke="#4f5458" stroke-opacity="0.35" stroke-width="1">
+    <rect x="8.5" y="3.5" width="92" height="15" rx="4"/>
+    <path d="M16 6v10M23 6v10M30 6v10M37 6v10M44 6v10M51 6v10M58 6v10M65 6v10M72 6v10M79 6v10M86 6v10M93 6v10"/>
+    <rect x="186.5" y="3.5" width="50" height="15" rx="4"/>
+    <path d="M194 6v10M201 6v10M208 6v10M215 6v10M222 6v10M229 6v10"/>
+  </g>
+  <g>
+    <rect x="114.5" y="4.5" width="58" height="13" rx="4" fill="#ffffff" stroke="#4f5458" stroke-opacity="0.25"/>
+    <rect x="118" y="7" width="51" height="8" rx="2.5" fill="#fffdf6" stroke="#ffffff"/>
+    <rect x="250.5" y="4.5" width="58" height="13" rx="4" fill="#ffffff" stroke="#4f5458" stroke-opacity="0.25"/>
+    <rect x="254" y="7" width="51" height="8" rx="2.5" fill="#fffdf6" stroke="#ffffff"/>
+  </g>
+</svg>

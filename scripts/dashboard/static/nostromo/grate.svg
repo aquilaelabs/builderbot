@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- The dark half's deck behind the page: floor grating, four openings to
+       a plate between steel bars, lit cold from above. Tiles at 32px. Faint
+       and baked in: it sits behind a page somebody reads code on. -->
+  <g fill="#000000" fill-opacity="0.22">
+    <rect x="3" y="3" width="11" height="11" rx="1"/><rect x="18" y="3" width="11" height="11" rx="1"/>
+    <rect x="3" y="18" width="11" height="11" rx="1"/><rect x="18" y="18" width="11" height="11" rx="1"/>
+  </g>
+  <g fill="none" stroke="#a9bccd" stroke-width="1">
+    <path d="M0 0.5H32M0.5 0V32" stroke-opacity="0.10"/>
+    <path d="M0 16.5H32M16.5 0V32" stroke-opacity="0.06"/>
+    <path d="M3.5 3.5H13.5M18.5 3.5H28.5M3.5 18.5H13.5M18.5 18.5H28.5" stroke-opacity="0.05"/>
+  </g>
+</svg>

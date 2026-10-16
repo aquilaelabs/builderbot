@@ -1056,7 +1056,7 @@ for (const kind of kinds){
 // engine actually paints.
 {
   const SCHEMES = ['default', 'nostromo', 'slate', 'carbon', 'nocturne', 'moss',
-                   'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia', 'ash', 'fern'];
+                   'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia'];
   const AA = 4.5;
   const bad = [];
   // The filled accent measured is the page's sub-nav (R218 step 4: the strip

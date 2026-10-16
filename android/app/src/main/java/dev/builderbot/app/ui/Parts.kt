@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.sp
 
 // ---- the tokens ---------------------------------------------------------------
 // In Theme.kt, read from the scheme in front: the app wears the dashboard's
-// thirteen schemes now, not the default one alone.
+// twelve schemes now, not the default one alone.
 
 // A project's color, the eight the dashboard offers, by the name it stores.
 private val TONES = mapOf(

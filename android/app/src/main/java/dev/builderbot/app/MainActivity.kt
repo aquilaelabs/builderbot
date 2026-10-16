@@ -180,7 +180,7 @@ data class Tab(val route: String, val label: String, val icon: ImageVector)
 @Composable
 fun BuilderBotApp(openOn: String, activity: MainActivity) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val store = remember { Store(context).also { dev.builderbot.app.ui.Schemes.pick(it.scheme) } }
+    val store = remember { Store(context).also { dev.builderbot.app.ui.Schemes.pick(it.scheme); it.scheme = dev.builderbot.app.ui.Schemes.current.name } }
     var signedIn by remember { mutableStateOf(store.signedIn) }
     // Which pairing is in front (R132): the screens are keyed by it, so a
     // switch redraws every one of them from the other dashboard.

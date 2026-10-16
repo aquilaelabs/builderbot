@@ -4837,9 +4837,12 @@ class Handler(BaseHTTPRequestHandler):
         # The Nostromo scheme's decals: hand-written SVG, text in the tree
         # like the favicon's source, drawn by the page's CSS and by nothing
         # else. Same allow-list, same rule.
-        "/static/nostromo/plate.svg": ("nostromo/plate.svg", "image/svg+xml"),
-        "/static/nostromo/rings.svg": ("nostromo/rings.svg", "image/svg+xml"),
-        "/static/nostromo/glyphs.svg": ("nostromo/glyphs.svg", "image/svg+xml"),
+        "/static/nostromo/grate.svg": ("nostromo/grate.svg", "image/svg+xml"),
+        "/static/nostromo/pipes.svg": ("nostromo/pipes.svg", "image/svg+xml"),
+        "/static/nostromo/bulkhead.svg": ("nostromo/bulkhead.svg", "image/svg+xml"),
+        "/static/nostromo/panels.svg": ("nostromo/panels.svg", "image/svg+xml"),
+        "/static/nostromo/relief.svg": ("nostromo/relief.svg", "image/svg+xml"),
+        "/static/nostromo/vents.svg": ("nostromo/vents.svg", "image/svg+xml"),
     }
 
     def _get(self):

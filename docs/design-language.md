@@ -64,34 +64,6 @@ Its light half, the same tokens under the mode switch:
 | `--bad` | `#b53433` |
 | `--note` | `#236a93` |
 
-### Ash (dark)
-
-| token | value | for |
-|---|---|---|
-| `--bg` | `#1b1b1b` | the page |
-| `--panel` | `#222322` | a raised box: a card, a pane, a modal |
-| `--ink` | `#e2e4e0` | the text, and text on a filled accent |
-| `--dim` | `#a1a59f` | secondary text and field labels |
-| `--line` | `#555955` | hairlines and borders, 1px |
-| `--accent` | `#a3b18a` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#cfa94a` | a warning, and the amber marks |
-| `--bad` | `#e26d60` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#82a7b8` | an informational mark, the low level |
-
-Its light half, the same tokens under the mode switch:
-
-| token | value |
-|---|---|
-| `--bg` | `#f3f3f3` |
-| `--panel` | `#fdfdfd` |
-| `--ink` | `#262725` |
-| `--dim` | `#626461` |
-| `--line` | `#cfd2cf` |
-| `--accent` | `#5d6945` |
-| `--warn` | `#8d6800` |
-| `--bad` | `#ae3e34` |
-| `--note` | `#466979` |
-
 ### Carbon (dark)
 
 | token | value | for |
@@ -236,20 +208,34 @@ Its light half, the same tokens under the mode switch:
 
 | token | value | for |
 |---|---|---|
-| `--bg` | `#101712` | the page |
-| `--panel` | `#162018` | a raised box: a card, a pane, a modal |
-| `--ink` | `#d7e3c8` | the text, and text on a filled accent |
-| `--dim` | `#95a488` | secondary text and field labels |
-| `--line` | `#405b37` | hairlines and borders, 1px |
+| `--bg` | `#0b0f13` | the page |
+| `--panel` | `#121920` | a raised box: a card, a pane, a modal |
+| `--ink` | `#d3dbe3` | the text, and text on a filled accent |
+| `--dim` | `#8b98a5` | secondary text and field labels |
+| `--line` | `#33404c` | hairlines and borders, 1px |
 | `--accent` | `#ffb000` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#ffd166` | a warning, and the amber marks |
+| `--warn` | `#e0913a` | a warning, and the amber marks |
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#9ad07a` | an informational mark, the low level |
+| `--note` | `#6fa8dc` | an informational mark, the low level |
+
+Its light half, the same tokens under the mode switch:
+
+| token | value |
+|---|---|
+| `--bg` | `#e4e5e2` |
+| `--panel` | `#f6f6f3` |
+| `--ink` | `#232628` |
+| `--dim` | `#595d60` |
+| `--line` | `#bfc1bc` |
+| `--accent` | `#b23a0a` |
+| `--warn` | `#8b6100` |
+| `--bad` | `#a8002a` |
+| `--note` | `#3d7322` |
 
 Nostromo differs from the default in:
 
 - Shape, as the rule corners says:
--   This scheme squares all three corner tokens; the pills and the dots stay round, as everywhere.
+-   This scheme squares all three corner tokens in its dark half; its light half is rounded like every other scheme (the operator, 16 Oct). The pills and the dots stay round, as everywhere.
 - Motion: as the design's own rules say.
 
 #### Rules of Nostromo's own
@@ -258,17 +244,19 @@ Nostromo differs from the default in:
 
 Applies to: scripts/dashboard/static/nostromo, scripts/dashboard/index.html; texture, hull, svg, decal
 
-This scheme alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
-served by the page's allow-list): hull plating behind the page, ribbing in
-the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
-none moves the layout: a texture lives in space the page already leaves
-empty. The same suite measures the contrast with them in place. Its panels, the bar of a pane and the ground under a document are `--glass`: the panel color at 70% over the hull, so the plating shows through.
+This scheme is the ship itself, a half for each of its interiors (the operator, 16 Oct), and the only one with drawn graphics: hand-written SVG under `static/nostromo`, served by the page's allow-list, each one's opacity baked into its file.
+
+The dark half is the metal hallways: cold blue-black steel and silver, the lamps' amber as the accent, copper-rust for a warning and cold blue for a note. Behind the page, on body::before, the deck grating (`grate.svg`), a bulkhead's chamfered octagon frame at the foot (`bulkhead.svg`), two amber lamp glows up in the ceiling, a cold blue haze down the corridor and the dark closing in at the edges. The header is a steel ceiling with a sheen, the pipe runs and their amber lamp across its middle at a desk (`pipes.svg`) and a steel rail along its foot. Buttons are brushed metal with a cold top highlight; the title is stencil in amber; the tab in front glows like a lamp. The panes' bars and a document's ground are smoked glass at seven tenths, so the deck shows through them; a terminal keeps its own solid ground.
+
+The light half is the white corridors: cool gray-white walls and panels, the hazard marking's red-orange as the accent and filled as itself, rounded corners, large chamfered wall panels behind the page (`panels.svg`), one wall panel's nested-octagon relief at the page's foot (`relief.svg`), the ceiling's vent grilles and light panels across the header's middle (`vents.svg`) and buttons with a lit top edge.
+
+Each half's swatch shows its interior: the dark one a strip of silver pipe with an amber lamp over the deck grating, the light one a pale panel with the door's red and white stripe along its top. No pattern is ever drawn across a tall scrolling surface's own box (bug #57): the textures are on the page's layer, one viewport.
 
 ##### nostromo/corners
 
 Applies to: scripts/dashboard/index.html; corner, radius, square
 
-This scheme squares all three corner tokens; the pills and the dots stay round, as everywhere.
+This scheme squares all three corner tokens in its dark half; its light half is rounded like every other scheme (the operator, 16 Oct). The pills and the dots stay round, as everywhere.
 
 ### Plum (dark)
 
@@ -381,34 +369,6 @@ Its light half, the same tokens under the mode switch:
 | `--warn` | `#905e00` |
 | `--bad` | `#b2373a` |
 | `--note` | `#2e64a5` |
-
-### Fern (light)
-
-| token | value | for |
-|---|---|---|
-| `--bg` | `#f1f4f2` | the page |
-| `--panel` | `#fbfefc` | a raised box: a card, a pane, a modal |
-| `--ink` | `#23291c` | the text, and text on a filled accent |
-| `--dim` | `#5e6657` | secondary text and field labels |
-| `--line` | `#c7d6c2` | hairlines and borders, 1px |
-| `--accent` | `#974f00` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#8b6100` | a warning, and the amber marks |
-| `--bad` | `#c11d00` | an error, a destructive verb, the reason under a dead control |
-| `--note` | `#41721b` | an informational mark, the low level |
-
-Its dark half, the same tokens under the mode switch:
-
-| token | value |
-|---|---|
-| `--bg` | `#101712` |
-| `--panel` | `#162018` |
-| `--ink` | `#d7e3c8` |
-| `--dim` | `#95a488` |
-| `--line` | `#405b37` |
-| `--accent` | `#ffb000` |
-| `--warn` | `#ffd166` |
-| `--bad` | `#ff5f45` |
-| `--note` | `#9ad07a` |
 
 ## Type
 
@@ -797,10 +757,10 @@ is how a page came to turn itself back.
 Applies to: scripts/dashboard/index.html, scripts/dashboard/page-motion.js; motion, animation, animate, fade, transition, tween
 
 Everything that appears, leaves, opens or changes state moves: a panel or
-menu arrives (`menuIn`), a document brought to the front fades in over its
+menu arrives (`menuIn`; one that opens upward from the bottom bar rises instead, `menuUp`), a document brought to the front fades in over its
 own ground (`docIn`, contentIn's frames under a name of its own, so a
 document that already wears contentIn from its first paint still fades when
-it comes forward), a section folds over its height
+it comes forward) while the page it replaces fades out over the same frames (`docOut`), a quick crossfade rather than a blank between them (the operator, 16 Oct), a section folds over its height
 (`slideBody`, the section tween), a button or tab eases its color, a
 toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute
@@ -810,7 +770,7 @@ snaps is a change the eye has to find. Every one of them is off under
 `prefers-reduced-motion`.
 
 **What fades is what is drawn, never the ground under it.** A document's
-ground (the page color, the panel color, nostromo's glass and scanlines)
+ground (the page color, the panel color, nostromo's glass and deck)
 is painted by the pane's stack while that document is the one on show, and
 the document box itself paints none, so the fade on it carries only its
 content. When the box painted its own ground, the ground faded in with the
@@ -1025,7 +985,7 @@ As built (R218 step 3, 14 Oct): the doctor dot (#bDocDot) sits after the bell in
   the-dashboard/pages: A page is what a document tab was: a reading surface built by docSurface (the bar band, the band list, the quiet footer), capped at --doc-w and centered in the content area, with the bar's rule kept (what the page is about at the left, the action on it at the right). Each page has an address under #/ (#/containers, #/projects/web/roadmap, #/machines/nodes/n_12ab) and the address is the page: a reload, a shared link and the back button all land on it, and openDocker() and its siblings route to it. A page subscribes to its own revision tokens on the one revisions poll (when-a-view-re-reads) and fetches what it draws from the status read split by page, nothing for the pages not on show; the poll backs off to five seconds after a minute with nothing moved and to thirty while the page is hidden. There is no strip and no second pane: two things side by side are a page and the dock.
 
 As built (step 2): a page is still a tab in the page's tab model, kept out of the strip (isToolKind), so the panes, the per-account layout and every opener work as before; its bar is the group's sub-nav (a .pseg of the tools) or the group's word, with no close. The address is #/group, #/group/tool or #/projects/NAME, replaced on each draw and pushed on a rail press; the status read's split waits for step 3.
-  the-dashboard/dock: The dock is the foot of every page: one line when shut, naming the chat and the open terminals as tabs with their session dots, Chat first since it is always there while terminals come and go (the operator, 15 Oct), and the page keeps its full height; pulled up it takes half the screen (a drag on its edge or a press on a tab) and the page scrolls above it. Its tabs are what the tab strip's terminals and the Sessions and Chat buttons were: a Claude session, a shell, the chat, each closed from its tab the way a terminal tab closed, and a session's end closes its tab as before. A Shell on a container's row opens docker exec in a dock tab, gated by the project's Run its container dial. On a phone the dock is a sheet from the bottom edge, the full width of the screen and the whole height between the header and the bottom bar when open (over the page and its sub-nav), its line on the bottom bar when shut (the operator, 16 Oct). On a phone the page's box itself runs to both edges of the screen and meets the header and the bottom bar with no gap, so what scrolls goes under them; at a desk it keeps its gutter and its border. Which tabs are open is the account's, as the strip was; which is in front and whether the dock is up are the browser's.
+  the-dashboard/dock: The dock is the foot of every page: one line when shut, naming the chat and the open terminals as tabs with their session dots, the line fading at either edge with more tabs past it (the operator, 16 Oct), Chat first since it is always there while terminals come and go (the operator, 15 Oct), and the page keeps its full height; pulled up it takes half the screen (a drag on its edge or a press on a tab) and the page scrolls above it. Its tabs are what the tab strip's terminals and the Sessions and Chat buttons were: a Claude session, a shell, the chat, each closed from its tab the way a terminal tab closed, and a session's end closes its tab as before. A Shell on a container's row opens docker exec in a dock tab, gated by the project's Run its container dial. On a phone the dock is a sheet from the bottom edge, the full width of the screen and the whole height between the header and the bottom bar when open (over the page and its sub-nav), its line on the bottom bar when shut (the operator, 16 Oct). On a phone the page's box itself runs to both edges of the screen and meets the header and the bottom bar with no gap, so what scrolls goes under them; at a desk it keeps its gutter and its border. Which tabs are open is the account's, as the strip was; which is in front and whether the dock is up are the browser's.
 
 As built (step 4, cut 2, 14 Oct): a running instance's row on the Containers page carries Shell for its first running container and Shell in SERVICE for the rest under More; each opens a terminal tab in the dock (argument ctr:NAME:INSTANCE:CONTAINER, label "in CONTAINER"). Who may: a person who may start and stop that container with a shell, an administrator alone when its project's Run its container is Deny (the operator, 14 Oct). Dead, with the reason under the row in red, on a hosting-only node (no terminal there) and under Deny for anybody else. On a node the shell runs on the agent's third terminal server (7683, the controller's only), as the docker account, since the session account is kept off docker (the operator, 14 Oct).
   the-dashboard/home: Five or six tiles across the top (the tiles rule), each a number across the whole install with its label under it, a tone when the number itself is news (failed jobs in --bad when any, updates due in --warn), and each a link into the page that holds the number: nodes online of enrolled, containers running of all, jobs running and failed today, sessions open, updates due (toolchains, images, nginx, the agent), CI red. Under them two cards side by side at a desk, stacked on a phone: Attention (the bell's rows, put away there as on the bell) and Last jobs (ten rows, state pill, when, the Jobs page's row on press). Under those, Projects at a glance: a small card per pinned project with its session dot, its branch and the one notice a project's card carries (no node, restart to use what changed), the full card on the project's page. Home reads on open and on the tokens the tiles depend on; nothing on it polls on its own.
@@ -1087,7 +1047,7 @@ As built (step 2): a page is still a tab in the page's tab model, kept out of th
 
 ##### the-dashboard/dock
 
-The dock is the foot of every page: one line when shut, naming the chat and the open terminals as tabs with their session dots, Chat first since it is always there while terminals come and go (the operator, 15 Oct), and the page keeps its full height; pulled up it takes half the screen (a drag on its edge or a press on a tab) and the page scrolls above it. Its tabs are what the tab strip's terminals and the Sessions and Chat buttons were: a Claude session, a shell, the chat, each closed from its tab the way a terminal tab closed, and a session's end closes its tab as before. A Shell on a container's row opens docker exec in a dock tab, gated by the project's Run its container dial. On a phone the dock is a sheet from the bottom edge, the full width of the screen and the whole height between the header and the bottom bar when open (over the page and its sub-nav), its line on the bottom bar when shut (the operator, 16 Oct). On a phone the page's box itself runs to both edges of the screen and meets the header and the bottom bar with no gap, so what scrolls goes under them; at a desk it keeps its gutter and its border. Which tabs are open is the account's, as the strip was; which is in front and whether the dock is up are the browser's.
+The dock is the foot of every page: one line when shut, naming the chat and the open terminals as tabs with their session dots, the line fading at either edge with more tabs past it (the operator, 16 Oct), Chat first since it is always there while terminals come and go (the operator, 15 Oct), and the page keeps its full height; pulled up it takes half the screen (a drag on its edge or a press on a tab) and the page scrolls above it. Its tabs are what the tab strip's terminals and the Sessions and Chat buttons were: a Claude session, a shell, the chat, each closed from its tab the way a terminal tab closed, and a session's end closes its tab as before. A Shell on a container's row opens docker exec in a dock tab, gated by the project's Run its container dial. On a phone the dock is a sheet from the bottom edge, the full width of the screen and the whole height between the header and the bottom bar when open (over the page and its sub-nav), its line on the bottom bar when shut (the operator, 16 Oct). On a phone the page's box itself runs to both edges of the screen and meets the header and the bottom bar with no gap, so what scrolls goes under them; at a desk it keeps its gutter and its border. Which tabs are open is the account's, as the strip was; which is in front and whether the dock is up are the browser's.
 
 As built (step 4, cut 2, 14 Oct): a running instance's row on the Containers page carries Shell for its first running container and Shell in SERVICE for the rest under More; each opens a terminal tab in the dock (argument ctr:NAME:INSTANCE:CONTAINER, label "in CONTAINER"). Who may: a person who may start and stop that container with a shell, an administrator alone when its project's Run its container is Deny (the operator, 14 Oct). Dead, with the reason under the row in red, on a hosting-only node (no terminal there) and under Deny for anybody else. On a node the shell runs on the agent's third terminal server (7683, the controller's only), as the docker account, since the session account is kept off docker (the operator, 14 Oct).
 
@@ -1630,7 +1590,7 @@ Notes:
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
 Layout of the gear on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): Layout (reset the sidebar's cards), Color scheme (thirteen swatches), Account (Profile), in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): Layout (reset the sidebar's cards), Color scheme (twelve swatches), Account (Profile), in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   A menu under the gear, not a modal. A swatch applies on the press, the one setting that does: a theme is looked at, not decided. Each swatch is drawn in its own scheme.
 
@@ -1709,7 +1669,7 @@ Layout of the app: more on a phone frame (6 columns by 12 rows), from the Mobile
   4. Form (fields a person fills in): The watch: questions, Tell me when Claude can take a message, how often to ask; one Save, across the middle, rows 7 to 9 of 12
   5. Form (fields a person fills in): Lock: Lock the app when it opens, refused with a sentence where the phone has no screen lock, across the middle, row 6 of 12
   6. List (rows of like things): BuilderBots: each pairing by name, the one in front ticked; Add another, and Forget, across the middle, row 7 of 12
-  7. List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
+  7. List (rows of like things): Colors: the twelve schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
   8. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   The watch's settings are a draft until Save. The note that Claude is waiting on you names the project first and follows the project's During a test run setting: at once where a new ask interrupts a run, and when the tests finish where it waits for them (30 Sep). The scheme applies on the press, as it does on the dashboard. The lock is the phone's own (fingerprint, face or PIN), asked every time the app comes to the front; nothing of the app's own is stored for it (R133).
