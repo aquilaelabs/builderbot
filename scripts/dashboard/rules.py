@@ -230,6 +230,18 @@ ALWAYS = [
                 "bb dashboard test", "*/dashboard/test/run.sh",
                 "!bb tests preflight* --dry*"],          # the plan only: nothing runs (B698)
      "foreground": True},
+    # ...and the wait for one is not a foreground loop either (the operator,
+    # 16 Oct: a session went unresponsive while it watched a gate's log).
+    # The waiter's own test is the shape read: a grep for "exited", the line
+    # a background run's notification file ends on.
+    {"name": "notified-not-waited",
+     "text": "A run started in the background says when it ends: its notification arrives by"
+             " itself. Never wait for it in the foreground with a loop over its log (until grep"
+             " ... exited; do sleep): that holds every reply as a foreground run does, so a"
+             " message sent meanwhile goes unread until it ends. Go on with other work, or end the"
+             " turn, and act on the notification.",
+     "refuse": ["grep *exited*"],
+     "foreground": True},
     {"name": "identity-is-given",
      "text": "Your commit identity arrives as git's environment, so a commit that cannot find an"
              " author is a fault to report with `bb report`, not one to fix with git config"

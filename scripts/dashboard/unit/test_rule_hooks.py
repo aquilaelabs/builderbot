@@ -132,6 +132,15 @@ class Store(unittest.TestCase):
                      "grep -n slow scripts/dashboard/test/run.sh | head"):
             self.assertIsNone(rules.refusing("alpha", line), line)     # --dry is the plan alone (B698)
 
+    def test_a_wait_on_a_runs_log_is_refused_only_in_the_foreground(self):
+        for line in ("timeout 590 bash -c 'until grep -q \"exited\" /tmp/t/tasks/b1.output; do sleep 10; done'",
+                     "until grep -q exited /tmp/x.output 2>/dev/null; do sleep 5; done; tail -3 /tmp/x.output"):
+            g = rules.refusing("alpha", line)
+            self.assertEqual(g and g[0]["name"], "notified-not-waited", line)
+            self.assertIsNone(rules.refusing("alpha", line, background=True), line)
+        for line in ("grep -n FAIL gate.log", "grep -c passed run.log", "tail -8 /tmp/t/tasks/b1.output"):
+            self.assertIsNone(rules.refusing("alpha", line), line)
+
     def test_what_claude_is_told_is_context_alone(self):
         rules.add("alpha", "agent-compat", "Add, do not change.", by="you", words="agent")
         out = json.loads(self.hook("bb-prompt-relay", "alpha", "u_t",
