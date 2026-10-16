@@ -353,6 +353,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A refusal says what the action needs (for example 'needs Nodes Write, which your roles do not give: the Roles tab gives it') instead of 'an administrator's', and points at the Roles tab, not the Users tab, for being put on a project (ec517d7)
 - Profile says what your account may do: your roles by name and every area with Read or Write; each account's dialog on Users says the same (be07e15)
 - A page, a list or a notebook view that is waiting on its data shows shimmering shapes laid out the way its content will land (rows, cards, Home's tiles, lines of a page or a log) where it said loading; the shimmer stands still when the device asks for less motion (85ec0d1)
+- Rebuilding a container that builds from a git URL says in its log that only committed files go in, so a changed ignored file is not expected in it (2153102)
 
 ### Removed
 
@@ -578,6 +579,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The end-of-turn house-rule check skips while a session's own tests hold the test lock instead of running the whole suite behind them, and when it blocks it names the failing checks first (b0cc295)
 - A History's search and its window sit side by side in its sheet at a desk; they stacked on two lines (B776) (b92d756)
 - The notebook's 'Also open' line says each person on each view once, with how many windows, where it repeated them (B777) (b1b66e2)
+- A locked or read-only project's padlock on the Projects page is drawn as an outline with the word locked or read-only beside it, where it was a black blob saying nothing (2153102)
+- The bell's Resume sends its line once however fast it is pressed again, and keeps its row when the line was typed into a busy session but not sent (2153102)
+- A session no longer sees the names of the account's other projects in its Claude conversations folder; only its own project's conversations, and those of the projects it reads, are there (2153102)
 
 ### Security
 
