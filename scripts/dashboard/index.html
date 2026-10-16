@@ -4458,6 +4458,11 @@ body.booting .pane>.loading{margin:auto}
       <label id="rnColorLabel">Color<span class="help" data-help="worn by this project's notebook tab and its row; none is the default" tabindex="0">?</span></label>
       <div class="pcpick" id="rnColor" role="radiogroup" aria-labelledby="rnColorLabel"></div>
     </div>
+    </div></details>
+    <!-- People, a section of its own (R255 step 7): who the project is for
+         is not what it is called, and the dialog reads People (who) apart
+         from Claude may (what its sessions do). -->
+    <details class="sect rngroup" data-sect="rn:people" hidden><summary><span class="t">People</span></summary><div class="body">
     <!-- Who the project belongs to and who joins it (membership.py): the
          owner and Invite only are staged until Save; Invite and Withdraw are
          actions and act on the press. -->
@@ -4734,7 +4739,15 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
-    </div></details>
+        <!-- The Git view's session dials, shown here with the rest of what its
+         sessions may do (R255 step 7) and set there, where the push they
+         govern is: one place to change each, two to read it. -->
+    <div class="field" id="rnGitPolField" hidden>
+      <label>Push</label>
+      <div class="setrow"><span class="hint grow" id="rnGitPol"></span>
+        <button type="button" id="rnGitPolGo">Git view</button></div>
+    </div>
+</div></details>
     <details class="sect rngroup" data-sect="rn:yours"><summary><span class="t">Yours on this project</span></summary><div class="body">
     <!-- YOURS, not the project's, and last so that is legible from the
          shape of the dialog rather than only from the words. Everything

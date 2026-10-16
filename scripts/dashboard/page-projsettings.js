@@ -236,7 +236,9 @@ function rnDrawReach(focus){
   if (rnMode === "git") return;
   const box = $("rnReachRows");
   if (box.childElementCount) rnReachSync();
-  const ns = rnReachNodes(), ro = !state?.admin;
+  // Nodes Write, as the server asks (R255 step 3), not the administrator
+  // role: a role of anybody's may give it.
+  const ns = rnReachNodes(), ro = state?.areas ? state.areas.nodes !== "write" : !state?.admin;
   box.innerHTML = rnReachDraft.map((e, i) => `<div class="rnreach" data-i="${i}">
       <input data-reach value="${esc(e.addr)}" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or 192.168.1.20:8080"
         aria-label="an address a session here may reach"${ro ? " disabled" : ""}>
@@ -577,7 +579,9 @@ function renameProject(name, mode = "all"){
   rnFillPrefs(p);
   // The sessions at the foot: the gear's door, and an administrator's.
   $("rnSessField").hidden = true;
-  if (!git && state?.admin) rnSessionsLoad(name);
+  // Asked of the server, which answers by the account's areas on this
+  // project (R255 steps 3 and 4), and its refusal said under the section.
+  if (!git) rnSessionsLoad(name);
   $("rnmodal").hidden = false;
   rnFolds();
   // Each section's Save and Revert, drawn dead until something changes.
@@ -611,9 +615,22 @@ function rnFolds(){
 // Withdraw act on the press, as the actions they are.
 let rnPeople = null, rnPeopleDraft = {};
 
+// The Git view's session dials, read here with the rest of what a session
+// may do and set on the Git view (R255 step 7).
+function rnDrawGitPol(name){
+  // A project on the defaults carries no gitpol: read as the Git view does.
+  const pol = (state?.projects || []).find(p => p.name === name)?.prefs?.gitpol || {};
+  setHidden($("rnGitPolField"), rnMode === "git");
+  setText($("rnGitPol"), `its branches ${pol.push || "allow"} · to main ${pol.main || "deny"} · a sensitive push ${
+    (pol.scan || "hold") === "hold" ? "held for you" : "not held"}`);
+  $("rnGitPolGo").onclick = () => { closeRename(); openNotebook(name, "git"); };
+}
+
 function rnLoadPeople(name){
   rnPeople = null; rnPeopleDraft = {};
   $("rnPeopleField").hidden = true;
+  setHidden($("rnPeopleField").closest("details"), true);
+  rnDrawGitPol(name);
   if (rnMode === "git") return;
   postJSON("/api/members", {action: "view", project: name})
     .then(r => r.json())
@@ -629,6 +646,7 @@ function rnDrawPeople(){
   const owner = d.owner ?? v.owner, only = d.invite_only ?? v.invite_only;
   const invitable = v.accounts.filter(n => !v.members.includes(n) && !v.invites.some(i => i.name === n));
   $("rnPeopleField").hidden = false;
+  setHidden($("rnPeopleField").closest("details"), false);
   $("rnPeople").innerHTML = `
     <div class="setrow">${v.may_manage
       ? `<label class="ndcap" for="rnOwner">Project owner</label>
@@ -788,10 +806,18 @@ const RN_SIGN = [
 let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [],
     rnSignBackup = false, rnSignLocked = false, rnSignMayLock = false, rnSignLockOpen = false, rnSignPw = {};
 
+// A section this account may not use, shown with why under it in red, the
+// server's own words naming the area and level that would open it (R255
+// step 4), not hidden as if there were nothing there.
+function rnWhyOff(field, body, why){
+  body.innerHTML = `<div class="sub bad">${esc(why)}</div>`;
+  field.hidden = false;
+}
+
 function rnLoadSigning(name){
   rnSignKeys = null; rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = [];
   $("rnSignField").hidden = true;
-  if (rnMode === "git" || !state?.admin) return;
+  if (rnMode === "git") return;
   postJSON("/api/signing", {action: "list", project: name})
     .then(r => r.json())
     .then(j => {
@@ -816,10 +842,14 @@ let rnSnap = null;
 function rnLoadSnapshots(name){
   rnSnap = null;
   $("rnSnapField").hidden = true;
-  if (rnMode === "git" || !state?.admin) return;
+  if (rnMode === "git") return;
   fetch("/api/snapshots?project=" + encodeURIComponent(name))
     .then(r => r.json())
-    .then(j => { if (rnFor === name && !j.error){ rnSnap = j; rnDrawSnapshots(); } })
+    .then(j => {
+      if (rnFor !== name) return;
+      if (j.error){ rnWhyOff($("rnSnapField"), $("rnSnapRows"), j.error); return; }
+      rnSnap = j; rnDrawSnapshots();
+    })
     .catch(() => {});
 }
 
@@ -1322,7 +1352,7 @@ function closeRename(){
 // and moved on had saved nothing (Reads on BuilderBot, 10 Oct). Where the
 // section holds something a running session takes only when it starts, its
 // bar offers both answers at once: Save, keep it running and Save and end it.
-const RN_SECTS = ["project", "repo", "runs", "files", "sees", "build", "signing", "claude", "yours"];
+const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "build", "signing", "claude", "yours"];
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
   color: ["project", "Color"],
@@ -1383,6 +1413,8 @@ function rnSectChanges(sect, enc = rnEnc()){
   }
   if (sect === "project"){
     if ($("rnName").value.trim().replace(/\s+/g, " ") !== projLabel(rnFor) && !$("rnNameField").hidden) said.unshift("Name");
+  }
+  if (sect === "people"){
     if (rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
         || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only))) said.push("People");
   }
@@ -1442,6 +1474,7 @@ function rnRevertSect(sect){
     $("rnName").value = projLabel(rnFor); rnShow();
     $("rnPreview").hidden = true; $("rnName").classList.remove("bad");
     rnFillColor(w.color);
+  } else if (sect === "people"){
     rnPeopleDraft = {}; rnDrawPeople();
   } else if (sect === "repo"){
     $("rnToken").value = ""; rnClearToken = false; rnAuthPick = rnAuthNow;
@@ -1582,7 +1615,7 @@ async function rnSubmit(sect, end = false){
       else if (restartNow && j.ended)
         notify(`${projLabel(name)}: saved, and its session ended: press Claude to start one on it, resuming the conversation`);
     }
-    if (sect === "project" && rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
+    if (sect === "people" && rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
         || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only))){
       const why = await rnSavePeople(name);
       if (why) return stop(why);

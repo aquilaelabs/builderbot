@@ -17,7 +17,8 @@ async function rnSessionsLoad(name){
   try{
     j = await (await fetch("/api/project-sessions?project=" + encodeURIComponent(name))).json();
   }catch(e){ return; }
-  if (rnFor !== name || j.error) return;
+  if (rnFor !== name || rnMode === "git") return;
+  if (j.error){ rnWhyOff($("rnSessField"), $("rnSessList"), j.error); return; }
   rnSessionsDraw(name, j.sessions || []);
 }
 

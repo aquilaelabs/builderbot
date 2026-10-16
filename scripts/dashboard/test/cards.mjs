@@ -1306,7 +1306,18 @@ await page.click('#rnInviteOnly');
 ok(await page.$eval('#rnInviteOnly', c => c.checked)
    && (await api('/api/members', { action: 'view', project: 'alpha' })).body.invite_only === false,
    '...ticking Invite only stages it and changes nothing until Save');
+// People is a section of its own (R255 step 7): its change wakes its own
+// Save, not The project's.
+await page.waitForFunction(() => !document.querySelector('.rnbar[data-rnbar="people"] [data-rnsave]')?.disabled, null, { timeout: 5000 });
+ok(await page.$eval('#rnPeopleField', f => f.closest('details')?.dataset.sect === 'rn:people')
+   && await page.$eval('.rnbar[data-rnbar="project"] [data-rnsave]', b => b.disabled),
+   '...in a People section of its own, whose Save it wakes and The project\'s not');
 await page.click('#rnInviteOnly');
+// ...and Claude may reads the Git view's session dials too, set there.
+const gp = await page.evaluate(() => ({ text: document.getElementById('rnGitPol')?.textContent, hidden: document.getElementById('rnGitPolField')?.hidden,
+  sect: document.getElementById('rnGitPolField')?.closest('details')?.dataset.sect, pol: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gitpol }));
+ok(/its branches allow · to main deny · a sensitive push held for you/.test(gp.text || '') && !gp.hidden && gp.sect === 'rn:claude',
+   `Claude may shows the Git view's push dials, with the way to where they are set (${JSON.stringify(gp)})`);
 // Its Android signing keys (R106), an administrator's: a row per route,
 // a picked keystore staged until Save, its password asked for before
 // anything is sent, and a key the server will not keep refused in the

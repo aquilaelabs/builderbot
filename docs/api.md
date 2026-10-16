@@ -14,14 +14,14 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/live` | exact | `_get_live` | GET /api/live: who has a Claude session on each project and which of them are working, the two maps the status payload also carries, alone and cheap. |  |
 | GET | `/api/trace` | prefix | `_get_trace` | GET /api/trace?since=T: what this server was asked since T, grouped by endpoint (R75 step 4). |  |
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
-| GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: admin |
+| GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: controller-read |
 | GET | `/api/findings` | prefix | `_get_findings` | GET /api/findings: findings.view, scoped to the projects this account sees, and for a session to its own. |  |
 | GET | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile tab): read on GET, saved on POST, by profiletab.py. |  |
 | GET | `/api/transcripts` | prefix | `_get_transcripts` | GET /api/transcripts?project=NAME: the signed-in account's own conversations with Claude on that project, newest first (transcripts.mine); with audit=DAYS, what they did against the house rules that can be counted instea |  |
-| GET | `/api/snapshots` | prefix | `_get_snapshots` | GET /api/snapshots?project=NAME: the days kept of the project's tree (snapshots.py), newest first, and how many it keeps. | refused: admin |
+| GET | `/api/snapshots` | prefix | `_get_snapshots` | GET /api/snapshots?project=NAME: the days kept of the project's tree (snapshots.py), newest first, and how many it keeps. | refused: settings |
 | GET | `/api/transcript` | prefix | `_get_transcript` | GET /api/transcript?project=NAME&id=SESSION: one of the signed-in account's own conversations with Claude on that project as a text file, every command and answer in it (transcripts.render); as JSON with as=json, which i |  |
 | GET | `/api/git` | prefix | `_get_git` | GET /api/git: the notebook's Git view (gitview.view), for a project this account may see. |  |
-| GET | `/api/project-sessions` | prefix | `_get_project_sessions` | GET /api/project-sessions?project=NAME: every account's sessions on the project, for its settings dialog. | refused: admin |
+| GET | `/api/project-sessions` | prefix | `_get_project_sessions` | GET /api/project-sessions?project=NAME: every account's sessions on the project, for its settings dialog. | refused: settings |
 | GET | `/api/changelog` | prefix | `_get_changelog` | GET /api/changelog: changelog.reading, for a project this account sees. |  |
 | GET | `/api/version` | prefix | `_get_version` | GET /api/version. |  |
 | GET | `/api/artifacts` | prefix | `_get_artifacts` | GET /api/artifacts: artifacts.tab_view, for a project this account sees. |  |
@@ -31,7 +31,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/meta` | prefix | `_get_meta` | GET /api/meta. |  |
 | GET | `/api/welcome` | prefix | `_get_welcome` | GET /api/welcome: BuilderBot's own changelog for the welcome panel (changelog.welcome), and where this account last looked. |  |
 | GET | `/api/source?` | prefix | `_get_source` | GET /api/source: the code base as a zip, from the Artifacts tab (artifacts.source_download). |  |
-| GET | `/logs/download` | prefix | `_get_logs_download` | GET /logs/download: the container's own log, every project's traffic in it, or the diagnostics whole (logs.download). | refused: admin, refused: debug |
+| GET | `/logs/download` | prefix | `_get_logs_download` | GET /logs/download: the container's own log, every project's traffic in it, or the diagnostics whole (logs.download). | refused: controller-read, refused: debug |
 | GET | `/api/phone/wait` | prefix | `_get_phone_wait` | GET /api/phone/wait?since=T: the companion app's live connection (R125). |  |
 | GET | `/api/phone` | prefix | `_get_phone` | GET /api/phone. |  |
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
@@ -45,7 +45,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/home` | prefix | `_get_home` | GET /api/home: home.read, the overview's numbers (R218 step 5). |  |
 | GET | `/api/notices` | prefix | `_get_notices` | GET /api/notices: notices.listing, this account's own (R218 step 6). |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |
-| GET | `/api/containers` | prefix | `_get_containers` | GET /api/containers. | refused: admin |
+| GET | `/api/containers` | prefix | `_get_containers` | GET /api/containers. | refused: containers-read |
 | GET | `/api/project-job` | prefix | `_get_project_job` | GET /api/project-job. | refused: create |
 | GET | `/api/trash` | prefix | `_get_trash` | GET /api/trash. | refused: trash |
 | GET | `/api/claude-now` | prefix | `_get_claude_now` | GET /api/claude-now. |  |
@@ -65,7 +65,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/tests` | prefix | `_get_tests` | GET /api/tests. |  |
 | GET | `/api/bugs` | prefix | `_get_bugs` | GET /api/bugs. |  |
 | GET | `/api/pubkeys` | prefix | `_get_pubkeys` | GET /api/pubkeys. | refused: create |
-| POST | `/api/v1/nodes` | prefix | `_nodes` | The Nodes tab's verbs. | refused: admin |
+| POST | `/api/v1/nodes` | prefix | `_nodes` | The Nodes tab's verbs. | refused: nodes-write |
 | POST | `/api/v1/jobs` | prefix | `_jobs` | The Jobs tab's one verb, and where `bb run`, `bb build`, `bb test` and `bb emu` land from the controller (nodes.run_job). |  |
 | POST | `/api/v1/bb` | exact | `_bb_relay` | A bb verb from a session on a NODE, run here (roadmap #24). | refused: bb |
 | POST | `/api/v1/claude-login` | exact | `_claude_login` | A node saying what this account is signed in to Claude AS there (R47), or that it is not: never the login itself, which stays on the machine that made it (claudegrant.py says why). |  |
@@ -93,29 +93,29 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/images` | exact | `_images` | Check for updates on the Docker tab (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage tab: a node's disks walked at once (nodes.node_storage_measure). |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |
-| POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: admin |
+| POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: controller |
 | POST | `/api/create` | prefix | `_create` | New project: a fresh local repo, a clone or a link, and what the dialog chose besides (projects.create_from_dialog). | refused: create |
 | POST | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile tab): read on GET, saved on POST, by profiletab.py. |  |
 | POST | `/api/git` | prefix | `_git_act` | The Git view's actions (roadmap R36 step 2): fixed git commands on the project's tree on the controller, under the acting account's author and the project's own credentials (gitview.verb). |  |
-| POST | `/api/project-sessions` | prefix | `_project_sessions` | POST /api/project-sessions {project, action: "end", session, node}: an administrator ending one of them (projsessions.py). | refused: admin |
+| POST | `/api/project-sessions` | prefix | `_project_sessions` | POST /api/project-sessions {project, action: "end", session, node}: an administrator ending one of them (projsessions.py). | refused: settings |
 | POST | `/api/unlink` | prefix | `_unlink` | Take the remote off a project, with the credential and the push grant that came with it. | refused: create |
 | POST | `/api/link` | prefix | `_link` | Link an existing local repo to an empty repo on a host. | refused: create |
 | POST | `/api/project-job` | prefix | `_project_job` | Stop the running project job, or clear the last one's outcome. | refused: create |
-| POST | `/api/roadmap` | prefix | `_roadmap` | Add, send, edit or drop one item on a project's list: roadmap.verb says what each action means. | refused: admin |
+| POST | `/api/roadmap` | prefix | `_roadmap` | Add, send, edit or drop one item on a project's list: roadmap.verb says what each action means. | refused: settings |
 | POST | `/api/roles` | prefix | `_roles` | POST /api/roles: assign (an account's Everywhere roles and its roles on each project, as far as the asker may, R152 and R155), set (make or change a role: its scope, its areas and note) or remove one; owner and admin are | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users tab's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
-| POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: admin |
-| POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: admin |
-| POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: admin |
-| POST | `/api/paths` | prefix | `_paths` | Where the controller keeps one kind of what grows (paths.py), and what is there moved across. | refused: admin |
-| POST | `/api/snapshots` | prefix | `_snapshots` | POST /api/snapshots: take one now, or restore the whole tree as of a day or one file of it (snapshots.restore, which snapshots the tree first so it can be undone). | refused: admin |
-| POST | `/api/settings` | prefix | `_settings_post` | POST /api/settings. | refused: admin, refused: debug |
+| POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: toolchains-write |
+| POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: controller |
+| POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: controller |
+| POST | `/api/paths` | prefix | `_paths` | Where the controller keeps one kind of what grows (paths.py), and what is there moved across. | refused: controller |
+| POST | `/api/snapshots` | prefix | `_snapshots` | POST /api/snapshots: take one now, or restore the whole tree as of a day or one file of it (snapshots.restore, which snapshots the tree first so it can be undone). | refused: settings |
+| POST | `/api/settings` | prefix | `_settings_post` | POST /api/settings. | refused: controller, refused: debug |
 | POST | `/api/rules` | prefix | `_rules` | The operator's house rules for one project: the whole list, saved (rules.verb). | refused: rules |
-| POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: admin |
+| POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: controller |
 | POST | `/api/pending` | prefix | `_pending` | Approve or deny what a session has waiting (roadmap #27): pending.verb. | refused: pending |
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
-| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: admin, refused: debug, refused: docker-write |
+| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: nodes-write, refused: debug, refused: docker-write |
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
 | POST | `/api/design` | prefix | `_design` | POST /api/design: a Design section's Save of the language and the pages, and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/wiki` | exact | `_wiki` | POST /api/wiki: a page saved, removed or renamed, and the wiki pushed to or pulled from the forge's (wiki.verb), for an account that works on the project. |  |
@@ -123,7 +123,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write, refused: node |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |
-| POST | `/api/signing` | exact | `_signing` | A project's Android signing keys (signing.verb, R106). | refused: admin |
+| POST | `/api/signing` | exact | `_signing` | A project's Android signing keys (signing.verb, R106). | refused: signing |
 | POST | `/api/members` | exact | `_members` | A project's owner, whether it is invite only, its people and its invitations, and an invitee's answer (membership.verb). |  |
 | POST | `/api/signing-backup` | exact | `_post_signing_backup` | POST /api/signing-backup: the same, with the project's backup password in the body, never in a URL that lands in a log. |  |
 | POST | `/api/artifacts` | prefix | `_artifacts` | Push an .xpi from a project's dist/ to the paired phone, install an .apk there, or stop a push: phone.artifact_verb, behind the gates here. |  |
@@ -137,7 +137,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/presence` | prefix | `_presence` | This browser is in a project's notebook, and who else is (roadmap #26): presence.heartbeat, for a signed-in account on a project it sees. |  |
 | POST | `/api/bugs` | prefix | `_bugs` | Report, edit, or close one bug: bugs.verb, behind the gates here. |  |
 | POST | `/api/custom` | prefix | `_custom` | Save or delete one of the operator's own command lists: macros.custom_edit. | refused: terminal |
-| POST | `/api/doctor` | prefix | `_doctor` | Re-run bb doctor now and answer with the fresh verdict. | refused: admin |
+| POST | `/api/doctor` | prefix | `_doctor` | Re-run bb doctor now and answer with the fresh verdict. | refused: controller |
 | POST | `/api/signout` | prefix | `_signout` | Sign this account out of Claude on one node (signin.sign_out): the login is that machine's, so that machine lets go of it. |  |
 | POST | `/api/login-code` | prefix | `_login_code` | Hand the code from the browser to the sign-in flow: signin.take_code, for the person whose flow it is. |  |
 | POST | `/api/signin` | prefix | `_signin` | Start a sign-in on one node, or stop the one that is running: signin.verb. |  |

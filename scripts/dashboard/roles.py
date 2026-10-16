@@ -106,6 +106,12 @@ CAP_AREA = {
     "command-pin": ("controller", "write"), "create": ("newprojects", "write"),
     "admin": ("accounts", "write"), "debug": ("controller", "write"),
     "ftp": ("settings", "write"),
+    # Each its own area (R255 step 3, the operator, 16 Oct): what these
+    # gated was behind accounts write whatever it was, so a role's areas
+    # did not say what it could do.
+    "controller": ("controller", "write"), "controller-read": ("controller", "read"),
+    "nodes-write": ("nodes", "write"), "containers-read": ("containers", "read"),
+    "settings": ("settings", "write"), "signing": ("releases", "write"),
 }
 
 _ALL = {a: "write" for a in AREA_KEYS}

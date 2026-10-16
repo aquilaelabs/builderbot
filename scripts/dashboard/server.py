@@ -5059,7 +5059,7 @@ class Handler(BaseHTTPRequestHandler):
         """GET /logs/download: the container's own log, every project's
         traffic in it, or the diagnostics whole (logs.download). An
         administrator's, and the diagnostics the debug grant's."""
-        if self._refused("admin"):
+        if self._refused("controller-read"):
             return None
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         if (q.get("what") or [""])[0] == "diag" and self._refused("debug"):
@@ -5313,7 +5313,7 @@ class Handler(BaseHTTPRequestHandler):
         # beyond `docker version` (see the guard in devapp.py, which
         # allows it and still refuses anything that would change something).
         # Everything on the daemon, every project's: an administrator's.
-        if self._refused("admin"):
+        if self._refused("containers-read"):
             return None
         return self._json(devapp.containers())
 
@@ -5689,7 +5689,7 @@ class Handler(BaseHTTPRequestHandler):
         dashboard re-executes itself so the next page is Create the owner.
         The confirm word is the whole of the safety: this is an
         administrator typing "reset" into a red box."""
-        if self._refused("admin"):
+        if self._refused("controller"):
             return None
         if str(req.get("confirm") or "") != "reset":
             return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
@@ -5722,7 +5722,7 @@ class Handler(BaseHTTPRequestHandler):
         """POST /api/settings."""
         # The Settings tab's fields (R29): an administrator's, validated
         # and applied by the store; the answer is the tab's next drawing.
-        if self._refused("admin"):
+        if self._refused("controller"):
             return
         # The Debugging group (debug mode and what it opens) is the debug
         # grant's, named only (the operator, 6 Oct); only a change is asked.
@@ -5816,7 +5816,7 @@ class Handler(BaseHTTPRequestHandler):
         # administrator's. The node hears it at once, since the sets it
         # fills are rebuilt live.
         reach = req.get("reaches") is not None and prefs.reaches_changed(name, req.get("reaches"))
-        if reach and self._refused("admin"):
+        if reach and self._refused("nodes-write"):
             return
         # The node's own address is not one this opens: a session's traffic
         # to its own node is judged on the way in, where only the controller
@@ -5864,7 +5864,7 @@ class Handler(BaseHTTPRequestHandler):
     def _nodes(self, req):
         """The Nodes tab's verbs. Thin on purpose: an administrator's, and
         nodes.verb says what each one means and writes its audit row."""
-        if self._refused("admin"):
+        if self._refused("nodes-write"):
             return
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
@@ -6291,7 +6291,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(bad, 409)
         # Closing a batch its session will never close (B198) is an
         # administrator's, like the other decisions about other people's work.
-        if act == "batch-close" and self._refused("admin"):
+        if act == "batch-close" and self._refused("settings", name):
             return
         return self._json(*roadmap.verb(name, act, req, self._who() or {}, live=sessions_anywhere(),
                                         prefix=users.tmux_prefix(self._who())))
@@ -6375,14 +6375,14 @@ class Handler(BaseHTTPRequestHandler):
     def _logs(self, req):
         """The log policy, and the two things that can be done to the pile:
         logs.verb. An administrator's."""
-        if self._refused("admin"):
+        if self._refused("controller"):
             return
         return self._json(*logs.verb(field(req, "action"), req))
 
     def _idle(self, req):
         """The idle rule for Claude sessions (idle.py): minutes, 0 for never.
         Operator-only, like the log policy beside it."""
-        if self._refused("admin"):
+        if self._refused("controller"):
             return
         r = idle.set_minutes(req.get("minutes"))
         return self._result(r)
@@ -6393,7 +6393,7 @@ class Handler(BaseHTTPRequestHandler):
         it is this machine's disks."""
         if (self._who() or {}).get("session"):
             return self._json({"error": "the controller's storage is the operator's"}, 403)
-        if self._refused("admin"):
+        if self._refused("controller"):
             return
         name = field(req, "name")
         r = paths.set_path(name, field(req, "path"))
@@ -6820,7 +6820,7 @@ class Handler(BaseHTTPRequestHandler):
                                             "sets its backup password"}, 403)
             return self._json(*signing.set_backup_password(name, str(req.get("current") or ""),
                                                            str(req.get("new") or ""), by=str(who.get("name") or "")))
-        if field(req, "action") != "list" and self._refused("admin"):
+        if field(req, "action") != "list" and self._refused("signing", name):
             return None
         got, status = signing.verb(req, by=str(who.get("name") or ""))
         # Whether this person may take a backup, so the dialog offers it only
@@ -6876,7 +6876,7 @@ class Handler(BaseHTTPRequestHandler):
     def _signing_backup(self, name, route, key, password):
         if (self._who() or {}).get("session"):
             return self._json({"error": "a session never receives a signing key"}, 403)
-        if self._not_project(name) or self._refused("admin"):
+        if self._not_project(name) or self._refused("signing", name):
             return None
         # ...and one who has the project on their own list (the operator,
         # 1 Oct): an administrator sees every project, and a key is the one
@@ -7004,7 +7004,7 @@ class Handler(BaseHTTPRequestHandler):
         is refused the same way and for the same reason: its own token would
         otherwise be the way around the arrangement.
         """
-        if self._refused("admin"):
+        if self._refused("controller"):
             return None
         return self._json(*rules.global_verb(field(req, "action"), req))
 
@@ -7145,11 +7145,9 @@ class Handler(BaseHTTPRequestHandler):
         administrator's, like a restore."""
         if (self._who() or {}).get("session"):
             return self._json({"error": "a project's snapshots are the operator's"}, 403)
-        if self._refused("admin"):
-            return None
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
-        if self._not_project(name):
+        if self._refused("settings", name) or self._not_project(name):
             return None
         return self._json({"project": name, "keep": prefs.get(name)["snapshot_days"],
                            "days": snapshots.days(name)})
@@ -7161,10 +7159,8 @@ class Handler(BaseHTTPRequestHandler):
         restore may be undoing."""
         if (self._who() or {}).get("session"):
             return self._json({"error": "a project's snapshots are the operator's"}, 403)
-        if self._refused("admin"):
-            return None
         name = field(req, "project")
-        if self._not_project(name):
+        if self._refused("settings", name) or self._not_project(name):
             return None
         act = field(req, "action")
         if act == "take":
@@ -7413,7 +7409,7 @@ class Handler(BaseHTTPRequestHandler):
         its toolchain store. An id must be one the tab was drawn from (add)
         or one the node reported (remove): what reaches a command line is a
         string this server handed out."""
-        if self._refused("admin"):
+        if self._refused("toolchains-write"):
             return
         if NODES_OK:
             return self._json({"error": "the node store did not open"}, 500)
@@ -7613,7 +7609,7 @@ class Handler(BaseHTTPRequestHandler):
         answer, and the threading server keeps everything else responsive
         while this one connection waits the half-minute a bad network takes.
         """
-        if self._refused("admin"):
+        if self._refused("controller"):
             return None
         if not doctor.refresh():
             return self._json({"error": "doctor is already running"}, 409)
@@ -7909,7 +7905,7 @@ class Handler(BaseHTTPRequestHandler):
         """GET /api/reset: how a Reset that un-enrolls its nodes first is
         getting on: each node, done or why not, and the error that stopped
         it. An administrator's."""
-        if self._refused("admin"):
+        if self._refused("controller-read"):
             return None
         return self._json({k: v for k, v in _reset_job.items() if k != "started"})
 
@@ -7918,7 +7914,7 @@ class Handler(BaseHTTPRequestHandler):
         the project, for its settings dialog. An administrator's."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
-        if self._refused("admin") or self._not_project(name):
+        if self._refused("settings", name) or self._not_project(name):
             return None
         return self._json({"sessions": projsessions.of(name)})
 
@@ -7926,7 +7922,7 @@ class Handler(BaseHTTPRequestHandler):
         """POST /api/project-sessions {project, action: "end", session, node}:
         an administrator ending one of them (projsessions.py)."""
         name = field(req, "project")
-        if self._refused("admin") or self._not_project(name):
+        if self._refused("settings", name) or self._not_project(name):
             return None
         if field(req, "action") != "end":
             return self._json({"error": "unknown action"}, 400)

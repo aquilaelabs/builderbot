@@ -46,6 +46,22 @@ class Model(unittest.TestCase):
         for cap in ("read", "work", "roadmap", "terminal"):
             self.assertFalse(self.g(USER, cap, "alpha"), cap)
 
+    def test_each_action_follows_its_own_area(self):
+        # R255 step 3 (the operator, 16 Oct): what sat behind accounts write
+        # follows the area it concerns, and accounts write alone gives none of it.
+        roles.set_role("ops", scope="global", perms={"controller": "write", "nodes": "write"})
+        roles.set_role("rel", scope="projects", perms={"projects": "read", "releases": "write", "settings": "write"})
+        roles.set_role("hr", scope="global", perms={"accounts": "write"})
+        ops = {"name": "o", "role": "user", "roles": ["ops"], "projects": []}
+        rel = {"name": "r", "role": "user", "roles": [], "projects": ["alpha"], "project_roles": {"alpha": ["rel"]}}
+        hr = {"name": "h", "role": "user", "roles": ["hr"], "projects": []}
+        self.assertTrue(self.g(ops, "controller") and self.g(ops, "controller-read") and self.g(ops, "nodes-write"))
+        self.assertFalse(self.g(ops, "admin"), "controller write is not accounts write")
+        self.assertTrue(self.g(rel, "signing", "alpha") and self.g(rel, "settings", "alpha"))
+        self.assertFalse(self.g(rel, "signing", "beta"))
+        self.assertTrue(self.g(hr, "admin"))
+        self.assertFalse(self.g(hr, "controller") or self.g(hr, "nodes-write") or self.g(hr, "signing", "alpha"))
+
     def test_roles_are_named_for_a_person(self):
         # R255 step 1: BuilderBot's owner, an administrator, and the Owner of
         # a project told apart by name, not by their keys.
