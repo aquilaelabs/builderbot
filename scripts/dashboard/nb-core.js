@@ -911,7 +911,7 @@ function projectHeader(t){
   const node = p.node_name || p.session_at || "";
   return `<div class="phead">
     <span class="pname">${esc(p.label || name)}${p.locked || notMine(p)
-      ? ` <span class="lockmark" aria-label="${p.locked ? "locked; you run this one" : "read-only"}">${LOCK}</span>` : ""}</span>
+      ? ` <span class="lockmark">${LOCK}${p.locked ? "locked" : "read-only"}</span>` : ""}</span>
     <span class="pfacts">${p.git ? `git: ${esc(p.git)}` : ""}${p.git && node ? " · " : ""}${esc(node)}</span>
     ${projectState(p)}
     <span class="sp"></span>

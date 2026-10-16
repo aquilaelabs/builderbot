@@ -1066,6 +1066,14 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
     r => r.textContent.replace(/\s+/g, ' '));
   ok(!/read-only/.test(note) && !/no Claude session/.test(note),
      '...marked with the padlock alone, not a sentence under the name as well');
+  // ...drawn as a line, as everywhere else, and saying its word: on the card
+  // it took the default fill and was a black blob with no word (16 Oct).
+  const mark = await page.$eval('.pgrid .pcard[data-row="alpha"] .lockmark', m => {
+    const g = getComputedStyle(m.querySelector('svg'));
+    return { fill: g.fill, stroke: g.stroke, said: m.textContent.trim() };
+  });
+  ok(mark.fill === 'none' && mark.stroke !== 'none' && mark.said === 'locked',
+     `...the padlock drawn as a line in the dim color, with its word beside it (${JSON.stringify(mark)})`);
 await page.evaluate(() => setLocked('alpha', false));
 // Unlocking is what is under test, so it is the LOCK that has to stop being
 // the reason. The button stays dead here for a different one (alpha has no

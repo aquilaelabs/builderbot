@@ -111,7 +111,7 @@ function projectCard(p){
   const node = p.node_name || p.session_at || "";
   return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
     <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
-      p.locked || notMine(p) ? ` <span class="lockmark" aria-label="${p.locked ? "locked; you run this one" : "read-only"}">${LOCK}</span>` : ""}${
+      p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "locked" : "read-only"}</span>` : ""}${
       p.pinned ? "" : ` <span class="dim pcunpinned" title="not on Home's glance">unpinned</span>`}</div>
     <div class="pcfacts">${p.git ? `git: ${esc(p.git)}${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}</div>
     ${projectState(p)}

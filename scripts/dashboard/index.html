@@ -959,9 +959,13 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 .row .sub.locked{color:var(--dim);font-style:italic}
 /* The padlock beside the name. Sized to the text it follows rather than to the
    icon buttons, because it is a word in the name's sentence, not a control. */
-.row .name .lockmark{display:inline-flex;vertical-align:-2px;margin-left:5px;
-  color:var(--dim)}
-.row .name .lockmark svg{width:13px;height:13px;fill:none;stroke:currentColor;
+/* Wherever it stands (a row, a project's card, its page's header): drawn as
+   a line, never the default fill, which on the cards made it a black blob
+   (the operator, 16 Oct), and with its word beside it, since what it means
+   was a screen reader's alone. */
+.lockmark{display:inline-flex;align-items:center;gap:4px;vertical-align:-2px;margin-left:5px;
+  color:var(--dim);font:var(--f-ui)}
+.lockmark svg{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .grow{flex:1;min-width:120px}
 
