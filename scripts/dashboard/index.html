@@ -1343,6 +1343,9 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 .box.sheet .sheetslot{overflow:auto;min-height:0;flex:1 1 auto;
   display:flex;flex-direction:column}
 .box.sheet .sheetslot>*{display:block;flex:0 0 auto}
+/* ...but a History's bar is a row in its sheet as on the page: the search and
+   its window side by side, wrapped only on a phone (B776). */
+.box.sheet .sheetslot>.histbar{display:flex}
 .box.sheet .sheetslot>*:last-child{flex:1 1 auto}
 @media(max-width:900px){
   .nbsheet{padding:0}

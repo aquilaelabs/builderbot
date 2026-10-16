@@ -571,6 +571,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb jobs names a line typed into a Claude session (Resume, a step or a bug sent) with its session and words, where it read as an empty exec (51a2b52)
 - The doctor's dot sits in the middle of its button in the top bar, as the icons beside it do; on a phone it sat at the start (9f648f0)
 - The end-of-turn house-rule check skips while a session's own tests hold the test lock instead of running the whole suite behind them, and when it blocks it names the failing checks first (b0cc295)
+- A History's search and its window sit side by side in its sheet at a desk; they stacked on two lines (B776) (b92d756)
 
 ### Security
 
