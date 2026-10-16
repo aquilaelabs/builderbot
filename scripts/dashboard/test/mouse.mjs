@@ -75,6 +75,8 @@ const keptTerm = await page.evaluate(() => panes[1]);
 await page.click('#pane1 [data-dtoggle]');
 ok(await page.evaluate(t => !dockUp && panes[1] === t && !document.getElementById('panes').classList.contains('dockup'), keptTerm),
    'the chevron puts the dock down to its line, keeping its terminal');
+// Once its slide back into the line has ended.
+await page.waitForFunction(() => !document.getElementById('panes').classList.contains('dockdown'), null, { timeout: 5000 });
 ok(await page.$eval('#pane1', p => p.getBoundingClientRect().height < 60), '...a line tall');
 await page.click('#pane1 [data-dtoggle]');
 ok(await page.evaluate(() => dockUp && document.getElementById('panes').classList.contains('dockup')), '...and up again');

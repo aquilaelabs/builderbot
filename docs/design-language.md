@@ -757,10 +757,10 @@ is how a page came to turn itself back.
 Applies to: scripts/dashboard/index.html, scripts/dashboard/page-motion.js; motion, animation, animate, fade, transition, tween
 
 Everything that appears, leaves, opens or changes state moves: a panel or
-menu arrives (`menuIn`; one that opens upward from the bottom bar rises instead, `menuUp`), a document brought to the front fades in over its
+menu arrives (`menuIn`, 8px over .22s; one that opens upward from the bottom bar rises instead, `menuUp`, 16px over .32s; both on one ease-out cubic, so a desk's menus and a phone's sheet move alike), a document brought to the front fades in over its
 own ground (`docIn`, contentIn's frames under a name of its own, so a
 document that already wears contentIn from its first paint still fades when
-it comes forward) while the page it replaces fades out first (`docOut`, gone by .09s) and holds still where it sat, a fade through rather than a double exposure (the operator, 16 Oct); every page's bar is one height, a page with no sub-nav naming itself on a line as tall, so a switch moves nothing; the dock slides up out of its line when it opens (`dockUp`), a section folds over its height
+it comes forward) while the page it replaces fades out first (`docOut`, gone by .09s) and holds still where it sat, a fade through rather than a double exposure (the operator, 16 Oct); every page's bar is one height, a page with no sub-nav naming itself on a line as tall, so a switch moves nothing; the dock slides up out of its line when it opens (`dockUp`) and back down into it when it shuts (`dockDown`), laid over the page, a section folds over its height
 (`slideBody`, the section tween), a button or tab eases its color, a
 toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute

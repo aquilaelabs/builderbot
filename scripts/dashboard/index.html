@@ -610,7 +610,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
-  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+  animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 /* The header's own menu, under the gear. Same shape and the
    same manners as the bell panel beside it: anchored to the header's bottom
    edge, anything else closes it, Escape closes it. */
@@ -618,7 +618,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   width:min(300px,calc(100vw - 16px));
   background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px;
-  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+  animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 .uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
   text-transform:uppercase;color:var(--dim)}
 .uimenu>button{width:100%;min-height:var(--tap);justify-content:flex-start}
@@ -1090,7 +1090,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
     /* The cap is what stops a forty-level API list running off the screen;
        the rest of it scrolls. */
     max-height:min(60vh,320px);overflow-y:auto;
-    animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+    animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
   /* border-box, or --tap is the height of the TEXT and every row comes out at
      50px: an option's box is content-box by default. */
   select option{display:flex;align-items:center;gap:8px;box-sizing:border-box;
@@ -3357,7 +3357,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   box-shadow:0 8px 22px rgba(0,0,0,.45);padding:6px;
   display:flex;flex-direction:column;gap:4px;
-  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+  animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 .actmenu>button{width:100%;min-height:var(--tap);justify-content:flex-start;text-align:left;flex:0 0 auto}
 @media(max-width:600px){
   /* The finger height, and nothing of the width: a phone's action bar used
@@ -3658,7 +3658,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 /* Over a dialog with no gutter beside it (toastPlace): at the top, and every press goes through. */
 #toast.overdlg{top:calc(8px + env(safe-area-inset-top));bottom:auto}
 #toast.overdlg .tst,#toast.overdlg .tx{pointer-events:none}
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock,.panes.dockdown .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */
 /* min-width:0 matters: a grid item's min-content width is its widest nowrap
@@ -3674,8 +3674,11 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 
 /* Built fresh each time it is opened, so the animation runs on the element
    coming into being: the Resume/New chooser under a Claude button, which
-   used to snap into place. */
-@keyframes menuIn{from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none}}
+   used to snap into place. 8px over .22s on the ease-out cubic the bottom
+   bar's sheet uses, a little shorter for a smaller thing, so a menu at a
+   desk moves the way the sheet on a phone does (the operator, 16 Oct: the
+   quicker drop read as a pop). */
+@keyframes menuIn{from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none}}
 /* ...and one that opens upward from what opened it, the bottom bar's More,
    rises into place rather than dropping, a sheet's travel rather than a
    menu's twitch: 16px over .32s on an ease-out cubic, fading the whole way
@@ -3684,7 +3687,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
-  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+  animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 .pinmenu button{min-height:var(--tap)}
 /* The resume label can be a sentence, and the sidebar is narrow: wrap inside
    the card rather than hanging off its edge. */
@@ -3715,6 +3718,14 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    16 Oct): the pane starts where the line sat, all but the line below the
    frame, and rises to its height. The ground it uncovers is the page's. */
 @keyframes dockUp{from{transform:translateY(calc(100% - 44px))} to{transform:none}}
+/* Going down, the reverse (dockDress): over the page, which has its shut
+   layout already, from where it sat and at the height it had, its top
+   sliding to where the shut line sits. */
+.panes.dockdown{position:relative;padding-bottom:44px}
+.panes.dockdown .pane.dock{position:absolute;left:0;right:0;top:var(--dock-top,50%);height:var(--dock-was,50%);z-index:2;
+  animation:dockDown .24s cubic-bezier(.32,0,.67,0) forwards}
+.panes.dockdown .pane.dock .stack{display:block}
+@keyframes dockDown{from{top:var(--dock-top,50%)} to{top:calc(100% - 44px)}}
 .panes.docked{background:var(--bg)}
 body.booting .panes.dockup .pane.dock{animation:none}
 .panes.dockup .pane.dock .stack{display:block}

@@ -199,11 +199,33 @@ function dockEdges(line){
 }
 
 // The pane's classes and height for the dock's state, each draw.
+// ...and going down, it slides back into its line (the operator, 16 Oct),
+// as it slid out of it: the page takes its shut layout at once, and the
+// dock, laid over it at the height it had, slides down until only its line
+// shows, then drops back into its row.
+let dockWasUp = null, dockDownTimer = 0;
 function dockDress(){
   const el = $("panes");
   if (!el) return;
   const up = dockUp && !!panes[1];
   el.classList.toggle("docked", true);
+  if (dockWasUp && !up && !noMotion()){
+    // Where it sits and how tall, read while it is still up: the box can
+    // change height as it shuts (a terminal's Commands row goes with it),
+    // and the dock starts its slide exactly where it was.
+    const p1 = $("pane1"), pr = el.getBoundingClientRect(), r1 = p1?.getBoundingClientRect();
+    if (r1){
+      el.style.setProperty("--dock-top", (r1.top - pr.top).toFixed(1) + "px");
+      el.style.setProperty("--dock-was", r1.height.toFixed(1) + "px");
+    }
+    el.classList.add("dockdown");
+    clearTimeout(dockDownTimer);
+    dockDownTimer = setTimeout(() => el.classList.remove("dockdown"), 260);
+  }
+  // Only when it is there: remove() writes the attribute whether or not,
+  // and an idle poll must write nothing (uniform.mjs holds it to that).
+  if (up && el.classList.contains("dockdown")){ clearTimeout(dockDownTimer); el.classList.remove("dockdown"); }
   el.classList.toggle("dockup", up);
+  dockWasUp = up;
   if (dockH) el.style.setProperty("--dock-h", dockH + "px");
 }

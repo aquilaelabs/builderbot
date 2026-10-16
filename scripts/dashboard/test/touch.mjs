@@ -49,6 +49,16 @@ const box = await page.evaluate(() => { const r = s => document.querySelector(s)
 ok(!box.left && !box.right && !box.top && !box.foot, `...and the page's box is flush with the edges, the header and the bottom bar ${JSON.stringify(box)}`);
 ok(await page.evaluate(() => getComputedStyle(document.querySelector('#pane1 > .bar')).borderBottomWidth === '0px'),
    "...and the dock's line shut on the bottom bar draws no second line under itself");
+// ...and shut, it slides back into its line, laid over the page, which has
+// its own layout at once (the operator, 16 Oct).
+await page.evaluate(() => dockToggle(true));
+await page.waitForFunction(() => !document.getElementById('pane1').getAnimations().some(a => a.playState === 'running'), null, { timeout: 5000 });
+const down = await page.evaluate(() => { dockToggle(false);
+  return { cls: document.getElementById('panes').className, anim: getComputedStyle(document.getElementById('pane1')).animationName,
+           page: getComputedStyle(document.getElementById('pane0')).display }; });
+ok(/dockdown/.test(down.cls) && !/dockup/.test(down.cls) && down.anim === 'dockDown' && down.page !== 'none',
+   `...and shutting, it slides down into its line over the page (${JSON.stringify(down)})`);
+await page.waitForFunction(() => !document.getElementById('panes').classList.contains('dockdown'), null, { timeout: 5000 });
 await page.evaluate(() => { dockToggle(true); openJobsTab(); });
 await page.waitForFunction(() => !dockUp, null, { timeout: 5000 });
 ok(true, '...and a page opened on a phone puts the sheet down');

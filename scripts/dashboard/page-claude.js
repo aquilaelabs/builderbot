@@ -458,8 +458,8 @@ function placeResumeMenu(){
   // somewhere you cannot see reads as nothing having happened.
   //
   // Measured at rest. scrollIntoView reads the box where it is, and where it
-  // is right now is menuIn's first frame, 5px above where it will settle,
-  // so aligning that box left the settled chooser 5px below the fold (B77).
+  // is right now is menuIn's first frame, 8px above where it will settle,
+  // so aligning that box left the settled chooser that far below the fold (B77).
   // Finish the entrance for the measurement and play it again from the start.
   const enter = m.getAnimations()[0];
   enter?.finish();
