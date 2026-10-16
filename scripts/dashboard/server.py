@@ -1254,8 +1254,8 @@ def _attention(who):
                else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid))
                # ...and a container whose registry image moved (imagecheck, R195).
                + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid,
-                                      allowed=lambda p: users.may(who, "docker-write", p) == "" if p
-                                      else users.is_admin(who))
+                                      allowed=lambda p: users.may(who, "docker-write", p) == ""
+                                      if p and users.may_work(who, p) else users.is_admin(who))
                # ...and a copy or move that did not happen (relocate.py).
                + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
     # ...less what this account has put away (bellseen.py, R144): an update
