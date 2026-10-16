@@ -1555,19 +1555,26 @@ for (const kind of kinds){
   // the Emulator page and the Docker page, and failed a run in three).
   // Counted as the page counts them: a token only one page draws (a node's
   // heartbeat, every poll) only while that page is on show.
-  // A token that appeared in the window (a notebook's, as it opens) moved
-  // nothing: only one there at the start and different at the end counts.
-  const MOVED = () => page.evaluate(() => Object.keys(revs).filter(k => k !== 'boot' && window.__r0 && k in window.__r0 && window.__r0[k] !== revs[k]
+  // A token that appeared in the window counts as the page counts it
+  // (page-poll.js: after the first poll an appearing token is news and its
+  // watches fire): Home re-read on the jobs token appearing with a fresh
+  // fixture's first job, and failed a run with nothing moved said.
+  const MOVED = () => page.evaluate(() => Object.keys(revs).filter(k => k !== 'boot' && window.__r0 && window.__r0[k] !== revs[k]
     && (!REVS_PAGE_ONLY[k] || REVS_PAGE_ONLY[k]())));
   const MARK = () => page.evaluate(() => { window.__r0 = { ...revs }; });
+  // Home's light read is a request of its own: opening Home asks the light
+  // one, to draw at once, and the whole one behind it (R218 step 5), and
+  // counted as one endpoint the pair read as Home asking twice whenever its
+  // data had been let go before the open (B788).
   await page.evaluate(() => { window.__f = {}; const f = window.fetch;
-    window.fetch = (...a) => { const u = String(a[0]).split('?')[0]; window.__f[u] = (window.__f[u] || 0) + 1; return f(...a); }; });
+    window.fetch = (...a) => { const s = String(a[0]), u = /^\/api\/home\?light=1/.test(s) ? '/api/home?light' : s.split('?')[0];
+      window.__f[u] = (window.__f[u] || 0) + 1; return f(...a); }; });
   await MARK();
   await sleep(8000);
   const idle = await page.evaluate(() => window.__f);
   const idleMoved = await MOVED();
   // Home re-reads on the jobs token and on nothing else.
-  const noise = Object.keys(idle).filter(u => !POLLS.has(u) && !(u === '/api/home' && idleMoved.includes('jobs')));
+  const noise = Object.keys(idle).filter(u => !POLLS.has(u) && !(/^\/api\/home/.test(u) && idleMoved.includes('jobs')));
   ok(noise.length === 0, `an idle page asks only its polls (${noise.length ? 'also ' + noise.join(', ') : Object.keys(idle).join(', ')}${idleMoved.length ? '; moved: ' + idleMoved.join(', ') : ''})`);
   // ...and only so often (R218 step 10, against step 1's baseline of the
   // revisions poll x20, the status poll x5 and the node list x4 in thirty
