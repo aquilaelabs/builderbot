@@ -5987,7 +5987,16 @@ $("bOut").onclick = () => askSignOut();
 // anything the sidebar is for.
 // The menu's functions are page-gear.js; the gear is wired below.
 
-$("bCards").onclick = e => { e.stopPropagation(); toggleUiMenu(); };
+// One of the header's panels open at a time (the operator, 16 Oct: the
+// doctor and the gear stood open together). Each button stops its click
+// before the others' outside-click closers hear it, so each shuts the
+// other two itself.
+function headerOnly(keep){
+  if (keep !== "gear" && uiMenuOpen) toggleUiMenu(false);
+  if (keep !== "doctor" && docShown) toggleDoctor(false);
+  if (keep !== "bell" && bellOpen) toggleBell(false);
+}
+$("bCards").onclick = e => { e.stopPropagation(); headerOnly("gear"); toggleUiMenu(); };
 document.addEventListener("click", e => {
   if (uiMenuOpen && !$("uiMenu").contains(e.target) && !$("bCards").contains(e.target))
     toggleUiMenu(false);
@@ -6005,7 +6014,7 @@ document.addEventListener("keydown", e => {
 // ---- doctor -----------------------------------------------------------
 // Its declarations are page-doctor.js; the dot, its panel's closing and ↻
 // are wired here.
-$("bDocDot").onclick = e => { e.stopPropagation(); toggleDoctor(); };
+$("bDocDot").onclick = e => { e.stopPropagation(); headerOnly("doctor"); toggleDoctor(); };
 document.addEventListener("click", e => {
   if (docShown && e.target.isConnected
       && !$("docPanel").contains(e.target) && !$("bDocDot").contains(e.target))
@@ -6268,7 +6277,7 @@ $("pCreate").onclick = createProject;
 // ---- what the page has said, and what is waiting on you ----------------
 // Its declarations are page-bell.js; what runs at load is below.
 
-$("bBell").onclick = e => { e.stopPropagation(); toggleBell(); };
+$("bBell").onclick = e => { e.stopPropagation(); headerOnly("bell"); toggleBell(); };
 // A toast being read stays: the stack's clocks stop under the pointer.
 $("toast").addEventListener("pointerenter", () => toastHold(true));
 $("toast").addEventListener("pointerleave", () => toastHold(false));

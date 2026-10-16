@@ -138,6 +138,17 @@ await ready(page);
   await page.click('#bDocDot');
   await page.waitForSelector('#docPanel:not([hidden]) #doctor .chips .pill', { timeout: 5000 });
   ok(await page.$eval('#bDocDot', b => b.getAttribute('aria-expanded') === 'true'), '...and a press opens it, its passing checks as chips');
+  // One header panel at a time (the operator, 16 Oct): the gear pressed
+  // with the doctor open shuts the doctor, and the bell shuts the gear.
+  await page.click('#bCards');
+  const one = await page.evaluate(() => ({ doc: document.getElementById('docPanel').hidden, gear: !document.getElementById('uiMenu').hidden }));
+  await page.click('#bBell');
+  const two = await page.evaluate(() => ({ gear: document.getElementById('uiMenu').hidden, bell: bellOpen }));
+  await page.click('#bBell');
+  await page.click('#bDocDot');
+  await page.waitForSelector('#docPanel:not([hidden])', { timeout: 5000 });
+  ok(one.doc && one.gear && two.gear && two.bell,
+     `...the gear pressed shuts it, and the bell shuts the gear: one header panel at a time (${JSON.stringify({ one, two })})`);
   // A long check wraps inside the panel rather than ending in an ellipsis
   // (B742): no tooltip says the rest.
   const long = await page.evaluate(() => {
