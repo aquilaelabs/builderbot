@@ -55,6 +55,11 @@
   --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
   --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f8524a;
   --note:#58a6ff;
+  /* A check that passed is green in every scheme (the operator, 16 Oct: the
+     doctor read teal on Abyss and orange on Ember, an accent that reads as
+     a warning there), as warn and bad stay yellow and red. Not swapped by
+     a scheme; the light half darkens it for contrast. */
+  --pass:#3fb950;
   /* Derived, not chosen. Buttons and the active/primary family were hardcoded
      hex: #232b34 eleven times, #1f6f36 and #2ea043 across every tab, pane and
      primary, which meant a scheme could repaint the page and leave every
@@ -294,6 +299,7 @@ html[data-theme="sepia"],.sw[data-theme="sepia"]{
    wear, flip with it. */
 html[data-mode="light"]{
   color-scheme:light;
+  --pass:#1a7f37;
   --on-fill:#ffffff;
   --btn:#f0f2f5;        --btn:color-mix(in srgb, var(--panel), #000000 4%);
   --btn-hi:#e6e9ee;     --btn-hi:color-mix(in srgb, var(--panel), #000000 8%);
@@ -1033,9 +1039,11 @@ button{background:var(--btn);color:var(--ink);border:var(--hair) solid var(--lin
    specificity and win only by coming later. */
 @media(hover:hover){
   .row .name.go:hover{text-decoration:underline}
-  /* ...and its edge in the second color, so a pointer over any control
-     shows the scheme's other hue (the operator, 16 Oct). */
-  button:hover{background:var(--btn-hi);border-color:color-mix(in srgb, var(--note) 60%, var(--line))}
+  /* ...and a highlighted button carries the scheme's accent, a tint in its
+     fill and its edge, where a resting one stays the plain control (the
+     operator, 16 Oct). */
+  button:hover{background:color-mix(in srgb, var(--btn-hi) 80%, var(--accent));
+    border-color:color-mix(in srgb, var(--accent) 65%, var(--line))}
   /* The green buttons kept their color through button:hover (their own rules
      come later and win), which meant no hover at all. A lighter green and a
      brighter border are their version of the same lift. */
@@ -1049,7 +1057,7 @@ button{background:var(--btn);color:var(--ink);border:var(--hair) solid var(--lin
   .nbtabs button:hover,.nbtabs button.on:hover{background:none}
   .modal .danger:hover{background:color-mix(in srgb, var(--bad) 35%, var(--panel))}
   .nb .caution:hover{background:color-mix(in srgb, var(--warn) 30%, var(--panel))}
-  button:disabled:hover,button[aria-disabled="true"]:hover{background:var(--btn)}
+  button:disabled:hover,button[aria-disabled="true"]:hover{background:var(--btn);border-color:var(--line)}
   .cmd button:hover{background:var(--btn-hi)}
   .cmd .tack:hover{color:var(--ink)}
   button.eye:hover{color:var(--ink)}
@@ -3626,6 +3634,8 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 #bDocDot{position:relative;padding:0 8px}
 #docDot{margin:auto;display:block;width:9px;height:9px}   /* centered in its button, as the icons beside it are */
 #docDot:not(.ok):not(.warn):not(.bad){background:var(--line)}   /* no verdict yet */
+#docDot.ok{background:var(--pass)}
+.doctor .chips .pill.ok{color:var(--pass);border-color:color-mix(in srgb, var(--pass) 35%, var(--panel))}
 .st.ok{background:var(--accent)}
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}

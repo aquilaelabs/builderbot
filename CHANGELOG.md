@@ -373,8 +373,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every session starts its probes and its dev instance's rebuilds in the background as it does its test runs, so a message sent meanwhile is read (bf61866)
 - Builds join test runs, probes and dev rebuilds: every session starts them in the background, so a message sent while one runs is read (c8ab6dc)
 - Every color theme now has two hues: links, the chosen view in a notebook group's row and info tags wear a second color picked to sit apart from the accent, and each swatch shows both (eba3133)
-- The second color now shows on every page: a project's branch on its card, its header and Home, Home's tiles, a node's Memory chart beside its CPU, and a control's edge under the pointer (693defa)
+- The second color now shows on every page: a project's branch on its card, its header and Home, Home's tiles and a node's Memory chart beside its CPU; a button under the pointer takes a tint of the theme's accent (693defa)
 - The Toolchains page's Check for updates and Install selected sit in one band near its top, beside Remove, rather than under every row (693defa)
+- The doctor's dot and its passing checks are the same green in every color theme, as warnings stay yellow and failures red (c0be33a)
 
 ### Removed
 

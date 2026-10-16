@@ -135,6 +135,20 @@ await ready(page);
   ok(/all 3 ok/.test(dd.said) && dd.w > 0 && dd.top,
      `the doctor is a dot in the top bar, its verdict all 3 ok (${JSON.stringify(dd)})`);
   ok(await page.$eval('#docPanel', p => p.hidden), '...its panel shut until pressed');
+  // A pass is the same green whatever the scheme (the operator, 16 Oct):
+  // on Ember, whose accent is orange, the dot is --pass, not the accent.
+  const pass = await page.evaluate(() => {
+    const h = document.documentElement, was = h.dataset.theme;
+    h.dataset.theme = 'ember';
+    const paint = v => { const i = document.createElement('i'); i.style.color = v; document.body.append(i);
+                         const c = getComputedStyle(i).color; i.remove(); return c; };
+    const cs = getComputedStyle(h), dot = getComputedStyle(document.getElementById('docDot')).backgroundColor;
+    const out = { dot, pass: paint(cs.getPropertyValue('--pass').trim()), accent: paint(cs.getPropertyValue('--accent').trim()) };
+    if (was) h.dataset.theme = was; else delete h.dataset.theme;
+    return out;
+  });
+  ok(pass.dot === pass.pass && pass.dot !== pass.accent,
+     `...its pass the fixed green on every scheme, not the accent (${JSON.stringify(pass)})`);
   await page.click('#bDocDot');
   await page.waitForSelector('#docPanel:not([hidden]) #doctor .chips .pill', { timeout: 5000 });
   ok(await page.$eval('#bDocDot', b => b.getAttribute('aria-expanded') === 'true'), '...and a press opens it, its passing checks as chips');
