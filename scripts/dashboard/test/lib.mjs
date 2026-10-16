@@ -592,10 +592,8 @@ export const nbShown = (page) =>
 // tab the panel happens to start on.
 // A notebook view by its button, its group first when the button is in a
 // group that is shut (R259: the strip is five groups, a group's views in a
-// row under it); Settings has no button and is opened as the header's menu
-// opens it. `scope` narrows to one notebook.
+// row under it). `scope` narrows to one notebook.
 export async function nbGo(page, v, scope = '.pane .nb'){
-  if (v === 'settings') return page.evaluate(() => getNotebook(tabOf(panes[0])?.arg)?.view('settings'));
   // Found as Playwright finds it, so a scope in its own selector language
   // (version.mjs's :text-is) works here as it does in a click.
   const el = await page.$(`${scope} .nbtabs [data-v="${v}"]`);

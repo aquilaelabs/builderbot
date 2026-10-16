@@ -532,10 +532,9 @@ function makeNotebook(project){
     nbViewMemo.keep(project, v);
     shellSync();                    // the address names the view (R218 step 3)
     // Its group lit in the top row and the group's views in the row under it
-    // with this one lit (R259), one button for a group of one, so the row
-    // is always there and every view's head at one height; Settings is the
-    // header menu's, lights no group and has its own button in that row.
-    // The view is the group's to come back to.
+    // with this one lit (R259), so the row is always there and every view's
+    // head at one height; Settings sits beside Overview in its group. The
+    // view is the group's to come back to.
     const me = root.querySelector(`.nbtabs button[data-v="${CSS.escape(v)}"]`);
     const g = me?.dataset.in || me?.dataset.g || "";
     if (g) nb.groupLast[g] = v;

@@ -368,6 +368,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Roles page is a list beside its detail: accounts with their roles as tags beside the picked one's Everywhere roles, the projects it is actually on and an Add to project, and what it can do as a grid; roles with their kind and holders beside the picked one's areas. On a phone, the list then the detail with Back (f37c706)
 - No Refresh on pages that follow their own changes (nginx, CI runner, Toolchains, Emulator, the Git view); the Phone page's is now Check now, since it asks the phone. A mention of another page is a link to it. Back steps through a notebook's views and its wiki pages, and a node page's address names the node it shows. Naming a branch, a changelog category or a wiki page asks in a box in the page, not the browser's prompt (f2085d1)
 - Long lists (the roadmap, bugs, jobs, notices, artifacts) load more as you scroll to their foot instead of turning pages with Previous and Next; a Show more stays at the foot for the keyboard (6475ae3)
+- A project's Settings is beside Overview in Overview's row again, as well as in the … menu (bf61866)
+- Every session starts its probes and its dev instance's rebuilds in the background as it does its test runs, so a message sent meanwhile is read (bf61866)
 
 ### Removed
 

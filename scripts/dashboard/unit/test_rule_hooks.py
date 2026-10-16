@@ -122,7 +122,8 @@ class Store(unittest.TestCase):
     def test_a_test_run_is_refused_only_in_the_foreground(self):
         for line in ("bb tests run", "bash scripts/bb tests preflight --base HEAD",
                      "cd /workspace/BuilderBot && timeout 900 bash scripts/bb dashboard test cards 2>&1 | tail",
-                     "bash scripts/dashboard/test/run.sh cards"):
+                     "bash scripts/dashboard/test/run.sh cards",
+                     "bash scripts/bb tests probe /tmp/x.mjs", "bb devapp rebuild --instance web-dev"):
             g = rules.refusing("alpha", line)
             self.assertEqual(g and g[0]["name"], "tests-in-the-background", line)
             self.assertIsNone(rules.refusing("alpha", line, background=True), line)
