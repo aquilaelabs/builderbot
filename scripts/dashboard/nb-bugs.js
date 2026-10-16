@@ -276,16 +276,35 @@ function nbBugsView({$, nb, project}){
       // fires after the browser has already snapped it open.
       const sum = d.querySelector("summary");
       if (sum) sum.onclick = e => { e.preventDefault(); slideDetails(d, !d.open); };
-      const ask = (status, q) => {
-        const note = prompt(q, "");
-        if (note !== null) postBug({action: "status", id, status, note});
+      // The closing note typed in the row (R254 step 6), the box the Delete
+      // below and the roadmap's drop open, not the browser's prompt: one
+      // shape for every question this view asks, and one a phone lays out.
+      const ask = (status, q, verb) => {
+        const body = d.querySelector(".body");
+        if (body.querySelector(".dropbox")) return;
+        const box = document.createElement("div");
+        box.className = "dropbox";
+        box.innerHTML = `<div class="q">${esc(q)}<span>: kept on the bug</span></div>
+          <textarea class="proseline" rows="1" maxlength="1000" placeholder="a commit, a word"></textarea>
+          <div class="actbar">
+            <button type="button" class="stop">Cancel</button>
+            <button type="button" class="primary">${esc(verb)}</button></div>`;
+        body.appendChild(box);
+        arriveBox(box);
+        box.querySelector("textarea").focus();
+        box.querySelector(".stop").onclick = () => { box.remove(); drawBugs(true); };
+        box.querySelector(".primary").onclick = () => {
+          const note = box.querySelector("textarea").value;
+          box.remove();
+          postBug({action: "status", id, status, note});
+        };
       };
       d.querySelector(".bFix")?.addEventListener("click",
-        () => ask("fixed", "What fixed it? (a commit, a word: kept on the bug)"));
+        () => ask("fixed", "What fixed it?", "Close as fixed"));
       d.querySelector(".bWont")?.addEventListener("click",
-        () => ask("wontfix", "Why not? (kept on the bug)"));
+        () => ask("wontfix", "Why not?", "Close: won't fix"));
       d.querySelector(".bNa")?.addEventListener("click",
-        () => ask("na", "What stopped it applying? (kept on the bug)"));
+        () => ask("na", "What stopped it applying?", "Close: not applicable"));
       d.querySelector(".bReopen")?.addEventListener("click",
         () => postBug({action: "status", id, status: "open", note: ""}));
       // Handing a bug over. Same box the roadmap opens under a step, opened
@@ -306,7 +325,7 @@ function nbBugsView({$, nb, project}){
           return;
         }
         const box = nb.sendBoxEl({
-          label: `Send bug #${id} to ${nb.roadmapSession}?`,
+          label: `Send B${id} to ${nb.roadmapSession}?`,
           sub: "the session looks it up by number",
           placeholder: "anything to send with it (optional)",
           onCancel: nb.shutSendBoxes,

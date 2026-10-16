@@ -98,9 +98,15 @@ ok(true, 'the tab picks up what a session filed');
 
 // ---- closing one, with the note that is the point --------------------------
 page.dialogs = [];
-await page.evaluate(() => { window.prompt = () => 'the select re-measures on rotate now'; });
+// The note is typed in the row (R254 step 6), not in the browser's prompt.
+await page.evaluate(() => { window.__prompted = false; window.prompt = () => { window.__prompted = true; return null; }; });
 await openFold(page, '#bugList .bug[data-id="1"]');
 await page.click('#bugList .bug[data-id="1"] .bFix');
+await page.waitForSelector('#bugList .bug[data-id="1"] .dropbox textarea', { timeout: 5000 });
+ok(!(await page.evaluate(() => window.__prompted)) && /Close as fixed/.test(await page.$eval('#bugList .bug[data-id="1"] .dropbox .primary', b => b.textContent)),
+   'closing asks for its note in the row, not in a browser prompt');
+await page.fill('#bugList .bug[data-id="1"] .dropbox textarea', 'the select re-measures on rotate now');
+await page.click('#bugList .bug[data-id="1"] .dropbox .primary');
 await page.waitForFunction(() => document.querySelector('#bugList .bug[data-id="1"] .bstat')?.textContent === 'fixed', { timeout: 10000 });
 ok(read().find(b => b.id === 1).status === 'fixed'
    && read().find(b => b.id === 1).status_note === 'the select re-measures on rotate now',
@@ -325,9 +331,11 @@ const naId = String(read().at(-1).id);
 await page.evaluate(() => notebooks.get('alpha').reloadBugs());
 await page.waitForFunction(n => !!document.querySelector(`#bugList .bug[data-id="${n}"]`),
                            naId, { timeout: 10000 });
-await page.evaluate(() => { window.prompt = () => 'the picker was removed entirely'; });
 await openFold(page, `#bugList .bug[data-id="${naId}"]`);
 await page.click(`#bugList .bug[data-id="${naId}"] .bNa`);
+await page.waitForSelector(`#bugList .bug[data-id="${naId}"] .dropbox textarea`, { timeout: 5000 });
+await page.fill(`#bugList .bug[data-id="${naId}"] .dropbox textarea`, 'the picker was removed entirely');
+await page.click(`#bugList .bug[data-id="${naId}"] .dropbox .primary`);
 await page.waitForFunction(n => document.querySelector(
   `#bugList .bug[data-id="${n}"] .bstat`)?.textContent === 'n/a', naId,
   { timeout: 10000 });
