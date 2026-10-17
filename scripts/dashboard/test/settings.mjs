@@ -6,7 +6,7 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, saveDialog, sectSave, rnSect, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, sectSave, rnSect, splitPick, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,9 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 
 // ---- the tab ---------------------------------------------------------------
 await page.evaluate(() => openSettingsTab());
+// Controller settings is a page of settings (the operator, 16 Oct): a
+// section is picked from its list before its fields are used.
+await page.waitForSelector('.settingstab .snav [data-spick="debug"]', { timeout: 15000 }); await splitPick(page, 'debug');
 await page.waitForSelector('.settingstab [data-set="debug_mode"]', { timeout: 15000 });
 // One tree, two products (roadmap R54, step 6): the switch that offers the
 // unvetted git hosts, hypervisors and OS families is a developer's, so it
@@ -51,6 +54,7 @@ await page.waitForFunction(() => document.querySelector('#devtag')?.hidden, null
 // module below, on a directory of its own.
 ok(await page.$eval('.settingstab [data-group="Reset"] #setReset', b => /Reset BuilderBot/.test(b.textContent) && b.classList.contains('danger')),
    'Reset BuilderBot sits in its own section as a red verb');
+await splitPick(page, 'reset');
 await page.click('.settingstab #setReset');
 await page.waitForSelector('#resetmodal:not([hidden]) #resetGo', { timeout: 10000 });
 ok(await page.$eval('#resetGo', b => b.disabled)
@@ -86,14 +90,16 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
 ok(groups.join('|') === 'Logs|Claude sessions|Storage|Reach from outside|Debugging|Reset',
    `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the home tunnel the controller runs itself (R176), debugging, and the reset (${groups.join(', ')})`);
-// Sections like every other tab's (the operator, 11 Oct): a fold each, a
-// jump bar over them, and Revert beside each Apply putting the section's
-// fields back to what is saved.
+// Sections, and a page of settings (the operator, 16 Oct): a list of them
+// beside the one picked, each row saying what is in it, and Revert beside
+// each Apply putting the section's fields back to what is saved.
 {
   const sects = await page.$$eval('.settingstab details.sect', ds => ds.map(d => d.querySelector('summary .t').textContent));
-  ok(sects.length >= 6 && await page.$('.settingstab .sectjump a') !== null,
-     `the tab is sections with a jump bar over them (${sects.join(', ')})`);
+  const rows = await page.$$eval('.settingstab .snav [data-spick]', bs => bs.map(b => ({ k: b.dataset.spick, said: b.querySelector('.rtags .dim')?.textContent || '' })));
+  ok(sects.length >= 6 && rows.length === sects.length && rows.every(r => r.said),
+     `the tab is a list of its sections beside the one picked, each saying what is in it (${rows.map(r => r.k).join(', ')})`);
   const was = await page.$eval('#idleMin', i => i.value);
+  await splitPick(page, 'idle');
   await page.fill('#idleMin', '4321');
   await page.click('.settingstab [data-group="Claude sessions"] [data-srevert]');
   await page.waitForFunction(w => document.getElementById('idleMin')?.value === w, was, { timeout: 10000 });
@@ -107,6 +113,7 @@ ok(groups.join('|') === 'Logs|Claude sessions|Storage|Reach from outside|Debuggi
 // the group's line reading the process. The token is nowhere in the page.
 {
   const G = '.settingstab [data-group="Reach from outside"]';
+  await splitPick(page, 'tunnel');
   const f = await page.$eval(G, g => ({ host: g.querySelector('[data-set="tunnel_host"]')?.type,
     tok: g.querySelector('[data-set="tunnel_token"]')?.type, api: g.querySelector('[data-set="cf_api_token"]')?.type,
     pills: [...g.querySelectorAll('.pill')].map(p => p.textContent), state: g.querySelector('.actbar .state').textContent }));
@@ -175,6 +182,7 @@ await page.waitForFunction(() => !document.querySelector('.settingstab [data-deb
                            null, { timeout: 30000 });
 ok(await page.$eval('#setdbgmodal', m => m.hidden),
    'debug mode on: the button is live, and nothing opens until it is pressed');
+await splitPick(page, 'debug');
 await page.click('.settingstab [data-debugshow]');
 await page.waitForFunction(() => document.querySelector('#setdbgmodal')?.checkVisibility(),
                            null, { timeout: 8000 });
@@ -287,6 +295,7 @@ ok(elsewhere.git_name === 'T. Person',
   const pre = async p => (await (await fetch(URL.replace(/\/$/, '') + `/api/preamble?project=${p}`, { headers: auth })).json()).text || '';
   const globals = async () => ((await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules', { headers: auth })).json()).rules || []);
   await page.evaluate(() => openSettingsTab());
+  await page.waitForSelector('.settingstab .snav [data-spick="nodes"]', { timeout: 15000 }); await splitPick(page, 'nodes');
   await page.waitForSelector('#setNodes', { timeout: 15000 });
   ok(!(await page.$('#setGlobalRules')) && !(await page.$('#grmodal')),
      'Controller settings has no Global rules dialog any more');
@@ -348,6 +357,8 @@ ok(elsewhere.git_name === 'T. Person',
 // zone moves them all, and "This device's own" takes the cookie away again.
 {
   await page.evaluate(() => openProfileTab());
+  await page.waitForSelector('.profiletab .snav [data-spick="browser"]', { timeout: 15000 });
+  await splitPick(page, 'browser');
   await page.waitForSelector('#pfTZ', { timeout: 15000 });
   const zone = 'Pacific/Chatham';          // +12:45: no browser's own zone by accident
   await page.selectOption('#pfTZ', zone);
@@ -395,9 +406,9 @@ ok(elsewhere.git_name === 'T. Person',
   // many open at once to find a setting in): each row names what is in it,
   // a press shows that section alone, and People is on the list.
   // People joins the list when its read lands.
-  await page.waitForSelector('.nbsettings .rnnav [data-rnpick="people"]', { timeout: 15000 }).catch(() => {});
-  const list = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .rnnav [data-rnpick]')]
-    .map(b => ({ k: b.dataset.rnpick, on: b.classList.contains('on'), said: b.querySelector('.rtags .dim')?.textContent || '' })));
+  await page.waitForSelector('.nbsettings .snav [data-spick="people"]', { timeout: 15000 }).catch(() => {});
+  const list = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .snav [data-spick]')]
+    .map(b => ({ k: b.dataset.spick, on: b.classList.contains('on'), said: b.querySelector('.rtags .dim')?.textContent || '' })));
   ok(list.length >= 8 && list[0].k === 'project' && list[0].on && list.every(r => r.said) && list.some(r => r.k === 'people'),
      `...its sections a list beside the one picked, each saying what is in it, General first, People among them (${list.map(r => r.k).join(', ')})`);
   await rnSect(page, 'claude');
@@ -409,7 +420,7 @@ ok(elsewhere.git_name === 'T. Person',
   await page.evaluate(() => openProjectSettings('alpha'));
   await page.waitForTimeout(300);
   const still = await page.evaluate(() => ({ people: !document.querySelector('details[data-sect="rn:people"]').hidden,
-    pick: document.querySelector('.nbsettings .rnnav .rrow.on')?.dataset.rnpick }));
+    pick: document.querySelector('.nbsettings .snav .rrow.on')?.dataset.spick }));
   ok(still.people && still.pick === 'claude', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
   // The box borrowed from the dialog brings no dialog shadow into the view
   // (B702): the scroll-hint class it wore in the dialog is dropped on the way
@@ -431,8 +442,8 @@ ok(elsewhere.git_name === 'T. Person',
   await page.fill('#rnBuildCmd', 'make one');
   await rnSect(page, 'claude');
   await page.selectOption('#rnGateRoadmap', 'deny');
-  const marks = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .rnnav [data-rnpick]')]
-    .filter(b => !b.querySelector('.rnunsaved').hidden).map(b => b.dataset.rnpick).sort().join());
+  const marks = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .snav [data-spick]')]
+    .filter(b => !b.querySelector('.sunsaved').hidden).map(b => b.dataset.spick).sort().join());
   ok(marks === 'build,claude', `...each section holding a change says unsaved on its row (${marks})`);
   const err = await sectSave(page, 'build');
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make one', { timeout: 20000 });
@@ -463,7 +474,7 @@ ok(elsewhere.git_name === 'T. Person',
     await page.waitForFunction(() => nodesList !== null, null, { timeout: 15000 });
     await page.waitForTimeout(800);
     const also = await page.evaluate(id => ({ ticked: !!document.querySelector(`#rnNodesMore input[value="${id}"]`)?.checked,
-      unsaved: !document.querySelector('.rnnav [data-rnpick="runs"] .rnunsaved')?.hidden }), other.id);
+      unsaved: !document.querySelector('.snav [data-spick="runs"] .sunsaved')?.hidden }), other.id);
     ok(also.ticked && !also.unsaved,
        `a project's second node is ticked under Also works on when its settings open before the node list is read, and Nodes holds nothing unsaved (${JSON.stringify(also)})`);
     await post('/api/prefs', { project: 'alpha', node: first.id, nodes: [first.id] });
@@ -512,6 +523,7 @@ ok(elsewhere.git_name === 'T. Person',
 // words; and the default comes back with what was moved.
 {
   await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); openSettingsTab(); });
+  await page.waitForSelector('.settingstab .snav [data-spick="paths"]', { timeout: 15000 }); await splitPick(page, 'paths');
   await page.waitForSelector('.settingstab [data-group="Storage"] input[data-path="gitview"]', { timeout: 15000 });
   const names = await page.$$eval('.settingstab input[data-path]', l => l.map(i => i.dataset.path));
   ok(['project-snapshots', 'job-snapshots', 'gitrelay', 'gitview', 'logs'].every(n => names.includes(n)),

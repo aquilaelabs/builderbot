@@ -60,6 +60,13 @@ const PROFILE_FIELDS = [
   ["git_email", "Git email", "on your commits. Blank means your email; a GitHub noreply address keeps yours out of the log", "email"],
 ];
 
+// Each section's line on the list beside it.
+const PROFILE_SAYS = {
+  you: "your name, email and commit author", may: "what your roles let you do",
+  browser: "this browser's time zone", password: "change it, signing out everywhere",
+  plugins: "what you added with /plugin", logs: "your conversations with Claude, to download",
+};
+
 function renderProfileInto(i){
   const d = docSurface(i, "profile");
   if (!d) return;
@@ -81,16 +88,13 @@ function renderProfileInto(i){
   const wm = profile.what_may || {roles: [], may: []};
   d.setBar(`<span class="dim">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
     profile.claude ? ` · Claude: ${esc(profile.claude)}` : ""}</span>`);
+  // A page of settings (page-docs.js splitSects, the operator, 16 Oct):
+  // each block a section, the sections a list beside the one picked; who
+  // you are first, since that is what is changed here most.
+  const sec = (id, title, inner) => docSection("profile", id, title, "",
+    `<div class="row stack2"><div class="grow">${inner}</div></div>`);
   d.list.innerHTML = `
-    <div class="row stack2">
-      <div class="grow">
-        <h4>What you may do</h4>
-        ${wm.may.length ? factGrid(wm.may) : `<div class="hint">nothing yet: an administrator gives you a role on the Roles tab</div>`}
-      </div>
-    </div>
-    <div class="row stack2">
-      <div class="grow">
-        <h4>Who you are</h4>
+    ${sec("you", "Who you are", `
         <div class="logset">
           ${PROFILE_FIELDS.map(([k, label, hint, type]) => `
             <div class="logdays setrow col">
@@ -105,12 +109,10 @@ function renderProfileInto(i){
                 : `commits are signed ${esc(g.name)} &lt;${esc(g.email)}&gt;`}</span>
             <button type="button" id="pfSave" class="primary"${dirty ? "" : " disabled"}>Save</button>
           </div>
-        </div>
-      </div>
-    </div>
-    <div class="row stack2">
-      <div class="grow">
-        <h4>On this browser</h4>
+        </div>`)}
+    ${sec("may", "What you may do", `
+        ${wm.may.length ? factGrid(wm.may) : `<div class="hint">nothing yet: an administrator gives you a role on the Roles tab</div>`}`)}
+    ${sec("browser", "On this browser", `
         <div class="logset">
           <div class="logdays setrow col">
             ${lbl("pfTZ", "Time zone", "this browser's, so each device shows its own")}
@@ -120,24 +122,8 @@ function renderProfileInto(i){
             <span class="state">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</span>
             <button type="button" id="pfTZApply"${tzDraft === null || tzDraft === userTZ() ? " disabled" : ""}>Apply</button>
           </div>
-        </div>
-      </div>
-    </div>
-    <div class="row stack2">
-      <div class="grow">
-        <h4>Claude plugins</h4>
-        <div class="logset">${profilePlugins(profile.plugins || [])}</div>
-      </div>
-    </div>
-    <div class="row stack2">
-      <div class="grow">
-        <h4>Conversation logs</h4>
-        <div class="logset">${profileLogs(profile.logs || [])}</div>
-      </div>
-    </div>
-    <div class="row stack2">
-      <div class="grow">
-        <h4>Password</h4>
+        </div>`)}
+    ${sec("password", "Password", `
         <div class="logset">
           <div class="logdays setrow col">
             ${lbl("pfCur", "Current password")}
@@ -155,9 +141,13 @@ function renderProfileInto(i){
             <span class="state"></span>
             <button type="button" id="pfPasswd">Change password</button>
           </div>
-        </div>
-      </div>
-    </div>`;
+        </div>`)}
+    ${sec("plugins", "Claude plugins", `
+        <div class="logset">${profilePlugins(profile.plugins || [])}</div>`)}
+    ${sec("logs", "Conversation logs", `
+        <div class="logset">${profileLogs(profile.logs || [])}</div>`)}`;
+  wireSections(d.list);
+  splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
 }
 

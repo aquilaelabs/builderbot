@@ -706,30 +706,41 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   min-height:var(--tap);color:var(--ink)}
 .rrow .name{font-weight:600}
 .rrow .rtags{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font:var(--f-note)}
-@media(hover:hover){ .rolestab .rrow:hover:not(.on),.rnnav .rrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
+@media(hover:hover){ .rolestab .rrow:hover:not(.on),.snav .rrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
 /* The picked row is lit, so it wears the second color (--lit) as every lit
    control does. */
-.rolestab .rrow.on,.rolestab .rrow.on:hover,.rnnav .rrow.on,.rnnav .rrow.on:hover{
+.rolestab .rrow.on,.rolestab .rrow.on:hover,.snav .rrow.on,.snav .rrow.on:hover{
   background:color-mix(in srgb,var(--lit) 14%,transparent);border-bottom-color:var(--line)}
-/* A project's Settings view (page-projsettings.js rnViewOn, the operator,
-   16 Oct): the sections a list beside the one picked, the Roles page's
-   shape, the picked section's heading a heading rather than a fold. On a
-   phone the list, then the section with Back over it. */
-.box.rnview{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
-.box.rnview>*{grid-column:2;min-width:0}
-.box.rnview>.rnnav{grid-column:1;grid-row:1 / span 60;align-self:stretch}
-.box.rnview>h3,.box.rnview>.sectjump,.box.rnview>.rnback{display:none}
-.box.rnview>details.rngroup:not(.rncur){display:none}
-.box.rnview>details.rngroup>summary{pointer-events:none}
-.box.rnview>details.rngroup>summary::before,.box.rnview>details.rngroup>summary::marker{display:none;content:""}
-.rnnav .rnunsaved{color:var(--warn);font-weight:600}
+/* A page of settings (page-docs.js splitSects, the operator, 16 Oct): its
+   sections a list beside the one picked, the Roles page's shape, the picked
+   section's heading a heading rather than a fold (a project's Settings,
+   Controller settings, Profile). On a phone one column for all of it: the
+   list, then the section over it with Back, the section sliding in from the
+   right and the list back from the left; no row stays lit on the list,
+   since none is open there. */
+.ssplit{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
+.ssplit>*{grid-column:2;min-width:0}
+.ssplit>.snav{grid-column:1;grid-row:1 / span 99;align-self:stretch}
+.snav,.sback,.ssplit>.sectjump,.ssplit>h3{display:none}
+.ssplit>.snav{display:flex}
+.ssplit>details.sect:not(.scur){display:none}
+.ssplit>details.sect>summary{pointer-events:none}
+.ssplit>details.sect>summary::before,.ssplit>details.sect>summary::marker{display:none;content:""}
+.snav .sunsaved{color:var(--warn);font-weight:600}
+@keyframes splitIn{from{opacity:0;transform:translateX(32px)} to{opacity:1;transform:none}}
+@keyframes splitBack{from{opacity:0;transform:translateX(-32px)} to{opacity:1;transform:none}}
 @media(max-width:900px){
-  .box.rnview{grid-template-columns:minmax(0,1fr)}
-  .box.rnview>.rnnav{grid-column:1;grid-row:auto;border-right:0}
-  .box.rnview:not(.rnopen)>:not(.rnnav){display:none}
-  .box.rnview.rnopen>.rnnav{display:none}
-  .box.rnview.rnopen>.rnback{display:inline-flex;justify-self:start;margin:var(--row-y) var(--row-x) 0}
+  .ssplit{grid-template-columns:minmax(0,1fr)}
+  .ssplit>*,.ssplit>.snav{grid-column:1;grid-row:auto}
+  .ssplit>.snav{border-right:0}
+  .ssplit:not(.sopen)>:not(.snav){display:none}
+  .ssplit.sopen>.snav{display:none}
+  .ssplit.sopen>.sback{display:inline-flex;justify-self:start;margin:var(--row-y) var(--row-x) 0}
+  .ssplit:not(.sopen)>.snav .rrow.on{background:none}
+  .ssplit.sopen[data-move="in"]>:not(.snav){animation:splitIn .26s cubic-bezier(.33,1,.68,1)}
+  .ssplit:not(.sopen)[data-move="back"]>.snav{animation:splitBack .26s cubic-bezier(.33,1,.68,1)}
 }
+@media(prefers-reduced-motion:reduce){ .ssplit[data-move]>*{animation:none} }
 .rdetail{min-width:0;padding:0 0 0 var(--row-x)}
 .rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
 .rdetail>.rhead .dim{font:var(--f-ui)}
@@ -745,13 +756,24 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rlvl{font:var(--f-note);font-weight:600;color:var(--dim)}
 .rlvl.write{color:var(--accent)}
 .rcan .td:not(.lead),.rcan .th:not(:first-child){text-align:center}
+/* The Roles page's one list: the accounts, then the roles, each under a
+   quiet heading of its own with how many. */
+.rgroup{padding:calc(var(--row-y) + 4px) var(--row-x) 4px;font:600 11px/1.2 system-ui,sans-serif;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:var(--hair) solid var(--line)}
+.rgroup .dim{font-weight:400;margin-left:4px}
 @media(max-width:900px){
   .rsplit{grid-template-columns:minmax(0,1fr)}
   .rlist{border-right:0}
   .rdetail{padding:0}
   .rsplit.open>.rlist,.rsplit:not(.open)>.rdetail{display:none}
   .rback{display:inline-flex;margin:var(--row-y) 0 0}
+  /* As a page of settings does: no row stays lit on the list, and the
+     detail slides in from the right and the list back from the left. */
+  .rsplit:not(.open)>.rlist .rrow.on{background:none}
+  .rsplit.open[data-move="in"]>.rdetail{animation:splitIn .26s cubic-bezier(.33,1,.68,1)}
+  .rsplit:not(.open)[data-move="back"]>.rlist{animation:splitBack .26s cubic-bezier(.33,1,.68,1)}
 }
+@media(prefers-reduced-motion:reduce){ .rsplit[data-move]>*{animation:none} }
 /* A role's areas are a table (R218 step 8): the area with what Read and
    Write let one do under its name, then the two boxes in their columns. */
 .tbl.rareas .tline{padding:var(--label-gap) 0;border-bottom:var(--hair) solid var(--line)}
@@ -1700,8 +1722,8 @@ select:focus{outline-offset:-2px}
 #rnReachRows{display:flex;flex-direction:column;gap:6px}
 /* The Settings tab (tab-settings.js): sections of row bands, which carry
    their own inset, so the body adds none; the setup steps in a list. */
-.settingstab .sect>.body{padding:0 0 var(--row-y);gap:0}
-.settingstab .sect>.body>.row{border-top:0}
+.settingstab .sect>.body,.profiletab .sect>.body{padding:0 0 var(--row-y);gap:0}
+.settingstab .sect>.body>.row,.profiletab .sect>.body>.row{border-top:0}
 .settingstab .setsteps{margin:6px 0 0;padding-left:1.2em}
 .settingstab .setsteps li{margin:2px 0}
 /* The Storage tab (tab-storage.js): its sections hold field bands and rows,

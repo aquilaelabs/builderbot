@@ -282,6 +282,106 @@ function docSection(kind, id, title, status, body, {cls = "", open, loud = false
     <div class="body">${body}</div>
   </details>`;
 }
+// ---- a page of settings: its sections a list beside the one picked ----
+// The operator, 16 Oct: a page that is a run of settings sections (a
+// project's Settings, Controller settings, Profile) reads as a list of them,
+// each with what is in it, beside the one picked, the Roles page's shape;
+// on a phone the list, then the section sliding in over it with Back, and
+// the list sliding back. `root` holds the sections (details.sect) as
+// children; `key` keeps which is picked; `says` is each section's line
+// under its name, by its data-sect id; `marks(id)` says whether one holds
+// something unsaved. Drawn again on every call, so a page that repaints
+// calls it after each paint. splitOff puts the sections back one under
+// another (the project's settings dialog).
+const SPLIT = {};
+function splitSects(root, key, {says = {}, sel = ":scope > details.sect", marks = null, back = "Back"} = {}){
+  if (!root) return;
+  const st = SPLIT[key] || (SPLIT[key] = {pick: "", open: false});
+  root._split = {key, says, sel, marks};
+  root.classList.add("ssplit");
+  let nav = root.querySelector(":scope > .snav");
+  if (!nav){
+    nav = document.createElement("div");
+    nav.className = "rlist snav";
+    nav.setAttribute("role", "tablist");
+    root.insertBefore(nav, root.firstChild);
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "sback";
+    b.onclick = () => { SPLIT[root._split.key].open = false; splitMove(root, "back"); splitDraw(root); };
+    root.insertBefore(b, nav.nextSibling);
+    root.addEventListener("input", () => splitMarks(root));
+    root.addEventListener("change", () => splitMarks(root));
+  }
+  root.querySelector(":scope > .sback").textContent = "\u2039 " + back;
+  // A section shows or hides itself as what it holds arrives (People after
+  // its read): the list follows.
+  root._splitObs?.disconnect();
+  root._splitObs = new MutationObserver(() => splitDraw(root));
+  root.querySelectorAll(sel).forEach(d => root._splitObs.observe(d, {attributes: true, attributeFilter: ["hidden"]}));
+  splitDraw(root);
+}
+
+const splitId = d => (d.dataset.sect || "").replace(/^[^:]*:/, "");
+
+function splitDraw(root){
+  const o = root._split;
+  if (!o || !root.classList.contains("ssplit")) return;
+  const st = SPLIT[o.key];
+  const all = [...root.querySelectorAll(o.sel)], shown = all.filter(d => !d.hidden);
+  // The one picked, or the first shown while it is hidden (its list being
+  // read again), without forgetting it: it comes back when it shows.
+  let pick = st.pick;
+  if (!shown.some(d => splitId(d) === pick)) pick = shown[0] ? splitId(shown[0]) : "";
+  const nav = root.querySelector(":scope > .snav");
+  const html = shown.map(d => { const k = splitId(d), on = k === pick;
+    const say = o.says[k] ?? d.querySelector(":scope > summary .sst")?.textContent ?? "";
+    return `<button type="button" class="rrow${on ? " on" : ""}" role="tab" aria-selected="${on}" data-spick="${esc(k)}">
+      <span class="name">${esc(d.querySelector(":scope > summary .t")?.textContent || k)}</span>
+      <span class="rtags">${say ? `<span class="dim">${esc(say)}</span>` : ""}<span class="sunsaved" hidden>unsaved</span></span></button>`; }).join("");
+  if (nav.dataset.drawn !== html){
+    nav.innerHTML = html; nav.dataset.drawn = html;
+    nav.querySelectorAll("[data-spick]").forEach(b => b.onclick = () => {
+      st.pick = b.dataset.spick; st.open = true;
+      splitMove(root, "in"); splitDraw(root);
+      if (matchMedia("(max-width: 900px)").matches) root.scrollIntoView?.({block: "start"});
+    });
+  }
+  all.forEach(d => { const on = splitId(d) === pick;
+    if (d.classList.contains("scur") !== on) d.classList.toggle("scur", on);
+    if (on && !d.open) d.open = true; });
+  root.classList.toggle("sopen", st.open);
+  splitMarks(root);
+}
+
+// The phone's slide: in from the right to a section, back from the left to
+// the list, restarted on each press.
+function splitMove(root, how){
+  delete root.dataset.move;
+  void root.offsetWidth;
+  root.dataset.move = how;
+  // Taken off once it has run: a page that repaints (Controller settings on
+  // the poll) would play it again on every paint.
+  clearTimeout(root._splitT);
+  root._splitT = setTimeout(() => { delete root.dataset.move; }, 320);
+}
+
+function splitMarks(root){
+  const o = root._split;
+  if (!o?.marks) return;
+  root.querySelectorAll(":scope > .snav [data-spick]").forEach(b => {
+    let dirty = false;
+    try { dirty = !!o.marks(b.dataset.spick); } catch { /* a form not drawn yet */ }
+    const m = b.querySelector(".sunsaved");
+    if (m && m.hidden === dirty) m.hidden = !dirty;
+  });
+}
+
+function splitOff(root){
+  if (!root?.classList.contains("ssplit")) return;
+  root.classList.remove("ssplit", "sopen");
+  root.querySelectorAll(":scope > details.sect").forEach(d => d.classList.remove("scur"));
+}
+
 function wireSections(root){
   root.querySelectorAll("details.sect").forEach(d => {
     // Its state is recorded by the page's one toggle listener, beside

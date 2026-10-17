@@ -66,7 +66,7 @@ const DRIVERS = {
   },
   settings: {
     open: () => page.evaluate(() => openSettingsTab()),
-    readyWhen: '.settingstab .logdays',
+    readyWhen: '.settingstab .snav .rrow',
   },
   // The Phone and the CI runner, tools of their own again (R121).
   phone: {
@@ -126,11 +126,11 @@ const DRIVERS = {
   roles: {
     // The built-in roles are always there, each a fold.
     open: () => page.evaluate(() => openRolesTab()),
-    readyWhen: '.rolestab .sect',
+    readyWhen: '.rolestab .rrow',
   },
   profile: {
     open: () => page.evaluate(() => openProfileTab()),
-    readyWhen: '.profiletab .setrow',
+    readyWhen: '.profiletab .snav .rrow',
   },
 };
 
@@ -189,7 +189,7 @@ async function measure(kind){
     // A list beside its detail (a project's Settings view, the Roles page's
     // shape) is two columns: the detail's bands start at one x of their own,
     // beside the list, and are measured apart from the page's.
-    const inCol = e => !!e.closest('.box.rnview') && !e.closest('.rnnav');
+    const inCol = e => !!e.closest('.ssplit') && !e.closest('.snav');
     const colLefts = [...new Set(bands.filter(inCol).map(leftOf))];
     const lefts = [...new Set(bands.filter(e => !inCol(e)).map(leftOf))];
     // Which band sits at each x, for the failure: three numbers say a view is

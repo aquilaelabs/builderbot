@@ -63,17 +63,14 @@ function rolesPeopleFrom(p){
 }
 
 // ---- a list beside the one picked ----------------------------------------
-// Both sections are a list and the picked one's detail side by side at a
-// desk (R255 step 9, the operator 16 Oct: every project listed for an
-// account that is on none of them, and half the desk empty); on a phone the
-// list, then the detail over it with a way back.
-const rolesOpen = {people: false, roles: false};
-function rolesSplit(which, list, detail){
-  return `<div class="rsplit${rolesOpen[which] ? " open" : ""}" data-rsplit="${which}">
-    <div class="rlist">${list}</div>
-    <div class="rdetail"><button type="button" class="rback" data-rback="${which}">‹ ${which === "people" ? "Every account" : "Every role"}</button>${detail}</div>
-  </div>`;
-}
+// One list, the accounts and then the roles under their own headings, beside
+// the picked one's detail (R255 step 9; the operator, 16 Oct: the shape
+// every page of settings has, so the two match); on a phone the list, then
+// the detail sliding in over it with Back, and the list sliding back.
+let rolesSide = "people";        // whose detail is on show: an account's or a role's
+let rolesPhoneOpen = false;      // on a phone, the detail is over the list
+let rolesMoveNext = "";          // the slide the next draw plays
+function rolesSplit(which, list, detail){ return {which, list, detail}; }
 const rolesLabel = n => rolesData.roles?.[n]?.label || n;
 
 // An account's row: its name, and what it holds as tags.
@@ -82,7 +79,8 @@ function rolesPersonRow(x){
   const tags = x.role === "owner" ? [`<span class="pill ok">BuilderBot's owner</span>`]
     : [...(x.roles || []).map(n => `<span class="pill">${esc(rolesLabel(n))}</span>`),
        on ? `<span class="dim">on ${on} project${on === 1 ? "" : "s"}</span>` : ""].filter(Boolean);
-  return `<button type="button" class="rrow${x.name === rolesWho ? " on" : ""}" data-rwho="${esc(x.name)}"${x.name === rolesWho ? ' aria-current="true"' : ""}>
+  const lit = x.name === rolesWho && rolesSide === "people";
+  return `<button type="button" class="rrow${lit ? " on" : ""}" data-rwho="${esc(x.name)}"${lit ? ' aria-current="true"' : ""}>
     <span class="name">${esc(x.name)}</span><span class="rtags">${tags.join("") || `<span class="dim">no role</span>`}</span></button>`;
 }
 
@@ -235,8 +233,8 @@ function rolesRoleBody(){
   const kind = x => x.builtin ? "built in" : x.scope === "global" ? "Everywhere" : x.project ? `on ${projLabel(x.project)}` : "on a project";
   const list = (d.admin ? `<div class="raddrole"><input id="rolesNewName" placeholder="a new role's name" autocomplete="off" aria-label="a new role's name">
       <button type="button" id="rolesAdd">Add role</button></div>` : "")
-    + (r?.fresh ? `<button type="button" class="rrow on" aria-current="true"><span class="name">${esc(r.name)}</span><span class="rtags"><span class="dim">new, not saved</span></span></button>` : "")
-    + names.map(n => { const x = d.roles[n], h = holders(n).length, on = n === rolesPick && !r?.fresh;
+    + (r?.fresh ? `<button type="button" class="rrow${rolesSide === "roles" ? " on" : ""}" aria-current="true"><span class="name">${esc(r.name)}</span><span class="rtags"><span class="dim">new, not saved</span></span></button>` : "")
+    + names.map(n => { const x = d.roles[n], h = holders(n).length, on = n === rolesPick && !r?.fresh && rolesSide === "roles";
         return `<button type="button" class="rrow${on ? " on" : ""}" data-rpick="${esc(n)}"${on ? ' aria-current="true"' : ""}>
           <span class="name">${esc(x.label || n)}</span><span class="rtags"><span class="pill">${esc(kind(x))}</span><span class="dim">${
             h ? `${h} ${h === 1 ? "person" : "people"}` : "nobody"}</span></span></button>`; }).join("");
@@ -309,17 +307,23 @@ function renderRolesInto(i){
     // are the page's own; who holds what is on its way.
     const split = detail => `<div class="rsplit"><div class="rlist">${skRows(4)}</div><div class="rdetail">${detail}</div></div>`;
     const field = (label, em) => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
-    d.list.innerHTML = skTpl(docSection("roles", "people", "People", "", split(field("Everywhere roles", 18) + field("Projects", 22)))
-      + docSection("roles", "roles", "Roles", "", split(field("Kind", 16) + skRows(5))));
+    d.list.innerHTML = skTpl(split(field("Everywhere roles", 18) + field("Projects", 22)));
     loadRoles();
     return;
   }
+  const pe = rolesPeopleBody(), ro = rolesRoleBody();
+  const nPeople = (rolesData.people || []).length, nRoles = Object.keys(rolesData.roles || {}).length;
   d.list.innerHTML = `
     ${rolesErr ? `<div class="row bad"><div class="grow">${esc(rolesErr)}</div></div>` : ""}
-    ${docSection("roles", "people", "People", String((rolesData.people || []).length), rolesPeopleBody())}
-    ${docSection("roles", "roles", "Roles", String(Object.keys(rolesData.roles || {}).length), rolesRoleBody())}`;
-  wireSections(d.list);
+    <div class="rsplit${rolesPhoneOpen ? " open" : ""}">
+      <div class="rlist">
+        <div class="rgroup">People <span class="dim">${nPeople}</span></div>${pe.list}
+        <div class="rgroup">Roles <span class="dim">${nRoles}</span></div>${ro.list}
+      </div>
+      <div class="rdetail"><button type="button" class="rback" data-rback>‹ People and roles</button>${rolesSide === "roles" ? ro.detail : pe.detail}</div>
+    </div>`;
   wireRoles(d.el);
+  if (rolesMoveNext){ splitMove(d.list.querySelector(".rsplit"), rolesMoveNext); rolesMoveNext = ""; }
 }
 
 // Repaint the tab, keeping the drafts: the sections read them.
@@ -330,13 +334,13 @@ function wireRoles(el){
   // comes over the list), and Back to the list.
   el.querySelectorAll("[data-rwho]").forEach(b => b.onclick = () => {
     if (b.dataset.rwho !== rolesWho && rolesPeopleDirty() && !confirm(`Leave ${rolesWho}'s changes unsaved?`)) return;
-    rolesWho = b.dataset.rwho; rolesPeopleDraft = null; rolesOpen.people = true; rolesRedraw();
+    rolesWho = b.dataset.rwho; rolesPeopleDraft = null; rolesSide = "people"; rolesPhoneOpen = true; rolesMoveNext = "in"; rolesRedraw();
   });
   el.querySelectorAll("[data-rpick]").forEach(b => b.onclick = () => {
     if (b.dataset.rpick !== rolesPick && rolesRoleDirty() && !confirm(`Leave the changes to ${rolesDraft.name} unsaved?`)) return;
-    rolesPick = b.dataset.rpick; rolesDraft = null; rolesOpen.roles = true; rolesRedraw();
+    rolesPick = b.dataset.rpick; rolesDraft = null; rolesSide = "roles"; rolesPhoneOpen = true; rolesMoveNext = "in"; rolesRedraw();
   });
-  el.querySelectorAll("[data-rback]").forEach(b => b.onclick = () => { rolesOpen[b.dataset.rback] = false; rolesRedraw(); });
+  el.querySelectorAll("[data-rback]").forEach(b => b.onclick = () => { rolesPhoneOpen = false; rolesMoveNext = "back"; rolesRedraw(); });
   // Off a project: every role it held there goes, which is being off it.
   el.querySelectorAll("[data-rprojoff]").forEach(b => b.onclick = () => {
     delete rolesPeopleDraft.project_roles[b.dataset.rprojoff];
@@ -381,7 +385,7 @@ function wireRoles(el){
     if (!name) return notify("a name for the role", true);
     if (rolesData.roles[name]) return notify(`${name} is a role already`, true);
     rolesDraft = {name, scope: "projects", perms: {}, note: "", fresh: true, builtin: false, only: {}};
-    rolesOpen.roles = true;
+    rolesSide = "roles"; rolesPhoneOpen = true; rolesMoveNext = "in";
     rolesRedraw();
   };
   const sc = el.querySelector("#rolesScope");

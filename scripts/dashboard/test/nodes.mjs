@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog, sectSave, openSection } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog, sectSave, openSection, splitPick } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -525,6 +525,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
      'the gear keeps appearance only: the log setting moved out');
   await page.evaluate(() => toggleUiMenu(false));
   await page.evaluate(() => openSettingsTab());
+  await page.waitForSelector('.settingstab .snav [data-spick="logs"]', { timeout: 15000 }); await splitPick(page, 'logs');
   await page.waitForSelector('.settingstab .logdays #logDays', { timeout: 15000 });
   ok(true, 'the Settings group opens the controller\'s settings, with the log policy on it');
   ok(await page.$eval('.settingstab', e => !/template|environment|DOCKER_HOST/.test(e.textContent)),

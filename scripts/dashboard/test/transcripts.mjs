@@ -2,7 +2,7 @@
 // newest first with the first thing typed, and each downloadable as a text
 // that carries the words, every command Claude ran and what came back, and
 // never Claude's private reasoning nor another account's file.
-import { URL, launch, newPage, ok, done, ready, DIR } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, DIR, splitPick } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -43,6 +43,9 @@ const browser = await launch();
 const page = await newPage(browser);
 await page.goto(URL); await ready(page);
 await page.evaluate(() => openProfileTab());
+// Profile is a page of settings: its logs are a section picked from its list.
+await page.waitForSelector('.profiletab .snav [data-spick="logs"]', { timeout: 15000 });
+await splitPick(page, 'logs');
 await page.waitForSelector('.profiletab .cvlogs .artrow', { timeout: 15000 });
 const rows = await page.$$eval('.profiletab .cvlogs .artrow', els => els.map(e => ({
   text: e.textContent.replace(/\s+/g, ' ').trim(), href: e.querySelector('a.btn')?.getAttribute('href') || '' })));

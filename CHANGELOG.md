@@ -379,6 +379,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Lit-up controls (the selected tab, primary buttons like Open Claude, buttons that are on, a hovered button) and the BuilderBot logo wear the theme's second color; the first color keeps the rail, the dots and the notebook's group row (0d49ea3)
 - In light mode the second color is as light as it can be and stay readable, and a lit control is a soft tint of it with a colored edge rather than a dark block (bd972da)
 - A project's Settings are a list of sections beside the one picked, each saying what is in it and marked unsaved when it holds a change, with plainer names (General, Nodes, What sessions reach, Just for you, Running sessions) and the most used first; on a phone the list, then the section with Back (6098e71)
+- Controller settings, Profile and the Roles page share a project's Settings shape: a list beside the section or person picked, and on a phone the list, then the section sliding in with Back; the Roles page is one list of people and roles (d78256d)
 
 ### Removed
 
@@ -615,6 +616,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Only one of the bell, the doctor and the gear menu is open at a time (693defa)
 - A project's Settings keep People, the section picked and anything typed when asked for again (6098e71)
 - A project's Nodes settings no longer show its second node unticked after another project's settings were open, where saving would have removed it (78f5678)
+- A project's Settings on a phone show the list and the section full width, with no row left highlighted on the list (d78256d)
 
 ### Security
 

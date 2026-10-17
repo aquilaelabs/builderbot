@@ -3,7 +3,7 @@
 // /term proxy that puts the terminals behind the same sign-in. The proxy's
 // upstream is dead in the harness (nothing listens on the ttyd port), which
 // pins the 502 path; the live relay is covered by using the dashboard.
-import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member, splitPick } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -1227,6 +1227,8 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      '...and a second tap folds them away');
   // ...and on a phone the line is inside the screen like any other.
   await page.setViewportSize({ width: 393, height: 851 });
+    // Profile on a phone opens on its list (a page of settings): a section first.
+    await splitPick(page, 'you');
     await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
   await page.click('.profiletab .help');
   const fit = await page.$eval('.profiletab .helptext', el => { const r = el.getBoundingClientRect(); return { x: r.left, right: r.right, vw: innerWidth }; });

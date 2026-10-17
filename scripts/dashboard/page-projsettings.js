@@ -488,7 +488,7 @@ let rnHost = null;
 function settingsOut(){
   if (!rnHost) return;
   const box = rnHost.querySelector(":scope > .box");
-  rnViewOff(box);
+  splitOff(box);
   if (box) $("rnmodal").appendChild(box);
   rnHost = null;
   $("rnCancel").hidden = false;
@@ -520,15 +520,16 @@ function settingsInto(name, host){
   // In place there is nothing to close: each section's Revert puts its
   // fields back.
   $("rnCancel").hidden = true;
-  if (box) rnViewOn(box);
+  // On a phone it opens on the list.
+  if (box){ (SPLIT["rn:" + name] || (SPLIT["rn:" + name] = {pick: "", open: false})).open = false; rnSplit(box, name); }
 }
 
 // ---- the Settings view: the sections as a list beside the one picked ----
 // The operator, 16 Oct: twelve sections open one under another were hard to
-// find a setting in. In the notebook the sections are the Roles page's
-// shape: a list of them, each with what is in it, beside the one picked; on
-// a phone the list, then the section with Back. The dialog (the Git view's
-// remote door) keeps its sections open under a jump bar.
+// find a setting in. In the notebook they are a page of settings
+// (page-docs.js splitSects): a list of them, each with what is in it,
+// beside the one picked; on a phone the list, then the section with Back.
+// The dialog (the Git view's remote door) keeps them open under a jump bar.
 const RN_LIST = {
   project: "name and color", people: "owner, who is on it, invitations",
   claude: "what its sessions do on their own, ask about, or may not",
@@ -538,83 +539,10 @@ const RN_LIST = {
   files: "its files over FTP and in an editor", snapshots: "the days kept, and putting one back",
   signing: "the keys its builds are signed with", sessions: "every account's sessions here, to end",
 };
-const rnPick = {};               // the section picked in each project's Settings view
-let rnOpenPhone = false;         // on a phone, the section is over the list
-let rnNavWatch = null;
 
-function rnViewOn(box){
-  box.classList.add("rnview");
-  let nav = box.querySelector(":scope > .rnnav");
-  if (!nav){
-    nav = document.createElement("div");
-    nav.className = "rlist rnnav";
-    nav.setAttribute("role", "tablist");
-    nav.setAttribute("aria-label", "settings sections");
-    box.insertBefore(nav, box.firstChild);
-    const back = document.createElement("button");
-    back.type = "button"; back.className = "rback rnback"; back.textContent = "‹ Settings";
-    back.onclick = () => { rnOpenPhone = false; rnViewDraw(box); };
-    box.insertBefore(back, nav.nextSibling);
-    // A section shows or hides itself as what it holds arrives (People
-    // after its read, Snapshots for whoever may restore): the list follows.
-    rnNavWatch = new MutationObserver(() => rnViewDraw(box));
-    box.querySelectorAll(":scope > details.rngroup").forEach(d =>
-      rnNavWatch.observe(d, {attributes: true, attributeFilter: ["hidden"]}));
-    box.addEventListener("input", () => rnNavMarks(box));
-    box.addEventListener("change", () => rnNavMarks(box));
-  }
-  rnOpenPhone = false;
-  rnViewDraw(box);
-}
-
-// Back in the dialog: the list goes and every section shows again.
-function rnViewOff(box){
-  if (!box?.classList.contains("rnview")) return;
-  box.classList.remove("rnview", "rnopen");
-  box.querySelectorAll(":scope > details.rngroup").forEach(d => d.classList.remove("rncur"));
-}
-
-function rnViewDraw(box){
-  if (!box.classList.contains("rnview")) return;
-  const shown = [...box.querySelectorAll(":scope > details.rngroup")].filter(d => !d.hidden);
-  const key = d => d.dataset.sect.slice(3);
-  // The one picked, or the first shown while it is hidden (its list being
-  // read again), without forgetting it: it comes back when it shows.
-  let pick = rnPick[rnFor];
-  if (!shown.some(d => key(d) === pick)) pick = shown[0] ? key(shown[0]) : "";
-  const nav = box.querySelector(":scope > .rnnav");
-  const html = shown.map(d => { const k = key(d), on = k === pick;
-    return `<button type="button" class="rrow${on ? " on" : ""}" role="tab" aria-selected="${on}" data-rnpick="${esc(k)}">
-      <span class="name">${esc(d.querySelector(":scope > summary .t")?.textContent || k)}</span>
-      <span class="rtags"><span class="dim">${esc(RN_LIST[k] || "")}</span><span class="rnunsaved" hidden>unsaved</span></span></button>`; }).join("");
-  if (nav.dataset.drawn !== html){
-    nav.innerHTML = html; nav.dataset.drawn = html;
-    nav.querySelectorAll("[data-rnpick]").forEach(b => b.onclick = () => {
-      rnPick[rnFor] = b.dataset.rnpick; rnOpenPhone = true; rnViewDraw(box);
-      box.closest(".nbview")?.scrollIntoView?.({block: "start"});
-    });
-  }
-  shown.concat([...box.querySelectorAll(":scope > details.rngroup[hidden]")]).forEach(d => {
-    const on = key(d) === pick;
-    d.classList.toggle("rncur", on);
-    if (on && !d.open) d.open = true;
-  });
-  box.classList.toggle("rnopen", rnOpenPhone);
-  rnNavMarks(box);
-}
-
-// Which sections hold something typed and not saved, said on their row so
-// moving to another section does not hide it.
-function rnNavMarks(box){
-  if (!rnPrefWas) return;
-  let enc;
-  try { enc = rnEnc(); } catch { return; }
-  box.querySelectorAll(".rnnav [data-rnpick]").forEach(b => {
-    const k = b.dataset.rnpick;
-    const dirty = RN_SECTS.includes(k) && rnSectChanges(k, enc).said.length > 0;
-    const m = b.querySelector(".rnunsaved");
-    if (m && m.hidden === dirty) m.hidden = !dirty;
-  });
+function rnSplit(box, name){
+  splitSects(box, "rn:" + name, {says: RN_LIST, sel: ":scope > details.rngroup", back: "Settings",
+    marks: k => RN_SECTS.includes(k) && rnSectChanges(k).said.length > 0});
 }
 // A project's settings: its notebook's Settings view.
 function openProjectSettings(name){ openNotebook(name, "settings"); }

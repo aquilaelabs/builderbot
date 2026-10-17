@@ -24,9 +24,9 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1400 } });
 await page.goto(URL);
 await ready(page);
-const openSect = async id => {
-  if (!await page.$eval(`.rolestab [data-sect="${id}"]`, d => d.open)) await page.click(`.rolestab [data-sect="${id}"] > summary`);
-};
+// One list of accounts and roles beside one detail (the operator, 16 Oct):
+// what was a section to open is which side the detail shows.
+const openSect = id => page.evaluate(s => { rolesSide = s; rolesRedraw(); }, id === 'roles:roles' ? 'roles' : 'people');
 
 // From a clean slate: a kept fixture may hold these from a run before.
 for (const n of ['deployer', 'installer']) await api('/api/roles', { action: 'remove', name: n });

@@ -5,7 +5,7 @@
 // and every notebook view they can, changes the settings that are theirs, is
 // refused the ones that are not, and meets the others' changes. Console
 // errors and server errors are collected per person across the whole walk.
-import { launch, newPage, ok, done, ready, sleep, refreshUntil, URL, DIR, member } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, refreshUntil, URL, DIR, member, splitPick } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -108,6 +108,8 @@ for (const who of CAST) {
   // Settings that are theirs.
   const tz = 'Europe/Paris';
   await page.evaluate(() => openProfileTab());
+  await page.waitForSelector('#pfTZ', { state: 'attached', timeout: 15000 });
+  await splitPick(page, 'browser');
   await page.waitForSelector('#pfTZ', { timeout: 15000 });
   await page.selectOption('#pfTZ', tz); await page.click('#pfTZApply');
   ok(await page.evaluate(() => userTZ()) === tz, `${tag} sets this browser's time zone`);

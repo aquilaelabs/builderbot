@@ -39,6 +39,14 @@ function openSettingsTab(){
     openTab({kind: "settings", arg: "__settings", label: "Controller settings"});
 }
 
+// Each section's line on the list beside it: what is in it.
+const SETTINGS_SAYS = {
+  logs: "days kept, downloads, diagnostics", reports: "what sessions reported about BuilderBot",
+  idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
+  tunnel: "a hostname that reaches it from outside", debug: "debug mode and dev features",
+  reset: "start over at the setup page", nodes: "the machines work runs on",
+};
+
 function renderSettingsInto(i){
   const d = docSurface(i, "settings");
   if (!d) return;
@@ -79,6 +87,9 @@ function renderSettingsInto(i){
     </div>`)}`;
   sectJump(d.list.querySelector("[data-sects]"));
   wireSections(d.el);
+  // A page of settings (page-docs.js splitSects): the sections a list beside
+  // the one picked, as a project's Settings are.
+  splitSects(d.list, "settings", {says: SETTINGS_SAYS, back: "Controller settings"});
   d.el.querySelectorAll("[data-srevert]").forEach(b => b.onclick = () => {
     const sec = b.closest("details.sect");
     sec?.querySelectorAll("input, select").forEach(i => { if (i.id) delete settingsDraft[i.id]; });

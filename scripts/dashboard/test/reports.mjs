@@ -5,7 +5,7 @@
 // their gate, a log a person clears. Nothing goes back to the session that
 // made it: that loop worked only where BuilderBot's own tracker sat beside
 // the sessions reporting to it (the operator, 8 Oct).
-import { launch, newPage, ready, ok, done, saveDialog, URL, DIR, unfold } from './lib.mjs';
+import { launch, newPage, ready, ok, done, saveDialog, URL, DIR, unfold, splitPick } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
@@ -151,6 +151,7 @@ for (let i = 0; i < 10 && typeof before.all !== 'number'; i++) before = await ca
 ok(typeof before.all === 'number' && before.all > 0, `the reports are counted before the press (${before.all})`);
 const lastId = Math.max(...(await call('/api/reports', { action: 'list' })).reports.map(r => r.id));
 await page.evaluate(() => openSettingsTab());
+await page.waitForSelector('.settingstab .snav [data-spick="reports"]', { timeout: 15000 }); await splitPick(page, 'reports');
 await page.waitForSelector('#setReportsClear', { timeout: 15000 });
 page.dialogs.length = 0;
 await page.click('#setReportsClear');

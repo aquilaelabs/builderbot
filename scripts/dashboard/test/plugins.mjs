@@ -84,8 +84,8 @@ ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a h
   // The page itself (its Save), not its template, which names the section
   // too while the profile is on its way.
   await page.waitForFunction(() => document.querySelector('.doc.on #pfSave') && /Claude plugins/.test(document.querySelector('.doc.on')?.textContent || ''), null, { timeout: 15000 });
-  const text = await page.evaluate(() => [...document.querySelectorAll('.doc.on h4')]
-    .find(h => h.textContent === 'Claude plugins')?.nextElementSibling?.textContent.replace(/\s+/g, ' ').trim() || '');
+  // A section of Profile, a page of settings now (the operator, 16 Oct).
+  const text = await page.evaluate(() => (document.querySelector('.doc.on [data-sect="profile:plugins"] .logset')?.textContent || '').replace(/\s+/g, ' ').trim());
   ok(/On plugbox: code-simplifier 1\.0\.0, feature-dev 1\.0\.0 \(alpha\), pyright-lsp 1\.0\.0 off/.test(text)
      && /\/plugin in a Claude session/.test(text),
      `Profile lists them per node, a project's with its name and one switched off marked so (${text.slice(0, 110)})`);
@@ -95,8 +95,7 @@ ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a h
   // to add one.
   await beat([{ uid: owner, email: '', plugins: null }]);
   await page.evaluate(() => loadProfile()); await sleep(500);
-  const empty = await page.evaluate(() => [...document.querySelectorAll('.doc.on h4')]
-    .find(h => h.textContent === 'Claude plugins')?.nextElementSibling?.textContent.replace(/\s+/g, ' ').trim() || '');
+  const empty = await page.evaluate(() => (document.querySelector('.doc.on [data-sect="profile:plugins"] .logset')?.textContent || '').replace(/\s+/g, ' ').trim());
   ok(/None installed/.test(empty) || !/plugbox/.test(empty),
      `a node that says the account has none takes them off (${empty.slice(0, 60)})`);
   await browser.close();
