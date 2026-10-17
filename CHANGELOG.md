@@ -383,6 +383,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb capture reel sees small and slow changes (a tap circle, a typed letter, a slow scroll) by comparing each frame with the last one kept, thins a run of motion to where it starts and settles, pages a long reel twelve frames a sheet, and offers --dry to count first and --from/--to to reel one stretch; it no longer drops or mis-stamps frames of a fast recording (2983542)
 - At a desk every page's content floats as cards on the page's margin, as Home and Projects do: sections, tables, row lists, a notebook's lists, the Docker manager's project groups, and a settings page's list and section; no line runs to the page's edge. A phone keeps its full-width bands (ff1310e)
 - Every page's top follows one order: the bar (what it shows, search, view, main action), the summary tiles, a status line (when things were last checked, with Check for updates, Measure now, Deploy or Add runner beside it), then filters and content (3e450f5)
+- Every page keeps its header buttons on one row in its bar: a switch like Cards and List is one joined control, upkeep like Check for updates or Measure now is a plain button, and the page's main action is the one filled button. Containers and Storage have no Refresh: they update by themselves when a container changes or a disk walk lands (4253ca4)
+- The sign-in page is redesigned: one panel over a drafting grid with two slow glows, always in BuilderBot's own colors (4253ca4)
 
 ### Removed
 
@@ -623,6 +625,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Long lists (a project's bugs, its finished roadmap) build only the rows on show and the next batch as it scrolls into view, so a filter chip on a long tracker answers at once on a phone (13798c0)
 - The Containers page's New container and Check for updates sit on one line at a desk (ff1310e)
 - A project's settings section saves its own fields alone, and refuses a field somebody else (or a session) saved since you opened it, naming it; Save again writes yours. The notebook's "Also open" line is gone (285475b)
+- A session handing back no longer holds your next messages while the house rules' checks run, where the project's Claude settings say a new ask cuts a test run: the checks run in the background and a failure is said on your next prompt (4253ca4)
 
 ### Security
 
