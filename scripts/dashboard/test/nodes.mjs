@@ -680,21 +680,22 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(meters.some(m => m.label === 'toolchains' && /GB free/.test(m.val))
      && meters.some(m => m.label === 'data') && meters.some(m => m.label === 'artifacts')
      && !meters.some(m => /missing/.test(m.val))
-     && meters.some(m => m.label === 'cpu') && meters.some(m => m.label === 'memory')
      && meters.every(m => /^\d+%$/.test(m.width)),
      `each store is a meter with its headroom (${meters.map(m => m.label + ' ' + m.val).join(', ')})`);
-  ok(meters.some(m => m.label === 'gpu' && m.val === '42%' && m.width === '42%')
-     && meters.some(m => m.label === 'vram' && m.val === '3072MB / 8192MB' && m.width === '38%'),
-     'a node whose card answers shows how busy it is and how much of its memory is taken, as two more meters');
+  // ...and what the charts below draw is not a bar again (the operator,
+  // 17 Oct): no CPU, memory, GPU or VRAM meter beside their hour.
+  ok(!meters.some(m => ['cpu', 'memory', 'gpu', 'vram'].includes(m.label)),
+     `the charted numbers are not meters too (${meters.map(m => m.label).join(', ')})`);
   // Its last hour (R218 step 9): CPU and memory as two small charts from
   // the controller's ring of its samples, each naming itself and saying its
   // latest, low, average and high without a hover.
   const charts = await page.$$eval(`${ROW} .ndcharts .chart`, cs => cs.map(c => ({
     t: c.querySelector('.ct')?.textContent, v: c.querySelector('.cv')?.textContent,
     line: c.querySelector('.cline')?.getAttribute('d') || '', s: c.querySelector('.cs')?.textContent || '' })));
-  ok(charts.length === 2 && charts[0].t === 'CPU' && charts[1].t === 'Memory'
-     && charts.every(c => /^M/.test(c.line) && /%$/.test(c.v) && /low .*, average .*, high /.test(c.s)),
-     `a node's page charts its last hour of CPU and memory (${JSON.stringify(charts.map(c => [c.t, c.v, c.s]))})`);
+  ok(charts.length === 4 && charts.map(c => c.t).join() === 'CPU,Memory,GPU,GPU RAM'
+     && charts.every(c => /^M/.test(c.line) && /%$/.test(c.v) && /low .*, average .*, high /.test(c.s))
+     && charts[2].v === '42%' && charts[3].v === '38%',
+     `a node's page charts its last hour of CPU and memory, and its card's busyness and memory where it has one (${JSON.stringify(charts.map(c => [c.t, c.v, c.s]))})`);
   // The line holds through a node's uneven reports: bursts seconds apart
   // while it is busy and one a poll while it idles low are one line, and
   // only a real silence breaks it (the operator, 16 Oct: the low stretches

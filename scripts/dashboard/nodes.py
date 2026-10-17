@@ -3104,12 +3104,17 @@ def samples(nid):
 
 
 def spark_of(nid):
-    """A node's last hour for its charts: [[at, cpu %, memory %], ...]."""
+    """A node's last hour for its charts: [[at, cpu %, memory %, gpu %,
+    gpu memory %], ...], the card's two None in a sample from a node without
+    one answering (the operator, 17 Oct: GPU and GPU RAM charted beside CPU
+    and memory where there is a card)."""
     out = []
     for x in _samples.get(nid, []):
-        mem = x.get("mem_mb") or 0
+        mem, gmem = x.get("mem_mb") or 0, x.get("gpu_mem_mb") or 0
         out.append([x.get("at") or 0, x.get("cpu_pct") or 0,
-                    round((x.get("mem_used_mb") or 0) / mem * 100, 1) if mem else 0])
+                    round((x.get("mem_used_mb") or 0) / mem * 100, 1) if mem else 0,
+                    x["gpu_pct"] if "gpu_pct" in x else None,
+                    round((x.get("gpu_mem_used_mb") or 0) / gmem * 100, 1) if gmem else None])
     return out
 
 

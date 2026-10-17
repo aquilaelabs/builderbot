@@ -1236,19 +1236,23 @@ const gb = mb => mb === null || mb === undefined ? "?"
 function nodeMeters(n){
   const rep = n.reported || {}, s = rep.sample || {};
   const out = [];
-  if (n.live && typeof s.cpu_pct === "number")
+  // What the charts below draw is not drawn again as a bar (the operator,
+  // 17 Oct): CPU and memory where the node has its hour charted, the card's
+  // two where its hour holds the card.
+  const {cpu: charted, gpu: gpuCharted} = nodeCharted(n);
+  if (n.live && typeof s.cpu_pct === "number" && !charted)
     out.push(meter("cpu", s.cpu_pct, s.cpu_pct + "%",
                    `${rep.cpu || "?"} cores${s.load1 ? `, load ${s.load1}` : ""}`));
   const mem = s.mem_mb || rep.mem_mb;
-  if (n.live && mem && s.mem_used_mb)
+  if (n.live && mem && s.mem_used_mb && !charted)
     out.push(meter("memory", s.mem_used_mb / mem * 100,
                    `${gb(s.mem_used_mb)} / ${gb(mem)}`));
   // The card, where the node has one whose driver answers: how busy it is
   // and how much of its own memory is taken, the two things a model or an
   // encode is waiting on.
-  if (n.live && typeof s.gpu_pct === "number")
+  if (n.live && typeof s.gpu_pct === "number" && !gpuCharted)
     out.push(meter("gpu", s.gpu_pct, s.gpu_pct + "%", rep.gpu || "the node's card"));
-  if (n.live && s.gpu_mem_mb)
+  if (n.live && s.gpu_mem_mb && !gpuCharted)
     out.push(meter("vram", (s.gpu_mem_used_mb || 0) / s.gpu_mem_mb * 100,
                    `${gb(s.gpu_mem_used_mb || 0)} / ${gb(s.gpu_mem_mb)}`, "the card's own memory"));
   // Two shapes for the same fact, and mixing them said "missing" about
@@ -1274,13 +1278,25 @@ function nodeMeters(n){
 }
 
 
+// Which of its hour the node's charts draw: CPU and memory for an agent
+// with samples, and its card's where any sample has one.
+function nodeCharted(n){
+  const sp = n.kind === "agent" ? (n.spark || []) : [];
+  return {cpu: sp.length > 0, gpu: sp.some(x => typeof x[3] === "number"), vram: sp.some(x => typeof x[4] === "number")};
+}
+
 // Its last hour, CPU and memory, side by side at a desk (R218 step 9): the
 // controller's ring of its samples, one each poll. Small multiples rather
 // than two lines on one chart, so neither needs a legend or a second hue.
+// The card's busyness and its own memory beside them where it has one (the
+// operator, 17 Oct).
 function nodeCharts(n){
-  if (n.kind !== "agent" || !(n.spark || []).length) return "";
+  const c = nodeCharted(n);
+  if (!c.cpu) return "";
   return `<div class="charts ndcharts">${hourChart(`cpu:${n.id}`, "CPU", n.spark.map(x => [x[0], x[1]]))}${
-    hourChart(`mem:${n.id}`, "Memory", n.spark.map(x => [x[0], x[2]]))}</div>`;
+    hourChart(`mem:${n.id}`, "Memory", n.spark.map(x => [x[0], x[2]]))}${
+    c.gpu ? hourChart(`gpu:${n.id}`, "GPU", n.spark.map(x => [x[0], x[3]])) : ""}${
+    c.vram ? hourChart(`vram:${n.id}`, "GPU RAM", n.spark.map(x => [x[0], x[4]])) : ""}</div>`;
 }
 
 // The node's page: a header band: name, state, where it is, its agent and

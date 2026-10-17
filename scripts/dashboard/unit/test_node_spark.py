@@ -38,7 +38,12 @@ class Spark(unittest.TestCase):
         self.assertEqual(got[-1][0], last)
         self.assertGreaterEqual(got[0][0], last - nodes.SAMPLES_KEEP_S)
         self.assertEqual(len(got), 145)      # 3600 / 25 + the one at the edge
-        self.assertEqual(got[-1][1:], [99.0 % 100, 25.0])  # cpu %, memory % of the total
+        self.assertEqual(got[-1][1:], [99.0 % 100, 25.0, None, None])  # cpu %, memory %, and no card
+
+    def test_a_card_is_charted_where_there_is_one(self):
+        self.beat(1_500_000, {"cpu_pct": 5, "mem_mb": 4000, "mem_used_mb": 1000,
+                              "gpu_pct": 37, "gpu_mem_mb": 8192, "gpu_mem_used_mb": 2048})
+        self.assertEqual(nodes.spark_of(self.nid)[-1][1:], [5.0, 25.0, 37.0, 25.0])
 
     def test_a_containers_use_is_whitelisted_and_kept_an_hour(self):
         t0 = 2_000_000
@@ -73,7 +78,7 @@ class Spark(unittest.TestCase):
         self.beat(3_000_000, {"cpu_pct": 7, "mem_mb": 2000, "mem_used_mb": 500})
         with mock.patch.object(nodes, "turns_of", lambda n: {}), mock.patch.object(nodes, "node_for", lambda: ""):
             row = next(n for n in nodes.tab_view(nodes.node_list(), False)["nodes"] if n["id"] == self.nid)
-        self.assertEqual(row["spark"], [[3_000_000, 7.0, 25.0]])
+        self.assertEqual(row["spark"], [[3_000_000, 7.0, 25.0, None, None]])
 
 
 if __name__ == "__main__":
