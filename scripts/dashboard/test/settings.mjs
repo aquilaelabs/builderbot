@@ -411,6 +411,21 @@ ok(elsewhere.git_name === 'T. Person',
     .map(b => ({ k: b.dataset.spick, on: b.classList.contains('on'), said: b.querySelector('.rtags .dim')?.textContent || '' })));
   ok(list.length >= 8 && list[0].k === 'project' && list[0].on && list.every(r => r.said) && list.some(r => r.k === 'people'),
      `...its sections a list beside the one picked, each saying what is in it, General first, People among them (${list.map(r => r.k).join(', ')})`);
+  // Every section listed opens on something: Repository's fields are the
+  // remote's door's, and it was listed and opened on an empty pane (B813).
+  {
+    const blank = [];
+    for (const { k } of list){
+      await page.click(`.nbsettings .snav [data-spick="${k}"]`);
+      const h = await page.evaluate(k => document.querySelector(`.nbsettings details.rngroup[data-sect="rn:${k}"]`)?.getBoundingClientRect().height || 0, k);
+      if (h < 40) blank.push(`${k} ${Math.round(h)}px`);
+    }
+    await rnSect(page, 'repo');
+    const repo = await page.evaluate(() => ({ say: $('rnRepoSay').textContent, go: $('rnRepoGo').textContent,
+      bar: [...document.querySelectorAll('.nbsettings details[data-sect="rn:repo"] .rnbarf')].some(b => b.checkVisibility()) }));
+    ok(!blank.length && /Linked to GitHub/.test(repo.say) && /GitHub settings/.test(repo.go) && !repo.bar,
+       `...every section listed opens on something, Repository saying what its remote is with the door to it and no Save of its own (${blank.join(', ') || 'none blank'}; ${repo.say} ${repo.go})`);
+  }
   await rnSect(page, 'claude');
   const one = await page.evaluate(() => [...document.querySelectorAll('.nbsettings details.rngroup')]
     .filter(d => d.checkVisibility()).map(d => d.dataset.sect));

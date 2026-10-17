@@ -317,7 +317,7 @@ function splitSects(root, key, {says = {}, sel = ":scope > details.sect", marks 
   // its read): the list follows.
   root._splitObs?.disconnect();
   root._splitObs = new MutationObserver(() => splitDraw(root));
-  root.querySelectorAll(sel).forEach(d => root._splitObs.observe(d, {attributes: true, attributeFilter: ["hidden"]}));
+  root.querySelectorAll(sel).forEach(d => root._splitObs.observe(d, {attributes: true, attributeFilter: ["hidden"], subtree: true}));
   splitDraw(root);
 }
 
@@ -327,7 +327,11 @@ function splitDraw(root){
   const o = root._split;
   if (!o || !root.classList.contains("ssplit")) return;
   const st = SPLIT[o.key];
-  const all = [...root.querySelectorAll(o.sel)], shown = all.filter(d => !d.hidden);
+  // ...and not one with nothing in it to show: a settings group none of
+  // whose fields is on show is drawn as nothing (.rngroup's own rule), and
+  // listed it opened on an empty pane (B813).
+  const empty = d => d.matches(".rngroup") && !d.querySelector(":scope > .body > .field:not([hidden]):not(.rnbarf)");
+  const all = [...root.querySelectorAll(o.sel)], shown = all.filter(d => !d.hidden && !empty(d));
   // The one picked, or the first shown while it is hidden (its list being
   // read again), without forgetting it: it comes back when it shows.
   let pick = st.pick;

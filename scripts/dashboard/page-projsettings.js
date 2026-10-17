@@ -608,6 +608,21 @@ function renameProject(name, mode = "all"){
   if (!$("rnGitNone").hidden)
     $("rnGitNone").firstElementChild.textContent =
       `${projLabel(name)} has a remote it can only read, so there is no credential to set here.`;
+  // The Settings view keeps the credential fields behind the remote's door,
+  // which left its Repository section listed and empty (B813): it says what
+  // the remote is and how it pushes here, and opens the door.
+  const sum = $("rnRepoSum");
+  sum.hidden = git || !p?.git_ok;
+  if (!sum.hidden){
+    const host = p.linked ? `${p.forge_name || "its host"}${p.forge_host ? ` (${p.forge_host})` : ""}` : "";
+    const with_ = how === "key" ? "a deploy key" : p.has_token ? "a token" : "its stored credential";
+    $("rnRepoSay").textContent = !p.linked ? `${projLabel(name)} is linked to no git host yet.`
+      : `Linked to ${host}; it ${p.push ? `pushes with ${with_}` : "can only read the remote"}.`;
+    const go = $("rnRepoGo");
+    go.textContent = p.linked ? `${p.forge_name || "Remote"} settings` : "Link to a git host";
+    go.disabled = state?.can?.["git-auth"] === false;
+    go.onclick = () => { if (p.linked) renameProject(name, "git"); else openLinkProject(name); };
+  }
   // Unlink is the chain's, never the gear's: it is about the remote, and it
   // is the way a project moves from one host to another, since linking
   // refuses a repo that already has one.
@@ -1504,8 +1519,10 @@ function rnBars(){
         <button type="button" class="danger" data-rnend="${sect}" hidden>Save and end it</button></div></div>`);
       bar = body.querySelector(":scope > .rnbarf > .rnbar");
     }
-    // A remote it can only read has nothing here to save (rnGitNone).
-    bar.parentElement.hidden = sect === "repo" && !$("rnGitNone").hidden;
+    // A remote it can only read has nothing here to save (rnGitNone), nor
+    // has the Settings view, which says what the remote is and opens its
+    // door (rnRepoSum, B813).
+    bar.parentElement.hidden = sect === "repo" && (!$("rnGitNone").hidden || !$("rnRepoSum").hidden);
     if (bar.dataset.busy) continue;
     const {said, start} = rnSectChanges(sect, enc);
     const ask = running && start.length > 0;
