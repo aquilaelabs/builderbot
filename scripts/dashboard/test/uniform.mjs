@@ -1125,11 +1125,13 @@ for (const kind of kinds){
     await page.evaluate(([th, m]) => { document.documentElement.dataset.theme = th;
       if (m) document.documentElement.dataset.mode = m; else delete document.documentElement.dataset.mode; }, [t, mode]);
     // Past the tab's own 150ms background transition: a dark half measured
-    // 120ms after a light one read a blend of the two.
-    await sleep(220);
-    const r = await page.evaluate(() => {
+    // 120ms after a light one read a blend of the two, and a fixed wait
+    // read one under load too (B811), so its transitions are waited out.
+    await sleep(60);
+    const r = await page.evaluate(async () => {
       const el = document.querySelector('.pane .bar .subnav button.on');
       if (!el) return { err: 'no sub-nav on show' };
+      await Promise.all([el, ...el.querySelectorAll('*')].flatMap(e => e.getAnimations()).map(a => a.finished.catch(() => {})));
       const c = document.createElement('canvas'); c.width = c.height = 1;
       const ctx = c.getContext('2d', { willReadFrequently: true });
       const px = v => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 1, 1);
