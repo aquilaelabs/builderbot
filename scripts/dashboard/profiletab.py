@@ -6,6 +6,7 @@ server holds the door and writes the reply, with a fresh sign-in cookie when
 the account's name changes, since that is what the cookie is signed over.
 """
 from fields import field
+from timing import timed
 
 # The server's, set by configure(): the account store, the Claude login an
 # account's home carries, the Claude plugins an account installed per node,
@@ -25,20 +26,29 @@ def view(me):
     """The tab's read. (payload, status)."""
     uid = users.uid_of(me)
     rec = users.get(me["name"]) or {}
+    # Each part timed by name (timing.py), for the trace to say which is slow.
+    with timed("profile:what_may"):
+        may = users.what_may(me["name"])
+    with timed("profile:claude"):
+        claude = claude_email(uid)
+    with timed("profile:plugins"):
+        plugs = plugins_of(uid, node_names())
+    with timed("profile:logs"):
+        logs = logs_of(me)
     return {"name": me["name"], "uid": uid,
             "role": rec.get("role", "user"),
             # What this account may do, said once (R255 step 5).
-            "what_may": users.what_may(me["name"]),
+            "what_may": may,
             "profile": users.profile(me),
             "git": users.git_identity(me),
             "git_ready": users.git_ready(me),
-            "claude": claude_email(uid),
+            "claude": claude,
             # The Claude plugins this account installed, per
             # node, as the nodes last said (plugins.py).
-            "plugins": plugins_of(uid, node_names()),
+            "plugins": plugs,
             # The account's own conversations with Claude, newest first,
             # each a download of the whole exchange (transcripts.py).
-            "logs": logs_of(me)}, 200
+            "logs": logs}, 200
 
 
 def verb(me, act, req):

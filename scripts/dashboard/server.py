@@ -332,6 +332,8 @@ MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024,
 # One field out of a request body, read the one way here and in every
 # module a handler calls into (fields.py).
 from fields import field                                         # noqa: E402
+# Where a request's time goes, named part by part (timing.py).
+import timing                                                    # noqa: E402
 
 
 
@@ -1179,6 +1181,12 @@ def _projects_seen_by(who, rows):
 
 
 def project_list(who):
+    """_project_list, timed (timing.py): nearly every read asks for it."""
+    with timing.timed("project_list"):
+        return _project_list(who)
+
+
+def _project_list(who):
     """Every directory under /workspace that is a project, with what is wrong
     with it. Named _list because `projects` is the module beside this one that
     creates them: one name for the reading and one for the writing.
@@ -2205,7 +2213,13 @@ _TRACE = collections.deque(maxlen=6000)
 _trace_lock = threading.Lock()
 
 
-def trace_note(handler, ms=0):
+# The process's CPU clock beside the wall clock, a sample a request: over a
+# window, how much of one core the server spent, which tells a server short
+# of CPU (every request slow, each mostly waiting) from one slow request.
+_CPU = collections.deque(maxlen=6000)
+
+
+def trace_note(handler, ms=0, cpu=0, parts=None):
     # A note beside the request, never a fault in it: whatever goes wrong
     # here is swallowed, since the answer has already been sent. Broad
     # because it runs on every request and must never become one's 500;
@@ -2223,7 +2237,8 @@ def trace_note(handler, ms=0):
         by = ("session" if who.get("session") else "agent" if path.startswith("/api/v1/agent")
               else "user" if who.get("name") else "anon")
         with _trace_lock:
-            _TRACE.append((time.time(), handler.command, path, keys, by, ua, int(ms)))
+            _TRACE.append((time.time(), handler.command, path, keys, by, ua, int(ms), int(cpu), parts or {}))
+            _CPU.append((time.time(), time.process_time()))
     except Exception as e:                                  # noqa: BLE001
         if not _trace_said:
             _trace_said.append(True)
@@ -2239,11 +2254,19 @@ def trace_since(since):
         rows = [r for r in _TRACE if r[0] >= since]
     groups = {}
     slow = []
-    for t, method, path, keys, by, ua, ms in rows:
+    sections = {}
+    for t, method, path, keys, by, ua, ms, cpu, parts in rows:
         agent = ("app" if "BuilderBot" in ua else "curl" if ua.startswith("curl")
                  else "browser" if "Mozilla" in ua else (ua.split("/")[0] or "?"))
         key = (method, path + ("?" + keys if keys else ""), by, agent)
-        g = groups.setdefault(key, {"n": 0, "first": t, "last": t, "ms_max": 0, "ms_sum": 0})
+        g = groups.setdefault(key, {"n": 0, "first": t, "last": t, "ms_max": 0, "ms_sum": 0, "cpu_sum": 0})
+        g["cpu_sum"] += cpu
+        # Where it went (timing.py): each named part's total across the window.
+        for name, pm in parts.items():
+            sc = sections.setdefault(name, {"n": 0, "sum": 0, "max": 0})
+            sc["n"] += 1
+            sc["sum"] += pm
+            sc["max"] = max(sc["max"], pm)
         g["n"] += 1
         g["first"] = min(g["first"], t)
         g["last"] = max(g["last"], t)
@@ -2251,14 +2274,28 @@ def trace_since(since):
         # that took seconds, and a count alone cannot say which.
         g["ms_max"] = max(g["ms_max"], ms)
         g["ms_sum"] += ms
-        slow.append((ms, t, method, key[1], by, agent))
+        slow.append((ms, t, method, key[1], by, agent, cpu, parts))
     out = [{"method": k[0], "path": k[1], "by": k[2], "agent": k[3], "n": v["n"],
             "first": v["first"], "last": v["last"], "ms_max": v["ms_max"],
-            "ms_avg": v["ms_sum"] // max(1, v["n"])} for k, v in groups.items()]
+            "ms_avg": v["ms_sum"] // max(1, v["n"]), "cpu_avg": v["cpu_sum"] // max(1, v["n"])}
+           for k, v in groups.items()]
     out.sort(key=lambda r: -r["n"])
+    # A long poll is slow by design (it waits to be told): not a slow answer.
+    slow = [r for r in slow if not r[3].startswith(("/api/phone/wait", "/api/v1/agent/work"))]
     slow.sort(key=lambda r: -r[0])
+    with _trace_lock:
+        cpus = [c for c in _CPU if c[0] >= since]
+    busy = (round((cpus[-1][1] - cpus[0][1]) / (cpus[-1][0] - cpus[0][0]), 2)
+            if len(cpus) > 1 and cpus[-1][0] > cpus[0][0] else None)
     return {"since": since, "now": now, "total": len(rows), "rows": out,
-            "slow": [{"ms": r[0], "at": r[1], "method": r[2], "path": r[3], "by": r[4], "agent": r[5]}
+            # How much of one core the server spent over the window, and its
+            # threads now: near 1.0 is a server short of CPU (Python runs one
+            # thread at a time), whatever page is asked for.
+            "busy": busy, "threads": threading.active_count(),
+            "sections": sorted(({"name": k, "n": v["n"], "avg": v["sum"] // max(1, v["n"]), "max": v["max"],
+                                 "sum": v["sum"]} for k, v in sections.items()), key=lambda r: -r["sum"])[:30],
+            "slow": [{"ms": r[0], "at": r[1], "method": r[2], "path": r[3], "by": r[4], "agent": r[5],
+                      "cpu": r[6], "parts": dict(sorted(r[7].items(), key=lambda x: -x[1])[:4])}
                      for r in slow[:8] if r[0] >= 500]}
 
 
@@ -3795,13 +3832,20 @@ def _findings_counts(who, ps):
     return {k: v for k, v in c.items() if k == mine} if mine else c
 
 
+def _timed(name, fn):
+    """One part of a read, timed by its name (timing.py)."""
+    with timing.timed(name):
+        return fn()
+
+
 def snapshot(who):
     if who and who.get("name") and users.uid_of(who):
         _polls[who["name"]] = time.time()
         if _polls[who["name"]] - _seen_written.get(who["name"], 0) > SEEN_WRITE_S:
             _seen_written[who["name"]] = _polls[who["name"]]
             users.touch(who["name"])
-    ps = project_list(who)
+    with timing.timed("status:projects"):
+        ps = project_list(who)
     # Sessions this account has any business seeing: its own shells, and
     # anything on a project it was given. Filtered here for the same reason
     # the project list is (roadmap #22): a member restricted to one project
@@ -3813,9 +3857,11 @@ def snapshot(who):
     # Judged by what the node calls it: the owner's node sessions are shown
     # bare (node_tmux_sessions), and by the bare name they read as unowned,
     # so every account on that project listed the owner's Claude as its own.
-    sessions = [s for s in tmux_sessions() + node_tmux_sessions()
-                if _session_visible(s.get("node_name") or s["name"], mine, seen, users.sees_all(who))]
-    login = signin.state(mine)
+    with timing.timed("status:sessions"):
+        sessions = [s for s in tmux_sessions() + node_tmux_sessions()
+                    if _session_visible(s.get("node_name") or s["name"], mine, seen, users.sees_all(who))]
+    with timing.timed("status:signin"):
+        login = signin.state(mine)
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell
     # is actually in, and matching a cwd to a project is this server's
@@ -3828,7 +3874,7 @@ def snapshot(who):
         p = by_name.get(top)
         s["git"] = bool(p and p["git_ok"])
         s["github"] = bool(p and p.get("github"))
-    attention, bell_hidden = _attention(who)
+    attention, bell_hidden = _timed("status:attention", lambda: _attention(who))
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
@@ -3836,16 +3882,16 @@ def snapshot(who):
         # the requests themselves: this rides on every poll, and it exists so
         # the Phone tab knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory: no adb, nothing to pay for.
-        "phone_asks": len(phone.requests_open(users.uid_of(who), users.is_admin(who))),
+        "phone_asks": _timed("status:phone_asks", lambda: len(phone.requests_open(users.uid_of(who), users.is_admin(who)))),
         # The invitations to a project waiting on this account, for its bell
         # (membership.py): Accept and Decline are answered there.
-        "invites": membership.mine(who),
+        "invites": _timed("status:invites", lambda: membership.mine(who)),
         # A project this account sees whose main branch's newest CI run
         # failed (ciwatch.red, R117): a bell row while it is true.
-        "ci_red": ciwatch.red([p["name"] for p in ps]),
+        "ci_red": _timed("status:ci_red", lambda: ciwatch.red([p["name"] for p in ps])),
         # A file changed on two synced copies at once (R162, wssync.py): the
         # copy kept beside it, listed until it is deleted.
-        "sync_conflicts": wssync.conflicts(lambda p: users.may_see(who, p)),
+        "sync_conflicts": _timed("status:sync_conflicts", lambda: wssync.conflicts(lambda p: users.may_see(who, p))),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
@@ -3855,63 +3901,63 @@ def snapshot(who):
         "bell_hidden": bell_hidden,
         # Claude Code per node against the latest known, for the Nodes
         # tab's section.
-        "claude_code": {} if NODES_OK else _claude_code_for(who, ps),
+        "claude_code": _timed("status:claude_code", lambda: {} if NODES_OK else _claude_code_for(who, ps)),
 
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
         # it properly is a subprocess: this rides the poll, and the poll is the
         # page's heartbeat. Every Docker button on the page reads this one
         # answer rather than each finding out by failing.
-        "docker": devapp.available_default(),
+        "docker": _timed("status:docker", lambda: devapp.available_default()),
         # An administrator's, as the Logs section that reads it is: it
         # walks the log directory and the CI tree, which a session's poll
         # has no use for and every poll would pay.
-        "logs": logs.payload() if users.is_admin(who) else None,
-        "idle": idle.payload(),
+        "logs": _timed("status:logs", lambda: logs.payload() if users.is_admin(who) else None),
+        "idle": _timed("status:idle", lambda: idle.payload()),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
         "boot": layout.boot_id(),
-        "image": image_stamp(),
+        "image": _timed("status:image", lambda: image_stamp()),
         "projects": ps,
         "sessions": sessions,
         # Every node with a runner on it: the Runner card is a view of these
         # and nothing else, since CI left this container (phase 7). Read from
         # the census, which already carries it.
-        "node_runners": _runners_for(who),
-        "reports": findings.mounted(),
-        "reports_mtime": findings.reports_mtime(),
-        "findings_counts": _findings_counts(who, ps),
+        "node_runners": _timed("status:node_runners", lambda: _runners_for(who)),
+        "reports": _timed("status:reports", lambda: findings.mounted()),
+        "reports_mtime": _timed("status:reports_mtime", lambda: findings.reports_mtime()),
+        "findings_counts": _timed("status:findings_counts", lambda: _findings_counts(who, ps)),
         # ...and, for the row they land on, what those paths actually look
         # like. Order matters: this reads what the call above computed. Empty
         # for a session: a head is a fragment of a path from outside its
         # project, which is the one thing it must not be shown.
-        "findings_heads": [] if (who or {}).get("session") else findings.heads(),
+        "findings_heads": _timed("status:findings_heads", lambda: [] if (who or {}).get("session") else findings.heads()),
         # ...and whether there is a readable report at all, which is what the
         # Static analysis button and the Analysis tab ghost on.
-        "reports_ok": findings.reports_ok(),
+        "reports_ok": _timed("status:reports_ok", lambda: findings.reports_ok()),
         # ...and when each report was written, so one left behind by a failed
         # scanner is visible rather than silently counted as current.
-        "reports_ages": findings.reports_ages(),
-        "doctor": doctor.payload(),
+        "reports_ages": _timed("status:reports_ages", lambda: findings.reports_ages()),
+        "doctor": _timed("status:doctor", lambda: doctor.payload()),
         # Which nodes report this account signed in to Claude, and the
         # sign-in of theirs that is running, if one is.
-        "claude_auth": claude_auth(home_for(users.uid_of(who))),
+        "claude_auth": _timed("status:claude_auth", lambda: claude_auth(home_for(users.uid_of(who)))),
         "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
         # The clone or link in flight, for whoever may start one (B171): it
         # names a project the account may not have been given, and its
         # buttons are that account's.
-        "project_job": {} if users.may(who, "create") else projects.job(),
+        "project_job": _timed("status:project_job", lambda: {} if users.may(who, "create") else projects.job()),
         # The code maps being built for new projects, and the ones that just
         # finished: the row says "mapping the code" and then how many files.
-        "mapping": mapping.payload(),
+        "mapping": _timed("status:mapping", lambda: mapping.payload()),
         "max_tabs": layout.max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
-        "settings": settings.payload() | {"tunnel": tunnel.status()},
+        "settings": _timed("status:settings", lambda: settings.payload() | {"tunnel": tunnel.status()}),
         # ...and where the controller keeps what grows, an administrator's.
-        "paths": {} if users.may(who, "admin") else paths.view(),
+        "paths": _timed("status:paths", lambda: {} if users.may(who, "admin") else paths.view()),
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
         # removed cannot leave a button that posts a name the server rejects.
@@ -3923,7 +3969,7 @@ def snapshot(who):
         # and every client is already asking for that every 15s. THIS
         # account's: the strip follows the person to any browser they sign in
         # on, and stops following them to somebody else's (roadmap #25).
-        "layout": layout.load_layout(users.uid_of(who)),
+        "layout": _timed("status:layout", lambda: layout.load_layout(users.uid_of(who))),
         # Who this is, so the page can name a shell session the way bb-tty
         # will (index.html's myTmux). Not a secret: it is this account's own
         # id, and it is already the key to everything the page saves.
@@ -4894,11 +4940,13 @@ class Handler(BaseHTTPRequestHandler):
         the one failure mode that looks identical to the container being gone.
         """
         t0 = time.monotonic()
+        timing.start()
         try:
             try:
                 return fn()
             finally:
-                trace_note(self, (time.monotonic() - t0) * 1000)
+                cpu, parts = timing.finish()
+                trace_note(self, (time.monotonic() - t0) * 1000, cpu, parts)
         except (BrokenPipeError, ConnectionResetError):
             # The other end went away mid-answer: a download canceled, a tab
             # closed. Nothing failed here and nobody is left to answer, so it
@@ -5267,8 +5315,10 @@ class Handler(BaseHTTPRequestHandler):
         # and roles Read lets one see it (R152 step 3).
         if (why := self._area_read_why("accounts")):
             return self._json({"error": why}, 403)
-        return self._json(users.tab_view(self._who(), [p["name"] for p in project_list(self._who())],
-                                         claudegrant.logins_of))
+        with timing.timed("users:tab_view"):
+            got = users.tab_view(self._who(), [p["name"] for p in project_list(self._who())],
+                                 claudegrant.logins_of)
+        return self._json(got)
 
     def _get_roles(self):
         """GET /api/roles: the Roles tab (R152): the areas, every role, and
@@ -5352,11 +5402,14 @@ class Handler(BaseHTTPRequestHandler):
                 else {p["name"] for p in project_list(me)}
             if mine is not None and not (me or {}).get("session") and self._area_read_why("jobs"):
                 mine = {p for p in mine if roles.level_of(me, "projects", p, users.may_work)}
-            got, _ = nodes.jobs_view("", {"n": ["500"]}, mine)
+            with timing.timed("home:jobs"):
+                got, _ = nodes.jobs_view("", {"n": ["500"]}, mine)
             rows, names = got.get("jobs") or [], got.get("nodes") or {}
         machines = not NODES_OK and not self._area_read_why("nodes")
         light = urllib.parse.parse_qs(self.path.partition("?")[2]).get("light", [""])[0] == "1"
-        return self._json(*home.read(rows, names, machines, light))
+        with timing.timed("home:read"):
+            got = home.read(rows, names, machines, light)
+        return self._json(*got)
 
     def _get_jobs(self):
         """GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this
@@ -5438,7 +5491,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "an administrator reads the daemon's images and volumes",
                                    "images": [], "volumes": [], "df": []}, 403)
             return self._json(containers.images_view(nid))
-        return self._json(containers.manager_view(nid, seen))
+        with timing.timed("docker:manager_view"):
+            got = containers.manager_view(nid, seen)
+        return self._json(got)
 
     def _get_containers(self):
         """GET /api/containers."""

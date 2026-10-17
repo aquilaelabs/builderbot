@@ -200,6 +200,7 @@ scripts/
     profiletab.py                an account's own settings, the Profile tab
     transcripts.py               an account's conversations with Claude as a text to download, from the Profile tab
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
+    timing.py                    where a request's time went: named parts and its own CPU, for bb dashboard trace
     share.py                     a part's share of what a session is sent: the rules, the roadmap and the bugs say less per row before they leave one out
     layout.py                    what the page keeps here: each account's tab strip and panes, and the sidebar's cards
     bellseen.py                  what each account has dismissed from its bell: an update to one version, until a newer one is out
