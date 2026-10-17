@@ -709,21 +709,24 @@ function rnDrawPeople(){
       ${v.may_manage ? `<button type="button" class="link" data-withdraw="${v.offer.id}">Withdraw</button>` : ""}</div>` : ""}
     <label class="ndcap"><input type="checkbox" id="rnInviteOnly"${only ? " checked" : ""}${v.may_manage ? "" : " disabled"}>
       Invite only</label>
-    <div class="sub whoson">On it: ${v.members.length ? v.members.map(esc).join(", ") : "nobody yet"}${
-      v.may_manage ? ` · <button type="button" class="link" id="rnRolesGo">Roles on this project</button>` : ""}</div>
+    <div class="sub whoson">On it: ${v.members.length ? v.members.map(n => v.may_manage
+      ? `<button type="button" class="link" data-rnaccess="${esc(n)}" title="what ${esc(n)} holds here and everywhere">${esc(n)}</button>`
+      : esc(n)).join(", ") : "nobody yet"}</div>
     ${v.invites.map(i => `<div class="rninvite">${esc(i.name)} <span class="dim">invited${i.role ? ` as ${esc(i.role)}` : ""} by ${esc(i.by || "somebody")} ${esc(ago(i.at))}</span>
       <button type="button" class="link" data-withdraw="${i.id}">Withdraw</button></div>`).join("")}
     ${v.may_invite && invitable.length ? (v.roles || []).length ? `<div class="rninvitebar">
       <select id="rnInviteWho" aria-label="account to invite">${invitable.map(n => `<option>${esc(n)}</option>`).join("")}</select>
       <select id="rnInviteRole" aria-label="the role they are invited as">${v.roles.map(n => `<option>${esc(n)}</option>`).join("")}</select>
       <button type="button" id="rnInviteGo">Invite</button></div>`
-      : `<div class="sub warn">no role on this project to invite anybody with: add one on the Roles tab</div>` : ""}`;
+      : `<div class="sub warn">no role on this project to invite anybody with: add one on the Roles page</div>` : ""}`;
   const o = $("rnOwner");
   if (o) o.onchange = () => { d.owner = o.value; rnDrawPeople(); };
-  // What each person may do here is the Roles tab's (R152): a project's
-  // owner gives its roles there, on the projects they own.
-  const rg = $("rnRolesGo");
-  if (rg) rg.onclick = () => openRolesTab();
+  // What each person holds (R152): a name opens their roles, which a
+  // project's owner gives on the projects they own (the operator, 17 Oct:
+  // the Roles page lists roles alone).
+  const pn = rnFor;
+  $("rnPeople").querySelectorAll("[data-rnaccess]").forEach(x => x.onclick = () =>
+    rolesAccessOpen(x.dataset.rnaccess, () => rnLoadPeople(pn, true)));
   const io = $("rnInviteOnly");
   if (io && v.may_manage) io.onchange = () => { d.invite_only = io.checked; rnDrawPeople(); };
   const act = async body => {

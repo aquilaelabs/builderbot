@@ -698,7 +698,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    Back. The detail: the projects an account is on, a row each (its name,
    its roles there, x), Add to project under them, what it adds up to as a
    grid; a role's areas a row each, its sentence and its Read and Write. */
-.rolestab label.pick{font:var(--f-ui);color:var(--ink)}
+.rolestab label.pick,.ueaccess label.pick,#ramodal label.pick{font:var(--f-ui);color:var(--ink)}
+.ueaccess .upick{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
+.ueaccess label.pick{display:inline-flex;align-items:center;gap:6px;min-height:var(--tap)}
 .rsplit{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
 .rlist{display:flex;flex-direction:column;border-right:var(--hair) solid var(--line);min-width:0}
 .rrow{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;white-space:normal;
@@ -747,8 +749,11 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
 .rdetail>.rhead .dim{font:var(--f-ui)}
 .rback{display:none}
-.raddrole{display:flex;gap:6px;padding:var(--row-y) var(--row-x);border-bottom:var(--hair) solid var(--line)}
-.raddrole input{flex:1 1 auto;min-width:0;width:auto}
+/* Remove at the foot of a picked account's or role's settings, under Save
+   and apart from it (the operator, 17 Oct). */
+.rdetail>.rfoot{display:flex;align-items:center;gap:8px;margin-top:var(--row-y);padding-top:var(--row-y);
+  border-top:var(--hair) solid var(--line)}
+.rdetail>.setgrid{margin:var(--row-y) 0}
 .rprojects{display:flex;flex-direction:column}
 .rproj{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:6px 0;border-bottom:var(--hair) solid var(--line)}
 .rproj .rprojname{min-width:8rem}
@@ -758,15 +763,16 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rlvl{font:var(--f-note);font-weight:600;color:var(--dim)}
 .rlvl.write{color:var(--accent)}
 .rcan .td:not(.lead),.rcan .th:not(:first-child){text-align:center}
-/* The Roles page's one list: the accounts, then the roles, each under a
-   quiet heading of its own with how many. */
-.rgroup{padding:calc(var(--row-y) + 4px) var(--row-x) 4px;font:600 11px/1.2 system-ui,sans-serif;
-  letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:var(--hair) solid var(--line)}
-.rgroup .dim{font-weight:400;margin-left:4px}
+/* The Roles page's list: one list (the operator, 17 Oct), the projects'
+   owner roles folded into one row at its end that opens on them, each
+   indented under it. */
+.rrow.rfold .rchev{color:var(--dim);font-weight:400;margin-left:4px}
+.rrow.rsub{padding-left:calc(var(--row-x) + 14px)}
+.rrow.rsub .name{font-weight:500}
 @media(max-width:900px){
   .rsplit{grid-template-columns:minmax(0,1fr)}
   .rlist{border-right:0}
-  .rdetail{padding:0}
+  .rdetail{padding:0 var(--row-x) var(--row-y)}
   .rsplit.open>.rlist,.rsplit:not(.open)>.rdetail{display:none}
   .rback{display:inline-flex;margin:var(--row-y) 0 0}
   /* As a page of settings does: no row stays lit on the list, and the
@@ -1798,6 +1804,12 @@ select:focus{outline-offset:-2px}
    a tick box three words from its label is a target nobody hits on a phone. */
 .modal label.row-label{display:flex;align-items:center;gap:8px;cursor:pointer}
 .modal label.row-label input{width:auto;margin:0;flex:0 0 auto}
+/* A box picked among several in the dialog a project's People opens on a
+   person's roles (the operator, 17 Oct): the box and its name side by side. */
+#ramodal .upick{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+#ramodal label.pick{display:inline-flex;align-items:center;gap:6px;margin:0;min-height:var(--tap);
+  font:var(--f-ui);color:var(--ink);cursor:pointer}
+#ramodal label.pick input{width:auto;margin:0;flex:0 0 auto}
 /* "push" on a project row. Green because it is a capability the project has,
    and plain text because it is not a control; it cannot be toggled here. */
 .row .sub .ok{color:var(--accent)}
@@ -2890,7 +2902,7 @@ pre.diff .d-ctx{color:var(--dim)}
   .ssplit>.snav>.rrow:last-child,.rsplit>.rlist>.rrow:last-child{border-bottom:0}
   .rsplit{column-gap:16px;padding:12px var(--row-x) 16px}
   .rsplit>.rdetail{border:var(--hair) solid var(--line);border-radius:var(--r-surface);background:var(--panel);
-    padding:0 var(--row-x) var(--row-y);align-self:start}
+    padding:0 var(--row-x) var(--row-y);align-self:start;position:sticky;top:12px}
   /* The Docker manager's group: the project its card's heading. */
   .dmtab .dmcard>.dmgroup{border-bottom:var(--hair) solid var(--line)}
   .dmtab .row + .dmgroup{margin-top:0}

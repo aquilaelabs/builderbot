@@ -4422,7 +4422,7 @@ class Handler(BaseHTTPRequestHandler):
             return ""
         label = next((a[1] for a in roles.AREAS if a[0] == area), area)
         return (f"your roles give no {label} Read" + (f" on {project}" if project else "")
-                + ": the Roles tab gives one")
+                + ": a role that holds it is picked in their settings on the Users page")
 
     def _term_refused(self, rest, me=None):
         """A sentence when this account may not have the terminal it is asking
@@ -7546,7 +7546,7 @@ class Handler(BaseHTTPRequestHandler):
             if me is who or users.may(me, "debug"):
                 return self._json({"error": "a machine's logs are for an account with the debug "
                                             "grant, and this session's account has not got it: "
-                                            "the Roles tab"}, 403)
+                                            "a role with it is picked in their settings on the Users page"}, 403)
         elif self._refused("debug"):
             return None
         r = nodes.log_read_named(self._principal(), asking, field(req, "node"),
@@ -7581,7 +7581,8 @@ class Handler(BaseHTTPRequestHandler):
             me = users.account_of(who)
             if me is who or users.may(me, "debug"):
                 return ("the controller's diagnostics are for an account with the debug grant, "
-                        "and this session's account has not got it: the Roles tab")
+                        "and this session's account has not got it: a role with it is given "
+                        "in their settings on the Users page")
             if not prefs.get(who["session"])["diag"]:
                 return (f"{who['session']} has not been granted the controller's "
                         "diagnostics: Debug in its settings")

@@ -1,6 +1,9 @@
 // The Users tab: who may sign in, and which projects they see. Step 3 of
 // roadmap #22; the design and the reasoning are docs/users.md and are not
-// repeated here. Its own classic script beside index.html, per the
+// repeated here. A page of settings (the operator, 17 Oct): the accounts a
+// list beside the picked one's settings, its name, roles and projects,
+// profile and password saved together and Remove at their foot; Add user
+// at the right of the page's bar, in a dialog. Its own classic script beside index.html, per the
 // new-surface rule: same page, same global scope, one file per surface.
 //
 // Chrome comes from docSurface() and the hard rules are held by uniform.mjs;
@@ -48,7 +51,8 @@ async function usersAct(body){
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) return notify(j.error || `failed (HTTP ${r.status})`, true);
-    if (body.action === "add") usersAddDraft = {name: "", pw: "", role: "user"};
+    if (body.action === "add"){ usersAddDraft = {name: "", pw: "", role: "user"}; usersPick = body.name; usersPhoneOpen = true; }
+    if (body.action === "remove"){ usersPick = ""; usersPhoneOpen = false; }
     notify(body.action === "remove" ? `${body.name} removed`
          : body.action === "add" ? `${body.name} added`
          : `${body.name} updated`);
@@ -56,205 +60,209 @@ async function usersAct(body){
   await loadUsers();
 }
 
-// One row of the table (R218 step 8): the account, its roles, its projects,
-// its Claude login and when it was last seen, Edit and Remove at the end.
-// The owner's is the one with rules attached, and it says them rather than
-// showing controls that would be refused.
-const USER_COLS = [{label: "Account", w: "minmax(0,.8fr)"}, {label: "Role", w: "minmax(0,.7fr)"},
-                   {label: "Projects", w: "minmax(0,1.1fr)"}, {label: "Claude", w: "minmax(0,1fr)"},
-                   {label: "Last seen", w: "8rem"}, {act: true, w: "10.5rem"}];
+// ---- a list beside the one picked ----------------------------------------
+// On a phone the list, then the account's settings sliding in over it with
+// Back, and the list sliding back (the shape every page of settings has).
+let usersPick = "";              // the account on show
+let usersPhoneOpen = false;      // on a phone, the settings are over the list
+let usersMoveNext = "";          // the slide the next draw plays
+let usersEdit = null;            // what is typed into the picked account's fields
+let usersRolesAsked = false;     // /api/roles read once for the roles fields
+const USER_KEYS = ["name", "full", "email", "git_name", "git_email", "pw"];
+
+function usersEditFrom(u){
+  const pf = u.profile || {};
+  return {for: u.name, name: u.name, full: pf.full_name || "", email: pf.email || "",
+          git_name: pf.git_name || "", git_email: pf.git_email || "", pw: ""};
+}
+function usersPicked(){ return (usersList || []).find(x => x.name === usersPick) || null; }
+function usersDirty(){
+  const u = usersPicked();
+  if (!u || !usersEdit) return false;
+  const was = usersEditFrom(u);
+  return USER_KEYS.some(k => was[k] !== usersEdit[k]) || (typeof rolesPeopleDirty === "function" && rolesPeopleDirty());
+}
+function usersRedraw(){ usersRev++; drawPanes(); }
+
+// An account's row: its name, what it holds, and when it was last seen.
 function userRow(u){
-  const isOwner = u.role === "owner";
-  const isMe = u.name === usersMeta.me;
-  const seen = !u.seen ? "never" : ago(u.seen);
-  // Its projects and roles are the Roles tab's to set (R152); shown here.
-  const projs = u.projects.map(projLabel);
+  const on = u.name === usersPick;
   const more = (u.roles || []).filter(r => r !== u.role && r !== "user");
   const roles = [...(u.role === "owner" || u.role === "admin" ? [u.role] : []), ...more];
-  return `<div class="row stack2 urow" data-user="${esc(u.name)}">
-    ${tblLine(USER_COLS, [
-      `${esc(u.name)}${isMe ? ` <span class="pill">you</span>` : ""}`,
-      roles.length ? esc(roles.map(r => usersMeta.role_labels?.[r] || r).join(", ")) : `<span class="dim">no role</span>`,
-      projs.length ? `<span title="${esc(projs.join(", "))}">${esc(projs.join(", "))}</span>` : "on no project yet",
-      u.claude ? `<span title="signed in to Claude as ${esc(u.claude)}">${esc(u.claude)}</span>` : "no Claude login yet",
-      esc(seen),
-      `<div class="actbar">
-        <button type="button" data-uedit="${esc(u.name)}"
-          title="everything about this account in one dialog, saved together">Edit</button>
-        ${isOwner
-          ? `<button type="button" class="danger" disabled
-               title="the owner cannot be deleted: rename it instead">Remove</button>`
-          : `<button type="button" class="danger" data-uremove="${esc(u.name)}">Remove</button>`}
-      </div>`])}
-    ${u.claude_shared_with?.length ? `<div class="sub warn">the same Claude account as ${u.claude_shared_with.map(esc).join(", ")
-      }, allowed only while one person is behind both</div>` : ""}
-    ${isOwner ? `<div class="sub dim">The owner cannot be deleted.</div>` : ""}
-  </div>`;
+  return `<button type="button" class="rrow${on ? " on" : ""}" data-upick="${esc(u.name)}"${on ? ' aria-current="true"' : ""}>
+    <span class="name">${esc(u.name)}${u.name === usersMeta.me ? ` <span class="pill">you</span>` : ""}</span>
+    <span class="rtags">${roles.length ? roles.map(r => `<span class="pill${r === "owner" ? " ok" : ""}">${esc(usersMeta.role_labels?.[r] || r)}</span>`).join("")
+      : `<span class="dim">no role</span>`}<span class="dim">${u.seen ? `seen ${esc(ago(u.seen))}` : "never seen"}</span></span></button>`;
 }
 
-// Which projects a `user` account may see. Only the ones the admin doing the
-// giving can see themselves: the server filters again, so this is the honest
-// list rather than the enforcing one.
-// The form that adds an account: the same on every draw. What an account
-// gets is the docs' to say (the operator, 16 Oct), not a block of prose here.
-function usersSections(){
-  return `
-    ${docSection("users", "add", "Add somebody", "", `
-
-        <div class="uadd">
-          <div class="setrow col">${lbl("uNewName", "Account name")}
-            <input id="uNewName" autocomplete="off"></div>
-          <div class="setrow col">${lbl("uNewPw", "Password", "at least 8 characters. They can change it on their Profile")}
-            <input id="uNewPw" type="password" autocomplete="new-password"></div>
-          <div class="setrow col">${lbl("uNewPw2", "The password again")}
-            <input id="uNewPw2" type="password" autocomplete="new-password"></div>
-          <div class="setrow col">${lbl("uNewFull", "Name", "optional: how they are addressed; their git identity is theirs to set on their Profile")}
-            <input id="uNewFull" autocomplete="off"></div>
-          <div class="setrow col">${lbl("uNewEmail", "Email", "optional")}
-            <input id="uNewEmail" type="email" autocomplete="off"></div>
-        </div>
-        <div class="sub">A new account holds no role: give it one on the Roles tab.</div>
-        <div class="actbar"><button type="button" class="primary" id="uAdd">Add</button></div>`)}`;
+// The picked account's settings, saved together: its name, its roles and
+// projects (tab-roles.js draws those), the Profile fields an administrator
+// may fill in for somebody, and a new password, which an administrator sets
+// without the current one, that being the way back in for somebody locked
+// out. Remove at the foot, away from Save.
+function usersDetail(u){
+  if (!usersEdit || usersEdit.for !== u.name) usersEdit = usersEditFrom(u);
+  const e = usersEdit, isMe = u.name === usersMeta.me, isOwner = u.role === "owner";
+  const f = (id, key, label, type = "text", extra = "", help = "") =>
+    `<div class="setcell">${lbl(id, label, help)}<input id="${id}" data-ufield="${key}" type="${type}" value="${esc(e[key] || "")}"
+       autocomplete="off" spellcheck="false" ${extra}></div>`;
+  const facts = [u.claude ? `Claude: ${esc(u.claude)}` : "no Claude login yet", u.seen ? `seen ${esc(ago(u.seen))}` : "never seen",
+                 u.projects?.length ? `on ${u.projects.length} project${u.projects.length === 1 ? "" : "s"}` : "on no project yet"];
+  const access = rolesData === null ? `<div class="sub dim">reading its roles…</div>` : rolesAccessFields(u.name);
+  return `<div class="rhead"><b>${esc(u.name)}</b> <span class="dim">${facts.join(" · ")}</span></div>
+    ${u.claude_shared_with?.length ? `<div class="sub warn">the same Claude account as ${u.claude_shared_with.map(esc).join(", ")
+      }, allowed only while one person is behind both</div>` : ""}
+    <div class="setgrid">
+      ${isMe ? f("ueName", "name", "Account name", "text", "disabled", "your own account name changes on your Profile, which keeps this browser signed in")
+             : f("ueName", "name", "Account name", "text", "", "what they sign in with. Changing it signs their browsers out")}
+      ${f("ueFull", "full", "Their name")}
+      ${f("ueEmail", "email", "Their email", "email")}
+      ${f("ueGitName", "git_name", "Git name", "text", "", "on their commits. Blank means their name")}
+      ${f("ueGitEmail", "git_email", "Git email", "email", "", "on their commits. Blank means their email")}
+      ${f("uePw", "pw", "New password", "password", 'autocomplete="new-password"', "blank keeps the current one. Set without the old one, which is the way back in for somebody locked out")}
+    </div>
+    <div class="setrow col ueaccess">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
+    <div class="sub bad" id="ueErr" hidden></div>
+    <div class="actbar"><span class="state">${usersDirty() ? "unsaved" : ""}</span>
+      <button type="button" id="ueRevert">Revert</button>
+      <button type="button" class="primary" id="ueSave">Save</button></div>
+    <div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
+      : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}</div>`;
 }
 
 function renderUsersInto(i){
   const d = docSurface(i, "users");
   if (!d) return;
-  d.setBar(`<span class="dim">who may sign in here, and which projects they see</span>`);
+  d.setBar(`<span class="dim">who may sign in here, what each may do, and which projects they see</span><span class="sp"></span>
+    <span class="actbar"><button type="button" class="primary" id="uAddOpen">Add user</button></span>`);
   if (usersList === null){
-    // Its template (R218 step 16): the table's head and the two sections
-    // under it are the page's own; the accounts are on their way.
-    d.list.innerHTML = skTpl(skTable(USER_COLS, 2, "utbl") + usersSections());
+    // Its template (R218 step 16): the list beside the settings, whose
+    // labels are the page's own; the accounts are on their way.
+    const field = label => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(16, "ctl")}</div>`;
+    d.list.innerHTML = skTpl(`<div class="rsplit"><div class="rlist">${skRows(3)}</div><div class="rdetail">${
+      field("Account name") + field("Their name") + field("Roles and projects")}</div></div>`);
     loadUsers();
+    wireUsersBar(d.el);
     return;
   }
+  if (rolesData === null && !usersRolesAsked){ usersRolesAsked = true; loadRoles().then(usersRedraw); }
+  if (!usersPicked()) usersPick = usersList[0]?.name || "";
+  const u = usersPicked();
   d.list.innerHTML = `
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
-    ${usersList.length ? tblWrap(USER_COLS, usersList.map(userRow).join(""), "utbl") : ""}
-    ${usersSections()}`;
-  wireSections(d.list);
+    <div class="rsplit${usersPhoneOpen ? " open" : ""}">
+      <div class="rlist">${usersList.map(userRow).join("") || `<div class="empty">nobody yet</div>`}</div>
+      <div class="rdetail"><button type="button" class="rback" data-uback>‹ People</button>${u ? usersDetail(u) : `<div class="empty">nobody to show</div>`}</div>
+    </div>`;
+  wireUsersBar(d.el);
   wireUsers(d.el);
+  if (usersMoveNext){ splitMove(d.list.querySelector(".rsplit"), usersMoveNext); usersMoveNext = ""; }
+}
+
+function wireUsersBar(el){
+  const a = el.querySelector("#uAddOpen");
+  if (a) a.onclick = () => usersAddOpen();
 }
 
 function wireUsers(el){
-  el.querySelectorAll("[data-uremove]").forEach(b => b.onclick = () => {
-    const n = b.dataset.uremove;
-    if (confirm(`Remove ${n}? They lose access immediately.`))
-      usersAct({action: "remove", name: n});
+  el.querySelectorAll("[data-upick]").forEach(b => b.onclick = () => {
+    if (b.dataset.upick !== usersPick && usersDirty() && !confirm(`Leave ${usersPick}'s changes unsaved?`)) return;
+    usersPick = b.dataset.upick; usersEdit = null; usersPhoneOpen = true; usersMoveNext = "in"; usersRedraw();
   });
-  // A role is saved on Save, not on the change: the select is a question
-  // and the button is the answer (docs/design-language.md, Settings).
-  el.querySelectorAll("[data-uedit]").forEach(b => b.onclick = () => usersEditOpen(b.dataset.uedit));
-  const add = el.querySelector("#uAdd");
-  for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewPw2", "pw2"],
-                           ["#uNewFull", "full"], ["#uNewEmail", "email"]]){
-    const f = el.querySelector(id);
-    if (!f) continue;
-    f.value = usersAddDraft[key] || "";
-    f.oninput = f.onchange = () => { usersAddDraft[key] = f.value; };
-  }
-  if (add) add.onclick = () => {
-    const name = el.querySelector("#uNewName").value.trim();
-    const pw = el.querySelector("#uNewPw").value;
-    if (!name || !pw) return notify("a name and a password", true);
-    // Typed twice (R134): a password nobody can read back is one a slip
-    // locks somebody out with.
-    if (pw !== el.querySelector("#uNewPw2").value) return notify("the two passwords differ", true);
-    const full = el.querySelector("#uNewFull").value.trim(), email = el.querySelector("#uNewEmail").value.trim();
-    usersAct({action: "add", name, password: pw, role: "user",
-              profile: {...(full ? {full_name: full} : {}), ...(email ? {email} : {})}});
+  el.querySelectorAll("[data-uback]").forEach(b => b.onclick = () => { usersPhoneOpen = false; usersMoveNext = "back"; usersRedraw(); });
+  // What is typed is kept across the repaints a poll brings (B422's lesson).
+  el.querySelectorAll("[data-ufield]").forEach(f => f.oninput = f.onchange = () => {
+    usersEdit[f.dataset.ufield] = f.value;
+    const st = el.querySelector(".rdetail .actbar .state");
+    if (st) st.textContent = usersDirty() ? "unsaved" : "";
+  });
+  const box = el.querySelector("#ueAccess");
+  if (box && rolesData !== null) wireRolesAccess(box, usersRedraw);
+  const rv = el.querySelector("#ueRevert");
+  if (rv) rv.onclick = () => { usersEdit = null; rolesPeopleDraft = null; usersRedraw(); };
+  const sv = el.querySelector("#ueSave");
+  if (sv) sv.onclick = () => usersSave(el, sv);
+  const rm = el.querySelector("#ueRemove");
+  if (rm) rm.onclick = () => {
+    if (confirm(`Remove ${usersPick}? They lose access immediately.`)) usersAct({action: "remove", name: usersPick});
   };
 }
 
-// ---- the edit dialog ------------------------------------------------------
-// Everything about one account in one place, saved together (docs/
-// design-language.md, Settings): its name, role, projects, the Profile
-// fields an administrator may fill in for somebody, and a new password,
-// which an administrator sets without the current one, that being the way
-// back in for somebody locked out. The owner's role is not on offer; the
-// store refuses it anyway. Built once, on first use, and filled per open.
-function usersEditOpen(name){
-  const u = usersList.find(x => x.name === name);
-  if (!u) return;
-  let m = document.getElementById("umodal");
-  if (!m){
-    m = document.createElement("div");
-    m.id = "umodal"; m.className = "modal"; m.hidden = true;
-    m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
-    document.body.appendChild(m);
-    armModal(m);                          // made after the page-load pass
-
-  }
-  const isOwner = u.role === "owner";
-  const pf = u.profile || {};
-  const f = (id, label, val, type = "text", extra = "", help = "") =>
-    `<div class="field">${lbl(id, label, help)}<input id="${id}" type="${type}" value="${esc(val || "")}"
-       autocomplete="off" spellcheck="false" ${extra}></div>`;
-  m.innerHTML = `<div class="box">
-    <h3>Edit ${esc(u.name)}</h3>
-    ${u.name === usersMeta.me
-      ? f("ueName", "Account name", u.name, "text", "disabled", "your own account name changes on your Profile, which keeps this browser signed in")
-      : f("ueName", "Account name", u.name, "text", "", "what they sign in with. Changing it signs their browsers out")}
-    <div class="field">${lbl("", "Roles and projects", "what this account may do, set on the Roles tab (R152)")}
-      <div class="setrow"><span class="hint grow">${isOwner ? "BuilderBot's owner: every area, everywhere"
-        : esc((u.what_may?.roles || []).join(", ") || "no role yet")}</span>
-        <button type="button" id="ueRolesGo">Roles</button></div>
-      ${!isOwner && (u.what_may?.may || []).length ? factGrid(u.what_may.may) : ""}</div>
-    ${f("ueFull", "Their name", pf.full_name)}
-    ${f("ueEmail", "Their email", pf.email, "email")}
-    ${f("ueGitName", "Git name", pf.git_name, "text", "", "on their commits. Blank means their name")}
-    ${f("ueGitEmail", "Git email", pf.git_email, "email", "", "on their commits. Blank means their email")}
-    ${f("uePw", "New password", "", "password", 'autocomplete="new-password"', "blank keeps the current one. Set without the old one, which is the way back in for somebody locked out")}
-    <div class="field" id="ueErrWrap" hidden><div class="hint bad" id="ueErr"></div></div>
-    <div class="foot">
-      <button id="ueSave" class="primary">Save</button>
-      <button id="ueCancel">Cancel</button>
-    </div>
-  </div>`;
-  m.hidden = false;
-  // Dismissed like every other dialog: the backdrop, or Escape (modalKeys).
-  m.onclick = e => { if (e.target === m) m.hidden = true; };
-  m.querySelector("#ueRolesGo").onclick = () => {
-    m.hidden = true;
-    rolesWho = u.name; rolesPeopleDraft = null;
-    openRolesTab();
-  };
-  m.querySelector("#ueCancel").onclick = () => { m.hidden = true; };
-  m.querySelector("#ueSave").onclick = () => usersEditSave(u.name, m);
-  m.querySelector("#ueName").focus();
-}
-
-async function usersEditSave(name, m){
-  const v = id => m.querySelector("#" + id)?.value ?? "";
-  const body = {action: "edit", name, to: m.querySelector("#ueName")?.disabled ? "" : v("ueName").trim(),
-                profile: {full_name: v("ueFull"), email: v("ueEmail"),
-                          git_name: v("ueGitName"), git_email: v("ueGitEmail")},
-                password: v("uePw")};
+async function usersSave(el, btn){
+  const u = usersPicked(), e = usersEdit;
+  if (!u || !e) return;
+  const err = el.querySelector("#ueErr");
+  const say = t => { err.textContent = t; err.hidden = !t; };
   // An email that is not one is caught here, before a request: the field
   // knows (type=email), and the server checks the same shape again.
   for (const id of ["ueEmail", "ueGitEmail"]){
-    const el = m.querySelector("#" + id);
-    if (el && el.value && !el.checkValidity()){
-      m.querySelector("#ueErr").textContent = `${el.value} is not an email address`;
-      m.querySelector("#ueErrWrap").hidden = false;
-      return;
-    }
+    const f = el.querySelector("#" + id);
+    if (f && f.value && !f.checkValidity()) return say(`${f.value} is not an email address`);
   }
-  m.querySelector("#ueErrWrap").hidden = true;
-  const btn = m.querySelector("#ueSave");
+  say("");
   busy(btn, "Saving");
   try{
+    // Its roles first, under the name they are held by, before a rename.
+    if (!(await rolesAccessSave())) return;
+    const was = usersEditFrom(u);
+    if (!USER_KEYS.some(k => was[k] !== e[k])) return;
+    const body = {action: "edit", name: u.name, to: u.name === usersMeta.me ? "" : e.name.trim(),
+                  profile: {full_name: e.full, email: e.email, git_name: e.git_name, git_email: e.git_email},
+                  password: e.pw};
     const r = await fetch("/api/users", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.error){
-      m.querySelector("#ueErr").textContent = j.error || `failed (HTTP ${r.status})`;
-      m.querySelector("#ueErrWrap").hidden = false;
-      return;
-    }
-    m.hidden = true;
-    notify(`${body.to || name} saved`);
+    if (!r.ok || j.error) return say(j.error || `failed (HTTP ${r.status})`);
+    notify(`${body.to || u.name} saved`);
+    usersPick = body.to || u.name; usersEdit = null;
     await loadUsers();
-  }catch(e){ notify(String(e), true); }
+  }catch(x){ notify(String(x), true); }
   finally{ if (btn.isConnected) unbusy(btn, "Save"); }
+}
+
+// ---- Add user, a dialog ---------------------------------------------------
+// What an account gets is the docs' to say (the operator, 16 Oct), not a
+// block of prose here; a new one holds no role, given beside its account.
+function usersAddOpen(){
+  let m = document.getElementById("uaddmodal");
+  if (!m){
+    m = document.createElement("div");
+    m.id = "uaddmodal"; m.className = "modal"; m.hidden = true;
+    m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+    document.body.appendChild(m);
+    armModal(m);
+  }
+  m.innerHTML = `<div class="box"><h3>Add user</h3>
+    <div class="field">${lbl("uNewName", "Account name")}<input id="uNewName" autocomplete="off"></div>
+    <div class="field">${lbl("uNewPw", "Password", "at least 8 characters. They can change it on their Profile")}
+      <input id="uNewPw" type="password" autocomplete="new-password"></div>
+    <div class="field">${lbl("uNewPw2", "The password again")}<input id="uNewPw2" type="password" autocomplete="new-password"></div>
+    <div class="field">${lbl("uNewFull", "Name", "optional: how they are addressed; their git identity is theirs to set on their Profile")}
+      <input id="uNewFull" autocomplete="off"></div>
+    <div class="field">${lbl("uNewEmail", "Email", "optional")}<input id="uNewEmail" type="email" autocomplete="off"></div>
+    <div class="field"><div class="hint">A new account holds no role: give it one beside its account once it is added.</div></div>
+    <div class="foot"><button id="uAdd" class="primary">Add</button><button id="uAddCancel">Cancel</button></div></div>`;
+  for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewPw2", "pw2"],
+                           ["#uNewFull", "full"], ["#uNewEmail", "email"]]){
+    const f = m.querySelector(id);
+    f.value = usersAddDraft[key] || "";
+    f.oninput = f.onchange = () => { usersAddDraft[key] = f.value; };
+  }
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m) m.hidden = true; };
+  m.querySelector("#uAddCancel").onclick = () => { m.hidden = true; };
+  m.querySelector("#uAdd").onclick = async () => {
+    const name = m.querySelector("#uNewName").value.trim();
+    const pw = m.querySelector("#uNewPw").value;
+    if (!name || !pw) return notify("a name and a password", true);
+    // Typed twice (R134): a password nobody can read back is one a slip
+    // locks somebody out with.
+    if (pw !== m.querySelector("#uNewPw2").value) return notify("the two passwords differ", true);
+    const full = m.querySelector("#uNewFull").value.trim(), email = m.querySelector("#uNewEmail").value.trim();
+    const before = (usersList || []).length;
+    await usersAct({action: "add", name, password: pw, role: "user",
+                    profile: {...(full ? {full_name: full} : {}), ...(email ? {email} : {})}});
+    if ((usersList || []).length > before) m.hidden = true;
+  };
+  m.querySelector("#uNewName").focus();
 }

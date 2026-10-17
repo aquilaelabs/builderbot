@@ -111,7 +111,7 @@ function renderProfileInto(i){
           </div>
         </div>`)}
     ${sec("may", "What you may do", `
-        ${wm.may.length ? factGrid(wm.may) : `<div class="hint">nothing yet: an administrator gives you a role on the Roles tab</div>`}`)}
+        ${wm.may.length ? factGrid(wm.may) : `<div class="hint">nothing yet: an administrator gives you a role</div>`}`)}
     ${sec("browser", "On this browser", `
         <div class="logset">
           <div class="logdays setrow col">

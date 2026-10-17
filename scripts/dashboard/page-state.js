@@ -106,8 +106,8 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 // are off and the server refuses them; it is a seatbelt against editing the
 // wrong project, not a wall, because an administrator has a shell.
 const notMine = p => p.mine === false;
-const NOT_MINE_WHY = "read-only: you hold no role on this project; the Roles tab "
-  + "gives you one to work on it";
+const NOT_MINE_WHY = "read-only: you hold no role on this project; its owner or an "
+  + "administrator gives you one to work on it";
 // May this account have a shell at all (roadmap #27)? An account without one
 // gets its Claude session as a read-only console: the proxy relays it to a
 // ttyd started without --writable and refuses any argument that is not a

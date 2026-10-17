@@ -897,47 +897,48 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.evaluate(() => { const c = document.getElementById('cardTools');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
   await page.evaluate(() => openUsersTab());
-  await page.waitForSelector('.userstab .urow', { timeout: 15000 });
+  await page.waitForSelector('.userstab [data-upick]', { timeout: 15000 });
 
-  const rows = () => page.$$eval('.userstab .urow', rs => rs.map(r => ({
-    name: r.dataset.user,
-    text: r.textContent.replace(/\s+/g, ' ').trim(),
-    remove: !!r.querySelector('[data-uremove]'),
-    deadRemove: [...r.querySelectorAll('button')].some(
-      b => b.textContent.trim() === 'Remove' && b.disabled),
-    role: !!r.querySelector('[data-urole]'),
-  })));
+  // A page of settings (the operator, 17 Oct): the accounts a list beside
+  // the picked one's settings, Remove at their foot.
+  const rows = () => page.$$eval('.userstab [data-upick]', rs => rs.map(r => ({
+    name: r.dataset.upick, text: r.textContent.replace(/\s+/g, ' ').trim() })));
+  const pick = async n => { await page.click(`.userstab [data-upick="${n}"]`);
+    await page.waitForFunction(n => document.querySelector('.userstab .rdetail .rhead b')?.textContent === n, n, { timeout: 15000 }); };
+  const detail = () => page.$eval('.userstab .rdetail', d => d.textContent.replace(/\s+/g, ' ').trim());
   let rs = await rows();
   const owner = rs.find(r => r.name === 'test');
   ok(owner && /owner/.test(owner.text), 'the tab lists the owner');
-  ok(owner && !owner.remove && owner.deadRemove && !owner.role,
-     '...with no delete and no role picker, because neither is allowed');
-  ok(owner && /cannot be deleted/.test(owner.text),
+  await pick('test');
+  ok(!await page.$('.userstab #ueRemove') && !await page.$('.userstab #ueRole'),
+     '...with no Remove and no role picker, because neither is allowed');
+  ok(/cannot be deleted/.test(await detail()),
      '...and it says why rather than offering a control that would fail');
 
-  // Adding somebody, from the tab rather than from a shell.
-  await openSection(page, 'users:add');
+  // Adding somebody: Add user at the right of the page's bar, a dialog.
+  await page.click('.userstab #uAddOpen');
+  await page.waitForSelector('#uaddmodal:not([hidden]) #uNewName');
   await page.fill('#uNewName', 'tabmade');
   await page.fill('#uNewPw', 'tabmadepw1');
   await page.fill('#uNewPw2', 'tabmadepw2');
   await page.fill('#uNewFull', 'Tab Made');
   await page.fill('#uNewEmail', 'tab@example.invalid');
-  ok(!await page.$('#uNewRole'), 'Add somebody asks for no role: the Roles tab gives one (R152)');
+  ok(!await page.$('#uNewRole'), 'Add user asks for no role: it is given beside the account once added (R152)');
   // Typed twice (R134): two that differ add nobody.
   await page.click('#uAdd');
   await sleep(600);
-  ok(!(await page.$('.userstab .urow[data-user="tabmade"]')),
-     'two passwords that differ add nobody');
+  ok(!(await page.$('.userstab [data-upick="tabmade"]')) && !await page.$eval('#uaddmodal', m => m.hidden),
+     'two passwords that differ add nobody, and the dialog stays');
   await page.fill('#uNewPw2', 'tabmadepw1');
   // A reload landing between typing and Add repaints the tab; what was
   // typed survives it (B422: it emptied the form, and Add sent nothing).
   await page.evaluate(async () => { await loadUsers(); });
   ok(await page.$eval('#uNewName', e => e.value) === 'tabmade' && await page.$eval('#uNewPw', e => e.value) === 'tabmadepw1',
-     'what is typed into Add somebody survives the list being drawn again');
+     'what is typed into Add user survives the list being drawn again');
   await page.click('#uAdd');
-  await page.waitForFunction(() => !!document.querySelector(
-    '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
-  ok(true, 'Add makes an account from the tab');
+  await page.waitForFunction(() => document.querySelector('.userstab [data-upick="tabmade"].on')
+    && document.getElementById('uaddmodal').hidden, null, { timeout: 15000 });
+  ok(true, 'Add makes an account from the tab, shuts the dialog and shows the account it made');
   {
     const made = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'tabmade'));
     ok(made?.profile?.full_name === 'Tab Made' && made?.profile?.email === 'tab@example.invalid' && !made?.profile?.git_name,
@@ -948,9 +949,7 @@ ${code}`], { encoding: 'utf8' }).trim();
   // from the record a node reported, since no login lives here (R47), and two
   // on one login said out loud, since Anthropic's terms allow one person per
   // Claude account.
-  rs = await rows();
-  ok(rs.filter(r => r.name !== 'test').every(r => /no Claude login yet/.test(r.text)),
-     'a row says when its account has no Claude login yet');
+  ok(/no Claude login yet/.test(await detail()), 'an account says when it has no Claude login yet');
   const uidOf = (await (await bare('/api/users', { headers: {
       Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json())
     .users.find(u => u.name === 'tabmade').uid;
@@ -963,45 +962,45 @@ ${code}`], { encoding: 'utf8' }).trim();
   grant(`${DIR}/home/users/${uidOf}`, 'one@example.invalid');
   grant(`${DIR}/home`, 'one@example.invalid');
   await page.evaluate(() => loadUsers());
-  await page.waitForFunction(() => document.querySelector('.userstab .urow[data-user="tabmade"] .td[data-th="Claude"]')
-    ?.textContent.trim() === 'one@example.invalid', null, { timeout: 25000 });
-  rs = await rows();
-  ok(/same Claude account as tabmade/.test(rs.find(r => r.name === 'test').text)
-     && /same Claude account as test/.test(rs.find(r => r.name === 'tabmade').text),
-     'two BuilderBot accounts on one Claude login are told so on both rows');
+  await page.waitForFunction(() => /Claude: one@example\.invalid/.test(document.querySelector('.userstab .rdetail .rhead')?.textContent || ''),
+                             null, { timeout: 25000 });
+  const tabmadeSays = await detail();
+  await pick('test');
+  const testSays = await detail();
+  ok(/same Claude account as test/.test(tabmadeSays) && /same Claude account as tabmade/.test(testSays),
+     'two BuilderBot accounts on one Claude login are told so on both');
   rmSync(`${DIR}/home/users/${uidOf}/.claude/.bb-grant.json`, { force: true });
   // The owner's seed goes back: the rest of this file reads the fixture
   // node as signed in, and a Claude press on a node that is not goes to its
   // sign-in instead of to a session.
   writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, seed);
 
-  // ...and giving it a project. Since R152 an account's projects and roles
-  // are the Roles tab's: the edit dialog says what it holds and opens it.
-  await page.click('.userstab .urow[data-user="tabmade"] [data-uedit]');
-  await page.waitForSelector('#umodal:not([hidden])');
-  ok(!await page.$('#umodal #ueRole') && !await page.$('#umodal [data-ueproj]')
-     && /no role yet/.test(await page.$eval('#umodal', m => m.textContent)),
-     'the edit dialog sets no role and no project, and says the account holds none yet');
-  await page.fill('#umodal #ueFull', 'Tab Made');
-  await page.fill('#umodal #ueEmail', 'not-an-email');
-  await page.click('#umodal #ueSave');
-  await page.waitForFunction(() => !document.getElementById('ueErrWrap').hidden, null, { timeout: 10000 });
+  // ...and giving it a project: its roles and projects are picked in its
+  // settings, beside its name, and saved with them (the operator, 17 Oct).
+  await page.evaluate(async () => { await fetch('/api/roles', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set', name: 'reader', scope: 'projects', perms: { projects: 'read' } }) }); await loadRoles(); });
+  await pick('tabmade');
+  await page.waitForSelector('.userstab #ueAccess #rolesAddProj', { timeout: 15000 });
+  ok(!await page.$('.userstab #ueRole') && /on no project yet/.test(await page.$eval('.userstab #ueAccess', e => e.textContent)),
+     'its settings set no built-in role, and say the account is on no project yet');
+  await page.fill('.userstab #ueFull', 'Tab Made');
+  await page.fill('.userstab #ueEmail', 'not-an-email');
+  await page.click('.userstab #ueSave');
+  await page.waitForFunction(() => !document.getElementById('ueErr').hidden, null, { timeout: 10000 });
   ok(/not an email/.test(await page.$eval('#ueErr', e => e.textContent)),
-     'the edit dialog refuses an email that is not one, and stays open');
-  await page.fill('#umodal #ueEmail', 'tab@example.invalid');
-  await page.click('#umodal #ueRolesGo');
-  await page.waitForSelector('.rolestab [data-rwho="tabmade"].on', { timeout: 15000 });
-  ok(await page.evaluate(() => rolesWho) === 'tabmade' && await page.$eval('#umodal', m => m.hidden),
-     '...and its Roles button opens the Roles tab on that account');
-  {
-    const post = (b) => page.evaluate(async (body) => (await fetch('/api/roles', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(), b);
-    await post({ action: 'set', name: 'reader', scope: 'projects', perms: { projects: 'read' } });
-    const r = await post({ action: 'assign', name: 'tabmade', projects: ['alpha'], project_roles: { alpha: ['reader'] } });
-    ok(!r.error && (r.projects || []).includes('alpha'), `the Roles tab puts it on alpha with a role there (${r.error || 'ok'})`);
-  }
-  await page.evaluate(() => openUsersTab());
-  await page.waitForSelector('.userstab .urow[data-user="tabmade"]', { state: 'visible', timeout: 15000 });
+     'Save refuses an email that is not one, and keeps what was typed');
+  await page.fill('.userstab #ueEmail', 'tab@example.invalid');
+  await page.selectOption('.userstab #rolesAddProj', 'alpha');
+  await page.selectOption('.userstab #rolesAddRole', 'reader');
+  await page.click('.userstab #rolesAddOn');
+  await page.waitForSelector('.userstab [data-rproject="alpha"] [data-rprole="reader"]:checked');
+  ok(await page.$eval('.userstab #ueEmail', e => e.value) === 'tab@example.invalid',
+     '...and what is typed survives the roles fields being drawn again');
+  await page.click('.userstab #ueSave');
+  await page.waitForFunction(async () => (await (await fetch('/api/roles')).json()).people
+    .find(p => p.name === 'tabmade')?.project_roles?.alpha?.includes('reader'), null, { timeout: 15000 });
+  ok(true, 'its one Save puts it on alpha with a role there');
+  await page.waitForSelector('.userstab [data-upick="tabmade"]', { state: 'visible', timeout: 15000 });
 
   // The account it made is real, and scoped.
   const as = (path) => bare(path, { headers: {
@@ -1032,9 +1031,10 @@ ${code}`], { encoding: 'utf8' }).trim();
     body: JSON.stringify({ action: 'add', name: 'sneaky', password: 'sneakypw1' }) });
   ok(notYours.status === 403, 'accounts are an administrator\'s');
 
-  await page.click('.userstab .urow[data-user="tabmade"] [data-uremove]');
+  await pick('tabmade');
+  await page.click('.userstab #ueRemove');
   await page.waitForFunction(() => !document.querySelector(
-    '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
+    '.userstab [data-upick="tabmade"]'), null, { timeout: 15000 });
   ok((await as('/api/status')).status === 401,
      'Remove ends it: the account it made can no longer sign in');
 }
@@ -1630,11 +1630,12 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       const gOwner = Object.values(rl.roles || {}).find(r => r.project === 'gamma');
       ok(gOwner && /^owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
          `a project's owner role carries its project (${JSON.stringify(gOwner || {}).slice(0, 80)})`);
-      await page.evaluate(() => openRolesTab());
-      await page.waitForSelector('.rolestab [data-rwho]', { timeout: 15000 });
-      await page.click('.rolestab [data-rwho="plainone"]');
-      // Where the role is offered, as the Add to project row fills its
-      // role picker for each project (R255 step 9).
+      await page.evaluate(() => { loadRoles(); openUsersTab(); });
+      await page.waitForSelector('.userstab [data-upick="plainone"]', { timeout: 15000 });
+      await page.click('.userstab [data-upick="plainone"]');
+      await page.waitForSelector('.userstab #ueAccess .setrow', { timeout: 15000 });
+      // Where the role is offered, as the Add to project row in an
+      // account's settings fills its role picker for each project (R255 step 9).
       const where = await page.evaluate(n => (rolesData.projects || []).filter(pn => rolesOnProject(pn).some(r => r.name === n)), gOwner?.name || '');
       ok(where.length === 1 && where[0] === 'gamma',
          `...and the People section offers it under gamma alone (${JSON.stringify(where)})`);

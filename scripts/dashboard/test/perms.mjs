@@ -1,7 +1,8 @@
-// The Roles tab (R152, the operator, 7 Oct): two sections with a Save and
-// a Revert each. Roles: owner and admin built in and read only, a role
-// added, its scope and Read and Write per area, Write needing Read. People:
-// an account's Global roles, its projects and the roles it holds on each.
+// The Roles tab (R152, the operator, 7 Oct): owner and admin built in and
+// read only, a role added from the page's bar, its scope and Read and Write
+// per area, Write needing Read. An account's Global roles, its projects and
+// the roles it holds on each are picked in its settings on the Users page
+// (the operator, 17 Oct).
 // Honored by the gate where they hold and nowhere else; a project's owner
 // gives roles on the projects they own and nothing Global.
 import { launch, newPage, ok, done, ready, sleep, URL, DIR, openSection } from './lib.mjs';
@@ -24,28 +25,28 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1400 } });
 await page.goto(URL);
 await ready(page);
-// One list of accounts and roles beside one detail (the operator, 16 Oct):
-// what was a section to open is which side the detail shows.
-const openSect = id => page.evaluate(s => { rolesSide = s; rolesRedraw(); }, id === 'roles:roles' ? 'roles' : 'people');
 
 // From a clean slate: a kept fixture may hold these from a run before.
 for (const n of ['deployer', 'installer']) await api('/api/roles', { action: 'remove', name: n });
 await page.evaluate(() => openRolesTab());
-await page.waitForSelector('.rolestab [data-rwho]', { timeout: 15000 });
-await openSect('roles:roles');
+await page.waitForSelector('.rolestab [data-rpick]', { timeout: 15000 });
 // The roles a list beside the one picked (R255 step 9): each row its name,
-// its kind and who holds it.
+// its kind and who holds it, one list with nobody's account in it and no
+// field halfway down (the operator, 17 Oct).
 const names = await page.$$eval('.rolestab [data-rpick]', rs => rs.map(r => `${r.querySelector('.name').textContent.trim()} (${r.querySelector('.pill').textContent.trim()})`));
 ok(names.includes("BuilderBot's owner (built in)") && names.includes('Administrator (built in)') && !names.some(n => /^user\b/i.test(n)),
    `owner and admin are built in, and there is no user role (${names.join(', ')})`);
+ok(!await page.$('.rolestab .rlist input, .rolestab [data-rwho]') && !!await page.$('.rolestab #rolesNewOpen'),
+   '...no account and no field in the list, and New role at the right of the page\'s bar');
 await page.click('.rolestab [data-rpick="admin"]');
 ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 15
      && [...t.querySelectorAll('[data-rread]')].every(c => c.disabled)),
    '...a built-in one reads as every area, with nothing to change and no Save');
 
 // A role added: its scope, Read and Write per area, Write only with Read.
-await page.fill('#rolesNewName', 'deployer');
-await page.click('#rolesAdd');
+await page.click('.rolestab #rolesNewOpen');
+await page.fill('#rnewmodal #rolesNewName', 'deployer');
+await page.click('#rnewmodal #rolesAdd');
 await page.waitForSelector('[data-rread="releases"]');
 ok(await page.$eval('[data-rwrite="releases"]', c => c.disabled) && await page.$eval('[data-rread="nodes"]', c => c.disabled),
    'a new role on a project: Write waits for Read, and the global areas are off');
@@ -58,8 +59,9 @@ await page.fill('#rolesNote', 'moves versions');
 await page.click('#rolesRevert');
 ok(!(await page.$$eval('.rolestab .rrow', rs => rs.map(r => r.textContent))).some(t => /deployer/.test(t)),
    'Revert drops a role that was never saved');
-await page.fill('#rolesNewName', 'deployer');
-await page.click('#rolesAdd');
+await page.click('.rolestab #rolesNewOpen');
+await page.fill('#rnewmodal #rolesNewName', 'deployer');
+await page.click('#rnewmodal #rolesAdd');
 await page.waitForSelector('[data-rread="releases"]');
 await page.check('[data-rread="projects"]');
 await page.check('[data-rread="releases"]');
@@ -87,24 +89,27 @@ const depAuth = asUser('dep', 'deppass11');
 }
 await page.evaluate(() => loadRoles());
 await page.waitForFunction(() => (rolesData?.people || []).some(p => p.name === 'dep'), null, { timeout: 10000 });
-await openSect('roles:people');
-await page.click('.rolestab [data-rwho="dep"]');
+// An account's roles are picked in its settings on the Users page.
+await page.evaluate(() => openUsersTab());
+await page.waitForSelector('.userstab [data-upick="dep"]', { timeout: 15000 });
+await page.click('.userstab [data-upick="dep"]');
+await page.waitForSelector('.userstab #ueAccess .setrow', { timeout: 15000 });
 // Holding a role on a project is being on it (R155): no separate box, and
 // a project role is not offered among the Everywhere ones.
 ok(!(await page.$$('[data-ron]')).length && !(await page.$$('[data-rglobal="deployer"]')).length,
    'a project role is given on a project alone, and there is no separate "on it" box');
 // Only the projects an account is on are listed; Add to project puts it on
 // one with a role there (R255 step 9).
-ok(!(await page.$$('.rolestab [data-rproject]')).length && await page.$eval('#rolesAddProj', s => [...s.options].some(o => o.value === 'alpha')),
+ok(!(await page.$$('.userstab [data-rproject]')).length && await page.$eval('#rolesAddProj', s => [...s.options].some(o => o.value === 'alpha')),
    'an account on no project lists none, and Add to project offers them');
 await page.selectOption('#rolesAddProj', 'alpha');
 await page.selectOption('#rolesAddRole', 'deployer');
 await page.click('#rolesAddOn');
-await page.waitForSelector('.rolestab [data-rproject="alpha"] [data-rprole="deployer"]:checked');
+await page.waitForSelector('.userstab [data-rproject="alpha"] [data-rprole="deployer"]:checked');
 await page.waitForFunction(() => document.querySelector('[data-rcan="releases"] [data-rcanp="alpha"]')?.textContent === 'Write'
   && document.querySelector('[data-rcan="projects"] [data-rcanp="alpha"]')?.textContent === 'Read');
 ok(true, 'What dep can do says it in its grid, alpha writing Releases and reading Projects, before Save');
-await page.click('#rolesPeopleSave');
+await page.click('.userstab #ueSave');
 await page.waitForFunction(() => rolesData?.people?.find(p => p.name === 'dep')?.project_roles?.alpha, null, { timeout: 10000 });
 const onAlpha = await api('/api/version', { project: 'alpha', action: 'nothing-much' }, depAuth);
 const onBeta = await api('/api/version', { project: 'beta', action: 'nothing-much' }, depAuth);
@@ -149,12 +154,13 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   const sandbox = (await api('/api/v1/nodes')).body.nodes.find(n => n.kind !== 'local');
   // A second node, so one ticked of two is not every node.
   const other = (await api('/api/v1/nodes', { action: 'enroll', name: 'roles-other' })).body;
-  await page.evaluate(() => loadRoles());
-  await openSect('roles:roles');
-  await page.fill('#rolesNewName', 'creator');
-  await page.click('#rolesAdd');
+  await page.evaluate(() => { loadRoles(); openRolesTab(); });
+  await page.waitForSelector('.rolestab #rolesNewOpen');
+  await page.click('.rolestab #rolesNewOpen');
+  await page.fill('#rnewmodal #rolesNewName', 'creator');
+  await page.selectOption('#rnewmodal #rolesNewScope', 'global');
+  await page.click('#rnewmodal #rolesAdd');
   await page.waitForSelector('#rolesScope');
-  await page.selectOption('#rolesScope', 'global');
   await page.waitForSelector('[data-rexp="newprojects"]');
   ok(!(await page.$('[data-rexp="accounts"]')) && !(await page.$('[data-rexp="projects"]')),
      'only an area with instances opens on them: not Accounts, not a project area');

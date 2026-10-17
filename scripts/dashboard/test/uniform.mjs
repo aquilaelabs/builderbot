@@ -121,7 +121,7 @@ const DRIVERS = {
     // There is always at least one row: the owner, seeded on the first boot,
     // which cannot be deleted and so cannot be absent.
     open: () => page.evaluate(() => openUsersTab()),
-    readyWhen: '.userstab .urow',
+    readyWhen: '.userstab [data-upick]',
   },
   roles: {
     // The built-in roles are always there, each a fold.

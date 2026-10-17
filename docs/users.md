@@ -22,12 +22,14 @@ whoever opened the page. Three things follow.
 ## The model
 
 Three built-in roles, one special account, and since R137 (5 Oct) roles of
-your own: named sets of grants, made on the Roles tab under the
-Administration card. The first version of this page said "not a permission
-matrix", and for a long time that held; what changed is that the three
-roles grew combinations nobody could read off them (a user who may push,
-an administrator who may not touch a node), and the operator asked for a
-person to be given a group of permissions instead.
+your own: named sets of grants, made on the Roles page and given to a
+person in their settings on the Users page, or by a project's owner from
+a name in that project's People section (17 Oct). The first version of
+this page said "not a permission matrix", and for a long time that held;
+what changed is that the three roles grew combinations nobody could read
+off them (a user who may push, an administrator who may not touch a node),
+and the operator asked for a person to be given a group of permissions
+instead.
 
 A **grant** is a capability on a scope. The capabilities are the actions
 the gate already asks about: `read` and `work` on a project (`work` is
