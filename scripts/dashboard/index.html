@@ -3084,6 +3084,9 @@ pre.diff .d-ctx{color:var(--dim)}
   .tiles:has(> .tile:last-child:nth-child(odd)) > .tile{grid-column:span 2;padding:10px 12px}
   .tiles:has(> .tile:last-child:nth-child(6n+5)) > .tile:nth-last-child(-n+2),
   .tiles:has(> .tile:last-child:nth-child(6n+7)) > .tile:nth-last-child(-n+4){grid-column:span 3}
+  /* ...and one alone is the row (B822): spanning two of six it sat in the
+     left third. */
+  .tiles > .tile:only-child{grid-column:1 / -1}
   .tiles:has(> .tile:last-child:nth-child(odd)) .tl,
   .tiles:has(> .tile:last-child:nth-child(odd)) .ts{overflow-wrap:anywhere}
 }
