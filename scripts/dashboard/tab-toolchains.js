@@ -259,8 +259,8 @@ function tcRow(p, busy, job, managed){
       : upToDate ? ` checked disabled title="installed and up to date"`
                : tcTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
-      <span class="nm">${esc(p.label)} <button type="button" class="link tcmore" data-tcmore="${esc(p.name)}"
-        aria-expanded="${open}">${open ? "Less" : "Details"}</button></span>
+      <span class="nm">${esc(p.label)}</span> <button type="button" class="link tcmore" data-tcmore="${esc(p.name)}"
+        aria-expanded="${open}">${open ? "Less" : "Details"}</button>
       <span class="sub tcabout">${esc(p.about)}${
         p.tool ? ` Adds <code>bb tool ${esc(p.tool)}</code> to a session.` : ""}${
         p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
