@@ -243,7 +243,7 @@ function nginxBody(n){
   // The page's status line, deployed as undeployed (the page tops' one
   // order): its state and what it runs, under the tiles.
   return `<div data-ngnode="${esc(n.node)}">
-    <div class="field headline toolstate"><div class="actbar ngbar"><span class="state">${pill} <span class="sub">${sub}</span></span></div></div>
+    <div class="field headline toolstate"><div class="actbar ngstate"><span class="state">${pill} <span class="sub">${sub}</span></span></div></div>
     <div class="field">
       ${lbl("", "Hostnames")}
       <div class="hint">The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's).</div>
