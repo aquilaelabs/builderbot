@@ -1063,6 +1063,9 @@ function daemonHost(){
 // already animated to the height of "reading…", so the panel is grown a second
 // time when the real lines land: measured either side of the swap, which is
 // what keeps the rows below from jumping.
+// What each instance's Ports and mounts last said, by "project|instance",
+// drawn at once into a fold a redraw brought back open (B827).
+const dmWireSeen = {};
 async function loadWire(d){
   d.dataset.done = "1";
   const [project, instance] = d.closest("[data-inst]").dataset.inst.split("|");
@@ -1097,6 +1100,7 @@ async function loadWire(d){
       : ports.map(portLine).join("") + mounts.map(mountLine).join("");
     html = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
   }catch(e){ html = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
+  dmWireSeen[`${project}|${instance}`] = html;
   if (!d.isConnected){
     // The manager repainted under it, because every step of a job does that now,
     // and the fold the operator opened is a fresh, closed one with nothing in
@@ -1953,6 +1957,13 @@ function dmWireRows(el, list = dockerList){
     // read is started again, unless one is already on its way to it.
     if (d.open && d.querySelector(".dmlogbox") && /reading…/.test(d.querySelector(".dmlogbox").textContent)) loadRowLog(d);
     else if (d.open && d.querySelector(".dmimgbox") && /reading…/.test(d.querySelector(".dmimgbox").textContent)) loadDockerImages(d);
+    // ...and Ports and mounts (B827): what was read last at once, read again
+    // behind it, since the stats and every job step redraw the list.
+    else if (d.open && d.querySelector(".wire") && !d.dataset.done){
+      const inst = d.closest("[data-inst]")?.dataset.inst;
+      if (inst && dmWireSeen[inst]) d.querySelector(".wire").innerHTML = dmWireSeen[inst];
+      loadWire(d);
+    }
   });
   el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");

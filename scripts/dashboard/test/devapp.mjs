@@ -1991,6 +1991,12 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   ok(groups[0].name === 'app' && groups[0].ports.length === 1 && /7474.*7475/.test(groups[0].ports[0])
      && groups[0].mounts === 1 && groups[1].name === 'gitea' && groups[1].ports.length === 2 && groups[1].mounts === 0,
      `a stack's Ports and mounts are grouped under each service (${JSON.stringify(groups)})`);
+  // ...and the fold stays read across a redraw (B827): the stats and every
+  // job step redraw the list, and an open fold came back as its shapes.
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(await page.waitForFunction(sel => document.querySelectorAll(sel + ' .sect .wire .wgrp').length === 2, DM, { timeout: 15000 })
+       .then(() => true, () => false),
+     '...and an open Ports and mounts keeps its lines when the list redraws');
   // Its services a table in the card (the operator's concept, 17 Oct): each
   // its own line, its ports in their column.
   const svcs = await page.$$eval(`${DM} .dmsvctbl .tline`, ls => ls.map(l => ({
