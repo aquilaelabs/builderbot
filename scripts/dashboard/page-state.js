@@ -186,8 +186,10 @@ function fmtTime(t, opts = {}){
   return new Date(t).toLocaleString([], z ? {...opts, timeZone: z} : opts);
 }
 
+// ...and GB past a gigabyte (B825): a 19 GB limit read 19476.5MB.
 const humanBytes = n =>
-  n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
+  n >= 1073741824 ? (n / 1073741824).toFixed(1) + "GB"
+  : n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
   : n >= 1024 ? Math.round(n / 1024) + "kB" : (n || 0) + "B";
 
 // ---- fields a password manager leaves alone ------------------------------
