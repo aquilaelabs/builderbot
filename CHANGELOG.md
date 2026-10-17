@@ -158,6 +158,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Help on the rail: BuilderBot's own docs read in the dashboard, listed by section beside each one with its contents, links between them opening in place, and a search across all of them as you type (9bdb3da)
 - A role's Nodes, Toolchains, Jobs, New projects, Storage and CI runner rows open on each node or runner, Read and Write on each; the area's own boxes tick or clear them all, and the server holds every action to the node or runner it touches (eba3133)
 - A session can take back a roadmap step it marked done with bb roadmap step undone, saying why; the History view shows it (146fa49)
+- A dev container's build or Up stops and names any image-only service its compose has gained since the last build, and ships it only once a person says yes on the Docker tab; a container's env can no longer set COMPOSE_FILE, COMPOSE_PROJECT_NAME or COMPOSE_PROFILES (568dc79)
 
 ### Changed
 
@@ -388,6 +389,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The sign-in page is redesigned: one panel over a drafting grid with two slow glows, always in BuilderBot's own colors (4253ca4)
 - A container's card on the Containers page is redesigned: Open at its address as the main button, what it uses in one band (or a stack's services in a table), and its settings shown as labels you read at a glance, changed with Edit settings under the ⋯ menu. ⋯ replaces More on every page, and every page has room under its last card (b7241b2)
 - BuilderBot's lab Gitea and Forgejo for bb tests lab are their own stack (lab/compose.yml, made with bb container new) instead of services in BuilderBot's compose file; COMPOSE_PROFILES and BB_LAB_HOST are no longer BuilderBot settings (0dd53a5)
+- A page's sub-nav (Nodes, Storage, nginx and the like) is tabs along the bar instead of a boxed switch, and every state that can be good or bad (healthy, running, passed) keeps its own green, amber and red in every color scheme (568dc79)
+- A container's settings open in a dialog from Edit settings under its ⋯ menu (568dc79)
 
 ### Removed
 
