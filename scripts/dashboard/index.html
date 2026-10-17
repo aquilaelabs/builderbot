@@ -4077,12 +4077,18 @@ body.booting .panes.dockup .pane.dock{animation:none}
   -webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
   mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%)}
 .pane .bar.dockbar>.ic{flex:0 0 auto}
-.dockline .dtab{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;border:var(--hair) solid var(--line);
+.dockline .dtab{display:inline-flex;align-items:center;gap:0;flex:0 0 auto;border:var(--hair) solid var(--line);
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
 .dockline .dtab.on{border-color:var(--accent-mid);color:var(--ink)}
 .dockline .dtab .dlbl{display:inline-flex;align-items:center;gap:6px;background:none;border:0;min-height:32px;
   padding:2px 8px;font:var(--f-ui);color:inherit;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dockline .dtab .dx{min-height:32px;min-width:30px;border:0;background:none}
+/* Minimize and Close sit close beside the name (the operator, 17 Oct: the
+   pair took more room than the label): narrow, no padding of their own. */
+.pane .bar.dockbar .dockline .dtab .dx{min-height:32px;min-width:22px;padding:0 3px;border:0;background:none}
+.dockline .dtab .dx:last-child{margin-right:2px}
+.dockline .dtab .dlbl{padding-right:4px}
+/* ...but a thumb's size on a phone, as every control a thumb meets is. */
+@media(max-width:900px){ .pane .bar.dockbar .dockline .dtab .dx{min-width:30px} }
 /* Close ends the session: red under the pointer, as every end on the page. */
 @media(hover:hover){ .dockline .dtab .dclose:hover{color:var(--bad)} }
 /* A tab is held and dragged to a new place (page-dock.js): the phone's own
