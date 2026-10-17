@@ -866,7 +866,8 @@ def _projects_on_disk():
     cloning = projects.busy_name()
     # Only what BuilderBot made (R154, the operator 8 Oct): a folder made by
     # hand on the share is not a project, and Import is the way one comes in.
-    registry.sync()
+    with timing.timed("projects:registry"):
+        registry.sync()
     for d in here:
         if not registry.is_project(d.name):
             continue
@@ -924,7 +925,8 @@ def _projects_on_disk():
             except OSError:
                 pass                    # unreadable: covered by `missing` above
 
-            git_ok, linked, fhost, forge, github, branch = _git_facts(d)
+            with timing.timed("projects:git"):
+                git_ok, linked, fhost, forge, github, branch = _git_facts(d)
             if not git_ok:
                 issues.append({"level": "error", "text": "no valid git repository"})
 
@@ -967,6 +969,7 @@ def _project_columns(who, facts):
     Every file that serves the whole list is read once here rather than per
     row: this runs on the fifteen-second poll.
     """
+    _t0 = time.monotonic()
     locked = set(projects.load_locks())
     # Each directory's id and the name it is shown under (R154): synced with
     # the disk here, two listdirs and no write when nothing moved.
@@ -1030,6 +1033,8 @@ def _project_columns(who, facts):
     # What a session has waiting for the operator (roadmap #27): the count
     # lights the bell and the notebook band.
     pend_counts = pending.counts()
+    # The setup above, every file the whole list reads once, as one part.
+    timing.add("projects:setup", (time.monotonic() - _t0) * 1000)
     out = []
     for f in facts:
         d, issues = f["dir"], f["issues"]
@@ -1043,9 +1048,12 @@ def _project_columns(who, facts):
         # sentence restating what the padlock beside the name already says, on
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
-        sa = _session_at(d.name)
-        sa["session_nodes"] = _session_nodes(d.name)
-        mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
+        with timing.timed("projects:session_at"):
+            sa = _session_at(d.name)
+        with timing.timed("projects:session_nodes"):
+            sa["session_nodes"] = _session_nodes(d.name)
+        with timing.timed("projects:memory"):
+            mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     # The name people see and the project's id (R154); `name`
                     # stays the directory, which every store keys by.
@@ -1471,7 +1479,8 @@ def session_target(project, claude=False, node="", uid=""):
     carry what to do about it. A SHELL still falls back here, which is what
     keeps the tree, the linters and git reachable while a node is away.
     """
-    pf = prefs.get(project) if project else None
+    with timing.timed("session_target:prefs"):
+        pf = prefs.get(project) if project else None
     nid = (pf or {}).get("node") or ""
     # The node the person picked, when it is one the project works on
     # (R82); any other name falls to the primary rather than to a refusal,
@@ -1490,7 +1499,8 @@ def session_target(project, claude=False, node="", uid=""):
         else {"where": "local"}
     if not nid or NODES_OK:
         return no_node
-    n = nodes.node(nid)
+    with timing.timed("session_target:node"):
+        n = nodes.node(nid)
     if not n or n.get("kind") == "local":
         return no_node
     name = n.get("name") or nid

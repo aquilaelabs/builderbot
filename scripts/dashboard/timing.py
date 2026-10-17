@@ -36,3 +36,10 @@ def timed(name):
         parts = getattr(_here, "parts", None)
         if parts is not None:
             parts[name] = parts.get(name, 0) + (time.monotonic() - t0) * 1000
+
+
+def add(name, ms):
+    """Add `ms` to the request's part called `name`, for work timed by hand."""
+    parts = getattr(_here, "parts", None)
+    if parts is not None:
+        parts[name] = parts.get(name, 0) + ms
