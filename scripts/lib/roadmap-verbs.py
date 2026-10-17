@@ -436,6 +436,13 @@ elif op == "step":
         print(f"step {srest[1]} of {R(item)} done"
               + (f", the last one, so {R(item)} is done and off the list"
                  if r.get("finished") else ""))
+    elif sub in ("undone", "undo") and len(srest) >= 2:
+        # A done mark taken back (the operator, 17 Oct): the wrong step
+        # ticked, or one found not finished. See roadmap.step_undone.
+        behind(item, None, None, None)
+        r = roadmap.step_undone(proj, item, step_index(srest[1]),
+                                by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
+        print(f"step {srest[1]} of {R(item)} is to do again")
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
         # finds two steps in the wrong order can only delete and retype them,
@@ -449,7 +456,7 @@ elif op == "step":
     else:
         print("usage: bb roadmap step add <n> \"...\" | step edit <n> <step> \"...\""
               " | step rm <n> <step> [\"why\"] | step mv <n> <step> up|down"
-              " | step done <n> <step> [\"note\"]",
+              " | step done <n> <step> [\"note\"] | step undone <n> <step> [\"why\"]",
               file=sys.stderr)
         sys.exit(1)
 elif op == "pending":
@@ -518,7 +525,7 @@ else:
               "bb roadmap info N [STEP] TEXT", file=sys.stderr)
         sys.exit(1)
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
-          "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
+          "info N [M] TEXT|step add|edit|rm|mv|done|undone|info ...|mv N up|down|done N|"
           "rm N [WHY]|restore N|reopen N|shelve N|unshelve N [WHY]|begin|commit|revert|pending|"
           "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)

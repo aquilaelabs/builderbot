@@ -32,6 +32,7 @@ function nbHistoryView({$, nb, project}){
     sent:          ["sent", ""],
     unsent:        ["put back", ""],
     "done-step":   ["finished a step", ""],
+    "undone-step": ["took back a step", ""],
     shelved:       ["shelved", ""],
     unshelved:     ["off the shelf", ""],
   };

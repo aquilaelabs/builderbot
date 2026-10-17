@@ -789,6 +789,8 @@ def _rebuilt_row(events, item_id, text):
                 steps[i]["info"] = e.get("text", "")
             elif act == "done-step":
                 steps[i]["done"] = e.get("at", 0)
+            elif act == "undone-step":
+                steps[i].pop("done", None)
         elif act == "edit" and i is None:
             row["text"] = e.get("text") or row["text"]
         elif act == "info" and i is None:
@@ -1318,9 +1320,9 @@ def step_done(project, item_id, step, by="claude", note="", who=""):
     told in chat to go ahead with a phase had no way to mark the phase
     finished, so it reworded the step to say LANDED and the panel went on
     offering it to send. This is the second mark. Only a session sets it,
-    the same rule as ticking off an item, and there is no undo for the
-    same reason: if it turns out not to be finished, send it again, which
-    clears the mark and says so in the log.
+    the same rule as ticking off an item; a session that ticked the wrong
+    one, or found it not finished after all, takes it back with
+    step_undone (the operator, 17 Oct), as sending it again does.
     """
     if _int(step) is None:
         return {"error": "not a step"}
@@ -1349,6 +1351,29 @@ def step_done(project, item_id, step, by="claude", note="", who=""):
             return {"ok": True, "finished": True, "item": row,
                     "log": [ev, {"act": "done", "id": row["id"], "text": row["text"],
                                  "row": copy.deepcopy(row), "steps": len(steps)}]}
+        return {"ok": True, "log": ev}
+    return _edit(project, item_id, change, by, who=who)
+
+
+def step_undone(project, item_id, step, by="claude", note="", who=""):
+    """Take back a step's done mark (the operator, 17 Oct: a session that
+    ticked the wrong step had no way back but a person's Send). The step is
+    left to do again, and the log says so, with why where one is given."""
+    if _int(step) is None:
+        return {"error": "not a step"}
+
+    def change(row, rows):
+        steps = row.get("steps") or []
+        i = _int(step)
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        if not steps[i].get("done"):
+            return {"error": "that step is not done"}
+        steps[i].pop("done", None)
+        ev = {"act": "undone-step", "id": row["id"], "step": i,
+              "text": steps[i].get("text", ""), "of": row["text"]}
+        if note:
+            ev["why"] = _clean(note, multiline=False)
         return {"ok": True, "log": ev}
     return _edit(project, item_id, change, by, who=who)
 
