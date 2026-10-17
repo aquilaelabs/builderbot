@@ -108,7 +108,10 @@
      (19 Sep). Tinted a tenth towards the scheme's accent, the color of the
      button that opened it: measured across the twelve schemes, --dim on it
      stays at 5.0:1 or better and --ink at 9.6. */
-  --flyout:#243633;     --flyout:color-mix(in srgb, var(--panel), var(--accent) 10%);
+  /* Tinted with the second color, as the lit controls on it are (the
+     operator, 17 Oct: tinted with the accent it clashed in a theme whose
+     two colors differ). */
+  --flyout:#243633;     --flyout:color-mix(in srgb, var(--panel), var(--lit, var(--accent)) 8%);
   /* The tail matters on Android: none of the named desktop faces exist
      there, and bare `monospace` lets Chrome and Firefox each pick their own
      default: the same page in two fonts. Roboto/Noto/Droid Mono are what
@@ -1396,7 +1399,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
 .cmd button{border:0;border-radius:0;background:transparent;min-height:28px}
 .cmd .tack{padding:4px 6px;color:color-mix(in srgb, var(--dim) 55%, var(--panel));border-left:var(--hair) solid var(--line);
   display:inline-flex;align-items:center}
-.cmd .tack.on{color:var(--accent)}
+.cmd .tack.on{color:var(--lit)}   /* on, so the second color, as every lit control */
 .cmd .tack svg{width:13px;height:13px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
 .cmd .tack.on svg{fill:currentColor}
@@ -4257,6 +4260,14 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .keys.show{display:flex}
 .keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);padding:6px 8px}
 .keys .gap{flex-basis:100%;height:0}
+/* On a phone each group of ten is five across and two down, every key one
+   width, rather than nine to a row and the tenth alone under them (the
+   operator, 17 Oct). */
+@media(max-width:900px){
+  .keys.show{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+  .keys button{min-width:0;padding:6px 2px}
+  .keys .gap{grid-column:1 / -1;height:3px}
+}
 
 /* The terminal's own bottom bar --------------------------------------- */
 /* The command lists and Sessions hang off the terminal, at every width, in
@@ -5875,21 +5886,19 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="pane hidden" id="pane1"></div>
     </div>
     <div class="keys" id="keys"></div>
-    <!-- The lists live here now rather than being moved here at a
-         breakpoint. Linux and git/GitHub flank the bb one: their contents
-         come from the server's tables (LINUX_MACROS / GIT_MACROS /
-         GH_MACROS), and the git half ghosts against the directory the active
-         shell is in, not a repo grays the lot, a repo without a GitHub
-         remote grays just the gh part. -->
+    <!-- The lists live here rather than being moved here at a breakpoint:
+         the pinned commands, the operator's own, then Linux and git from the
+         server's tables (LINUX_MACROS / GIT_MACROS), the git ones ghosting
+         where the active shell is not in a repo. -->
     <div class="mpanel" id="macpanel">
+      <div class="lab">pinned</div>
+      <div class="macros" id="commands"><div class="loading" data-skel="chips">loading…</div></div>
+      <div class="lab">your commands</div>
+      <div class="macros" id="custom"></div>
       <div class="lab">linux</div>
       <div class="macros" id="linux"><div class="loading" data-skel="chips">loading…</div></div>
-      <div class="lab">bb commands</div>
-      <div class="macros" id="commands"><div class="loading" data-skel="chips">loading…</div></div>
-      <div class="lab">git &amp; github</div>
+      <div class="lab">git</div>
       <div class="macros" id="git"><div class="loading" data-skel="chips">loading…</div></div>
-      <div class="lab">custom commands</div>
-      <div class="macros" id="custom"></div>
     </div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>

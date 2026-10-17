@@ -1,16 +1,13 @@
-// The command cards: every bb command with the pinned ones above the cut,
-// the Linux and git cards, and the operator's own custom commands with the
-// dialog that edits one. Each button types into the terminal; the list of
-// what can be typed is the server's (MACROS), never a string from here.
+// The Commands panel (the operator, 17 Oct): the pinned commands above the
+// rest, the operator's own, and the Linux and git lists, each command with a
+// tack that pins it. No bb commands: every one of them has its page now.
+// Each button types into the terminal; the list of what can be typed is the
+// server's (macros.py), never a string from here.
 // One classic script beside index.html (docs/design-language.md, Files),
 // moved out of the page's own script with bb map sections in hand: pure
 // declarations, nothing runs at load.
 
 "use strict";
-
-const COMMANDS_SHOWN = 8;
-
-let showAllCommands = false;
 
 // Side-view thumbtack: cap, body, needle. Filled when pinned, so the state
 // reads at a glance without a second icon to learn.
@@ -20,59 +17,40 @@ const TACK = `<svg viewBox="0 0 16 16" aria-hidden="true">
            -.8-.5-1.3-1-1.3-1.9V1.6"/>
   <path d="M8 9.2v5.2"/></svg>`;
 
-// Pinned first, then the rest: both in the order `bb help` lists them, which
-// is the order the server sends. Pinning moves a command up; it does not
-// re-sort it into an order the CLI never uses.
-function commandOrder(){
-  const all = state?.macros || [];
-  const pins = new Set(state?.pinned || []);
-  return [...all.filter(m => pins.has(m.name)), ...all.filter(m => !pins.has(m.name))];
+// One command and its tack. The label IS the command: these are buttons
+// for things an operator would type, and hiding the text behind a friendly
+// name would only add mystery. `need` rides along as data-need for
+// wireMacros to ghost against the active shell's directory.
+function commandButton(m, pins){
+  const on = pins.has(m.name);
+  return `<span class="cmd">
+    <button data-m="${esc(m.name)}"${m.need ? ` data-need="${esc(m.need)}"` : ""} title="${esc(m.label)}: runs in the terminal">${esc(m.label)}</button>
+    <button class="tack${on ? " on" : ""}" data-tack="${esc(m.name)}" data-on="${on ? "1" : "0"}"
+      aria-label="${on ? "unpin" : "pin"} ${esc(m.label)}"${state?.can?.["command-pin"] === false ? " disabled" : ""}
+      title="${on ? "unpin: let it fall back into its list" : "pin: keep it at the top"}">${TACK}</button></span>`;
 }
 
-function drawCommands(){
-  const el = $("commands");
-  const order = commandOrder(), pins = new Set(state?.pinned || []);
-  if (!order.length){ paint(el, `<div class="empty">no commands</div>`); return; }
-
-  const shown = showAllCommands ? order : order.slice(0, COMMANDS_SHOWN);
-  const fresh = paint(el, shown.map(m => {
-    const on = pins.has(m.name);
-    return `<span class="cmd">
-      <button data-m="${esc(m.name)}" title="bb ${esc(m.label)}: runs in the terminal"
-        >${esc(m.label)}</button>
-      <button class="tack${on ? " on" : ""}" data-tack="${esc(m.name)}"
-        data-on="${on ? "1" : "0"}" aria-label="${on ? "unpin" : "pin"}"${state?.can?.["command-pin"] === false ? " disabled" : ""}
-        title="${on ? "unpin: let it fall back into the list"
-                    : "pin: keep it at the top of this card"}">${TACK}</button>
-    </span>`;
-  }).join("")
-  // The cut-off toggle sits with the list it cuts, since the header is
-  // reserved for collapsing the whole card.
-  + (order.length > COMMANDS_SHOWN
-     ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
-     : ""));
-  wireMacros(el);                       // live-or-grayed depends on the active
-                                        // tab, not the markup: always re-done
-  if (!fresh) return;
-  if (order.length > COMMANDS_SHOWN)
-    $("bCmds").onclick = () => { showAllCommands = !showAllCommands;
-                                 slideBody(el, drawCommands); };
+function wireTacks(el){
   el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
     setPinned(b.dataset.tack, b.dataset.on === "0"));
 }
 
-// The Linux and git/GitHub cards. Same idea as the bb card, minus pins and
-// the cut-off: the lists are short and fixed. The label IS the command:
-// these are buttons for things an operator would type, and hiding the text
-// behind a friendly name would only add mystery. `need` rides along as
-// data-need for wireMacros to ghost against the active shell's directory.
-function drawShellCard(id, list){
-  const el = $(id);
-  if (!list.length){ paint(el, `${skel("chips")}`); return; }
-  paint(el, list.map(m => `<button data-m="${esc(m.name)}"${
-      m.need ? ` data-need="${esc(m.need)}"` : ""
-    } title="${esc(m.label)}: runs in the terminal">${esc(m.label)}</button>`).join(""));
+// The pinned ones, in their lists' order.
+function drawCommands(){
+  const el = $("commands"), pins = new Set(state?.pinned || []);
+  const all = [...(state?.linux || []), ...(state?.gitcmds || [])].filter(m => pins.has(m.name));
+  const fresh = paint(el, all.length ? all.map(m => commandButton(m, pins)).join("")
+    : `<div class="empty">none yet: a command's tack keeps it here</div>`);
   wireMacros(el);
+  if (fresh) wireTacks(el);
+}
+
+function drawShellCard(id, list){
+  const el = $(id), pins = new Set(state?.pinned || []);
+  if (!list.length){ paint(el, `${skel("chips")}`); return; }
+  const fresh = paint(el, list.map(m => commandButton(m, pins)).join(""));
+  wireMacros(el);
+  if (fresh) wireTacks(el);
 }
 
 const drawLinux = () => drawShellCard("linux", state?.linux || []);
@@ -140,6 +118,6 @@ async function setPinned(name, on){
     // The server's answer is the truth, so two browsers cannot disagree about
     // what is pinned until the next poll.
     if (state) state.pinned = j.pinned;
-    drawCommands();
+    drawCommands(); drawLinux(); drawGit();
   }catch(e){ notify("could not save the pin: " + e, true); }
 }

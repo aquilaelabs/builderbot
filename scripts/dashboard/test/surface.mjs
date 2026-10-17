@@ -44,7 +44,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyN
   'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',
-  'closeRename', 'closeSendToDocker', 'commandOrder',
+  'closeRename', 'closeSendToDocker', 'commandButton', 'wireTacks', 'dockDragStart', 'dockDragMove', 'dockDragEnd', 'dockHeld', 'dockNoScroll', 'dockPlaceTab', 'nodeCharted',
   'currentMode', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'skel', 'skv', 'skRows', 'skTpl', 'skTable', 'skNodeBar', 'homeCards', 'openHelp', 'loadHelp', 'helpRead', 'helpNames', 'helpGo', 'helpScroll', 'helpNav', 'helpArticle', 'helpResults', 'helpSearch', 'renderHelpInto', 'rolesSplit', 'askSignOut', 'pageLink', 'askInline', 'navPush', 'dmImage', 'railTool', 'sectAttr', 'wireSections', 'openMenu', 'openPopup', 'menuHolds', 'actMore', 'statTiles', 'factGrid', 'chipBar', 'chipButtons', 'rmMatch', 'bugMatch', 'bugFacts', 'rmDay', 'shippedIn', 'clRefs', 'clLinks', 'dmChipGroups', 'loadDockerStats', 'dmStatStrip', 'loadRowLog', 'dmFollowTick', 'loadDockerImages', 'dmHealth', 'dmRowWrap', 'dmPorts', 'dmPortsFact', 'dmOpenWhy', 'dmOpenSoon', 'dmRoutesOf', 'dmMatch', 'wireMore', 'closeMore', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'attRow', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',

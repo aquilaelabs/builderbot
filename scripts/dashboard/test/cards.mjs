@@ -2106,17 +2106,22 @@ print(json.dumps({"names": z.namelist(), "diag": json.loads(z.read("diagnostics.
 // nothing went red, because pinning a command had no test at all (bug #20).
 // This is that test: the two write to their own files and neither can be
 // reached through the other's endpoint.
-const cmdPin = await api('/api/pin', { name: 'status', pinned: true });
-ok(cmdPin.status === 200 && (cmdPin.body.pinned || []).includes('status'),
+const cmdPin = await api('/api/pin', { name: 'lx-free', pinned: true });
+ok(cmdPin.status === 200 && (cmdPin.body.pinned || []).includes('lx-free'),
    'a command can be pinned');
-ok(JSON.parse(readFileSync(`${DIR}/state/pinned-commands.json`, 'utf8')).includes('status'),
+ok(JSON.parse(readFileSync(`${DIR}/state/pinned-commands.json`, 'utf8')).includes('lx-free'),
    '...into pinned-commands.json, which is its own file');
-ok(!Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('status'),
+ok(!Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('lx-free'),
    '...and not into the projects one');
 ok((await api('/api/pin', { name: 'alpha', pinned: true })).status === 400,
    'a project name is not a command, and the command pin says so');
-ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 400,
+ok((await api('/api/project-pin', { name: 'lx-free', pinned: true })).status === 400,
    '...and a command name is not a project');
+// The bb commands left the panel (the operator, 17 Oct): every one has its
+// page, so a pin names a Linux or git command and a bb one is not a command.
+ok((await api('/api/pin', { name: 'status', pinned: true })).status === 400,
+   '...and a bb command is no longer one to pin');
+await api('/api/pin', { name: 'lx-free', pinned: false });
 
 // ---- a project on several nodes: one chooser, a part per node (R82) --------
 // The press opens a chooser with each node under its name, what it has and

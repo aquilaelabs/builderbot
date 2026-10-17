@@ -3847,8 +3847,8 @@ def snapshot(who):
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
         # removed cannot leave a button that posts a name the server rejects.
-        # The command cards: the bb commands, the Linux and git/GitHub cards,
-        # the pins and the operator's own lists.
+        # The Commands panel: the Linux and git lists, the pins and the
+        # operator's own lists.
         **macros.cards(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small

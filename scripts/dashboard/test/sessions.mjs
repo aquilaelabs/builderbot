@@ -48,31 +48,26 @@ await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 
 
-// ---- the git/GitHub card ghosts against the shell's directory ----------
-// shell-9 lives in /tmp; alpha has a GitHub remote; ep.silon's remote is
-// GitLab, so between the three shells every ghosting state appears, and the
-// dotted name proves the cwd-to-project mapping survives tmux's rename.
+// ---- the git list ghosts against the shell's directory ----------------------
+// shell-9 lives in /tmp; alpha and ep.silon are repositories, and the dotted
+// name proves the cwd-to-project mapping survives tmux's rename. No gh: a
+// node carries none (the operator, 17 Oct), so the list is git's alone.
 tmuxNew('shell-alpha', `${DIR}/ws/alpha`);
 tmuxNew('shell-ep_silon', `${DIR}/ws/ep.silon`);
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => state.sessions.some(s => s.name === 'shell-ep_silon'));
 const gitBtn = () => page.$eval('#git [data-m="git-status"]', b => ({ dis: b.disabled }));
-const ghBtn  = () => page.$eval('#git [data-m="gh-prs"]', b => ({ dis: b.disabled }));
 await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-9');
 ok(!(await page.$eval('#linux [data-m]', b => b.disabled)), 'linux commands live on any shell');
-let g = await gitBtn(), h = await ghBtn();
-ok(g.dis, 'outside a repo the git commands ghost');
-ok(h.dis, '...and the gh commands with them');
+ok((await gitBtn()).dis, 'outside a repo the git commands ghost');
+ok(!(await page.$('#git [data-m^="gh-"]')), '...and there are no gh commands to ghost');
 await row('shell-alpha').locator('[data-go]').click();
 await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-alpha');
-g = await gitBtn(); h = await ghBtn();
-ok(!g.dis && !h.dis, 'in a GitHub-remoted repo, git and gh commands are both live');
+ok(!(await gitBtn()).dis, 'in a repository the git commands are live');
 await row('shell-ep_silon').locator('[data-go]').click();
 await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-ep_silon');
-g = await gitBtn(); h = await ghBtn();
-ok(!g.dis, 'a repo with a non-GitHub remote keeps its git commands');
-ok(h.dis, '...but the gh ones ghost');
+ok(!(await gitBtn()).dis, '...a dotted project name included');
 // Tidy the strip for the sections below: these two tabs were this block's.
 await page.evaluate(() => { for (const s of ['shell-alpha', 'shell-ep_silon']){
   const t = tabs.find(x => sessionOf(x.arg) === s); if (t) hideTab(t.id); } });
@@ -80,7 +75,7 @@ await page.evaluate(() => { for (const s of ['shell-alpha', 'shell-ep_silon']){
 await row('claude-alpha').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'claude-alpha'));
 ok((await btn('claude-alpha').textContent()).trim() === 'End', 'a Claude session with its tab open has End, and no Minimize');
-ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on a Claude tab');
+ok(await page.$eval('#linux [data-m]', b => b.disabled), 'macros grayed on a Claude tab');
 const nd = page.dialogs.length;
 await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
@@ -122,7 +117,7 @@ await page.evaluate(() => openNotebook('alpha', 'analysis'));
 await page.waitForSelector('.pane .nb [data-view="analysis"]:not([hidden]) .rule',
                            { timeout: 20000 });
 ok(true, 'a notebook opens on its Analysis view when asked by name');
-ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on a notebook tab');
+ok(await page.$eval('#linux [data-m]', b => b.disabled), 'macros grayed on a notebook tab');
 ok(await page.$$eval('.pane .nb .rule .rid .pill', ps => ps.length > 0),
    '...with the findings for that project alone, worst level first');
 
@@ -216,10 +211,10 @@ await page.evaluate(() => railGo('sessions'));
 await page.evaluate(() => { if (!tabs.some(t => sessionOf(t.arg) === 'shell-9'))
   openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}); });
 await page.evaluate(() => focusTab(tabs.find(t => sessionOf(t.arg) === 'shell-9').id));
-ok(await page.$eval('#commands [data-m]', b => !b.disabled), 'macros live on a shell tab');
+ok(await page.$eval('#linux [data-m]', b => !b.disabled), 'macros live on a shell tab');
 // no tabs at all → grayed too
 await page.evaluate(() => { const keep = tabs.slice(); keep.forEach(t => dropTab(t.id)); });
-ok(await page.$eval('#commands [data-m]', b => b.disabled),
+ok(await page.$eval('#linux [data-m]', b => b.disabled),
    'macros grayed with no tab open');
 await page.evaluate(() => openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}));
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
@@ -368,7 +363,7 @@ ok(mid.after === mid.before,
 const paneH0 = mid.before;
 await phone.waitForFunction(() => !document.getElementById('macpanel').classList.contains('sliding'));
 ok(await phone.$eval('#panes', el => el.offsetHeight) < paneH0, 'then the terminal snaps to make room');
-ok(await phone.$eval('#commands', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
+ok(await phone.$eval('#linux', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'the command lists live in the panel');
 // Commands wants a shell under it now, and the tab that was open got ended
 // above, so put one there, or this measures the guard instead of the swap.
 await phone.evaluate(() => {

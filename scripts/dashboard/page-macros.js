@@ -40,10 +40,9 @@ function wireMacros(el){
   const ctx = shellCtx();
   el.querySelectorAll("[data-m],[data-run]").forEach(b => {
     // data-need is what the button requires of the shell's directory beyond
-    // being a shell at all: "git" wants a repository, "github" one with a
-    // GitHub remote.
+    // being a shell at all: "git" wants a repository.
     const need = b.dataset.need || "";
-    const ok = live && (!need || (need === "git" ? ctx.git : ctx.github));
+    const ok = live && (!need || (need === "git" && ctx.git));
     setDisabled(b, !ok);
     // A dead one is ghosted and says nothing (the operator, 11 Oct: no
     // tooltips; a reason on the page is for a warning or an error).

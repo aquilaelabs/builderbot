@@ -3045,50 +3045,36 @@ Nothing about the graying-out below depends on where they live. It is computed
 from the *active pane*, which is why one markup serves a phone and a desktop
 alike.
 
-The `bb` commands worth a button are buttons. Clicking one clears whatever is half-typed at
-the prompt, types the command into the terminal you are looking at and presses
-Enter, rather than reporting into a box of its own. The
-output is then somewhere you can scroll it, a slow one like `bb toolchains install` is
-watchable while it runs, and one that asks a question (`bb login`) or follows
-(`bb logs -f`) behaves exactly as if you had typed it. A command only ever goes
-to the tab you are looking at, and only if that is a plain shell: with a
-**Claude** tab in front (it would submit the command as a prompt), a document,
-or no tab at all, every command button is grayed out and its hover text says
-where to go: never quietly typed into some other terminal.
+A command's button clears whatever is half-typed at the prompt, types the
+command into the terminal you are looking at and presses Enter, rather than
+reporting into a box of its own. The output is then somewhere you can scroll
+it, and one that follows behaves exactly as if you had typed it. A command
+only ever goes to the tab you are looking at, and only if that is a plain
+shell: with a **Claude** tab in front (it would submit the command as a
+prompt), a document, or no tab at all, every command button is grayed out and
+its hover text says where to go: never quietly typed into some other terminal.
 
 The line is cleared with end-of-line then kill-line, which is readline editing
 rather than a signal: `Ctrl-C` would also interrupt whatever is running in that
-terminal, which is not something a button labeled `bb status` should be able to
-do.
+terminal, which is not something a button should be able to do.
 
-They are listed in `bb help`'s own order, so the flyout and the CLI read the
-same. If the list outgrows its space it is cut off at eight with a **Show all**
-button after the cut. The **thumbtack** on each command keeps it above that
-cut: pinning moves a command up, it does not re-sort it into an order the CLI
-never uses. Pins live in `/config/pinned-commands.json`: one machine, one
-operator, so a pin made at the desk is there on the phone.
+There are no `bb` commands in the flyout (17 Oct): every one of them has its
+page now (status on Home, the emulator on its page, the logs in Settings, the
+sign-in on its own), and a button beside the page that does it better was a
+second way to the same thing. The Tests view still sends `bb tests log -f`
+into the project's shell from its own button.
 
-What is *not* there is most of `bb`, on purpose. Nothing that needs an argument
-(`bb capture shot URL`): a button is never a half-written command line. Nothing a page
-already does better: the Projects page lists projects, the doctor's dot in
-the top bar runs doctor, the findings report beats `bb findings`, and the
-CI runner page has the runner's own controls. And nothing
-that only means anything from a checkout of the BuilderBot repo (`bb drift`,
-`bb dashboard dev`); those are for sessions developing the container. What is
-left is what an operator actually reaches for from a terminal: status, update,
-login, the emulator, lint, and the logs.
-
-Two more lists flank the `bb` one in the same flyout, following the same
-rules. **Linux commands** is the general toolkit: `ls -lah`, disk usage here and per mount,
-memory, the biggest processes, listening ports: live on any shell tab. **Git
-& GitHub** shows its commands verbatim (`git status`, log, diff, branches,
-fetch, pull; `gh pr list`, `gh run list`, …) and ghosts against the directory
-the active shell is *in*, not just whether it is a shell: outside a git
-repository the whole list grays out, and in a repository whose remotes do not
-include GitHub, just the `gh` half does: the hover text says which it is.
-The verdict follows a `cd` on the next status poll, and the ghosting only
-reflects the repo; `gh` itself still needs its own auth (`gh auth login`
-in a shell) to answer.
+What is there, top to bottom: **pinned**, the commands whose **thumbtack**
+is pressed, in their lists' order; **your commands** (below); **Linux**, the
+general toolkit: `clear`, `cd ..`, `ls -lah`, disk usage here and per
+directory, memory, the biggest processes, listening ports, live on any shell
+tab; and **git**, its commands verbatim (`git status`, log, diff, branches,
+stashes, fetch, pull), ghosting against the directory the active shell is
+*in*: outside a git repository the whole list grays out, and the verdict
+follows a `cd` on the next status poll. There is no `gh`: a node carries
+none, and a push is `bb git push`'s, under the project's policy. Pins live in
+`/config/pinned-commands.json`: one machine, one set, so a pin made at the
+desk is there on the phone.
 
 ### Your own commands
 

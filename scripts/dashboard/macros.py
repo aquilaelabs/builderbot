@@ -4,7 +4,7 @@ Every command the UI can run and every key it can press is an entry in a
 table here, and the page posts the entry's name and nothing else. The
 operator's own command lists are the one stored kind, typed into a terminal
 the same way and never run in the server's process; the pins are which of
-the bb commands sit at the top of their card.
+the Linux and git commands sit at the top of the Commands panel.
 
 Out of server.py whole (R77): the tables, the pins and the lists, the
 command cards' part of the status poll, and the three ways the page types
@@ -21,52 +21,32 @@ from pathlib import Path
 # command string would be a remote shell with extra steps, and there is already
 # a real terminal one port over for anything not listed here.
 #
-# In `bb help`'s order. Commands that prompt or follow (`login`, `logs -f`)
-# belong here because a macro is typed into the real terminal rather than
-# captured: the operator answers the prompt or presses Ctrl-C exactly as if
-# they had typed it.
-#
-# What is NOT here, and why. Nothing but `bb`; anything else belongs in the
-# terminal, one click away. Nothing that needs an argument to mean anything
-# (`bb capture shot URL`): a button is never a half-written command line. Nothing a
-# card already does better: the Projects card lists projects and offers the
-# CLAUDE.md fixes per row, the Doctor card runs doctor, the findings report
-# beats `bb findings` on every count. And nothing that only means anything
-# from a checkout of this repo (`bb drift`, `bb dashboard dev`): those are
-# for sessions developing the container, not for the operator's dashboard.
-# The runner controls stay because the Runner card sends them, but they are
-# not repeated in the bb commands card (CARD_HIDDEN below).
+# The bb commands a page sends from where it is about (the operator, 17 Oct:
+# no card of bb commands, since every one of them has its page now: status
+# on Home, the emulator on its page, the logs in Settings, the sign-in on
+# its own). Typed into the real terminal rather than captured, so one that
+# follows is ended with Ctrl-C exactly as if it had been typed.
 MACROS = {
-    "status":           ["bb", "status"],
-    "update":           ["bb", "update"],
-    "login":            ["bb", "login"],
-    "emu-start":        ["bb", "emu", "start"],
-    "emu-stop":         ["bb", "emu", "stop"],
-    "emu-status":       ["bb", "emu", "status"],
-    "emu-list":         ["bb", "emu", "list"],
-    "lint":             ["bb", "lint"],
-    "logs":             ["bb", "logs"],
-    "logs-follow":      ["bb", "logs", "-f"],
     # The last test run's output, followed while it is still running: the
     # Tests view's button sends this into the project's shell. A row used
     # to carry a tail of the job's log and redraw for every line of it.
     "tests-log":        ["bb", "tests", "log", "-f"],
 }
-# Sendable, but not listed in the bb commands card: another card owns them.
-# Empty since the controller's own runner went (the Runner card is a view of
-# the nodes' runners now, and those are driven from the Nodes tab).
-CARD_HIDDEN = set()
 
-# The Linux and git/GitHub cards. Strings typed into the shell as-is, not
+# The Linux and git lists. Strings typed into the shell as-is, not
 # argv lists like MACROS, because half of these are pipelines and shlex.join
 # would quote the pipe into a literal. Still a table, for the same reason as
 # MACROS: send-keys will happily type anything, so the page only ever names
 # an entry. The label the card shows IS the command: these are buttons for
 # things an operator would type, so hiding the text would only add mystery.
 LINUX_MACROS = {
+    "lx-clear": "clear",
+    "lx-up":    "cd ..",
     "lx-ls":    "ls -lah",
     "lx-du":    "du -sh * | sort -rh | head -20",
-    "lx-df":    "df -h /workspace /config ~",
+    # Here and home: a shell is a node's, where /config (the controller's)
+    # is not (the operator, 17 Oct).
+    "lx-df":    "df -h . ~",
     "lx-free":  "free -h",
     "lx-ps":    "ps aux --sort=-%mem | head -15",
     "lx-ports": "lsof -nP -iTCP -sTCP:LISTEN",
@@ -81,15 +61,9 @@ GIT_MACROS = {
     "git-fetch":  "git fetch --all --prune",
     "git-pull":   "git pull",
 }
-# Ghosted separately from the git ones: they need the shell's repo to have a
-# GitHub remote, not just to be a repo.
-GH_MACROS = {
-    "gh-prs":    "gh pr list",
-    "gh-status": "gh pr status",
-    "gh-runs":   "gh run list --limit 10",
-    "gh-issues": "gh issue list",
-}
-SHELL_MACROS = {**LINUX_MACROS, **GIT_MACROS, **GH_MACROS}
+# No gh: a node carries none (the operator, 17 Oct), so its four buttons
+# could only fail; a push is bb git push's, under the project's policy.
+SHELL_MACROS = {**LINUX_MACROS, **GIT_MACROS}
 
 # Keys an Android keyboard has no way to send. Names on the left are what the
 # page posts; values are tmux key names. A table rather than passthrough for the
@@ -155,7 +129,7 @@ def load_pins():
         return []
     if not isinstance(v, list):
         return []
-    return sorted({x for x in v if isinstance(x, str) and x in MACROS})
+    return sorted({x for x in v if isinstance(x, str) and x in SHELL_MACROS})
 
 
 def load_custom():
@@ -219,19 +193,14 @@ def save_pins(names):
 
 
 def cards():
-    """The command cards' part of the status poll: the bb commands, the
-    Linux and git/GitHub cards, the pins and the operator's own lists."""
+    """The Commands panel's part of the status poll: the Linux and git
+    lists, which of them are pinned, and the operator's own lists."""
     return {
-        "macros": [{"name": k, "label": " ".join(v[1:])}
-                   for k, v in MACROS.items() if k not in CARD_HIDDEN],
-        # The Linux and git/GitHub cards, from their tables for the same
-        # reason as macros above. `need` is what the button requires of the
-        # active shell's directory; the page ghosts accordingly.
+        # From their tables for the same reason as MACROS. `need` is what
+        # the button requires of the active shell's directory; the page
+        # ghosts accordingly.
         "linux": [{"name": k, "label": v} for k, v in LINUX_MACROS.items()],
-        "gitcmds": [{"name": k, "label": v, "need": "git"}
-                    for k, v in GIT_MACROS.items()]
-                   + [{"name": k, "label": v, "need": "github"}
-                      for k, v in GH_MACROS.items()],
+        "gitcmds": [{"name": k, "label": v, "need": "git"} for k, v in GIT_MACROS.items()],
         "pinned": load_pins(),
         "custom": load_custom(),
     }
@@ -244,11 +213,11 @@ def _answer(r):
 
 
 def pin(name, on):
-    """Pin or unpin a command. Names are keys from MACROS, so the file can
-    never grow an entry the card would not know what to do with. (payload,
-    status)."""
-    if name not in MACROS:
-        return {"error": f"unknown macro: {name}"}, 400
+    """Pin or unpin a command. Names are keys from the Linux and git lists,
+    so the file can never grow an entry the panel would not know what to do
+    with. (payload, status)."""
+    if name not in SHELL_MACROS:
+        return {"error": f"unknown command: {name}"}, 400
     with lock:
         names = set(load_pins())
         names.add(name) if on else names.discard(name)

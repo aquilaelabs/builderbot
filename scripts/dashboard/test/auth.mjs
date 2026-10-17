@@ -112,7 +112,7 @@ ok(!r.headers.get('content-encoding'), 'a client that cannot take gzip gets plai
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
-await page.waitForFunction(() => document.querySelectorAll('#commands [data-m]').length > 0, { timeout: 40000 });
+await page.waitForFunction(() => document.querySelectorAll('#linux [data-m]').length > 0, { timeout: 40000 });
 ok(page.url().split('#')[0] === URL, 'preemptive basic auth bypasses the login page');   // the page's address rides the hash (R218)
 
 // And a browser with no credentials walks the login flow end to end.
@@ -1301,7 +1301,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     };
     for (const [path, body] of [['/api/keys', { session: 'claude-alpha', key: 'enter' }],
                                 ['/api/session', { action: 'kill', session: 'claude-alpha' }],
-                                ['/api/send', { session: 'shell-alpha-1', macro: 'status' }]]) {
+                                ['/api/send', { session: 'shell-alpha-1', macro: 'lx-ls' }]]) {
       const r = await act(plainAuth, path, body);
       ok(r.status === 403 && /not yours/.test(r.error), `a plain account cannot use ${path} on the owner's session (${r.status})`);
     }

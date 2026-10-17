@@ -5,7 +5,7 @@ import { launch, newPage, ok, done, ready, layoutSettled, URL, animatedDuring } 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
-await page.waitForFunction(() => document.querySelectorAll('#commands [data-m]').length > 0, { timeout: 40000 });
+await page.waitForFunction(() => document.querySelectorAll('#linux [data-m]').length > 0, { timeout: 40000 });
 // The dock (R218 step 4): three shells on its line, the workspace's and two
 // more; a press on one brings it forward, its − puts it away.
 await page.evaluate(() => { newShell(''); newShell(''); });
