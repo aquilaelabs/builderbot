@@ -869,8 +869,13 @@ function projectState(p){
 // agent out of window), in the notice voice, or nothing.
 function projectNote(p){
   const here = withMe(p.name).length > 0;
-  return (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked && !here
-    ? `<div class="pnote ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(p.session_why || p.held)}</div>` : "";
+  // What holds it back is the notice, in red, ahead of a wait that would
+  // end by itself (B826: a copy going up was said in red and the missing
+  // Claude Code that really held it was never said); a wait alone is dim.
+  const held = p.held && !state?.mapping?.[p.name]?.running ? p.held : "";
+  const said = held || p.session_why;
+  return said && !p.locked && !here
+    ? `<div class="pnote ${!held && p.session_waiting ? "dim" : "bad"}">${esc(said)}</div>` : "";
 }
 // The two actions a project page and its card show, and the rest behind
 // one menu (R238: nine look-alike icons on a row were one too many). The
