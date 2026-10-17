@@ -53,7 +53,7 @@ ok(kept.ok && row.routes.length === 1 && row.routes[0].host === 'www.example.com
    && !row.deployed,
    `a route saved before Deploy is kept on the controller, with nothing deployed yet (${JSON.stringify(row.routes)})`);
 await page.evaluate(() => loadNginx());
-await page.waitForFunction(id => /1 route and 0 certificates/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''), sandbox.node, { timeout: 10000 });
+await page.waitForFunction(id => /1 route and 0 certificates/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate`)?.textContent || ''), sandbox.node, { timeout: 10000 });
 ok(true, '...and the undeployed node says Deploy will bring that route up');
 // Written from elsewhere (a Docker row's Add route, bb, another browser),
 // the open tab re-reads by the revisions token, not by its Refresh (B714).
@@ -61,11 +61,11 @@ ok(true, '...and the undeployed node says Deploy will bring that route up');
   const two = [...row.routes, { host: 'two.example.com', path: '/', port: 8081, tls: false }];
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: two });
   const came = await page.waitForFunction(id => document.querySelectorAll(`.nginxtab [data-ngnode="${id}"] .ngroute`).length === 2
-      || /2 routes/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''),
+      || /2 routes/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate`)?.textContent || ''),
     sandbox.node, { timeout: 15000 }).then(() => true, () => false);
   ok(came, 'a route saved from elsewhere shows on the open tab within a poll, with no Refresh pressed');
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes });
-  await page.waitForFunction(id => /1 route/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate .sub`)?.textContent || ''),
+  await page.waitForFunction(id => /1 route/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate`)?.textContent || ''),
     sandbox.node, { timeout: 15000 });
 }
 // A hostname typed in the route row (the operator, 13 Oct): the last choice

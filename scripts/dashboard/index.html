@@ -2144,11 +2144,17 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The Docker manager's top band: New container at the left, when the images
    were checked and Check for updates at the right, one line. An action
    bar's state takes a line of its own, which broke this band into three. */
-.dmimgbar .state{flex:0 1 auto;text-align:right}
-/* ...across the page, not capped at a control's width: an add band of a
-   form keeps that cap (:is(.doctab,.nb) .addbar below), and this one's
-   three items wrapped inside it toward the middle (B800, seen on dev). */
-.dmtab .actbar.dmimgbar{max-width:none}
+/* A page's status line (page-docs.js headLine): its words at the left
+   taking what room the actions leave, the actions at the right, one line
+   where it fits. An action bar's state takes a line of its own; this one
+   shares it. */
+.headline>.actbar{flex-wrap:wrap;justify-content:flex-end}
+.headline>.actbar>.state{flex:1 1 12rem;text-align:left}
+/* ...its words level with its buttons, over the form rows' rule that sets a
+   bar's items on their foot; and the line's own inset is the band's, so a
+   page's .macros bar inside it adds none. */
+:is(.doctab,.nb) .headline>.actbar.actbar{align-items:center}
+.doctab .headline>.actbar.macros{padding:0}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .roadmapadd[hidden]{display:none}
 .roadmapadd input{flex:1 1 auto;min-width:0}

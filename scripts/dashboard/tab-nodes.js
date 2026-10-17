@@ -392,19 +392,20 @@ function nodeRunnerSection(n, c){
           <button type="button" class="primary" data-nrunneradd ${busyNow ? "disabled" : ""}
             title="save the token and add the runner to this node">Add runner</button></div>
       </div></div>`
-    : `<div class="addbar" data-add="runner"><button type="button" data-nrunnershow ${busyNow || n.runner_new === false ? "disabled" : ""}
-        title="a runner for another git host, or this one's under another address">Add runner</button>${
-        n.runner_new === false ? `<div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div>` : ""}</div>`;
+    : "";
+  // Add runner is the page's main action, on its status line beside the
+  // runners' state (the operator, 17 Oct: one order for every page's top).
+  const addBtn = c.addRunner ? "" : `<button type="button" data-nrunnershow ${busyNow || n.runner_new === false ? "disabled" : ""}
+        title="a runner for another git host, or this one's under another address">Add runner</button>`;
   const status = !slots.length ? "none" : worst === "bad" ? "attention" : worst === "note" ? "working"
     : reps.some(r => r.busy) ? "busy" : reps.some(r => r.active) ? "listening" : "asked for";
   const pill = {attention: "bad", working: "note", busy: "ok", listening: "ok"}[status] || "";
   // The node-scoped tool's shape, the Phone tab's too (R121 step 5): the
   // state row first, the things below it, the add band, and at the foot
   // what a workflow (or a session) does to reach this node.
-  return `<div class="row toolstate"><div class="grow">
-        <div class="name">CI runners on ${esc(n.name)} <span class="pill ${pill}">${esc(status)}</span></div>
-        <div class="sub">One runner per git host; its labels decide which workflows land here.</div></div></div>
-      <div class="field">${addbar}</div>
+  return `${headLine(`<span class="pill ${pill}">${esc(status)}</span> One runner per git host; its labels decide which workflows land here.`,
+        addBtn, "toolstate")}${n.runner_new === false && !c.addRunner ? `<div class="field"><div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div></div>` : ""}
+      ${addbar ? `<div class="field">${addbar}</div>` : ""}
       ${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div></div>` : ""}`;

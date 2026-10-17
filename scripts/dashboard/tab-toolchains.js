@@ -501,8 +501,9 @@ function renderToolchainsInto(i){
   // The one node switcher (page-docs.js nodePick, R121).
   surf.setBar(`${nodePick("tcNodeSel", pnodes, tcNode)}
 `);
-  surf.list.innerHTML = `
-    <div class="tchead">${onNode
+  // What the store is and where, said on the page's status line under the
+  // tiles (the operator, 17 Oct: one order for every page's top).
+  const storeSaid = onNode
       ? (d.root
           // Nothing here about a shared store. Several nodes pointing at one
           // share is an ordinary arrangement: three Linux sandboxes on one
@@ -520,7 +521,8 @@ function renderToolchainsInto(i){
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code>: a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code>: the home volume. Map a toolchain store to keep them out of it.`)
-      : "No toolchain store found."}</div>
+      : "No toolchain store found.";
+  surf.list.innerHTML = `
     ${pstale ? `<div class="tchead warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div>` : ""}
     ${
@@ -540,16 +542,15 @@ function renderToolchainsInto(i){
       ]);
     })()}
     ${
-    // The page's actions in one band near its top (the operator, 16 Oct:
-    // Install selected and Check for updates down at the foot, under every
-    // row): what is running or when it was checked at the left, then Remove
-    // for what no node uses any more (R196), Abort, Check and Install.
+    // The page's status line under its tiles (the operator, 16 and 17 Oct):
+    // the store and when its versions were checked, or what is running, at
+    // the left; then Remove for what no node uses any more (R196), Abort,
+    // Check and Install.
     (() => {
       const may = mayToolchains(tcNode);
       const clean = onNode && (d.cleanable || []).length && may ? d.cleanable : [];
-      return `<div class="tcact"><div class="actbar macros">
-      ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
-      <span class="sp"></span>
+      return `<div class="field headline tcact"><div class="actbar macros">
+      ${busy ? tcWorking(job, d.items) : `<span class="state">${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}</span>`}
       ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}
       ${busy && may ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}

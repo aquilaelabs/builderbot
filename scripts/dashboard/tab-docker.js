@@ -2306,17 +2306,16 @@ function renderDockerInto(i){
       <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
         <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card">Cards</button>
         <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card">List</button></div>
-      <button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button></div>${
-      // Adding at the top, in the add band every view adds with, where a
-      // phone finds it without scrolling past every container (R119 step 5).
-      // ...and, in the same band rather than one each (R227 step 1: six rows
-      // before the first container on a phone), the registry images against
-      // what their registries serve now (R195): weekly by itself, or now; a
-      // row that is behind says so with Update.
-      mayDocker() ? `<div class="field"><div class="actbar addbar dmimgbar" data-add="container">
-        <button type="button" id="bDockerNew">New container</button><span class="sp"></span>${!blind ? `<span class="state">${
-        dockerList?.images_at ? `images checked ${esc(ago(dockerList.images_at))}` : "images not checked yet"}</span>
-        <button type="button" id="bDockerCheck">Check for updates</button>` : ""}</div></div>` : ""}`;
+      <span class="actbar"><button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button>${
+      // The page's main action at the right of its bar (the operator, 17 Oct:
+      // one order for every page's top), where a phone finds it without
+      // scrolling past every container (R119 step 5).
+      mayDocker() ? `<button type="button" id="bDockerNew" class="primary">New container</button>` : ""}</span></div>`;
+  // ...and its status line under the tiles: when the registry images were
+  // last checked against what their registries serve now (R195), weekly by
+  // itself or now; a row that is behind says so with Update.
+  const status = mayDocker() && !blind ? headLine(dockerList?.images_at ? `images checked ${esc(ago(dockerList.images_at))}` : "images not checked yet",
+    `<button type="button" id="bDockerCheck">Check for updates</button>`, "dmimgbar") : "";
   // What a session is waiting on, above everything else: somebody is blocked
   // on these, and this is the tab whose dial sent them here. The bell carries
   // them too, the way root asks sit on the Nodes tab and in the bell.
@@ -2351,7 +2350,7 @@ function renderDockerInto(i){
     {label: "projects", value: chips.filter(g => g.key !== "none").length},
     {label: "not ours", value: notOurs, omit: !notOurs, title: "on this daemon, started by nobody here"},
   ]);
-  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${
+  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${status}${
     chipBar(chips, dmChip, "data-dmchip")}${askRows}${note
       ? `<div class="field"><div class="notice warn dmnote">${esc(note)}</div></div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the

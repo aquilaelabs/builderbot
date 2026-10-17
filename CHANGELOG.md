@@ -382,6 +382,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Controller settings, Profile and the Roles page share a project's Settings shape: a list beside the section or person picked, and on a phone the list, then the section sliding in with Back; the Roles page is one list of people and roles (d78256d)
 - bb capture reel sees small and slow changes (a tap circle, a typed letter, a slow scroll) by comparing each frame with the last one kept, thins a run of motion to where it starts and settles, pages a long reel twelve frames a sheet, and offers --dry to count first and --from/--to to reel one stretch; it no longer drops or mis-stamps frames of a fast recording (2983542)
 - At a desk every page's content floats as cards on the page's margin, as Home and Projects do: sections, tables, row lists, a notebook's lists, the Docker manager's project groups, and a settings page's list and section; no line runs to the page's edge. A phone keeps its full-width bands (ff1310e)
+- Every page's top follows one order: the bar (what it shows, search, view, main action), the summary tiles, a status line (when things were last checked, with Check for updates, Measure now, Deploy or Add runner beside it), then filters and content (3e450f5)
 
 ### Removed
 

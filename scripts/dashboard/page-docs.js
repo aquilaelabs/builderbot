@@ -575,6 +575,16 @@ function unbusy(btn, word){
 // Three shapes every document tab draws the same way, held by the design's
 // rules tiles, facts and chips and measured by uniform.mjs.
 
+// A page's status line (the operator, 17 Oct: one order for every page's
+// top): under the tiles, when its things were last checked or what state
+// they are in at the left, its upkeep actions (Check for updates, Measure
+// now, Install selected) at the right, on one line. `said` is markup; `cls`
+// names the page's own line for its wiring and its suites.
+function headLine(said, actions = "", cls = ""){
+  if (!said && !actions) return "";
+  return `<div class="field headline${cls ? " " + esc(cls) : ""}"><div class="actbar"><span class="state">${said}</span>${actions}</div></div>`;
+}
+
 // A row of tiles under a tab's bar: each a number the tab is about, with
 // its label under it and, when the number itself is news, a tone. Facts
 // to look at, never pressed; a tile for a number that is always the same

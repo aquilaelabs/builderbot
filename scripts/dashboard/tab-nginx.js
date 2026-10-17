@@ -203,18 +203,16 @@ function nginxUndeployed(n){
   const count = (n.routes || []).length, certs = Object.keys(n.certs || {}).length;
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
+  // The page's status line (the operator, 17 Oct: one order for every
+  // page's top): not deployed and what Deploy brings, with Deploy beside it.
   return `<div data-ngnode="${esc(n.node)}">
-    <div class="row toolstate">
-      <div class="grow"><div class="name">nginx on ${esc(n.name)} <span class="pill">not deployed</span></div>
-        <div class="sub">${count || certs
+    <div class="field headline toolstate"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
+      <span class="state"><span class="pill">not deployed</span> ${count || certs
           ? `Deploy puts nginx on ${esc(n.name)} with the ${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
-          : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}</div></div>
-    </div>
-    ${clash}
-    <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
-      <span class="state"></span><span class="sp"></span>
+          : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}</span>
       <button type="button" class="primary" data-ngdeploy>Deploy</button>
     </div></div>
+    ${clash}
   </div>`;
 }
 

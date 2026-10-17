@@ -77,8 +77,10 @@ ok(await page.$$eval('.doc .tcs .tc .pill', ps => ps.length === 0),
    '...so no row carries a size or a version: nothing has been weighed yet');
 ok((await page.$$eval('.doc .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('installed'),
    'the Toolchains tab opens on tiles: what is installed of what is offered');
-ok((await page.$eval('.tchead', el => el.textContent)).includes(`${DIR}/sdk`),
-   'it says which root things are installed into');
+// ...on the page's status line under the tiles (the operator, 17 Oct: one
+// order for every page's top).
+ok((await page.$eval('.doc .headline.tcact .state', el => el.textContent)).includes(`${DIR}/sdk`),
+   'it says which root things are installed into, on the status line under the tiles');
 // The catalog is a file in the repository, not a list in the server: adding a
 // toolchain should be an edit somebody can make without reading python.
 const catalog = JSON.parse(                     // URL here is the dashboard's

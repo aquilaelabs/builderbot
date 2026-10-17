@@ -978,6 +978,12 @@ Applies to: card, section, band
 
 **At a desk, content floats as cards; no line runs to the page's edge (R262, the operator, 17 Oct).** As Home and Projects already were: a page-level section (on a page, the Docker manager, a notebook's view) is a card on the page's margin, the panel color, a hairline edge, the surface's radius and 12px between cards, its heading over a hairline inside it; a table straight on a page is a card; a run of rows straight on a page is one card, its rows divided inside it; a notebook's lists (bugs, roadmap, memory, tests, history) are cards; a page of settings and the Roles page are a list card beside a detail card; the Docker manager's group is a card headed by its project. A section inside a section, or inside a row (a node's card), stays a band in its card. The frame keeps its lines: the page's bar band, a notebook's header and its view strips. A band that only labels (a view's head row, a jump bar, Toolchains' store line) draws no line under it. A phone keeps the full-width bands (the operator: mobile is fine). `uniform.mjs` names any visible top or bottom border spanning a page from side to side at a desk.
 
+### page-head
+
+Applies to: bar, tiles, status line, header
+
+**Every page's top is one order (the operator, 17 Oct), each layer there only when the page has it.** First the bar: what the page is looking at (the node picker) at the left, then its search or filters, then at the right its view switch and its main action, the buttons inside an .actbar (New container, Enroll node). Then the summary tiles. Then the status line (page-docs.js headLine): when its things were last checked or what state they are in at the left, taking what room the buttons leave, its upkeep actions at the right, level with the words (Check for updates and Install selected on Toolchains, Measure now on Storage, Deploy on an undeployed nginx, Add runner on the CI runner). Then the filter chips, then the content's cards. A page's own card heading (Phone's connection, a node's card) is not a status line and keeps its card.
+
 ## Pages
 
 Each page is a layout of labeled blocks on a frame, named for what it is for, on the platform it is built for.

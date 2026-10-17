@@ -731,7 +731,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.waitForSelector(`${RROW} .ndconf`, { timeout: 15000 });
   const GH = 'github.com-example-org', RUN = `${RROW} .ndrun[data-slot="${GH}"]`;
   ok(await page.$eval(`${RROW} .ndrunnone`, e => /no runner on this node/.test(e.textContent))
-     && await page.$(`${RROW} .addbar[data-add="runner"] [data-nrunnershow]`) !== null
+     && await page.$(`${RROW} .headline [data-nrunnershow]`) !== null
      && await page.$(`${RROW} [data-k="runner:url"]`) === null,
      'the CI runners section says there is none and adds one at the top, a button until pressed');
   await page.click(`${RROW} [data-nrunnershow]`);

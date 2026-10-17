@@ -151,11 +151,11 @@ function storageBody(n, where){
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
+  const measure = storageMay && n.may_measure !== false ? `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
+      n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>` : "";
   return `<div data-stnode="${esc(n.node)}">
-    <div class="row toolstate">
-      <div class="grow"><div class="name">Storage on ${esc(n.name)} ${pill}</div>
-        <div class="sub">${n.measured ? `${n.took_s ? `the walk took ${n.took_s}s; ` : ""}walked again every hour` : "the agent walks its disks an hour after it starts, then every hour"}; where its stores live is set on its row on the Nodes tab</div></div>
-    </div>
+    ${headLine(`${pill} ${n.measured ? `${n.took_s ? `the walk took ${n.took_s}s; ` : ""}walked again every hour` : "the agent walks its disks an hour after it starts, then every hour"}; where its stores live is set on its row on the Nodes tab`,
+      measure, "toolstate")}
     <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
     ${storageDisks(n)}
     <div class="field">${lbl("", "By project")}
@@ -172,9 +172,8 @@ function renderStorageInto(i){
     // Its template (R218 step 16): the bar, the state row's words and the
     // two headings with their hints are the page's own; the node and what
     // its disks hold are on their way.
-    d.setBar(skNodeBar(storageMay ? ["Measure now", "Refresh"] : ["Refresh"]));
-    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">Storage on ${skv(6)}</div>
-        <div class="sub">${skv(28)}</div></div></div>
+    d.setBar(skNodeBar(["Refresh"]));
+    d.list.innerHTML = skTpl(`${headLine(skv(28), storageMay ? `<button type="button">Measure now</button>` : "", "toolstate")}
       <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
       ${skRows(2)}
       <div class="field">${lbl("", "By project")}<div class="hint">What each project's folders hold: its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.</div></div>
@@ -189,12 +188,11 @@ function renderStorageInto(i){
   const where = ["workspace", "cache", "artifacts", "appdata", "emulator", "builds"];
   const n = storagePick();
   const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
-  // The tab's two actions side by side at the right of the bar (R203):
-  // Measure now asks the node for a fresh walk, Refresh re-reads the record.
+  // One order for every page's top (the operator, 17 Oct): the node and
+  // Refresh in the bar; when it was measured and Measure now on the status
+  // line under it (storageBody), the upkeep a page's status line carries.
   d.setBar(`${nodePick("stNodeSel", pnodes, storageNode)}
-    <span class="sp"></span><span class="actbar">${storageMay && n && n.may_measure !== false ? `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
-      n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>` : ""}
-    <button type="button" id="stReload" title="read the nodes again">Refresh</button></span>`);
+    <span class="sp"></span><button type="button" id="stReload" title="read the nodes again">Refresh</button>`);
   d.list.innerHTML = n ? storageBody(n, where)
     : `<div class="empty">no node to measure yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
   wireStorageTab(d.el);
