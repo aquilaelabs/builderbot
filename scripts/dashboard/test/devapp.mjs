@@ -78,7 +78,12 @@ const DM = '.dmtab .row[data-inst^="ep.silon|"]';
 // there" broke the moment another tab took the pane: the row was absent, the
 // guard did not re-open it, and the click waited for something never coming.
 async function openManager(){
-  await page.evaluate(() => openDocker());
+  // A row's settings dialog is modal, so none is left open behind a check
+  // that presses something else on the page.
+  await page.evaluate(() => {
+    for (const d of dockerList?.instances || []) dmDropDrafts(`inst:${d.project}|${d.instance}`);
+    for (const c of dockerList?.containers || []) dmDropDrafts(`ctr:${c.name || c.id}`);
+    dmEditing.clear(); openDocker(); });
   await page.waitForSelector(DM, { timeout: 20000 });
 }
 async function dmClick(act){
@@ -126,19 +131,25 @@ async function dmDisabled(act){
   // container wears no Up (the operator's concept, 17 Oct).
   return page.evaluate(sel => { const b = document.querySelector(sel); return !b || b.disabled; }, `${DM} [data-dm="${act}"]`);
 }
-// A row's settings read as pills until Edit settings, behind its ⋯, swaps
-// the fields in (the operator's concept, 17 Oct): a check that works the
-// fields opens every row's, as a person would one by one; none puts them
-// back.
-async function dmEditAll(){
-  await page.waitForFunction(() => (dockerList?.instances || []).length > 0, null, { timeout: 20000 }).catch(() => {});
-  await page.evaluate(() => {
-    for (const d of dockerList?.instances || []) dmEditing.add(`inst:${d.project}|${d.instance}`);
-    for (const c of dockerList?.containers || []) dmEditing.add(`ctr:${c.name || c.id}`);
-    dockerRev++; drawPanes(); });
+// A row's settings read as pills until Edit settings, behind its ⋯, opens
+// them in a dialog (the operator, 17 Oct): a check that works the fields
+// opens the one row's it is about, as a person would; the dialog is modal,
+// so openManager closes it before anything else on the page is pressed.
+async function dmEditAll(sel = DM){
+  await page.waitForFunction(sel => !!document.querySelector(sel), sel, { timeout: 20000 }).catch(() => {});
+  await page.evaluate(sel => {
+    const r = document.querySelector(sel);
+    const key = r?.dataset.inst ? `inst:${r.dataset.inst}` : r?.dataset.ctr ? `ctr:${r.dataset.ctr}` : '';
+    if (key) dmEditing.add(key);
+    dockerRev++; drawPanes(); }, sel);
+  await page.waitForFunction(() => document.querySelector('dialog.dmsetdlg')?.open, null, { timeout: 10000 }).catch(() => {});
 }
 async function dmEditNone(){
-  await page.evaluate(() => { dmEditing.clear(); dockerRev++; drawPanes(); });
+  // ...and what a check staged and left: a row with a draft keeps its dialog.
+  await page.evaluate(() => {
+    for (const d of dockerList?.instances || []) dmDropDrafts(`inst:${d.project}|${d.instance}`);
+    for (const c of dockerList?.containers || []) dmDropDrafts(`ctr:${c.name || c.id}`);
+    dmEditing.clear(); dockerRev++; drawPanes(); });
 }
 // The manager repaints from its own fetch, not the artifacts poll, so a test
 // that acted through the API has to ask it to look again.
@@ -3092,6 +3103,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
 // ports and volumes, and what it produces is the Compose tab beside it, so
 // nothing about the container is hidden from the person making it.
 {
+  await dmEditNone();
   await page.evaluate(() => openNewContainer());
   await page.waitForSelector('#cmodal:not([hidden])', { timeout: 10000 });
   ok(await page.$eval('#cFormField', e => !e.hidden) && await page.$eval('#cYmlField', e => e.hidden),
@@ -4307,7 +4319,7 @@ print(json.dumps(out))
        JSON.stringify(g)})`);
   // ...and the project is a setting on the row, staged and applied.
   const R = '.dmtab .row[data-ctr="someone-elses"]';
-  await dmEditAll();
+  await dmEditAll(R);
   await page.waitForSelector(`${R} [data-dmapply]`, { timeout: 15000 });
   ok(await page.$eval(`${R} [data-dmapply]`, b => b.disabled)
      && await page.$eval(`${R} [data-dmown]`, e => e.value === '' && [...e.options].some(o => o.value === 'ep.silon')),

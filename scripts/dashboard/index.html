@@ -1466,6 +1466,11 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 /* A dialog's box takes the focus as it opens (modalKeys), for a screen
    reader and for Tab to start from; it is not a control, so no ring. */
 .modal>.box:focus{outline:none}
+/* A dialog element wearing the overlay (a container's settings): the
+   browser's top layer, the overlay's own look, none of the element's. */
+dialog.modal{width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;color:var(--ink)}
+dialog.modal:not([open]){display:none}
+dialog.modal::backdrop{background:transparent}
 .modal .box{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}

@@ -769,9 +769,11 @@ function dmClaudeSaid(d, other = false){
 // drawn only when one of them is a setting rather than a read-only line.
 // `key` names the row for the Apply (`inst:project|instance` or
 // `ctr:name`), and dmRowDirty says whether anything is staged.
-function dmSetGrid(cells, key, {cancel = false} = {}){
+function dmSetGrid(cells, key, {cancel = false, bare = false} = {}){
   const body = cells.filter(Boolean).join("");
   if (!body) return "";
+  // ...or the grid alone, for a dialog whose foot carries the buttons.
+  if (bare) return `<div class="setgrid dmsettings">${body.replace("<!--APPLY-->", "")}</div>`;
   const settable = /data-(dmown|dmmove|dmref|dmboot|route)=/.test(body);
   // ...with Cancel before it where Edit settings opened them: it drops what
   // was staged and puts the fields away (rows-you-open).
@@ -786,6 +788,23 @@ function dmSetGrid(cells, key, {cancel = false} = {}){
   return `<div class="setgrid dmsettings">${body.replace("<!--APPLY-->", "")}${settable
     ? `<div class="setfoot${cancel ? " dmeditfoot" : ""}">${apply}</div>` : ""}</div>`;
 }
+// A row's settings in a dialog (the operator, 17 Oct): a native dialog in
+// the page's top layer, drawn inside its row so the row's wiring reaches its
+// controls, shown by dmWireRows after each draw; its title, the settings
+// grid, and Cancel and the one filled Apply at its foot. Escape is Cancel.
+function dmSetDialog(name, key, cells){
+  const grid = dmSetGrid(cells, key, {bare: true});
+  if (!grid) return "";
+  return `<dialog class="modal dmsetdlg" data-dmdlg="${esc(key)}" aria-label="Settings of ${esc(name)}">
+    <div class="box wide"><h3>Settings: ${esc(name)}</h3>
+      <div class="field">${grid}</div>
+      <div class="foot"><span class="sp"></span>
+        <button type="button" class="stop" data-dmcancel="${esc(key)}">Cancel</button>
+        <button type="button" class="primary" data-dmapply="${esc(key)}"${dmRowDirty(key) ? "" : " disabled"}
+          title="save what was changed">Apply</button></div>
+    </div></dialog>`;
+}
+
 // What a row has staged, dropped (Cancel): every draft its key names.
 function dmDropDrafts(key){
   const inst = key.startsWith("inst:") ? key.slice(5) : "";
@@ -1674,13 +1693,13 @@ function dmRowsHtml(ins, job, blind){
         ${dmUnrouted(d)}
         ${(d.images_behind || []).length ? `<div class="sub warn dmimages">a newer ${esc(d.images_behind.join(", "))} is out: Update pulls it and starts it again</div>` : ""}
         ${
-        // Its settings, read as pills with Edit settings, which swaps the
-        // fields in with Apply and Cancel (rows-you-open; the operator's
-        // concept, 17 Oct); a row with a setting staged stays open.
-        dmEditing.has(key) || dmRowDirty(key)
-          ? dmSetGrid([dmOwnerLine(d, key), dmMoveLine(d), dmRefLine(d), dmRouteLine(d),
-                       dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : ""], key, {cancel: true})
-          : dmSetPills(dmInstPills(d, managed))}
+        // Its settings, read as pills; Edit settings, behind ⋯, opens them
+        // in a dialog with Cancel and Apply (the operator, 17 Oct); a row
+        // with a setting staged keeps it open.
+        dmSetPills(dmInstPills(d, managed))}
+        ${dmEditing.has(key) || dmRowDirty(key)
+          ? dmSetDialog(d.name, key, [dmOwnerLine(d, key), dmMoveLine(d), dmRefLine(d), dmRouteLine(d),
+                       dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : ""]) : ""}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", dmPortsSaid(d),
@@ -2123,6 +2142,15 @@ function dmWireRows(el, list = dockerList){
   };
   // The grid's one Apply: every staged setting on the row, in turn, then
   // one redraw. A setting that fails says so and the rest still go.
+  // A row's settings dialog, drawn open: shown in the top layer, again after
+  // each draw replaced it; Escape is its Cancel.
+  el.querySelectorAll("dialog.dmsetdlg").forEach(dlg => {
+    if (!dlg.open) try{ dlg.showModal(); }catch(e){ /* detached mid-draw */ }
+    dlg.oncancel = e => {
+      e.preventDefault();
+      dmDropDrafts(dlg.dataset.dmdlg); dmEditing.delete(dlg.dataset.dmdlg); dockerRev++; drawPanes();
+    };
+  });
   el.querySelectorAll("[data-dmedit]").forEach(b => b.onclick = () => {
     closeMore(); dmEditing.add(b.dataset.dmedit); dockerRev++; drawPanes();
   });
@@ -2255,12 +2283,12 @@ function dmOtherRowsHtml(cs){
         ${actMore([dmEditBtn("ctr:" + (c.name || c.id))])}
         </div>
         </div>
-        ${dmEditing.has("ctr:" + (c.name || c.id)) || dmRowDirty("ctr:" + (c.name || c.id))
-          ? dmSetGrid([dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot)],
-                      "ctr:" + (c.name || c.id), {cancel: true})
-          : dmSetPills([["Project", c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "none"],
+        ${dmSetPills([["Project", c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "none"],
                         ["", c.boot ? "✓ Starts on boot" : "not on boot", c.boot ? "ok" : ""],
                         ["Claude", dmClaudeSaid(c, true)]])}
+        ${dmEditing.has("ctr:" + (c.name || c.id)) || dmRowDirty("ctr:" + (c.name || c.id))
+          ? dmSetDialog(c.name || c.id, "ctr:" + (c.name || c.id),
+                        [dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot)]) : ""}
       </div>`)).join("");
 }
 // A container BuilderBot did not start is a line in list view too, with
