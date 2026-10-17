@@ -2858,7 +2858,7 @@ pre.diff .d-ctx{color:var(--dim)}
     border-bottom:var(--hair) solid var(--line)}
   :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)>.body{
     padding-top:var(--row-y)}
-  .doctab>.doclist>:is(details.sect, .tbl):last-child,.dmtab .dmcard:last-child{margin-bottom:16px}
+  /* (the room under a page's last card is the list's own: see .doclist::after) */
   /* A list inside a band that is inset already (the roadmap's, memory's)
      takes no side margin of its own: its edge is the band's content edge,
      in line with the buttons and chips over it (the operator, 17 Oct). */
@@ -2885,7 +2885,6 @@ pre.diff .d-ctx{color:var(--dim)}
     border-top:var(--hair) solid var(--line);border-top-left-radius:var(--r-surface);border-top-right-radius:var(--r-surface)}
   :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>:is(.row:last-child, .row:has(+:not(.row))){margin-bottom:0;
     border-bottom:var(--hair) solid var(--line);border-bottom-left-radius:var(--r-surface);border-bottom-right-radius:var(--r-surface)}
-  .doctab>.doclist>.row:last-child{margin-bottom:16px}
   /* A page's template floats as the page will (R262 with R218 step 16): a
      run of its placeholder rows is one card, its table a card. */
   .doctab>.doclist>.skt>.sk-row{margin:0 var(--row-x);background:var(--panel);
@@ -3428,6 +3427,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    notebook's are: the band is inset already, and body text there read
    louder than the label over it (B823). */
 .doctab .field>.hint{padding:0;color:var(--dim);font:var(--f-note)}
+/* Room under every page's last card, at every width (the operator, 17 Oct:
+   the bottom of a page ran into the dock): a spacer at the end of the
+   list, since a last child's margin is not kept at the end of a scrolling
+   box. */
+.doctab>.doclist::after,.doctab.dmtab::after,.nb .nbview:not([hidden])::after{content:"";display:block;height:16px;flex:0 0 auto}
 /* The node-scoped tools' foot line (R121) is a quiet note, not body text. */
 .toolfoot .hint{font:var(--f-note);color:var(--dim);padding:0}
 .fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
