@@ -47,5 +47,22 @@ class ValueDecls(unittest.TestCase):
         self.assertEqual(self.find("NOWHERE"), ["nothing defines NOWHERE"])
 
 
+class ABundleIsNotRead(unittest.TestCase):
+    """B804: a name nothing defines was looked for as a page-level let in
+    every page script, a one-line bundle the index skips among them, and
+    code_only over Shebang-DevBoard's 290 kB xterm.js took fifty seconds."""
+
+    def test_a_minified_page_script_is_skipped_at_once(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "web").mkdir()
+        (root / "web" / "page.js").write_text("let shown = 1;\n")
+        (root / "web" / "xterm.js").write_text("let lost=1;" + "var a=1;function b(){return a/2}" * 9000 + "\n")
+        idx = {"defs": [], "files": {"web/page.js": {"lang": "js"}, "web/xterm.js": {"lang": "js"}}}
+        self.assertEqual(codemap.script_bodies(root, "web/xterm.js"), [])
+        self.assertEqual([f for f, _, _ in codemap.page_bindings(idx, root, "shown")], ["web/page.js"])
+        self.assertEqual(codemap.page_bindings(idx, root, "lost"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

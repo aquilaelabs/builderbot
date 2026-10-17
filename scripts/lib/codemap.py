@@ -2846,6 +2846,10 @@ def script_bodies(root, f):
         text = (Path(root) / f).read_text(errors="replace")
     except OSError:
         return []
+    if minified(text):
+        # a bundle the index skips is no page's own code, and code_only over
+        # xterm.js's one 290 kB line took fifty seconds (B804)
+        return []
     if f.endswith(".html"):
         return [(code_only(m.group(1)).split("\n"), text.count("\n", 0, m.start(1)) + 1)
                 for m in SCRIPT.finditer(text)]
