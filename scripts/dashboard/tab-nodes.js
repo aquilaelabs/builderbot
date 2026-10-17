@@ -367,7 +367,7 @@ function nodeRunnerSection(n, c){
             title="drop the stored token and this row; a registered runner keeps running">Forget token</button>` : ""}
           ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
             title="${why || (stored ? "deregister it and remove it from this node" : "add a token first")}">Remove runner</button>` : ""}
-        </div>${ro ? `<div class="sub bad ndrunwhy">Your roles give no CI runner Write on this runner: the Roles page gives it.</div>` : ""}</div></div>`;
+        </div>${ro ? `<div class="sub bad ndrunwhy">Your roles give no CI runner Write on this runner: an administrator gives it on the Users page.</div>` : ""}</div></div>`;
   }).join("");
   // Adding is a button that unrolls the form in its own band, the shape
   // every view adds with; the form is four fields that wrap to the width

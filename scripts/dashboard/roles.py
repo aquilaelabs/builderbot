@@ -78,7 +78,7 @@ AREAS = (
     ("toolchains", "Toolchains", "global", "the Toolchains tab", "install and remove"),
     ("jobs", "Jobs", "global", "the Jobs tab", "run a command on a node"),
     ("runner", "CI runner", "global", "the runner tab", "install and configure runners"),
-    ("accounts", "Accounts and roles", "global", "the Users and Roles tabs", "add accounts, give roles"),
+    ("accounts", "Accounts and roles", "global", "the Users and Roles pages", "add accounts, give roles"),
     ("newprojects", "New projects", "global", "the nodes a project may be made on", "make a project, and own it"),
     ("controller", "Controller", "global", "settings and diagnostics", "settings, debug, pinned commands"),
     # The Storage tab (R169): what every node's disks hold, by project.

@@ -552,10 +552,10 @@ def may_instance(u, action, instance="", name=""):
         if roles.nodes_for(u, area, need) is None:
             return ""
         return (f"your roles give {label} {lvl} on some {what}s, not on every one, "
-                f"and a new {what} is none of them yet: the Roles tab gives it on every {what}")
+                f"and a new {what} is none of them yet: a role holding it on every {what} is set on the Roles page")
     if roles.granted(u, action, node=instance if area in roles.NODE_AREAS else None, instance=instance):
         return ""
-    return f"your roles give no {label} {lvl} on {name or instance}: the Roles tab gives one"
+    return f"your roles give no {label} {lvl} on {name or instance}: an administrator gives one on the Users page"
 
 
 # The actions a session is refused whoever its account is, with what each
@@ -597,8 +597,8 @@ def may(u, action, project=None):
         return (f"{project} is read-only from a session on {u['session']}: it reads "
                 f"{project}'s code and notebook, and a session on {project} is what changes them")
     if project is not None and not may_work(u, project):
-        return ("you hold no role on this project: give yourself one on it on the "
-                "Roles tab" if is_admin(u) else
+        return ("you hold no role on this project: give yourself one on it in your "
+                "settings on the Users page" if is_admin(u) else
                 "you were not given this project")
     # A session may never write the house rules it is being held to. Ahead of
     # the admin pass, because the operator's OWN session carries a token with
@@ -690,13 +690,13 @@ def may(u, action, project=None):
 
 def _needs(action, project=None):
     """What an action needs, as a refusal says it (R255 step 2): "needs
-    Projects Write on alpha, which your roles do not give: the Roles tab
-    gives it"."""
+    Projects Write on alpha, which your roles do not give: an administrator
+    gives it on the Users page"."""
     area, need = roles.CAP_AREA.get(action, ("projects", "write"))
     label = next((a[1] for a in roles.AREAS if a[0] == area), area)
     where = f" on {project}" if project else ""
     return (f"needs {label} {'Write' if need == 'write' else 'Read'}{where}, which your roles do not give: "
-            "the Roles tab gives it")
+            "an administrator gives it on the Users page")
 
 
 def _roles_why(action, project=None, whose="your"):
@@ -704,7 +704,7 @@ def _roles_why(action, project=None, whose="your"):
     area, need = roles.CAP_AREA.get(action, ("projects", "write"))
     label = next((a[1] for a in roles.AREAS if a[0] == area), area)
     where = f" on {project}" if project else ""
-    return f"{whose} roles give no {label} {'Write' if need == 'write' else 'Read'}{where}: the Roles tab gives one"
+    return f"{whose} roles give no {label} {'Write' if need == 'write' else 'Read'}{where}: an administrator gives one on the Users page"
 
 
 def _session_account_why(u, action, project):
