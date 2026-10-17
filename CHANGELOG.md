@@ -621,6 +621,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Settings on a phone show the list and the section full width, with no row left highlighted on the list (d78256d)
 - Long lists (a project's bugs, its finished roadmap) build only the rows on show and the next batch as it scrolls into view, so a filter chip on a long tracker answers at once on a phone (13798c0)
 - The Containers page's New container and Check for updates sit on one line at a desk (ff1310e)
+- A project's settings section saves its own fields alone, and refuses a field somebody else (or a session) saved since you opened it, naming it; Save again writes yours. The notebook's "Also open" line is gone (285475b)
 
 ### Security
 

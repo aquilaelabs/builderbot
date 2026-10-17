@@ -84,12 +84,10 @@ const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");
 
-function rnFillPrefs(p){
-  // A fresh open draws the node list from what is saved, not from the ticks
-  // the last project's dialog left in it (the merged list, 13 Oct).
-  const nm = $("rnNodesMore");
-  if (nm) delete nm.dataset.drawn;
-  rnPrefWas = {git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
+// A project's settings as the form holds them, from its row: what the form
+// opens on, and what a section's Save compares with what is saved now.
+function rnPrefsOf(p){
+  return {git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
                nodes: (p?.prefs?.nodes || []).join(","),
                hosts: (p?.prefs?.hosts || []).join(","),
@@ -107,13 +105,21 @@ function rnFillPrefs(p){
                test_change: p?.prefs?.test_change || "wait",
                gpu: p?.prefs?.gpu || "on",
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
-               devbuild: devClaudeMode(rnFor),
+               devbuild: devClaudeMode(p?.name || rnFor),
                report: p?.prefs?.report || "auto",
                sign: p?.prefs?.sign || "ask",
                release: p?.prefs?.release || "ask",
                keys: p?.prefs?.keys || "ask",
                version: p?.version_policy || "locked",
                color: p?.prefs?.color || ""};
+}
+
+function rnFillPrefs(p){
+  // A fresh open draws the node list from what is saved, not from the ticks
+  // the last project's dialog left in it (the merged list, 13 Oct).
+  const nm = $("rnNodesMore");
+  if (nm) delete nm.dataset.drawn;
+  rnPrefWas = rnPrefsOf(p);
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
   $("rnGitEmail").value = rnPrefWas.git_email;
@@ -1596,6 +1602,22 @@ async function rnSubmit(sect, end = false){
   rnBarSay(sect, "");
   const enc = rnEnc();
   const mine = Object.keys(RN_WAS).filter(k => RN_WAS[k][0] === sect);
+  // What this section holds that somebody else saved since these settings
+  // were opened (another person, another window): refused once, naming it,
+  // so their change is not written over unseen (the operator, 17 Oct); a
+  // second press writes this one's over it. Read against the project as it
+  // is now, the poll asked first.
+  if (typeof refresh === "function") await refresh().catch(() => {});
+  const now = rnPrefsOf((state?.projects || []).find(x => x.name === name));
+  const theirs = mine.filter(k => k !== "version" && String(now[k] ?? "") !== String(rnPrefWas[k] ?? "")
+                               && String(now[k] ?? "") !== String(enc[k] ?? ""));
+  const said = [...new Set(theirs.map(k => RN_WAS[k][1]))];
+  if (said.length && bar?.dataset.over !== said.join()){
+    if (bar) bar.dataset.over = said.join();
+    return fail(`${said.join(", ")} changed since these settings were opened, by someone else or another window: `
+                + "Revert shows what is saved now, or Save again to write yours over it");
+  }
+  if (bar) delete bar.dataset.over;
   const merged = {...rnPrefWas, ...Object.fromEntries(mine.map(k => [k, enc[k]]))};
   const v = rnDec(merged);
   const {start} = rnSectChanges(sect, enc);
@@ -1637,8 +1659,13 @@ async function rnSubmit(sect, end = false){
   const stop = m => { delete bar.dataset.busy; unbusy(pressed, word); rnBars(); return fail(m); };
   try{
     if (prefsChanged){
+      // This section's own fields alone (the operator, 17 Oct): every field
+      // went with every save, the others as this window last read them, so a
+      // save here put back what somebody had changed in another section.
+      const only = new Set(mine.flatMap(k => k === "debug" ? ["diag", "log_from"] : [k]));
+      const pick = o => Object.fromEntries(Object.entries(o).filter(([k]) => only.has(k)));
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project: name, git_name: v.git_name, git_email: v.git_email,
+        body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
                               build: v.build, test: v.test, gate: v.gate, color: v.color, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
@@ -1646,8 +1673,7 @@ async function rnSubmit(sect, end = false){
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),
                               ...(v.snapshot_days !== "" ? {snapshot_days: +v.snapshot_days} : {}),
-                              ...(v.dev_keep !== "" ? {dev_keep: +v.dev_keep} : {}),
-                              restart: restartNow})});
+                              ...(v.dev_keep !== "" ? {dev_keep: +v.dev_keep} : {})})})});
       const j = await r.json();
       if (j.error) return stop(j.error);
       // Said out loud when the session was left on what it started with,

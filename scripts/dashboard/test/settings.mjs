@@ -460,7 +460,31 @@ ok(elsewhere.git_name === 'T. Person',
        && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled
        && $('rnBuildCmd').value === 'make one'),
      '...and its Revert puts Claude may back alone');
-  await post('/api/prefs', { project: 'alpha', build: '' });
+  // A section's Save is its own fields alone, and refuses one somebody else
+  // saved since these settings were opened (the operator, 17 Oct: a save in
+  // one section put back another section's change, and a session's change
+  // not yet on screen was written over without a word).
+  {
+    await post('/api/prefs', { project: 'alpha', build: '' });
+    await refreshUntil(page, () => !(state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build, { timeout: 20000 });
+    await page.evaluate(() => { settingsOut(); openProjectSettings('alpha'); });
+    await page.waitForSelector('.nbsettings .snav [data-spick="build"]', { timeout: 15000 });
+    // Elsewhere, after this window opened: the color (another section) and
+    // the build command (this one), as a session or another window would.
+    await post('/api/prefs', { project: 'alpha', color: 'teal', build: 'make theirs' });
+    await rnSect(page, 'build');
+    await page.fill('#rnBuildCmd', 'make mine');
+    const first = await sectSave(page, 'build');
+    const kept = await page.evaluate(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build);
+    ok(/Build changed since these settings were opened/.test(first) && kept === 'make theirs',
+       `a field saved elsewhere since the settings opened is not written over unseen: the save is refused, naming it (${first.slice(0, 90)}; saved: ${kept})`);
+    const second = await sectSave(page, 'build');
+    await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make mine', { timeout: 20000 });
+    const now = await page.evaluate(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs || {});
+    ok(!second && now.build === 'make mine' && now.color === 'teal',
+       `...Save again writes this one's, and leaves the color another section saved alone (${JSON.stringify({ build: now.build, color: now.color })})`);
+    await post('/api/prefs', { project: 'alpha', build: '', color: '' });
+  }
   // Also works on is drawn from what is saved until a draw has had nodes to
   // draw: one made before the node list arrived marked itself drawn, and the
   // real one read its own empty boxes (B796, seen on dev, 16 Oct).

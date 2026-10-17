@@ -193,7 +193,7 @@ function makeNotebook(project){
     nb.roadmapBatch = null; nb.roadmapStale = false;
     nb.roadmapRev = nb.memRev = null;
     nb.clash = nb.memClash = null; nb.clashResume = null;
-    nb.nbHere = []; nb.nbRead = 0; nb.nbWhere = "briefing"; drawHere();
+    nb.nbRead = 0; nb.nbWhere = "briefing"; drawHere();
     nb.tests = null; nb.testsRev = null;
     nb.tstSuite = ""; nb.tstFlagged = nb.tstUndoc = false;
     nb.roadmapLogOn = false;
@@ -382,7 +382,7 @@ function makeNotebook(project){
   // asking the server something every fifteen seconds, and a second clock would
   // be a second thing to get wrong. The request is not awaited: presence is
   // the least important thing on this page, and nothing else waits for it.
-  nb.nbWhere = "briefing"; nb.nbHere = []; nb.nbRead = 0;
+  nb.nbWhere = "briefing"; nb.nbRead = 0;
 
   // This notebook is the page on show, not one left behind another page.
   const nbOnShow = () => { const t = tabOf(panes[0]); return t?.kind === "notebook" && t.arg === project; };
@@ -399,34 +399,16 @@ function makeNotebook(project){
                               where: nb.nbWhere, ...(leave ? {leave: 1} : {})})});
       const j = await r.json();
       if (leave || !j.ok) return;
-      nb.nbHere = j.here || []; nb.nbRead = j.read || 0;
+      nb.nbRead = j.read || 0;
       drawHere();
     }catch(e){ /* the least important thing on the page */ }
   }
 
-  // Named, not counted. "2 others" is a number somebody then has to go and
-  // identify; the whole value of this line is knowing WHO, and on a phone the
-  // names are shorter than the sentence explaining there are two of them.
-  const WHERE_IS = {memory: "Memory", roadmap: "Roadmap", bugs: "Bugs",
-                    analysis: "Analysis", artifacts: "Artifacts", design: "Design", wiki: "Wiki"};
-
+  // Who else has the notebook open is no longer said (the operator, 17 Oct:
+  // not necessary): two windows writing one item are caught at the save,
+  // which refuses the second and shows both. The heartbeat stays for what a
+  // session has read, said on the Roadmap's head row.
   function drawHere(){
-    const el = $("nbHere");
-    if (!el) return;
-    // One line per person per view, counted (B777): three of your windows on
-    // Bugs read "your other window (Bugs)" three times over.
-    const seen = new Map();
-    for (const o of nb.nbHere){
-      const k = `${o.mine ? "" : o.who}\0${o.where || ""}`;
-      seen.set(k, {o, n: (seen.get(k)?.n || 0) + 1});
-    }
-    const bits = [...seen.values()].map(({o, n}) =>
-      `${o.mine ? (n > 1 ? `your ${n} other windows` : "your other window")
-                : `${esc(o.who)}${n > 1 ? ` in ${n} windows` : ""}`}${
-        WHERE_IS[o.where] ? ` (${WHERE_IS[o.where]})` : ""}`);
-    const line = bits.length ? "Also open: " + bits.join(", ") : "";
-    setHidden(el, !line);
-    paint(el, line ? `<span class="hint">${line}</span>` : "", true);
     // A session that has gone and read the list, which is a different claim
     // from having been told: being told rides in on its next prompt (#27), and
     // what the operator wants to know after changing something is whether it

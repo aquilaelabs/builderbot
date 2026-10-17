@@ -2145,6 +2145,10 @@ pre.diff .d-ctx{color:var(--dim)}
    were checked and Check for updates at the right, one line. An action
    bar's state takes a line of its own, which broke this band into three. */
 .dmimgbar .state{flex:0 1 auto;text-align:right}
+/* ...across the page, not capped at a control's width: an add band of a
+   form keeps that cap (:is(.doctab,.nb) .addbar below), and this one's
+   three items wrapped inside it toward the middle (B800, seen on dev). */
+.dmtab .actbar.dmimgbar{max-width:none}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .roadmapadd[hidden]{display:none}
 .roadmapadd input{flex:1 1 auto;min-width:0}
@@ -2813,7 +2817,8 @@ pre.diff .d-ctx{color:var(--dim)}
   :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect, .ssplit>details.sect),
   .doctab>.doclist>.tbl,
   .dmtab .dmcard,
-  .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist):has(> :is(.bug, .grp, .mem, .tst, .hist)){
+  .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist):has(> :is(.bug, .grp, .mem, .tst, .hist, .skel)),
+  .doctab>.doclist>.skt>.tbl,.doctab>.doclist>.skel:not(.skt){
     margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)[open]>summary{
@@ -2821,6 +2826,10 @@ pre.diff .d-ctx{color:var(--dim)}
   :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)>.body{
     padding-top:var(--row-y)}
   .doctab>.doclist>:is(details.sect, .tbl):last-child,.dmtab .dmcard:last-child{margin-bottom:16px}
+  /* A list inside a band that is inset already (the roadmap's, memory's)
+     takes no side margin of its own: its edge is the band's content edge,
+     in line with the buttons and chips over it (the operator, 17 Oct). */
+  .nbview .field>:is(#roadmapList, #memList){margin-left:0;margin-right:0}
   .doctab>.doclist>.tbl>.row:last-child,.dmtab .dmcard>.row:last-child,.dmtab .dmcard>.tbl>.row:last-child,
   .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist)>:last-child{border-bottom:0}
   /* A band's line under it is the card's edge now: a notebook view's head
@@ -2843,6 +2852,14 @@ pre.diff .d-ctx{color:var(--dim)}
   :is(.doctab>.doclist, .doctab>.doclist>:is(.phonetab, [data-stnode]))>:is(.row:last-child, .row:has(+:not(.row))){margin-bottom:0;
     border-bottom:var(--hair) solid var(--line);border-bottom-left-radius:var(--r-surface);border-bottom-right-radius:var(--r-surface)}
   .doctab>.doclist>.row:last-child{margin-bottom:16px}
+  /* A page's template floats as the page will (R262 with R218 step 16): a
+     run of its placeholder rows is one card, its table a card. */
+  .doctab>.doclist>.skt>.sk-row{margin:0 var(--row-x);background:var(--panel);
+    border-left:var(--hair) solid var(--line);border-right:var(--hair) solid var(--line)}
+  .doctab>.doclist>.skt>:is(.sk-row:first-child, :not(.sk-row)+.sk-row){margin-top:12px;
+    border-top:var(--hair) solid var(--line);border-top-left-radius:var(--r-surface);border-top-right-radius:var(--r-surface)}
+  .doctab>.doclist>.skt>:is(.sk-row:last-child, .sk-row:has(+:not(.sk-row))){
+    border-bottom:var(--hair) solid var(--line);border-bottom-left-radius:var(--r-surface);border-bottom-right-radius:var(--r-surface)}
   /* Findings and the notebook's Analysis: a list of rules is one card, a
      project's name over its card on the Findings page. */
   .fxtab .fx:has(> .rule),.nbview #anaList:has(> .rule){margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
@@ -3221,8 +3238,6 @@ pre.diff .d-ctx{color:var(--dim)}
 .tstsuite .sub{color:var(--dim);font:var(--f-note);flex:1 1 auto;min-width:0}
 /* Who else is in here. A quiet line, not a warning: nothing is wrong, and
    the whole point of it is being read on the way past. */
-.nbhere{padding-top:0;padding-bottom:6px}
-.nbhere[hidden]{display:none}
 .clash{border-left:2px solid var(--bad)}
 .clash[hidden]{display:none}
 .clashpair{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
@@ -4386,7 +4401,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          it is about the whole notebook and not about the batch banner's
          subject, and it is the answer to a question asked before typing
          starts, so it wants to be read on the way in. -->
-    <div class="field nbhere" id="nbHere" hidden></div>
     <div class="nbview" data-view="roadmap" hidden>
     <!-- The roadmap. Both sides write it, which is what makes it worth a
          panel: everything else here is one-way. Its open items are appended

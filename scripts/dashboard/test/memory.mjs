@@ -439,55 +439,25 @@ await page.waitForFunction(() => document.getElementById('memClash').hidden
 ok(read('clash.md').includes('what the operator typed'),
    'Write mine over it does exactly that, against what is there now');
 
-// ---- who else is in here -------------------------------------------------
-// Roadmap #26's other half: a refusal makes a collision safe, and this is
-// what stops most of them happening. Both windows are the same ACCOUNT, so
-// the account cannot be the answer: the tab's own id is, which is why the
-// line can say "your other window" rather than naming you at yourself.
-// Nobody else is in this notebook when the block starts. An earlier file's
-// window that reloaded holds the old page's seat for the seat's fifty seconds
-// (its pagehide leave is sent during unload, which a harness page cannot
-// authenticate), and this block is about one window it opens itself (B144).
-// Free in a run where nothing came before; a wait for an expiry otherwise.
-await refreshUntil(page, () => !/your other window/.test(
-  document.getElementById('nbHere').textContent), { timeout: 70000 });
-const other = await newPage(browser, { viewport: { width: 1280, height: 900 } });
-await other.goto(URL);
-await ready(other);
-await other.evaluate(n => openNotebook(n), 'alpha');
-await nbShown(other);
-await refreshUntil(page, () => !document.getElementById('nbHere').hidden);
-ok(/your other window/.test(await page.$eval('#nbHere', el => el.textContent)),
-   'a second window on the same notebook is named as one, not as somebody else');
-await nbGo(other, 'roadmap');
-await refreshUntil(page, () => /Roadmap/.test(
-  document.getElementById('nbHere').textContent));
-ok(true, '...and says which view it is on, which is where the collision would be');
-// Leaving for another page is leaving (B765): the project page stays in the
-// page model behind Home, and it went on claiming the seat.
-await other.evaluate(() => railGo('home'));
-await other.evaluate(() => refresh());
-await refreshUntil(page, () => document.getElementById('nbHere').hidden
-  || !/your other window/.test(document.getElementById('nbHere').textContent));
-ok(true, '...and a window that goes to another page is no longer named here');
-await other.evaluate(n => openNotebook(n, 'roadmap'), 'alpha');
-await nbShown(other);
-await other.evaluate(() => refresh());
-await refreshUntil(page, () => /your other window/.test(document.getElementById('nbHere').textContent));
-ok(true, '...and is again once it comes back');
-// Letting go of the notebook says so rather than leaving the seat to time
-// out: a line claiming somebody is here who has just left is worse than no
-// line. Through destroy(), which is what the tab's ✕ calls; closing the tab
-// itself would not do here, because the tab STRIP is per account and shared,
-// so shutting it in that window shuts it in this one.
-await other.evaluate(() => notebooks.get('alpha').destroy());
-// ...and the window then goes, the way a person's does. Without this its tab
-// is still in the shared strip, so its next draw made the notebook again and
-// the seat came back: the line cleared only if this page polled in between.
-await closePage(other);
-await refreshUntil(page, () => document.getElementById('nbHere').hidden
-  || !/your other window/.test(document.getElementById('nbHere').textContent));
-ok(true, '...and goes when that window closes the notebook');
+// ---- who else is in here: not said ---------------------------------------
+// The operator, 17 Oct: the line naming who else had the notebook open was
+// not necessary, since two windows writing one thing are caught at the save
+// (above: the second is refused, both versions shown). A second window on
+// the same notebook draws no line about it.
+{
+  const other = await newPage(browser, { viewport: { width: 1280, height: 900 } });
+  await other.goto(URL);
+  await ready(other);
+  await other.evaluate(n => openNotebook(n, 'roadmap'), 'alpha');
+  await nbShown(other);
+  await other.evaluate(() => refresh());
+  await page.evaluate(() => refresh());
+  await page.waitForTimeout(1500);
+  ok(!(await page.$('#nbHere')) && !/Also open|other window/.test(await page.$eval('.nb', e => e.textContent)),
+     'a second window on the same notebook is not announced: no "Also open" line');
+  await other.evaluate(() => notebooks.get('alpha')?.destroy());
+  await closePage(other);
+}
 
 // ---- closing -----------------------------------------------------------
 // It is a tab, so it closes the way tabs close and not on a stray Escape.
