@@ -265,7 +265,9 @@ async function measure(kind){
       // flush and nbhost are the same treatment in the sheet, and the notebook
       // wears the second for its own reasons; both mean "fills the pane".
       flush: host.classList.contains('flush') || host.classList.contains('nbhost'),
-      maxw: cs.maxWidth,
+      // A notebook runs the pane's width for its view strip (the operator,
+      // 17 Oct): the reading width is its view's, the band under the strip.
+      maxw: box.matches('.nb') ? getComputedStyle(box.querySelector('.nbview:not([hidden])') || box).maxWidth : cs.maxWidth,
       bands: bands.length, lefts, colLefts, who,
       controls: controls.length, offskin,
     };
@@ -777,7 +779,8 @@ for (const kind of kinds){
   // its bar, the rail and the dock stay the very nodes they were, so a
   // pointer resting on one keeps its hover and nothing fades in again. Read
   // over a third status read, the first two letting the page's own fetches
-  // land; the header's uptime is the one thing that may move with time.
+  // land; the header's uptime and the doctor's "ran 2 min ago" are the
+  // things that move with time (B814: it aged across a minute in the window).
   const quietRead = await page.evaluate(async () => {
     await refresh(); await new Promise(r => setTimeout(r, 600));
     await refresh(); await new Promise(r => setTimeout(r, 600));
