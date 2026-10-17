@@ -159,6 +159,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A role's Nodes, Toolchains, Jobs, New projects, Storage and CI runner rows open on each node or runner, Read and Write on each; the area's own boxes tick or clear them all, and the server holds every action to the node or runner it touches (eba3133)
 - A session can take back a roadmap step it marked done with bb roadmap step undone, saying why; the History view shows it (146fa49)
 - A dev container's build or Up stops and names any image-only service its compose has gained since the last build, and ships it only once a person says yes on the Docker tab; a container's env can no longer set COMPOSE_FILE, COMPOSE_PROJECT_NAME or COMPOSE_PROFILES (568dc79)
+- A dev container can lay another compose file from its tree over its own, chosen as Override in its settings or with bb devapp new --override and bb devapp override (658cbbf)
+- bb dashboard trace shows each request's CPU time, how busy the server was, and which named parts of a page's read took the time (658cbbf)
 
 ### Changed
 
@@ -391,6 +393,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - BuilderBot's lab Gitea and Forgejo for bb tests lab are their own stack (lab/compose.yml, made with bb container new) instead of services in BuilderBot's compose file; COMPOSE_PROFILES and BB_LAB_HOST are no longer BuilderBot settings (0dd53a5)
 - A page's sub-nav (Nodes, Storage, nginx and the like) is tabs along the bar instead of a boxed switch, and every state that can be good or bad (healthy, running, passed) keeps its own green, amber and red in every color scheme (568dc79)
 - A container's settings open in a dialog from Edit settings under its ⋯ menu (568dc79)
+- Pages change smoothly: a picked settings section, person or role fades in, chips and Cards/List fade their lists, and the line under the current tab and the rail's bar slide to what you press (658cbbf)
 
 ### Removed
 
