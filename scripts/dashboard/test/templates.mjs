@@ -1,0 +1,152 @@
+// A page waiting on its data waits as itself (R218 step 16): its template is
+// laid out the way the page lands. Nothing held that, so a page whose layout
+// moved kept the template of the one before it (the operator, 17 Oct: Users
+// waited as a table after it became a list beside a detail). Each page and
+// notebook view here is drawn loaded, then put back to its template with its
+// reads held, and the two outlines compared: the bar, the tiles, the status
+// line, a list beside a detail and where its detail starts, a table, and the
+// edges of the first floating card. At a desk and on a phone.
+import { launch, newPage, ok, done, ready, sleep, URL } from './lib.mjs';
+
+const PAGES = [
+  ['home', '#/home', 'homeData = null; homeFetching = true; renderHomeInto(0)'],
+  ['jobs', '#/jobs', 'jobsList = null; renderJobsInto(0)'],
+  ['nodes', '#/machines/nodes', 'nodesList = null; renderNodesInto(0)'],
+  ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
+  ['nginx', '#/machines/nginx', 'nginxList = null; renderNginxInto(0)'],
+  ['toolchains', '#/build/toolchains', 'toolchains = null; renderToolchainsInto(0)'],
+  // The fixture's node never reported its images (known false), so the page
+  // lands with no tiles; a node that has carries them, as the template does.
+  ['emulator', '#/build/emulator', 'emu = null; renderEmulatorInto(0)', ['tiles']],
+  ['phone', '#/build/phone', 'ph = null; renderPhoneInto(0)'],
+  ['runner', '#/build/runner', 'nodesList = null; renderRunnerInto(0)'],
+  ['users', '#/people/users', 'usersList = null; renderUsersInto(0)'],
+  ['roles', '#/people/roles', 'rolesData = null; renderRolesInto(0)'],
+  ['profile', '#/settings/profile', 'profile = null; renderProfileInto(0)'],
+  ['notices', '#/notifications', 'noticesData = null; noticesFetching = true; renderNoticesInto(0)'],
+  ['containers', '#/containers', 'dockerList = null; for (const k in dockerSeen) delete dockerSeen[k]; renderDockerInto(0)'],
+  ['analysis', '#/projects/findings', 'findings = {loading: true}; renderFindingsInto(0)'],
+];
+// A notebook view's template is what a project not yet read shows: the view
+// is drawn loaded on one project and waiting on another.
+const VIEWS = ['briefing', 'roadmap', 'bugs', 'git', 'tests', 'analysis', 'design', 'artifacts', 'settings'];
+const HELD = /\/api\/(?!status|layout|revs|presence)/;
+
+// The outline of what is on show in `sel`: a template's wrapper (.skt) is
+// looked through, its "loading…" word for a screen reader is not counted.
+const outline = sel => {
+  // on screen: a page left at a desk stays in the pane, hidden by its
+  // visibility with its box kept, so a box alone is not on show
+  const shown = e => !!e && e.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  // the one on screen: a page or notebook drawn before stays in the DOM
+  const root = [...document.querySelectorAll(sel)].find(shown);
+  if (!root) return null;
+  const first = q => [...root.querySelectorAll(q)].find(shown) || null;
+  const box = e => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; };
+  // the page's own bar band, wherever its markup keeps it
+  const bar = root.querySelector('.docbarrow, .histbar.docbarrow');
+  // The first floating card: a bordered block at least half the list wide.
+  const wide = root.getBoundingClientRect().width / 2;
+  const card = [...root.querySelectorAll('*')].find(e => {
+    if (!shown(e) || e.getBoundingClientRect().width < wide || e.closest('.tiles, .tile')) return false;
+    const c = getComputedStyle(e);
+    return parseFloat(c.borderLeftWidth) > 0 && parseFloat(c.borderRightWidth) > 0 && c.borderLeftStyle !== 'none'
+      && !/^(BUTTON|INPUT|SELECT|TEXTAREA|SPAN|A|CODE|I|PRE)$/.test(e.tagName);   // a diff or a command is content, not a card
+  });
+  const split = first('.rsplit, .ssplit');
+  const detail = split && [...split.children].find(e => shown(e) && !e.matches('.rlist, .snav'));
+  return {
+    // a template drawn at all: its shimmering shapes on show, or a
+    // template's frame holding only what is known before the read (Profile's
+    // list of sections on a phone); waiting with none is a view that draws
+    // at once from what the page already holds
+    skel: !!first('.skel .skv, .skel .sk-b, .skel .sk-row, .skt > :not(.sk-said)'),
+    waiting: !!first('.loading'),
+    // the page empty here: a line saying so and nothing laid out under it
+    // (a notebook view's empty hint, a page's one line of hint alone)
+    empty: !!first('.empty, .hnone, .nbempty, .doclist > .hint:only-child') && !first('.tbl') && !first('.rrow, .row, .tc, .card'),
+    // where the first card starts under the bar, the tiles and the status line
+    top: card ? Math.round(card.getBoundingClientRect().top - root.getBoundingClientRect().top) : null,
+    bar: !!bar && shown(bar),
+    tiles: !!first('.tiles'),
+    status: !!first('.headline'),
+    split: !!split,
+    detailX: detail ? box(detail).l : null,
+    table: !!first('.tbl'),
+    card: card ? box(card) : null,
+    // a part still on its way, saying so (its dots): not landed yet
+    busy: !!first('.dots'),
+  };
+};
+
+// What differs between the page and its template, in words; "" for nothing.
+const differ = (got, tpl, skip = []) => {
+  if (!got || !tpl) return `${got ? 'no template' : 'no page'} to measure`;
+  if (!tpl.skel) return tpl.waiting ? 'it waits with words, not a template' : '';   // draws at once: nothing to hold
+  const out = [];
+  // An empty page has only its frame to compare: what fills it differs.
+  for (const k of got.empty ? ['bar', 'tiles', 'status'] : ['bar', 'tiles', 'status', 'split', 'table'])
+    if (!skip.includes(k) && got[k] !== tpl[k]) out.push(`${k}: page ${got[k] ? 'has' : 'has none'}, template ${tpl[k] ? 'has' : 'has none'}`);
+  if (got.split && tpl.split && got.detailX !== null && tpl.detailX !== null && Math.abs(got.detailX - tpl.detailX) > 2)
+    out.push(`the detail starts at ${got.detailX} on the page, ${tpl.detailX} in the template`);
+  if (got.empty) return out.join('; ');
+  if (!!got.card !== !!tpl.card) out.push(`card: page ${got.card ? 'floats one' : 'floats none'}, template ${tpl.card ? 'floats one' : 'floats none'}`);
+  else if (got.card && (Math.abs(got.card.l - tpl.card.l) > 2 || Math.abs(got.card.r - tpl.card.r) > 2))
+    out.push(`card edges ${got.card.l} to ${got.card.r} on the page, ${tpl.card.l} to ${tpl.card.r} in the template`);
+  else if (got.card && Math.abs(got.top - tpl.top) > 24)
+    out.push(`the first card starts ${got.top}px down on the page, ${tpl.top}px in the template`);
+  return out.join('; ');
+};
+
+// The page as it lands: a page reads more than once (the Emulator's list of
+// images to add comes after its node's, its dots running meanwhile), so its
+// outline is taken when nothing says it is on its way and two reads 400ms
+// apart agree, for up to ten seconds.
+const settled = async (page, sel) => {
+  let was = await page.evaluate(outline, sel);
+  for (let i = 0; i < 25; i++){
+    await sleep(400);
+    const now = await page.evaluate(outline, sel);
+    if (!now?.busy && JSON.stringify(now) === JSON.stringify(was)) return now;
+    was = now;
+  }
+  return was;
+};
+
+const browser = await launch();
+for (const [W, H] of [[1280, 1000], [393, 852]]){
+  const page = await newPage(browser, W < 900 ? { viewport: { width: W, height: H }, isMobile: true, hasTouch: true }
+                                              : { viewport: { width: W, height: H } });
+  await page.goto(URL);
+  await ready(page);
+  const where = W < 900 ? 'on a phone' : 'at a desk';
+  for (const [name, hash, reset, skip] of PAGES){
+    await page.evaluate(h => { location.hash = h; }, hash);
+    await page.waitForFunction(() => { const l = [...document.querySelectorAll('.pane .doc.on')].find(e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
+      return l && l.children.length && !l.querySelector('.loading'); }, null, { timeout: 15000 }).catch(() => {});
+    const got = await settled(page, '.pane .doc.on');
+    await page.route(HELD, () => {});
+    const err = await page.evaluate(js => { try { (0, eval)(js); return ''; } catch (e){ return String(e); } }, reset);
+    await sleep(300);
+    const tpl = await page.evaluate(outline, '.pane .doc.on');
+    await page.unroute(HELD);
+    const why = err || differ(got, tpl, skip);
+    ok(!why, `${name} waits as itself ${where}${why ? `: ${why}` : ''}`);
+  }
+  const [shown, waiting] = W < 900 ? ['beta', 'delta'] : ['beta', 'gamma'];
+  for (const v of VIEWS){
+    await page.evaluate(([p, v]) => openNotebook(p, v), [shown, v]);
+    await page.waitForFunction(() => { const n = [...document.querySelectorAll('.nb .nbview:not([hidden])')].find(e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
+      return n && !n.querySelector('.loading'); }, null, { timeout: 15000 }).catch(() => {});
+    const got = await settled(page, '.nb .nbview:not([hidden])');
+    await page.route(HELD, () => {});
+    await page.evaluate(([p, v]) => openNotebook(p, v), [waiting, v]);
+    await sleep(600);
+    const tpl = await page.evaluate(outline, '.nb .nbview:not([hidden])');
+    await page.unroute(HELD);
+    const why = differ(got, tpl);
+    ok(!why, `the notebook's ${v} view waits as itself ${where}${why ? `: ${why}` : ''}`);
+  }
+  await page.close();
+}
+await done(browser);

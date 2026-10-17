@@ -73,13 +73,14 @@ function renderProfileInto(i){
   if (!profile){
     // Its template (R218 step 16): every heading and field label here is the
     // page's own; what is yours to fill them is on its way.
-    const sec = (h, body) => `<div class="row stack2"><div class="grow"><h4>${esc(h)}</h4><div class="logset">${body}</div></div></div>`;
-    const fld = label => `<div class="logdays setrow col"><span class="lbl">${esc(label)}</span>${skv(18, "ctl")}</div>`;
+    // A page of settings as it lands (skSplit): the sections listed, Who
+    // you are picked beside them with its fields.
+    const fld = label => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(18, "ctl")}</div>`;
     d.setBar(`<span class="dim">${skv(16)}</span>`);
-    d.list.innerHTML = skTpl(sec("What you may do", skRows(3))
-      + sec("Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join(""))
-      + sec("On this browser", fld("Time zone")) + sec("Claude plugins", skRows(2)) + sec("Conversation logs", skRows(2))
-      + sec("Password", fld("Current password") + fld("New password") + fld("New password again")));
+    splitOff(d.list);                   // drawn before: its grid is the template's to bring
+    d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
+      ["On this browser", PROFILE_SAYS.browser], ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins],
+      ["Conversation logs", PROFILE_SAYS.logs]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};

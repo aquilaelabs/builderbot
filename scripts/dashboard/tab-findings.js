@@ -200,7 +200,8 @@ function renderFindingsInto(i){
     // Its template (R218 step 16): the bar's three narrowing controls stand
     // where they will, their boxes shimmering; the findings are on their way.
     d.setBar(`${skv(9, "ctl")}${skv(7, "ctl")}${skv(14, "ctl")}`);
-    d.list.innerHTML = skTpl(skRows(6));
+    // As it lands across projects: a project's name over its card.
+    d.list.innerHTML = skTpl(`<div class="fxproj"><span class="name">${skv(8)}</span></div>${skRows(6)}`);
     return;
   }
   if (findings.error){

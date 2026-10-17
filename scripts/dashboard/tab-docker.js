@@ -2208,7 +2208,9 @@ function renderDockerInto(i){
           mayDocker() ? `<button type="button" class="primary" disabled>New container</button>` : ""}</span></div>
       <div class="field"><div class="tiles">${tile("running", `of ${skv(2)} containers`)}${tile("updates due")}${tile("projects")}</div></div>
       ${headLine(`images checked ${skv(4)}`, `<button type="button" disabled>Check for updates</button>`, "dmimgbar")}
-      ${dmView === "list" ? skTable(DM_COLS, 4) : skRows(4)}`)}</div>`;
+      ${dmView === "list" ? skTable(DM_COLS, 4)
+        // ...the rows in a project group's card, as they land (R262).
+        : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}`)}</div>`;
     return;
   }
   // The daemon did not answer; it is off, it is not a sandbox VM, or the VM

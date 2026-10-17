@@ -2871,16 +2871,17 @@ pre.diff .d-ctx{color:var(--dim)}
      their rows (the machine's own, the images to add, the images held) is
      a card of its own. */
   .doctab .tchead{border-bottom:0}
-  .doctab>.doclist>.tcs:not(.tbl):has(> .tc){margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+  .doctab>.doclist>.tcs:not(.tbl):has(> .tc),.doctab>.doclist>.skt>.tcs:has(> .sk-row){margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   .doctab>.doclist>.tcs:not(.tbl)>:last-child{border-bottom:0}
   /* ...a run of rows straight on the page, one card; or straight in the one
-     wrapper a page draws them into (Phone's .phonetab, Storage's node). */
-  :is(.doctab>.doclist, .doctab>.doclist>:is(.phonetab, [data-stnode]))>.row{margin:0 var(--row-x);background:var(--panel);
+     wrapper a page draws them into (Phone's .phonetab, Storage's node),
+     and the same inside a template's wrapper (.skt), as they will land. */
+  :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>.row{margin:0 var(--row-x);background:var(--panel);
     border-left:var(--hair) solid var(--line);border-right:var(--hair) solid var(--line)}
-  :is(.doctab>.doclist, .doctab>.doclist>:is(.phonetab, [data-stnode]))>:is(.row:first-child, :not(.row)+.row){margin-top:12px;
+  :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>:is(.row:first-child, :not(.row)+.row){margin-top:12px;
     border-top:var(--hair) solid var(--line);border-top-left-radius:var(--r-surface);border-top-right-radius:var(--r-surface)}
-  :is(.doctab>.doclist, .doctab>.doclist>:is(.phonetab, [data-stnode]))>:is(.row:last-child, .row:has(+:not(.row))){margin-bottom:0;
+  :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>:is(.row:last-child, .row:has(+:not(.row))){margin-bottom:0;
     border-bottom:var(--hair) solid var(--line);border-bottom-left-radius:var(--r-surface);border-bottom-right-radius:var(--r-surface)}
   .doctab>.doclist>.row:last-child{margin-bottom:16px}
   /* A page's template floats as the page will (R262 with R218 step 16): a

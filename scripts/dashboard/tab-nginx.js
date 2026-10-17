@@ -240,11 +240,10 @@ function nginxBody(n){
     </div>`;
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
+  // The page's status line, deployed as undeployed (the page tops' one
+  // order): its state and what it runs, under the tiles.
   return `<div data-ngnode="${esc(n.node)}">
-    <div class="row toolstate">
-      <div class="grow"><div class="name">nginx on ${esc(n.name)} ${pill}</div>
-        <div class="sub">${sub}</div></div>
-    </div>
+    <div class="field headline toolstate"><div class="actbar ngbar"><span class="state">${pill} <span class="sub">${sub}</span></span></div></div>
     <div class="field">
       ${lbl("", "Hostnames")}
       <div class="hint">The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's).</div>
@@ -293,8 +292,7 @@ function renderNginxInto(i){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
     d.setBar(skNodeBar([]));
-    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">nginx on ${skv(6)}</div>
-        <div class="sub">${skv(24)}</div></div></div>${skRows(2)}`);
+    d.list.innerHTML = skTpl(`${headLine(`${skv(5)} ${skv(24)}`, "", "toolstate")}<div class="field">${skRows(2)}</div>`);
     loadNginx();
     return;
   }

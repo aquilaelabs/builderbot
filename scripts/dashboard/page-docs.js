@@ -152,6 +152,15 @@ function bootPage(hash){
   return {rail: key, bar, body: `<div class="skstack">${body}</div>`};
 }
 
+// A page of settings on its way, in splitSects' shape: its sections' names
+// and what each holds in the list, the first one picked, its heading and
+// body beside the list (the template a page of settings waits as).
+function skSplit(items, title, body){
+  return `<div class="ssplit"><div class="rlist snav">${items.map(([t, says], j) =>
+      `<button type="button" class="rrow${j ? "" : " on"}" disabled><span class="name">${esc(t)}</span><span class="rtags"><span class="dim">${esc(says)}</span></span></button>`).join("")}</div>
+    <details class="sect scur" open><summary><span class="t">${esc(title)}</span></summary><div class="body"><div class="field">${body}</div></div></details></div>`;
+}
+
 // The rail's groups at the first paint: every group, inert, the one the
 // address names lit; drawRail puts what this account may open in their place.
 function bootRail(on){
@@ -164,9 +173,10 @@ function bootRail(on){
 // The notebook views whose sections are always the same, by name, so the
 // markup's placeholders (data-skel) and the views' own waits draw them.
 const SKTPLS = {
-  git: () => skTpl(`<div class="field actbar"><span class="state">${skv(14)}</span><span class="sp"></span>
-      <button type="button" disabled>Fetch</button><button type="button" disabled>Pull</button><button type="button" disabled>Push</button></div>`
-    + [["changes", "Changes"], ["history", "History"], ["branches", "Branches"]]
+  // As the view lands: its sections' chips, then Changes, History,
+  // Branches and Claude may (Fetch, Pull and Push only come with a remote).
+  git: () => skTpl(`<nav class="sectjump">${["Changes", "History", "Branches", "Claude may"].map(t => `<a href="#">${t}</a>`).join("")}</nav>`
+    + [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["may", "Claude may"]]
       .map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")
     // Shut as the view draws them until somebody opens one: CI opens only
     // when it is red, the Design view's two always start shut.

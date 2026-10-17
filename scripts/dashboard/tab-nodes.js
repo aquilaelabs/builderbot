@@ -1312,9 +1312,14 @@ function renderNodesInto(i){
                    ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
     d.setBar(`<label class="pick">Node ${skv(9, "ctl")}</label><span class="sp"></span>
       <span class="actbar"><button type="button" disabled>Create sandbox VM</button><button type="button" disabled>Enroll node</button></span>`);
-    d.list.innerHTML = skTpl(`<div class="row"><div class="grow"><div class="name">${skv(7)}</div><div class="sub">${skv(26)}</div></div></div>
-      <nav class="sectjump">${sects.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>
-      ${sects.map(([k, t], j) => docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}`);
+    // One card as the node's is: its head (name, facts, Test and Enroll
+    // script, the sections' chips) and its sections inside it.
+    d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
+        <div class="name">${skv(7)}</div><div class="sub">${skv(26)}</div>
+        <div class="actbar ndagent"><span class="lead dim">${skv(14)}</span>
+          <button type="button" disabled>Test</button><button type="button" disabled>Enroll script</button></div>
+        <nav class="sectjump">${sects.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav></div>
+      <div class="ndsections">${sects.map(([k, t], j) => docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
     loadNodes();
     return;
   }
@@ -1549,9 +1554,9 @@ function renderRunnerInto(i){
     // Its template (R218 step 16): the bar and the state row's words are the
     // page's own; the node and its runners are on their way.
     d.setBar(skNodeBar([]));
-    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">CI runners on ${skv(6)}</div>
-        <div class="sub">One runner per git host; its labels decide which workflows land here.</div></div></div>
-      <div class="field"><div class="actbar"><button type="button" disabled>Add runner</button></div></div>${skRows(1)}`);
+    // In the node's panel, as it lands: its rows are bands there, not a card.
+    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${headLine(`${skv(5)} One runner per git host; its labels decide which workflows land here.`,
+      `<button type="button" disabled>Add runner</button>`, "toolstate")}${skRows(1)}</div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
