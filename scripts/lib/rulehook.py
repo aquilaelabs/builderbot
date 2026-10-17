@@ -185,3 +185,94 @@ def search_patterns(command):
             pats = [a for a in args if not a.startswith("-")][:1]
         out += pats
     return out
+
+
+# ---- the rule checks run in the background (B824) ----------------------------
+# bb-check-relay starts `bb rules check` detached for a project whose new
+# asks cut a test run, so the person's next message is not held behind the
+# suite. Its run is one record beside the stamp: the tree it measured, its
+# process, and once it ends its exit and output; bb-prompt-relay says a
+# failure on the next prompt, once.
+def _run_file(project):
+    return os.path.join(project_dir(project), "checked.run")
+
+
+def check_run(project):
+    """The last background run of the rule checks: {stamp, pid, rc, out,
+    told}; {} when there is none or it cannot be read."""
+    try:
+        with open(_run_file(project)) as f:
+            rec = json.load(f)
+        return rec if isinstance(rec, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_run(project, rec):
+    try:
+        os.makedirs(project_dir(project), exist_ok=True)
+        tmp = _run_file(project) + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(rec, f)
+        os.replace(tmp, _run_file(project))
+    except OSError:
+        pass
+
+
+def check_start(project, stamp, argv, cwd, env):
+    """Start the checks detached, as the leader of their own process group
+    (so a newer hand-back can end the whole run), recording their verdict
+    into the run's record when they end."""
+    import subprocess
+    import sys
+    try:
+        p = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--check-run", project, stamp, cwd,
+                              json.dumps(argv)],
+                             cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        return
+    _write_run(project, {"stamp": stamp, "pid": p.pid, "rc": None, "out": "", "at": int(time.time())})
+
+
+def check_failed(project):
+    """A failed background run not yet said, as one line for the next
+    prompt; marked said. "" when there is nothing to say."""
+    rec = check_run(project)
+    if rec.get("rc") in (None, 0, 75) or rec.get("told"):
+        return ""
+    out = rec.get("out") or ""
+    if "another dashboard test run is going" in out:
+        return ""
+    rec["told"] = True
+    _write_run(project, rec)
+    fails = [ln.strip() for ln in out.splitlines() if ln.lstrip().startswith("FAIL")][:8]
+    return ("The house rules' checks that ran in the background when you last handed back "
+            "failed on that tree (bb-check-relay; this project's new asks cut a test run, so "
+            "the hand-back was not held for them). Fix what failed, or say plainly why it cannot "
+            "pass:\n" + ("\n".join(fails) if fails else out.strip()[-800:]))
+
+
+def _check_main(project, stamp, cwd, argv):
+    import subprocess
+    try:
+        r = subprocess.run(json.loads(argv), cwd=cwd, capture_output=True, text=True, timeout=3600)
+        rc, out = r.returncode, (r.stdout or "") + (r.stderr or "")
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        rc, out = 75, str(e)
+    rec = check_run(project)
+    # A newer run took the record while this one ran: its verdict is not this.
+    if rec.get("stamp") != stamp or rec.get("pid") != os.getpid():
+        return
+    rec.update(rc=rc, out=out[-20000:], ended=int(time.time()))
+    _write_run(project, rec)
+
+
+if __name__ == "__main__":
+    import sys
+    if sys.argv[1:2] == ["--check-run"] and len(sys.argv) == 6:
+        try:
+            _check_main(*sys.argv[2:6])
+        except Exception:                 # noqa: BLE001 - a hook's helper never raises
+            pass
+

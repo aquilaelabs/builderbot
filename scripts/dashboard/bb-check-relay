@@ -17,6 +17,15 @@ paying for the same answer. The set of changed files with their sizes and
 mtimes is hashed; a stamp beside the token file remembers the last hash
 that passed, and an unchanged tree is let go without a word.
 
+Never holds the person up where a new ask cuts a test run (B824): with the
+project's Claude setting "While a test runs: a change asked for" at restart,
+the checks run detached and the stop goes through at once, so what the
+person sends meanwhile lands rather than queuing behind the suite. A newer
+hand-back on a changed tree ends the run still going for the old one (its
+process group), as a new ask cuts any run. The verdict is served the next
+time: a hand-back on the same tree after a failure is refused with it, and
+bb-prompt-relay says a failure on the next prompt (rulehook.check_failed).
+
 Never loops: Claude Code marks a stop that a hook already refused once
 (stop_hook_active), and that one is let through, because a check that cannot
 be made to pass must not hold a session hostage. Silent on any failure of its
@@ -26,6 +35,7 @@ import contextlib
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 
@@ -68,6 +78,97 @@ def stamp_file(project):
     return os.path.join(d, "builderbot", "u", _uid(), "project", project, "checked")
 
 
+def cuts(cwd, bb):
+    """Whether a new ask cuts a test run in this project: its Claude setting
+    "While a test runs: a change asked for", restart rather than wait."""
+    try:
+        r = subprocess.run(["bash", bb, "settings", "--json"], cwd=cwd, capture_output=True,
+                           text=True, timeout=30)
+        return (json.loads(r.stdout or "{}").get("test_change") or "") == "restart"
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+
+
+def _alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def verdict(project, stamp, out, rc):
+    """What a finished run says: None to let the stop go (passed, or could
+    not run), else the refusal's reason. Stamps the tree when it passed."""
+    # A check that could not run is not a check that failed (B232): the
+    # harness runs one suite at a time on a box, and a session that has a
+    # suite going in the background, which the stay-responsive rule asks for,
+    # would otherwise be refused its hand-back over the harness's own
+    # refusal. Nothing is stamped, so the next hand-back runs it for real.
+    if rc != 0 and "another dashboard test run is going" in out:
+        return None
+    # ...nor are rules that could not be read, which is the controller
+    # restarting: bb rules check says so with 75, and the session was told
+    # to fix a check that never ran (B412).
+    if rc == 75:
+        return None
+    if rc == 0:
+        sf = stamp_file(project)
+        try:
+            os.makedirs(os.path.dirname(sf), exist_ok=True)
+            with open(sf, "w") as f:
+                f.write(stamp)
+        except OSError:
+            pass
+        return None
+    # The failing checks first, by name: the tail alone was the lint's
+    # passing lines, and the FAIL lines above them were cut off (B759).
+    fails = [ln for ln in out.splitlines() if ln.lstrip().startswith("FAIL")][:20]
+    tail = out.strip()[-1500:]
+    return ("A house rule's check failed on what you changed. Fix it, or "
+            "say plainly why it cannot pass, before handing this back:\n"
+            + ("\n".join(fails) + "\n...\n" if fails else "") + tail)
+
+
+# The checks, as one shell line: with the toolchain store's environment as it
+# is now, not as the session's was when it started: a toolchain installed
+# since (node and playwright, for the design check) was not on its PATH, and
+# the check failed on the session's age rather than on the change (the
+# operator, 12 Oct).
+CHECK = 'eval "$(bash "$0" toolchains env 2>/dev/null)"; exec bash "$0" rules check'
+
+
+def check_env(project):
+    # Never waiting for a run that holds the test lock (B759): a session's
+    # own suites are what holds it, and waiting then running the whole suite
+    # behind them blocked the hand-back on its flakes. Refused, it is skipped
+    # and runs on the next one. A fresh world, never a kept one (B785): what
+    # a probe left in a kept fixture (a scheme, a layout) is not the change,
+    # and a verdict measured it.
+    return {**os.environ, "BB_PROJECT": project, "BB_TEST_WAIT_LOCK": "0", "BB_TEST_FRESH": "1"}
+
+
+def detached(project, cwd, bb, stamp):
+    """The checks for a project whose new asks cut a run (B824): served from
+    the run already made for this tree, else started in the background, and
+    the stop let go meanwhile. Returns a refusal's reason or None."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+    import rulehook                                           # noqa: E402
+    run = rulehook.check_run(project)
+    if run.get("stamp") == stamp:
+        if run.get("rc") is not None:
+            return verdict(project, stamp, run.get("out") or "", run["rc"])
+        if _alive(run.get("pid")):
+            return None                      # still running for this very tree
+    # A run for an older tree is cut, as a new ask cuts any run: by its
+    # process group, the one it was started as the leader of.
+    if run.get("rc") is None and _alive(run.get("pid")):
+        with contextlib.suppress(OSError, ValueError, TypeError):
+            os.killpg(int(run["pid"]), signal.SIGTERM)
+    rulehook.check_start(project, stamp, ["bash", "-c", CHECK, bb], cwd, check_env(project))
+    return None
+
+
 def main():
     project = (sys.argv[1:2] or [""])[0]
     try:
@@ -91,56 +192,17 @@ def main():
     except OSError:
         pass
     bb = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
-    try:
-        # With the toolchain store's environment as it is now, not as the
-        # session's was when it started: a toolchain installed since (node
-        # and playwright, for the design check) was not on its PATH, and the
-        # check failed on the session's age rather than on the change
-        # (the operator, 12 Oct).
-        r = subprocess.run(["bash", "-c", 'eval "$(bash "$0" toolchains env 2>/dev/null)"; exec bash "$0" rules check',
-                            bb], cwd=cwd, capture_output=True,
-                           text=True, timeout=3600,
-                           # Never waiting for a run that holds the test lock
-                           # (B759): a session's own suites are what holds it,
-                           # and waiting then running the whole suite behind
-                           # them blocked the hand-back on its flakes. Refused,
-                           # it is skipped below and runs on the next one.
-                           # A fresh world, never a kept one (B785): what a
-                           # probe left in a kept fixture (a scheme, a layout)
-                           # is not the change, and a verdict measured it.
-                           env={**os.environ, "BB_PROJECT": project, "BB_TEST_WAIT_LOCK": "0",
-                                "BB_TEST_FRESH": "1"})
-    except (OSError, subprocess.SubprocessError):
-        return
-    out = (r.stdout or "") + (r.stderr or "")
-    # A check that could not run is not a check that failed (B232): the
-    # harness runs one suite at a time on a box, and a session that has a
-    # suite going in the background, which the stay-responsive rule asks for,
-    # would otherwise be refused its hand-back over the harness's own
-    # refusal. Nothing is stamped, so the next hand-back runs it for real.
-    if r.returncode != 0 and "another dashboard test run is going" in out:
-        return
-    # ...nor are rules that could not be read, which is the controller
-    # restarting: bb rules check says so with 75, and the session was told
-    # to fix a check that never ran (B412).
-    if r.returncode == 75:
-        return
-    if r.returncode == 0:
+    if cuts(cwd, bb):
+        reason = detached(project, cwd, bb, stamp)
+    else:
         try:
-            os.makedirs(os.path.dirname(sf), exist_ok=True)
-            with open(sf, "w") as f:
-                f.write(stamp)
-        except OSError:
-            pass
-        return
-    # The failing checks first, by name: the tail alone was the lint's
-    # passing lines, and the FAIL lines above them were cut off (B759).
-    fails = [ln for ln in out.splitlines() if ln.lstrip().startswith("FAIL")][:20]
-    tail = out.strip()[-1500:]
-    reason = ("A house rule's check failed on what you changed. Fix it, or "
-              "say plainly why it cannot pass, before handing this back:\n"
-              + ("\n".join(fails) + "\n...\n" if fails else "") + tail)
-    print(json.dumps({"decision": "block", "reason": reason}))
+            r = subprocess.run(["bash", "-c", CHECK, bb], cwd=cwd, capture_output=True,
+                               text=True, timeout=3600, env=check_env(project))
+        except (OSError, subprocess.SubprocessError):
+            return
+        reason = verdict(project, stamp, (r.stdout or "") + (r.stderr or ""), r.returncode)
+    if reason:
+        print(json.dumps({"decision": "block", "reason": reason}))
 
 
 if __name__ == "__main__":

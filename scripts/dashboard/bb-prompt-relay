@@ -200,7 +200,10 @@ def main():
             # Remembered for this conversation, so a summary does not drop
             # it (bb-rule-hook recall).
             rulehook.remember(project, req.get("session_id"), names)
-        told = "\n\n".join(x for x in (say, fired) if x)
+        # ...and the house rules' checks, where they ran in the background at
+        # the last hand-back and failed (B824): said once, on this prompt.
+        failed = rulehook.check_failed(project)
+        told = "\n\n".join(x for x in (say, fired, failed) if x)
         if told:
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                                                      "additionalContext": told}}))
