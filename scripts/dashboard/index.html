@@ -3927,6 +3927,13 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    at its edge rather than a second one in; so in a fold's body. */
 .field>.skel:not(.warn),.sect>.body .skel:not(.warn){padding-left:0;padding-right:0}
 .skel .sk-row:nth-child(3n+3) .sk-b{animation-delay:.12s} .skel .sk-row:nth-child(3n+4) .sk-b{animation-delay:.24s}
+/* The first paint (bootPage): the pane's bar and a document's frame, laid
+   out as the pane lays them, the doc filling what is left under the bar. */
+.skboot{display:flex;flex-direction:column;height:100%;min-height:0;padding:0;margin:0}
+.skboot .skpcard{min-height:196px}
+.skboot .sk-card.skrows{padding:0 var(--row-x)}
+.skboot>.skstack{position:relative;flex:1;min-height:0;background:var(--panel)}
+.skboot>.skstack>.doc{position:absolute;inset:0}
 .sk-cards,.sk-tiles{display:grid;gap:12px;padding:var(--row-y) 0}
 .sk-cards{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
 .sk-cards.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding-top:0}
@@ -6027,11 +6034,16 @@ quietFields(document.documentElement);
 // first pane, until the first snapshot lands, is shaped like the page the
 // address names: Home's tiles, the Projects page's cards, rows otherwise.
 // The notebook's markup is a template, so its views' heads are found there.
+// The first pane is the page the address names in its frame (bootPage): the
+// rail, its bar and its shape, a reload included (the operator, 17 Oct).
 [document, ...[...document.querySelectorAll("template")].map(t => t.content)].flatMap(r => [...r.querySelectorAll("[data-skel]")]).forEach(el => {
-  let shape = el.dataset.skel;
+  const shape = el.dataset.skel;
   if (shape === "page"){
-    const h = location.hash.replace(/\/+$/, "");
-    shape = h === "" || h === "#" || h === "#/home" ? "home" : h === "#/projects" ? "cards" : "rows";
+    const pg = bootPage(location.hash), rl = bootRail(pg.rail);
+    el.outerHTML = `<div class="loading skel skboot"><span class="sk-said">${esc(el.textContent.trim() || "loading")}</span>${pg.bar}${pg.body}</div>`;
+    if (!$("rail").innerHTML.trim()) $("rail").innerHTML = rl.rail;
+    if (!$("railbar").innerHTML.trim()) $("railbar").innerHTML = rl.bar;
+    return;
   }
   if (el.classList.contains("loading")) el.outerHTML = skel(shape);
   else el.innerHTML = skel(shape);

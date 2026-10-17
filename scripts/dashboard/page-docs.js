@@ -98,6 +98,69 @@ function skNodeBar(actions = []){
   return `<label class="pick">Node ${skv(7, "ctl")}</label><span class="sp"></span><span class="actbar">${
     actions.map(a => `<button type="button" disabled>${esc(a)}</button>`).join("")}</span>`;
 }
+// ---- the first paint, shaped like the page the address names ----------------
+// What a reload shows until the first snapshot lands (the operator, 17 Oct:
+// a refresh on Projects showed full-width rows, no rail and no bar). The
+// rail's groups, inert until drawRail replaces them; the pane's bar as the
+// page will wear it (its group's tools, or a project's header and its view
+// strip); and the page's own shape in a document's frame. Its own class
+// names, not the pane's .stack, so the first real draw builds the pane
+// afresh rather than inside it.
+function bootPage(hash){
+  const parts = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  const key = parts[0] || "home", g = RAIL.find(x => x.key === key) || RAIL[0];
+  const tool = parts[1] || g.tools[0][0];
+  const seg = (tools, on) => `<span class="subnav pseg">${tools.map(([k, label]) =>
+      `<button type="button" disabled class="${k === on ? "on" : ""}">${esc(label)}</button>`).join("")}</span>`;
+  const doc = (barHtml, body) => `<div class="doc on flush"><div class="doctab">${barHtml
+    ? `<div class="field histbar docbarrow">${barHtml}</div>` : ""}<div class="doclist">${body}</div></div></div>`;
+  let bar, body;
+  if (key === "projects" && parts[1] && !g.tools.some(([k]) => k === parts[1] || (k === "findings" && parts[1] === "analysis"))){
+    // A project's notebook: its header, its view strip under it the
+    // pane's width with the view's group open, then rows.
+    const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["settings", "Settings"]]],
+                    ["plan", "Plan", [["roadmap", "Roadmap"], ["bugs", "Bugs"]]],
+                    ["code", "Code", [["git", "Git"], ["tests", "Tests"], ["analysis", "Analysis"]]],
+                    ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"]]],
+                    ["docs", "Docs", [["design", "Design"], ["wiki", "Wiki"]]]];
+    const view = parts[2] || "overview", grp = GROUPS.find(x => x[2].some(([v]) => v === view)) || GROUPS[0];
+    const btn = (on, w) => `<button type="button" disabled class="${on ? "on" : ""}">${w}</button>`;
+    bar = `<span class="phead"><span class="pname">${skv(6)}</span><span class="pfacts">${skv(14)}</span><span class="sp"></span>
+      <button type="button" disabled>Open Claude</button><button type="button" disabled>Shell</button></span>`;
+    body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
+      <div class="nbsub">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
+      <div class="nbview"><div class="field">${skRows(5)}</div></div></div></div>`;
+    return {rail: key, bar: `<div class="bar proj">${bar}</div>`, body: `<div class="skstack">${body}</div>`};
+  }
+  bar = `<div class="bar page">${seg(g.tools, key === "projects" && parts[1] === "analysis" ? "findings" : tool)}</div>`;
+  if (key === "home")
+    // Home's own order: the tiles, Attention and Last jobs, the projects at
+    // a glance, each heading drawn and what fills it shimmering.
+    body = doc("", `<div class="field"><div class="tiles hometiles">${["nodes online", "containers running", "jobs running",
+        "sessions open", "updates due", "CI red"].map(l => `<span class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span></span>`).join("")}</div></div>
+      <div class="field"><div class="homegrid"><section class="hcard"><h3>Attention</h3>${skRows(2)}</section>
+        <section class="hcard"><h3>Last jobs</h3>${skRows(3)}</section></div></div>
+      <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${skRows(2)}</section></div>`);
+  else if (key === "projects" && tool === "projects")
+    body = doc(`<input type="search" disabled placeholder="name, branch or node"><span class="sp"></span>
+      <span class="actbar"><button type="button" disabled>New project</button></span>`,
+      `<div class="field pgridband"><div class="pgrid">${Array.from({length: 6}, (_, j) =>
+        `<div class="sk-card skpcard"><i class="sk-b" style="width:${SKW[j % 8] / 2 + 20}%"></i><i class="sk-b sub" style="width:70%"></i><i class="sk-b sub" style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("")}</div></div>`);
+  // The rest: their rows in a floating card, as the pages draw them at a
+  // desk (their exact first paints are R218's templates step).
+  else body = doc("", `<div class="field"><div class="sk-card skrows">${skRows(6)}</div></div>`);
+  return {rail: key, bar, body: `<div class="skstack">${body}</div>`};
+}
+
+// The rail's groups at the first paint: every group, inert, the one the
+// address names lit; drawRail puts what this account may open in their place.
+function bootRail(on){
+  const item = g => `<button type="button" class="ritem${g.key === on ? " on" : ""}" disabled>${
+    RAIL_ICONS[g.icon] || TOOL_ICONS[g.icon] || ""}<span class="rlbl">${esc(g.label)}</span></button>`;
+  return {rail: RAIL.map(item).join(""), bar: RAIL.filter(g => RAIL_PHONE.includes(g.key)).map(item).join("")
+    + `<button type="button" class="ritem" disabled>${RAIL_ICONS.more || ""}<span class="rlbl">More</span></button>`};
+}
+
 // The notebook views whose sections are always the same, by name, so the
 // markup's placeholders (data-skel) and the views' own waits draw them.
 const SKTPLS = {
