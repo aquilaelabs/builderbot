@@ -181,10 +181,26 @@ LOGIN_HTML = """<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#1a1f26">
 <title>BuilderBot: <!--TITLE--></title>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
+  /* The Default scheme's tokens, its dark half, and nothing a person picked:
+     nobody is signed in yet, so the page wears BuilderBot's own colors
+     whatever this browser kept (the operator, 17 Oct). Derived the way the
+     dashboard derives them (index.html :root): the lit fill from the second
+     color, the sunk field from the panel. */
+  :root{
+    --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
+    --dim:#9fa9b4; --accent:#3fb950; --bad:#f8524a; --note:#58a6ff;
+    --deep:#1a4f8f; --deep:color-mix(in srgb, var(--note), #000000 40%);
+    --deep-edge:#1f6feb; --deep-edge:color-mix(in srgb, var(--note), #000000 14%);
+    --sunk:#1d2229; --sunk:color-mix(in srgb, var(--panel), #000000 12%);
+    --display:"Segoe UI Variable Display","SF Pro Display",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --r:6px;
+  }
+  *{box-sizing:border-box}
   /* dvh, not vh: on a phone `vh` resolves against the LARGE viewport (the
      page as it would be with the URL bar retracted), so min-height:100vh
      made the body taller than the visible area and the page scrolled to
@@ -193,45 +209,94 @@ LOGIN_HTML = """<!doctype html>
      `safe center` keeps the top of the card reachable if a soft keyboard
      ever leaves less room than the card needs, the same rule the
      dashboard's own dialogs use. */
-  body{margin:0;min-height:100vh;min-height:100dvh;padding:16px;
-    box-sizing:border-box;
-    display:flex;align-items:safe center;justify-content:center;
-    background:#0d1117;color:#e6edf3;
-    font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  /* border-box, or the padding and border are added to the width: the card
-     wanted 398px on a 390px phone, flex shrank it to exactly the viewport,
-     and it sat edge to edge looking far bigger than it is. */
-  form{box-sizing:border-box;background:#161b22;border:1px solid #30363d;
-    border-radius:10px;padding:28px;width:min(340px,100%);
-    display:flex;flex-direction:column;gap:12px}
-  h1{margin:0 0 6px;font-size:18px;display:flex;align-items:center;gap:10px}
-  h1 svg{width:28px;height:28px;color:#3fb950}
-  label{font-size:12px;color:#8b98a5}
-  input{background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;
-    padding:10px;font-size:16px}
-  input:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
-  button{margin-top:6px;background:#1f6f36;border:1px solid #2ea043;color:#e6edf3;
-    border-radius:6px;padding:10px;font-size:15px;cursor:pointer}
-  .err{color:#f85149;font-size:13px;margin:0}
-  .note{color:#8b98a5;font-size:13px;margin:0 0 4px}
+  html{background:var(--bg)}
+  body{margin:0;min-height:100vh;min-height:100dvh;padding:16px;position:relative;overflow-x:hidden;
+    display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:18px;
+    color:var(--ink);background:var(--bg);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* The ground: a drafting grid in the line color, fading out from the
+     middle, under two slow glows, the accent's behind the card and the
+     second color's below it. Behind everything and never pressed. */
+  body::before,body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0}
+  body::before{
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--line) 34%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--line) 34%, transparent) 1px, transparent 1px),
+      linear-gradient(color-mix(in srgb, var(--line) 16%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--line) 16%, transparent) 1px, transparent 1px);
+    background-size:96px 96px,96px 96px,24px 24px,24px 24px;
+    background-position:center center;
+    -webkit-mask-image:radial-gradient(ellipse 70% 62% at 50% 46%, #000 30%, transparent 100%);
+    mask-image:radial-gradient(ellipse 70% 62% at 50% 46%, #000 30%, transparent 100%)}
+  body::after{inset:-20%;
+    background:
+      radial-gradient(34% 30% at 46% 40%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 70%),
+      radial-gradient(30% 26% at 60% 66%, color-mix(in srgb, var(--note) 13%, transparent), transparent 70%);
+    animation:drift 26s ease-in-out infinite alternate}
+  @keyframes drift{from{transform:translate3d(-2%,-1.5%,0) rotate(-2deg)}to{transform:translate3d(2%,1.5%,0) rotate(2deg)}}
+  @media(prefers-reduced-motion:reduce){ body::after{animation:none} }
+  /* The one panel, a little glass over the grid: its top edge carries the
+     two colors the page is drawn in. border-box, or the padding and border
+     are added to the width and it wanted 398px on a 390px phone. */
+  form{position:relative;z-index:1;width:min(360px,100%);padding:30px 28px 26px;
+    display:flex;flex-direction:column;gap:6px;
+    background:color-mix(in srgb, var(--panel) 88%, transparent);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    border:1px solid color-mix(in srgb, var(--line) 80%, transparent);border-radius:calc(var(--r) * 2);
+    box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 24px 64px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.25);
+    animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+  form::before{content:"";position:absolute;left:18px;right:18px;top:-1px;height:2px;border-radius:2px;
+    background:linear-gradient(90deg, transparent, var(--accent) 22%, var(--note) 78%, transparent)}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @media(prefers-reduced-motion:reduce){ form{animation:none} }
+  .head{display:flex;flex-direction:column;align-items:center;gap:10px;margin:0 0 16px;text-align:center}
+  .mark{width:52px;height:52px;display:grid;place-items:center;border-radius:14px;
+    background:color-mix(in srgb, var(--accent) 12%, var(--sunk));
+    border:1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    box-shadow:0 0 28px color-mix(in srgb, var(--accent) 22%, transparent)}
+  .mark svg{width:32px;height:32px;color:var(--accent)}
+  h1{margin:0;font:600 22px/1.2 var(--display);letter-spacing:-.01em}
+  .said{margin:0;color:var(--dim);font-size:13px}
+  label{font-size:12px;color:var(--dim);margin-top:8px}
+  /* 16px in the fields: anything smaller and iOS zooms the page into the
+     one that has the focus, and this page cannot zoom back. */
+  input{width:100%;min-height:42px;padding:9px 12px;background:var(--sunk);color:var(--ink);
+    border:1px solid var(--line);border-radius:var(--r);font:16px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    transition:border-color .15s,box-shadow .15s}
+  input:focus{outline:none;border-color:var(--note);box-shadow:0 0 0 3px color-mix(in srgb, var(--note) 28%, transparent)}
+  /* The one filled button, the deep fill with the ink on it, as every
+     filled surface in the dashboard is. */
+  button{margin-top:18px;min-height:44px;padding:10px;border-radius:var(--r);cursor:pointer;
+    background:var(--deep);border:1px solid var(--deep-edge);color:var(--ink);
+    font:600 15px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;transition:background .15s,transform .05s}
+  button:hover{background:color-mix(in srgb, var(--note), #000000 30%)}
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb, var(--note) 35%, transparent)}
+  .err{margin:0 0 4px;padding:8px 10px;border-radius:var(--r);font-size:13px;color:var(--bad);
+    background:color-mix(in srgb, var(--bad) 10%, transparent);border:1px solid color-mix(in srgb, var(--bad) 35%, transparent)}
+  .note{color:var(--dim);font-size:13px;margin:0 0 6px}
+  .note b{color:var(--ink)}
 </style></head><body>
 <form method="post" action="<!--ACTION-->">
-  <h1><svg viewBox="0 0 32 32" aria-hidden="true"><mask id="m">
-    <rect width="32" height="32" fill="#000"/>
-    <rect x="4" y="8.5" width="24" height="17" rx="5.5" fill="#fff"/>
-    <rect x="15" y="3.5" width="2" height="6" rx="1" fill="#fff"/>
-    <circle cx="16" cy="3" r="2.3" fill="#fff"/>
-    <circle cx="11.4" cy="15.4" r="2.1" fill="#000"/>
-    <circle cx="20.6" cy="15.4" r="2.1" fill="#000"/>
-    <rect x="10.6" y="19.6" width="10.8" height="2.6" rx="1.3" fill="#000"/>
-  </mask><rect width="32" height="32" fill="currentColor" mask="url(#m)"/></svg>
-  BuilderBot</h1>
+  <div class="head">
+    <span class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><mask id="m">
+      <rect width="32" height="32" fill="#000"/>
+      <rect x="4" y="8.5" width="24" height="17" rx="5.5" fill="#fff"/>
+      <rect x="15" y="3.5" width="2" height="6" rx="1" fill="#fff"/>
+      <circle cx="16" cy="3" r="2.3" fill="#fff"/>
+      <circle cx="11.4" cy="15.4" r="2.1" fill="#000"/>
+      <circle cx="20.6" cy="15.4" r="2.1" fill="#000"/>
+      <rect x="10.6" y="19.6" width="10.8" height="2.6" rx="1.3" fill="#000"/>
+    </mask><rect width="32" height="32" fill="currentColor" mask="url(#m)"/></svg></span>
+    <h1>BuilderBot</h1>
+    <p class="said"><!--SAID--></p>
+  </div>
   <!--FIELDS-->
 </form>
 <script>
   const n = new URLSearchParams(location.search).get("next");
-  if (n && n.startsWith("/") && !n.startsWith("//"))
-    document.querySelector('[name=next]').value = n;
+  const f = document.querySelector('[name=next]');
+  if (f && n && n.startsWith("/") && !n.startsWith("//")) f.value = n;
 </script>
 </body></html>
 """
@@ -4254,6 +4319,7 @@ class Handler(BaseHTTPRequestHandler):
         err = f'<p class="err">{error}</p>' if error else ""
         body = (LOGIN_HTML
                 .replace("<!--TITLE-->", "set up" if setup else "sign in")
+                .replace("<!--SAID-->", "Make the first account" if setup else "Sign in to continue")
                 .replace("<!--ACTION-->", "/setup" if setup else "/login")
                 .replace("<!--FIELDS-->", SETUP_FIELDS if setup else LOGIN_FIELDS)
                 .replace("<!--ERR-->", err)).encode()

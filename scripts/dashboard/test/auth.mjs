@@ -52,7 +52,14 @@ r = await bare('/term/');
 ok(r.status === 302 && r.headers.get('location').startsWith('/login'),
    'the terminal proxy is behind the same sign-in');
 r = await bare('/login');
-ok(r.status === 200 && (await r.text()).includes('Sign in'), 'the login page is the one open door');
+{
+  const html = await r.text();
+  ok(r.status === 200 && html.includes('Sign in'), 'the login page is the one open door');
+  // ...in BuilderBot's own colors: nobody is signed in, so no scheme a person
+  // picked is worn there (the operator, 17 Oct).
+  ok(html.includes('--bg:#1a1f26') && !html.includes('bb.theme'),
+     '...wearing the Default scheme and never the scheme this browser kept');
+}
 
 // Wrong credentials re-render the form with the reason; right ones mint the
 // cookie and land where the visitor was headed.
