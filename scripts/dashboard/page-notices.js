@@ -144,7 +144,8 @@ function wireNotices(root){
     if (!confirm(kind ? `Clear every ${NOTICE_KINDS[kind].toLowerCase()} notice?` : "Clear every notice kept for your account?")) return;
     noticesAct({action: "clear", kind});
   };
-  root.querySelectorAll("[data-ntchip]").forEach(b => b.onclick = () => { noticesChip = b.dataset.ntchip; noticesRev++; drawPanes(); });
+  root.querySelectorAll("[data-ntchip]").forEach(b => b.onclick = () => { noticesChip = b.dataset.ntchip; noticesRev++; drawPanes();
+    fadeIn(document.querySelectorAll(".pane .doc.on .ntlist")); });
   root.querySelectorAll("[data-ntdel]").forEach(b => b.onclick = () => noticesAct({action: "delete", id: b.dataset.ntdel}));
   root.querySelectorAll("[data-ntjob]").forEach(b => b.onclick = () => openJob(b.dataset.ntjob));
   root.querySelectorAll("[data-ntallow]").forEach(b => b.onclick = () => askAnswer(Number(b.dataset.ntallow), true, !!b.dataset.session));

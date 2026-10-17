@@ -230,7 +230,7 @@ function nbBugsView({$, nb, project}){
     nb.bugChip = ["", "open", "closed"].includes(nb.bugChip) ? nb.bugChip : "";
     if (paint($("bugChips"), chipButtons([{key: "open", label: "Open", count: open},
                                           {key: "closed", label: "Closed", count: rows.length - open}], nb.bugChip, "data-bgchip"), true))
-      $("bugChips").querySelectorAll("[data-bgchip]").forEach(b => b.onclick = () => { nb.bugChip = b.dataset.bgchip; drawBugs(true); });
+      $("bugChips").querySelectorAll("[data-bgchip]").forEach(b => b.onclick = () => { nb.bugChip = b.dataset.bgchip; drawBugs(true); fadeIn($("bugList")); });
     const q = (nb.bugFind || "").trim().toLowerCase();
     const shown = b => (!nb.bugChip || (nb.bugChip === "open") === (b.status === "open")) && bugMatch(b, q);
     // Which were open before this redraw, so acting on one does not fold it.

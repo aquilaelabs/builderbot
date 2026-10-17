@@ -45,6 +45,9 @@ function setTitle(el, s){ if (el && saidOf(el) !== String(s)) el.title = String(
 // "First" means: nothing has been painted here yet, or what was here was a
 // placeholder saying it had not arrived.
 const WAITING = /class="(loading|empty)[ "]|loading…/;
+const paintedKids = el => { let n = el.childNodes.length;
+  for (const c of el.children) if (c.classList.contains("slmark")) n--;
+  return n; };
 function paint(el, html, quiet = false){
   const rec = painted.get(el);
   // What it left there is what is there: a renderer that wrote the element
@@ -52,13 +55,15 @@ function paint(el, html, quiet = false){
   // the same markup painted again is then a change (R218 step 10, now that a
   // page's list outlives its draws). A fold opened or a box ticked since
   // replaces nothing and still reads as unchanged.
-  const was = rec && rec.first === el.firstChild && rec.n === el.childNodes.length ? rec.html : undefined;
+  // ...counting the children it wrote: a slide marker (slideMark) put in
+  // beside them is the motion's, not a write that makes the markup stale.
+  const was = rec && rec.first === el.firstChild && rec.n === paintedKids(el) ? rec.html : undefined;
   if (rec && was === html) return false;
   // Not recorded, so the same markup is still a change on the next poll.
   if (menuHolds(el)) return false;
   const arriving = !rec || WAITING.test(rec.html);
   el.innerHTML = html;
-  painted.set(el, {html, first: el.firstChild, n: el.childNodes.length});
+  painted.set(el, {html, first: el.firstChild, n: paintedKids(el)});
   // ...but never while the card around it is folding. contentIn starts at
   // opacity 0 and takes 180ms, which is exactly the fold's duration, so a
   // repaint landing on a collapsing card blanks its body at full height and

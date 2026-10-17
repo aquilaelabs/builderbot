@@ -270,6 +270,50 @@ function swapBox(el, paint){
   foldHeight(el, from, to, () => {});
 }
 
+// What a press just redrew in place (a chip narrowing a list, Cards or a
+// List, a group picked) fades in as a rail page does: the in-half of the
+// fade through, on the parts that changed (the operator, 17 Oct). Only for
+// a press: a redraw the poll makes is not a change of page and never fades.
+function fadeIn(els){
+  if (noMotion()) return;
+  for (const el of (els instanceof Element ? [els] : [...(els || [])])){
+    el.getAnimations().forEach(a => { if (a.id === "fadein") a.cancel(); });
+    el.animate([{opacity: 0}, {opacity: 1}], {duration: 220, delay: 30, fill: "backwards",
+                                                easing: "cubic-bezier(.33,1,.68,1)", id: "fadein"});
+  }
+}
+
+// The marker on the item on show slides to the one pressed (the operator,
+// 17 Oct): the line under a sub-nav's tab and a notebook strip's, the bar
+// beside the rail's group. One element per strip, put back when a draw
+// replaced the strip's contents, moved from where it last stood (kept by
+// `key`, so a group's sub-nav never slides from another group's) to the
+// item now on. The strip wears .slides, which puts its own static line away.
+const SLIDE_MARKS = {};
+function slideMark(box, key, vertical = false){
+  if (!box) return;
+  const on = [...box.children].find(e => e.classList.contains("on") && !e.hidden && e.offsetWidth);
+  // The same element back when a repaint took it (the rail is painted two
+  // or three times on one press), so a slide already under way goes on.
+  let m = box.querySelector(":scope > .slmark") || SLIDE_MARKS[key]?.el;
+  if (!on){ m?.remove(); if (box.classList.contains("slides")) box.classList.remove("slides"); return; }
+  if (!m){ m = document.createElement("span"); m.className = "slmark"; m.setAttribute("aria-hidden", "true"); }
+  if (m.parentNode !== box) box.append(m);
+  // Written only when it changes: a draw that moves nothing writes nothing.
+  if (!box.classList.contains("slides")) box.classList.add("slides");
+  const at = vertical ? on.offsetTop + 8 : on.offsetLeft;
+  const size = vertical ? Math.max(0, on.offsetHeight - 16) : on.offsetWidth;
+  const dim = vertical ? "height" : "width";
+  const move = n => vertical ? `translateY(${n}px)` : `translateX(${n}px)`;
+  if (m.style.transform !== move(at)) m.style.transform = move(at);
+  if (m.style[dim] !== `${size}px`) m.style[dim] = `${size}px`;
+  const was = SLIDE_MARKS[key];
+  SLIDE_MARKS[key] = {at, size, el: m};
+  if (was && (was.at !== at || was.size !== size) && !noMotion())
+    m.animate([{transform: move(was.at), [dim]: `${was.size}px`}, {transform: move(at), [dim]: `${size}px`}],
+              {duration: 260, easing: "cubic-bezier(.33,1,.68,1)"});
+}
+
 function slideHidden(el, willShow, after){
   const done = () => { el.hidden = !willShow; after?.(); };
   if (noMotion()){ done(); return; }

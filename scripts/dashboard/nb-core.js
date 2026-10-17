@@ -532,6 +532,11 @@ function makeNotebook(project){
       if (b.classList.contains("on") !== on) b.classList.toggle("on", on);
       b.setAttribute("aria-selected", String(on));
     });
+    // Each strip's line slides to the one pressed (slideMark): the groups'
+    // per notebook, the views' per group, so a group's row never slides
+    // from another group's.
+    slideMark(root.querySelector(".nbtabs .nbgroups"), "nbg:" + project);
+    slideMark(sub, "nbv:" + project + ":" + g);
     // The incoming view arrives on the same fade content does: one vocabulary
     // for "this is here now", rather than a tab switch being the one place on
     // the page where something simply appears.

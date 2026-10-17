@@ -2597,12 +2597,15 @@ function renderDockerInto(i){
   // redraw from what is already here, nothing fetched and nothing saved.
   el.querySelectorAll("[data-dmchip]").forEach(c => c.onclick = () => {
     dmChip = c.dataset.dmchip; dockerRev++; drawPanes();
+    // ...the groups it leaves fading in, as a page does (fadeIn).
+    fadeIn(document.querySelectorAll(".pane .doc.on .dmtab .dmcard, .pane .doc.on .dmtab > .tbl"));
   });
   // Cards or a list: this browser's choice, kept for the next open.
   el.querySelectorAll("[data-dmview]").forEach(b => b.onclick = () => {
     dmView = b.dataset.dmview === "list" ? "list" : "cards";
     try{ localStorage.setItem("bb.dmview", dmView); }catch(e){ /* private mode */ }
     dockerRev++; drawPanes();
+    fadeIn(document.querySelectorAll(".pane .doc.on .dmtab .dmcard, .pane .doc.on .dmtab > .tbl"));
   });
   // The search redraws as it is typed, and keeps its focus and its caret
   // across the redraw, which replaces the box.

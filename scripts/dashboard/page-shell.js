@@ -241,6 +241,8 @@ function drawRail(){
   if (paint(rail, html, true)){
     rail.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => railGo(b.dataset.rail));
   }
+  // ...and the bar beside the group on show slides to the one pressed.
+  slideMark(rail, "rail", true);
   const five = groups.filter(g => RAIL_PHONE.includes(g.key));
   const rest = groups.filter(g => !RAIL_PHONE.includes(g.key));
   const moreOn = rest.some(g => g.key === on);
@@ -279,6 +281,10 @@ function shellBar(t, i){
       `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}"${g ? ` data-subnav="${esc(k)}"` : ""}>${esc(label)}</button>`).join("")}</span>`;
 }
 function wireShellBar(bar){
+  // The line under the tab on show slides to the one pressed (slideMark),
+  // kept per group so another group's sub-nav never slides from this one.
+  const sub = bar.querySelector(".subnav");
+  if (sub) slideMark(sub, "subnav:" + (groupOf(sub.querySelector(".on")?.dataset.subnav || "")?.key || sub.getAttribute("aria-label") || ""));
   bar.querySelectorAll("[data-subnav]").forEach(b => b.onclick = () => {
     const g = groupOf(b.dataset.subnav);
     if (g) railGo(g.key, b.dataset.subnav);

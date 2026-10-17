@@ -751,6 +751,10 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   .ssplit.sopen[data-move="in"]>:not(.snav){animation:splitIn .26s cubic-bezier(.33,1,.68,1)}
   .ssplit:not(.sopen)[data-move="back"]>.snav{animation:splitBack .26s cubic-bezier(.33,1,.68,1)}
 }
+/* ...and at a desk, where the list and the section stand side by side, the
+   section picked fades in as a rail page does (the operator, 17 Oct): the
+   in-half of the fade through, on the part that changed. */
+@media(min-width:901px){ .ssplit[data-move="in"]>:not(.snav){animation:docIn .22s cubic-bezier(.33,1,.68,1) .03s backwards} }
 @media(prefers-reduced-motion:reduce){ .ssplit[data-move]>*{animation:none} }
 .rdetail{min-width:0;padding:0 0 0 var(--row-x)}
 .rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
@@ -788,6 +792,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   .rsplit.open[data-move="in"]>.rdetail{animation:splitIn .26s cubic-bezier(.33,1,.68,1)}
   .rsplit:not(.open)[data-move="back"]>.rlist{animation:splitBack .26s cubic-bezier(.33,1,.68,1)}
 }
+@media(min-width:901px){ .rsplit[data-move="in"]>.rdetail{animation:docIn .22s cubic-bezier(.33,1,.68,1) .03s backwards} }
 @media(prefers-reduced-motion:reduce){ .rsplit[data-move]>*{animation:none} }
 /* A role's areas are a table (R218 step 8): the area with what Read and
    Write let one do under its name, then the two boxes in their columns. */
@@ -2967,6 +2972,21 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .rail .ritem.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;
   border-radius:0 2px 2px 0;background:var(--accent)}
 .ritem:focus-visible{outline:2px solid var(--accent-mid);outline-offset:-2px}
+/* The marker that slides to the item pressed (slideMark): one per strip,
+   the strip's own static line put away while it is there. The rail's is
+   its bar beside the group; a sub-nav's and a notebook strip's the line
+   under the tab, in that strip's color. */
+.slmark{position:absolute;left:0;pointer-events:none;will-change:transform}
+.rail{position:relative}
+.rail.slides .ritem.on::before{content:none}
+.rail>.slmark{top:0;width:3px;border-radius:0 2px 2px 0;background:var(--accent)}
+.pane .bar .subnav.pseg{position:relative}
+.pane .bar .subnav.slides>button.on{box-shadow:none}
+.pane .bar .subnav>.slmark{bottom:0;height:2px;background:var(--accent)}
+.nbtabs .nbgroups,.nbtabs .nbsub{position:relative}
+.nbtabs .slides>button.on{border-bottom-color:transparent}
+.nbtabs .nbgroups>.slmark{bottom:0;height:2px;background:var(--accent)}
+.nbtabs .nbsub>.slmark{bottom:0;height:2px;background:var(--note)}
 .railbar{display:none}
 .railmore{display:none}
 @media(max-width:900px){
