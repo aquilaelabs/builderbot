@@ -934,7 +934,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    looked. Segmented like the notebook's strip, not a select. */
 .abswitch{display:flex;gap:6px;margin:10px 0 6px}
 .abswitch button{flex:0 1 auto}
-.abswitch button.on{border-color:var(--accent);color:var(--accent)}
+/* Picked, so lit as every picked control is (the second color filled):
+   text and edge in the accent clashed with the second color's hover. */
+.abswitch button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 /* One scroller, not two. The page used to be capped at 52vh on its own while
    the box capped itself at 90vh, and the lines under the page did not fit in
    the difference, so the box scrolled a little around a page that scrolled
@@ -3315,7 +3317,7 @@ button.eye.none{opacity:.45}
    is wrong: the operator meant this. */
 button.eye.on{color:var(--gold)}
 button.eye.on:hover{color:var(--gold)}
-button.eye.pin.on,button.eye.pin.on:hover{color:var(--accent)}
+button.eye.pin.on,button.eye.pin.on:hover{color:var(--lit)}   /* on: the second color, as a pinned tack */
 /* A running session and an open notebook: the same green, because both mean
    "this is live, and the button takes you to it" rather than "press to start". */
 button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
