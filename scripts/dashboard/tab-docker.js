@@ -2101,12 +2101,14 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   const gonesName = o => [...ins, ...cs].find(r => r.owner === o)?.owner_label || o;
   // System is BuilderBot's own (R180): what it deploys itself, the nginx
   // container today, set by that deployment and by no picker.
-  return owners.map(o => gone(o)
+  // Each group a card at a desk (R262): its heading and its rows together.
+  const card = html => `<section class="dmcard">${html}</section>`;
+  return owners.map(o => card(gone(o)
       ? head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
       : o === "System"
         ? head("System", "BuilderBot's own · no session sees these", null) + group(o)
-        : head(projLabel(o), "", colorTone(projectColor(o))) + group(o)).join("")
-    + (loose ? head("No project", "no session sees these", null) + group("") : "");
+        : head(projLabel(o), "", colorTone(projectColor(o))) + group(o))).join("")
+    + (loose ? card(head("No project", "no session sees these", null) + group("")) : "");
 }
 
 // The groups the chips offer: each project with containers here, by its

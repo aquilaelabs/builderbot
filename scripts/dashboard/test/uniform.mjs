@@ -184,8 +184,22 @@ async function measure(kind){
       .filter(e => !INDENTED.some(c => e.classList.contains(c)))
       // Nested band-in-band measures the outer one; the inner is content.
       .filter(e => !e.parentElement.closest(BANDS));
-    const leftOf = e => Math.round(
-      e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft));
+    // At a desk content floats as cards (R262): a band in a card (or one
+    // that is the card) is where its card stands, the card's edge in line
+    // with the page's own content; inside, the card's inset is the card's.
+    // A card here is a box edged on both sides; a phone draws none.
+    const cardOf = e => {
+      if (innerWidth <= 900) return null;
+      for (let n = e; n && n !== box; n = n.parentElement){
+        const c = getComputedStyle(n);
+        if (parseFloat(c.borderLeftWidth) > 0 && parseFloat(c.borderRightWidth) > 0 && c.borderLeftStyle !== 'none'
+            && !/^(BUTTON|INPUT|SELECT|TEXTAREA|SPAN|A|CODE)$/.test(n.tagName)) return n;
+      }
+      return null;
+    };
+    const leftOf = e => { const card = cardOf(e);
+      return Math.round(card ? card.getBoundingClientRect().x
+                             : e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft)); };
     // A list beside its detail (a project's Settings view, the Roles page's
     // shape) is two columns: the detail's bands start at one x of their own,
     // beside the list, and are measured apart from the page's.
@@ -228,7 +242,24 @@ async function measure(kind){
     const bar = box.querySelector('.sectjump');
     const tops = bar ? [...bar.querySelectorAll('a')].slice(0, 2).map(e => Math.round(e.getBoundingClientRect().top)) : [];
     const jump = bar && bar.offsetHeight ? { dir: getComputedStyle(bar).flexDirection, stacked: tops.length === 2 && tops[0] !== tops[1] } : null;
+    // Floating cards at a desk (R262, the operator, 17 Oct): no line runs to
+    // the page's edge. A visible top or bottom border spanning the document
+    // box from side to side is named; the page's bar band and a notebook's
+    // header and view strips are the frame, not content, and keep theirs.
+    const edges = [];
+    if (innerWidth > 900){
+      const br = box.getBoundingClientRect();
+      for (const e of box.querySelectorAll('*')){
+        if (!e.offsetHeight || e.closest('.docbarrow, .nbtabs, .phead, .modal, .xterm')) continue;
+        const c = getComputedStyle(e), r = e.getBoundingClientRect();
+        const lined = side => parseFloat(c[`border${side}Width`]) > 0 && c[`border${side}Style`] !== 'none'
+          && !/rgba\(\d+, \d+, \d+, 0\)|transparent/.test(c[`border${side}Color`]);
+        if ((lined('Top') || lined('Bottom')) && r.left <= br.left + 2 && r.right >= br.right - 2)
+          edges.push(`${e.tagName.toLowerCase()}.${[...e.classList].join('.')}${e.id ? '#' + e.id : ''}`);
+      }
+    }
     return {
+      edges: [...new Set(edges)].slice(0, 6),
       jump,
       ragged, stacks: [...stacks.values()].filter(ws => ws.length > 1).length,
       // flush and nbhost are the same treatment in the sheet, and the notebook
@@ -614,6 +645,8 @@ for (const kind of kinds){
   ok(m.bands > 0 && m.lefts.length === 1,
      `[${kind}] every band starts at one x (${m.bands} bands at ${
        JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
+  if (m.edges) ok(m.edges.length === 0,
+     `[${kind}] no line at a desk runs to the page's edge: its content floats as cards${m.edges.length ? `; reaching it: ${m.edges.join(', ')}` : ''}`);
   if (m.colLefts.length) ok(m.colLefts.length === 1,
      `[${kind}] ...and every band in the column beside its list at one x of its own (${JSON.stringify(m.colLefts)}${
        m.colLefts.length > 1 ? ': ' + m.colLefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);

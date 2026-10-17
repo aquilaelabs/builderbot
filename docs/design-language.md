@@ -972,6 +972,12 @@ Applies to: settings, profile, roles
 
 **A page of settings is a list beside the one picked (the operator, 16 Oct).** A project's Settings, Controller settings and Profile draw their sections through `splitSects` (page-docs.js): a list of the sections, each its name and a line of what is in it, `unsaved` on it when it holds a change, beside the section picked, whose heading is a heading and not a fold, with its own Save and Revert. The Roles page is the same shape by hand: one list, the accounts and then the roles under quiet headings with how many, beside the picked one's detail. The picked row is lit (`--lit`). On a phone it is one column: the list, then the section or detail over it with Back, sliding in from the right (`splitIn`, 32px over .26s on the menus' ease-out) and the list sliding back from the left (`splitBack`); no row stays lit on the list, since none is open there. Off under reduced motion. A section this account may not see is not listed. `uniform.mjs` measures the column beside the list at one x of its own.
 
+### floating-cards
+
+Applies to: card, section, band
+
+**At a desk, content floats as cards; no line runs to the page's edge (R262, the operator, 17 Oct).** As Home and Projects already were: a page-level section (on a page, the Docker manager, a notebook's view) is a card on the page's margin, the panel color, a hairline edge, the surface's radius and 12px between cards, its heading over a hairline inside it; a table straight on a page is a card; a run of rows straight on a page is one card, its rows divided inside it; a notebook's lists (bugs, roadmap, memory, tests, history) are cards; a page of settings and the Roles page are a list card beside a detail card; the Docker manager's group is a card headed by its project. A section inside a section, or inside a row (a node's card), stays a band in its card. The frame keeps its lines: the page's bar band, a notebook's header and its view strips. A band that only labels (a view's head row, a jump bar, Toolchains' store line) draws no line under it. A phone keeps the full-width bands (the operator: mobile is fine). `uniform.mjs` names any visible top or bottom border spanning a page from side to side at a desk.
+
 ## Pages
 
 Each page is a layout of labeled blocks on a frame, named for what it is for, on the platform it is built for.

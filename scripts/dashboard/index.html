@@ -2141,6 +2141,10 @@ pre.diff .d-ctx{color:var(--dim)}
    place: never at the foot, where a phone scrolls past the list to find it. */
 .addbar,.roadmapadd{display:flex;gap:8px;align-items:center}
 .addbar button{flex:0 0 auto;min-height:var(--tap)}
+/* The Docker manager's top band: New container at the left, when the images
+   were checked and Check for updates at the right, one line. An action
+   bar's state takes a line of its own, which broke this band into three. */
+.dmimgbar .state{flex:0 1 auto;text-align:right}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .roadmapadd[hidden]{display:none}
 .roadmapadd input{flex:1 1 auto;min-width:0}
@@ -2792,6 +2796,83 @@ pre.diff .d-ctx{color:var(--dim)}
   box-shadow:inset 4px 0 0 0 var(--gc);
   border-bottom:1px solid color-mix(in srgb, var(--gc) 50%, var(--line))}
 .dmtab .dmgroup.none{--gc:var(--line)}
+/* ---- floating cards at a desk (R262, the operator, 17 Oct) ---------------
+   Every page's content floats as cards on the page's margin, the way Home
+   and Projects do: no line runs to the page's edge. A page-level section is
+   a card (its heading over a line, its body under it); a table straight on
+   the page is a card; a run of rows straight on the page is one card, its
+   rows divided inside it; a page of settings and the Roles page are a list
+   card beside a detail card; the Docker manager's groups are cards with the
+   project as the heading. The page's bar keeps its band. A phone keeps the
+   full-width bands it has (the operator: "mobile is fine"). */
+@media(min-width:901px){
+  /* A section at a page's level: on a page, the Docker manager, a
+     notebook's view. Not one inside a section or a row (a node's card
+     holds its sections as bands), nor a dialog's, nor a page of settings',
+     which sits beside its list below. */
+  :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect, .ssplit>details.sect),
+  .doctab>.doclist>.tbl,
+  .dmtab .dmcard,
+  .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist):has(> :is(.bug, .grp, .mem, .tst, .hist)){
+    margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+    border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
+  :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)[open]>summary{
+    border-bottom:var(--hair) solid var(--line)}
+  :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)>.body{
+    padding-top:var(--row-y)}
+  .doctab>.doclist>:is(details.sect, .tbl):last-child,.dmtab .dmcard:last-child{margin-bottom:16px}
+  .doctab>.doclist>.tbl>.row:last-child,.dmtab .dmcard>.row:last-child,.dmtab .dmcard>.tbl>.row:last-child,
+  .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist)>:last-child{border-bottom:0}
+  /* A band's line under it is the card's edge now: a notebook view's head
+     row and a jump bar float like the rest. */
+  .nbview .nbhead,.nbview .sectjump,.doctab .sectjump,.nbview .gitnet{border-bottom:0}
+  .nbview :is(#artList, #artBranches){border-top:0}
+  /* The Toolchains and Emulator pages: a head line floats, and a list of
+     their rows (the machine's own, the images to add, the images held) is
+     a card of its own. */
+  .doctab .tchead{border-bottom:0}
+  .doctab>.doclist>.tcs:not(.tbl):has(> .tc){margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+    border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
+  .doctab>.doclist>.tcs:not(.tbl)>:last-child{border-bottom:0}
+  /* ...a run of rows straight on the page, one card; or straight in the one
+     wrapper a page draws them into (Phone's .phonetab, Storage's node). */
+  :is(.doctab>.doclist, .doctab>.doclist>:is(.phonetab, [data-stnode]))>.row{margin:0 var(--row-x);background:var(--panel);
+    border-left:var(--hair) solid var(--line);border-right:var(--hair) solid var(--line)}
+  :is(.doctab>.doclist, .doctab>.doclist>:is(.phonetab, [data-stnode]))>:is(.row:first-child, :not(.row)+.row){margin-top:12px;
+    border-top:var(--hair) solid var(--line);border-top-left-radius:var(--r-surface);border-top-right-radius:var(--r-surface)}
+  :is(.doctab>.doclist, .doctab>.doclist>:is(.phonetab, [data-stnode]))>:is(.row:last-child, .row:has(+:not(.row))){margin-bottom:0;
+    border-bottom:var(--hair) solid var(--line);border-bottom-left-radius:var(--r-surface);border-bottom-right-radius:var(--r-surface)}
+  .doctab>.doclist>.row:last-child{margin-bottom:16px}
+  /* Findings and the notebook's Analysis: a list of rules is one card, a
+     project's name over its card on the Findings page. */
+  .fxtab .fx:has(> .rule),.nbview #anaList:has(> .rule){margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+    border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
+  .fxtab .fx>.rule:first-child,.nbview #anaList>.rule:first-child{border-top:0}
+  .fxtab.fxtab .fxproj{border-top:0;padding-top:calc(var(--row-y) + 6px)}
+  /* nginx's and the CI runner's state line heads the page, a line of words
+     with nothing to draw a line under. */
+  :is(.nginxtab, .runnertab) .row.toolstate{border-bottom:0}
+  .fxtab .fnote,.doctab .fnote{border-top:0}
+  /* A page of settings, and the Roles page: two cards side by side, their
+     tops level; a settings page's foot (Delete project) floats under the
+     section with no line across. */
+  .ssplit{column-gap:16px;padding:12px var(--row-x) 16px}
+  .ssplit>details.sect{margin:0;border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+    background:var(--panel);overflow:hidden}
+  .ssplit>details.sect[open]>summary{border-bottom:var(--hair) solid var(--line)}
+  .ssplit>details.sect>.body{padding-top:var(--row-y)}
+  .ssplit>.foot{border-top:0;padding-left:0;padding-right:0}
+  .ssplit>.snav,.rsplit>.rlist{border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+    background:var(--panel);overflow:hidden;align-self:start}
+  .ssplit>.snav>.rrow:last-child,.rsplit>.rlist>.rrow:last-child{border-bottom:0}
+  .rsplit{column-gap:16px;padding:12px var(--row-x) 16px}
+  .rsplit>.rdetail{border:var(--hair) solid var(--line);border-radius:var(--r-surface);background:var(--panel);
+    padding:0 var(--row-x) var(--row-y);align-self:start}
+  /* The Docker manager's group: the project its card's heading. */
+  .dmtab .dmcard>.dmgroup{border-bottom:var(--hair) solid var(--line)}
+  .dmtab .row + .dmgroup{margin-top:0}
+}
+
 /* ---- the shell (R218 step 2) ---------------------------------------------
    The rail: one column of groups at the left edge, an icon each, the label
    under it from 1280px up, the one on show wearing the accent as a bar on

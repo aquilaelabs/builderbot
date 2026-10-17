@@ -294,8 +294,12 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
     const x = sel => { const e = document.querySelector(sel);
       return e ? Math.round(e.getBoundingClientRect().x
                             + parseFloat(getComputedStyle(e).paddingLeft)) : null; };
+    // ...and at a desk the rules float in a card (R262): where the card
+    // stands is what lines up with the bands around it.
+    const card = document.querySelector('.fxtab .fx:has(> .rule)');
+    const inCard = card && innerWidth > 900 && parseFloat(getComputedStyle(card).borderLeftWidth) > 0;
     return { bar: x('.fxtab .fxbar'), heading: x('.fxtab .fxproj'),
-             rule: x('.fxtab .rule'), foot: x('.fxtab .fnote') };
+             rule: inCard ? Math.round(card.getBoundingClientRect().x) : x('.fxtab .rule'), foot: x('.fxtab .fnote') };
   });
   ok(new Set(Object.values(xs)).size === 1 && !Object.values(xs).includes(null),
      'the tab\'s filter bar, headings, rules and footer all start at one x: '

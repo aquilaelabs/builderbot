@@ -381,6 +381,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Settings are a list of sections beside the one picked, each saying what is in it and marked unsaved when it holds a change, with plainer names (General, Nodes, What sessions reach, Just for you, Running sessions) and the most used first; on a phone the list, then the section with Back (6098e71)
 - Controller settings, Profile and the Roles page share a project's Settings shape: a list beside the section or person picked, and on a phone the list, then the section sliding in with Back; the Roles page is one list of people and roles (d78256d)
 - bb capture reel sees small and slow changes (a tap circle, a typed letter, a slow scroll) by comparing each frame with the last one kept, thins a run of motion to where it starts and settles, pages a long reel twelve frames a sheet, and offers --dry to count first and --from/--to to reel one stretch; it no longer drops or mis-stamps frames of a fast recording (2983542)
+- At a desk every page's content floats as cards on the page's margin, as Home and Projects do: sections, tables, row lists, a notebook's lists, the Docker manager's project groups, and a settings page's list and section; no line runs to the page's edge. A phone keeps its full-width bands (ff1310e)
 
 ### Removed
 
@@ -619,6 +620,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Nodes settings no longer show its second node unticked after another project's settings were open, where saving would have removed it (78f5678)
 - A project's Settings on a phone show the list and the section full width, with no row left highlighted on the list (d78256d)
 - Long lists (a project's bugs, its finished roadmap) build only the rows on show and the next batch as it scrolls into view, so a filter chip on a long tracker answers at once on a phone (13798c0)
+- The Containers page's New container and Check for updates sit on one line at a desk (ff1310e)
 
 ### Security
 
