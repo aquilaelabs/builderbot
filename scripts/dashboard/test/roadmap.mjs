@@ -1227,6 +1227,16 @@ bbRoadmapEarly('info', plainId, '1', 'the select is built in stepRow()');
 ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].info
      === 'the select is built in stepRow()',
    '...and to one step of it, numbered the way a human reads it');
+// Attached is added to (B817): a second note goes under the details there,
+// and --replace sets them outright; a status note once wiped four items'.
+bbRoadmapEarly('info', plainId, 'status: half landed');
+ok(read().projects.alpha.find(r => String(r.id) === plainId).info
+     === 'lives in scripts/dashboard/roadmap.py\n\nGUI half: stepRow\nstatus: half landed',
+   '...a second note going under the details there, not over them');
+bbRoadmapEarly('info', plainId, 'lives in scripts/dashboard/roadmap.py\n\nGUI half: stepRow', '--replace');
+ok(read().projects.alpha.find(r => String(r.id) === plainId).info
+     === 'lives in scripts/dashboard/roadmap.py\n\nGUI half: stepRow',
+   '...and --replace setting them outright');
 // The details are the long half and only the session that picks the item up
 // needs them, so the prompt carries a pointer and `bb roadmap show` carries
 // the text. On this repository that was 35KB of a 45KB block that every

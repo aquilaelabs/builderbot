@@ -331,11 +331,29 @@ elif op == "edit":
 elif op == "info":
     # The technical half, attached where the work is: which files, which
     # functions, the approach. `bb roadmap info N "..."` for an item,
-    # `bb roadmap info N M "..."` for step M of it; "" clears.
+    # `bb roadmap info N M "..."` for step M of it; "" clears. Attached is
+    # added to (B817): the text goes in as a new paragraph under what is
+    # there, and --replace sets the details outright; replacing them was
+    # how a status note wiped four items' details in one pass.
+    replace = "--replace" in rest
+    rest = [w for w in rest if w != "--replace"]
     if len(rest) < 2:
-        print("usage: bb roadmap info <n> [<step>] \"...\"", file=sys.stderr)
+        print("usage: bb roadmap info <n> [<step>] \"...\" [--replace]", file=sys.stderr)
         sys.exit(1)
     item = ident(rest[0])
+
+    def kept(text, step=None):
+        """The details there now, the new text under them."""
+        if replace or not text.strip():
+            return text
+        row = next((x for x in roadmap.items(proj) + roadmap.finished(proj) if x.get("id") == item), None) or {}
+        steps = row.get("steps") or []
+        old = (steps[step].get("info") if step is not None and 0 <= step < len(steps) else row.get("info")) or ""
+        return text if not old.strip() or text in old else f"{old}\n{text}"
+    if len(rest) >= 3 and rest[1].isdigit():
+        rest = rest[:2] + [kept(" ".join(rest[2:]), int(rest[1]) - 1)]
+    else:
+        rest = rest[:1] + [kept(" ".join(rest[1:]))]
     if len(rest) >= 3 and rest[1].isdigit():
         n = int(rest[1])
         if n < 1:

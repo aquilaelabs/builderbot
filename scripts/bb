@@ -316,7 +316,8 @@ bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap unshelve N [WHY]   ask for one back: held for a person on the project to approve
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
 bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
-bb roadmap info N [M] "..."           attach the technical details to one, or step M
+bb roadmap info N [M] "..."           add the technical details to one, or step M,
+                                      under what is there (--replace sets them)
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
