@@ -540,6 +540,14 @@ tab. What stands in front of a container (a hostname, TLS, a reverse proxy)
 is the nginx tab, a person's, one per node: say in your reply which hostname
 should reach which port rather than writing a proxy container of your own.
 
+The project's own container is the one built from its tree: its Rebuild and
+its Branch build what the tree holds. Anything you bring up beside it (a
+database for a test, a git host, a mail catcher, a seed) is a container or
+a stack of its own (`bb container new`), never a service added to the
+project's compose file, where it would be rebuilt, restarted and pinned to
+a branch with the project for no reason of its own. What the project's
+compose already runs as part of the app is the project's, and stays.
+
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml compose.yaml */compose.yml */compose.yaml */*.compose.yml */*/compose.yml */*/*.compose.yml -->
 This project has a compose file, so it can have a container built from it:
 its dev instance, the place to prove a change. Up and Down are the
