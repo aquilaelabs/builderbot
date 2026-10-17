@@ -617,6 +617,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Settings keep People, the section picked and anything typed when asked for again (6098e71)
 - A project's Nodes settings no longer show its second node unticked after another project's settings were open, where saving would have removed it (78f5678)
 - A project's Settings on a phone show the list and the section full width, with no row left highlighted on the list (d78256d)
+- Long lists (a project's bugs, its finished roadmap) build only the rows on show and the next batch as it scrolls into view, so a filter chip on a long tracker answers at once on a phone (13798c0)
 
 ### Security
 

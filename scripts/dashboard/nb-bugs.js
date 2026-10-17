@@ -230,8 +230,13 @@ function nbBugsView({$, nb, project}){
     const shown = b => (!nb.bugChip || (nb.bugChip === "open") === (b.status === "open")) && bugMatch(b, q);
     // Which were open before this redraw, so acting on one does not fold it.
     const held = new Set([...list.querySelectorAll(".bug[open]")].map(d => d.dataset.id));
-    list.innerHTML = rows.map(b => `
-      <details class="bug${shown(b) ? "" : " off"}" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
+    // Only the rows on show are built, a page at a time (pageLimit): every
+    // one of 795 built and all but 25 hidden was three seconds on a phone
+    // for each press of a chip (the operator, 17 Oct).
+    const vis = rows.filter(shown);
+    const lim = pageLimit(list, "bugList", vis.length);
+    list.innerHTML = vis.slice(0, lim).map(b => `
+      <details class="bug" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
         <summary>
           <span class="sev ${esc(b.severity)}">${esc(b.severity)}</span>
           <span class="n id" title="bug B${b.id}: a session knows it by that number">B${b.id}</span>
@@ -268,8 +273,8 @@ function nbBugsView({$, nb, project}){
         </div>
       </details>`).join("")
       // What the tracker is for, as its empty state (R119 step 4).
-      || `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`;
-    paginate(list, ":scope > .bug:not(.off)", {key: "bugList", noun: "reports"});
+      || (rows.length ? "" : `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`);
+    paginate(list, ":scope > .bug", {key: "bugList", noun: "reports", total: vis.length, more: () => drawBugs()});
     wireMore(list);
     list.querySelectorAll(".bug").forEach(d => {
       const id = Number(d.dataset.id);

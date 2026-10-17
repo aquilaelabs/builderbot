@@ -1092,7 +1092,11 @@ function nbRoadmapView({$, nb}){
     // details and its steps with when each was done, and Reopen where a
     // release has not shipped it yet.
     const held = new Set([...host.querySelectorAll("details.grp[open]")].map(d => d.dataset.done));
-    host.innerHTML = rows.map(r => `<details class="grp done${rmMatch(r, q) ? "" : " off"}" data-done="${r.id}"${
+    // Only the matching rows, a page at a time (pageLimit, the operator,
+    // 17 Oct): built whole and hidden, a long finished list was slow to draw.
+    const vis = rows.filter(r => rmMatch(r, q));
+    const lim = pageLimit(host, "roadmapDone", vis.length);
+    host.innerHTML = vis.slice(0, lim).map(r => `<details class="grp done" data-done="${r.id}"${
         held.has(String(r.id)) ? " open" : ""}>
       <summary><div class="roadmap"><span class="n id">R${r.id}</span> <span class="body"><span class="txt">${esc(r.text || "")}</span>
         <span class="sub dim">done ${r.done_at ? esc(when(r.done_at)) : ""}${(() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
@@ -1117,7 +1121,7 @@ function nbRoadmapView({$, nb}){
       nb.roadmapDone = null;
       loadFinished();
     });
-    paginate(host, ":scope > .grp:not(.off)", {key: "roadmapDone", noun: "finished"});
+    paginate(host, ":scope > .grp", {key: "roadmapDone", noun: "finished", total: vis.length, more: () => drawFinished()});
   }
   // The Finished section is shut until opened, and fetched the first time it
   // is; the search narrows it as it does the list.

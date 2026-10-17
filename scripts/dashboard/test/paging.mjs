@@ -41,8 +41,10 @@ const state = () => page.evaluate(() => {
 });
 
 let st = await state();
-ok(st.total === 40 && st.shown === 25,
-   'a list past the threshold shows its first page, not all of it');
+// Built a page at a time, not built whole and hidden (the operator, 17 Oct:
+// 795 bugs built on every press of a chip took seconds on a phone).
+ok(st.total === 25 && st.shown === 25,
+   `a list past the threshold builds its first page alone, not every row (${st.total} built)`);
 ok(/25 of 40 reports/.test(st.text) && st.bars === 1 && /Show more/.test(st.text),
    '...with one quiet foot saying how much of it is on screen, and a Show more');
 
@@ -65,12 +67,10 @@ ok(await page.$eval('#bugList:visible .bug:nth-of-type(30)', e => e.open),
 
 // Redrawing keeps what was shown rather than cutting back to the first page:
 // a list that repaints under a poll must not take the reader's place.
-await page.evaluate(() => {
-  const l = [...document.querySelectorAll('#bugList')].find(x => x.offsetParent);
-  paginate(l, ':scope > .bug', { key: 'bugList', noun: 'reports' });
-});
+await page.evaluate(() => getNotebook('alpha').reloadBugs());
+await page.waitForTimeout(500);
 st = await state();
-ok(st.shown === 40, 'a redraw keeps what had been shown');
+ok(st.shown === 40 && st.total === 40, 'a redraw keeps what had been shown');
 
 // A short list is left whole: a footer hiding one row is a click for
 // nothing, which is why the threshold has slack in it. Waited on the view
@@ -102,7 +102,7 @@ for (const [what, call] of [
   // what is shown.
   ['the roadmap', 'paginate($("roadmapList"), ":scope > .grp:not(.off)"'],
   ['memory', 'paginate($("memList"), ":scope > .mem"'],
-  ['bugs', 'paginate(list, ":scope > .bug:not(.off)"'],
+  ['bugs', 'paginate(list, ":scope > .bug", {key: "bugList", noun: "reports", total: vis.length'],
   // ...in the Files section's body, since the files are a section (6 Oct).
   ['artifacts', 'paginate(list.querySelector(\'[data-sect="artifacts:files"] > .body\'), ":scope > .artrow"'],
   // .rule, which is what findingsRulesHtml emits. This line said .grp (the
