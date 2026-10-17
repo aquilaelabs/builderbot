@@ -578,6 +578,20 @@ print(json.dumps(out))
   await page.evaluate(() => liveRefresh());
   ok(/waiting for you|working/.test(await stateWord()),
      'liveRefresh reads who is here from /api/live and draws the cards again');
+  // Your own session starting is read off the status read at once (B828):
+  // the card's Open Claude reads its session list, which /api/live does not
+  // carry. Someone else's coming or going, or nothing moving, reads nothing.
+  const reads = await page.evaluate(async () => {
+    const real = refresh; let n = 0;
+    window.refresh = () => { n++; };
+    try {
+      state.claude_with = {}; await liveRefresh(); const started = n;
+      await liveRefresh(); const still = n - started;
+      return { started, still };
+    } finally { window.refresh = real; }
+  });
+  ok(reads.started === 1 && reads.still === 0,
+     `...and your own session starting reads the status read at once, while nothing moving reads nothing (${JSON.stringify(reads)})`);
   await page.evaluate(w => { state.claude_with = w; state.claude_busy = {}; drawProjects(state.projects); }, were);
   await freePoll(page);
 }
