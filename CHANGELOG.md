@@ -386,6 +386,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every page's top follows one order: the bar (what it shows, search, view, main action), the summary tiles, a status line (when things were last checked, with Check for updates, Measure now, Deploy or Add runner beside it), then filters and content (3e450f5)
 - Every page keeps its header buttons on one row in its bar: a switch like Cards and List is one joined control, upkeep like Check for updates or Measure now is a plain button, and the page's main action is the one filled button. Containers and Storage have no Refresh: they update by themselves when a container changes or a disk walk lands (4253ca4)
 - The sign-in page is redesigned: one panel over a drafting grid with two slow glows, always in BuilderBot's own colors (4253ca4)
+- A container's card on the Containers page is redesigned: Open at its address as the main button, what it uses in one band (or a stack's services in a table), and its settings shown as labels you read at a glance, changed with Edit settings under the ⋯ menu. ⋯ replaces More on every page, and every page has room under its last card (b7241b2)
 
 ### Removed
 
