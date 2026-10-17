@@ -383,6 +383,11 @@ STATEMENT_WORDS = {"const", "let", "var", "function", "return", "if", "for", "wh
                    "export", "import", "throw", "try", "switch"}
 
 
+# Languages whose double-quoted strings run code, by how they mark it (B808).
+INTERP = {".kt": "dollar", ".kts": "dollar", ".dart": "dollar", ".groovy": "dollar", ".scala": "dollar",
+          ".swift": "paren"}
+
+
 class JSScanner:
     """Comments dropped, strings kept apart from code, braces counted: enough
     to know which function a call or a piece of markup sits in."""
@@ -406,6 +411,8 @@ class JSScanner:
         self.mm_close = None     # where a method header's own `)` closed, for `): T {`
         self.kw, self.types, self.modifiers = self.words
         self.shape_methods = shape_methods
+        # a language whose strings run code: Kotlin's "${f()}", Swift's "\(f())" (B808)
+        self.interp = INTERP.get(Path(sink.path).suffix, "")
         self.base = base            # where this text starts in its file
         self.fn_words = FN_WORDS if fn_words is None else fn_words
         self.sink = sink
@@ -547,6 +554,8 @@ class JSScanner:
         self.last_sig = "/re/"
 
     def string(self, q):
+        if self.interp and self.interp_string(q):
+            return
         s, n = self.s, len(self.s)
         j = self.i + 1
         while j < n and s[j] != q and s[j] != "\n":
@@ -564,6 +573,89 @@ class JSScanner:
         self.saw_string(body, self.line, self.class_ctx_at(self.i))
         self.i = j + 1
         self.last_sig = "'s'"
+
+    def interp_string(self, q):
+        """A string that runs code, Kotlin's "x=${quote(v)}" or Swift's
+        "\\(f(v))": each expression scanned as code by a nested pass, as a
+        template's ${} is, so the call in it is recorded (B808). Kotlin's
+        and Swift's \"\"\" strings run over lines. False for a quote left open
+        at the line's end, which string() takes as the one character it is."""
+        s, n = self.s, len(self.s)
+        triple = s.startswith(q * 3, self.i)
+        j = start = self.i + (3 if triple else 1)
+        exprs, end = [], -1
+        while j < n:
+            if s.startswith(q * 3 if triple else q, j):
+                end = j
+                break
+            c = s[j]
+            if c == "\n" and not triple:
+                return False
+            if c == "\\" and self.interp == "paren" and s[j + 1:j + 2] == "(":
+                k = self.balanced(j + 1, "(", ")")
+                exprs.append((j + 2, k - 1))
+                j = k
+                continue
+            if c == "\\":
+                j += 2
+                continue
+            if self.interp == "dollar" and s.startswith("${", j):
+                k = self.balanced(j + 1, "{", "}")
+                exprs.append((j + 2, k - 1))
+                j = k
+                continue
+            j += 1
+        if end < 0:
+            return False
+        close = end + (3 if triple else 1)
+        body, at = [], start
+        for a, b in exprs:
+            body.append(s[at:a - 2])
+            at = b + 1
+        body.append(s[at:end])
+        self.saw_string("".join(body), self.line, self.class_ctx_at(self.i))
+        for a, b in exprs:
+            sub = JSScanner(s[a:b], self.sink, self.line + s.count("\n", self.i, a), self.enclosing(),
+                            self.shape_methods, self.base + a, self.fn_words, self.words, self.ts, self.jsx)
+            self.inherit(sub)
+            sub.run()
+        self.line += s.count("\n", self.i, close)
+        self.i = close
+        self.last_sig = "'s'"
+        return True
+
+    def inherit(self, sub):
+        """A nested pass over a template's or a string's expression takes
+        the function it sits in."""
+        sub.stack = [(n, dp, None) for n, dp, _ in self.stack]
+        if self.pending is not None and self.parens > self.paren_at_pending:
+            # in a default parameter, `function f(fmt = v => `${g(v)}`)`:
+            # the call is f's, as one outside a template there is (B761)
+            sub.stack.append((self.pending["name"], -1, None))
+        elif self.exprs and self.exprs[-1][3] == len(self.stack):
+            # inside `x => `...${f()}...`` or Kotlin's `fun a() = "${f()}"`:
+            # the call is the expression function's
+            sub.stack.append((self.exprs[-1][0]["name"], -1, None))
+
+    def balanced(self, at, o, c):
+        """Past the bracket that closes the one at `at`, a string inside
+        taken whole: ${quote("}")}."""
+        s, n = self.s, len(self.s)
+        k, depth = at, 0
+        while k < n:
+            ch = s[k]
+            if ch in "\"'":
+                e = s.find(ch, k + 1)
+                k = n if e < 0 else e + 1
+                continue
+            if ch == o:
+                depth += 1
+            elif ch == c:
+                depth -= 1
+                if depth == 0:
+                    return k + 1
+            k += 1
+        return n
 
     def template(self):
         s, n = self.s, len(self.s)
@@ -597,14 +689,7 @@ class JSScanner:
                 inner = s[j + 2:k - 1]
                 sub = JSScanner(inner, self.sink, self.line, self.enclosing(), self.shape_methods,
                                 self.base + j + 2, self.fn_words, self.words, self.ts, self.jsx)
-                sub.stack = [(n, dp, None) for n, dp, _ in self.stack]
-                if self.pending is not None and self.parens > self.paren_at_pending:
-                    # in a default parameter, `function f(fmt = v => `${g(v)}`)`:
-                    # the call is f's, as one outside a template there is (B761)
-                    sub.stack.append((self.pending["name"], -1, None))
-                elif self.exprs and self.exprs[-1][3] == len(self.stack):
-                    # inside `x => `...${f()}...``: the call is the arrow's
-                    sub.stack.append((self.exprs[-1][0]["name"], -1, None))
+                self.inherit(sub)
                 sub.class_ctx = cls      # `chip ${on ? 'on' : ''}` in a className
                 sub.run()
                 self.line += inner.count("\n")

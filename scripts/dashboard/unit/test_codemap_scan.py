@@ -347,5 +347,27 @@ class Markup(unittest.TestCase):
                              ["(not indexed here, so not in that answer: 1 .css; grep them)"])
 
 
+class Interpolation(unittest.TestCase):
+    """B808: a call inside a Kotlin string template or a Swift interpolation
+    was blanked with the string, so who-calls said nothing called FreshBoot's
+    quote, which three lines use."""
+
+    def test_kotlin_templates_one_line_and_raw(self):
+        s = scan('class K {\n  fun a(v: String) = "t=${quote(v)} n=$v"\n'
+                 '  fun b() = """raw\n ${quote("}")}"""\n  fun c() { d() }\n'
+                 '  private fun quote(v: String) = v\n}\n', "K.kt")
+        # (the caller of a call in an expression body is the class's, B810)
+        self.assertEqual({(n, ln) for n, ln, _ in calls(s)}, {("quote", 2), ("quote", 4), ("d", 5)})
+
+    def test_swift_interpolation(self):
+        s = scan('func a(v: String) -> String { return "x=\\(quote(v))" }\n'
+                 'func quote(_ v: String) -> String { v }\n', "a.swift")
+        self.assertEqual(calls(s), {("quote", 1, "a")})
+
+    def test_an_apostrophe_and_a_dollar_name_call_nothing(self):
+        s = scan('fun e() = "it\'s $name"\nfun f() { g() }\n', "a.kt")
+        self.assertEqual(calls(s), {("g", 2, "f")})
+
+
 if __name__ == "__main__":
     unittest.main()
