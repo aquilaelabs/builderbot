@@ -414,7 +414,13 @@ elif op == "step":
         r = roadmap.remove(proj, item,
                         step=step_index(srest[1]),
                         by="claude", why=" ".join(srest[2:]), who=_who); bail(r)
-        print(f"removed step {srest[1]} of {R(item)}")
+        # The steps after it move up a number, said so (B818): a fold that
+        # removed one then named the old numbers in nine reasons.
+        left = len(next((x.get("steps") or [] for x in roadmap.items(proj) if x.get("id") == item), []))
+        gone = step_index(srest[1]) + 1
+        print(f"removed step {srest[1]} of {R(item)}" + (
+            f"; steps {gone + 1} to {left + 1} are {gone} to {left} now" if left >= gone + 1
+            else f"; step {gone + 1} is {gone} now" if left == gone else ""))
     elif sub == "info" and len(srest) >= 2:
         behind(item, None, None, None); fresh()
         r = roadmap.set_info(proj, item, " ".join(srest[2:]),

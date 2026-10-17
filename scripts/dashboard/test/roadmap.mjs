@@ -546,6 +546,15 @@ ok(grp().steps[1].text === 'and check it at both sizes',
    'bb roadmap step edit rewords one step, numbered the way a human reads it');
 bbRoadmap('step', 'rm', c1.id, '2');
 ok(grp().steps.length === 1, 'bb roadmap step rm drops one step and leaves the rest');
+// ...and says which moved up when it was not the last (B818): a fold that
+// removed one went on naming the old numbers.
+bbRoadmap('step', 'add', c1.id, 'a second');
+bbRoadmap('step', 'add', c1.id, 'a third');
+const said = bbRoadmap('step', 'rm', c1.id, '1');
+ok(/removed step 1 of R\d+; steps 2 to 3 are 1 to 2 now/.test(said) && grp().steps.map(s => s.text).join('|') === 'a second|a third',
+   `...and says the steps after it moved up a number (${said.trim()})`);
+bbRoadmap('step', 'rm', c1.id, '2');
+bbRoadmap('step', 'edit', c1.id, '1', 'and check it at both sizes');
 
 // A session can move an item as well as a step: both halves of restructuring,
 // because it is the one that knows a plan has to happen before the item under
