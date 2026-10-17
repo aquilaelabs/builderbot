@@ -2169,13 +2169,13 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   // read after a separate wait found the menu mid-rebuild.
   const menu = JSON.parse(await (await page.waitForFunction(() => {
     const m = document.getElementById('resumemenu');
-    if (!m || m.querySelectorAll('.sub').length < 4) return null;
-    return JSON.stringify({ lines: [...m.querySelectorAll('.sub')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+    if (!m || m.querySelectorAll('.rmnode').length < 3) return null;
+    return JSON.stringify({ lines: [...m.querySelectorAll('.rmnode')].map(n => [...n.querySelectorAll('.rmhead b, .rmfacts, .rmstate')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ')),
       buttons: [...m.querySelectorAll('button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
         kind: b.dataset.r ? 'resume' : b.dataset.n ? 'new' : b.dataset.signinNode ? 'signin' : '?', dead: b.disabled })) });
   }, null, { timeout: 10000 })).jsonValue());
-  ok(/^ubu cpu 7%/.test(menu.lines[0]) && /RTX A2000/.test(menu.lines[0]) && /^fresh · you are not signed in there$/.test(menu.lines[1])
-     && /^rh$/.test(menu.lines[2]) && /rh is offline/.test(menu.lines[3]),
+  ok(/^ubu \| cpu 7%/.test(menu.lines[0]) && /RTX A2000/.test(menu.lines[0]) && /^fresh( \|.*)? \| You are not signed in to Claude here$/.test(menu.lines[1])
+     && /^rh \| rh is offline/.test(menu.lines[2]),
      `pressing Claude on a project with several nodes lists each under its name, with what it has (${menu.lines.join(' | ').slice(0, 120)})`);
   ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'resume:n_ubu,new:n_ubu,signin:n_new' && menu.buttons.every(b => !b.dead)
      && /^Resume: 2 h ago$/.test(menu.buttons[0].text) && menu.buttons[2].text === 'Sign in on fresh',
@@ -2196,10 +2196,10 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   await page.waitForSelector('#resumemenu #rmModel', { timeout: 10000 });
   await page.waitForFunction(() => /last session: Fable/.test(document.querySelector('#rmModel option[value=""]')?.textContent || ''),
                              null, { timeout: 8000 });
-  const step = await page.$eval('#resumemenu', m => ({ text: m.querySelector('.sub').textContent.trim(),
+  const step = await page.$eval('#resumemenu', m => ({ text: `${m.querySelector('.rmhead b')?.textContent.trim()} ${m.querySelector('.rmhead .rmfacts')?.textContent.trim()}`,
     models: [...m.querySelectorAll('#rmModel option')].map(o => o.value), efforts: [...m.querySelectorAll('#rmEffort option')].map(o => o.value),
     buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }));
-  ok(/^A new conversation on ubu$/.test(step.text) && step.models.includes('opus') && step.models.includes('fable')
+  ok(/^A new conversation a fresh start on ubu$/.test(step.text) && step.models.includes('opus') && step.models.includes('fable')
      && step.efforts.includes('high') && step.buttons.join() === 'Back,Start'
      && !(await page.evaluate(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'))),
      `...New conversation turns the menu to Model and Effort with Start, naming the last session's model on the default, and starts nothing yet (${step.text}; ${step.buttons.join(' | ')})`);
@@ -2240,10 +2240,10 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     resumeFor = null; openClaude('alpha');
     const m = document.getElementById('resumemenu');
     if (!m || !m.querySelector('[data-end]')) return null;
-    return JSON.stringify({ lines: [...m.querySelectorAll('.sub')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+    return JSON.stringify({ lines: [...m.querySelectorAll('.rmnode')].map(n => [...n.querySelectorAll('.rmhead b, .rmfacts, .rmstate')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ')),
       buttons: [...m.querySelectorAll('button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
   }, null, { timeout: 10000 })).jsonValue());
-  ok(/your session is running here/.test(live.lines[0]) && live.buttons.join() === 'Open tab:n_ubu,Restart:n_ubu,End session:n_ubu,Sign in on fresh:n_new',
+  ok(/Your session is running here/.test(live.lines[0]) && live.buttons.join() === 'Open tab:n_ubu,Restart:n_ubu,End session:n_ubu,Sign in on fresh:n_new',
      `with a session running on one node the press opens the chooser: Open tab, Restart and End session there, the other nodes still offered (${live.buttons.join(' | ')})`);
   const ended = await page.evaluate(async () => {
     const real = endSession; let asked = null;
@@ -2306,7 +2306,8 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     Object.assign(p, { session_nodes: [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu',
       sample: { cpu_pct: 7, mem_mb: 8192, mem_used_mb: 2048 }, gpu: 'NVIDIA RTX A2000', tools: [] }] });
     resumeFor = 'alpha'; drawProjects(state.projects);
-    return [...(document.getElementById('resumemenu')?.querySelectorAll('.sub') || [])].map(e => e.textContent.trim());
+    return [...(document.getElementById('resumemenu')?.querySelectorAll('.rmhead') || [])].map(e =>
+      `${e.querySelector('b')?.textContent.trim()} ${e.querySelector('.rmfacts')?.textContent.trim() || ''}`);
   });
   ok(/^ubu cpu 7%/.test(one[0] || '') && /RTX A2000/.test(one[0] || ''),
      `a project on one node gets that node's name and what it has in its chooser too (${one.join(' | ')})`);

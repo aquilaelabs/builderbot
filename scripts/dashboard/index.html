@@ -4198,13 +4198,26 @@ span.skel.sk-word{display:inline-block;vertical-align:middle;padding:0}
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
   animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 .pinmenu button{min-height:var(--tap)}
-/* The resume label can be a sentence, and the sidebar is narrow: wrap inside
-   the card rather than hanging off its edge. */
-.resumemenu{max-width:calc(100% - 8px);flex-wrap:wrap}
-.resumemenu button{white-space:normal;text-align:left}
-/* A line in it (a node's name, a reason) has the row to itself, so what
-   follows it reads as that node's. */
-.resumemenu .sub{flex:1 1 100%}
+/* The session box (the design 2.0 pass, the operator, 17 Oct): a popover
+   of one column, each node a block of its name, what it has on a quiet mono
+   line, how this account stands there and its action bar; the model and
+   effort step two labeled fields side by side over Back and the press. */
+.resumemenu{flex-direction:column;flex-wrap:nowrap;gap:12px;padding:12px 14px;
+  width:min(360px,calc(100vw - 32px));max-width:calc(100% - 8px)}
+.resumemenu .rmnode{display:flex;flex-direction:column;gap:8px}
+.resumemenu .rmnode+.rmnode{border-top:var(--hair) solid var(--line);padding-top:12px}
+.resumemenu .rmhead{display:flex;flex-direction:column;gap:2px;min-width:0}
+.resumemenu .rmhead b{font:var(--f-sect);color:var(--ink)}
+.resumemenu .rmfacts{font:var(--f-data);color:var(--dim);overflow-wrap:anywhere}
+.resumemenu .rmstate{font:var(--f-ui);color:var(--dim);display:flex;align-items:center;gap:8px}
+.resumemenu .rmstate.ok{color:var(--ink)}
+.resumemenu .rmstate.ok::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--pass);flex:0 0 auto}
+.resumemenu .rmstate.bad{color:var(--bad)}
+.resumemenu .rmacts{padding:0;border:0;background:none;gap:8px;flex-wrap:wrap}
+.resumemenu .rmacts button{white-space:nowrap}
+.resumemenu .rmfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.resumemenu .rmfields select{width:100%;min-width:0}
+@media(max-width:420px){ .resumemenu .rmfields{grid-template-columns:1fr} }
 
 /* Panes -------------------------------------------------------------- */
 /* Closed on every side (the operator, 16 Oct): its top was left open for

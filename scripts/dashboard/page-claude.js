@@ -324,12 +324,17 @@ function resumePicker(p, m, card, anchor, ns, several){
   const opts = (table, cur) => table.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${
     esc(v === "" && table === MODELS && resumeModelNow.project === p.name && resumeModelNow.model
       ? `Claude's default (last session: ${(MODELS.find(([x]) => x === resumeModelNow.model) || [])[1] || resumeModelNow.model})` : l)}</option>`).join("");
-  m.innerHTML = `<div class="sub">${r.restart ? "Restart your session, resuming its conversation"
-      : r.sessionId ? `Resume the conversation from ${esc(ago(p.last_claude?.when))}` : "A new conversation"}${
-      several || n.name ? ` on ${esc(n.name || "")}` : ""}</div>
-    <label class="pick">Model <select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></label>
-    <label class="pick">Effort <select id="rmEffort" aria-label="effort this session starts on">${opts(EFFORTS, r.effort)}</select></label>
-    <div class="actbar"><span class="state" id="rmSay"></span><span class="sp"></span>
+  // What it will do as its head, the two picks labeled above their fields
+  // side by side, and Back and the press at its foot (the design 2.0 pass).
+  m.innerHTML = `<div class="rmhead"><b>${r.restart ? "Restart your session"
+      : r.sessionId ? "Resume the conversation" : "A new conversation"}</b><span class="rmfacts">${
+      r.restart ? "resuming its conversation" : r.sessionId ? `from ${esc(ago(p.last_claude?.when))}` : "a fresh start"}${
+      several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
+    <div class="rmfields">
+      <div class="setrow col"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></div>
+      <div class="setrow col"><label class="lbl" for="rmEffort">Effort</label><select id="rmEffort" aria-label="effort this session starts on">${opts(EFFORTS, r.effort)}</select></div>
+    </div>
+    <div class="actbar rmacts"><span class="state" id="rmSay"></span><span class="sp"></span>
       <button type="button" data-back>Back</button>
       <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
   m.dataset.pick = p.name;
@@ -391,32 +396,35 @@ function placeResumeMenu(){
   // nothing to resume; and only its reason where a session cannot start.
   const offer = n => {
     const node = several ? n.id : "";
+    // In one action bar (the design 2.0 pass, the operator, 17 Oct): Open
+    // tab the filled press, Restart plain since it resumes, End session the
+    // one destructive verb and last.
+    const bar = html => `<div class="actbar rmacts">${html}</div>`;
     if (claudeLiveOn(p.name, n))
-      return `<button data-open="1" data-node="${esc(node)}" class="primary">Open tab</button>`
-        + `<button data-restart="${esc(n.id)}" class="danger">Restart</button>`
-        + `<button data-end="${esc(n.id)}" class="danger">End session</button>`;
-    if (n.where !== "node") return `<div class="sub bad">${esc(n.why)}</div>`;
+      return bar(`<button data-open="1" data-node="${esc(node)}" class="primary">Open tab</button>`
+        + `<button data-restart="${esc(n.id)}">Restart</button>`
+        + `<button data-end="${esc(n.id)}" class="danger">End session</button>`);
+    if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
     if (!claudeSigned(n))
-      return `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes tab, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`;
-    return (p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
-      + `<button data-n="1" data-node="${esc(node)}">New conversation</button>`;
+      return bar(`<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes tab, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`);
+    return bar((p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
+      + `<button data-n="1" data-node="${esc(node)}"${p.last_claude ? "" : ' class="primary"'}>New conversation</button>`);
   };
+  // A node's head: its name, and what it has on a quiet line under it.
+  const head = n => `<div class="rmhead"><b>${esc(n.name || "")}</b>${
+      claudeNodeFacts(n) ? `<span class="rmfacts">${esc(claudeNodeFacts(n))}</span>` : ""}</div>`;
   const html = !ns.length
     // No node, or one that refused, and there is nowhere else: a session
     // runs on a node and this container carries no Claude Code. The reason,
     // and no choice under it: a menu with nothing in it would be a button
     // that lies.
-    ? `<div class="sub">${esc(p.session_why)}</div>`
-    // Several nodes (R82): each under its name and what it has.
-    : several ? ns.map(n => `<div class="sub">${esc(n.name)}${
-        claudeNodeFacts(n) ? ` <span class="dim">${esc(claudeNodeFacts(n))}</span>` : ""}${
-        claudeLiveOn(p.name, n) ? ` · your session is running here`
-        : n.where === "node" && !claudeSigned(n) ? ` · you are not signed in there` : ""}</div>${offer(n)}`).join("")
-    // One node: its name and what it has, as each of several gets.
-    : (ns[0].name ? `<div class="sub">${esc(ns[0].name)}${
-        claudeNodeFacts(ns[0]) ? ` <span class="dim">${esc(claudeNodeFacts(ns[0]))}</span>` : ""}</div>` : "")
-      + (claudeLiveOn(p.name, ns[0]) ? `<div class="sub">Your session is running here.</div>`
-       : claudeSigned(ns[0]) ? "" : `<div class="sub">You are not signed in to Claude here.</div>`) + offer(ns[0]);
+    ? `<div class="rmstate bad">${esc(p.session_why)}</div>`
+    // Each node (several under R82, or the one): its head, how this account
+    // stands there, and what it offers.
+    : ns.map(n => `<div class="rmnode">${n.name ? head(n) : ""}${
+        claudeLiveOn(p.name, n) ? `<div class="rmstate ok">Your session is running here</div>`
+        : n.where === "node" && !claudeSigned(n) ? `<div class="rmstate">You are not signed in to Claude here</div>` : ""}${
+        offer(n)}</div>`).join("");
   // The same menu as the one up already is left where it is (the operator,
   // 12 Oct): drawn again on every poll, its buttons were replaced under the
   // pointer and its entrance played again, so a press that began on one

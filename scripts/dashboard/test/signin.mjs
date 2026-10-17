@@ -65,7 +65,7 @@ await page.click(PC);
 await page.waitForSelector('#resumemenu [data-signin-node]', { timeout: 20000 });
 const menu = await page.$eval('#resumemenu', m => ({ text: m.textContent.replace(/\s+/g, ' ').trim(),
   buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }));
-ok(/^signbox\b[\s\S]*You are not signed in to Claude here\./.test(menu.text) && menu.buttons.join() === 'Sign in on signbox',
+ok(/^signbox\b[\s\S]*You are not signed in to Claude here/.test(menu.text) && menu.buttons.join() === 'Sign in on signbox',
    `pressing it opens the chooser with that node's sign-in as its one press, in place of Resume and New conversation (${menu.buttons.join(' | ')})`);
 await page.click('#resumemenu [data-signin-node]');
 await page.waitForFunction(id => {
