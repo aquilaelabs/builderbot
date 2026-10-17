@@ -110,9 +110,9 @@ function emuAddRows(d, why){
         <input type="checkbox" value="${esc(r.id)}"${why || job.running || !mayToolchains(emuNode) ? " disabled" : ""}${
           emuTicked.has(r.id) || now ? " checked" : ""}>
         <span class="grow">
-          <span class="nm">API ${esc(r.api)}${r.size ? ` <span class="pill">${esc(r.size)}</span>` : ""}</span>
+          <span class="nm">API ${esc(r.api)}</span>
           ${now ? `<span class="sub prog plain">${job.current === r.id ? "adding" : "waiting its turn"}<span class="dots"></span></span>`
-                : `<span class="sub where">${esc(r.id)}</span>`}
+                : `<span class="sub where">${[r.size, r.id].filter(Boolean).map(esc).join(" · ")}</span>`}
         </span></label>`;
     }).join("") || `<div class="tchead">every ${esc(flavors.find(f => f.kind === chosen)?.label || "")} image is here already</div>`}</div>`;
 }
@@ -128,10 +128,9 @@ function emuRow(im, why){
   return `<label class="tc done emimg">
     <input type="checkbox" checked disabled title="installed">
     <span class="grow">
-      <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span>
-        ${im.size ? `<span class="pill"${im.size_from
-          ? ` title="${esc(im.size_from)}"` : ""}>${esc(im.size)}</span>` : ""}</span>
-      <span class="sub where on">${esc(im.id)}</span>
+      <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span></span>
+      <span class="sub where on">${[im.size ? `<span${im.size_from ? ` title="${esc(im.size_from)}"` : ""}>${esc(im.size)}</span>` : "",
+        esc(im.id)].filter(Boolean).join(" · ")}</span>
       ${avds}
     </span>
     ${mayToolchains(emuNode) ? `<button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
@@ -151,7 +150,12 @@ function renderEmulatorInto(i){
     // Its template (R218 step 16): the bar and the add list's label are the
     // page's own; the node's images are on their way.
     surf.setBar(skNodeBar([]));
-    surf.list.innerHTML = skTpl(`${skRows(2)}<div class="imgadd emadd"><span class="lbl">Images to add</span>${skv(12, "ctl")}</div>${skRows(2)}`);
+    // In the page's order: its head line, its tiles, the images it holds,
+    // then the ones to add.
+    const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
+    surf.list.innerHTML = skTpl(`<div class="tchead">System images in ${skv(18)}: what its emulator can boot.</div>
+      <div class="field"><div class="tiles">${tile("images")}${tile("AVDs", "built on them")}${tile("free", "on the store")}</div></div>
+      <div class="tcs">${skRows(2)}</div><div class="imgadd emadd"><span class="lbl">Images to add</span>${skv(12, "ctl")}</div><div class="tcs">${skRows(2)}</div>`);
     return;
   }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
@@ -176,21 +180,22 @@ function renderEmulatorInto(i){
   surf.setBar(`${nodePick("emuNodeSel", pnodes, emuNode)}
     <span class="sp"></span>
 `);
-  const free = typeof d.free_mb === "number"
-    ? `, ${d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : "";
   surf.list.innerHTML = `
     <div class="tchead">${d.wrong_platform
       ? `System images are what an emulator boots, and they live on the node that runs it.`
       : d.root
-      ? `System images in <code>${esc(d.root)}</code> on ${esc(d.name)}${free}: what its emulator can boot.`
+      // Its free space is the tile's to say, once (R218 step 24).
+      ? `System images in <code>${esc(d.root)}</code> on ${esc(d.name)}: what its emulator can boot.`
       : `${esc(d.name)} reports no toolchain store yet.`}</div>
-    ${stale ? `<div class="tchead warn">${esc(staleWhy(pnode))}. Nothing changes here until it is.</div>` : ""}
-    ${d.wrong_platform ? `<div class="tchead warn emneed">${esc(d.name)} is ${esc(d.platform)},
+    ${
+    // Warnings in the notice voice, an action a button beside it rather than
+    // a link in the prose (R218 step 24).
+    stale ? `<div class="field"><div class="notice warn">${esc(staleWhy(pnode))}. Nothing changes here until it is.</div></div>` : ""}
+    ${d.wrong_platform ? `<div class="field"><div class="notice warn emneed">${esc(d.name)} is ${esc(d.platform)},
       and the Android command-line tools and the emulator are packaged for ${
-      esc(d.wrong_platform)}: no system image can run there.</div>`
-      : (d.missing || []).length ? `<div class="tchead warn emneed">${esc(d.name)} has no ${
-      esc(d.missing.join(" or "))} yet: <a href="#" id="emuToTc">install ${
-      d.missing.length === 1 ? "it" : "them"} from Toolchains</a>.</div>` : ""}
+      esc(d.wrong_platform)}: no system image can run there.</div></div>`
+      : (d.missing || []).length ? `<div class="field"><div class="notice warn emneed">${esc(d.name)} has no ${
+      esc(d.missing.join(" or "))} yet. <button type="button" id="emuToTc">Install from Toolchains</button></div></div>` : ""}
     ${
     // The node's images at a glance (R216): how many, the AVDs built on
     // them, the levels its projects need and have none of, the room left.
@@ -201,9 +206,9 @@ function renderEmulatorInto(i){
       {label: "free", value: typeof d.free_mb === "number" ? (d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB") : "",
        sub: "on the store", omit: typeof d.free_mb !== "number"},
     ]) : ""}
-    ${(d.needed || []).map(nd => `<div class="tchead warn emlevel">${esc(nd.projects.join(", "))} compile${
+    ${(d.needed || []).map(nd => `<div class="field"><div class="notice warn emlevel">${esc(nd.projects.join(", "))} compile${
       nd.projects.length === 1 ? "s" : ""} against ${esc(nd.level)} and no image of that level is here${
-      nd.pick ? `: ${esc(nd.pick)} below is the plain one` : ""}.</div>`).join("")}
+      nd.pick ? `: ${esc(nd.pick)} below is the plain one` : ""}.</div></div>`).join("")}
     ${job.state === "failed" && job.error ? `<div class="tchead bad">${
       job.action === "remove" ? "Removing" : "Adding"} ${esc(job.image)} failed: ${esc(job.error)}.
       The Jobs tab has its log.</div>` : ""}

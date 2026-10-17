@@ -25,6 +25,7 @@ let phNode = "";                 // the picked node's id; "" until the first ans
 // Held outside the render, because the tab is rebuilt whole on every draw and
 // a field that emptied itself mid-sentence would be unusable.
 let phIp = "", phPort = "", phCode = "", phConnPort = "";
+let phFoot = "";                 // the lease, said at the page's foot
 // The lend controls' picks, kept across a redraw (R113).
 let phLendTo = "", phLendFor = "1";
 
@@ -44,20 +45,23 @@ function renderPhoneInto(i){
     // its phone are on their way.
     const fld = (label, em, grow = false) => `<div class="${grow ? "grow " : ""}setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
     d.setBar(skNodeBar(["Check now"]));
-    d.list.innerHTML = skTpl(`<div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
+    // In the card the rows land in (.phonetab).
+    d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
         <div class="sub">${skv(10)}</div></div></div>
       <div class="row">${fld("Phone IP address", 18, true)}${fld("Port", 7)}<span class="acts"><button type="button" class="primary" disabled>Connect</button></span></div>
       <div class="row"><div class="grow prefrow">${fld("Pairing port", 9)}${fld("Pairing code", 9)}</div>
         <span class="acts"><button type="button" disabled>Pair</button></span>
-        <div class="sub">On the phone: Wireless debugging, then <b>Pair device with pairing code</b>. Keep that dialog open.</div></div>`);
+        <div class="sub">On the phone: Wireless debugging, then <b>Pair device with pairing code</b>. Keep that dialog open.</div></div></div>`);
     return;
   }
   const nodes = ph.nodes || [];
   const n = nodes.find(x => x.id === phNode) || nodes[0];
   d.setBar(`${nodePick("phPick", nodes, n?.id)}<span class="sp"></span>
     <button type="button" id="phRefresh" title="ask the node's adb about the phone now">Check now</button>`);
+  phFoot = "";
   d.list.innerHTML = n ? phonePanel(n)
     : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("toolchains", "Toolchains page")}.</div>`;
+  d.setFoot(phFoot);
   if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
   wirePhoneTab(d.el);
 }
@@ -137,7 +141,7 @@ function phonePanel(n){
          <div class="sub">${!n.live
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
            : dev ? (dev.serial ? esc(dev.serial) : `connected by ${esc(n.owner?.name || "somebody")}; which phone is theirs to know`)
-           : "try Connect first: a pairing outlives a restart, so it is usually already done"}</div></div>
+           : "no phone on its adb"}</div></div>
        ${dev && (n.mine || state?.admin) && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"${
          n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
          >Disconnect</button></span>` : ""}
@@ -150,14 +154,16 @@ function phonePanel(n){
        <div class="grow setrow col">${lbl("phIp", "Phone IP address", "from its wireless debugging screen, before the colon")}
          <input id="phIp" maxlength="15" autocomplete="off"
          placeholder="192.168.0.10" value="${esc(phIp)}"${off ? " disabled" : ""}></div>
-       <div class="setrow col">${lbl("phConnPort", "Port", "after the colon under IP address &amp; port on the wireless debugging screen: it changes each time wireless debugging is turned on, and the node never scans the phone for it")}
+       <div class="setrow col">${lbl("phConnPort", "Port", "after the colon on the wireless debugging screen; it changes each time that is turned on")}
          <input id="phConnPort" maxlength="5" inputmode="numeric" autocomplete="off"
          placeholder="41235" value="${esc(phConnPort)}"${off ? " disabled" : ""}></div>
        <span class="acts"><button type="button" id="phConnect" class="primary"${
          off ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
        ${ph.you && phIp === ph.you
-         ? `<div class="sub">this device; you are reading this on it</div>` : ""}
+         ? `<div class="sub">this device; you are reading this on it</div>`
+         // The hint under the control it is about (R218 step 23).
+         : !dev ? `<div class="sub">try Connect first: a pairing outlives a restart</div>` : ""}
      </div>`,
     // Pairing in the open rather than behind a fold: it is two fields, and a
     // fold over two fields is a click that buys nothing.
@@ -178,6 +184,22 @@ function phonePanel(n){
             Keep that dialog open.`}</div>
      </div>`,
   ];
+  // What a session is waiting on, above everything else it could be doing:
+  // somebody is blocked on it, and that somebody asked YOU: a request only
+  // ever reaches the account that connected the phone it is about.
+  // First after the state row, as said (R218 step 23): they were pushed last.
+  rows.splice(1, 0, ...asks.map(a => `<div class="row phask">
+      <div class="grow"><div class="name">${esc(a.why)}</div>
+        <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div>
+        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project ? projLabel(a.project) : "a project") : a.project ? projLabel(a.project) : "a session")} on ${esc(a.node_name)} · ${a.left > 60
+          ? `${Math.floor(a.left / 60)} min left to answer`
+          : `${a.left}s left to answer`}</div></div>
+      <span class="acts">
+        <button type="button" data-deny="${a.id}">Deny</button>
+        <button type="button" data-allow="${a.id}" data-session="1"
+          title="this one, and the rest this session sends to the phone, without asking">Allow for this session</button>
+        <button type="button" class="primary" data-allow="${a.id}">Allow</button>
+      </span></div>`));
   // Lent to a project (R113): its sessions drive that project's own app on
   // the phone with no ask per command, and the owner watches and takes it
   // back here. The lend controls are the owner's; everybody sees the lease.
@@ -257,26 +279,11 @@ function phonePanel(n){
           : "while it is lent to " + esc(g.project)}</div></div>
       <span class="acts"><button type="button" data-untrust="${esc(g.project)}" data-asker="${esc(g.asker_uid || "")}">Ask every time</button></span>
     </div>`);
-  // What a session is waiting on, above everything else it could be doing:
-  // somebody is blocked on it, and that somebody asked YOU: a request only
-  // ever reaches the account that connected the phone it is about.
-  for (const a of asks)
-    rows.push(`<div class="row phask">
-      <div class="grow"><div class="name">${esc(a.why)}</div>
-        <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project ? projLabel(a.project) : "a project") : a.project ? projLabel(a.project) : "a session")} on ${esc(a.node_name)} · ${a.left > 60
-          ? `${Math.floor(a.left / 60)} min left to answer`
-          : `${a.left}s left to answer`}</div></div>
-      <span class="acts">
-        <button type="button" data-deny="${a.id}">Deny</button>
-        <button type="button" data-allow="${a.id}" data-session="1"
-          title="this one, and the rest this session sends to the phone, without asking">Allow for this session</button>
-        <button type="button" class="primary" data-allow="${a.id}">Allow</button>
-      </span></div>`);
   const L2 = n.lease;
   // Refresh is the tab's bar's (R121); a lease is said at the foot, and
   // nothing else is (the operator, 16 Oct: how it works is the docs' to say).
-  if (L2) rows.push(`<div class="field toolfoot phbar"><div class="hint">Lent to ${esc(projLabel(L2.project))}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.</div></div>`);
+  // At the page's foot, through setFoot (R218 step 23).
+  phFoot = L2 ? `<span class="phbar">Lent to ${esc(projLabel(L2.project))}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.</span>` : "";
   if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);
   return `<div class="phonetab">${rows.join("")}</div>`;
 }

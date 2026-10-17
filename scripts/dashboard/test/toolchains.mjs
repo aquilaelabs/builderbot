@@ -143,6 +143,15 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
      `each Android row says Install accepts Google's Android SDK terms, linked (${android.length} rows)`);
   const bare = terms.filter(t => !t.text);
   ok(!bare.length, `...and every other row names its terms (${bare.map(t => t.name).join(', ') || 'none without'})`);
+  // ...on the open row: closed, a row is its name and one line of what it is
+  // for, its terms and the rest behind Details (R218 step 22).
+  const row = '.doc .tc:has(input[value="flutter"])';
+  ok(!(await page.$eval(`${row} .tcterms`, e => e.checkVisibility())) && await page.$eval(`${row} .tcabout`, e => e.getClientRects().length === 1),
+     'a closed toolchain row shows one line of what it is for, its terms put away');
+  await page.click(`${row} [data-tcmore]`);
+  await page.waitForFunction(r => document.querySelector(`${r} .tcterms`)?.checkVisibility(), row, { timeout: 5000 });
+  ok(!(await page.$eval(`${row} input`, i => i.checked)), '...Details opens it, and the press is not a tick');
+  await page.click(`${row} [data-tcmore]`);
 }
 
 // ---- install two, watch them land --------------------------------------

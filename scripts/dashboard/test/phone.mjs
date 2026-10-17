@@ -171,6 +171,8 @@ ok(/read the Firefox version/.test(await page.$eval('.phask', e => e.textContent
    'the owner\'s tab shows the request with its reason, its project and its node');
 ok(/left to answer/.test(await page.$eval('.phask', e => e.textContent)),
    '...and how long is left, since an Allow that has quietly stopped working is worse than one that says it has gone');
+ok(await page.$eval('.phonetab', t => t.children[0]?.classList.contains('toolstate') && t.children[1]?.classList.contains('phask')),
+   "...first under the phone's state row, above the ways in (R218 step 23)");
 // The bell carries the same ask, because a session blocked on an answer
 // should not depend on which tab you are looking at. Amber rather than red.
 await page.waitForFunction(

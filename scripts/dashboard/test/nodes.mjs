@@ -1498,9 +1498,12 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
      && !tools.some(t => /3\.24\.0/.test(t)),
      'a node\'s versions come from its own bb toolchains versions, not the census summary');
-  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.tctab .tcact .state', e => e.textContent)),
-     `picking the node lists what its census says it has, and its store's headroom (${
-       await page.$eval('.tctab .tcact .state', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
+  // Its headroom is the free tile's to say, once (R218 step 24), not the
+  // status line's again.
+  const room = await page.$eval('.tctab .tiles', e => e.textContent.replace(/\s+/g, ' '));
+  ok(tools.some(t => /6655482e/.test(t)) && /(40|39(\.\d)?) ?GB free/.test(room)
+     && !/GB free|MB free/.test(await page.$eval('.tctab .tcact .state', e => e.textContent)),
+     `picking the node lists what its census says it has, and its store's headroom in its tile alone (${room.slice(0, 120)} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),
      'an installed toolchain on a node reads "installed", not "installed at" with nothing after it');
   // Check for updates is a live control on a node (R67). It used to be
@@ -1793,6 +1796,9 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok(imgs.length === 1 && /android-30/.test(imgs[0]) && /1\.\d GB/.test(imgs[0])
        && /AVD: fb30-node/.test(imgs[0]),
        `a node's images are listed, with the AVD built on each and the index's size (${imgs[0]})`);
+    ok(!(await page.$$eval('.emutab .tc .pill', ps => ps.some(p => /\d\s*[GMK]B/.test(p.textContent))))
+       && /1\.\d GB · system-images/.test(await page.$eval('.emutab .tc.emimg .where', e => e.textContent)),
+       '...its size a fact on the facts line beside its id, not a pill that wraps at 344px (R218 step 21)');
     const apis = await page.$$eval('.emutab .tc.emnew input', o => o.map(x => x.value));
     ok(apis.length === 1 && apis[0] === 'system-images;android-31;google_apis;x86_64',
        `...and the rows to add are what the NODE does not have (${JSON.stringify(apis)})`);

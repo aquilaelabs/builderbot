@@ -3932,6 +3932,13 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    out as the pane lays them, the doc filling what is left under the bar. */
 .skboot{display:flex;flex-direction:column;height:100%;min-height:0;padding:0;margin:0}
 .skboot .skpcard{min-height:196px}
+/* A toolchain row closed is its name and what it is for on one line; the
+   rest (terms, system packages, needs, its path) on the open row (R218
+   step 22). Details beside the name opens it. */
+.tctab .tc:not(.open) .tcdetail{display:none}
+.tctab .tc .tcdetail{display:contents}
+.tctab .tc:not(.open) .tcabout{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tctab .tc .tcmore{font:var(--f-note);margin-left:6px;min-height:0;padding:0}
 .skboot .sk-card.skrows{padding:0 var(--row-x)}
 .skboot>.skstack{position:relative;flex:1;min-height:0;background:var(--panel)}
 .skboot>.skstack>.doc{position:absolute;inset:0}

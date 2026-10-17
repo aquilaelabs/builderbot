@@ -24,6 +24,7 @@
 
 let toolchains = null, tcRev = 0, tcPoll = null;
 const tcTicked = new Set();     // survives a redraw; a poll must not untick
+const tcOpen = new Set();       // the rows opened on their details (R218 step 22)
 
 function openToolchains(){
   openTab({kind:"toolchains", arg:"__toolchains", label:"Toolchains"});
@@ -247,22 +248,29 @@ function tcRow(p, busy, job, managed){
   // Install would fetch, its size, the projects that pin it, and its
   // uninstall at the end. What is news about it is under the line.
   const pins = (p.pinned_by || []).map(projLabel);
-  return `<label class="tc${upToDate ? " done" : ""}">${tblLine(TC_COLS, [
+  // Closed, the row is its name and what it is for on one line; its terms,
+  // system packages, what it needs and where it lives are on the open row
+  // (R218 step 22, rows-you-open), opened by Details beside its name.
+  const open = tcOpen.has(p.name);
+  return `<label class="tc${upToDate ? " done" : ""}${open ? " open" : ""}">${tblLine(TC_COLS, [
     `<input type="checkbox" value="${esc(p.name)}"${
       busy || noUpgrade ? " disabled" : ""}${
       noUpgrade ? ` checked disabled title="installed; no update in place: a newer version, once a check finds one, is installed in its place"`
       : upToDate ? ` checked disabled title="installed and up to date"`
                : tcTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
-      <span class="nm">${esc(p.label)}</span>
-      <span class="sub">${esc(p.about)}${
+      <span class="nm">${esc(p.label)} <button type="button" class="link tcmore" data-tcmore="${esc(p.name)}"
+        aria-expanded="${open}">${open ? "Less" : "Details"}</button></span>
+      <span class="sub tcabout">${esc(p.about)}${
         p.tool ? ` Adds <code>bb tool ${esc(p.tool)}</code> to a session.` : ""}${
         p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
         p.needed_by?.length ? ` Needed by ${esc(p.needed_by.join(", "))}.` : ""}</span>
+      <span class="tcdetail">
       ${tcTermsLine(p)}
       ${tcSystemLine(p, managed)}
       ${tcNeedsLine(p)}
       ${p.installed && p.path && !mine ? `<span class="sub tcpath">at ${esc(p.path)}</span>` : ""}
+      </span>
     </span>`,
     // Whatever version is known, installed or reported: a node's own
     // versions can name one its census summary does not.
@@ -455,9 +463,11 @@ function renderToolchainsInto(i){
     // Its template (R218 step 16): the bar, the tile's words and the table's
     // head are the page's own; the store and its rows are on their way.
     surf.setBar(skNodeBar([]));
-    surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles"><div class="tile"><span class="tv">${skv(1.4)}</span>
-        <span class="tl">installed</span><span class="ts">of ${skv(2)} offered</span></div></div></div>
-      <div class="tcact"><div class="actbar macros"><span class="state">${skv(9)}</span><span class="sp"></span>
+    // In the page's own order: its tiles, its status line with its two
+    // buttons, then the catalog's table.
+    const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
+    surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
+      <div class="field headline tcact"><div class="actbar macros"><span class="state">${skv(22)}</span><span class="sp"></span>
         <button type="button">Check for updates</button><button type="button" class="primary">Install selected</button></div></div>
       ${skTable(TC_COLS, 6, "tcs")}`);
     return;
@@ -512,10 +522,8 @@ function renderToolchainsInto(i){
           // install is refused because one is already running across the
           // share, and that refusal says so at the press; a standing banner
           // on every draw was explaining a thing that needs no explaining.
-          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)}${
-              typeof d.free_mb === "number" ? `, ${d.free_mb >= 10240
-                ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : ""}. An install
-            is a job there.`
+          // Its free space is the tile's to say, once (R218 step 24).
+          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)}. An install is a job there.`
           : `${esc(d.name || "the node")} reports no toolchain store yet.`)
       : d.root
       ? (d.shared
@@ -523,8 +531,8 @@ function renderToolchainsInto(i){
           : `Installed into <code>${esc(d.root)}</code>: the home volume. Map a toolchain store to keep them out of it.`)
       : "No toolchain store found.";
   surf.list.innerHTML = `
-    ${pstale ? `<div class="tchead warn tcstale">${esc(staleWhy(
-      pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div>` : ""}
+    ${pstale ? `<div class="field"><div class="notice warn tcstale">${esc(staleWhy(
+      pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div></div>` : ""}
     ${
     // The store at a glance (R216): what is installed, what has an update
     // due, what a project needs that the store lacks, and the room left.
@@ -574,12 +582,13 @@ function renderToolchainsInto(i){
       const unmet = Object.entries((onNode && d.sysdeps?.unmet) || {});
       if (!unmet.length) return "";
       const what = unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ");
-      return `<div class="tchead warn tcsys">System packages ${esc(d.name || "this node")} lacks
+      // A warning in the notice voice, its action beside it (R218 step 24).
+      return `<div class="field"><div class="notice warn tcsys">System packages ${esc(d.name || "this node")} lacks
           for what its store holds (${esc(d.sysdeps.family || "")}): ${what}.
           ${d.sandbox
             ? `<button type="button" id="tcSysdeps"${busy || pstale ? " disabled" : ""}
                  title="install these on ${esc(d.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
-            : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
+            : `This node's owner installs them: the agent does not administer the machine.`}</div></div>`;
     })()}
     ${onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
       d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
@@ -627,6 +636,12 @@ function renderToolchainsInto(i){
   el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = () => {
     if (confirm(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`))
       tcAct("remove", [TC_TOOLKIT]);
+  });
+  el.querySelectorAll("[data-tcmore]").forEach(b => b.onclick = e => {
+    e.preventDefault();                 // inside the row's label: not its tick
+    const k = b.dataset.tcmore;
+    if (tcOpen.has(k)) tcOpen.delete(k); else tcOpen.add(k);
+    tcRev++; drawPanes();
   });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on

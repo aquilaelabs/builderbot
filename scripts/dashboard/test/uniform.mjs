@@ -1466,10 +1466,13 @@ const sideways = () => page.evaluate(() => {
   let widest = null;
   // Inside a box that scrolls sideways by design (a diff's pre), what is
   // wide is that box's to scroll, never the page's: all sections stand open
-  // on a phone since 8 Oct, so a diff is measured there now.
+  // on a phone since 8 Oct, so a diff is measured there now. A box that
+  // clips with an ellipsis (a closed toolchain row's one line, R218 step
+  // 22) hides what is past its edge, and nothing scrolls to it either.
   const scrolls = e => {
     for (let a = e.parentElement; a && a !== box; a = a.parentElement)
-      if (/(auto|scroll)/.test(getComputedStyle(a).overflowX)
+      if ((/(auto|scroll)/.test(getComputedStyle(a).overflowX)
+           || getComputedStyle(a).textOverflow === 'ellipsis' && /(hidden|clip)/.test(getComputedStyle(a).overflowX))
           && a.getBoundingClientRect().right <= edge) return true;
     return false;
   };
