@@ -64,5 +64,20 @@ class ABundleIsNotRead(unittest.TestCase):
         self.assertEqual(codemap.page_bindings(idx, root, "lost"), [])
 
 
+class TheSummary(unittest.TestCase):
+    """B806: the summary counted every file the brace scanner reads as js,
+    so a Kotlin tree read as 44 js, and named a file it could not write."""
+
+    def test_counted_by_extension_and_said_unkept_when_it_was_not_written(self):
+        idx = {"files": {"a/Main.kt": {"lang": "js"}, "a/Other.kt": {"lang": "js"},
+                         "build.gradle.kts": {"lang": "js"}, "gradlew": {"lang": "sh"}},
+               "defs": [], "calls": [], "draws": [], "built": 0, "scanned": 4, "kept": False}
+        first, kept = codemap.summary(idx)[:2]
+        self.assertTrue(first.startswith("4 files (2 kt, 1 kts, 1 sh;"), first)
+        self.assertIn("in memory", kept)
+        idx["kept"] = True
+        self.assertIn("into .bb-map/", codemap.summary(idx)[1])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1765,8 +1765,9 @@ def build(root, prior=None):
         for old in out.glob("*.json"):
             if old.name != INDEX_FILE and (old.name == "index.json" or re.fullmatch(r"map\d+\.json", old.name)):
                 old.unlink(missing_ok=True)
+        idx["kept"] = True
     except OSError:
-        pass
+        idx["kept"] = False
     return flat(idx)
 
 
@@ -3190,16 +3191,22 @@ def languages():
 
 
 def summary(idx):
+    # Counted by extension (B806): the scanner's name said a Kotlin tree
+    # was 44 js. A script with none is named by what its #! runs.
     langs = {}
-    for f in idx["files"].values():
-        langs[f["lang"]] = langs.get(f["lang"], 0) + 1
+    for name, f in idx["files"].items():
+        k = Path(name).suffix.lstrip(".").lower() or f["lang"]
+        langs[k] = langs.get(k, 0) + 1
     n_test = sum(1 for f in idx["files"] if is_test(f))
     when = time.strftime('%d %b %H:%M', time.localtime(idx['built']))
     what = (f"{idx.get('scanned', 0)} file{'s' if idx.get('scanned', 0) != 1 else ''} scanned"
             + (f", {idx['dropped']} dropped" if idx.get("dropped") else ""))
-    return [f"{len(idx['files'])} files ({', '.join(f'{n} {k}' for k, n in sorted(langs.items()))}; {n_test} test suites), "
+    return [f"{len(idx['files'])} files ({', '.join(f'{n} {k}' for k, n in sorted(langs.items(), key=lambda kv: (-kv[1], kv[0])))}; {n_test} test suites), "
             f"{len(idx['defs'])} definitions, {len(idx['calls'])} calls, {len(idx['draws'])} ids and classes drawn",
-            f"last built {when} ({what}) into {INDEX_DIR}/{INDEX_FILE}; a changed file is rescanned by itself, the rest kept",
+            (f"last built {when} ({what}) into {INDEX_DIR}/{INDEX_FILE}; a changed file is rescanned by itself, the rest kept"
+             if idx.get("kept", True) else
+             f"built {when} ({what}) in memory: this tree is read-only here, so the map is not kept "
+             "and each question builds it again"),
             "",
             VERBS]
 
