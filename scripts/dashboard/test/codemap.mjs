@@ -14,7 +14,7 @@ const map = (...args) => execFileSync('python3', [`${REPO}/scripts/lib/codemap.p
                                       { encoding: 'utf8' }).trim();
 
 const built = map('build');
-ok(/\d+ files \(.*\d+ js.*\d+ py.*\), \d+ definitions, \d+ calls/.test(built),
+ok(/\d+ files \((?=[^)]*\d+ js)(?=[^)]*\d+ py)[^)]*\), \d+ definitions, \d+ calls/.test(built),
    `the map builds over the tree and says what it holds (${built.split('\n')[0].slice(0, 90)})`);
 
 // A definition: where, with its span.

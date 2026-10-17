@@ -1491,15 +1491,15 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   ok(await page.$$eval('.tctab #tcNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
      'the Tools tab picks among nodes and never offers this container (roadmap #26)');
   await page.selectOption('.tctab #tcNodeSel', minted.id);
-  await page.waitForFunction(() => /on shed/.test(document.querySelector('.tctab .tchead:not(.tcnode)')?.textContent || ''),
+  await page.waitForFunction(() => /on shed/.test(document.querySelector('.tctab .tcact .state')?.textContent || ''),
                              null, { timeout: 15000 });
   const tools = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
   ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
      && !tools.some(t => /3\.24\.0/.test(t)),
      'a node\'s versions come from its own bb toolchains versions, not the census summary');
-  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.tctab .tchead:not(.tcnode)', e => e.textContent)),
+  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.tctab .tcact .state', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom (${
-       await page.$eval('.tctab .tchead:not(.tcnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
+       await page.$eval('.tctab .tcact .state', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),
      'an installed toolchain on a node reads "installed", not "installed at" with nothing after it');
   // Check for updates is a live control on a node (R67). It used to be

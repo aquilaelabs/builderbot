@@ -151,10 +151,17 @@ await page.waitForFunction(n =>
 // tighter 11px, so this one view had three left edges where the roadmap
 // beside it had one.
 {
+  // (at a desk the list is a floating card, R262: a band in one is placed
+  // by the card's edge, as uniform.mjs measures it)
   const xs = await page.evaluate(() => {
-    const x = sel => { const e = document.querySelector(sel);
-      return e ? Math.round(e.getBoundingClientRect().x
-                            + parseFloat(getComputedStyle(e).paddingLeft)) : null; };
+    const card = e => { for (let n = e.parentElement; n && innerWidth > 900 && !n.classList.contains('nbview');
+                             n = n.parentElement){
+      const c = getComputedStyle(n);
+      if (parseFloat(c.borderLeftWidth) > 0 && parseFloat(c.borderRightWidth) > 0 && c.borderLeftStyle !== 'none') return n;
+    } return null; };
+    const x = sel => { const e = document.querySelector(sel); if (!e) return null; const c = card(e);
+      return Math.round(c ? c.getBoundingClientRect().x
+                          : e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft)); };
     return { head: x('.pane .nb .nbview:not([hidden]) .nbhead'),
              bar: x('.pane .nb #anaList .fxbar'),
              rule: x('.pane .nb #anaList .rule') };
