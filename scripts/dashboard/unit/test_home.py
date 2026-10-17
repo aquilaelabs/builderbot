@@ -46,6 +46,8 @@ class Home(unittest.TestCase):
     def setUp(self):
         home.configure(nodes_mod=Nodes, devapp_mod=Devapp)
         self.addCleanup(setattr, home, "CONTAINER_WAIT_S", home.CONTAINER_WAIT_S)
+        self.addCleanup(setattr, home, "KEPT_WAIT_S", home.KEPT_WAIT_S)
+        home._kept.clear()
         Nodes.rows = [
             {"id": "n_a", "kind": "agent", "state": "online", "live": True, "reported": {"docker": "29"}},
             {"id": "n_b", "kind": "agent", "state": "online", "live": False, "reported": {"docker": "29"}},
@@ -88,6 +90,17 @@ class Home(unittest.TestCase):
         got, _ = home.read([], {}, True)
         self.assertLess(time.time() - t0, 2, "the read did not wait for the slow node")
         self.assertEqual((got["containers"]["running"], got["containers"]["unknown"]), (1, 1))
+
+    def test_a_node_answered_before_is_counted_from_it_not_waited_for(self):
+        home.read([], {}, True)
+        Devapp.listings["n_a"] = "slow"
+        home.KEPT_WAIT_S = 0.3
+        t0 = time.time()
+        got, _ = home.read([], {}, True)
+        self.assertLess(time.time() - t0, 1, "every node had answered before, so the read waited the short time")
+        c = got["containers"]
+        self.assertEqual((c["running"], c["all"], c["stale"], c["unknown"]), (2, 3, 2, 0),
+                         "the slow node counted from its last listing, as last seen")
 
 
 if __name__ == "__main__":

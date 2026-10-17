@@ -26,6 +26,13 @@ devapp = None              # devapp.py: on_node, containers
 # How long Home waits for a node's container listing before it counts that
 # node as unknown: a whole page of tiles is not held for one machine.
 CONTAINER_WAIT_S = 8
+# ...and how long once every node has answered before (the operator, 17 Oct:
+# Home took seconds to open): a node slower than this is counted from what it
+# last said, marked as last seen, while its listing finishes behind the
+# answer and is kept for the next open.
+KEPT_WAIT_S = 1.5
+# Each docker node's last listing that came back whole, by node id.
+_kept = {}
 
 
 def configure(*, nodes_mod, devapp_mod):
@@ -39,12 +46,16 @@ def _machines():
 
 def _containers(ns):
     """Running and all containers across the docker nodes, and whether any
-    count came from a kept answer or none at all."""
+    count came from a kept answer (the node's own, or Home's last listing of
+    it) or none at all."""
     docker = [n for n in ns if (n.get("reported") or {}).get("docker")]
 
     def one(nid):
         with devapp.on_node(nid):
-            return devapp.containers()
+            got = devapp.containers()
+        if got and not got.get("error"):
+            _kept[nid] = got
+        return got
     running = total = 0
     stale = unknown = 0
     if not docker:
@@ -54,13 +65,13 @@ def _containers(ns):
     # own and is kept for the next read (devapp's last reads).
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(docker)))
     futs = [ex.submit(one, n["id"]) for n in docker]
-    done, _ = concurrent.futures.wait(futs, timeout=CONTAINER_WAIT_S)
+    wait = KEPT_WAIT_S if all(n["id"] in _kept for n in docker) else CONTAINER_WAIT_S
+    done, _ = concurrent.futures.wait(futs, timeout=wait)
     ex.shutdown(wait=False)
-    for f in futs:
-        if f not in done or f.exception() is not None:
-            unknown += 1
-            continue
-        got = f.result() or {}
+    for n, f in zip(docker, futs, strict=True):
+        got = (f.result() or {}) if f in done and f.exception() is None else {"error": "late"}
+        if got.get("error") and n["id"] in _kept:
+            got = dict(_kept[n["id"]], stale=True)
         if got.get("error"):
             unknown += 1
             continue
