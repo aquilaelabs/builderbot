@@ -1182,12 +1182,9 @@ def _c_blank(text):
     to spaces, newlines kept, so what is left is the code."""
     out, i, n = list(text), 0, len(text)
     line_start = True
-    # Preprocessor conditionals (B554): only the first branch of each is
-    # read, the #else/#elif ones blanked through their #endif, since two
-    # branches that each open a brace left one unclosed and the rest of the
-    # file inside the function above it. `skip` is the depth of the #if
-    # whose later branch is being blanked, 0 for none; `depth` counts #ifs.
-    depth = skip = 0
+    # Preprocessor conditionals: their lines are noted here and settled in
+    # _c_branches once the comments and strings are blanked.
+    conds = []
     cond = re.compile(r"#\s*(if|ifdef|ifndef|elif|else|endif)\b")
 
     def blank(a, b):
@@ -1216,22 +1213,7 @@ def _c_blank(text):
             # a comment opened on a directive line runs on past it
             m = cond.match(text, i)
             if m:
-                word = m.group(1)
-                if word in ("if", "ifdef", "ifndef"):
-                    depth += 1
-                elif word in ("elif", "else") and not skip:
-                    skip = depth
-                elif word == "endif":
-                    if skip == depth:
-                        skip = 0
-                    depth = max(0, depth - 1)
-            blank(i, j)
-            i = j
-            continue
-        if skip:
-            # a line of a branch that is not read: blank it whole
-            j = text.find("\n", i)
-            j = n if j < 0 else j
+                conds.append((m.group(1), i, j))
             blank(i, j)
             i = j
             continue
@@ -1264,7 +1246,37 @@ def _c_blank(text):
             i = j + 1
         else:
             i += 1
+    _c_branches(out, conds, blank)
     return "".join(out)
+
+
+def _c_branches(out, conds, blank):
+    """Which branches of each #if the scanner reads. Every one, when each
+    branch's braces balance by themselves: the SIMD paths of ggml, one
+    whole function per branch, were missing from the map behind their
+    first branch (B805). Only the first, the rest blanked, when any branch
+    is out of balance, since two that each open a brace left one unclosed
+    and the rest of the file inside the function above it (B554). An inner
+    #if is settled before the one around it, so its blanked branches are
+    not counted there."""
+    def balance(a, b):
+        part = "".join(out[a:b])
+        return part.count("{") - part.count("}")
+    stack = []
+    for word, i, j in conds:
+        if word in ("if", "ifdef", "ifndef"):
+            stack.append([[j, None]])
+        elif not stack:
+            continue
+        elif word in ("elif", "else"):
+            stack[-1][-1][1] = i
+            stack[-1].append([j, None])
+        else:
+            group = stack.pop()
+            group[-1][1] = i
+            if len(group) > 1 and any(balance(a, b) for a, b in group):
+                for a, b in group[1:]:
+                    blank(a, b)
 
 
 def _c_params_end(head):

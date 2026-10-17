@@ -132,6 +132,22 @@ class Followup(unittest.TestCase):
                  "int c(void) {\n#endif\nint d(void) { return 4; }\n")
         self.assertEqual(sorted(d["name"] for d in s.defs), ["a", "d"])
 
+    def test_balanced_later_branches_are_read(self):
+        # B805: ggml's SIMD helpers, one whole function per branch of an
+        # #if/#elif chain, were missing behind the first branch
+        s = scan("#if defined(NEON)\nstatic inline int ld(int x) { return x; }\n#elif defined(AVX)\n"
+                 "static inline __m256 ld8(const float *p) {\n  return _mm256_loadu_ps(p);\n}\n"
+                 "#else\nstatic inline unsigned char ggml_endian_byte(int i) { return (unsigned char)i; }\n"
+                 "#endif\nint after(void) { return 0; }\n")
+        self.assertEqual(sorted(d["name"] for d in s.defs), ["after", "ggml_endian_byte", "ld", "ld8"])
+        self.assertEqual({d["name"]: d["line"] for d in s.defs}["after"], 10)
+
+    def test_an_unbalanced_inner_branch_is_dropped_and_the_outer_still_read(self):
+        s = scan("#if A\nint a(void) {\n#if B\n  if (x) {\n#else\n  if (y) {\n#endif\n  } return 1; }\n"
+                 "#else\nint z(void) { return 2; }\n#endif\nint d(void) { return 4; }\n")
+        got = {d["name"]: (d["line"], d.get("end")) for d in s.defs}
+        self.assertEqual(got, {"a": (2, 8), "z": (10, 10), "d": (12, 12)})
+
     def test_a_header_api_is_findable(self):
         s = scan("#define SQUARE(x) ((x) * (x))\n#define MAX 4\nint proto_only(int, int);\n"
                  "typedef struct point { int x; } point_t;\ntypedef int (*callback_fn)(int, void *);\n"
