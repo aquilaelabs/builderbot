@@ -251,7 +251,16 @@ Two ways to look, by the question you are asking:
   rate, about 10 under software rendering); `--display :N --drive FILE.sh`
   records an X display driven with `xdotool` (start the app under an Xvfb:
   `Xvfb :9 -screen 0 1280x800x24 & DISPLAY=:9 the-app &`); `--video FILE`
-  reels a recording you already have.
+  reels a recording you already have, the person's screen recording among
+  them.
+- A frame is kept when any small patch of it changed from the last frame
+  kept, so a tap circle, a typed letter and a slow scroll each show; a run of
+  motion is thinned to where it starts and settles and a few frames between,
+  and a long reel is several pages (`sheet-2.png` on), twelve frames each.
+  `--dry` counts first and draws nothing: how many frames changed, each run of
+  motion with its span and frame count, and what the sheet would keep. Where
+  a run you need was thinned, `--from S --to S` reels that stretch whole;
+  `--patch N` (12; lower keeps fainter change) and `--max N` (40) tune the rest.
 
 What either leaves in `dist/` is a capture, not something the project ships:
 the Artifacts tab lists them under Captures, and the project's settings say

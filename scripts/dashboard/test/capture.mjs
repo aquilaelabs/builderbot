@@ -36,12 +36,15 @@ if (ff.status !== 0){
   const coarse = reel('--video', `${S}/letters.mp4`, '--name', 'letters');
   const fine = reel('--video', `${S}/letters.mp4`, '--name', 'letters2', '--threshold', '0.0002');
   const kept = n => (JSON.parse(readFileSync(`${S}/dist/reel/${n}/frames.json`, 'utf8')).frames || []).map(f => f.t);
-  ok(kept('letters').length === 1 && /nothing moved past a scene score of 0.02/.test(coarse.stderr) && /--threshold lower/.test(coarse.stderr),
-     `a letter-sized change is below a page's threshold, and the reel says so and how to see it (${coarse.stderr.trim().split('\n').pop().slice(0, 90)})`);
+  // A patch changed from the last frame kept is a change (R261, the operator,
+  // 17 Oct): a letter is a few patches, so the default sees each one, where a
+  // whole-frame score of 0.02 saw neither.
+  ok(coarse.status === 0 && kept('letters').length === 3 && Math.abs(kept('letters')[1] - 1.5) < 0.2 && Math.abs(kept('letters')[2] - 2.5) < 0.2,
+     `a letter-sized change is a frame at its time by default (${JSON.stringify(kept('letters'))})`);
   ok(fine.status === 0 && kept('letters2').length === 3 && Math.abs(kept('letters2')[1] - 1.5) < 0.2 && Math.abs(kept('letters2')[2] - 2.5) < 0.2,
-     `...and at the emulator's threshold each letter is a frame at its time (${JSON.stringify(kept('letters2'))})`);
-  ok(/THRESHOLD = \{"emu": 0\.0002\}/.test(readFileSync(`${REPO}/scripts/lib/reel.py`, 'utf8')),
-     '...which is the default for a reel of the emulator');
+     `...and --threshold keeps the scene score against the frame before (${JSON.stringify(kept('letters2'))})`);
+  const meth = n => JSON.parse(readFileSync(`${S}/dist/reel/${n}/frames.json`, 'utf8')).method;
+  ok(meth('letters') === 'decimate' && meth('letters2') === 'scene', `...which frames.json names (${meth('letters')}, ${meth('letters2')})`);
   cap('prune', `${S}/dist`, 'letters', 'letters2');
   // Every frame the recording has, not ten a second of it: a 60fps capture
   // of a 50 ms flash reels the flash; read at --fps 10, as every reel used
@@ -60,13 +63,39 @@ if (ff.status !== 0){
      `a reel looks at every frame the recording has: a 50 ms flash at 60fps is seen on and off (${
        JSON.stringify(flashLog.frames.map(f => f.t))}, recorded ${flashLog.recorded_fps}fps)`);
   ok(sparse.status === 0 && sparseLog.fps === 10 && Math.abs(sparseLog.recorded_fps - 60) < 1
-     && sparseLog.frames.length < flashLog.frames.length,
+     && sparseLog.frames.every(f => Math.abs(f.t * 10 - Math.round(f.t * 10)) < 0.011),
      `...while --fps 10 looks ten times a second and says both rates (${sparseLog.frames.length} frames)`);
   const slow = reel('--video', `${S}/letters.mp4`, '--name', 'slow', '--threshold', '0.0002');
   ok(/about 10 frames a second, so anything shorter than 100 ms can fall between two of them/.test(slow.stderr),
      `...and a recording as sparse as a software-rendered emulator's says what a frame is worth (${
        (slow.stderr.match(/about [^;]*/) || ['nothing'])[0].slice(0, 90)})`);
   cap('prune', `${S}/dist`, 'flash', 'flash10', 'slow');
+  // A slow scroll: a block moving two pixels a frame, which no frame scores
+  // against the one before but which adds up (the operator's phone, 17 Oct),
+  // thinned to where it starts and settles and frames between; a long reel
+  // pages twelve frames a sheet; --dry counts and draws nothing, listing
+  // the run; --from and --to see one stretch at the recording's own times.
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi',
+    '-i', 'color=c=white:size=640x400:rate=60:duration=3', '-f', 'lavfi', '-i', 'color=c=black:size=80x80:rate=60:duration=3',
+    '-filter_complex', "[0][1]overlay=x='if(between(t,0.5,2.5),20+(t-0.5)*120,if(lt(t,0.5),20,260))':y=150",
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', `${S}/scroll.mp4`]);
+  const oldway = reel('--video', `${S}/scroll.mp4`, '--name', 'scrollold', '--threshold', '0.02');
+  const scroll = reel('--video', `${S}/scroll.mp4`, '--name', 'scroll', '--max', '20');
+  const sLog = JSON.parse(readFileSync(`${S}/dist/reel/scroll/frames.json`, 'utf8'));
+  ok(kept('scrollold').length <= 2 && scroll.status === 0 && sLog.frames.length >= 6 && sLog.frames.length <= 20
+     && sLog.changed > sLog.frames.length && sLog.frames.at(-1).t > 2.3,
+     `a slow move is seen by default, thinned to the sheet (${sLog.frames.length} of ${sLog.changed}, the last at ${sLog.frames.at(-1).t}s), where the scene score saw ${kept('scrollold').length}`);
+  ok(JSON.stringify(sLog.sheets) === JSON.stringify(['sheet.png', 'sheet-2.png']) && existsSync(`${S}/dist/reel/scroll/sheet-2.png`),
+     `...on pages of twelve (${JSON.stringify(sLog.sheets)})`);
+  const dry = reel('--video', `${S}/scroll.mp4`, '--name', 'scrolldry', '--dry');
+  ok(dry.status === 0 && /dry run at --patch 12, --max 40: \d+ of 180 frames changed/.test(dry.stderr)
+     && /\d+(\.\d+)?s to +\d+(\.\d+)?s +\d+ frames/.test(dry.stdout) && !existsSync(`${S}/dist/reel/scrolldry/sheet.png`),
+     `--dry counts the frames that changed and each run of motion, and draws nothing (${dry.stderr.trim().split('\n')[0].slice(0, 110)})`);
+  const part = reel('--video', `${S}/scroll.mp4`, '--name', 'scrollpart', '--from', '1', '--to', '1.5');
+  const pLog = JSON.parse(readFileSync(`${S}/dist/reel/scrollpart/frames.json`, 'utf8'));
+  ok(part.status === 0 && pLog.frames.length > 0 && pLog.frames.every(f => f.t >= 0.99 && f.t <= 1.51),
+     `...and --from 1 --to 1.5 reels that stretch alone, at the recording's own times (${pLog.frames[0]?.t}..${pLog.frames.at(-1)?.t})`);
+  cap('prune', `${S}/dist`, 'scrollold', 'scroll', 'scrollpart');
   const r = reel('--video', `${S}/cut.mp4`, '--name', 'cut');
   const log = existsSync(`${S}/dist/reel/cut/frames.json`) ? JSON.parse(readFileSync(`${S}/dist/reel/cut/frames.json`, 'utf8')) : null;
   const ts = (log?.frames || []).map(f => f.t);

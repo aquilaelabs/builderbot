@@ -113,6 +113,26 @@ class Store(unittest.TestCase):
         self.assertEqual(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
                                    stdin={"tool_name": "Bash", "tool_input": {"command": "ls -la"}}), "")
 
+    def test_a_recording_is_met_with_the_reel(self):
+        """The operator, 17 Oct: a phone's screen recording was taken apart
+        with ffmpeg by hand though bb capture reel reads one. A video in the
+        person's message, or ffmpeg reached for on one, has the reel said
+        beside it; anything else has nothing."""
+        said = json.loads(self.hook("bb-rule-hook", "prompt", "alpha", "u_t",
+                                    stdin={"prompt": 'this is slow @"/home/u/uploads/b72-screen-1.mp4"'}))
+        ctx = said["hookSpecificOutput"]
+        self.assertEqual(ctx["hookEventName"], "UserPromptSubmit")
+        self.assertIn("bb capture reel --video FILE", ctx["additionalContext"])
+        self.assertIn("/home/u/uploads/b72-screen-1.mp4", ctx["additionalContext"])
+        self.assertIn("--dry", ctx["additionalContext"])
+        self.assertEqual(self.hook("bb-rule-hook", "prompt", "alpha", "u_t", stdin={"prompt": "why is it slow"}), "")
+        out = json.loads(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
+                                   stdin={"tool_name": "Bash", "tool_input": {"command": "ffmpeg -i /tmp/a.mov -vf fps=1 f%d.png"}}))
+        self.assertIn("bb capture reel --video FILE", out["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("permissionDecision", out["hookSpecificOutput"])
+        self.assertEqual(self.hook("bb-rule-hook", "guard", "alpha", "u_t",
+                                   stdin={"tool_name": "Bash", "tool_input": {"command": "cp a.mp4 b.mp4"}}), "")
+
     def test_a_dry_run_is_an_exception_and_a_scratch_identity_is_let_be(self):
         self.assertIsNone(rules.refusing("alpha", "apt-get install -s nvidia-driver-595"))
         self.assertIsNotNone(rules.refusing("alpha", "apt-get install -y nvidia-driver-595"))

@@ -35,6 +35,7 @@ bb-prompt-relay keep of what fired in this conversation.
 import contextlib
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -82,14 +83,43 @@ def guards(project):
     return have
 
 
-def map_first(req, patterns):
+# A recording, said at the moment it arrives or is reached for (the
+# operator, 17 Oct: the briefing named bb capture reel, and a session sent a
+# phone's screen recording pulled frames with ffmpeg by hand). A note beside
+# the turn, as the code map's is beside a search: it moves what a session
+# does where a line in a briefing read hours earlier does not.
+VIDEO = re.compile(r"[^\s'\"]+\.(?:mp4|mov|webm|mkv|m4v)\b", re.I)
+VIDEO_HINT = ("A recording ({file}): `bb capture reel --video FILE` keeps the frames that changed, each "
+              "stamped with its time, on sheet pages under dist/reel/; `--dry` first lists the runs of motion "
+              "and how many frames each holds, `--from S --to S` reels one run whole, and `--patch N` "
+              "(12 by default; lower keeps fainter change) and `--max N` tune it. `bb help capture` has the rest.")
+
+
+def video_hint(text):
+    """The note for the first video file `text` names, or ""."""
+    m = VIDEO.search(text or "")
+    return VIDEO_HINT.format(file=m.group(0)) if m else ""
+
+
+def prompt(project, req):
+    """A video in what the person sent: the note beside their message."""
+    said = video_hint(str(req.get("prompt") or ""))
+    if said:
+        json.dump({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": said}},
+                  sys.stdout)
+
+
+def map_first(req, patterns, also=""):
     """`bb map find` for the names these search patterns look up, said
-    beside the search; nothing when there is none or the map knows none."""
+    beside the search; nothing when there is none or the map knows none.
+    `also` is another note for this call, said with it."""
     names = []
     for p in patterns:
         names += [n for n in rulehook.symbols(p) if n not in names]
     names = names[:rulehook.MAP_NAMES]
     if not names:
+        if also:
+            json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": also}}, sys.stdout)
         return
     import subprocess
     bb = os.path.join(HERE, "..", "bb")
@@ -107,9 +137,11 @@ def map_first(req, patterns):
         said.append(f"$ bb map find {n}\n" + "\n".join(lines[:rulehook.MAP_LINES])
                     + (f"\n({len(lines) - rulehook.MAP_LINES} more lines)" if len(lines) > rulehook.MAP_LINES else ""))
     if not said:
+        if also:
+            json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": also}}, sys.stdout)
         return
     text = ("The code map answers this lookup in one call; its answer, beside your search "
-            "(bb map who-calls NAME gives the callers):\n" + "\n".join(said))
+            "(bb map who-calls NAME gives the callers):\n" + "\n".join(said)) + ("\n\n" + also if also else "")
     json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}, sys.stdout)
 
 
@@ -126,7 +158,9 @@ def guard(project, req):
     background = bool((req.get("tool_input") or {}).get("run_in_background"))
     hit = rulehook.refused(guards(project), command, background)
     if not hit:
-        map_first(req, rulehook.search_patterns(command))
+        # ffmpeg or ffprobe on a recording: the reel is the way to look at one.
+        also = video_hint(command) if re.search(r"\bff(?:mpeg|probe)\b", command) else ""
+        map_first(req, rulehook.search_patterns(command), also)
         return
     json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                       "permissionDecision": "deny",
@@ -149,7 +183,7 @@ def recall(project, req):
 
 def main():
     verb, project = (sys.argv[1:3] + ["", ""])[:2]
-    if not project or verb not in ("guard", "recall", "map"):
+    if not project or verb not in ("guard", "recall", "map", "prompt"):
         return
     try:
         req = json.load(sys.stdin)
@@ -157,7 +191,7 @@ def main():
         return
     if not isinstance(req, dict):
         return
-    {"guard": guard, "recall": recall, "map": grep_tool}[verb](project, req)
+    {"guard": guard, "recall": recall, "map": grep_tool, "prompt": prompt}[verb](project, req)
 
 
 if __name__ == "__main__":

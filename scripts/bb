@@ -4470,10 +4470,14 @@ capture_reel() {
         -h|--help|"")
             cat <<'EOT'
 bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N  [--seconds N] [--drive FILE] [--name NAME]
-        [--threshold T] [--fps N]
+        [--patch N] [--max N] [--from S] [--to S] [--dry] [--threshold T] [--fps N]
   the frames that changed, each stamped with its time, tiled into
-  dist/reel/NAME/sheet.png beside frames.json (when, and how much moved):
-  what a screenshot cannot show, one image a session reads at a glance.
+  dist/reel/NAME/sheet.png (and sheet-2.png on, twelve frames a page)
+  beside frames.json (when, and how much moved): what a screenshot cannot
+  show, read at a glance. A frame is kept when any small patch of it changed
+  from the last frame kept, so a tap circle, a typed letter and a slow scroll
+  are each seen; a run of motion (a scroll, a slide) is thinned to where it
+  starts and settles and a few frames between.
   The recording and the full-size frames stay on this machine's disk, at
   the paths frames.json names; dist/ keeps the sheet and the record, listed
   under Captures on the Artifacts tab and swept after the project's
@@ -4486,8 +4490,17 @@ bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N  [--second
              with $ADB in its environment
   --display  an X display grabbed for --seconds while --drive FILE (a shell
              script, DISPLAY set) drives it with xdotool
-  --threshold ffmpeg's scene score that counts as a change (0.0002 for --emu,
-              where a typed letter is about 0.0004; 0.02 otherwise)
+  --dry      count, draw nothing: how many frames changed, each run of motion
+             with its span and frames, and what the sheet would keep on how
+             many pages, to choose the settings below before drawing
+  --from S --to S  that stretch of the recording alone, at its own times: a
+             run the dry run shows thinned, reeled whole
+  --patch N  how much one small patch must change from the last frame kept,
+             as a pixel's mean difference (1 to 255, 12 by default): lower
+             keeps fainter change
+  --max N    how many frames the sheet holds (40 by default)
+  --threshold T  the old test instead: ffmpeg's scene score against the
+             frame before (0..1; a typed letter on a phone is about 0.0004)
   --fps      look at the recording N times a second rather than at every
              frame it has; frames.json says both (fps, recorded_fps). An
              emulator under software rendering records about 10 a second

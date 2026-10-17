@@ -380,6 +380,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - In light mode the second color is as light as it can be and stay readable, and a lit control is a soft tint of it with a colored edge rather than a dark block (bd972da)
 - A project's Settings are a list of sections beside the one picked, each saying what is in it and marked unsaved when it holds a change, with plainer names (General, Nodes, What sessions reach, Just for you, Running sessions) and the most used first; on a phone the list, then the section with Back (6098e71)
 - Controller settings, Profile and the Roles page share a project's Settings shape: a list beside the section or person picked, and on a phone the list, then the section sliding in with Back; the Roles page is one list of people and roles (d78256d)
+- bb capture reel sees small and slow changes (a tap circle, a typed letter, a slow scroll) by comparing each frame with the last one kept, thins a run of motion to where it starts and settles, pages a long reel twelve frames a sheet, and offers --dry to count first and --from/--to to reel one stretch; it no longer drops or mis-stamps frames of a fast recording (2983542)
 
 ### Removed
 

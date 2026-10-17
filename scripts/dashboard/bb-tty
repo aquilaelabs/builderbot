@@ -548,6 +548,8 @@ claude_scope() {
               {hooks: [{type: "command",
                         command: "\($relay) \($proj) \($who)"},
                        {type: "command",
+                        command: "\($rule) prompt \($proj) \($who)", timeout: 10},
+                       {type: "command",
                         command: "\($gate) --turn \($proj) \($who) --wait 840",
                         timeout: 900, statusMessage: "Waiting for a turn on this node"}]}],
               Stop: [
