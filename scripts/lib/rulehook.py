@@ -271,8 +271,9 @@ def _check_main(project, stamp, cwd, argv):
 if __name__ == "__main__":
     import sys
     if sys.argv[1:2] == ["--check-run"] and len(sys.argv) == 6:
-        try:
+        import contextlib
+        # A hook's helper never raises: a run that cannot record its end is
+        # read as one that never ended, and the next hand-back runs it again.
+        with contextlib.suppress(Exception):
             _check_main(*sys.argv[2:6])
-        except Exception:                 # noqa: BLE001 - a hook's helper never raises
-            pass
 
