@@ -2757,10 +2757,14 @@ pre.diff .d-ctx{color:var(--dim)}
    `overscroll-behavior: contain`, which is a scroll container that cannot
    scroll refusing to pass the gesture on. A finger landing on the list: most
    of the panel: did nothing at all, while the gaps between the rows worked. */
-.nb{display:block;max-width:var(--doc-w)}
-/* Every band of the notebook shares it, so the tab strip, the rows, the
-   banner and the footer all end at the same edge. */
+/* The notebook runs the pane's width so its view strip can (the operator,
+   17 Oct: the strip goes all the way to the right edge, as the header above
+   it does); every other band keeps the reading width. */
+.nb,.pane .doc > .nb{display:block;max-width:none}
+/* Every band of the notebook shares it, so the rows, the banner and the
+   footer all end at the same edge. */
 .nb > *{max-width:var(--doc-w)}
+.nb > .nbtabs{max-width:none}
 /* ...except the sheet, which is not a band of the document but a fixed
    overlay that happens to live here: one per notebook, so a split holds two
    and each stays findable by the code that owns it. Capped at --doc-w it was

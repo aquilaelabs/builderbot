@@ -1470,9 +1470,11 @@ await ultra.waitForFunction(
           return !!l && !l.querySelector('.loading'); },
                            { timeout: 20000 });
 const spread = await ultra.evaluate(() => {
-  const nb = document.querySelector('.pane .nb');
+  // the view under the strip: the notebook runs the pane's width for its
+  // view strip alone (the operator, 17 Oct)
+  const nb = document.querySelector('.pane .nb'), view = nb.querySelector('.nbview:not([hidden])');
   const pane = nb.closest('.doc').getBoundingClientRect();
-  return { nb: Math.round(nb.getBoundingClientRect().width),
+  return { nb: Math.round(view.getBoundingClientRect().width),
            pane: Math.round(pane.width) };
 });
 ok(spread.pane > 1500 && spread.nb <= 1100,
