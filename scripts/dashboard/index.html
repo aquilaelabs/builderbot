@@ -133,6 +133,10 @@
      and the rows that already matched did so at --tap. */
   --ctl:var(--tap);
   --doc-w:1080px;
+  /* Every page's bar is the height of a project's header (the operator,
+     17 Oct: it reads better with that much room): its 32px controls and
+     6px above and below them. */
+  --pbar-h:45px;
   /* The three corners on the page: a surface (card, panel, dialog), a
      control (tab, button, field) and a small thing (a pill's box, a bar's
      cap). Named so a scheme can square them all at once: nostromo does,
@@ -2952,12 +2956,12 @@ pre.diff .d-ctx{color:var(--dim)}
 }
 /* A page's bar: the group's tools as a segment (the same .pseg the gear's
    Appearance uses), or the page's name, and no close. */
-.pane .bar.page{padding:4px 6px}
+.pane .bar.page{padding:6px 10px;min-height:var(--pbar-h)}
 .nbhead .nbsum{min-width:0;flex:1 1 auto}
 /* A project's page (R218 step 3): the bar is its header, one band: the name
    large, the branch and the node in the data face, the session's dot and
    word, and the actions at the right; the one notice under it. */
-.pane .bar.proj{padding:6px 10px;flex-wrap:wrap;gap:4px 10px;font:var(--f-ui)}
+.pane .bar.proj{padding:6px 10px;flex-wrap:wrap;gap:4px 10px;font:var(--f-ui);min-height:var(--pbar-h)}
 .pane .bar.proj .phead{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
 .pane .bar.proj .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .pane .bar.proj .pname .lockmark svg{width:14px;height:14px}
