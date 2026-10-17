@@ -608,8 +608,10 @@ function oneOpen(g){
 function actMore(items){
   const have = items.filter(Boolean);
   if (have.length < 2) return have.join("");
-  return `<span class="more"><button type="button" aria-haspopup="menu" aria-expanded="false"
-      title="the rest of what can be done to it">More</button>
+  // ⋯, as a project's header has it (the operator, 17 Oct): the rest of a
+  // row's verbs behind one small press, named for a screen reader.
+  return `<span class="more"><button type="button" class="moreb" aria-haspopup="menu" aria-expanded="false" aria-label="More"
+      title="the rest of what can be done to it">⋯</button>
     <div class="actmenu" hidden role="menu">${have.join("")}</div></span>`;
 }
 function wireMore(root){
@@ -683,6 +685,19 @@ function statTiles(tiles){
 // it has and the grid says what there is. `html` on a pair means the value
 // is already markup (a code span, a link); otherwise it is escaped, and
 // `cls` names the value's element for a suite that reads one.
+// What a card's settings are, read (the operator's concept, 17 Oct): one
+// wrapping line of pills, each its label in the quiet voice and its value,
+// a pill with no label a state on its own (Starts on boot); `edit` is the
+// button that swaps the fields in, at the line's right (rows-you-open),
+// wearing the pencil the Commands panel's edit wears (PENCIL).
+function factPills(pairs, edit = "", cls = ""){
+  const rows = (pairs || []).filter(p => p && String(p[1] ?? "").trim() !== "");
+  if (!rows.length && !edit) return "";
+  return `<div class="fpills${cls ? " " + esc(cls) : ""}"><div class="fpl">${rows.map(([k, v, tone]) =>
+    `<span class="fpill${tone ? " " + esc(tone) : ""}">${k ? `<span class="k">${esc(k)}</span>` : ""}<span class="v">${v}</span></span>`).join("")}</div>${
+    edit}</div>`;
+}
+
 function factGrid(pairs, cls = ""){
   const rows = (pairs || []).filter(p => p && p[1] !== undefined && p[1] !== null && String(p[1]).trim() !== "");
   if (!rows.length) return "";

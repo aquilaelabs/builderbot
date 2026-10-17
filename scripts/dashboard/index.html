@@ -2120,12 +2120,22 @@ pre.diff .d-ctx{color:var(--dim)}
 @media(max-width:900px){
   .artrow .acts{flex:1 1 100%;margin-left:0;justify-content:flex-end}
 }
-/* A download is a link wearing the button suit, because the browser has to
-   navigate to it: fetch would buffer the file into JS for nothing. */
-.artrow a.btn{display:inline-flex;align-items:center;min-height:var(--tap);
-  padding:6px 12px;background:var(--btn);color:var(--ink);border:var(--hair) solid var(--line);
-  border-radius:var(--r-control);font:600 12px/1 system-ui,sans-serif;text-decoration:none}
-@media(hover:hover){ .artrow a.btn:hover{border-color:var(--dim)} }
+/* A link wearing the button suit, wherever the browser has to navigate (a
+   download, which fetch would buffer for nothing; a container's Open, a new
+   tab at its address): the same box, face and fill as a button, the main
+   action's fill where it is one (the operator, 17 Oct). */
+a.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:30px;
+  padding:6px 10px;background:var(--btn);color:var(--ink);border:var(--hair) solid var(--line);
+  border-radius:var(--r-control);font:var(--f-ui);white-space:nowrap;text-decoration:none;
+  -webkit-tap-highlight-color:transparent}
+a.btn.primary{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
+a.btn svg{width:12px;height:12px;flex:0 0 auto}
+.actbar a.btn,.artrow a.btn{min-height:var(--tap)}
+.artrow a.btn{padding:6px 12px}
+@media(hover:hover){ a.btn:hover{background:color-mix(in srgb, var(--btn-hi) 80%, var(--lit));border-color:color-mix(in srgb, var(--lit) 65%, var(--line))}
+  a.btn.primary:hover{background:color-mix(in srgb, var(--lit), #000000 28%);border-color:var(--lit)} }
+/* ⋯ (actMore): a square press, as a project header's is. */
+.actbar .more>.moreb{min-width:var(--tap);padding:4px 8px;font-size:15px;line-height:1}
 .artrow.job .grow{font:var(--f-ui);color:var(--dim)}
 
 /* The Phone tab's rows. Almost nothing of their own: .row like Projects, and
@@ -3069,11 +3079,6 @@ pre.diff .d-ctx{color:var(--dim)}
 .tile.link:not(.ok):not(.warn):not(.bad) .tv{color:var(--note)}
 .tile.warn .tv{color:var(--warn)}
 .tile.bad .tv{color:var(--bad)}
-/* The strip on a row (what a container uses now): the same tile, smaller,
-   its number in the section voice, four across at a desk and two on a phone. */
-.tiles.mini{grid-template-columns:repeat(auto-fit,minmax(7rem,1fr));margin-top:6px}
-@media(max-width:900px){ .tiles.mini{grid-template-columns:repeat(2,1fr)} }
-.tiles.mini .tile{padding:8px 12px}
 /* An odd number of tiles on a phone sits in threes rather than two to a row
    with one left over (the operator, 17 Oct): three in one row, five as three
    and two, seven as three, two and two, a short row's tiles splitting its
@@ -3089,7 +3094,73 @@ pre.diff .d-ctx{color:var(--dim)}
   .tiles:has(> .tile:last-child:nth-child(odd)) .tl,
   .tiles:has(> .tile:last-child:nth-child(odd)) .ts{overflow-wrap:anywhere}
 }
-.tiles.mini .tv{font:var(--f-sect);font-variant-numeric:tabular-nums}
+/* A container's card (the operator's concept, 17 Oct). Its head: the name,
+   its pill and how long it has been up, a mono line of what it is (image,
+   commit, compose file), and its buttons at the right on the same line,
+   under it when the card is narrow. */
+.dmid .name{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.dmid .dmmeta{font:var(--f-note);color:var(--dim)}
+.dmid .dmorigin{font:var(--f-data);color:var(--dim);margin-top:2px;overflow-wrap:anywhere}
+.dmid .dmorigin .sep{display:inline-block;width:14px}
+.dmid .dmstate.bad{color:var(--bad)}
+/* What it uses: one band of four sharing hairlines, each its word over its
+   figure, CPU with its half hour at the right, memory with how full. Two
+   across on a phone. */
+.dmstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--hair);background:var(--line);
+  border:var(--hair) solid var(--line);border-radius:var(--r-control);overflow:hidden;margin:10px 0 0}
+@media(max-width:900px){ .dmstats{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.dmstats .tile{background:var(--sunk);border:0;border-radius:0;padding:8px 12px;min-width:0;
+  display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l l" "v s" "x x";align-items:center;gap:2px 8px}
+.dmstats .tl{grid-area:l;font:var(--f-note);color:var(--dim)}
+.dmstats .tv{grid-area:v;font:600 1.05rem/1.3 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
+.dmstats .tv .tu{font:var(--f-note);color:var(--dim);margin-left:4px}
+.dmstats svg.spark{grid-area:s;width:64px;height:18px}
+.dmstats .ts,.dmstats .dmbar{grid-area:x}
+.dmstats .ts{font:var(--f-data);color:var(--dim)}
+.dmbar{display:block;height:4px;border-radius:2px;background:color-mix(in srgb, var(--line) 70%, transparent);overflow:hidden;margin-top:4px}
+.dmbar>i{display:block;height:100%;background:var(--lit);border-radius:2px}
+/* A stack's services, a table in the card: each its dot, name and image,
+   its ports as links, what it uses, Open at the right. */
+.dmsvctbl{margin:10px 0 0;border:var(--hair) solid var(--line);border-radius:var(--r-control);overflow:hidden}
+.dmsvctbl .dmdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--dim);margin-right:8px;vertical-align:middle}
+.dmsvctbl .dmdot.ok{background:var(--accent)}
+.dmsvctbl .mono{font:var(--f-data);color:var(--dim)}
+.dmsvctbl .td a{color:var(--note)}
+.dmsvctbl>.thead,.dmsvctbl>.tline{padding:7px 12px}
+.dmsvctbl>.tline{border-top:var(--hair) solid var(--line)}
+.dmsvctbl>.thead{background:color-mix(in srgb, var(--sunk) 60%, transparent)}
+.dmsettings .setfoot.dmeditfoot{grid-column:1 / -1;justify-content:flex-end;gap:6px}
+/* What a card's settings are, read (factPills): pills on one wrapping line,
+   Edit settings at its right, which swaps the fields in. */
+/* ...the same room above and below it (the operator, 17 Oct): the card's
+   grid adds its 2px row gap above at a desk, and a fold's band starts below. */
+.fpills{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px 12px;margin:14px 0 12px}
+@media(max-width:900px){ .fpills{margin-top:16px} }
+.fpills>.fpl{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+@media(max-width:600px){ .fpills{grid-template-columns:minmax(0,1fr)} .fpills>.fpedit{justify-self:start} }
+.fpill{display:inline-flex;align-items:baseline;gap:6px;padding:3px 9px;border:var(--hair) solid var(--line);
+  border-radius:var(--r-small);background:var(--sunk);font:var(--f-note);color:var(--ink);max-width:100%;min-width:0}
+.fpill .k{color:var(--dim);flex:0 0 auto}
+.fpill .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fpill .v a{color:var(--note)}
+.fpill.ok .v{color:var(--accent)}
+.fpills .fpedit{display:inline-flex;align-items:center;gap:6px}
+.fpills .fpedit svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linejoin:round}
+.dmapplyset{display:inline-flex;gap:6px}
+.dmhead{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 16px;min-width:0}
+.dmhead>.dmid{flex:1 1 16rem;min-width:0}
+.dmhead>.actbar.dmacts{flex:0 1 auto;margin-left:auto;padding:0;border:0;background:none;justify-content:flex-end}
+.dmid .dmstate{font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
+.dmid .dmstate.ok{color:var(--accent)}
+.dmid .dmstate:empty{display:none}
+/* Its settings: Apply one cell of the grid, beside the last setting, not a
+   row of its own; Reached at's address beside its label. */
+.dmsettings .setfoot{grid-column:auto;justify-content:flex-start;align-self:end}
+.dmsettings .dmboot .ctl{justify-content:space-between;align-items:center}
+@media(max-width:600px){ .dmhead>.actbar.dmacts{flex:1 1 100%;justify-content:flex-start;margin-left:0} }
+.setgrid .dmroute .lbl.dmreach{display:flex;gap:6px;align-items:baseline;min-width:0;white-space:nowrap}
+.setgrid .dmroute .lbl.dmreach a{color:var(--note);min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* The list view (R216): a container as one line that opens into its card
    (rows-you-open), each project's group a table (R218 step 8): the name,
    its state pill, whose, its ports as links, where nginx routes it, its
@@ -3376,7 +3447,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
     grid-template-columns:minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.1fr);
     align-items:start;column-gap:14px;row-gap:2px}
   .dmtab .row.stack2 .grow > *,.dkrows .row.stack2 .grow > *{grid-column:1 / -1}
-  .dmtab .row.stack2 .dmid,.dkrows .row.stack2 .dmid   {grid-column:1 / -1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmhead,.dkrows .row.stack2 .dmhead{grid-column:1 / -1;grid-row:1;min-width:0}
   .dmtab .row.stack2 .dmid .sub{margin:0}
 
   /* The fold's two halves, likewise: ports on the left, mounts on the right.

@@ -648,7 +648,7 @@ swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
 
-**A row's settings are a grid with one Apply (R210).** `.setgrid` holds a `.setcell` per setting, the label above its control as every field is (`lbl`), in columns where there is room and one column on a phone; a read-only cell (`.ro`) says a setting kept elsewhere with the way there; an action that belongs beside a setting (Add route) sits in the cell's `.ctl` and acts on the press. The one Apply is in `.setfoot`, asleep until a control differs from what is saved, and writes every staged setting in turn. A container row was five settings each with its own Apply or Move (the operator, 13 Oct).
+**A row's settings are a grid with one Apply (R210).** `.setgrid` holds a `.setcell` per setting, the label above its control as every field is (`lbl`), in columns where there is room and one column on a phone; a read-only cell (`.ro`) says a setting kept elsewhere with the way there; an action that belongs beside a setting (Add route) sits in the cell's `.ctl` and acts on the press. The one Apply is in `.setfoot`, asleep until a control differs from what is saved, and writes every staged setting in turn. A container row was five settings each with its own Apply or Move (the operator, 13 Oct). **On a card the settings are read first (the operator, 17 Oct):** `factPills([[label, value]])`, one wrapping line of pills, each its label in the quiet voice and its value (a pill with no label is a state on its own, Starts on boot), so every setting is on show at a glance; Edit settings, the first thing behind the card's ⋯, swaps the grid in with Cancel and Apply at its foot, and a card with a setting staged stays open (rows-you-open). A Containers card is this.
 
 ### files
 
@@ -700,9 +700,9 @@ sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
 
-**At most five buttons on a bar, and the rest behind More (R210).** A row's bar holds its primary verbs (Up, Down, the build, an Update that is due) and `actMore([...])` draws the rest behind one More button, whose menu opens under it as the gear's does, anything else closes it, Escape too; a single leftover is drawn inline, since a menu of one is a detour. The destructive verb is last in the menu as it was last on the bar. Seven buttons wrapped to two lines on a phone with Remove alone on the second (the operator, 13 Oct); `test/uniform.mjs` counts a bar's buttons at phone width.
+**At most five buttons on a bar, and the rest behind ⋯ (R210).** A row's bar holds its primary verbs (Open, Shell, the build, Down, an Update that is due) and `actMore([...])` draws the rest behind one ⋯ press (named More for a screen reader, the same ⋯ a project's header has), whose menu opens under it as the gear's does, anything else closes it, Escape too; a single leftover is drawn inline, since a menu of one is a detour. The destructive verb is last in the menu as it was last on the bar. Seven buttons wrapped to two lines on a phone with Remove alone on the second (the operator, 13 Oct); `test/uniform.mjs` counts a bar's buttons at phone width.
 
-A segmented switch (`.pseg`: Deploy key / Access token, Dark / Light / System, Cards / List) is one choice of two or three, not a set of verbs, so it is not an action bar and sits where the choice is read: in a dialog's field, the gear, a tab's bar (R216).
+A segmented switch (`.pseg`: Deploy key / Access token, Dark / Light / System, Cards / List) is one choice of two or three, not a set of verbs, so it is not an action bar and sits where the choice is read: in a dialog's field, the gear, a tab's bar (R216). A press that navigates (a download, a container's Open) is a link in the button suit, `a.btn`, and `a.btn.primary` where it is the row's main action. Every page's last card has 16px under it, the list's own spacer (`.doclist::after`), never a last child's margin, which a scrolling box drops.
 
 ### rows-you-open
 

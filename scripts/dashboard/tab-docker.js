@@ -207,24 +207,90 @@ function dmStatStrip(d){
   if (!mine.length) return "";
   const sum = k => mine.reduce((n, x) => n + (x[k] || 0), 0);
   const kb = n => humanBytes(n);
-  // The instance's last half hour under its CPU and memory (R218 step 9):
-  // its containers' samples summed minute by minute.
+  // The instance's last half hour under its CPU (R218 step 9): its
+  // containers' samples summed minute by minute.
   const rings = (d.services || []).map(c => (dockerSpark[dockerList?.node || dockerNode || ""] || {})[c.name]).filter(Boolean);
   const series = col => {
     const by = new Map();
     for (const r of rings) for (const x of r.slice(-30)) by.set(x[0], (by.get(x[0]) || 0) + x[col]);
     return [...by.entries()].sort((a, b) => a[0] - b[0]).map(x => x[1]);
   };
-  const cpuS = rings.length ? series(1) : [], memS = rings.length ? series(2) : [];
-  return `<div class="tiles mini dmstats">
-    <div class="tile"><div class="tv">${esc(sum("cpu").toFixed(sum("cpu") < 10 ? 1 : 0))}<span class="tu">%</span></div><div class="tl">CPU</div>${
+  const cpuS = rings.length ? series(1) : [];
+  const lim = Math.max(0, ...mine.map(x => x.mem_limit || 0));
+  const pct = lim ? Math.min(100, sum("mem") / lim * 100) : 0;
+  // One band of four (the operator's concept, 17 Oct): each its word over
+  // its figure, CPU with its half hour, memory with how full it is.
+  return `<div class="dmstats">
+    <div class="tile"><span class="tl">CPU</span><span class="tv">${esc(sum("cpu").toFixed(sum("cpu") < 10 ? 1 : 0))}<span class="tu">%</span></span>${
       sparkSvg(cpuS, 100, "CPU over the last half hour")}</div>
-    <div class="tile"><div class="tv">${esc(kb(sum("mem")))}</div><div class="tl">memory${
-      sum("mem_limit") ? ` of ${esc(kb(Math.max(...mine.map(x => x.mem_limit || 0))))}` : ""}</div>${
-      sparkSvg(memS, 100, "memory over the last half hour, as a share of its limit")}</div>
-    <div class="tile"><div class="tv">${esc(kb(sum("rx")))}<span class="tu">in</span></div><div class="tl">network, ${esc(kb(sum("tx")))} out</div></div>
-    <div class="tile"><div class="tv">${esc(String(sum("pids")))}</div><div class="tl">process${sum("pids") === 1 ? "" : "es"}</div></div>
+    <div class="tile"><span class="tl">Memory</span><span class="tv">${esc(kb(sum("mem")))}${
+      lim ? `<span class="tu">/ ${esc(kb(lim))}</span>` : ""}</span>${
+      lim ? `<span class="dmbar" role="img" aria-label="${Math.round(pct)}% of its limit"><i style="width:${pct.toFixed(1)}%"></i></span>` : ""}</div>
+    <div class="tile"><span class="tl">Network</span><span class="tv">↓ ${esc(kb(sum("rx")))}</span><span class="ts">↑ ${esc(kb(sum("tx")))}</span></div>
+    <div class="tile"><span class="tl">Process${sum("pids") === 1 ? "" : "es"}</span><span class="tv">${esc(String(sum("pids")))}</span></div>
   </div>`;
+}
+
+// A stack's services as a table (the tables rule, the operator's concept,
+// 17 Oct): each its dot and name, its image, its ports, what it uses now,
+// and Open where it publishes a port.
+const DM_SVC_COLS = [{label: "Service"}, {label: "Image", w: "minmax(0,1.3fr)"}, {label: "Ports", w: "minmax(0,1.1fr)"},
+                     {label: "CPU", w: "4.5rem", num: true}, {label: "Memory", w: "5.5rem", num: true}, {act: true, w: "4.5rem"}];
+function dmServicesTable(d, finished){
+  const all = dockerStats[dockerList?.node || dockerNode || ""] || {};
+  const rows = (d.services || []).map(c => {
+    const st = all[c.name] || null;
+    const ports = (c.ports || []).map(p => /(?:^|:)(\d+)->(\d+)\/\w+/.exec(p)).filter(Boolean);
+    const tone = c.state === "running" ? "ok" : finished(c) ? "" : "off";
+    return tblLine(DM_SVC_COLS, [
+      // ...and how one that is not running is: a one-shot that finished, or
+      // what docker says of it.
+      `<span class="dmdot ${tone}" aria-hidden="true"></span><span class="name" title="${esc(c.status || c.state || "")}">${esc(c.service || c.name)}</span>${
+        c.state === "running" ? "" : ` <span class="dim dmsvcst">${finished(c) ? "finished" : esc(c.status || c.state || "")}</span>`}`,
+      `<span class="mono">${dmImage(c.image)}</span>`,
+      ports.map(m => `${dmPortLink(m[1])} → ${esc(m[2])}`).join(" · "),
+      st ? `${esc(st.cpu.toFixed(1))}%` : "",
+      st ? esc(humanBytes(st.mem)) : "",
+      ports.length && c.state === "running" ? `<a href="http://${esc(daemonHost())}:${esc(ports[0][1])}/" target="_blank" rel="noreferrer">Open</a>` : ""]);
+  }).join("");
+  return tblWrap(DM_SVC_COLS, rows, "dmsvctbl");
+}
+
+// How long it has been up, off docker's own status ("Up 11 hours
+// (healthy)"): its newest container's, as "up 11h"; "" when none says.
+function dmUpFor(status){
+  const m = /^Up (?:(About an?|Less than an?)|(\d+)) (second|minute|hour|day|week|month|year)s?/.exec(status || "");
+  if (!m) return null;
+  const n = m[2] ? +m[2] : m[1].startsWith("Less") ? 0 : 1;
+  return n * {second: 1, minute: 60, hour: 3600, day: 86400, week: 604800, month: 2592000, year: 31536000}[m[3]];
+}
+function dmUptime(cs){
+  const ups = (cs || []).filter(c => c.state === "running").map(c => dmUpFor(c.status)).filter(x => x !== null);
+  if (!ups.length) return "";
+  const t = Math.min(...ups);
+  return "up " + (t < 60 ? `${t}s` : t < 3600 ? `${Math.round(t / 60)}m` : t < 86400 ? `${Math.round(t / 3600)}h` : `${Math.round(t / 86400)}d`);
+}
+
+// Open, a running container's main action (the operator's concept, 17 Oct):
+// a new tab at the address it is reached at, or its first published port on
+// the daemon's host; nothing for a stack, whose services each have theirs.
+const DM_OUT = `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2 5.5 6.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`;
+function dmOpenLink(d){
+  if ((d.services || []).length > 1) return "";
+  const port = dmPorts(d)[0]?.pub;
+  const url = d.route?.url && d.route.ready ? d.route.url : port ? `http://${daemonHost()}:${port}/` : "";
+  if (!url) return "";
+  return `<a class="btn primary dmopenb" href="${esc(url)}" target="_blank" rel="noreferrer" title="${esc(url)}">Open${port ? ` :${esc(port)}` : ""}${DM_OUT}</a>`;
+}
+
+// What the Ports and mounts fold holds, said on its heading: each published
+// port and where it goes, or how many for a stack.
+function dmPortsSaid(d){
+  const ps = dmPorts(d);
+  if (!ps.length) return "";
+  return (d.services || []).length > 1 || ps.length > 2
+    ? `${ps.length} port${ps.length === 1 ? "" : "s"}`
+    : ps.map(p => `${p.pub} → ${p.target}/${p.proto}`).join(" · ");
 }
 
 // Naming a container from a project. The name says WHICH of that project's
@@ -602,8 +668,9 @@ function dmRouteLine(d){
   // A cell of the row's settings grid (R210): the address it answers at,
   // then how it is reached and, for a stack, through which port; the
   // grid's one Apply saves it.
-  return `<div class="setcell dmroute">${lbl("", "Reached at", "")}
-    <div class="val">${link}${r.why ? ` <span class="dim">· ${esc(r.why)}</span>` : ""}</div>
+  // The address beside the label, not a line of its own over the picker
+  // (the operator, 17 Oct: the card read large).
+  return `<div class="setcell dmroute"><span class="lbl dmreach">Reached at ${link}${r.why ? ` <span class="dim">· ${esc(r.why)}</span>` : ""}</span>
     <div class="ctl"><select data-route="mode" data-was="${esc(r.mode)}" aria-label="route" title="how this instance is reached">${
       modes.map(([v, l]) => `<option value="${v}"${v === mode ? " selected" : ""}${
         v === "public" || (v === "funnel" && !r.funnel_ok) ? " disabled" : ""}>${esc(l)}</option>`).join("")}</select>${
@@ -683,29 +750,18 @@ function dmRefLine(d){
         esc(b)}</option>`).join("")}</select></div>`;
 }
 
-function dmGrantLine(d, other = false){
-  // What a Claude session may do with it: the setting of the PROJECT it
-  // belongs to (Claude may: Run its container, in that project's settings),
-  // said on the row with the words linking there. Nothing for a row that
-  // belongs to no project: its group says no session sees it. `other` is a
-  // container BuilderBot did not start, which is started and stopped rather
-  // than rebuilt.
-  if (!d.owner || !mayDocker()) return "";
+function dmClaudeSaid(d, other = false){
+  // What a Claude session may do with it, in a pill's few words: the
+  // setting of the PROJECT it belongs to (Claude may: Run its container),
+  // the words linking there. `other` is a container BuilderBot did not
+  // start, which is started and stopped rather than rebuilt.
+  if (!d.owner || !mayDocker() || d.owner === "System") return "";
   const mode = devClaudeMode(d.owner);
   const own = !other && d.owner === d.project && d.source !== "file";
-  const says = other
-    ? {auto: "may start, stop and restart it", ask: "asks you before starting, stopping or restarting it",
-       deny: "may read its log, and not start or stop it"}
-    : own
-    ? {auto: "may rebuild it, change its env and create it",
-       ask: "asks you before rebuilding it, changing its env or creating it", deny: "may not rebuild it"}
-    : {auto: "may rebuild it and change its env", ask: "asks you before rebuilding it or changing its env",
-       deny: "may not rebuild it"};
-  // A read-only cell of the settings grid: the setting is the project's, and
-  // the words are the way there.
-  return `<div class="setcell ro dmgrant dmclaudesays">${lbl("", own ? "Claude" : `${projLabel(d.owner)}'s Claude`, "")}
-    <div class="val"><span>${esc(says[mode] || says.deny)} · <a href="#" data-dmtestgo="${esc(d.owner)}"
-      title="the project's settings, where Claude may: Run its container is set">change</a></span></div></div>`;
+  const says = other ? {auto: "start · stop", ask: "asks first", deny: "reads its log"}
+    : own ? {auto: "rebuild · env · create", ask: "asks first", deny: "may not rebuild"}
+    : {auto: "rebuild · env", ask: "asks first", deny: "may not rebuild"};
+  return `<a href="#" data-dmtestgo="${esc(d.owner)}" title="the project's settings, where Claude may: Run its container is set">${esc(says[mode] || says.deny)}</a>`;
 }
 
 // The row's settings as one grid with one Apply at its foot (R210, the
@@ -713,13 +769,30 @@ function dmGrantLine(d, other = false){
 // drawn only when one of them is a setting rather than a read-only line.
 // `key` names the row for the Apply (`inst:project|instance` or
 // `ctr:name`), and dmRowDirty says whether anything is staged.
-function dmSetGrid(cells, key){
+function dmSetGrid(cells, key, {cancel = false} = {}){
   const body = cells.filter(Boolean).join("");
   if (!body) return "";
   const settable = /data-(dmown|dmmove|dmref|dmboot|route)=/.test(body);
-  return `<div class="setgrid dmsettings">${body}${settable
-    ? `<div class="setfoot"><button type="button" data-dmapply="${esc(key)}"${
-        dmRowDirty(key) ? "" : " disabled"} title="save what was changed above">Apply</button></div>` : ""}</div>`;
+  // ...with Cancel before it where Edit settings opened them: it drops what
+  // was staged and puts the fields away (rows-you-open).
+  const apply = `${cancel ? `<button type="button" class="stop" data-dmcancel="${esc(key)}">Cancel</button>` : ""}<button type="button" class="primary" data-dmapply="${esc(key)}"${
+        dmRowDirty(key) ? "" : " disabled"} title="save what was changed above">Apply</button>`;
+  // Beside the On boot tick where the row has one (its cell marks the
+  // place), so a disabled Apply never takes a line of its own (the operator,
+  // 17 Oct: the card read large); at the grid's foot otherwise.
+  // Opened by Edit settings, Cancel and Apply are the grid's foot, at its
+  // right, where a form's end is looked for.
+  if (settable && body.includes("<!--APPLY-->") && !cancel) return `<div class="setgrid dmsettings">${body.replace("<!--APPLY-->", `<span class="dmapplyset">${apply}</span>`)}</div>`;
+  return `<div class="setgrid dmsettings">${body.replace("<!--APPLY-->", "")}${settable
+    ? `<div class="setfoot${cancel ? " dmeditfoot" : ""}">${apply}</div>` : ""}</div>`;
+}
+// What a row has staged, dropped (Cancel): every draft its key names.
+function dmDropDrafts(key){
+  const inst = key.startsWith("inst:") ? key.slice(5) : "";
+  const name = inst ? (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === inst)?.name : key.slice(4);
+  delete dmOwnDraft[key];
+  if (inst){ delete dmMoveDraft[inst]; delete dmRefDraft[inst]; delete dmRouteDraft[inst]; delete dmNginxDraft[inst]; }
+  if (name) delete dmBootDraft[name];
 }
 // Whether a row has a setting staged and not yet applied: the drafts each
 // setting keeps, read by the row's key.
@@ -779,22 +852,45 @@ function dmMoveLine(d){
         esc(gone && n === d.project ? `${n} (deleted)` : projLabel(n))}</option>`).join("")}</select></div>`;
 }
 
-function dmTestLine(d){
-  // Where a project's tests run is the PROJECT's setting, and it now lives
-  // with its node, its build command and its test command, in the settings
-  // dialog (R68 step 6). It was here because it is about this container,
-  // which is a weak reason to put a project setting on a machine surface:
-  // somebody setting up a project had to visit the Docker tab to finish.
-  // The row still says what it is set to, because this is where a person
-  // wonders about it, and the words are a link to where it is changed.
+function dmTestSaid(d){
+  // Where the project's tests run, the project's setting (R68 step 6),
+  // linking to where it is changed.
   if (d.source === "file") return "";
   const mode = devTestMode(d.project);
-  return `<div class="setcell ro dmgrant dmtestsays">${lbl("", "Tests run", "")}
-    <div class="val"><span>${
-    mode === "only" ? "only in this container, never on the node"
-    : mode === "up" ? "in this container when it is up, else on the node"
-    : "on the node, never in this container"} · <a href="#" data-dmtestgo="${esc(d.project)}"
-      title="the project's settings, where its node and its test command are">change</a></span></div></div>`;
+  return `<a href="#" data-dmtestgo="${esc(d.project)}" title="the project's settings, where its node and its test command are">${
+    mode === "only" ? "in its container only" : mode === "up" ? "in its container when up" : "on the node"}</a>`;
+}
+
+// Which rows have their settings open (the operator's concept, 17 Oct): read
+// as pills until Edit settings swaps the fields in; Apply and Cancel put them
+// away; a row with a setting staged stays open whatever this says.
+const dmEditing = new Set();
+// Edit settings is the first thing behind the row's ⋯ (the operator, 17
+// Oct): the pills say every setting, so the press that changes them can
+// wait in the menu.
+const dmEditBtn = key => mayDocker() && !dmEditing.has(key) && !dmRowDirty(key)
+  ? `<button type="button" data-dmedit="${esc(key)}">Edit settings</button>` : "";
+function dmSetPills(pills){
+  return factPills(pills, "", "dmsetpills");
+}
+// An instance's settings as pills: whose it is, what it is built from when
+// that is another project, its branch, where it is reached, whether it
+// starts on boot, what Claude may do and where tests run.
+function dmInstPills(d, managed){
+  const r = d.route;
+  const mode = {lan: "LAN", funnel: "public link", public: "public"}[r?.mode] || "";
+  const url = r?.url ? `<a href="${esc(r.url)}" target="_blank" rel="noreferrer"${r.ready ? "" : ' class="dim"'}>${esc(r.url.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>` : "";
+  const refs = dockerList?.refs?.[d.project] || [];
+  return [
+    ["Project", d.owner ? esc(d.owner === "System" ? "System" : projLabel(d.owner)) : "none"],
+    d.source !== "file" && d.owner && d.project !== d.owner ? ["Built from", esc(projLabel(d.project))] : null,
+    d.source !== "file" && refs.length ? ["Branch", d.ref ? esc(d.ref) : "follows project"] : null,
+    r && (mode || url) ? ["Reached via", [esc(mode), url].filter(Boolean).join(" · ")] : null,
+    dmRoutesOf(d).length ? ["nginx", dmRoutesOf(d).map(dmRouteLink).join(" · ")] : null,
+    d.exists && !managed ? ["", d.boot ? "✓ Starts on boot" : "not on boot", d.boot ? "ok" : ""] : null,
+    ["Claude", dmClaudeSaid(d)],
+    ["Tests", dmTestSaid(d)],
+  ];
 }
 
 function dockerJob(){
@@ -1362,7 +1458,8 @@ function dmState(d, job, mine, busy, blind){
   if (d.interrupted && !d.running)
     return `a build was interrupted: BuilderBot restarted while it was running${
       d.built_rev ? `; still on ${esc(d.built_rev)}` : ", and nothing was built"}`;
-  if (d.running) return `running · ${d.containers} container(s)`;
+  // The pill on the name says it is running; this says how many, worded.
+  if (d.running) return `${d.containers} container${d.containers === 1 ? "" : "s"} up`;
   if (d.exists) return "stopped: its containers are still there";
   if (d.built_rev) return `${dmBuilt(d)}, not running`;
   return "never built";
@@ -1474,36 +1571,89 @@ function dmRowsHtml(ins, job, blind){
     const shellAt = !blind && mayShell() && mayDocker() && (d.services || []).filter(c => c.state === "running").length
       ? (d.services || []).filter(c => c.state === "running") : null;
     const shellWhy = shellAt ? dmShellWhy(d) : "";
+    const key = `inst:${d.project}|${d.instance}`;
+    const many = (d.services || []).length > 1;
+    // The head (the operator's concept, 17 Oct): the name, its pill and how
+    // long it has been up, one mono line of what it is (its image, the
+    // commit it was built from, its compose file), and at the right its
+    // buttons, Open the main one where it answers somewhere.
+    const meta = !blind && d.running && !busy && !(mine && job.error)
+      ? [dmUptime(d.services), `${d.containers ?? (d.services || []).length} container${(d.containers ?? (d.services || []).length) === 1 ? "" : "s"}`].filter(Boolean).join(" · ")
+      : "";
+    const said = meta ? "" : dmState(d, job, mine, busy, blind);
+    const origin = [
+      !many && d.services?.[0]?.image ? dmImage(d.services[0].image) : "",
+      d.built_rev ? `@ ${esc(String(d.built_rev).slice(0, 7))}` : "",
+      d.compose_path ? esc(d.compose_path) : d.source === "file" ? "written here" : "",
+    ].filter(Boolean).join(`<span class="sep"></span>`);
+    const open = !blind && d.running ? dmOpenLink(d) : "";
     const inner = `
       <div class="grow">
+        <div class="dmhead">
         <div class="dmid">
         <div class="name">${esc(d.name)}<span class="pill stat dmpill${st[1] ? " " + st[1] : ""}${
             !blind && d.running && st[1] === "ok" ? " live" : ""}">${
-            esc(st[0])}${dockerList?.stale && !blind ? ", as last seen" : ""}</span></div>
-        <div class="sub">${d.source === "file"
-          ? `written here`
-          : `from ${esc(projLabel(d.project))}'s compose file${
-              d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}</div>
+            esc(st[0])}${dockerList?.stale && !blind ? ", as last seen" : ""}</span>${
+            meta ? `<span class="dmmeta state">${esc(meta)}</span>` : ""}</div>
+        ${origin ? `<div class="sub dmorigin">${origin}</div>` : ""}
+        ${said ? `<div class="sub dmstate state${!blind && d.running ? " ok" : mine && job.error ? " bad" : ""}">${said}</div>` : ""}
         </div>
-        <div class="dmdet">
+        <div class="actbar dmacts">
+        ${open}
+        ${!mayDocker() ? "" : `${d.running ? "" : `<button type="button" class="primary" data-dm="up" ${
+          busy || (d.missing_env || []).length ? "disabled" : ""}
+          title="${(d.missing_env || []).length
+            ? "the env is missing " + esc(d.missing_env.join(", "))
+            : !d.built_rev
+              ? "Start it: docker compose up -d, which builds the image first, as compose does"
+              : "Start it: docker compose up -d"}">Up</button>`}
+        ${shellAt ? `<button type="button" data-dmshell="${esc(shellAt[0].name)}"${shellWhy ? " disabled" : ""}
+          title="a shell inside ${esc(shellAt[0].service || shellAt[0].name)}, in the dock">Shell</button>` : ""}
+        ${(d.images_behind || []).length && !busy ? `<button type="button" data-dm="update"
+          title="pull the newer images and start it again: docker compose pull, then up -d">Update</button>` : ""}
+        ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
+          title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx tab's record and rebuild with it">Update</button>` : ""}
+        `}
+        ${busy ? `<button type="button" data-dm="abort" ${
+            job.aborting ? "disabled" : ""}
+            title="stop this build; what is already built is kept"
+            >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+        ${managed || !mayDocker() ? "" : `<button type="button" data-dm="rebuild" ${
+          // A button that refuses is not information: a rebuild when nothing
+          // moved is a cached build and a restart, behind a confirm that
+          // says so.
+          busy ? "disabled" : ""}
+          title="${!d.built_rev
+            ? "build the first image, then bring it up"
+            : d.changed
+              ? "build from " + esc(d.ref || d.project) + "'s codebase, then down and up"
+              : (mine && job.error)
+                ? "run it again: the last attempt did not finish"
+                : "the last build is current; this builds it again anyway"}">${
+          d.built_rev ? "Rebuild" : "Build"}</button>`}
+        ${!mayDocker() ? "" : `<button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
+          title="Stop it and remove its containers: docker compose down">Down</button>`}
         ${
-        // What the row knows, as a facts grid (R216, the facts rule): its
-        // image, its ports (whose each is when the instance is more than
-        // one container, B252), its containers and how each is, what it
-        // was built from and the file it is made from.
-        factGrid([
-          ["Image", (d.services || []).length === 1 ? dmImage(d.services[0].image) : "", {html: true}],
-          ["Images", (d.services || []).length > 1 ? [...new Set(d.services.map(c => c.image).filter(Boolean))].map(dmImage).join(", ") : "", {html: true}],
-          ["Ports", d.ports.length ? dmPortsFact(d) : "", {html: true, cls: "dmports"}],
-          ["Route", dmRoutesOf(d).map(dmRouteLink).join(" · "), {html: true, cls: "dmroute"}],
-          ["Containers", (d.services || []).length > 1 ? d.services.map(c =>
-            `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
-              esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>") : "",
-            {html: true, cls: "dmsvcs"}],
-          ["Built from", d.built_rev ? `<code>${esc(String(d.built_rev).slice(0, 8))}</code>` : "", {html: true}],
-          ["Compose file", d.compose_path ? `<code>${esc(d.compose_path)}</code>` : "", {html: true}],
-        ], "dmfacts")}
-        ${blind ? "" : dmStatStrip(d)}
+        // Open, Shell, the build and Down are what a row is for; the rest
+        // goes behind ⋯ (R210), Remove last in there as it was last on the bar.
+        actMore([
+          dmEditBtn(key),
+          ...(shellAt && !shellWhy ? shellAt.slice(1).map(c => `<button type="button" data-dmshell="${esc(c.name)}"
+            title="a shell inside ${esc(c.service || c.name)}, in the dock">Shell in ${esc(c.service || c.name)}</button>`) : []),
+          managed || !mayDocker() ? "" : `<button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
+            title="${d.source === "file" ? "edit this container's compose file and env"
+                    : "edit the project's compose file and this container's env"}">Compose and env</button>`,
+          !mayDocker() || managed ? "" : `<button type="button" data-dmrel ${busy || d.relocating?.busy ? "disabled" : ""}
+            title="to another node, its data with it: a copy beside it, or this one moved">Copy or move…</button>`,
+          !mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
+            busy ? "disabled" : ""}
+            title="take it down and drop it from this list; its env and data stay for a remake">Remove</button>`])}
+        </div>
+        </div>
+        ${
+        // What it uses: one band of four for a container, a table of its
+        // services for a stack (the tables rule), each with its own use.
+        blind ? "" : many ? dmServicesTable(d, finished) : dmStatStrip(d)}
         ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: routes, certificates and Deploy on the ${pageLink("", "nginx page", "#/machines/nginx")}</div>` : ""}
         ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : d.relocating.archive ? "note" : "bad"} dmreloc">${esc(d.relocating.line)}${
           d.relocating.busy ? '<span class="dots"></span>'
@@ -1523,76 +1673,24 @@ function dmRowsHtml(ins, job, blind){
           : dockerList?.ports_local && d.open_from && !d.exists ? `<div class="sub warn dmopen">${dmOpenSoon(d)}</div>` : ""}
         ${dmUnrouted(d)}
         ${(d.images_behind || []).length ? `<div class="sub warn dmimages">a newer ${esc(d.images_behind.join(", "))} is out: Update pulls it and starts it again</div>` : ""}
-        ${dmSetGrid([dmOwnerLine(d, `inst:${d.project}|${d.instance}`), dmMoveLine(d), dmRefLine(d), dmRouteLine(d),
-                     dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : "", dmGrantLine(d), dmTestLine(d)],
-                    `inst:${d.project}|${d.instance}`)}
-        </div>
-      </div>
-      <div class="actbar dmacts">
-        <span class="state${!blind && d.running ? " ok" : ""}">${dmState(d, job, mine, busy, blind)}</span>
-        ${!mayDocker() ? "" : `<button type="button" data-dm="up" ${
-          d.running || busy || (d.missing_env || []).length ? "disabled" : ""}
-          title="${(d.missing_env || []).length
-            ? "the env is missing " + esc(d.missing_env.join(", "))
-            : !d.built_rev
-              ? "Start it: docker compose up -d, which builds the image first, as compose does"
-              : "Start it: docker compose up -d"}">Up</button>
-        <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
-          title="Stop it and remove its containers: docker compose down">Down</button>
-        ${shellAt ? `<button type="button" data-dmshell="${esc(shellAt[0].name)}"${shellWhy ? " disabled" : ""}
-          title="a shell inside ${esc(shellAt[0].service || shellAt[0].name)}, in the dock">Shell</button>` : ""}
-        ${(d.images_behind || []).length && !busy ? `<button type="button" data-dm="update"
-          title="pull the newer images and start it again: docker compose pull, then up -d">Update</button>` : ""}
-        ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
-          title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx tab's record and rebuild with it">Update</button>` : ""}
-        `}
-        ${busy ? `<button type="button" data-dm="abort" ${
-            job.aborting ? "disabled" : ""}
-            title="stop this build; what is already built is kept"
-            >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-        ${managed ? "" : `<button type="button" data-dm="rebuild" ${
-          // A button that refuses is not information. This slept whenever the
-          // build matched the code, which is defensible and was read as
-          // broken: the operator pinned an instance to a branch, pressed
-          // Apply, and had nothing to press. What "the code has moved" is
-          // worth is a SENTENCE, which the state line above and this title
-          // both carry, and a rebuild when nothing moved is a cached build
-          // and a restart, behind a confirm that says so.
-          busy ? "disabled" : ""}
-          title="${!d.built_rev
-            ? "build the first image, then bring it up"
-            : d.changed
-              ? "build from " + esc(d.ref || d.project) + "'s codebase, then down and up"
-              : (mine && job.error)
-                ? "run it again: the last attempt did not finish"
-                : "the last build is current; this builds it again anyway"}">${
-          d.built_rev ? "Rebuild" : "Build"}</button>`}
         ${
-        // Up, Down and the build are what a row is for; the rest goes behind
-        // More (R210), Remove last in there as it was last on the bar.
-        actMore([
-          ...(shellAt && !shellWhy ? shellAt.slice(1).map(c => `<button type="button" data-dmshell="${esc(c.name)}"
-            title="a shell inside ${esc(c.service || c.name)}, in the dock">Shell in ${esc(c.service || c.name)}</button>`) : []),
-          managed || !mayDocker() ? "" : `<button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
-            title="${d.source === "file" ? "edit this container's compose file and env"
-                    : "edit the project's compose file and this container's env"}">Edit</button>`,
-          !mayDocker() || managed ? "" : `<button type="button" data-dmrel ${busy || d.relocating?.busy ? "disabled" : ""}
-            title="to another node, its data with it: a copy beside it, or this one moved">Copy or move…</button>`,
-          !mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
-            busy ? "disabled" : ""}
-            title="take it down and drop it from this list; its env and data stay for a remake">Remove</button>`])}
+        // Its settings, read as pills with Edit settings, which swaps the
+        // fields in with Apply and Cancel (rows-you-open; the operator's
+        // concept, 17 Oct); a row with a setting staged stays open.
+        dmEditing.has(key) || dmRowDirty(key)
+          ? dmSetGrid([dmOwnerLine(d, key), dmMoveLine(d), dmRefLine(d), dmRouteLine(d),
+                       dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : ""], key, {cancel: true})
+          : dmSetPills(dmInstPills(d, managed))}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
-                   "Ports and mounts", "",
+                   "Ports and mounts", dmPortsSaid(d),
                    `<div class="wire">${skel("rows", 2, "reading…")}</div>`, {open: false})}
       ${
       // What it printed (R216): a fold under the row, read when opened and
-      // again on Follow, so the Jobs tab's log of the last action is not
-      // the only way to read a container. Nothing to read for a row with
-      // no container yet.
+      // again on Follow. Nothing to read for a row with no container yet.
       d.exists && !blind && (d.services || []).length
         ? docSection("docker", `logs:${d.project}|${d.instance}`, "Log",
-                     (d.services || []).length > 1 ? `${d.services.length} containers` : "",
+                     many ? `${d.services.length} containers` : "",
                      `<div class="dmlogbox">${skel("lines", 5, "reading…")}</div>`, {open: false}) : ""}`;
     return dmRowWrap(d, st, inner, blind);
   }).join("");
@@ -1655,20 +1753,6 @@ function dmPorts(d){
 // A published port as the address it answers at (R216): the daemon's
 // host, which the row's Reached at line already names.
 const dmPortLink = pub => `<a href="http://${esc(daemonHost())}:${esc(pub)}/" target="_blank" rel="noreferrer">${esc(pub)}</a>`;
-
-// The ports fact: each published port a link, the rest of the mapping as
-// text, and whose each is when the instance is more than one container.
-function dmPortsFact(d){
-  const line = (text, svc) => {
-    const m = /^(.*?)(\d+)->(\d+\/\w+)(.*)$/.exec(text || "");
-    const body = m ? `${esc(m[1])}${dmPortLink(m[2])}->${esc(m[3])}${esc(m[4])}` : esc(text);
-    return svc ? `${esc(svc)}: ${body}` : body;
-  };
-  if ((d.services || []).length > 1)
-    return d.services.filter(c => (c.ports || []).length).map(c =>
-      c.ports.map(p => line(p, "")).join(", ").replace(/^/, `${esc(c.service || c.name)}: `)).join(" · ");
-  return (d.ports || []).map(p => line(p, "")).join(" · ");
-}
 
 // Why a row publishes on every address of a node whose ports stay on it
 // (R217), and what puts it right: its compose file names 0.0.0.0, by a
@@ -2039,8 +2123,15 @@ function dmWireRows(el, list = dockerList){
   };
   // The grid's one Apply: every staged setting on the row, in turn, then
   // one redraw. A setting that fails says so and the rest still go.
+  el.querySelectorAll("[data-dmedit]").forEach(b => b.onclick = () => {
+    closeMore(); dmEditing.add(b.dataset.dmedit); dockerRev++; drawPanes();
+  });
+  el.querySelectorAll("[data-dmcancel]").forEach(b => b.onclick = () => {
+    dmDropDrafts(b.dataset.dmcancel); dmEditing.delete(b.dataset.dmcancel); dockerRev++; drawPanes();
+  });
   el.querySelectorAll("[data-dmapply]").forEach(btn => btn.onclick = async () => {
     const key = btn.dataset.dmapply, row = btn.closest(".row");
+    dmEditing.delete(key);
     const inst = key.startsWith("inst:") ? key.slice(5) : "";
     const name = inst ? (list?.instances || []).find(x => `${x.project}|${x.instance}` === inst)?.name : key.slice(4);
     busy(btn, "Applying");
@@ -2136,22 +2227,22 @@ function dmBootLine(name, on){
   const want = name in dmBootDraft ? dmBootDraft[name] : on;
   // A cell of the settings grid: the tick is a draft, the grid's Apply
   // writes it (R122).
-  return `<div class="setcell dmboot">${lbl("", "On boot", "")}<label class="ndcap"><input type="checkbox" data-dmboot="${esc(name)}"
-      data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Start on boot</label></div>`;
+  return `<div class="setcell dmboot">${lbl("", "On boot", "")}<div class="ctl"><label class="ndcap"><input type="checkbox" data-dmboot="${esc(name)}"
+      data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Start on boot</label><!--APPLY--></div></div>`;
 }
 
 function dmOtherRowsHtml(cs){
   return cs.map(c => dmOtherWrap(c, `
       <div class="grow">
+        <div class="dmhead">
+        <div class="dmid">
         <div class="name">${esc(c.name || c.id)}<span class="pill stat${c.state === "running" ? " ok" : " off"}">${
           esc(c.state || "unknown")}</span> <span class="pill" title="not started by BuilderBot">not ours</span></div>
         <div class="sub">${esc(c.image)} · ${esc(c.status || c.state)}${
           c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}${
           c.ports.length ? ` · ${c.ports.map(esc).join(", ")}` : ""}</div>
-        ${dmSetGrid([dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot), dmGrantLine(c, true)],
-                    "ctr:" + (c.name || c.id))}
-      </div>
-      <div class="actbar dmacts">
+        </div>
+        <div class="actbar dmacts">
         ${!mayDocker() ? "" : `<button type="button" data-ctl="${
           c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
           title="${c.state === "running" ? "Stop" : "Start"} it: docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
@@ -2161,6 +2252,15 @@ function dmOtherRowsHtml(cs){
           title="Restart it: docker restart ${esc(c.name || c.id)}">Restart</button>`}
         ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
           title="the last ${esc(String(400))} lines it printed">Log</button>`}
+        ${actMore([dmEditBtn("ctr:" + (c.name || c.id))])}
+        </div>
+        </div>
+        ${dmEditing.has("ctr:" + (c.name || c.id)) || dmRowDirty("ctr:" + (c.name || c.id))
+          ? dmSetGrid([dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot)],
+                      "ctr:" + (c.name || c.id), {cancel: true})
+          : dmSetPills([["Project", c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "none"],
+                        ["", c.boot ? "✓ Starts on boot" : "not on boot", c.boot ? "ok" : ""],
+                        ["Claude", dmClaudeSaid(c, true)]])}
       </div>`)).join("");
 }
 // A container BuilderBot did not start is a line in list view too, with

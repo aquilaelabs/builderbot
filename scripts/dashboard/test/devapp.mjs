@@ -122,7 +122,23 @@ async function pressIn(sel){
 }
 async function dmDisabled(act){
   await openManager();
-  return page.$eval(`${DM} [data-dm="${act}"]`, b => b.disabled);
+  // A button the row does not draw is as dead as a grayed one: a running
+  // container wears no Up (the operator's concept, 17 Oct).
+  return page.evaluate(sel => { const b = document.querySelector(sel); return !b || b.disabled; }, `${DM} [data-dm="${act}"]`);
+}
+// A row's settings read as pills until Edit settings, behind its ⋯, swaps
+// the fields in (the operator's concept, 17 Oct): a check that works the
+// fields opens every row's, as a person would one by one; none puts them
+// back.
+async function dmEditAll(){
+  await page.waitForFunction(() => (dockerList?.instances || []).length > 0, null, { timeout: 20000 }).catch(() => {});
+  await page.evaluate(() => {
+    for (const d of dockerList?.instances || []) dmEditing.add(`inst:${d.project}|${d.instance}`);
+    for (const c of dockerList?.containers || []) dmEditing.add(`ctr:${c.name || c.id}`);
+    dockerRev++; drawPanes(); });
+}
+async function dmEditNone(){
+  await page.evaluate(() => { dmEditing.clear(); dockerRev++; drawPanes(); });
 }
 // The manager repaints from its own fetch, not the artifacts poll, so a test
 // that acted through the API has to ask it to look again.
@@ -490,10 +506,10 @@ print(json.dumps(m._build_env('verstamp', '')))
 // Waited for, not read once: the manager's Up and Down follow its own
 // listing, a fetch behind the artifacts row's, and under a whole run the
 // row still read the state from before the up when this looked (B319).
-await page.waitForFunction(sel => document.querySelector(sel + ' [data-dm="up"]')?.disabled
+await page.waitForFunction(sel => (document.querySelector(sel + ' [data-dm="up"]')?.disabled ?? true)
   && document.querySelector(sel + ' [data-dm="down"]')?.disabled === false, DM, { timeout: patience(20000) });
 r = await row();
-ok(!r.down && r.up, 'running: Down is live, Up is dead');
+ok(!r.down && r.up, 'running: Down is live, Up is dead (not drawn)');
 // Rebuild does NOT go to sleep when the build matches the code, which it used
 // to: a button that refuses is not information, and the operator met it by
 // pinning an instance to a branch, pressing Apply, and having nothing to
@@ -510,6 +526,7 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
 // ssh node and has none), and public is named as unbuilt.
 {
   await openManager();
+  await dmEditAll();
   await page.waitForFunction(sel => /http:\/\/stub:7475\//.test(
     document.querySelector(sel + ' .dmroute')?.textContent || ''), DM, { timeout: 20000 });
   const opts = await page.$$eval(`${DM} [data-route="mode"] option`, os => os.map(o => [o.value, o.disabled]));
@@ -813,6 +830,7 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 // (found walking the dev instance, 5 Oct).
 {
   await page.evaluate(() => openDocker());
+  await dmEditAll();
   await page.waitForSelector(`${DM} [data-dmboot]`, { timeout: 20000 }).catch(() => {});
   // ...and the listing itself, which a refresh empties until its answer
   // lands: read in that gap it held no instance at all.
@@ -1962,11 +1980,13 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   ok(groups[0].name === 'app' && groups[0].ports.length === 1 && /7474.*7475/.test(groups[0].ports[0])
      && groups[0].mounts === 1 && groups[1].name === 'gitea' && groups[1].ports.length === 2 && groups[1].mounts === 0,
      `a stack's Ports and mounts are grouped under each service (${JSON.stringify(groups)})`);
-  const line = await page.$eval(`${DM} .dmports`, e => e.textContent);
-  ok(/app: 7475->7474\/tcp/.test(line) && /gitea: 3000->3000\/tcp, 2222->22\/tcp/.test(line),
-     `...the ports line under Details names whose each is (${line.trim()})`);
-  const how = await page.$eval(`${DM} .dmsvcs`, e => e.textContent);
-  ok(!/->/.test(how), `...and the services list under it says only how each is (${how.trim()})`);
+  // Its services a table in the card (the operator's concept, 17 Oct): each
+  // its own line, its ports in their column.
+  const svcs = await page.$$eval(`${DM} .dmsvctbl .tline`, ls => ls.map(l => ({
+    name: l.querySelector('.td.lead .name')?.textContent.trim(), ports: l.querySelector('[data-th="Ports"]')?.textContent.replace(/\s+/g, ' ').trim() })));
+  ok(svcs.some(x => x.name === 'app' && /7475 → 7474/.test(x.ports)) && svcs.some(x => x.name === 'gitea' && /3000 → 3000/.test(x.ports) && /2222 → 22/.test(x.ports)),
+     `...the services table names whose each port is (${JSON.stringify(svcs)})`);
+  await dmEditAll();
   const opts = await page.$$eval(`${DM} select[data-route="port"] option`, os => os.map(o => o.textContent));
   ok(opts.includes(':3000 gitea') && opts.includes(':2222 gitea') && opts.includes(':7475 app'),
      `...and so does the route's port picker (${opts.join(' ')})`);
@@ -2098,27 +2118,22 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
 }
 
 // Where the row's state sits, asserted by geometry rather than by a
-// screenshot. It used to be a third column beside the name; it is the action
-// bar's status line now, which is the shared rule: what a thing is doing
-// gets a line of its own, and the verbs go under it. Measured because the
-// point is the pixels: a status that shared a line with four buttons was the
-// layout this framework exists to stop.
+// screenshot (the operator's concept, 17 Oct): in the card's head, by the
+// name, and the verbs at the head's right on the same line at a desk, so the
+// card spends no line on a bar of its own.
 const laid = await page.evaluate(() => {
-  const bar = document.querySelector('.dmtab .row.stack2 .actbar');
-  const st = bar?.querySelector('.state');
-  const btn = bar?.querySelector('button');
-  if (!bar || !st || !btn) return { err: 'no bar' };
+  const head = document.querySelector('.dmtab .row.stack2 .dmhead');
+  const st = head?.querySelector('.state'), bar = head?.querySelector('.actbar');
+  if (!head || !st || !bar) return { err: 'no head' };
   const r = e => e.getBoundingClientRect();
-  return { grid: getComputedStyle(
-             document.querySelector('.dmtab .row.stack2 .grow')).display,
-           own: Math.round(r(st).width) >= Math.round(r(bar).width) - 2,
-           above: r(st).bottom <= r(btn).top + 1 };
+  return { grid: getComputedStyle(document.querySelector('.dmtab .row.stack2 .grow')).display,
+           beside: r(bar).top < r(st).bottom && r(bar).left >= r(st).right - 1 };
 });
-ok(!laid.err && laid.own && laid.above,
-   `...and the row's state is the bar's own line, above the verbs (${
+ok(!laid.err && laid.beside,
+   `...and the row's state is in its head by the name, its verbs beside it on the same line (${
      JSON.stringify(laid)})`);
 ok(laid.grid === 'grid',
-   '...with the name and the ports still a grid beside each other');
+   "...with the card's parts in its grid");
 
 // ---- what a project's sessions on one node may reach on its others (R82) --
 // session_net_own(node) names, per project that can have a session there,
@@ -2724,10 +2739,13 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   const run = tiles.find(t => t.l === 'running');
   ok(run && +run.v >= 1 && /^of \d+ containers?$/.test(run.s) && tiles.every(t => Math.abs(t.h - tiles[0].h) <= 1),
      `tiles say how many run of how many are here, in one row of one height (${JSON.stringify(tiles.map(t => [t.v, t.l, t.s]))})`);
-  const facts = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] dl.facts',
-    dl => [...dl.querySelectorAll('dt')].map(d => d.textContent.trim()));
-  ok(facts.includes('Image') && facts.includes('Ports'),
-     `...and a row's facts are a grid of labels and values (${facts.join(', ')})`);
+  // What it is, on one mono line under the name (the operator's concept, 17
+  // Oct), and its settings as pills.
+  const head = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"]', r => ({
+    origin: r.querySelector('.dmorigin')?.textContent.replace(/\s+/g, ' ').trim() || '',
+    pills: [...r.querySelectorAll('.fpill .k')].map(k => k.textContent.trim()) }));
+  ok(head.origin.length > 0 && head.pills.includes('Project'),
+     `...and a row says what it is on one line under its name, its settings as pills (${head.origin} | ${head.pills.join(', ')})`);
   ok(await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill',
        e => getComputedStyle(e, '::before').content === '""' && getComputedStyle(e, '::before').width === '6px'),
      '...the state pill wearing a dot of its color');
@@ -2737,7 +2755,7 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile', { timeout: 15000 });
   const strip = await page.$$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile',
     ts => ts.map(t => `${t.querySelector('.tv')?.textContent.trim()} ${t.querySelector('.tl')?.textContent.trim()}`));
-  ok(strip.length === 4 && /^1\.3 ?% CPU$/.test(strip[0].replace(/\s+/g, ' ')) && /memory of/.test(strip[1]) && /process/.test(strip[3]),
+  ok(strip.length === 4 && /^1\.3 ?% CPU$/.test(strip[0].replace(/\s+/g, ' ')) && /Memory/.test(strip[1]) && /Process/.test(strip[3]),
      `...and a running row carries a strip of what it uses: CPU, memory, network, processes (${strip.join(' | ')})`);
   // ...with its last half hour under its CPU and memory (R218 step 9): the
   // node's agent sends each container's use once a minute, and the stub
@@ -2753,11 +2771,11 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   const sparks = await (await page.waitForFunction(() => {
     const ts = [...document.querySelectorAll('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile')];
     const got = ts.map(t => t.querySelector('svg.spark')).filter(Boolean);
-    return got.length === 2 ? got.map(sv => ({ pts: (sv.querySelector('polyline')?.getAttribute('points') || '').split(' ').length,
+    return got.length === 1 ? got.map(sv => ({ pts: (sv.querySelector('polyline')?.getAttribute('points') || '').split(' ').length,
                                                dot: !!sv.querySelector('circle'), label: sv.getAttribute('aria-label') })) : null;
   }, null, { timeout: 30000 })).jsonValue();
   ok(sparks.every(x => x.pts >= 2 && x.dot && /last half hour/.test(x.label)),
-     `...its CPU and memory tiles carry the last half hour as a sparkline, the latest a dot (${JSON.stringify(sparks)})`);
+     `...its CPU carries the last half hour as a sparkline, the latest a dot, and its memory how full it is (${JSON.stringify(sparks)})`);
   // Its log, in a fold under the row, read when the fold opens, with Follow.
   const logSect = '.dmtab .row[data-inst="ep.silon|staging-two"] details[data-sect="docker:logs:ep.silon|staging-two"]';
   await page.click(`${logSect} > summary`);
@@ -2817,9 +2835,9 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   } else {
     ok(true, 'one project here, so no chips: a chip row of one is not drawn');
   }
-  // A published port is the address it answers at (R216): a link on the
-  // ports fact, to the daemon's host and that port.
-  const portLink = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmports a', a => a.href);
+  // A published port is the address it answers at (R216): the card's Open,
+  // its main action (the operator's concept, 17 Oct), or a stack's service's.
+  const portLink = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] :is(a.dmopenb, .dmsvctbl a)', a => a.href);
   ok(/^http:\/\/[^/]+:7475\/$/.test(portLink), `a published port is a link to where it answers (${portLink})`);
   // Docker's health, read off the status and said on the pill: the fixture
   // wears what its marker says.
@@ -2842,7 +2860,7 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   const line = await page.$eval('.dmtab details.dmline[data-inst="ep.silon|staging-two"]', d => ({
     open: d.open, name: d.querySelector('summary .name')?.textContent.trim(), facts: d.querySelector('summary .td[data-th="Ports"]')?.textContent.replace(/\s+/g, ' ').trim(),
     head: [...(d.closest('.dmtbl')?.querySelectorAll(':scope > .thead .th') || [])].map(t => t.textContent).join('|'),
-    body: !!d.querySelector('.dmbody dl.facts') }));
+    body: !!d.querySelector('.dmbody .dmhead') }));
   ok(!line.open && /staging-two/.test(line.name || '') && /7475/.test(line.facts || '') && line.body
      && /^Container\|State\|Project\|Ports\|Address\|Image$/.test(line.head),
      `in list view a container is one line of a table under its project, its name, state and facts in columns, with its card behind it (${JSON.stringify(line)})`);
@@ -3026,6 +3044,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   // A phone shows one thing at a time, and the manager is in the pane behind
   // the sidebar: without this the row measures zero and says nothing.
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await dmEditAll();
   await page.waitForSelector('.dmtab .dmowner select', { state: 'visible', timeout: 15000 });
   const narrow = await page.evaluate(() => {
     const t = document.querySelector('.dmtab');
@@ -3296,9 +3315,8 @@ ok(await page.$('#devSend'),
   ok(line.includes(`--project-directory ${D}/site `) && /web:/.test(text) && !/app:/.test(text),
      `...and its build runs compose in that file's folder, on that file (${line.slice(0, 120)}; ${text.replace(/\s+/g, ' ').slice(0, 40)})`);
   await dmRefresh();
-  ok(await page.$$eval('.dmtab .row[data-inst="ep.silon|ep-silon-site"] dl.facts .fact', fs =>
-       fs.some(f => f.querySelector('dt')?.textContent === 'Compose file' && /site\/compose\.yml/.test(f.querySelector('dd')?.textContent || ''))),
-     '...and its Docker row says which file made it, as a fact on the row');
+  ok(await page.$eval('.dmtab .row[data-inst="ep.silon|ep-silon-site"] .dmorigin', e => /site\/compose\.yml/.test(e.textContent)),
+     '...and its Docker row says which file made it, on the line under its name');
   const again = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'stray', compose: 'docker-compose.override.yml' }) })).json()));
@@ -3366,6 +3384,7 @@ ok(await page.$('#devSend'),
   let refPick = '';
   for (let i = 0; i < 5 && refPick !== 'sidebranch'; i++){
     await dmRefresh();
+    await dmEditAll();
     refPick = await page.$eval(DM, r => r.querySelector('[data-dmref]')?.value || '');
     if (refPick !== 'sidebranch') await sleep(1000);
   }
@@ -3829,10 +3848,10 @@ ok(await page.$('#devSend'),
   // which has to be decidable before there is a row. The row says what it is
   // set to and links there, the way the tests-run line does.
   await dmRefresh();
-  await page.waitForFunction(() => /may rebuild it, change its env and create it/.test(
-    document.querySelector('.dmtab .row[data-inst^="ep.silon|"] .dmclaudesays')?.textContent || ''),
-    null, { timeout: 20000 });
-  ok(await page.$('.dmtab .row[data-inst^="ep.silon|"] .dmclaudesays [data-dmtestgo="ep.silon"]') !== null
+  await dmEditNone();
+  const claudePill = () => [...document.querySelectorAll('.dmtab .row[data-inst^="ep.silon|"] .fpill')].find(p => p.querySelector('.k')?.textContent === 'Claude');
+  await page.waitForFunction(cp => /rebuild · env · create/.test((0, eval)(cp)()?.textContent || ''), claudePill.toString(), { timeout: 20000 });
+  ok(await page.evaluate(cp => !!(0, eval)(cp)()?.querySelector('[data-dmtestgo="ep.silon"]'), claudePill.toString())
      && await page.$('.dmtab [data-dmclaude]') === null,
      'the docker row says what a session may do with it and links to the setting, carrying no control');
   await page.evaluate(() => renameProject('ep.silon'));
@@ -3872,7 +3891,7 @@ ok(await page.$('#devSend'),
   // setting a project up had to finish on a machine tab. The row still says
   // what it is set to, because this is where a person wonders, and the words
   // link to where it is changed.
-  ok(/Tests run on the node, never in this container/.test(
+  ok(/Tests ?on the node/.test(
        await page.$eval('.dmtab .row[data-inst^="ep.silon|"]', r => r.textContent.replace(/\s+/g, ' '))),
      'the row says where this project\'s tests run, in words: on the node unless the project says otherwise (B241)');
   ok(await page.$('.dmtab [data-dmtestgo="ep.silon"]') !== null
@@ -3958,7 +3977,7 @@ ok(await page.$('#devSend'),
   ok(stored().tests_in === 'only' && !('devtest' in stored()),
      'only is stored as tests_in, and nothing else');
   await page.evaluate(() => { dockerList = null; loadDocker(); });
-  await page.waitForFunction(() => /only in this container/.test(
+  await page.waitForFunction(() => /in its container only/.test(
     document.querySelector('.dmtab')?.textContent || ''), null, { timeout: 20000 });
   ok(true, '...and the row says the other thing once it is set');
   await where('up');
@@ -4288,6 +4307,8 @@ print(json.dumps(out))
        JSON.stringify(g)})`);
   // ...and the project is a setting on the row, staged and applied.
   const R = '.dmtab .row[data-ctr="someone-elses"]';
+  await dmEditAll();
+  await page.waitForSelector(`${R} [data-dmapply]`, { timeout: 15000 });
   ok(await page.$eval(`${R} [data-dmapply]`, b => b.disabled)
      && await page.$eval(`${R} [data-dmown]`, e => e.value === '' && [...e.options].some(o => o.value === 'ep.silon')),
      'a container somebody else started carries a Project setting, on no project, with Apply asleep');
@@ -4300,9 +4321,9 @@ print(json.dumps(out))
       .filter(h => row && (h.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING));
     return heads.pop()?.querySelector('b')?.textContent === 'ep.silon';
   }, null, { timeout: 20000 });
-  // The label ("ep.silon's Claude") and the words under it are two lines
-  // of a settings cell now (R210), so any whitespace between them.
-  ok(/ep\.silon's Claude\s+may/.test(await page.$eval(R, r => r.textContent)),
+  // Its Claude pill says what the project's sessions may do with it (the
+  // operator's concept, 17 Oct: settings read as pills).
+  ok(/Claude\s*(start · stop|asks first|reads its log)/.test(await page.$eval(R, r => r.textContent)),
      "...and Apply moves it under that project, saying what the project's sessions may do with it");
   ok(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8'))
        && Object.values(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8')))
@@ -4586,7 +4607,7 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   const seededPill = await pillOf({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (0) 5 hours ago' });
   // Its two containers say healthy, so the row does too (R216), rather
   // than running: the one-shot that finished does not count against it.
-  ok(/^healthy(, as last seen)?$/.test(seededPill) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
+  ok(/^healthy(, as last seen)?$/.test(seededPill) && !/partly up/.test(seeded) && /seed finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
      `a one-shot that exited 0 leaves the row healthy and reads finished, while one that failed still reads partly up (${
        seededPill} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
 }
@@ -4913,7 +4934,8 @@ print(json.dumps(out))`], { encoding: 'utf8' });
     body: JSON.stringify({ action: 'deploy', node: n }) })).json()), nodeId);
   ok(dep.ok === true || /already on the Docker tab/.test(dep.error || ''), `nginx is deployed on the node for the row to route through (${JSON.stringify(dep).slice(0, 80)})`);
   await openManager();
-  for (let i = 0; i < 40 && !(await page.$(`${DM} .dmnginxroute [data-dmngadd]`)); i++){ await dmRefresh(); await sleep(1000); }
+  await dmEditAll();
+  for (let i = 0; i < 40 && !(await page.$(`${DM} .dmnginxroute [data-dmngadd]`)); i++){ await dmRefresh(); await dmEditAll(); await sleep(1000); }
   await page.waitForSelector(`${DM} .dmnginxroute [data-dmngadd]`, { timeout: 20000 });
   const line = await page.$eval(`${DM} .dmnginxroute`, e => ({ certs: [...e.querySelectorAll('[data-dmngcert] option')].map(o => o.value),
     ports: [...e.querySelectorAll('[data-dmngport] option')].map(o => `${o.value}${o.disabled ? '!' : ''}`), add: !e.querySelector('[data-dmngadd]').disabled }));
@@ -4944,7 +4966,10 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   ok(second.route?.host === 'www.second.example' && second.route?.port === port,
      `the same port at another hostname is a second route, not a refusal (${JSON.stringify(second.route || second.error)})`);
   // ...and the row says where nginx answers for it, as a fact with a link (R216).
-  const routeFact = await page.$eval(`${DM} dl.facts .dmroute a`, a => ({ href: a.href, text: a.textContent })).catch(() => null);
+  await dmEditNone();
+  await page.waitForFunction(sel => [...document.querySelectorAll(sel + ' .fpill')].some(p => p.querySelector('.k')?.textContent === 'nginx'), DM, { timeout: 15000 }).catch(() => {});
+  const routeFact = await page.evaluate(sel => { const p = [...document.querySelectorAll(sel + ' .fpill')].find(x => x.querySelector('.k')?.textContent === 'nginx');
+    const a = p?.querySelector('a'); return a ? { href: a.href, text: a.textContent } : null; }, DM);
   ok(routeFact && /^http:\/\/[^/]+\/$/.test(routeFact.href),
      `...and the row carries the route as a fact, the address it answers at (${JSON.stringify(routeFact)})`);
   const bad = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4952,6 +4977,8 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   ok(/holds no certificate filed under nope.example.com/.test(bad.error || ''), `a certificate the node does not hold is refused by name (${bad.error})`);
   // A hostname typed on the row (the operator, 13 Oct): the route serves
   // that name, and the name joins the shared Hostnames list.
+  await dmEditAll();
+  await page.waitForSelector(`${DM} .dmnginxroute [data-dmnghost]`, { timeout: 15000 }).catch(() => {});
   ok(await page.$(`${DM} .dmnginxroute [data-dmnghost]`) !== null, 'the row offers a hostname box beside the certificate');
   const named = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'route-add', node: n, cert: '', host: 'app.example.com', port: 9 }) })).json()), nodeId);
