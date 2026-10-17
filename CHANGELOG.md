@@ -157,6 +157,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb roadmap reopen N puts a finished item back on the list with its steps and notes, so more work found on it becomes its own step rather than a new item naming the old one (11c1373)
 - Help on the rail: BuilderBot's own docs read in the dashboard, listed by section beside each one with its contents, links between them opening in place, and a search across all of them as you type (9bdb3da)
 - A role's Nodes, Toolchains, Jobs, New projects, Storage and CI runner rows open on each node or runner, Read and Write on each; the area's own boxes tick or clear them all, and the server holds every action to the node or runner it touches (eba3133)
+- A session can take back a roadmap step it marked done with bb roadmap step undone, saying why; the History view shows it (146fa49)
 
 ### Changed
 
