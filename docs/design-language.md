@@ -435,7 +435,7 @@ The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mi
 
 **A pass is one green in every scheme (the operator, 16 Oct).** The doctor's dot and its passing checks wear `--pass`, which no scheme swaps (#3fb950, #1a7f37 in the light half), as a warning stays `--warn` and a failure `--bad`: an accent can be orange or purple, and a verdict must not change color with the scheme.
 
-**In the light half a lit control is a tint, not a block (the operator, 16 Oct: too dark).** `--accent-deep` there is the panel with 16% of the second color, `--accent-mid` (its edge) the color itself and `--on-fill` the ink, which clears AA on the tint in every scheme; the second color as text is the lightest of its hue that holds AA on the page and the panel.
+**In the light half a lit control is a tint, not a block (the operator, 16 Oct: too dark).** `--accent-deep` there is the panel with 16% of the second color, `--accent-mid` (its edge) the color itself and `--on-fill` the ink, which clears AA on the tint in every scheme; the second color as text is the lightest of its hue that holds AA on the page and the panel. **A state that can be good or bad never wears the accent (the operator, 17 Oct: a healthy container read red in a scheme whose accent is red).** Healthy, running, passed, on, a meter with room: `--pass`, the same green in every scheme (darkened in a light half), as the doctor's checks are; a warning `--warn` and a failure `--bad`. The accent and the second color are for what is chosen and what is pressed, never for how a thing is.
 
 ### shape
 

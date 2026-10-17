@@ -1119,7 +1119,7 @@ for (const kind of kinds){
   const bad = [];
   // The pick measured is the page's sub-nav (R218 step 4: the strip and its
   // active tab are gone): Machines, whose Nodes is on. Its ground is the
-  // switch's lift since 17 Oct, not the accent fill, and is measured opaque.
+  // bar's, showing through a tab with no fill of its own since 17 Oct.
   await page.evaluate(() => railGo('machines', 'nodes'));
   await page.waitForSelector('.pane .bar .subnav button.on', { timeout: 10000 });
   await sleep(300);
@@ -1145,7 +1145,13 @@ for (const kind of kinds){
       const lum = a => 0.2126 * lin(a[0]) + 0.7152 * lin(a[1]) + 0.0722 * lin(a[2]);
       const R = (a, b) => { const x = lum(px(a)), y = lum(px(b));
                             const h = Math.max(x, y), l = Math.min(x, y); return (h + 0.05) / (l + 0.05); };
-      const bg = getComputedStyle(el).backgroundColor;
+      // The ground the words are read on: the tab's own, or what shows
+      // through it (the sub-nav's tabs have none of their own since 17 Oct).
+      let bg = 'rgb(0, 0, 0)';
+      for (let a = el; a; a = a.parentElement){
+        const c = getComputedStyle(a).backgroundColor;
+        if (c && !/^rgba\(.*,\s*0\)$|^transparent$/.test(c)){ bg = c; break; }
+      }
       const at = sel => { const k = el.querySelector(sel);
                           return k ? +R(getComputedStyle(k).color, bg).toFixed(2) : null; };
       return { label: +R(getComputedStyle(el).color, bg).toFixed(2), icon: at('.ic') };

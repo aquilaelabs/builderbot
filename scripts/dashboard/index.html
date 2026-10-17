@@ -1012,17 +1012,26 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 @media(max-width:900px){ .homegrid{grid-template-columns:minmax(0,1fr)} }
 .hcard,.hsect{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   overflow:hidden;min-width:0}
-.hcard h3,.hsect h3{margin:0;padding:9px 12px;font:var(--f-sect);border-bottom:var(--hair) solid var(--line)}
-.hnone{padding:10px 12px;color:var(--dim);font:var(--f-ui)}
-.hcard .hjob{width:100%;text-align:left;background:none;border:0;border-radius:0;
+/* Home's cards keep the inset every card's words have, 16px, the tiles'
+   too (the operator, 17 Oct: the headings sat 4px left of the tiles'). */
+.hcard h3,.hsect h3{margin:0;padding:10px 16px;font:var(--f-sect);border-bottom:var(--hair) solid var(--line)}
+.hnone{padding:10px 16px;color:var(--dim);font:var(--f-ui)}
+.hcard .hjob{width:100%;text-align:left;background:none;border:0;border-radius:0;padding:8px 16px;
   border-bottom:var(--hair) solid var(--line);white-space:normal;justify-content:flex-start;min-height:var(--tap)}
 .hcard .hjob:last-child{border-bottom:0}
 .hcard .hjob .sub{display:block}
-.hglance{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:12px}
-.hproj{border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:9px 11px;min-width:0;
-  background:var(--btn)}
+.hglance{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:12px 16px 16px}
+.hproj{border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:12px 14px;min-width:0;
+  background:var(--btn);display:flex;flex-direction:column;gap:4px}
 .hproj.pc{box-shadow:inset 3px 0 var(--pc)}
 .hproj .name{font:var(--f-row);font-weight:600}
+/* ...its name a link to the project, not a box (a project card's is a
+   heading), and its facts in the project card's voices. */
+.hproj .name.link{align-self:flex-start;background:none;border:0;padding:0;min-height:0;color:var(--ink);text-align:left;white-space:normal}
+@media(hover:hover){ .hproj .name.link:hover{background:none;color:var(--note)} }
+.hproj .pcfacts{font:var(--f-data);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hproj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
+.hproj .pnote{font:var(--f-ui)} .hproj .pnote.bad{color:var(--bad)} .hproj .pnote.warn{color:var(--warn)} .hproj .pnote.dim{color:var(--dim)}
 .jbrow.focus{box-shadow:inset 3px 0 var(--accent)}
 /* The Notifications page (R218 step 6): an ask's long part whole in a box
    that scrolls inside itself; a kept notice wears its kind's icon. */
@@ -1377,14 +1386,14 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    for. The row is a column, so it simply falls last, except on the Projects
    tab at desktop width, where the row turns back into a line and this has to
    wrap onto its own beneath it. */
-.row.stack2 .sessline{width:100%;flex-basis:100%;min-width:0;overflow-wrap:anywhere;color:var(--accent)}
+.row.stack2 .sessline{width:100%;flex-basis:100%;min-width:0;overflow-wrap:anywhere;color:var(--pass)}
 /* ...but a refusal is a refusal: the accent beat .sub.bad on specificity and
    'no node to run a Claude session on' read as a healthy state (B451). */
 .row.stack2 .sessline.bad{color:var(--bad)}
 .row.stack2 .sessline.warn{color:var(--warn)}
 /* Who has a session here: a line per name with a dot in front, bright while
    that session is working and dim while it waits. */
-.row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--accent)}
+.row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--pass)}
 .sessone{display:flex;align-items:center;gap:6px;line-height:1.6}
 .sessbehind{font-size:12px;margin:0 0 2px 14px;line-height:1.4;color:var(--warn)}
 /* Its dot is the session dot (.st, below): one rule for every place a
@@ -1659,7 +1668,7 @@ select:focus{outline-offset:-2px}
 .modal .sub{font:var(--f-note);color:var(--dim)}
 .modal .sub.bad{color:var(--bad)}
 .modal .sub.warn{color:var(--warn)}
-.modal .sub.ok{color:var(--ok)}
+.modal .sub.ok{color:var(--pass)}
 .nb .foot[hidden]{display:none}
 /* A verb that cannot be undone, once and everywhere. It was scoped to the
    modals and the notebook, so the same decision: Remove a container, Revoke
@@ -1728,7 +1737,7 @@ select:focus{outline-offset:-2px}
 .modal .hint.warn{color:var(--warn)}
 /* The project settings' Test (the operator, 7 Oct): what is missing in red,
    a list when it is more than one thing, and its notes in the quiet voice. */
-.modal .hint.ok{color:var(--accent)}
+.modal .hint.ok{color:var(--pass)}
 #rnTestField .setrow{align-items:center;flex-wrap:nowrap}
 #rnTestField .setrow .hint{flex:1 1 auto;min-width:0}
 /* File access (R151): one row per account, its name and its access. */
@@ -1821,7 +1830,7 @@ select:focus{outline-offset:-2px}
 #ramodal label.pick input{width:auto;margin:0;flex:0 0 auto}
 /* "push" on a project row. Green because it is a capability the project has,
    and plain text because it is not a control; it cannot be toggled here. */
-.row .sub .ok{color:var(--accent)}
+.row .sub .ok{color:var(--pass)}
 
 /* The disclosure marker, once, for every <details> on the page: a memory, a
    bug report, a findings group, the component fold. All four set display:flex
@@ -1983,7 +1992,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 /* The containers under a dev instance's row: one line each, the running
    ones in the ok color, the rest dim. */
 .dmsvcs{line-height:1.5}
-.dmsvc.ok{color:var(--accent)}
+.dmsvc.ok{color:var(--pass)}
 /* The project's node beside its name: a sibling of .name, so the name
    element stays the name and nothing else. */
 .namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
@@ -2113,7 +2122,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .portpick{display:flex;flex-direction:column;gap:8px;padding:var(--row-y) var(--row-x)}
 .portpick a.btn{justify-content:flex-start;gap:8px;font:12px/1.4 var(--mono)}
 .artrow .top .state{font:var(--f-note)}
-.artrow .top .state.ok{color:var(--accent)}
+.artrow .top .state.ok{color:var(--pass)}
 /* Pushed right on a desktop; on a phone the buttons take their own line, the
    same line, on every row: evenness beats compactness at that width. */
 .artrow .acts{display:flex;gap:6px;flex:0 0 auto;margin-left:auto}
@@ -3037,8 +3046,25 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .pseg>button.on:hover{background:color-mix(in srgb, var(--ink) 15%, var(--btn))}
   .nb .vbar button.on:hover{background:color-mix(in srgb, var(--ink) 15%, var(--btn));border-color:var(--line)}
 }
-.pane .bar .subnav button{min-height:26px;padding:2px 12px;font:var(--f-ui)}
-@media(max-width:900px){ .pane .bar .subnav button{min-height:var(--tap)} }
+/* The page's sub-nav (a group's tools: Nodes, Storage, nginx) is its own
+   thing, not a switch (the operator, 17 Oct: in the switch's box it read
+   as one more button, and repeated the Cards and List beside it): the tools
+   as tabs standing on the bar's floor, the one on show in ink with the
+   accent under it, the rest dim, no box. It runs the bar's height, so the
+   line under the tab on show is the bar's own bottom edge. */
+.pane .bar .subnav.pseg{align-self:stretch;margin:-6px 0;border:0;border-radius:0;background:none;overflow:visible;gap:2px}
+.pane .bar .subnav.pseg>button{min-height:0;padding:0 12px;border:0;border-radius:0;background:none;
+  color:var(--dim);font:var(--f-ui);font-weight:500;box-shadow:none}
+.pane .bar .subnav.pseg>button+button{border-left:0}
+.pane .bar .subnav.pseg>button.on{color:var(--ink);background:none;box-shadow:inset 0 -2px 0 var(--accent)}
+@media(hover:hover){
+  .pane .bar .subnav.pseg>button:hover,.pane .bar .subnav.pseg>button.on:hover{background:none;color:var(--ink)}
+}
+@media(max-width:900px){ .pane .bar .subnav.pseg>button{min-height:var(--tap)} }
+/* A press that is only an icon (the trash, ⋯ where it is drawn as one)
+   centers it: inline, an SVG sat on the text's baseline and two pixels off
+   (the operator, 17 Oct). */
+button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;align-items:center;justify-content:center}
 /* Search in the top bar: a field that jumps, its rows under it. */
 .jump{position:relative;flex:0 1 280px;min-width:0}
 .jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
@@ -3073,7 +3099,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .tile .tv .tu{font:var(--f-ui);color:var(--dim);margin-left:4px}
 .tile .tl{font:var(--f-note);color:var(--dim)}
 .tile .ts{font:var(--f-note);color:var(--dim);opacity:.85}
-.tile.ok .tv{color:var(--accent)}
+.tile.ok .tv{color:var(--pass)}
 /* A tile that is a link and carries no news is the second color: it is a
    way to its page, as a link in words is. */
 .tile.link:not(.ok):not(.warn):not(.bad) .tv{color:var(--note)}
@@ -3124,7 +3150,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    its ports as links, what it uses, Open at the right. */
 .dmsvctbl{margin:10px 0 0;border:var(--hair) solid var(--line);border-radius:var(--r-control);overflow:hidden}
 .dmsvctbl .dmdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--dim);margin-right:8px;vertical-align:middle}
-.dmsvctbl .dmdot.ok{background:var(--accent)}
+.dmsvctbl .dmdot.ok{background:var(--pass)}
 .dmsvctbl .mono{font:var(--f-data);color:var(--dim)}
 .dmsvctbl .td a{color:var(--note)}
 .dmsvctbl>.thead,.dmsvctbl>.tline{padding:7px 12px}
@@ -3144,7 +3170,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .fpill .k{color:var(--dim);flex:0 0 auto}
 .fpill .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .fpill .v a{color:var(--note)}
-.fpill.ok .v{color:var(--accent)}
+.fpill.ok .v{color:var(--pass)}
 .fpills .fpedit{display:inline-flex;align-items:center;gap:6px}
 .fpills .fpedit svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linejoin:round}
 .dmapplyset{display:inline-flex;gap:6px}
@@ -3152,7 +3178,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .dmhead>.dmid{flex:1 1 16rem;min-width:0}
 .dmhead>.actbar.dmacts{flex:0 1 auto;margin-left:auto;padding:0;border:0;background:none;justify-content:flex-end}
 .dmid .dmstate{font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
-.dmid .dmstate.ok{color:var(--accent)}
+.dmid .dmstate.ok{color:var(--pass)}
 .dmid .dmstate:empty{display:none}
 /* Its settings: Apply one cell of the grid, beside the last setting, not a
    row of its own; Reached at's address beside its label. */
@@ -3488,7 +3514,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    line under it, because the first project heading below deliberately has no
    top border. (This was written as #fxBar, an id the markup never carried, so
    the bar had no padding at all and its controls sat against the edge.) */
-.fxtab .fxbar{border-bottom:var(--hair) solid var(--line)}
+/* (Findings' bar has no rule under it: no other page's has, and it stopped
+   short of the edge, the operator, 17 Oct.) */
+/* What a page's bar says about the page (Users, Roles, Settings, Jobs) is a
+   quiet note beside its controls, not a heading (the operator, 17 Oct). */
+.docbarrow>.dim,.docbarrow>.dim .sub{font:var(--f-note);color:var(--dim)}
+/* A node's list that is empty says so in the words' own voice, not mono. */
+.ndrunnone{font:var(--f-ui)}
 .fxtab .fxbar select{flex:0 1 auto;min-width:0}
 /* A hint in a document tab is a band like any other: it was the Analysis
    tab's own rule, so the same line on the Toolchains tab sat flush against
@@ -3534,7 +3566,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndmeter .lbl{color:var(--dim)}
 .ndmeter .track{height:6px;border-radius:99px;background:var(--sunk);
   border:var(--hair) solid var(--line);overflow:hidden}
-.ndmeter .fill{display:block;height:100%;background:var(--accent);
+.ndmeter .fill{display:block;height:100%;background:var(--pass);
   transition:width .3s ease}
 .ndmeter.warn .fill{background:var(--warn)}
 .ndmeter.bad .fill{background:var(--bad)}
@@ -3640,7 +3672,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* .sst, not .st; that one is the session dot beside a Claude tab's name. */
 .sect>summary .sst{margin-left:auto;font:var(--f-ui);color:var(--dim);text-align:right;
   flex:0 1 auto;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sect>summary .sst.ok,.actbar .state.ok{color:var(--accent)}
+.sect>summary .sst.ok,.actbar .state.ok{color:var(--pass)}
 .sect>summary .sst.warn,.actbar .state.warn{color:var(--warn)}
 .sect>summary .sst.bad,.actbar .state.bad{color:var(--bad)}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
@@ -3922,8 +3954,8 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   0 0 8px color-mix(in srgb, var(--warn) 55%, transparent)}
 .st.waiting{box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent),
   0 0 8px color-mix(in srgb, var(--accent) 50%, transparent)}
-.pill.live{box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
-  0 0 10px color-mix(in srgb, var(--accent) 30%, transparent)}
+.pill.live{box-shadow:0 0 0 1px color-mix(in srgb, var(--pass) 30%, transparent),
+  0 0 10px color-mix(in srgb, var(--pass) 30%, transparent)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @media(prefers-reduced-motion:reduce){ .st.working{animation:none} }
 
@@ -3935,7 +3967,7 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 #docDot:not(.ok):not(.warn):not(.bad){background:var(--line)}   /* no verdict yet */
 #docDot.ok{background:var(--pass)}
 .doctor .chips .pill.ok{color:var(--pass);border-color:color-mix(in srgb, var(--pass) 35%, var(--panel))}
-.st.ok{background:var(--accent)}
+.st.ok{background:var(--pass)}
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
 /* The doctor's panel under its dot in the top bar (R218 step 3). */
@@ -3970,7 +4002,11 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 .row .name .pill.stat::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
   background:currentColor;margin-right:5px;vertical-align:1px}
 .row .name .pill.stat.off{color:var(--purple);border-color:var(--purple-edge)}
-.pill.ok{color:var(--accent);border-color:var(--green2-edge)}
+/* A state that is good or bad wears its own green, red and amber in every
+   scheme, as the doctor does (the operator, 17 Oct: a healthy container
+   read red in a scheme whose accent is red): --pass, --bad and --warn,
+   never the accent. */
+.pill.ok{color:var(--pass);border-color:var(--green2-edge)}
 .pill.bad{color:var(--bad);border-color:var(--red2-edge)}
 .pill.warn{color:var(--warn);border-color:var(--gold-edge)}
 .pill.note{color:var(--note);border-color:color-mix(in srgb, var(--note) 35%, var(--panel))}
@@ -4350,7 +4386,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
    that is not yours, which would be a page always asking for attention. */
 .chatrow.unread .grow{color:var(--accent);font-weight:600}
 .chatrow .dot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
-.chatrow .dot.ok{background:var(--accent)}
+.chatrow .dot.ok{background:var(--pass)}
 .chathead{display:flex;align-items:center;gap:8px;padding:6px 10px;
   border-bottom:var(--hair) solid var(--line)}
 .chatnote{padding:6px 10px;color:var(--dim)}

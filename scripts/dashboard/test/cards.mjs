@@ -710,20 +710,20 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
   ok(await page.evaluate(() => { try { return localStorage.getItem('bb.mode'); } catch (e) { return 'no storage'; } }) === 'light',
      '...and the browser keeps it, as it keeps the scheme');
   const swLight = await page.$eval('#uiMenu .sw[data-theme="moss"]', b => getComputedStyle(b).backgroundColor);
-  // The page's sub-nav is the filled accent on show (R218 step 4).
-  await page.evaluate(() => railGo('machines', 'nodes'));
+  // A switch's pick (the gear's Dark and Light) is the lit control on show:
+  // the page's sub-nav is tabs with no fill since 17 Oct.
   // Waited for, not slept on (B753): the Light crossfade and the button's
   // own color transition were still running 300ms in under a whole run.
   // A lit control in the light half is a soft tint of the second color with
   // the ink on it (the operator, 16 Oct: the darkened fill was too dark).
-  const white = await page.waitForFunction(() => { const e = document.querySelector('.pane .bar .subnav button.on');
+  const white = await page.waitForFunction(() => { const e = document.querySelector('#uiMenu .modeseg button.on');
     if (!e) return false;
     const c = getComputedStyle(e), x = document.createElement('canvas').getContext('2d');
     x.fillStyle = c.backgroundColor; x.fillRect(0, 0, 1, 1);
     const [r, g, b] = x.getImageData(0, 0, 1, 1).data;
     return c.color === getComputedStyle(document.body).color && (r + g + b) / 3 > 190; }, null, { timeout: 5000 }).then(() => true, () => false);
   ok(white, `a lit control in the light half is a light tint with the ink on it (${
-    await page.$eval('.pane .bar .subnav button.on', e => getComputedStyle(e).color).catch(() => 'no button')})`);
+    await page.$eval('#uiMenu .modeseg button.on', e => getComputedStyle(e).color).catch(() => 'no button')})`);
   // Nostromo's light half is the ship's white corridors: rounded like the
   // rest, its own wall panels rather than the deck, no steel rail (the
   // operator, 16 Oct); the dark half keeps its hallway.
