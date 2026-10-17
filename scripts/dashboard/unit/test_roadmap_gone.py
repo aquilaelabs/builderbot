@@ -57,6 +57,15 @@ class Gone(unittest.TestCase):
         self.assertFalse(any(r["id"] == rid for r in roadmap.load()["projects"].get("alpha") or []),
                          "and it is still off the open list")
 
+    def test_inside_a_batch_a_finished_item_still_takes_a_note(self):
+        # B819: the close waited in the batch's events, so the note written
+        # next read the item as never there.
+        rid = roadmap.add("alpha", "a plan", by="claude", steps=["one"])["item"]["id"]
+        self.assertTrue(roadmap.begin("alpha").get("ok", True) is not False)
+        self.assertTrue(roadmap.step_done("alpha", rid, 0, by="claude").get("finished"))
+        self.assertTrue(roadmap.set_info("alpha", rid, "as built", by="claude").get("ok"))
+        self.assertIn(f"R{rid} is done already", roadmap.step_done("alpha", rid, 0, by="claude")["error"])
+
     def test_one_kept_without_its_row_is_put_back_together_from_the_log(self):
         # Finished by its last step before B767, an item's done event held the
         # words alone; its steps come back from the log, and its details can

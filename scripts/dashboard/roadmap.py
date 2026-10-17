@@ -685,12 +685,23 @@ def add(project, text, by="you", steps=(), who="", number=None):
     return {"ok": True, "item": row}
 
 
+def _events(d, project):
+    """The history and then the open batch's events (B819): inside a batch
+    what this session did waits there until commit, so an item a step had
+    just closed was neither on the list nor in the history, and read as
+    never there."""
+    return [*(d.get("history", {}).get(project) or []),
+            *((d.get("batch", {}).get(project) or {}).get("events") or [])]
+
+
 def _gone(d, project, item_id):
     """Why an item is not on the list, from the loaded file's log, or the
     plain answer: finished (ticked off, or its last step done), dropped, or
     never there (B737: a step done after the last one closed the item said
-    only 'no such item')."""
-    for e in sorted(d.get("history", {}).get(project) or [], key=lambda e: -e.get("at", 0)):
+    only 'no such item'). The open batch's events too (B819): inside one the
+    close waits there until commit, and an item a step had just closed read
+    as never there."""
+    for e in sorted(_events(d, project), key=lambda e: -e.get("at", 0)):
         if _int(e.get("id")) != item_id or e.get("step") is not None:
             continue
         if e.get("act") == "done":
@@ -789,7 +800,7 @@ def _finished_row(d, project, item_id):
     """A finished item's row as the Finished section shows it: the snapshot
     in its newest "done" event, made into one for an older event that kept
     only the words. None when it is not a finished item."""
-    for e in reversed(d.get("history", {}).get(project) or []):
+    for e in reversed(_events(d, project)):
         if _int(e.get("id")) != item_id or e.get("step") is not None:
             continue
         # Its words or details put right since: still finished.
@@ -801,7 +812,7 @@ def _finished_row(d, project, item_id):
             # Kept without its row, or with an empty one a build before the
             # rebuild wrote (15 Oct): the steps the log knows join it, and its
             # own words and details stay.
-            got = _rebuilt_row(_oldest_first(d.get("history", {}).get(project) or []), item_id, e.get("text", ""))
+            got = _rebuilt_row(_oldest_first(_events(d, project)), item_id, e.get("text", ""))
             e["row"] = {**got, **(e["row"] if isinstance(e.get("row"), dict) else {}), "steps": got["steps"]}
         return e["row"]
     return None
