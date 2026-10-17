@@ -52,8 +52,9 @@ ok(/25 of 40 reports/.test(st.text) && st.bars === 1 && /Show more/.test(st.text
 // into view brings the rest under the rows already there, with no press.
 const top = await page.$eval('#bugList:visible .bug:nth-of-type(1)', e => e.getBoundingClientRect().top);
 await page.$eval('#bugList:visible .pagemore', e => e.scrollIntoView({ block: 'end' }));
+// The next page is built when the foot comes into view: all forty rows.
 await page.waitForFunction(() => { const l = [...document.querySelectorAll('#bugList')].find(x => x.offsetParent);
-  return [...l.querySelectorAll(':scope > .bug')].every(r => !r.hidden); }, null, { timeout: 5000 });
+  return l.querySelectorAll(':scope > .bug').length === 40; }, null, { timeout: 5000 }).catch(() => {});
 st = await state();
 ok(st.shown === 40 && st.bars === 0, `scrolled to its foot the rest arrives by itself, and with all of it shown there is no foot (${JSON.stringify(st)})`);
 ok(!await page.$eval('#bugList:visible .bug:nth-of-type(1)', e => e.hidden) && Number.isFinite(top),
