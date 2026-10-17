@@ -73,7 +73,48 @@ def _inflate(row):
     return row
 
 
+# One read of the record per request (the operator, 17 Oct: pages took
+# seconds to load). The status read asked for the same node rows dozens of
+# times, once per project per node and again for each of the bell's sources,
+# and every ask queued on the store's one lock behind the agents' writes:
+# inside held(), each is read once and handed out as a copy.
+_held = threading.local()
+
+
+@contextlib.contextmanager
+def held():
+    """Read each node once for the length of the block, on this thread.
+    Nested blocks share the outer one's reads."""
+    if getattr(_held, "rows", None) is not None:
+        yield
+        return
+    _held.rows = {}
+    try:
+        yield
+    finally:
+        _held.rows = None
+
+
+def _once(key, read):
+    """`read()`, or what it gave earlier in this held() block; a copy of
+    each row either way, so a caller that writes on one writes on its own."""
+    memo = getattr(_held, "rows", None)
+    if memo is None:
+        return read()
+    if key not in memo:
+        memo[key] = read()
+    got = memo[key]
+    if isinstance(got, list):
+        return [dict(r) for r in got]
+    return dict(got) if got else got
+
+
 def node_list(all=False):
+    """The nodes, JSON columns inflated. Read once per held() block."""
+    return _once(("list", bool(all)), lambda: _node_list(all))
+
+
+def _node_list(all=False):
     """The nodes, JSON columns inflated. Retired rows are history: kept in
     the table (door 1: ids are never reused, and an old record must stay
     explicable) and left out of every list unless asked for. Each row also
@@ -217,6 +258,11 @@ def _failed_why(job_id):
 
 
 def node(node_id):
+    """One node's row, JSON columns inflated; read once per held() block."""
+    return _once(("node", node_id), lambda: _node(node_id))
+
+
+def _node(node_id):
     got = _rows("SELECT * FROM nodes WHERE id = ?", (node_id,))
     return _live(_inflate(got[0])) if got else None
 

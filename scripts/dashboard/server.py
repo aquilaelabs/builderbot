@@ -997,6 +997,7 @@ def _project_columns(who, facts):
     # named, so the person can see where it used to run (the operator, 5 Oct).
     removed_nodes = set()
     if not NODES_OK:
+        _t1 = time.monotonic()
         for n in nodes.node_list(all=True):
             node_names[n["id"]] = n["name"]
             if n["state"] == "retired":
@@ -1006,12 +1007,16 @@ def _project_columns(who, facts):
                 why = nodes.agent_stale(n)
                 if why:
                     node_gaps[n["id"]] = why
+        timing.add("projects:setup:nodes", (time.monotonic() - _t1) * 1000)
     # ...and the phone each node has, from one read (R120): a row's Phone
     # button and the lease line it shows everybody on the project.
-    phones = phone.by_node(users.uid_of(who))
+    with timing.timed("projects:setup:phones"):
+        phones = phone.by_node(users.uid_of(who))
     # ...and the sharper answer for the Claude button: a node from another
     # WINDOW holds this project's sessions; one merely behind does not.
-    held_nodes = node_holds()
+    with timing.timed("projects:setup:holds"):
+        held_nodes = node_holds()
+    _t1 = time.monotonic()
     open_roadmap = roadmap.counts()
     # One batch spans the notebook, so the count the panel shows has to be
     # both halves added up; a banner reporting only the roadmap's would read
@@ -1033,6 +1038,7 @@ def _project_columns(who, facts):
     # What a session has waiting for the operator (roadmap #27): the count
     # lights the bell and the notebook band.
     pend_counts = pending.counts()
+    timing.add("projects:setup:notebook", (time.monotonic() - _t1) * 1000)
     # The setup above, every file the whole list reads once, as one part.
     timing.add("projects:setup", (time.monotonic() - _t0) * 1000)
     out = []
@@ -1190,7 +1196,7 @@ def _projects_seen_by(who, rows):
 
 def project_list(who):
     """_project_list, timed (timing.py): nearly every read asks for it."""
-    with timing.timed("project_list"):
+    with timing.timed("project_list"), nodes.held():
         return _project_list(who)
 
 
@@ -3849,6 +3855,12 @@ def _timed(name, fn):
 
 
 def snapshot(who):
+    """The status read: every node row it asks for read once (nodes.held)."""
+    with nodes.held():
+        return _snapshot(who)
+
+
+def _snapshot(who):
     if who and who.get("name") and users.uid_of(who):
         _polls[who["name"]] = time.time()
         if _polls[who["name"]] - _seen_written.get(who["name"], 0) > SEEN_WRITE_S:
