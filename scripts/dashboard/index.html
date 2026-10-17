@@ -3051,6 +3051,18 @@ pre.diff .d-ctx{color:var(--dim)}
 .tiles.mini{grid-template-columns:repeat(auto-fit,minmax(7rem,1fr));margin-top:6px}
 @media(max-width:900px){ .tiles.mini{grid-template-columns:repeat(2,1fr)} }
 .tiles.mini .tile{padding:8px 12px}
+/* An odd number of tiles on a phone sits in threes rather than two to a row
+   with one left over (the operator, 17 Oct): three in one row, five as three
+   and two, seven as three, two and two, a short row's tiles splitting its
+   width. Six tracks, a tile two of them, a tile in a row of two three. */
+@media(max-width:900px){
+  .tiles:has(> .tile:last-child:nth-child(odd)){grid-template-columns:repeat(6,minmax(0,1fr))}
+  .tiles:has(> .tile:last-child:nth-child(odd)) > .tile{grid-column:span 2;padding:10px 12px}
+  .tiles:has(> .tile:last-child:nth-child(6n+5)) > .tile:nth-last-child(-n+2),
+  .tiles:has(> .tile:last-child:nth-child(6n+7)) > .tile:nth-last-child(-n+4){grid-column:span 3}
+  .tiles:has(> .tile:last-child:nth-child(odd)) .tl,
+  .tiles:has(> .tile:last-child:nth-child(odd)) .ts{overflow-wrap:anywhere}
+}
 .tiles.mini .tv{font:var(--f-sect);font-variant-numeric:tabular-nums}
 /* The list view (R216): a container as one line that opens into its card
    (rows-you-open), each project's group a table (R218 step 8): the name,

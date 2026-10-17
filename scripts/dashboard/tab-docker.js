@@ -2199,11 +2199,15 @@ function renderDockerInto(i){
     // lines, whichever view this browser keeps.
     const tile = (label, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${esc(label)}</span>${
       sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
+    // In the page's own order (the page tops' rule): the bar with Refresh
+    // and New container at its right, the three tiles it usually shows, the
+    // status line with Check for updates, then the rows.
     el.innerHTML = `<div class="doctab dmtab">${skTpl(`<div class="field histbar docbarrow dmpick"><label class="pick">Node ${skv(7, "ctl")}</label>${skv(16, "ctl")}
         <span class="sp"></span><div class="pseg dmviewseg"><button type="button" disabled class="${dmView === "cards" ? "on" : ""}">Cards</button><button type="button" disabled class="${
-          dmView === "list" ? "on" : ""}">List</button></div><button type="button" disabled>Refresh</button></div>
-      ${mayDocker() ? `<div class="field"><div class="addbar"><button type="button" disabled>New container</button></div></div>` : ""}
-      <div class="field"><div class="tiles">${tile("running", `of ${skv(2)} containers`)}${tile("projects")}</div></div>
+          dmView === "list" ? "on" : ""}">List</button></div><span class="actbar"><button type="button" disabled>Refresh</button>${
+          mayDocker() ? `<button type="button" class="primary" disabled>New container</button>` : ""}</span></div>
+      <div class="field"><div class="tiles">${tile("running", `of ${skv(2)} containers`)}${tile("updates due")}${tile("projects")}</div></div>
+      ${headLine(`images checked ${skv(4)}`, `<button type="button" disabled>Check for updates</button>`, "dmimgbar")}
       ${dmView === "list" ? skTable(DM_COLS, 4) : skRows(4)}`)}</div>`;
     return;
   }
