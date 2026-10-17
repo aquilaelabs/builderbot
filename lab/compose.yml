@@ -1,0 +1,117 @@
+# The lab (roadmap R54): a real Gitea and Forgejo for `bb tests lab`, a
+# stack of its own beside BuilderBot's dev instance, never a service in
+# BuilderBot's docker-compose.yml (the operator, 17 Oct): the dev instance is
+# the one container built from the tree, rebuilt and pinned to a branch with
+# it, and the lab is neither. Images only, nothing built from the tree, so it
+# is made as any container beside a project is:
+#
+#   bb container new --why "the lab's Gitea and Forgejo for bb tests lab" \
+#     --name builderbot-lab --compose lab/compose.yml --env lab/.env.example
+#
+# BB_LAB_HOST (lab/.env.example) is the address other machines reach it at.
+
+services:
+  # A real Gitea, for `bb tests lab` to prove the link, unlink and runner
+  # paths against. Nothing here is a secret: it exists to be tested
+  # against, and its volume can be thrown away. Actions are on so the
+  # runner half can be proved too.
+  gitea:
+    image: docker.gitea.com/gitea:1.24
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__ROOT_URL: "http://${BB_LAB_HOST:-127.0.0.1}:3000/"
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__SSH_DOMAIN: "${BB_LAB_HOST:-127.0.0.1}"
+      GITEA__server__SSH_PORT: "2222"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__actions__ENABLED: "true"
+      GITEA__log__LEVEL: "Warn"
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - lab-gitea:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/api/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  # One-shot, idempotent: the administrator the lab suites sign in as to
+  # mint their own tokens (labadmin / labpassword).
+  gitea-seed:
+    image: docker.gitea.com/gitea:1.24
+    depends_on:
+      gitea:
+        condition: service_healthy
+    user: "1000:1000"
+    environment:
+      GITEA_WORK_DIR: /data/gitea
+      GITEA_CUSTOM: /data/gitea
+      HOME: /data/git
+    volumes:
+      - lab-gitea:/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        gitea --config /data/gitea/conf/app.ini admin user create
+        --admin --username labadmin --password labpassword
+        --email lab@example.invalid --must-change-password=false
+        2>&1 | grep -v 'already exists' || true;
+        echo 'lab seeded: labadmin/labpassword'
+  # ...and a real Forgejo beside it (the operator, 13 Oct: vet it as a git
+  # host), the same shape one port along: it answers Gitea's API, which is
+  # what the catalog's entry claims and what lab-forge.mjs proves against
+  # it with BB_LAB_FORGE=forgejo. Its seed is the same administrator.
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:16
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__server__ROOT_URL: "http://${BB_LAB_HOST:-127.0.0.1}:3001/"
+      FORGEJO__server__HTTP_PORT: "3000"
+      FORGEJO__server__SSH_DOMAIN: "${BB_LAB_HOST:-127.0.0.1}"
+      FORGEJO__server__SSH_PORT: "2223"
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+      FORGEJO__actions__ENABLED: "true"
+      FORGEJO__log__LEVEL: "Warn"
+    ports:
+      - "3001:3000"
+      - "2223:22"
+    volumes:
+      - lab-forgejo:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/api/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  forgejo-seed:
+    image: codeberg.org/forgejo/forgejo:16
+    depends_on:
+      forgejo:
+        condition: service_healthy
+    user: "1000:1000"
+    environment:
+      GITEA_WORK_DIR: /data/gitea
+      GITEA_CUSTOM: /data/gitea
+      HOME: /data/git
+    volumes:
+      - lab-forgejo:/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        forgejo --config /data/gitea/conf/app.ini admin user create
+        --admin --username labadmin --password labpassword
+        --email lab@example.invalid --must-change-password=false
+        2>&1 | grep -v 'already exists' || true;
+        echo 'lab seeded: labadmin/labpassword'
+
+volumes:
+  lab-gitea:
+  lab-forgejo:

@@ -21,8 +21,6 @@ runner's token is typed on the Nodes tab.
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
 | `BUILDERBOT_PULL` | `missing` | BuilderBot's own dev instance only: compose's pull policy, `build` to build this checkout (with `BUILDERBOT_TAG=dev`) |
-| `COMPOSE_PROFILES` | empty | BuilderBot's own dev instance only: `lab` starts the lab's Gitea and Forgejo beside it, for `bb tests lab` |
-| `BB_LAB_HOST` | `127.0.0.1` | the address other machines reach that Gitea on |
 
 Mounts: the projects folder, the state directories (`home`, `config`), the
 `/sdk` (the browsers `bb capture shot` uses; a node keeps its own

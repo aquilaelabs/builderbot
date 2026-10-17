@@ -2511,8 +2511,8 @@ cmd_tests() {
         echo "lab services: gitea=${ok_gitea:-none} forgejo=${ok_forgejo:-none} controller=${ok_ctl:-none}"
         if [ -z "$ok_gitea" ] && [ -z "$ok_ctl" ]; then
             echo "lab: nothing answers, so every suite will skip and that is not a failure."
-            echo "     A Gitea comes from the dev stack with COMPOSE_PROFILES=lab in its env"
-            echo "     file, brought up from the Docker tab. A node comes from the three"
+            echo "     A Gitea comes from the lab's own stack, lab/compose.yml, made with"
+            echo "     bb container new beside the dev instance. A node comes from the three"
             echo "     variables BB_LAB_CONTROLLER, BB_LAB_TOKEN and BB_LAB_NODE, naming one"
             echo "     you are willing to have a job run on."
         fi

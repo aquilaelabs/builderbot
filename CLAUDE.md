@@ -38,7 +38,7 @@ bb lint                       # shellcheck, hadolint, ruff, actionlint, compose,
 bb tests unit                 # the python unit tier, scripts/dashboard/unit, under a minute
 bb tests run                  # the dashboard's Playwright suite; bb dashboard test FILE for one file
 bb tests preflight            # what the branch changed, the suites that reach it, lint, voice, design: before a push
-bb tests lab                  # the lab suites, against BuilderBot's own dev stack (lab profile)
+bb tests lab                  # the lab suites, against the lab's own stack (lab/compose.yml)
 ```
 
 The browser suite runs the checkout's `server.py` on a spare port with a

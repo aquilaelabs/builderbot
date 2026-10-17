@@ -14,6 +14,8 @@ ruff.toml                        the python linter's settings for the controller
 Dockerfile                       image definition
 docker-compose.yml               compose variant of the stack
 .env.example                     annotated compose configuration
+lab/compose.yml                  the lab's Gitea and Forgejo for bb tests lab, a stack of its own beside the dev instance
+lab/.env.example                 the lab's one setting: the address other machines reach it at
 unraid/builderbot.xml            Unraid Docker template (one-click updates)
 scripts/
   entrypoint.sh                  secrets shield, uid remap, hooks, ssh-agent
