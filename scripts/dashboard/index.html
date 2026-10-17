@@ -714,6 +714,11 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   background:none;border:0;border-bottom:var(--hair) solid var(--line);border-radius:0;padding:var(--row-y) var(--row-x);
   min-height:var(--tap);color:var(--ink)}
 .rrow .name{font-weight:600}
+/* A list's placeholder rows wear a row's own inset while it is read (the
+   operator, 17 Oct: Users' and Roles' templates sat on the card's edge), and
+   the last one no rule under it, as the last row has none. */
+.rlist>.sk-row{padding:var(--row-y) var(--row-x)}
+.rlist>.sk-row:last-child{border-bottom:0}
 .rrow .rtags{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font:var(--f-note)}
 @media(hover:hover){ :is(.rolestab,.userstab) .rrow:hover:not(.on),.snav .rrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
 /* The picked row is lit, so it wears the second color (--lit) as every lit
