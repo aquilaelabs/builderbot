@@ -1279,6 +1279,26 @@ def _c_branches(out, conds, blank):
                     blank(a, b)
 
 
+def _c_untemplate(head):
+    """A header with its `template <...>` lists cut out: a default there,
+    `int N = 0` or `enable_if<...>::type = 0`, is no assignment, and the
+    function under it was dropped as one (B807)."""
+    out, i = [], 0
+    for m in re.finditer(r"\btemplate\s*<", head):
+        if m.start() < i:
+            continue
+        depth, k = 0, m.end() - 1
+        while k < len(head):
+            depth += {"<": 1, ">": -1}.get(head[k], 0)
+            if depth == 0:
+                break
+            k += 1
+        out.append(head[i:m.start()])
+        i = k + 1
+    out.append(head[i:])
+    return "".join(out)
+
+
 def _c_params_end(head):
     """Where the `)` closing a function's parameter list is in a header, or
     -1: a `)` followed only by what may follow one (const, noexcept,
@@ -1414,7 +1434,7 @@ def scan_c(text, sink):
                             # A function returning a function pointer:
                             # int (*returns_fp(void))(int, void *) {...}.
                             m = C_FP_RETURNER.search(before)
-                        if m and k > 0 and "=" not in before.split("operator")[0].replace("==", ""):
+                        if m and k > 0 and "=" not in _c_untemplate(before).split("operator")[0].replace("==", ""):
                             full = " ".join(m.group(1).split())
                             parts = [p.strip() for p in full.split("::")]
                             nm, qual = parts[-1], (parts[-2] if len(parts) > 1 else "")

@@ -148,6 +148,14 @@ class Followup(unittest.TestCase):
         got = {d["name"]: (d["line"], d.get("end")) for d in s.defs}
         self.assertEqual(got, {"a": (2, 8), "z": (10, 10), "d": (12, 12)})
 
+    def test_a_template_with_a_default_is_a_definition(self):
+        # B807: the header's = read as an assignment
+        s = scan("template <typename T, int N = 0>\nvoid two(T x) { return; }\n"
+                 "template <typename T,\n  typename std::enable_if<is_q<T>::value, int>::type = 0>\n"
+                 "inline void scale_C(const T * tile) { return; }\nint x = 0;\nint after(void) { return 1; }\n",
+                 "a.cpp")
+        self.assertEqual(sorted((d["name"], d["line"]) for d in s.defs), [("after", 7), ("scale_C", 5), ("two", 2)])
+
     def test_a_header_api_is_findable(self):
         s = scan("#define SQUARE(x) ((x) * (x))\n#define MAX 4\nint proto_only(int, int);\n"
                  "typedef struct point { int x; } point_t;\ntypedef int (*callback_fn)(int, void *);\n"
