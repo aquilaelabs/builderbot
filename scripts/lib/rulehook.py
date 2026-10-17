@@ -246,7 +246,7 @@ def check_failed(project):
         return ""
     rec["told"] = True
     _write_run(project, rec)
-    fails = [ln.strip() for ln in out.splitlines() if ln.lstrip().startswith("FAIL")][:8]
+    fails = [ln.strip() for ln in (rec.get("fails") or out.splitlines()) if ln.lstrip().startswith("FAIL")][:8]
     return ("The house rules' checks that ran in the background when you last handed back "
             "failed on that tree (bb-check-relay; this project's new asks cut a test run, so "
             "the hand-back was not held for them). Fix what failed, or say plainly why it cannot "
@@ -264,7 +264,10 @@ def _check_main(project, stamp, cwd, argv):
     # A newer run took the record while this one ran: its verdict is not this.
     if rec.get("stamp") != stamp or rec.get("pid") != os.getpid():
         return
-    rec.update(rc=rc, out=out[-20000:], ended=int(time.time()))
+    # The failing lines whole, wherever they fell: the tail alone lost the
+    # design suite's own FAIL line behind its passing ones.
+    fails = [ln for ln in out.splitlines() if ln.lstrip().startswith("FAIL")][:40]
+    rec.update(rc=rc, out=out[-20000:], fails=fails, ended=int(time.time()))
     _write_run(project, rec)
 
 

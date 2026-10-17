@@ -157,7 +157,7 @@ def detached(project, cwd, bb, stamp):
     run = rulehook.check_run(project)
     if run.get("stamp") == stamp:
         if run.get("rc") is not None:
-            return verdict(project, stamp, run.get("out") or "", run["rc"])
+            return verdict(project, stamp, "\n".join(run.get("fails") or []) + "\n" + (run.get("out") or ""), run["rc"])
         if _alive(run.get("pid")):
             return None                      # still running for this very tree
     # A run for an older tree is cut, as a new ask cuts any run: by its
