@@ -721,7 +721,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .ssplit{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
 .ssplit>*{grid-column:2;min-width:0}
 .ssplit>.snav{grid-column:1;grid-row:1 / span 99;align-self:stretch}
-.snav,.sback,.ssplit>.sectjump,.ssplit>h3{display:none}
+/* The jump bar is the list's job here: hidden, over the dialog's own
+   .field.sectjump rule, which outranks a plain one. */
+.snav,.sback,.ssplit>.sectjump,.ssplit>.field.sectjump,.ssplit>h3{display:none}
 .ssplit>.snav{display:flex}
 .ssplit>details.sect:not(.scur){display:none}
 .ssplit>details.sect>summary{pointer-events:none}

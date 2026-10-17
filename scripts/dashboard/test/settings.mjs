@@ -415,6 +415,8 @@ ok(elsewhere.git_name === 'T. Person',
   const one = await page.evaluate(() => [...document.querySelectorAll('.nbsettings details.rngroup')]
     .filter(d => d.checkVisibility()).map(d => d.dataset.sect));
   ok(one.join() === 'rn:claude', `...a row pressed shows its section alone (${one.join()})`);
+  ok(!(await page.$eval('.nbsettings .sectjump', e => e.checkVisibility()).catch(() => false)),
+     '...with no jump bar over it: the list is how a section is found');
   // People stays when the view is asked for again (B: the form was put back
   // and People hidden until its read landed, on every ask).
   await page.evaluate(() => openProjectSettings('alpha'));
