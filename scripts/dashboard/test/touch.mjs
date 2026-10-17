@@ -91,4 +91,31 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
   ok(await page.evaluate(() => window.__pulls) === 0, '...and a short one does not');
 }
 
+// A dock tab held and dragged takes a new place on the line (the strip's
+// gesture, kept when the dock took its place: the operator, 17 Oct), and a
+// quick swipe across the line scrolls it rather than picking a tab up. Each
+// terminal's tab carries Close beside minimize.
+{
+  await page.evaluate(() => { location.hash = '#/home'; dockToggle(false); });
+  await page.waitForFunction(() => document.querySelectorAll('#pane1 .dtab[data-id]').length >= 2);
+  // The line keeps the newest terminal in view; its first two tabs are what
+  // the finger goes for, so the line is brought back to its start.
+  await page.evaluate(() => { document.querySelector('#pane1 .dockline').scrollLeft = 0; });
+  await sleep(300);
+  const order = () => page.evaluate(() => [...document.querySelectorAll('#pane1 .dtab[data-id]')].map(e => e.dataset.id));
+  const before = await order();
+  const box = id => page.$eval(`#pane1 .dtab[data-id="${id}"] .dlbl`, e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const a = await box(before[0]), b = await box(before[1]);
+  await finger(page, a.x + 10, a.y + a.h / 2, b.x + b.w - 4, b.y + b.h / 2, 0);
+  ok(JSON.stringify(await order()) === JSON.stringify(before), 'a quick swipe along the dock line moves no tab');
+  await finger(page, a.x + 10, a.y + a.h / 2, b.x + b.w - 4, b.y + b.h / 2, 700);
+  const after = await order();
+  ok(after[0] === before[1] && after[1] === before[0],
+     `a tab held for a moment and dragged past the next takes its place (${before.slice(0, 2)} -> ${after.slice(0, 2)})`);
+  ok(JSON.stringify(await page.evaluate(() => tabs.filter(t => t.kind === 'term').map(t => t.id)).then(ids => ids.slice(0, 2))) === JSON.stringify(after.slice(0, 2)),
+     '...and the tabs list keeps the new order');
+  ok(await page.$$eval('#pane1 .dtab[data-id]', ts => ts.every(t => t.querySelector('[data-min]') && t.querySelector('[data-close]'))),
+     "each terminal's tab carries minimize and close");
+}
+
 await done(browser);

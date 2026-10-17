@@ -4080,6 +4080,14 @@ body.booting .panes.dockup .pane.dock{animation:none}
 .dockline .dtab .dlbl{display:inline-flex;align-items:center;gap:6px;background:none;border:0;min-height:32px;
   padding:2px 8px;font:var(--f-ui);color:inherit;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dockline .dtab .dx{min-height:32px;min-width:30px;border:0;background:none}
+/* Close ends the session: red under the pointer, as every end on the page. */
+@media(hover:hover){ .dockline .dtab .dclose:hover{color:var(--bad)} }
+/* A tab is held and dragged to a new place (page-dock.js): the phone's own
+   long-press menu and text selection would take the hold first. Lifted, it
+   rides above the line. */
+.dockline .dtab{-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+.dockline .dtab.held{position:relative;z-index:2;box-shadow:0 4px 14px rgba(0,0,0,.45);
+  border-color:var(--accent-mid);transform:translateY(-2px)}
 /* Chat is a tab on the line like a terminal's (R250 step 2), its unread
    count a pill in it rather than a dot to decode. */
 .dockline .dtab.dchat .dlbl{padding:2px 10px}
@@ -6122,6 +6130,17 @@ document.addEventListener("visibilitychange", () => {
 // A back/forward-cache restore always resumes with a dead socket, phone or not.
 window.addEventListener("pageshow", e => { if (e.persisted) reattachTerminals(); });
 window.addEventListener("focus", nudgeTerminals);
+
+// ---- the dock's tabs, held and dragged ------------------------------------
+// Its declarations are page-dock.js; what runs at load is below.
+// Before the hold the browser owns a moving finger and scrolls the dock's
+// line; after it, the finger's movement IS the drag. Registered once, here
+// and non-passive: the browser asks at a touch's start whether anything may
+// refuse its pan, so a listener added mid-gesture was asked too late and the
+// line scrolled under the lifted tab. The same half-second is the platform's
+// long-press menu, refused while a tab is held.
+window.addEventListener("touchmove", dockNoScroll, {passive: false});
+document.addEventListener("contextmenu", e => { if (ddrag) e.preventDefault(); });
 
 // ---- a project's settings: model, effort, color and the dials ----------
 // Its declarations are page-projsettings.js; nothing of it runs at load.

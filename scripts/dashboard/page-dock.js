@@ -108,7 +108,9 @@ function dockBar(){
       <button type="button" class="dlbl" data-dock="${esc(t.id)}" role="tab" aria-selected="${t.id === cur && dockUp}" title="${esc(tabTitle(t))}">${
         isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id) || tabLabel(t))}</button>
       <button type="button" class="ic dx" data-min="${esc(t.id)}" aria-label="minimize ${esc(names.get(t.id) || tabLabel(t))}"
-        title="minimize: it keeps running, and Sessions reopens it">−</button></span>`; }).join("");
+        title="minimize: it keeps running, and Sessions reopens it">−</button>
+      <button type="button" class="ic dx dclose" data-close="${esc(t.id)}" aria-label="close ${esc(names.get(t.id) || tabLabel(t))}"
+        title="close: ends the session, asked first">×</button></span>`; }).join("");
   const t = tabOf(cur), chatOn = t?.kind === "chat";
   // Chat first (the operator, 15 Oct): it is always there while terminals
   // come and go, so it never scrolls off the start of the line.
@@ -126,8 +128,19 @@ function dockBar(){
 }
 
 function wireDockBar(bar){
-  bar.querySelectorAll("[data-dock]").forEach(b => b.onclick = e => { e.stopPropagation(); dockShow(b.dataset.dock); });
+  bar.querySelectorAll("[data-dock]").forEach(b => b.onclick = e => { e.stopPropagation(); if (!dockSwallow) dockShow(b.dataset.dock); });
   bar.querySelectorAll("[data-min]").forEach(b => b.onclick = e => hideTab(b.dataset.min, e));
+  // Close ends the session, as a middle click does (the operator, 17 Oct:
+  // minimize alone left no way to end one from its tab).
+  bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const t = tabOf(b.dataset.close);
+    if (t) killSession(sessionOf(t.arg));
+  });
+  // A tab held and dragged takes a new place on the line (the strip's
+  // gesture, kept when the dock took its place: the operator, 17 Oct).
+  bar.querySelectorAll(".dtab[data-id] .dlbl").forEach(b =>
+    b.addEventListener("pointerdown", e => dockDragStart(e, b.closest(".dtab").dataset.id)));
   // A middle click on a terminal's tab ends its session, asked first, as it
   // did on the strip; auxclick with the default suppressed, or the browser
   // arms its autoscroll cursor first.
@@ -168,6 +181,91 @@ function wireDockBar(bar){
     bar.addEventListener("pointermove", move);
     bar.addEventListener("pointerup", up);
   };
+}
+
+// ---- a tab dragged to a new place on the line ----------------------------
+// Pointer events rather than HTML5 drag-and-drop, which does not exist on
+// touch. On touch a drag must be earned: hold still for half a second and
+// the tab lifts; a finger that moves first was scrolling the line, and the
+// drag is dropped. A mouse drag arms at once. Mid-drag the tabs are moved in
+// place, never rebuilt: a touch stays with the node it began on, and a
+// rebuilt one stops sending its moves. The order is the tabs list's, saved
+// with the layout.
+const DOCK_HOLD_MS = 500;
+let ddrag = null, dockSwallow = false;
+
+function dockDragStart(ev, id){
+  if (ev.pointerType === "mouse" && ev.button !== 0) return;
+  ddrag = {id, x0: ev.clientX, y0: ev.clientY, x: ev.clientX, moved: false, armed: ev.pointerType !== "touch"};
+  if (!ddrag.armed)
+    ddrag.timer = setTimeout(() => {
+      if (!ddrag) return;
+      ddrag.armed = ddrag.moved = true;
+      dockHeld(true);
+    }, DOCK_HOLD_MS);
+  window.addEventListener("pointermove", dockDragMove);
+  window.addEventListener("pointerup", dockDragEnd);
+  window.addEventListener("pointercancel", dockDragEnd);
+}
+
+// Once a tab is lifted the line must not scroll under the finger: the move
+// itself is refused (wired at load in index.html).
+function dockNoScroll(e){ if (ddrag?.armed) e.preventDefault(); }
+
+function dockHeld(on){
+  document.body.classList.toggle("dragging", on);
+  document.querySelector(`.dockline .dtab[data-id="${CSS.escape(ddrag?.id || "")}"]`)?.classList.toggle("held", on);
+}
+
+function dockDragMove(ev){
+  if (!ddrag) return;
+  ddrag.x = ev.clientX;
+  const far = Math.hypot(ev.clientX - ddrag.x0, ev.clientY - ddrag.y0) >= 6;
+  if (!ddrag.armed){ if (far) dockDragEnd(); return; }      // a swipe, not a pickup
+  if (!ddrag.moved){
+    if (!far) return;                                     // slop, so a click is a click
+    ddrag.moved = true;
+    dockHeld(true);
+  }
+  ev.preventDefault();
+  dockPlaceTab();
+}
+
+// The held tab put where the pointer is among the other terminals' tabs,
+// the tabs list re-sorted with it, and the line's elements moved to match.
+function dockPlaceTab(){
+  const line = document.querySelector(".dockline");
+  const els = [...(line?.querySelectorAll(".dtab[data-id]") || [])];
+  const ids = els.map(el => el.dataset.id), from = ids.indexOf(ddrag.id);
+  if (from < 0) return;
+  let to = 0;
+  els.forEach((el, i) => { if (i !== from && ddrag.x > el.getBoundingClientRect().left + el.offsetWidth / 2) to++; });
+  if (to === from) return;
+  ids.splice(to, 0, ids.splice(from, 1)[0]);
+  // The terminals keep the slots they had in the tabs list, in their new order.
+  const slots = tabs.map((t, i) => ids.includes(t.id) ? i : -1).filter(i => i >= 0);
+  const byId = new Map(tabs.map(t => [t.id, t]));
+  slots.forEach((slot, k) => { tabs[slot] = byId.get(ids[k]); });
+  const play = flip(() => line.querySelectorAll(".dtab[data-id]"), el => el.dataset.id);
+  const anchor = line.querySelector("[data-dnew]");
+  for (const id of ids) line.insertBefore(els.find(el => el.dataset.id === id), anchor);
+  play();
+}
+
+function dockDragEnd(){
+  clearTimeout(ddrag?.timer);
+  window.removeEventListener("pointermove", dockDragMove);
+  window.removeEventListener("pointerup", dockDragEnd);
+  window.removeEventListener("pointercancel", dockDragEnd);
+  const moved = ddrag?.moved;
+  dockHeld(false);
+  ddrag = null;
+  if (!moved) return;
+  // The click that ends a drag is not a press on the tab.
+  dockSwallow = true;
+  setTimeout(() => { dockSwallow = false; }, 0);
+  render();
+  saveLayout();
 }
 
 // The terminal in front brought into view on the line, which scrolls inside
