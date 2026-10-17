@@ -230,7 +230,13 @@ def _request_once(path, body, auth, method, timeout):
     except ConnectionRefusedError as e:
         return None, {"error": str(e)}, True
     except http.client.RemoteDisconnected as e:
-        return None, {"error": str(e)}, (method or ("POST" if body is not None else "GET")) == "GET"
+        if (method or ("POST" if body is not None else "GET")) == "GET":
+            return None, {"error": str(e)}, True
+        # A POST it may have read is not sent again here; the answer says so
+        # and carries hung_up, so a verb that can look whether its ask landed
+        # (a rebuild's job) looks and asks again itself (B803).
+        return None, {"error": f"{e}: the controller hung up before answering, so it may or may not "
+                               "have done it", "hung_up": True}, False
     except OSError as e:
         # The gap while a controller's container is replaced can answer "no
         # route to host" rather than a refusal (B771): no server was reached

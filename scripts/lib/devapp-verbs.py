@@ -147,6 +147,8 @@ def rebuild():
         print("[builderbot] the controller has not answered the rebuild in three minutes; "
               "it may have started it, so this watches for the build", file=sys.stderr)
         r = {}
+    if r.get("hung_up"):
+        r = _after_hang_up(look, post, was)
     if r.get("error"):
         # The refusal names the dial, so it is printed as it came.
         sys.exit(f"[builderbot] ERROR: {r['error']}")
@@ -162,6 +164,23 @@ def rebuild():
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
         r = {"job": o.get("out")}
     _watch(look, was, auth, r.get("job") or "")
+
+
+def _after_hang_up(look, post, was):
+    """The controller closed the connection on the rebuild before answering
+    (B803: a restart landing mid-request, report #113): it may have queued
+    the build or not. A look for ten seconds tells which; a build that
+    started is watched, and one that did not is asked for once more, which
+    cannot build twice since nothing is building."""
+    print("[builderbot] the controller hung up on the rebuild before answering; "
+          "looking whether it started", file=sys.stderr)
+    for _ in range(4):
+        time.sleep(2.5)
+        st = look(patient=True)
+        if st and ((st.get("job") or {}).get("running") or (st.get("built_rev") or "") != was):
+            return {}
+    print("[builderbot] no build started: asking again", file=sys.stderr)
+    return post({"action": "rebuild", "why": os.environ.get("BB_DEV_WHY", "")}, timeout=180)
 
 
 def _watch(look, was, auth, job_id=""):
