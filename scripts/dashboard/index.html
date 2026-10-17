@@ -3424,6 +3424,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    tab's own rule, so the same line on the Toolchains tab sat flush against
    the edge with every band beside it indented. */
 .doctab .hint{padding:var(--row-y) var(--row-x)}
+/* ...but one inside a band is the band's note, as a dialog's and a
+   notebook's are: the band is inset already, and body text there read
+   louder than the label over it (B823). */
+.doctab .field>.hint{padding:0;color:var(--dim);font:var(--f-note)}
 /* The node-scoped tools' foot line (R121) is a quiet note, not body text. */
 .toolfoot .hint{font:var(--f-note);color:var(--dim);padding:0}
 .fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
