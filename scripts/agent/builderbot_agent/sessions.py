@@ -1,6 +1,7 @@
 """The session half (roadmap #24): Claude's sessions on this node, their ttyds, tokens, firewall and upkeep."""
 import contextlib
 import glob
+import hashlib
 import json
 import os
 import re
@@ -844,6 +845,34 @@ class SessionsMixin:
                 pub.setdefault(key, set()).update(ports)
         self.published = {k: sorted(v) for k, v in pub.items()}
         return self.published
+
+    def containers_now(self):
+        """A fingerprint of every container here, running or not: its name,
+        its state and its health, hashed. The controller moves the Containers
+        page's token when it changes, so a container that crashed, or that a
+        shell or a session started or removed, is on the page within a
+        heartbeat, with no Refresh to press (the operator, 17 Oct). Read at
+        most every ten seconds; None where there is no docker."""
+        now = time.time()
+        if now - getattr(self, "ctr_digest_at", 0) < 10:
+            return getattr(self, "ctr_digest", None)
+        self.ctr_digest_at = now
+        docker = shutil.which(DOCKER_BIN)
+        if not docker:
+            self.ctr_digest = None
+            return None
+        out = _run([docker, "ps", "-a", "--format", "{{.Names}}\t{{.State}}\t{{.Status}}"], timeout=15)
+        # The health, not the uptime: "Up 5 minutes (healthy)" moves every
+        # minute, and only its parenthesis is news.
+        rows = []
+        for line in out.splitlines():
+            bits = line.split("\t")
+            if len(bits) >= 3:
+                health = re.search(r"\((\w+)\)", bits[2])
+                rows.append("\t".join([bits[0], bits[1], health.group(1) if health else ""]))
+        rows.sort()
+        self.ctr_digest = hashlib.blake2b("\n".join(rows).encode(), digest_size=8).hexdigest()
+        return self.ctr_digest
 
     def held_now(self):
         """The sessions here a controller outage held (R251): each account's

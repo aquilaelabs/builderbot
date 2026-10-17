@@ -140,7 +140,7 @@ let dockerFetching = false;        // an answer is on its way: the tab says so
 // each of them blinked at the foot of the tab through every build. Under this
 // long, nothing is said: an answer that arrives at once needs no announcing.
 const DM_SLOW_MS = 600;
-let dmSlowTimer = null, dmSlow = false, dmPressed = false;
+let dmSlowTimer = null, dmSlow = false;
 async function loadDocker(){
   const asked = dockerNode;
   const ask = ++dockerAsk;
@@ -158,10 +158,10 @@ async function loadDocker(){
   // repaint the view it no longer belongs to; it lands in that node's cache
   // and nothing else.
   dockerSeen[got.node || asked || ""] = got;
-  if (ask === dockerAsk){ dockerFetching = false; dmSlow = false; dmPressed = false; clearTimeout(dmSlowTimer); }
+  if (ask === dockerAsk){ dockerFetching = false; dmSlow = false; clearTimeout(dmSlowTimer); }
   if (asked !== dockerNode) return;
-  // A newer ask is in flight or has landed: Refresh under a revision reload,
-  // or a reload under Refresh. This answer is about an earlier moment, and a
+  // A newer ask is in flight or has landed: one revision's reload under
+  // another's. This answer is about an earlier moment, and a
   // daemon that came back between the two would be painted as gone again
   // (B69).
   if (ask !== dockerAsk) return;
@@ -2194,20 +2194,20 @@ function renderDockerInto(i){
   if (!dockerList && dockerSeen[dockerNode || ""]) dockerList = dockerSeen[dockerNode || ""];
   if (!dockerList){
     // Its template (R218 step 16): the picker band with its search, the
-    // view switch and Refresh, the add band and the tiles' words are the
+    // view switch and its buttons, the add band and the tiles' words are the
     // page's own; the daemon's containers are on their way, as cards or as
     // lines, whichever view this browser keeps.
     const tile = (label, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${esc(label)}</span>${
       sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    // In the page's own order (the page tops' rule): the bar with Refresh
-    // and New container at its right, the three tiles it usually shows, the
-    // status line with Check for updates, then the rows.
+    // In the page's own order (the page tops' rule): the bar with Check for
+    // updates and New container at its right, the three tiles it usually
+    // shows, the status line, then the rows.
     el.innerHTML = `<div class="doctab dmtab">${skTpl(`<div class="field histbar docbarrow dmpick"><label class="pick">Node ${skv(7, "ctl")}</label>${skv(16, "ctl")}
         <span class="sp"></span><div class="pseg dmviewseg"><button type="button" disabled class="${dmView === "cards" ? "on" : ""}">Cards</button><button type="button" disabled class="${
-          dmView === "list" ? "on" : ""}">List</button></div><span class="actbar"><button type="button" disabled>Refresh</button>${
-          mayDocker() ? `<button type="button" class="primary" disabled>New container</button>` : ""}</span></div>
+          dmView === "list" ? "on" : ""}">List</button></div>${
+          mayDocker() ? `<span class="actbar"><button type="button" disabled>Check for updates</button><button type="button" class="primary" disabled>New container</button></span>` : ""}</div>
       <div class="field"><div class="tiles">${tile("running", `of ${skv(2)} containers`)}${tile("updates due")}${tile("projects")}</div></div>
-      ${headLine(`images checked ${skv(4)}`, `<button type="button" disabled>Check for updates</button>`, "dmimgbar")}
+      ${mayDocker() ? headLine(`images checked ${skv(4)}`, "", "dmimgbar") : ""}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
         : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}`)}</div>`;
@@ -2299,8 +2299,10 @@ function renderDockerInto(i){
   // last-known list in the ghosted state the blind path draws.
   // One tab, re-rendered per pick (docs/nodes.md §13), never a tab per node.
   // The one node switcher (page-docs.js nodePick, R121 step 5), in the bar
-  // the other node-scoped tabs wear: the picker at the left, Refresh at the
-  // right, drawn whenever there is a node so the tab says whose daemon it is.
+  // the other node-scoped tabs wear: the picker at the left, the page's
+  // buttons at the right, drawn whenever there is a node so the tab says
+  // whose daemon it is. No Refresh: the page follows its node's containers
+  // by the fingerprint each heartbeat carries (the operator, 17 Oct).
   const dnodes = (nodesList || []).filter(n => n.kind !== "local");
   if (nodesList === null || nodesStale) loadNodes();
   const picker = `<div class="field histbar docbarrow dmpick">${
@@ -2312,16 +2314,19 @@ function renderDockerInto(i){
       <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
         <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card">Cards</button>
         <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card">List</button></div>
-      <span class="actbar"><button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button>${
+      ${mayDocker() ? `<span class="actbar">${
+      // The registry images checked against what their registries serve now
+      // (R195), weekly by itself or now: the page's upkeep, in the bar with
+      // every header button (the operator, 17 Oct); a row that is behind
+      // says so with Update.
+      blind ? "" : `<button type="button" id="bDockerCheck">Check for updates</button>`}${
       // The page's main action at the right of its bar (the operator, 17 Oct:
       // one order for every page's top), where a phone finds it without
       // scrolling past every container (R119 step 5).
-      mayDocker() ? `<button type="button" id="bDockerNew" class="primary">New container</button>` : ""}</span></div>`;
-  // ...and its status line under the tiles: when the registry images were
-  // last checked against what their registries serve now (R195), weekly by
-  // itself or now; a row that is behind says so with Update.
+      `<button type="button" id="bDockerNew" class="primary">New container</button>`}</span>` : ""}</div>`;
+  // ...and its status line under the tiles: when the images were checked.
   const status = mayDocker() && !blind ? headLine(dockerList?.images_at ? `images checked ${esc(ago(dockerList.images_at))}` : "images not checked yet",
-    `<button type="button" id="bDockerCheck">Check for updates</button>`, "dmimgbar") : "";
+    "", "dmimgbar") : "";
   // What a session is waiting on, above everything else: somebody is blocked
   // on these, and this is the tab whose dial sent them here. The bell carries
   // them too, the way root asks sit on the Nodes tab and in the bell.
@@ -2381,11 +2386,6 @@ function renderDockerInto(i){
   });
   el.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
-  const b = el.querySelector("#bDockerRe");
-  if (b) b.onclick = () => { dmPressed = true; busy(b, "Refreshing"); dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
-  // The button itself says so (the operator, 13 Oct): for a press, until
-  // the answer lands, and for any fetch slow enough that the rows dimmed.
-  if (b && dockerFetching && (dmSlow || dmPressed)) busy(b, "Refreshing");
   const ck = el.querySelector("#bDockerCheck");
   if (ck) ck.onclick = async () => {
     busy(ck, "Checking");
@@ -2458,7 +2458,8 @@ function renderDockerInto(i){
 // ---- no daemon, no Docker buttons ---------------------------------------
 
 // The controls that act on the daemon, in one list. Not the ones that only
-// read or explain: Refresh is how you retry after wiring one up, Edit and Env
+// read or explain: a daemon wired up is read again when its node's
+// fingerprint of its containers moves (there is no Refresh), Edit and Env
 // open a compose file that is a file whether or not anything can run it, and
 // the manager tab itself is where the reason is written in words: disabling
 // the way to READ a diagnosis is how you get a dashboard that has gone quiet

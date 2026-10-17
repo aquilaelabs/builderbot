@@ -48,22 +48,22 @@ const drawn = await page.$eval(sect, s => ({ status: s.querySelector('.toolstate
   vals: [...s.querySelectorAll('.ndmeter .val')].map(v => v.textContent),
   stores: /cache store/.test(s.textContent) && /Docker/.test(s.textContent) && /reclaimable/.test(s.textContent),
   proj: [...s.querySelectorAll('.stproj:not(.sthead) .name')].map(n => n.textContent.trim()),
-  // Measure now on the page's status line (the operator, 17 Oct: one order
-  // for every page's top), Refresh in the bar.
-  measure: !!document.querySelector('.storagetab .headline.toolstate [data-stmeasure]'),
+  // Measure now in the page's bar with every header button, and no Refresh
+  // (the operator, 17 Oct): the walk lands with the census the page follows.
+  measure: !!document.querySelector('.storagetab .docbarrow .actbar [data-stmeasure]') && !document.querySelector('#stReload'),
   // Each meter's block: what BuilderBot holds on that disk, largest first (R203).
   disks: [...s.querySelectorAll('.stdisk')].map(d => { const rows = []; let e = d.nextElementSibling;
     while (e && e.classList.contains('row')){ rows.push(e.querySelector('.name, .sub').textContent.trim().split(' ·')[0]); e = e.nextElementSibling; }
     return `${d.querySelector('.ndmeter .lbl').textContent}: ${rows.join(', ')}`; }) }));
 ok(/measured 10 min ago/.test(drawn.status) && drawn.meters.join() === '/,/mnt/share' && /93\.8 GB \/ 125 GB/.test(drawn.vals[0])
    && drawn.stores && drawn.proj.join('|') === 'alpha|beta' && drawn.measure,
-   `...the node: each filesystem a meter, the stores and Docker's share, the projects in rows, Measure now on the status line (${JSON.stringify(drawn)})`);
+   `...the node: each filesystem a meter, the stores and Docker's share, the projects in rows, Measure now in the bar (${JSON.stringify(drawn)})`);
 ok(drawn.disks.join(' | ') === '/: cache store, the accounts\' homes, Docker, artifacts store, synced copies | /mnt/share: ',
    `...and under each meter what BuilderBot holds on that disk, largest first, the share with nothing on it bare (${JSON.stringify(drawn.disks)})`);
 // The meters are one stack: every track the same width, the values one column.
 const stack = await page.$$eval(`${sect} .ndmeter .track`, ts => new Set(ts.map(t => Math.round(t.getBoundingClientRect().width))).size);
 ok(stack === 1, 'every meter in the stack has the same track width');
-await page.click(`.storagetab .headline [data-stmeasure="${minted.id}"]`);
+await page.click(`.storagetab .docbarrow [data-stmeasure="${minted.id}"]`);
 const job = await (async () => { for (let i = 0; i < 40; i++){
   const js = (await api('/api/v1/jobs?active=1')).jobs || [];
   const j = js.find(x => x.type === 'storage' && x.node === minted.id);

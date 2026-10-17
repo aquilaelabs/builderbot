@@ -362,7 +362,7 @@ async function pollRevsOnce(){
 // after, thirty while hidden. A chain of timeouts rather than an interval,
 // so the next wait is decided after each poll.
 let revTimer = null, revsMovedAt = Date.now();
-const REVS_PAGE_ONLY = {"nodes.sample": () => shown("nodes")};
+const REVS_PAGE_ONLY = {"nodes.sample": () => shown("nodes"), "containers": () => shown("docker")};
 const REVS_IDLE_MS = 60000;
 function revsDelay(){
   if (document.hidden) return 30000;

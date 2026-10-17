@@ -146,16 +146,23 @@ function storageProjects(n, where){
     </div>`).join("") + tail;
 }
 
+// Measure now, the page's upkeep, in its bar with every header button (the
+// operator, 17 Oct): the walk's numbers arrive with the node's census, which
+// the page follows, so it has no Refresh.
+function storageMeasureBtn(n){
+  if (!n || !storageMay || n.may_measure === false) return "";
+  return `<span class="actbar"><button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
+    n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button></span>`;
+}
+
 // What the tab says about one node: the state row, then its disks.
 function storageBody(n, where){
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
-  const measure = storageMay && n.may_measure !== false ? `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
-      n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>` : "";
   return `<div data-stnode="${esc(n.node)}">
     ${headLine(`${pill} ${n.measured ? `${n.took_s ? `the walk took ${n.took_s}s; ` : ""}walked again every hour` : "the agent walks its disks an hour after it starts, then every hour"}; where its stores live is set on its row on the Nodes tab`,
-      measure, "toolstate")}
+      "", "toolstate")}
     <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
     ${storageDisks(n)}
     <div class="field">${lbl("", "By project")}
@@ -172,8 +179,8 @@ function renderStorageInto(i){
     // Its template (R218 step 16): the bar, the state row's words and the
     // two headings with their hints are the page's own; the node and what
     // its disks hold are on their way.
-    d.setBar(skNodeBar(["Refresh"]));
-    d.list.innerHTML = skTpl(`${headLine(skv(28), storageMay ? `<button type="button">Measure now</button>` : "", "toolstate")}
+    d.setBar(skNodeBar(storageMay ? ["Measure now"] : []));
+    d.list.innerHTML = skTpl(`${headLine(skv(28), "", "toolstate")}
       <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
       ${skRows(2)}
       <div class="field">${lbl("", "By project")}<div class="hint">What each project's folders hold: its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.</div></div>
@@ -189,18 +196,14 @@ function renderStorageInto(i){
   const n = storagePick();
   const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
   // One order for every page's top (the operator, 17 Oct): the node and
-  // Refresh in the bar; when it was measured and Measure now on the status
-  // line under it (storageBody), the upkeep a page's status line carries.
-  d.setBar(`${nodePick("stNodeSel", pnodes, storageNode)}
-    <span class="sp"></span><button type="button" id="stReload" title="read the nodes again">Refresh</button>`);
+  // Measure now in the bar; when it was measured on the status line under it.
+  d.setBar(`${nodePick("stNodeSel", pnodes, storageNode)}<span class="sp"></span>${storageMeasureBtn(n)}`);
   d.list.innerHTML = n ? storageBody(n, where)
     : `<div class="empty">no node to measure yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
   wireStorageTab(d.el);
 }
 
 function wireStorageTab(root){
-  const rl = root.querySelector("#stReload");
-  if (rl) rl.onclick = () => { busy(rl, "Refreshing"); loadStorage(); };
   const psel = root.querySelector("#stNodeSel");
   if (psel) psel.onchange = () => { storageNode = psel.value;
                                     try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }

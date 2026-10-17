@@ -649,6 +649,24 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
       stores: { data: { free_mb: 5000, total_mb: 9000 },
                 toolchains: { free_mb: 40000, total_mb: 90000 },
                 artifacts: { free_mb: 30000, total_mb: 90000 } } }, running: 0, wait: 0 }) });
+  // A node's containers changing by themselves (one crashed, a shell ran
+  // docker) move the Containers page's token by the fingerprint each
+  // heartbeat carries, and a heartbeat with the same one does not: the page
+  // has no Refresh since (the operator, 17 Oct).
+  {
+    const tok = async () => (await page.evaluate(async () => (await (await fetch('/api/revs')).json()).containers));
+    const beatCtr = dig => fetch(base + '/api/v1/agent/work', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 8192, mem_used_mb: 512, ctr_digest: dig }, running: 0, wait: 0 }) });
+    await beatCtr('00aa11bb22cc33dd');
+    const t0 = await tok();
+    await beatCtr('00aa11bb22cc33dd');
+    const same = await tok();
+    await beatCtr('99ff88ee77dd66cc');
+    const moved = await tok();
+    ok(t0 !== undefined && same === t0 && moved !== t0,
+       `a node's container fingerprint moving moves the containers token, and the same one again does not (${t0}, ${same}, ${moved})`);
+  }
   const lst = await napi('/api/v1/nodes');
   ok(lst.agent?.digest && lst.agent.digest === shipped.digest,
      'the node list names the agent the controller ships');
@@ -732,10 +750,10 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.waitForSelector(`${RROW} .ndconf`, { timeout: 15000 });
   const GH = 'github.com-example-org', RUN = `${RROW} .ndrun[data-slot="${GH}"]`;
   ok(await page.$eval(`${RROW} .ndrunnone`, e => /no runner on this node/.test(e.textContent))
-     && await page.$(`${RROW} .headline [data-nrunnershow]`) !== null
+     && await page.$('.runnertab .docbarrow .actbar [data-nrunnershow].primary') !== null
      && await page.$(`${RROW} [data-k="runner:url"]`) === null,
-     'the CI runners section says there is none and adds one at the top, a button until pressed');
-  await page.click(`${RROW} [data-nrunnershow]`);
+     'the CI runners section says there is none and adds one from the bar, the page\'s main action, a button until pressed');
+  await page.click('.runnertab .docbarrow [data-nrunnershow]');
   await page.waitForSelector(`${RROW} [data-k="runner:url"]`, { timeout: 10000 });
   ok(await page.$eval(`${RROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea'))
      && await page.$(`${RROW} [data-nrunnercancel]`) !== null,
@@ -750,7 +768,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${RUN} .ndrunstate`, e => /not installed/.test(e.textContent) && !/no token stored/.test(e.textContent))
      && await page.$eval(`${RUN} [data-nrunner="install"]`, b => !b.disabled && /Install runner/.test(b.textContent))
      && !!(await page.$(`${RUN} [data-nrunnerforget]`))
-     && await page.$(`${RROW} [data-k="runner:token"]`) === null && await page.$(`${RROW} [data-nrunnershow]`) !== null,
+     && await page.$(`${RROW} [data-k="runner:token"]`) === null && await page.$('.runnertab [data-nrunnershow]') !== null,
      'Add runner keeps the token root-only, rolls the form up, and lists the runner with Install awake and Forget token beside it');
   // Dead the moment it is pressed, not when the answer comes back. Every
   // action here awaits a POST, then loadNodes(), then a repaint: a second

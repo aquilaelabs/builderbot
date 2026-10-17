@@ -462,13 +462,12 @@ function renderToolchainsInto(i){
   if (!d){
     // Its template (R218 step 16): the bar, the tile's words and the table's
     // head are the page's own; the store and its rows are on their way.
-    surf.setBar(skNodeBar([]));
-    // In the page's own order: its tiles, its status line with its two
-    // buttons, then the catalog's table.
+    surf.setBar(skNodeBar(["Check for updates", ["Install selected", "primary"]]));
+    // In the page's own order: its bar with its two buttons, its tiles, its
+    // status line, then the catalog's table.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
     surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
-      <div class="field headline tcact"><div class="actbar macros"><span class="state">${skv(22)}</span><span class="sp"></span>
-        <button type="button">Check for updates</button><button type="button" class="primary">Install selected</button></div></div>
+      <div class="field headline tcact"><div class="actbar macros"><span class="state">${skv(22)}</span></div></div>
       ${skTable(TC_COLS, 6, "tcs")}`);
     return;
   }
@@ -508,9 +507,24 @@ function renderToolchainsInto(i){
   // The server refuses it either way (nodes.agent_stale); this is the reason,
   // said before the press rather than after it.
   const pstale = onNode && nodeStale(pnodes.find(n => n.id === tcNode) || {});
-  // The one node switcher (page-docs.js nodePick, R121).
-  surf.setBar(`${nodePick("tcNodeSel", pnodes, tcNode)}
-`);
+  // The page's buttons, in its bar with the one node switcher (page-docs.js
+  // nodePick, R121), every header button on one row (the operator, 17 Oct):
+  // Check for updates, Abort while a job runs, Install selected, and Remove
+  // for what no node uses any more (R196), last as a destructive verb is.
+  const may = mayToolchains(tcNode);
+  const clean = onNode && (d.cleanable || []).length && may ? d.cleanable : [];
+  surf.setBar(`${nodePick("tcNodeSel", pnodes, tcNode)}<span class="sp"></span><span class="actbar">
+      ${busy && may ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
+        job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+      <button data-tc="check"${busy || pstale || !may ? " disabled" : ""}
+        title="ask each upstream what it has now">${
+        busy && job.action === "check"
+          ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
+        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
+      ${!may ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
+        ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
+        >Install selected</button>`}
+      ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}</span>`);
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).
   const storeSaid = onNode
@@ -551,28 +565,12 @@ function renderToolchainsInto(i){
     })()}
     ${
     // The page's status line under its tiles (the operator, 16 and 17 Oct):
-    // the store and when its versions were checked, or what is running, at
-    // the left; then Remove for what no node uses any more (R196), Abort,
-    // Check and Install.
-    (() => {
-      const may = mayToolchains(tcNode);
-      const clean = onNode && (d.cleanable || []).length && may ? d.cleanable : [];
-      return `<div class="field headline tcact"><div class="actbar macros">
+    // the store and when its versions were checked, or what is running; and
+    // what the bar's Remove would take, when it is there.
+    `<div class="field headline tcact"><div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : `<span class="state">${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}</span>`}
-      ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}
-      ${busy && may ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
-        job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-      <button data-tc="check"${busy || pstale || !may ? " disabled" : ""}
-        title="ask each upstream what it has now">${
-        busy && job.action === "check"
-          ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
-        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
-      ${!may ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
-        ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
-        >Install selected</button>`}
     </div>${clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
-      clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""}</div>`;
-    })()}
+      clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""}</div>`}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
       // R51): the libraries are the machine's own, outside the store, and

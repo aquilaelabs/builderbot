@@ -1117,8 +1117,9 @@ for (const kind of kinds){
                    'ember', 'abyss', 'plum', 'rust', 'ice', 'sepia'];
   const AA = 4.5;
   const bad = [];
-  // The filled accent measured is the page's sub-nav (R218 step 4: the strip
-  // and its active tab are gone): Machines, whose Nodes is on.
+  // The pick measured is the page's sub-nav (R218 step 4: the strip and its
+  // active tab are gone): Machines, whose Nodes is on. Its ground is the
+  // switch's lift since 17 Oct, not the accent fill, and is measured opaque.
   await page.evaluate(() => railGo('machines', 'nodes'));
   await page.waitForSelector('.pane .bar .subnav button.on', { timeout: 10000 });
   await sleep(300);
@@ -1157,7 +1158,7 @@ for (const kind of kinds){
   await page.evaluate(() => { delete document.documentElement.dataset.theme; delete document.documentElement.dataset.mode; });
   await sleep(120);
   ok(bad.length === 0,
-     `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes, dark and light${
+     `the active tab's words read on its ground in all ${SCHEMES.length} schemes, dark and light${
        bad.length ? `; under ${AA}:1: ${bad.join(', ')}` : ''}`);
 }
 

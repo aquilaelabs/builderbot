@@ -3639,6 +3639,9 @@ def revisions(who=None, projects=None):
         # ...and a heartbeat's numbers alone, which the Nodes page draws and
         # nothing else does (R218 step 10).
         "nodes.sample": 0 if NODES_OK else nodes.sample_rev(),
+        # ...and a node's containers changing by themselves or by a shell:
+        # the Containers page re-reads on it.
+        "containers": 0 if NODES_OK else nodes.ctr_rev(),
         # The chat between accounts, bumped on every message (R218 step 10):
         # an open chat re-reads on it rather than every four seconds.
         "chat": chat.rev(),

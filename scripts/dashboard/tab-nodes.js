@@ -393,10 +393,6 @@ function nodeRunnerSection(n, c){
             title="save the token and add the runner to this node">Add runner</button></div>
       </div></div>`
     : "";
-  // Add runner is the page's main action, on its status line beside the
-  // runners' state (the operator, 17 Oct: one order for every page's top).
-  const addBtn = c.addRunner ? "" : `<button type="button" data-nrunnershow ${busyNow || n.runner_new === false ? "disabled" : ""}
-        title="a runner for another git host, or this one's under another address">Add runner</button>`;
   const status = !slots.length ? "none" : worst === "bad" ? "attention" : worst === "note" ? "working"
     : reps.some(r => r.busy) ? "busy" : reps.some(r => r.active) ? "listening" : "asked for";
   const pill = {attention: "bad", working: "note", busy: "ok", listening: "ok"}[status] || "";
@@ -404,7 +400,7 @@ function nodeRunnerSection(n, c){
   // state row first, the things below it, the add band, and at the foot
   // what a workflow (or a session) does to reach this node.
   return `${headLine(`<span class="pill ${pill}">${esc(status)}</span> One runner per git host; its labels decide which workflows land here.`,
-        addBtn, "toolstate")}${n.runner_new === false && !c.addRunner ? `<div class="field"><div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div></div>` : ""}
+        "", "toolstate")}${n.runner_new === false && !c.addRunner ? `<div class="field"><div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div></div>` : ""}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
       ${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
@@ -1311,7 +1307,7 @@ function renderNodesInto(i){
     const sects = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["claude", "Claude Code"],
                    ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
     d.setBar(`<label class="pick">Node ${skv(9, "ctl")}</label><span class="sp"></span>
-      <span class="actbar"><button type="button" disabled>Create sandbox VM</button><button type="button" disabled>Enroll node</button></span>`);
+      <span class="actbar"><button type="button" disabled>Create sandbox VM</button><button type="button" class="primary" disabled>Enroll node</button></span>`);
     // One card as the node's is: its head (name, facts, Test and Enroll
     // script, the sections' chips) and its sections inside it.
     d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
@@ -1349,7 +1345,7 @@ function renderNodesInto(i){
     <span class="sp"></span>
     <span class="actbar">
       <button type="button" id="ndVm">Create sandbox VM</button>
-      <button type="button" id="ndEnroll">Enroll node</button>
+      <button type="button" class="primary" id="ndEnroll">Enroll node</button>
     </span>`);
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
@@ -1553,18 +1549,19 @@ function renderRunnerInto(i){
   if (nodesList === null){
     // Its template (R218 step 16): the bar and the state row's words are the
     // page's own; the node and its runners are on their way.
-    d.setBar(skNodeBar([]));
     // In the node's panel, as it lands: its rows are bands there, not a card.
+    d.setBar(skNodeBar([["Add runner", "primary"]]));
     d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${headLine(`${skv(5)} One runner per git host; its labels decide which workflows land here.`,
-      `<button type="button" disabled>Add runner</button>`, "toolstate")}${skRows(1)}</div>`);
+      "", "toolstate")}${skRows(1)}</div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
   const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
   if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";
   const n = ns.find(x => x.id === runnerNode);
-  d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>
-`);
+  d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>${runnerAddBtn(n, n ? nodeDraft(n) : {})}`);
+  const show = d.el.querySelector("[data-nrunnershow]");
+  if (show) show.onclick = () => { nodeDraft(n).addRunner = true; nodesRev++; drawPanes(); };
   d.list.innerHTML = n
     ? `${runnerRows()}<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
     : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
@@ -1573,6 +1570,15 @@ function renderRunnerInto(i){
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
   const pick = d.el.querySelector("#rnrPick");
   if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
+}
+
+// Add runner, the page's main action, in its bar with every other header
+// button (the operator, 17 Oct: all of a page's header buttons on one row);
+// while the add band is open it is the band's to finish or cancel.
+function runnerAddBtn(n, c){
+  if (!n || c.addRunner) return "";
+  return `<span class="actbar"><button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" ? "disabled" : ""}
+    title="a runner for another git host, or this one's under another address">Add runner</button></span>`;
 }
 
 // An account that does not administer sees a node's settings and changes

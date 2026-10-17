@@ -204,13 +204,13 @@ function nginxUndeployed(n){
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
   // The page's status line (the operator, 17 Oct: one order for every
-  // page's top): not deployed and what Deploy brings, with Deploy beside it.
+  // page's top): not deployed and what Deploy brings; Deploy is in the bar
+  // with every header button.
   return `<div data-ngnode="${esc(n.node)}">
     <div class="field headline toolstate"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
       <span class="state"><span class="pill">not deployed</span> ${count || certs
           ? `Deploy puts nginx on ${esc(n.name)} with the ${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
           : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}</span>
-      <button type="button" class="primary" data-ngdeploy>Deploy</button>
     </div></div>
     ${clash}
   </div>`;
@@ -302,8 +302,9 @@ function renderNginxInto(i){
   }
   const n = nginxPick();
   const pnodes = nginxList.map(x => ({id: x.node, name: x.name, live: x.live}));
-  d.setBar(`${nodePick("ngNodeSel", pnodes, nginxNode)}
-`);
+  // Deploy, an undeployed node's one action, at the right of the bar.
+  d.setBar(`${nodePick("ngNodeSel", pnodes, nginxNode)}${n && !n.deployed
+    ? `<span class="sp"></span><span class="actbar"><button type="button" class="primary" data-ngdeploy>Deploy</button></span>` : ""}`);
   d.list.innerHTML = n ? nginxBody(n)
     : `<div class="empty">no node to put nginx on yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
   wireNginxTab(d.el);
@@ -342,7 +343,7 @@ function wireNginxTab(root){
   const bar = sect.querySelector(".ngbar");
   // Not deployed: Deploy is the one thing on it (R181).
   if (!n.deployed){
-    const dep = bar.querySelector("[data-ngdeploy]");
+    const dep = root.querySelector("[data-ngdeploy]");
     if (dep) dep.onclick = async e => {
       busy(e.target, "Deploying");
       await nginxAct({action: "deploy", node: nid});

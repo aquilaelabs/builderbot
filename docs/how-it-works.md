@@ -1236,11 +1236,14 @@ cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
 subprocess and the poll is the page's heartbeat.
 
-Three things deliberately stay live. **Refresh** is the retry; it drops the
-memo, so a daemon wired up a moment ago is noticed by pressing it rather than
-by waiting. **Edit** and **Env** open a compose file, which is a file whatever
-can run it. And the manager tab still opens, because disabling the way to
-*read* a diagnosis is how a dashboard goes quiet for no visible cause.
+Two things deliberately stay live. **Edit** and **Env** open a compose file,
+which is a file whatever can run it. And the manager tab still opens, because
+disabling the way to *read* a diagnosis is how a dashboard goes quiet for no
+visible cause. There is no Refresh to keep live: each node's heartbeat
+carries a fingerprint of its containers (their names, states and health), and
+the page reads the node again when it moves, so a daemon wired up a moment
+ago, a container that crashed or one a shell started is on the page within a
+heartbeat.
 
 **The rows are still there, and they stop claiming anything.** What an
 instance *is*: its name, its project, what it was last built from, what its

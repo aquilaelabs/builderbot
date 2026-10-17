@@ -1693,7 +1693,8 @@ scopes is two settings wearing one name, and should be split before it ships.
   node's view is the ghosted rows and "state unknown" language already built;
   that work was this design's down payment.
 - Gating goes per-node: controls gray with *this node's* reason, not a global
-  one. Refresh retries the selected node only.
+  one. There is no Refresh: each node's heartbeat carries a fingerprint of
+  its containers, and the page reads the selected node again when it moves.
 - **New container** and **Send to Docker manager** gain a node select,
   defaulting to the project's configured node, else the only node, else ask.
 - The row's build/log tail is the job view scoped to that instance, and each

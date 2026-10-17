@@ -351,12 +351,12 @@ ok(/download/.test((await pill('swift', 'Size')).text)
 // told) and dated, because a number with no date on it goes quietly stale.
 ok(/versions checked/i.test(await page.$eval('.doc.on .macros', el => el.textContent)),
    '...and the tab says how old the answers are');
-// Its actions near the top, above every row (the operator, 16 Oct): Check
-// and Install selected in the band, Install at its right.
-ok(await page.$eval('.doc.on .tcact', b => { const t = b.closest('.doc').querySelector('.tbl.tcs');
-     const btns = [...b.querySelectorAll('button')].map(x => x.dataset.tc || x.textContent.trim());
-     return t && (b.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) && btns.at(-1) === 'install' && btns.includes('check'); }),
-   '...Check for updates and Install selected in one band above the rows, Install last');
+// Its actions in the page's bar with every header button (the operator, 16
+// and 17 Oct): Check, then Install selected at its right.
+ok(await page.$eval('.doc.on .tctab .docbarrow', b => {
+     const btns = [...b.querySelectorAll('.actbar button')].map(x => x.dataset.tc || x.textContent.trim());
+     return btns.at(-1) === 'install' && btns.includes('check') && !document.querySelector('.doc.on .tcact button'); }),
+   '...Check for updates and Install selected in the bar, Install last, and nothing pressed on the status line');
 const stored = JSON.parse(readFileSync(`${DIR}/state/toolchain-versions.json`, 'utf8'));
 ok(stored.at > 0 && stored.items.flutter.status === 'update',
    '...and they are on disk, to outlive the process that asked');
@@ -840,7 +840,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
                    cleanable: [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }] };
     tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
     const clean = document.querySelector('.tcclean')?.textContent.replace(/\s+/g, ' ') || '';
-    const rm = !!document.querySelector('.tcact [data-tcclean].danger');
+    const rm = !!document.querySelector('.tctab .docbarrow .actbar [data-tcclean].danger:last-child');
     tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
     return { clean, rm };
   });

@@ -39,9 +39,9 @@ await page.selectOption('.nginxtab #ngNodeSel', sandbox.node);
 const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
 ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
-     && s.querySelector('[data-ngdeploy]') && !s.querySelector('[data-ngremove]')
+     && document.querySelector('.nginxtab .docbarrow [data-ngdeploy]') && !s.querySelector('[data-ngremove]')
      && !s.querySelector('[data-ngsave]') && !s.querySelector('[data-ngadd]') && !s.querySelector('#ngCert')),
-   '...its state row says so, with Deploy alone: no routes or certificates before nginx is there (R181)');
+   '...its state row says so, with Deploy alone, in the bar with every header button: no routes or certificates before nginx is there (R181)');
 
 // Routes kept before Deploy, as the Enroll dialog's tick has them for a node
 // that has not said hello yet: the server keeps them, and Deploy brings
@@ -91,7 +91,7 @@ ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, rou
    '...and a certificate that is not one');
 
 // Deploy: the container is written from the routes and built on the node.
-await page.click(`${sect} [data-ngdeploy]`);
+await page.click('.nginxtab .docbarrow [data-ngdeploy]');
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.deployed, sandbox.node, { timeout: 20000 });
 const rec = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-sandbox'];
 const written = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
@@ -108,7 +108,7 @@ ok(/no project called System|BuilderBot's own/.test(sysPick.error || ''),
 // for rather than read the moment the list moved.
 await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
 ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate .sub').textContent)
-     && s.querySelector('[data-ngremove]') && !s.querySelector('[data-ngdeploy]')),
+     && s.querySelector('[data-ngremove]') && !document.querySelector('.nginxtab [data-ngdeploy]')),
    '...and the state row now says so, with Remove in place of Deploy');
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');

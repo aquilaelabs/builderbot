@@ -3021,11 +3021,11 @@ pre.diff .d-ctx{color:var(--dim)}
 .pseg>button{flex:0 1 auto;min-width:0;margin:0;border:0;border-radius:0;background:none;color:var(--dim);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pseg>button+button{border-left:var(--hair) solid var(--line)}
-.pseg>button.on{background:color-mix(in srgb, var(--ink) 11%, transparent);color:var(--ink);
+.pseg>button.on{background:color-mix(in srgb, var(--ink) 11%, var(--btn));color:var(--ink);
   box-shadow:inset 0 -2px 0 var(--accent)}
 @media(hover:hover){
-  .pseg>button:hover,.pseg>button.on:hover{background:color-mix(in srgb, var(--ink) 7%, transparent);border-color:var(--line);color:var(--ink)}
-  .pseg>button.on:hover{background:color-mix(in srgb, var(--ink) 15%, transparent)}
+  .pseg>button:hover,.pseg>button.on:hover{background:color-mix(in srgb, var(--ink) 7%, var(--btn));border-color:var(--line);color:var(--ink)}
+  .pseg>button.on:hover{background:color-mix(in srgb, var(--ink) 15%, var(--btn))}
   .nb .vbar button.on:hover{background:color-mix(in srgb, var(--ink) 15%, var(--btn));border-color:var(--line)}
 }
 .pane .bar .subnav button{min-height:26px;padding:2px 12px;font:var(--f-ui)}
@@ -6637,6 +6637,13 @@ document.addEventListener("keydown", e => {
 onRev("devapp", () => {
   if (shown("docker")){ dockerList = null; dockerRev++; loadDocker(); }
 });
+// ...and a node's containers changing outside BuilderBot (one crashed, a
+// shell or a session ran docker): read again in place, the rows kept on
+// screen until the answer replaces them. This is why the page has no
+// Refresh (the operator, 17 Oct).
+onRev("containers", () => {
+  if (shown("docker") && !dockerFetching) loadDocker();
+});
 // Coming back to the tab is the common case, so it is the one that must be
 // instant: read immediately, before any timer has a chance to fire.
 document.addEventListener("visibilitychange", () => {
@@ -6704,6 +6711,9 @@ onRev("nodes", () => {
   // ...and a page that said no node yet looks again (R256 step 1: its
   // Refresh went, since the page follows its revisions).
   if (shown("toolchains") && toolchains?.nonode) loadToolchains();
+  // ...and Storage, whose walk lands with a node's census: the numbers a
+  // Measure now asked for arrive with no Refresh (the operator, 17 Oct).
+  if (shown("storage")) loadStorage();
   if (shown("emulator") && emu?.nonode) loadEmulator();
   // ...and what is drawn off the status poll (the bell, the doctor): a job
   // on a node moves this rev, so they say it inside a second or two instead

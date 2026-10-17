@@ -507,6 +507,16 @@ def sample_rev():
     return str(_sample_rev[0])
 
 
+# A node's containers changing, by the fingerprint its heartbeat carries:
+# the Containers page re-reads on it, so a container that crashed or that a
+# shell started is on the page with no Refresh (the operator, 17 Oct).
+_ctr_rev = [0]
+
+
+def ctr_rev():
+    return str(_ctr_rev[0])
+
+
 def _touch(node_id, principal, action, fields):
     audit(principal, action, node_id, fields)
     _bump()
@@ -3016,6 +3026,12 @@ def heartbeat(nid, sample, addr, running=0):
         rep["sync_clean"] = {"token": str(c.get("token") or "")[:64],
                              "freed": max(0, int(c.get("freed") or 0)),
                              "error": str(c.get("error") or "")[:300]}
+    # The fingerprint of its containers: kept on the row, and a change of it
+    # moves the Containers page's token (an older agent sends none).
+    dig = re.sub(r"[^0-9a-f]", "", str(s.get("ctr_digest") or ""))[:32]
+    if dig and dig != rep.get("ctr_digest"):
+        rep["ctr_digest"] = dig
+        _ctr_rev[0] += 1
     store_merge(rep.get("stores") or {}, clean["stores"], totals)
     _exec("UPDATE nodes SET agent = ?, reported = ? WHERE id = ?",
           (json.dumps(ag), json.dumps(rep), nid))

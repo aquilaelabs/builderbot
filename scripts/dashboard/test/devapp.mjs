@@ -244,7 +244,7 @@ const pillIs = async (want) => {
   const runs = await page.evaluate(async () => {
     const out = [];
     let said = false;
-    const mo = new MutationObserver(() => { if (document.querySelector('#bDockerRe[aria-busy="true"]')) said = true; });
+    const mo = new MutationObserver(() => { if (document.querySelector('.dmtab.dmstale')) said = true; });
     mo.observe(document.querySelector('.dmtab').parentElement, { childList: true, subtree: true });
     for (let i = 0; i < 4; i++){
       said = false;
@@ -257,7 +257,7 @@ const pillIs = async (want) => {
   });
   const quickSaid = runs.out.filter(r => r.said && r.ms < runs.slow);
   ok(quickSaid.length === 0,
-     `four quick reloads in a row never show "refreshing" on a fetch quicker than ${runs.slow} ms (${
+     `four quick reloads in a row never dim the rows on a fetch quicker than ${runs.slow} ms (${
        runs.out.map(r => `${r.ms}ms${r.said ? ' shown' : ''}`).join(', ')})`);
   const slow = await page.evaluate(async () => {
     const f = window.fetch;
@@ -265,16 +265,16 @@ const pillIs = async (want) => {
       ? new Promise(r => setTimeout(() => r(f(...a)), DM_SLOW_MS + 400)) : f(...a);
     const p = loadDocker();
     await new Promise(r => setTimeout(r, DM_SLOW_MS + 200));
-    const during = { word: !!document.querySelector('#bDockerRe[aria-busy="true"]'), dim: !!document.querySelector('.dmtab.dmstale') };
+    const during = { dim: !!document.querySelector('.dmtab.dmstale') };
     await p; window.fetch = f;
     // A revision reload that started under the slowed fetch is itself still
     // slowed and still in flight; the word it is entitled to is not this
     // test's. Wait for the tab to have nothing on its way.
     for (let i = 0; i < 40 && dockerFetching; i++) await new Promise(r => setTimeout(r, 100));
-    return { ...during, after: !!document.querySelector('#bDockerRe[aria-busy="true"]') };
+    return { ...during, after: !!document.querySelector('.dmtab.dmstale') };
   });
-  ok(slow.word && slow.dim && !slow.after,
-     `...and one that is slow says so, with the rows dimmed, until it lands (${JSON.stringify(slow)})`);
+  ok(slow.dim && !slow.after,
+     `...and one that is slow dims the rows until it lands (${JSON.stringify(slow)})`);
 }
 
 // A redraw must not take an open menu with it. The manager repaints on every
@@ -2299,7 +2299,7 @@ const dead = await page.evaluate(() => {
     tip: saidOf(mk),
     acts: q('.dmtab [data-dm="up"],.dmtab [data-dm="down"]').map(b => b.disabled),
     empty: document.querySelector('.dmtab .dmnote, .dmtab .empty')?.textContent || '',
-    refreshLive: document.getElementById('bDockerRe')?.disabled === false,
+    noRefresh: !document.getElementById('bDockerRe'),
     files: q('.dmtab [data-dm="edit"],.dmtab [data-dm="env"]').map(b => b.disabled),
     removes: q('.dmtab [data-dm="remove"]').map(b => b.disabled),
     off: q('.dmtab .row[data-inst]').map(r => r.classList.contains('off')),
@@ -2312,8 +2312,8 @@ ok(/no node with a daemon/.test(dead.tip),
    '...each carrying the reason rather than just refusing');
 ok(/no node with a daemon/.test(dead.empty),
    '...and the tab says it in words, since a tooltip is unreachable on a phone');
-ok(dead.refreshLive,
-   'Refresh stays live: it is the retry, and disabling it would strand you');
+ok(dead.noRefresh,
+   'there is no Refresh to strand: a daemon wired up is read when its node\'s containers fingerprint moves');
 ok(dead.files.every(x => !x),
    '...as do Edit and Env: a compose file is a file whatever can run it');
 // ...and so does Remove, which is the correction: it is a record on this side

@@ -93,10 +93,11 @@ function skTpl(html, {said = "loading…", live = false} = {}){
 
 // The bar a node's page wears (nodePick and its actions at the right) while
 // what it lists is on its way: the picker's box shimmering, the actions
-// there and dead until the page they act on has drawn.
+// there and dead until the page they act on has drawn. An action given as
+// [label, "primary"] is the page's main action and wears its fill.
 function skNodeBar(actions = []){
   return `<label class="pick">Node ${skv(7, "ctl")}</label><span class="sp"></span><span class="actbar">${
-    actions.map(a => `<button type="button" disabled>${esc(a)}</button>`).join("")}</span>`;
+    actions.map(a => [].concat(a)).map(([a, cls]) => `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${esc(a)}</button>`).join("")}</span>`;
 }
 // ---- the first paint, shaped like the page the address names ----------------
 // What a reload shows until the first snapshot lands (the operator, 17 Oct:
@@ -143,7 +144,7 @@ function bootPage(hash){
       <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${skRows(2)}</section></div>`);
   else if (key === "projects" && tool === "projects")
     body = doc(`<input type="search" disabled placeholder="name, branch or node"><span class="sp"></span>
-      <span class="actbar"><button type="button" disabled>New project</button></span>`,
+      <span class="actbar"><button type="button" disabled>${BIN}</button><button type="button" class="primary" disabled>New project</button></span>`,
       `<div class="field pgridband"><div class="pgrid">${Array.from({length: 6}, (_, j) =>
         `<div class="sk-card skpcard"><i class="sk-b" style="width:${SKW[j % 8] / 2 + 20}%"></i><i class="sk-b sub" style="width:70%"></i><i class="sk-b sub" style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("")}</div></div>`);
   // The rest: their rows in a floating card, as the pages draw them at a

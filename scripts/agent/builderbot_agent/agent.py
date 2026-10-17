@@ -480,6 +480,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             pub = self.published_now()
             if pub is not None:
                 sample["published"] = pub
+            # ...and a fingerprint of its containers, for the Containers
+            # page to re-read on when one changes outside BuilderBot.
+            dig = self.containers_now()
+            if dig is not None:
+                sample["ctr_digest"] = dig
             # ...and what each running container uses, once a minute, for
             # its hour on the controller (R218 step 9).
             ctr = self.stats_now()

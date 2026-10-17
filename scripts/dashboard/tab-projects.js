@@ -141,8 +141,8 @@ function renderProjectsInto(i){
     const d = docSurface(i, "proj");
     d.setBar(`<input id="pjSearch" type="search" placeholder="name, branch or node" aria-label="narrow the projects" autocomplete="off" spellcheck="false">
         <span class="sp"></span>
-        <span class="actbar"><button type="button" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button>
-        <button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button></span>`);
+        <span class="actbar"><button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
+        <button type="button" class="primary" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button></span>`);
     d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div class="field pgridband"><div id="pjGrid" class="pgrid"></div></div>`;
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     el.querySelector("#bTrashTab").onclick = openTrash;

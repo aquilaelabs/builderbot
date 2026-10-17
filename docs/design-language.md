@@ -926,7 +926,7 @@ A project may carry a color, one of the nine swatches in its settings, and the p
 
 Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/page-docs.js; node, picker, switcher, select
 
-A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner, the Docker manager) picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the left of the tab's bar (`.docbarrow`) with its verbs at the right, Refresh last, listing the agent nodes by name; a node that cannot be picked for this tab is in the list, disabled, its reason after its name (`sandbox: no adb`), and a quiet one says so. A tip in that bar opens under it, anchored to its right edge, so the rightmost one never hangs past a phone's pane.
+A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner, the Docker manager) picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the left of the tab's bar (`.docbarrow`) with its buttons at the right in the page-head order (no Refresh: the page follows its revisions), listing the agent nodes by name; a node that cannot be picked for this tab is in the list, disabled, its reason after its name (`sandbox: no adb`), and a quiet one says so. A tip in that bar opens under it, anchored to its right edge, so the rightmost one never hangs past a phone's pane.
 
 What is installed on the node is a list of ticked rows (`label.tc`): an installed thing is a set, dead tick with its bin at the right, a thing to add is a tick, and one **Install selected** in the action bar at the foot does them all in one job; Toolchains and the Emulator are both this, the Emulator's rows to add narrowed to one flavor picked above them. A thing the node runs (the Phone, the CI runner) opens on a state row, `.row.toolstate`: "Phone on sandbox" or "CI runners on sandbox" with its state as a pill and one sentence under it; then its controls and its add band (inset in a `.field`), and at the foot a `.field.toolfoot` hint saying how a session or a workflow reaches it. A new node-scoped tab starts from one of these two shapes, never from a picker or a layout of its own (R121, the operator 4 Oct).
 
@@ -982,7 +982,7 @@ Applies to: card, section, band
 
 Applies to: bar, tiles, status line, header
 
-**Every page's top is one order (the operator, 17 Oct), each layer there only when the page has it.** First the bar: what the page is looking at (the node picker) at the left, then its search or filters, then at the right its view switch and its main action, the buttons inside an .actbar (New container, Enroll node). Then the summary tiles. Then the status line (page-docs.js headLine): when its things were last checked or what state they are in at the left, taking what room the buttons leave, its upkeep actions at the right, level with the words (Check for updates and Install selected on Toolchains, Measure now on Storage, Deploy on an undeployed nginx, Add runner on the CI runner). Then the filter chips, then the content's cards. A page's own card heading (Phone's connection, a node's card) is not a status line and keeps its card. Every page's bar is the height of a project's header, --pbar-h (45px: its 32px controls and 6px above and below), so moving from a page to a project's notebook does not move the page under the bar (the operator, 17 Oct). A notebook's view strip runs the pane's whole width, as the header above it does; every band under it keeps the reading width.
+**Every page's top is one order (the operator, 17 Oct), each layer there only when the page has it.** First the bar, which holds every button the page's top has, on one row (the operator, 17 Oct): what the page is looking at (the node picker) at the left, then its search or filters, then at the right, in this order, its view switch (a .pseg), its upkeep buttons (Check for updates, Measure now, Check now, the trash), and last its main action, the one button that wears the accent fill (New container, Enroll node, Install selected, Deploy, Add runner, New project, Add user); a destructive verb, where a page's top has one (Toolchains' Remove), comes after it, as on every action bar. The buttons sit inside an .actbar. A switch, an upkeep button and the main action never look alike: the switch is one joined control with its pick lifted and underlined, the upkeep button is the plain button, and the accent fill is the main action's alone. No page has a Refresh: a page follows its revision tokens (a node's containers by the fingerprint each heartbeat carries, a disk walk by the census), so what a Refresh would fetch arrives by itself. Then the summary tiles. Then the status line (page-docs.js headLine), words alone: when its things were last checked or what state they are in, and what a button in the bar would do when that needs saying (what Toolchains' Remove takes). Then the filter chips, then the content's cards. A page's own card heading (Phone's connection, a node's card) is not a status line and keeps its card and its buttons. Every page's bar is the height of a project's header, --pbar-h (45px: its 32px controls and 6px above and below), so moving from a page to a project's notebook does not move the page under the bar (the operator, 17 Oct). A notebook's view strip runs the pane's whole width, as the header above it does; every band under it keeps the reading width.
 
 ## Pages
 
@@ -1033,10 +1033,10 @@ are `.loading` (a `skel()` in the shape of the rows to come) / `.empty` /
 **The bar is a band, not a row of controls.** What the tab is about goes at
 its left (a node picker, the filters, a one-line count) and the action on
 it at the right, where a row's buttons and a section's status already sit, so
-every tab's Refresh is in one place and lines up with the column of actions
+every tab's buttons are in one place and line up with the column of actions
 under it. The band spans the tab; the controls in it are capped one by one
 like any other. A tab that builds its own chrome instead misses all of this:
-the Toolchains tab kept its picker in a band of its own and its Refresh landed
+the Toolchains tab kept its picker in a band of its own and its buttons landed
 somewhere no other tab's does.
 
 A new tab lands as: its own classic script file beside `index.html`, an entry
@@ -1317,7 +1317,7 @@ Notes:
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
 Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
+  1. Header (the band at the top): the bar: which node's store this is, Check for updates and Install selected, across the top, row 1 of 8
   2. Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
   3. Card (a box holding one thing): this machine's own: the NVIDIA driver and, under it, the container toolkit, each a row to tick like the rest, across the middle, row 3 of 8
   4. List (rows of like things): the toolchains by group, across the middle, rows 4 to 6 of 8
@@ -1331,7 +1331,7 @@ Notes:
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
 Layout of the Emulator tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Header (the band at the top): the bar: which node, and Refresh, across the top, row 1 of 8
+  1. Header (the band at the top): the bar: which node, across the top, row 1 of 8
   2. Text (a block of prose): the store the images live in, across the middle, row 2 of 8
   3. Form (fields a person fills in): add an image: the API level, the flavor, and Add, across the middle, row 3 of 8
   4. List (rows of like things): the images held, across the middle, rows 4 to 7 of 8
@@ -1348,7 +1348,7 @@ Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Bla
   2. List (rows of like things): containers grouped by the project that owns them, the group headed in the project's color; no project last, across the middle, rows 2 to 7 of 8
   3. Card (a box holding one thing): one container: running as a pill, where it came from, Details, Ports and mounts; why a control is dead, in red under it, in the middle, columns 2 to 11 of 12, rows 3 to 6 of 8, inside block 2 (List: containers grouped by the project that o)
   4. Button (an action to press): the container's own action bar: Up, Down, Env or Edit, Rebuild (no cache, pull), Remove, in the middle, columns 2 to 11 of 12, row 6 of 8, inside block 3 (Card: one container)
-  5. Footer (the band at the foot): New container and Refresh, across the bottom, row 8 of 8
+  5. Footer (the band at the foot): New container, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
   The nginx tab (R171) is a node-scoped tab of the Toolchains shape (the node-switcher rule): one node at a time, picked in the bar, a state row first (nginx on NAME, its pill not deployed, deployed or deployed, down, and under it the container's name and route count); then the form, route rows (hostname, path, port, 443 too, remove) with Add route on their action bar, the certificates' lines (each name and when it ends; a key is never shown back), the hostname picker, the certificate and the key each a full-width PEM box under its label (the operator, 11 Oct: side by side on desktop read as broken), the clash in red since nginx holds 80 and 443 on the host, and Save, Revert then Deploy or Remove on the action bar at the foot, the destructive one last.
@@ -1382,7 +1382,7 @@ Notes:
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
 Layout of a node's Phone section on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Refresh, across the top, row 1 of 8
+  1. Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Check now, across the top, row 1 of 8
   2. Card (a box holding one thing): whether a phone is connected, as a pill, and Connect, the filled button, across the middle, rows 2 to 3 of 8
   3. Form (fields a person fills in): pairing: the code from the phone, and Pair, with the steps to get one, across the middle, rows 4 to 6 of 8
   4. Card (a box holding one thing): lent to a project: for how long, the newest screenshot, the newest recording's reel and its video; Take back, across the middle, row 4 of 8
