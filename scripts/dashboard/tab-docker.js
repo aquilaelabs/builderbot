@@ -750,6 +750,25 @@ function dmRefLine(d){
         esc(b)}</option>`).join("")}</select></div>`;
 }
 
+// The compose file laid over the instance's own (the operator, 17 Oct): any
+// compose file in its tree but the one it is built from, or none; staged
+// and written by the grid's Apply, taken by the next build.
+const dmOvDraft = {};
+function dmOverrideLine(d){
+  if (d.source === "file" || !mayDocker()) return "";
+  const key = `${d.project}|${d.instance}`;
+  const files = (dockerList?.overrides?.[d.project] || []).filter(f => f !== (d.compose_path || "") && !(d.compose_path === "" && /^(docker-)?compose\.ya?ml$/.test(f)));
+  const saved = d.override || "";
+  if (!files.length && !saved) return "";
+  const pick = dmOvDraft[key] ?? saved;
+  return `<div class="setcell dmov">${lbl("dmv-" + key, "Override",
+      "Another compose file from the tree, laid over this one for this container alone: its ports, env, volumes or an extra service. The next build takes it.")}
+    <select id="${esc("dmv-" + key)}" data-dmov="${esc(key)}" aria-label="compose file laid over it">
+      <option value=""${pick ? "" : " selected"}>none</option>${
+      [...new Set([...files, ...(saved ? [saved] : [])])].map(f => `<option value="${esc(f)}"${f === pick ? " selected" : ""}>${
+        esc(f)}</option>`).join("")}</select></div>`;
+}
+
 function dmClaudeSaid(d, other = false){
   // What a Claude session may do with it, in a pill's few words: the
   // setting of the PROJECT it belongs to (Claude may: Run its container),
@@ -774,7 +793,7 @@ function dmSetGrid(cells, key, {cancel = false, bare = false} = {}){
   if (!body) return "";
   // ...or the grid alone, for a dialog whose foot carries the buttons.
   if (bare) return `<div class="setgrid dmsettings">${body.replace("<!--APPLY-->", "")}</div>`;
-  const settable = /data-(dmown|dmmove|dmref|dmboot|route)=/.test(body);
+  const settable = /data-(dmown|dmmove|dmref|dmov|dmboot|route)=/.test(body);
   // ...with Cancel before it where Edit settings opened them: it drops what
   // was staged and puts the fields away (rows-you-open).
   const apply = `${cancel ? `<button type="button" class="stop" data-dmcancel="${esc(key)}">Cancel</button>` : ""}<button type="button" class="primary" data-dmapply="${esc(key)}"${
@@ -810,7 +829,7 @@ function dmDropDrafts(key){
   const inst = key.startsWith("inst:") ? key.slice(5) : "";
   const name = inst ? (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === inst)?.name : key.slice(4);
   delete dmOwnDraft[key];
-  if (inst){ delete dmMoveDraft[inst]; delete dmRefDraft[inst]; delete dmRouteDraft[inst]; delete dmNginxDraft[inst]; }
+  if (inst){ delete dmMoveDraft[inst]; delete dmRefDraft[inst]; delete dmOvDraft[inst]; delete dmRouteDraft[inst]; delete dmNginxDraft[inst]; }
   if (name) delete dmBootDraft[name];
 }
 // Whether a row has a setting staged and not yet applied: the drafts each
@@ -820,7 +839,8 @@ function dmRowDirty(key){
   const name = key.startsWith("ctr:") ? key.slice(4) : "";
   const rowName = inst ? (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === inst)?.name : name;
   return dmOwnDraft[key] !== undefined
-    || (inst && (dmMoveDraft[inst] !== undefined || dmRefDraft[inst] !== undefined || dmRouteDraft[inst] !== undefined))
+    || (inst && (dmMoveDraft[inst] !== undefined || dmRefDraft[inst] !== undefined || dmOvDraft[inst] !== undefined
+                 || dmRouteDraft[inst] !== undefined))
     || (rowName && dmBootDraft[rowName] !== undefined);
 }
 // Which project a row belongs to: its group on this tab, the notebook that
@@ -904,6 +924,7 @@ function dmInstPills(d, managed){
     ["Project", d.owner ? esc(d.owner === "System" ? "System" : projLabel(d.owner)) : "none"],
     d.source !== "file" && d.owner && d.project !== d.owner ? ["Built from", esc(projLabel(d.project))] : null,
     d.source !== "file" && refs.length ? ["Branch", d.ref ? esc(d.ref) : "follows project"] : null,
+    d.override ? ["Override", esc(d.override)] : null,
     r && (mode || url) ? ["Reached via", [esc(mode), url].filter(Boolean).join(" · ")] : null,
     dmRoutesOf(d).length ? ["nginx", dmRoutesOf(d).map(dmRouteLink).join(" · ")] : null,
     d.exists && !managed ? ["", d.boot ? "✓ Starts on boot" : "not on boot", d.boot ? "ok" : ""] : null,
@@ -1710,7 +1731,7 @@ function dmRowsHtml(ins, job, blind){
         // with a setting staged keeps it open.
         dmSetPills(dmInstPills(d, managed))}
         ${dmEditing.has(key) || dmRowDirty(key)
-          ? dmSetDialog(d.name, key, [dmOwnerLine(d, key), dmMoveLine(d), dmRefLine(d), dmRouteLine(d),
+          ? dmSetDialog(d.name, key, [dmOwnerLine(d, key), dmMoveLine(d), dmRefLine(d), dmOverrideLine(d), dmRouteLine(d),
                        dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : ""]) : ""}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
@@ -2034,6 +2055,23 @@ function dmWireRows(el, list = dockerList){
     else dmRefDraft[key] = sel.value;
     wake(sel.closest(".row"));
   });
+  el.querySelectorAll("[data-dmov]").forEach(sel => sel.onchange = () => {
+    const key = sel.dataset.dmov;
+    const saved = (list?.instances || []).find(x => `${x.project}|${x.instance}` === key)?.override || "";
+    if (sel.value === saved) delete dmOvDraft[key];
+    else dmOvDraft[key] = sel.value;
+    wake(sel.closest(".row"));
+  });
+  const applyOverride = async key => {
+    const [project, instance] = key.split("|");
+    const file = dmOvDraft[key];
+    if (file === undefined) return;
+    const j = await (await postJSON("/api/devapp", {project, instance, action: "override", file})).json().catch(() => ({error: "no answer"}));
+    if (j.error){ notify(j.error, true); return; }
+    delete dmOvDraft[key];
+    notify(file ? `${project}/${instance} lays ${file} over its compose file from the next build`
+                : `${project}/${instance} has no override from the next build`);
+  };
   const applyRef = async key => {
     const [project, instance] = key.split("|");
     const ref = dmRefDraft[key];
@@ -2184,7 +2222,7 @@ function dmWireRows(el, list = dockerList){
     busy(btn, "Applying");
     try{
       await applyOwner(key);
-      if (inst){ await applyMove(inst); await applyRef(inst); if (row?.dataset.inst) await applyRoute(row); }
+      if (inst){ await applyMove(inst); await applyRef(inst); await applyOverride(inst); if (row?.dataset.inst) await applyRoute(row); }
       if (name) await applyBoot(name);
     }catch(e){ notify("apply: " + e, true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }

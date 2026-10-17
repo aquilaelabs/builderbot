@@ -184,6 +184,9 @@ def _plan(project, instance, action, extra=None):
                   or str(Path(devapp.appdata_root()) / pname)))
     base = [devapp.DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
+    # Its override over it, written beside it by _plan_spec.
+    if devapp.override_file(project, instance) is not None:
+        base += ["-f", "{cdir}/override.yml"]
     ienv = {}
     if devapp.env_path(project, instance).is_file():
         base += ["--env-file", "{cdir}/instance.env"]
@@ -332,6 +335,8 @@ def _ship_build_spec(project, instance, job_id):
             else str(devapp.WORKSPACE / project / devapp.compose_sub(project, instance)).rstrip("/"))
     base = [devapp.DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
+    if "override.yml" in spec["files"]:
+        base += ["-f", "{cdir}/override.yml"]
     if "instance.env" in spec["files"]:
         base += ["--env-file", "{cdir}/instance.env"]
     env = ({"BB_INSTANCE_ENV": "{cdir}/instance.env"} if "instance.env" in spec["files"] else {}) \
@@ -466,11 +471,15 @@ def _plan_spec(project, instance, action, extra=None):
     """The whole of what an agent node needs for one action."""
     cf = devapp.compose_file(project, instance)
     files = {"docker-compose.yml": cf.read_text() if cf and cf.is_file() else ""}
+    ov = devapp.override_file(project, instance)
+    if ov is not None:
+        files["override.yml"] = ov.read_text()
     ep = devapp.env_path(project, instance)
     if ep.is_file():
         files["instance.env"] = ep.read_text()
-        files["docker-compose.yml"] = devapp.env_to_instance(files["docker-compose.yml"],
-                                                             "${BB_INSTANCE_ENV}")
+        for k in ("docker-compose.yml", "override.yml"):
+            if k in files:
+                files[k] = devapp.env_to_instance(files[k], "${BB_INSTANCE_ENV}")
     make, _cannot = devapp.missing_dirs(project, devapp._config(project, instance), instance)
     d = devapp.dev_data_dir(project, instance, make=False)
     return {"project": project, "instance": instance, "action": action,
@@ -982,6 +991,8 @@ def state(project, instance=devapp.MAIN):
            # instance is built FROM is a fact about the record, and a daemon
            # that is not answering does not make it unknown.
            "ref": str(devapp._read_rec(project, instance).get("ref") or ""),
+           # ...and the compose file laid over its own, when it has one.
+           "override": devapp.override_rel(project, instance),
            "job": devapp.job_view(project, instance)}
     if a["on"]:
         cfg = devapp._config(project, instance)
@@ -1374,7 +1385,7 @@ def _job_rebuild(project, instance, run):
         devapp._bump()
 
 
-def make_instance(project, instance, node="", owner=None, ref="", ship=False, compose=""):
+def make_instance(project, instance, node="", owner=None, ref="", ship=False, compose="", override=""):
     """A new container of a project, pinned to the branch it is to build
     from when one is named: `new` from the dialog or a session, and Allow on
     a session's asked one, which is the same making. Nothing is built.
@@ -1388,6 +1399,12 @@ def make_instance(project, instance, node="", owner=None, ref="", ship=False, co
     r = devapp.create_instance(project, instance or devapp.MAIN, node, owner, ship=ship, compose=compose)
     if not r.get("error") and ref:
         p = devapp.set_ref(project, r["instance"], ref)
+        if p.get("error"):
+            _remove_records(project, r["instance"])
+            return p
+    # ...and its override, named before the first build as the pin is.
+    if not r.get("error") and override:
+        p = devapp.set_override(project, r["instance"], override)
         if p.get("error"):
             _remove_records(project, r["instance"])
             return p
@@ -1434,7 +1451,7 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         # The project it belongs to when the request says, "" being none.
         r = make_instance(project, instance, f(req, "node"),
                           f(req, "owner") if "owner" in req else None, f(req, "ref"),
-                          ship=req.get("ship") is True, compose=f(req, "compose"))
+                          ship=req.get("ship") is True, compose=f(req, "compose"), override=f(req, "override"))
         if not r.get("error") and isinstance(req.get("text"), str) \
                 and req["text"].strip():
             # Written before the build that follows, so the first one has
@@ -1510,6 +1527,10 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
                  [str(a) for a in (req.get("args") or [])][:32])
     elif action == "rebuild":
         r = rebuild(project, instance, f(req, "ack"), gate=gate, beside=f(req, "beside"))
+    elif action == "override":
+        # The compose file laid over this one, or none: the next build
+        # takes it, and what it adds meets the gates as the base file's does.
+        r = devapp.set_override(project, instance, f(req, "file"))
     elif action == "env-get":
         # An empty env opens on the example rather than on nothing. The
         # `missing` list still answers about what is STORED, so the hint
@@ -1604,6 +1625,12 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
     sess = me.get("session") or ""
     if action == "probe":
         return probe(project, instance, req, principal)
+    # An override on a container that exists is a person's under ask: a
+    # session names one for a new container (new's override), which the
+    # request carries to Allow.
+    if sess and dial == "ask" and action == "override":
+        return {"error": "under ask, a container's override is set by a person in its settings on the Docker tab; "
+                         "bb devapp new --override names one for a new container, which Allow makes"}, 400
     if sess and dial == "ask" and action in ("rebuild", "env-set", "new", "remove"):
         # Aborting is not asked about: it stops a build this session
         # was already allowed to start, and a running build nobody
@@ -1620,7 +1647,8 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
         # A name no answer could make is refused here rather than put in
         # front of a person first.
         why = (devapp.new_refusal(project, want)
-               or devapp.compose_ok(project, devapp.field(req, "compose"))) if action == "new" else ""
+               or devapp.compose_ok(project, devapp.field(req, "compose"))
+               or devapp.override_ok(project, devapp.field(req, "override"))) if action == "new" else ""
         if why:
             return {"error": why}, 400
         text = req.get("text") if action in ("env-set", "new") else None
@@ -1639,6 +1667,7 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
             create=action == "new", remove=action == "remove", target="" if project == sess else project,
             ref=devapp.field(req, "ref") if action == "new" else "",
             compose=devapp.field(req, "compose") if action == "new" else "",
+            override=devapp.field(req, "override") if action == "new" else "",
             # Made on a hosting node the project names (prefs.hosts): built
             # on its own node and shipped there, once Allow is pressed.
             host=devapp.field(req, "node") if action == "new" and req.get("ship") is True else "",

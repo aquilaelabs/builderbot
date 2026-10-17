@@ -6614,7 +6614,7 @@ class Handler(BaseHTTPRequestHandler):
         # creating and removing the project's own container), which the dial
         # decides rather than this gate, since a session never passes this one.
         session = bool(sess)
-        dialed = ("env-get", "env-set", "new", "remove") if session else ()
+        dialed = ("env-get", "env-set", "new", "remove", "override") if session else ()
         if act not in ("starter", "state", "probe", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None

@@ -266,7 +266,8 @@ def new():
     syncwait.up(os.environ["BB_DEV_PROJECT"], "the controller reads the compose file from its copy")
     body = {"action": "new", "why": os.environ.get("BB_DEV_WHY", ""),
             "ref": os.environ.get("BB_DEV_REF", ""),
-            "compose": os.environ.get("BB_DEV_COMPOSE", "")}
+            "compose": os.environ.get("BB_DEV_COMPOSE", ""),
+            "override": os.environ.get("BB_DEV_OVERRIDE", "")}
     # A hosting node the project names (Hosts its containers on): built on
     # its own node and shipped there (R166).
     if os.environ.get("BB_DEV_HOST"):
@@ -505,8 +506,20 @@ def probe():
     raise SystemExit(1 if bad else 0)
 
 
+def override():
+    """The compose file laid over the instance's own (BB_DEV_OVERRIDE, a
+    path in the tree, or empty for none); the next rebuild takes it."""
+    post, _ = _client()
+    syncwait.up(os.environ["BB_DEV_PROJECT"], "the controller reads the compose files from its copy")
+    r = post({"action": "override", "file": os.environ.get("BB_DEV_OVERRIDE", "")})
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    print(f"[builderbot] {'its override is ' + r['override'] if r.get('override') else 'no override'}; "
+          "bb devapp rebuild applies it", file=sys.stderr)
+
+
 VERBS = {"status": status, "rebuild": rebuild, "new": new, "test": test, "edit": edit, "ls": ls, "ctl": ctl,
-         "probe": probe}
+         "probe": probe, "override": override}
 
 if __name__ == "__main__":
     VERBS[sys.argv[1]]()

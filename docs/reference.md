@@ -232,7 +232,7 @@ bb devapp rebuild [--why "..."]
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
                    interpolate them; its other options are the compose file's own
-bb devapp new [NAME] [--branch REF] [--compose FILE] [--node NODE] [--env FILE] [--why "..."]
+bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
                    own compose file on its node, then built and started, and this
@@ -241,7 +241,9 @@ bb devapp new [NAME] [--branch REF] [--compose FILE] [--node NODE] [--env FILE] 
                    with -2, -3 and on; a second needs ports of its own, so give it
                    an env that sets them with --env. --branch builds it
                    from that branch; --compose names another of its compose
-                   files (site/compose.yml), the root's own by default. --node
+                   files (site/compose.yml), the root's own by default; --override
+                   lays another compose file from the tree over it, for this one
+                   container (its own ports, env or an extra service). --node
                    puts it on a hosting node ticked under the project's Also
                    works on (marked Hosting only): built on the project's own
                    node and shipped there. On ask, one request carries all of it and
@@ -255,6 +257,11 @@ bb devapp env [set FILE|-] [--why "..."]
                    env set, and the rebuild is the next ask.
                    BuilderBot keeps it per container, never as a file in the project,
                    and points a compose line `env_file: .env` at it when it runs
+bb devapp override FILE|none
+                   lay another compose file from the tree over the container's own
+                   (compose's -f after -f), or none; the next rebuild takes it, and a
+                   service it adds is asked about as any new one is. On ask it is a
+                   person's, in the container's settings
 bb devapp ls       every container that belongs to this project on its node
 bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]

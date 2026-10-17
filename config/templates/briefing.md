@@ -551,7 +551,10 @@ build that would ship an image-only service its last build did not stops
 and names it, and a person says yes where Rebuild is pressed; your build
 carries no yes, so say in your reply what you added and why. Its env never
 sets COMPOSE_FILE, COMPOSE_PROJECT_NAME or COMPOSE_PROFILES: what it runs is
-its compose file and its branch.
+its compose file and its branch. A second container from the same tree that
+needs its own ports or a different mix lays another compose file from the
+tree over the first (`bb devapp new NAME --override FILE`, or `bb devapp
+override FILE`), and what that adds is asked about as any new service is.
 
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml compose.yaml */compose.yml */compose.yaml */*.compose.yml */*/compose.yml */*/*.compose.yml -->
 This project has a compose file, so it can have a container built from it:

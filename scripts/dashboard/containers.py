@@ -781,6 +781,7 @@ def manager_view(nid, seen):
         # The branches go with them: the Build from picker is an
         # administrator's.
         got["refs"] = {}
+        got["overrides"] = {}
         return got
     # The branches each listed project could be built from. Here
     # rather than per row: they come from one `for-each-ref` per
@@ -788,4 +789,9 @@ def manager_view(nid, seen):
     got["refs"] = {p: devapp.refs_of(p)
                    for p in {i["project"] for i in got.get("instances") or []}
                    if not devapp.is_file_source(p)}
+    # ...and the compose files each could lay over an instance (its
+    # Override picker), from the same walk Send's list comes from.
+    got["overrides"] = {p: devapp.override_files(p)
+                        for p in {i["project"] for i in got.get("instances") or []}
+                        if not devapp.is_file_source(p)}
     return got

@@ -1740,6 +1740,7 @@ def project_has_compose(project):
 # compose.yml, docker-compose.yml, a variant after (compose.prod.yml) or a
 # name before (admin.compose.yml: one file per service, as Turing Lens
 # keeps them under deploy/containers/, 11 Oct).
+OVERRIDE_RE = re.compile(r"[A-Za-z0-9_.-]+\.override\.ya?ml")
 COMPOSE_RE = re.compile(r"(?:(?P<pre>[A-Za-z0-9_-]+)\.)?(docker-)?compose(?P<var>\.[A-Za-z0-9_-]+)?\.ya?ml")
 COMPOSE_SKIP = {".git", "node_modules", ".gradle", "__pycache__", ".venv", "venv",
                 ".next", ".cache", ".bb-map", "dist", "build", "vendor", ".worktrees"}
@@ -1766,6 +1767,17 @@ def compose_files(project):
     """The project's compose files, relative to its root, the root's own
     first: what the Artifacts tab offers to send, one row each. A symlink is
     never one, file or directory (the audit of 26 Sep)."""
+    return _compose_walk(project, overrides=False)
+
+
+def override_files(project):
+    """Every compose file in the project's tree an instance may lay over its
+    own (the operator, 17 Oct): the sendable ones and the ones named
+    `*.override.*`, which are never sent on their own."""
+    return _compose_walk(project, overrides=True)
+
+
+def _compose_walk(project, overrides=False):
     top = WORKSPACE / project
     out = [n for n in COMPOSE_NAMES if (top / n).is_file() and not (top / n).is_symlink()][:1]
     for d, dirs, files in os.walk(top):
@@ -1774,7 +1786,9 @@ def compose_files(project):
         dirs[:] = sorted(x for x in dirs if x not in COMPOSE_SKIP and not x.startswith(".")
                          and not os.path.islink(os.path.join(d, x)) and depth < COMPOSE_DEPTH)
         for f in sorted(files):
-            if not COMPOSE_RE.fullmatch(f) or ".override." in f:
+            # ...and, for an override, one named for being one (staging.override.yml).
+            if not (COMPOSE_RE.fullmatch(f) or (overrides and OVERRIDE_RE.fullmatch(f))) \
+                    or (".override." in f and not overrides):
                 continue
             r = f if rel == "." else f"{rel}/{f}"
             if r not in out and not os.path.islink(os.path.join(d, f)):
@@ -1858,6 +1872,62 @@ def compose_file(project, instance=MAIN):
     except OSError:
         return None
     return p if inside and p.is_file() and not p.is_symlink() else None
+
+
+# ---- an instance's override (the operator, 17 Oct) ---------------------------
+# A second compose file from the project's tree, laid over the instance's own
+# with compose's own -f after -f: its ports, env, volumes or an extra service
+# for that one container, versioned with the tree and built from its branch
+# as the base file is. Never text kept here (a compose outside the tree is
+# what a project's container may not have), and never loaded by itself: an
+# instance names one or has none. What it adds is read with the base file
+# by every gate, the beside-the-app one included.
+def override_rel(project, instance=MAIN):
+    return str(_read_rec(project, instance).get("override") or "")
+
+
+def override_file(project, instance=MAIN):
+    """The instance's override as a real file inside the project, or None."""
+    rel = override_rel(project, instance)
+    if not rel or is_file_source(project, instance) or ".." in rel.split("/") or rel.startswith("/"):
+        return None
+    p = WORKSPACE / project / rel
+    try:
+        inside = p.resolve().is_relative_to((WORKSPACE / project).resolve())
+    except OSError:
+        return None
+    return p if inside and p.is_file() and not p.is_symlink() else None
+
+
+def override_ok(project, rel, instance=MAIN):
+    """"" when `rel` may be laid over the instance's compose file, else why."""
+    if not rel:
+        return ""
+    if rel not in override_files(project):
+        return f"{project} has no compose file {rel} to lay over its own"
+    if rel == (compose_rel(project, instance) or ""):
+        return f"{rel} is the compose file it is built from, not one to lay over it"
+    return ""
+
+
+def set_override(project, instance, rel):
+    """Name the instance's override, or none with ""."""
+    rel = str(rel or "").strip()
+    if is_file_source(project, instance):
+        return {"error": "a container written here is all its own compose file: edit that instead"}
+    why = override_ok(project, rel, instance)
+    if why:
+        return {"error": why}
+    with _lock:
+        store = _load()
+        rec = _rec(store, project, instance)
+        if rel:
+            rec["override"] = rel
+        else:
+            rec.pop("override", None)
+        write_json(FILE, store)
+    _bump()
+    return {"ok": True, "override": rel}
 
 
 def pname(project, instance=MAIN):
@@ -2040,6 +2110,20 @@ def _compose(project, instance, *args):
                 cf = copy
     argv = [DOCKER, "compose", "--project-name", _pname(project, instance),
             "--project-directory", pdir, "-f", str(cf)]
+    # ...and its override over it, its env_file lines pointed at the
+    # instance's env as the base file's are, in a copy of its own.
+    ov = override_file(project, instance)
+    if ov is not None:
+        if ep.is_file():
+            with contextlib.suppress(OSError):
+                text = ov.read_text(encoding="utf-8")
+                new = env_to_instance(text, str(ep))
+                if new != text:
+                    copy = ENVDIR / f"{_pname(project, instance)}.override.yml"
+                    if not copy.is_file() or copy.read_text(encoding="utf-8") != new:
+                        copy.write_text(new, encoding="utf-8")
+                    ov = copy
+        argv += ["-f", str(ov)]
     if ep.is_file():
         argv += ["--env-file", str(ep)]
     return argv + list(args)
@@ -2783,6 +2867,8 @@ def _overview_here(picked):
                 "compose": compose_file(project, inst) is not None,
                 # Which of the project's compose files, when not the root's.
                 "compose_path": str(rec.get("compose") or ""),
+                # ...and the one laid over it, when it has one.
+                "override": str(rec.get("override") or ""),
                 "source": "file" if filed else "project",
                 # A file read and one git call. risks/problems stay out:
                 # those are judgements to put in front of somebody about to
