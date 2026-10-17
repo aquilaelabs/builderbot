@@ -4069,6 +4069,14 @@ body.booting .panes.dockup .pane.dock{animation:none}
    stay at the right edge on every width (a phone's line once pushed the
    chevron off the screen). */
 .dockline{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+/* A sideways swipe never takes the page back (B820): at the end of a
+   strip's scroll (the dock's line, a chip row, the notebook's views) the
+   gesture fell through to the page, and the page's sideways overscroll is
+   the phone browser's swipe-back, so the page went back a page. The strips
+   keep theirs, and the page has none to give; the system's own back is
+   untouched, and pull to refresh is vertical. */
+.dockline,.chips,.nbtabs .nbgroups,.nbtabs .nbsub{overscroll-behavior-x:contain}
+html,body{overscroll-behavior-x:none}
 .dockline.fadeL{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px);
   mask-image:linear-gradient(to right,transparent 0,#000 20px)}
 .dockline.fadeR{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 20px);

@@ -116,6 +116,21 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
      '...and the tabs list keeps the new order');
   ok(await page.$$eval('#pane1 .dtab[data-id]', ts => ts.every(t => t.querySelector('[data-min]') && t.querySelector('[data-close]'))),
      "each terminal's tab carries minimize and close");
+  // Chat stays anchored at the line's start (the operator, 17 Oct): held,
+  // it lifts nothing, and a terminal dragged past it lands after it.
+  const first = () => page.evaluate(() => document.querySelector('#pane1 .dockline > .dtab')?.classList.contains('dchat'));
+  const chat = await page.$eval('#pane1 .dtab.dchat .dlbl', e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const before2 = await order(), t1 = await box(before2[1]), hash0 = await page.evaluate(() => location.hash);
+  await finger(page, chat.x + chat.w / 2, chat.y + chat.h / 2, t1.x + t1.w - 4, t1.y + t1.h / 2, 700);
+  ok(await first() && JSON.stringify(await order()) === JSON.stringify(before2), 'Chat held and dragged moves nothing: it is anchored');
+  // ...and the swipe at the line's start stays the line's (B820): it fell
+  // through to the browser's swipe-back and the page went back a page.
+  ok(await page.evaluate(() => location.hash) === hash0, `...nor does the swipe take the page back (${hash0})`);
+  const t1b = await box(before2[1]);
+  await finger(page, t1b.x + 10, t1b.y + t1b.h / 2, chat.x + 2, chat.y + chat.h / 2, 700);
+  const after2 = await order();
+  ok(await first() && after2[0] === before2[1],
+     `...and a terminal dragged past it lands first among the terminals, Chat still at the start (${after2.slice(0, 2)})`);
 }
 
 await done(browser);
