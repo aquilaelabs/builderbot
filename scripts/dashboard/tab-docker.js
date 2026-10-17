@@ -980,7 +980,7 @@ async function dmAction(project, instance, act, btn){
           ? `Docker is not answering, so it is not taken down; only the row goes. `
           : `It is taken down first. `)
       + `Its env file and data stay for a remake.`)) return;
-  let ack = "";
+  let ack = "", beside = "";
   if (act === "up" || act === "rebuild"){
     // The full state for this one instance, asked now rather than computed
     // for every instance on every paint: risks and problems cost a compose
@@ -1017,10 +1017,18 @@ async function dmAction(project, instance, act, btn){
           + "\n\nStart it anyway?")) return;
       ack = st.risks_digest || "";
     }
+    // What it would ship beside the app that its last build did not (the
+    // operator, 17 Oct: the person knows what is actually being shipped):
+    // named, and a yes is this press's; a no leaves it unbuilt.
+    if ((st.beside_new || []).length){
+      if (!confirm(`${project}'s compose now runs ${st.beside_new.join(", ")} beside the app, which its last build did not ship.`
+          + "\n\nShip it with the app? If it is not part of the app, cancel and give it a container of its own with New container.")) return;
+      beside = st.beside_digest || "";
+    }
   }
   if (btn) btn.disabled = true;
   try{
-    const r = await postJSON("/api/devapp", {project, instance, action:act, ack});
+    const r = await postJSON("/api/devapp", {project, instance, action:act, ack, beside});
     const j = await r.json();
     if (j.error) notify(j.error, true);
     // What was done instead of what was asked: a remove whose daemon could

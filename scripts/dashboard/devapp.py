@@ -2556,6 +2556,10 @@ def write_env(project, text, instance=MAIN):
     if len(text or "") > 65536:
         return {"error": "that env file is over 64KB, and this holds settings, "
                          "not data"}
+    # Never a variable that steers compose itself (COMPOSE_CONTROL).
+    ctl = compose_control(text)
+    if ctl:
+        return {"error": compose_control_refusal(ctl)}
     try:
         ENVDIR.mkdir(parents=True, exist_ok=True)
         env_path(project, instance).write_text(text or "", encoding="utf-8")
@@ -4061,6 +4065,88 @@ def _risk_gate(project, instance=MAIN, ack=""):
             + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else "")
             + ". A person acknowledges that once by pressing Build or Rebuild on its row "
               "on the Docker tab, where the list is shown")
+
+
+# ---- what a build ships beside the app (the operator, 17 Oct) -------------
+# A project's dev container is the one built from its tree; a service that
+# runs a published image beside it (a database, a git host, a seed) rides in
+# its stack, is rebuilt and pinned to its branch with it, and ships when it
+# does. So one that was not there at its last build is a person's to say
+# yes to, where the build is pressed, before it ships: "so the person knows
+# what is actually being shipped". The first build after this landed takes
+# what is there as the baseline; a session's build is stopped and told who
+# answers, since the yes is a person's.
+def beside_services(cfg):
+    """The services a resolved compose runs from a published image, with
+    nothing built from the tree: what rides beside the app."""
+    return sorted(n for n, sv in _services(cfg).items() if not sv.get("build"))
+
+
+def beside_new(project, instance=MAIN, cfg=None):
+    """The image-only services its last build did not ship and nobody has
+    said yes to, or [] (none, or no baseline yet, which the next build
+    takes)."""
+    rec = _read_rec(project, instance)
+    if "beside" not in rec or cfg is None:
+        return []
+    known = set(rec.get("beside") or [])
+    return [n for n in beside_services(cfg) if n not in known]
+
+
+def beside_digest(new):
+    return hashlib.sha256("\n".join(sorted(new)).encode()).hexdigest()[:12] if new else ""
+
+
+def _set_beside(project, instance, names):
+    with _lock:
+        store = _load()
+        _rec(store, project, instance)["beside"] = sorted(names)
+        write_json(FILE, store)
+
+
+def _beside_gate(project, instance=MAIN, yes=""):
+    """The reason to stop before a build ships a service beside the app that
+    its last one did not, or "" to go ahead. `yes` is a person's answer, the
+    digest of the services the Docker tab showed them; a session never
+    carries one (rebuild passes "" for a session's build)."""
+    if is_file_source(project, instance):
+        return ""                       # a container written here is all its own stack
+    cfg = _config(project, instance)
+    if cfg is None:
+        return ""                       # unreadable: the build says so itself
+    now = beside_services(cfg)
+    rec = _read_rec(project, instance)
+    new = [n for n in now if n not in set(rec.get("beside") or [])] if "beside" in rec else []
+    if not new or (yes and yes == beside_digest(new)):
+        if rec.get("beside") != now:
+            _set_beside(project, instance, now)
+        return ""
+    return (f"the project's compose now runs {', '.join(new)} beside the app, which its last build did not "
+            "ship: a person says whether that is part of the app by pressing Rebuild on its row on the "
+            "Docker tab, where it is named; if it is not, it is a container of its own (bb container new), "
+            "not a service in the project's compose file")
+
+
+# The variables that would make compose read another file, another stack or
+# another set of the file's services than the build was pressed for: what a
+# dev container runs is its compose file and its branch, nothing an env says.
+COMPOSE_CONTROL = ("COMPOSE_FILE", "COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES", "COMPOSE_PATH_SEPARATOR")
+
+
+def compose_control(text):
+    """The compose-control variables an env sets, in order, or []."""
+    out = []
+    for line in str(text or "").splitlines():
+        m = re.match(r"\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=", line)
+        if m and m.group(1) in COMPOSE_CONTROL and m.group(1) not in out:
+            out.append(m.group(1))
+    return out
+
+
+def compose_control_refusal(names):
+    return (f"{', '.join(names)} {'is' if len(names) == 1 else 'are'} not an env setting here: what a container "
+            "runs is its compose file (and, for a project's, its branch), so the services it starts are the "
+            "file's to say; take the line out of its env (Env)")
 
 
 def is_file_source(project, instance=MAIN):

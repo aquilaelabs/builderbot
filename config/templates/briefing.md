@@ -546,7 +546,12 @@ database for a test, a git host, a mail catcher, a seed) is a container or
 a stack of its own (`bb container new`), never a service added to the
 project's compose file, where it would be rebuilt, restarted and pinned to
 a branch with the project for no reason of its own. What the project's
-compose already runs as part of the app is the project's, and stays.
+compose already runs as part of the app is the project's, and stays. A
+build that would ship an image-only service its last build did not stops
+and names it, and a person says yes where Rebuild is pressed; your build
+carries no yes, so say in your reply what you added and why. Its env never
+sets COMPOSE_FILE, COMPOSE_PROJECT_NAME or COMPOSE_PROFILES: what it runs is
+its compose file and its branch.
 
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml compose.yaml */compose.yml */compose.yaml */*.compose.yml */*/compose.yml */*/*.compose.yml -->
 This project has a compose file, so it can have a container built from it:

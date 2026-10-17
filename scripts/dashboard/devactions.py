@@ -1007,6 +1007,11 @@ def state(project, instance=devapp.MAIN):
         out["port_clash"] = devapp.taken_ports(project, instance, out.get("ports"))
         out["route"] = devapp.route_view(project, instance, out.get("ports"))
         out["risks_digest"] = devapp.risk_digest(rs)
+        # ...and what it would ship beside the app that its last build did
+        # not (devapp._beside_gate), for the press to name and say yes to.
+        bn = devapp.beside_new(project, instance, cfg)
+        out["beside_new"] = bn
+        out["beside_digest"] = devapp.beside_digest(bn)
         # True when nothing stands in the way: either the file asks for
         # nothing beyond its own directory, or the operator has already said
         # yes to exactly this set.
@@ -1055,7 +1060,7 @@ def state(project, instance=devapp.MAIN):
 # actions
 
 @devapp._on_instance
-def up(project, instance=devapp.MAIN, ack=""):
+def up(project, instance=devapp.MAIN, ack="", beside=""):
     # The refusals this side can make alone come first, so a request that
     # is going to be turned down does not flash a job at every other browser
     # on its way to saying no. The risk gate reads the compose on the node,
@@ -1069,7 +1074,15 @@ def up(project, instance=devapp.MAIN, ack=""):
     if clash:
         return {"error": clash}
     return _submit(project, instance, "up",
-                   check=lambda: devapp.gpu_gate(project, instance) or devapp._risk_gate(project, instance, ack))
+                   check=lambda: devapp.gpu_gate(project, instance) or _env_gate(project, instance)
+                   or devapp._beside_gate(project, instance, beside) or devapp._risk_gate(project, instance, ack))
+
+
+def _env_gate(project, instance):
+    """A build or a start stops on an env that steers compose itself
+    (devapp.COMPOSE_CONTROL): one written before the refusal existed."""
+    ctl = devapp.compose_control(devapp.read_env(project, instance))
+    return devapp.compose_control_refusal(ctl) if ctl else ""
 
 
 def _job_up(project, instance, run):
@@ -1227,7 +1240,7 @@ def _job_down(project, instance, run):
 
 
 @devapp._on_instance
-def rebuild(project, instance=devapp.MAIN, ack="", gate=True):
+def rebuild(project, instance=devapp.MAIN, ack="", gate=True, beside=""):
     """Build, then bounce, or stop at the env gate. A job: a build is
     minutes, and the poll watches it through job_rev. The name and the
     worktree are this side's and are checked in front of the answer; the
@@ -1250,8 +1263,11 @@ def rebuild(project, instance=devapp.MAIN, ack="", gate=True):
         return {"error": moved}
     # The GPU's gate is for a session's build too: it is about what the node
     # can do, not about who confirmed what.
+    # What it ships beside the app is a person's to say yes to whoever
+    # pressed it (devapp._beside_gate): a session's build carries no yes.
     return _submit(project, instance, "rebuild",
-                   check=lambda: devapp.gpu_gate(project, instance)
+                   check=lambda: devapp.gpu_gate(project, instance) or _env_gate(project, instance)
+                   or devapp._beside_gate(project, instance, beside if gate else "")
                    or (devapp._risk_gate(project, instance, ack) if gate else ""))
 
 
@@ -1484,7 +1500,7 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
     if action in ("env-set", "compose-set", "rename") and devapp.owner_of(project, instance) == devapp.SYSTEM:
         return {"error": f"{devapp._pname(project, instance)} is BuilderBot's own and managed: change it where it was deployed from"}, 400
     if action == "up":
-        r = up(project, instance, f(req, "ack"))
+        r = up(project, instance, f(req, "ack"), f(req, "beside"))
     elif action == "down":
         r = down(project, instance)
     elif action == "update":
@@ -1493,7 +1509,7 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
         r = test(project, instance, test_cmd,
                  [str(a) for a in (req.get("args") or [])][:32])
     elif action == "rebuild":
-        r = rebuild(project, instance, f(req, "ack"), gate=gate)
+        r = rebuild(project, instance, f(req, "ack"), gate=gate, beside=f(req, "beside"))
     elif action == "env-get":
         # An empty env opens on the example rather than on nothing. The
         # `missing` list still answers about what is STORED, so the hint
