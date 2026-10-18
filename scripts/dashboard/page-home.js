@@ -195,6 +195,10 @@ function renderHomeInto(i){
   root.querySelectorAll('[data-htile="ci"]').forEach(a => a.onclick = () => { sectOpen["git:ci"] = true; });
   root.querySelectorAll("[data-hjob]").forEach(b => b.onclick = () => openJob(b.dataset.hjob));
   root.querySelectorAll("[data-hproj]").forEach(b => b.onclick = () => openNotebook(b.dataset.hproj));
+  root.querySelectorAll(".hproj").forEach(c => c.onclick = e => {
+    const name = c.querySelector("[data-hproj]")?.dataset.hproj;
+    if (name && cardPress(e)) openNotebook(name);
+  });
   root.querySelectorAll("[data-hstart]").forEach(b => b.onclick = () => {
     const k = b.dataset.hstart, s = setupSteps();
     if (k === "node") railGo("machines");

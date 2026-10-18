@@ -18,17 +18,6 @@ let resumeFor = null;
 // or the sidebar's card; it is drawn in that one and positioned under the
 // Claude button there.
 let resumeHost = null;
-// The chooser placed under its button, inside its host. In a project page's
-// pane (R218 step 3) the menu sits on the pane, not in the page's scroller,
-// so scrolling cannot bring it up: one that would fall past the pane's foot
-// opens above its button instead.
-function placeUnder(m, anchor, host){
-  const a = anchor.getBoundingClientRect(), c = host.getBoundingClientRect();
-  m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
-  const below = a.bottom - c.top + 4;
-  const up = host.classList.contains("pane") && below + m.offsetHeight > Math.min(c.height, innerHeight - c.top);
-  m.style.top = (up ? Math.max(4, a.top - c.top - m.offsetHeight - 4) : below) + "px";
-}
 function resumeHostNow(){
   if (resumeHost?.isConnected) return resumeHost;
   // Asked without a press (openClaude from code, a redraw): the pane where
@@ -372,7 +361,7 @@ function resumePicker(p, m, card, anchor, ns, several){
       })
       .catch(() => {});
   }
-  placeUnder(m, anchor, card);
+  floatAt(m, anchor);
 }
 
 function placeResumeMenu(){
@@ -456,21 +445,8 @@ function placeResumeMenu(){
     claudeEnd(p.name, ns.find(n => n.id === b.dataset.end) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-restart]").forEach(b => b.onclick = () =>
     claudeRestart(p.name, ns.find(n => n.id === b.dataset.restart) || {id: "", name: ""}, several));
-  placeUnder(m, anchor, card);
-  // ...and brought into the sidebar, which scrolls. Pressing Claude on a
-  // project whose session has ENDED opens this chooser instead of a tab;
-  // that is the design, and it is the only thing the press does, so a
-  // chooser placed below the fold is a press with no visible result. Reported
-  // as "opened Claude again and it did not go to the new tab" (bug #65).
-  // Same rule and the same fix as the notebook's view strip: arriving
-  // somewhere you cannot see reads as nothing having happened.
-  //
-  // Measured at rest. scrollIntoView reads the box where it is, and where it
-  // is right now is menuIn's first frame, 8px above where it will settle,
-  // so aligning that box left the settled chooser that far below the fold (B77).
-  // Finish the entrance for the measurement and play it again from the start.
-  const enter = m.getAnimations()[0];
-  enter?.finish();
-  m.scrollIntoView({block: "nearest", inline: "nearest"});
-  enter?.play();
+  // Over the page under its button, above it near the screen's foot, a
+  // sheet on a phone (floatAt), so it is never placed where it cannot be
+  // seen: a chooser out of sight read as a press that did nothing (bug #65).
+  floatAt(m, anchor);
 }

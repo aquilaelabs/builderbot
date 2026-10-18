@@ -964,5 +964,6 @@ function wireProjectHeader(bar){
     closeMore();
     m.hidden = !open;
     b.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) floatAt(m, b);
   });
 }

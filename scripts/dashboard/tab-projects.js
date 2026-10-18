@@ -188,6 +188,10 @@ function renderProjectsInto(i){
     wireProjectRows(grid);
     wireProjectHeader(grid);
     grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
+    grid.querySelectorAll(".pcard[data-row]").forEach(c => c.onclick = e => {
+      if (!cardPress(e)) return;
+      openNotebook(c.dataset.row);
+    });
   }
   syncResumeMenu();
 }

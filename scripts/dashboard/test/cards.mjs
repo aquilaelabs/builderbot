@@ -486,8 +486,10 @@ print(json.dumps(out))
   await page.click(`${card} [data-pmore]`); await page.waitForTimeout(250);
   ok(await page.$eval(`${card} .actmenu`, m => !m.hidden && m.querySelectorAll('button').length >= 5),
      '...and pressing it opens the menu with the rest');
+  // A phone's menu is a sheet over the bottom bar, rising as More does
+  // (floatAt, the operator, 18 Oct: a card's menu was cut off in its fold).
   const menuAnim = await page.$eval(`${card} .actmenu`, m => getComputedStyle(m).animationName);
-  ok(menuAnim === 'menuIn', `...on the stylesheet's tween (${menuAnim})`);
+  ok(menuAnim === 'menuUp', `...on the stylesheet's tween, rising as a sheet (${menuAnim})`);
   ok(await page.$eval(`${card} [data-pmore]`, b => b.getAttribute('aria-expanded') === 'true'),
      '...saying so, for anything that is not looking at the pixels');
   await page.keyboard.press('Escape');
@@ -1151,6 +1153,25 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
   ok(arch.fold === 'projects:archived' && arch.foldShut === true && /^\d+ projects?$/.test(arch.said)
      && arch.menu.includes('Unarchive') && !arch.menu.some(t => /^(Pin|Unpin|Group)/.test(t)) && !arch.home,
      `an archived project's card is folded away under Archived, its menu offering Unarchive and no Pin or Group, and it is not among the pinned (${JSON.stringify(arch)})`);
+// Its menu floats over the page, not inside the fold that holds the card (the
+// operator, 18 Oct: it was cut off at the fold's foot): pressed as a person
+// would, every item of it is on the screen and above the dock's line.
+{
+  await page.evaluate(() => { closeMore(); const d = document.querySelector('.doc .projtab details.sect[data-sect="projects:archived"]'); if (d) d.open = true; });
+  const more = '.doc .projtab .pcard[data-row="alpha"] [data-pmore]';
+  await page.locator(more).scrollIntoViewIfNeeded();
+  await page.click(more); await page.waitForTimeout(400);
+  const seen = await page.evaluate(() => {
+    const m = document.querySelector('.actmenu:not([hidden])'), last = m && [...m.querySelectorAll('button')].pop();
+    if (!last) return { open: false };
+    const r = last.getBoundingClientRect(), foot = Math.min(innerHeight, document.querySelector('.pane.dock')?.getBoundingClientRect().top || innerHeight);
+    return { open: true, floats: m.classList.contains('floatm'), bottom: Math.round(r.bottom), foot: Math.round(foot),
+             top: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === last || last.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+  });
+  ok(seen.open && seen.floats && seen.bottom <= seen.foot && seen.top,
+     `...and its menu opens whole over the page, its last item above the dock's line and nothing over it (${JSON.stringify(seen)})`);
+  await page.evaluate(() => closeMore());
+}
 await page.evaluate(() => setLocked('alpha', false));
 // Unlocking is what is under test, so it is the LOCK that has to stop being
 // the reason. The button stays dead here for a different one (alpha has no

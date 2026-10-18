@@ -694,8 +694,103 @@ function wireMore(root){
     const m = b.nextElementSibling;
     const open = m.hidden;
     closeMore();
-    if (open){ m.hidden = false; b.setAttribute("aria-expanded", "true"); }
+    if (open){ m.hidden = false; b.setAttribute("aria-expanded", "true"); floatAt(m, b); }
   });
+}
+// A menu over the page, never inside what holds its button (the operator,
+// 18 Oct: a card's ⋯ in Archived was cut off at the fold's foot): at a desk
+// under its button and lined up with it, above it when it would pass
+// the screen's foot; on a phone a sheet over the bottom bar, as More is.
+// The ⋯ menus and the Claude chooser both. Fixed to the screen, measured
+// against whatever box holds it as its frame (a scheme's glass makes one),
+// its entrance played from the start where it lands.
+function floatAt(m, anchor){
+  m._anchor = anchor;
+  floatPlace(m, anchor);
+  m.getAnimations().forEach(a => a.cancel());
+  m.style.animation = "none"; void m.offsetWidth; m.style.animation = "";
+  // A box around it moving on a transform (a page fading in when the press
+  // came that soon) is its frame until the move ends, and the frame then
+  // goes back to the screen: placed again when the moves end, or it jumps.
+  const moving = document.getAnimations().filter(a => a.playState === "running"
+    && a.effect?.target instanceof Element && a.effect.target !== m && a.effect.target.contains(m));
+  if (moving.length) Promise.all(moving.map(a => a.finished.catch(() => {}))).then(() => {
+    if (m.isConnected && !m.hidden && m.classList.contains("floatm")) floatPlace(m, anchor);
+  });
+}
+function floatPlace(m, anchor){
+  const phone = isPhone();
+  m.classList.add("floatm");
+  m.classList.toggle("sheet", phone);
+  m.classList.remove("up");
+  Object.assign(m.style, {right: "auto", bottom: "auto", maxHeight: ""});
+  // The frame's origin, read off a probe beside it rather than the menu
+  // itself, whose own entrance may be moving it.
+  const probe = document.createElement("i");
+  probe.style.cssText = "position:fixed;left:0;top:0;width:0;height:0";
+  m.parentElement.append(probe);
+  const o = probe.getBoundingClientRect();
+  probe.remove();
+  // The screen's foot is the bottom bar's top on a phone, and the dock's top
+  // wherever the dock shows, its shut line or pulled up: the dock is drawn
+  // over the page, so a menu reaching under it had its last items covered.
+  // One opened from inside the dock has the screen down to the bar.
+  const bar = document.querySelector(".railbar")?.getBoundingClientRect();
+  let foot = bar?.height ? bar.top : innerHeight;
+  const dockEl = document.querySelector(".pane.dock"), dock = dockEl?.getBoundingClientRect();
+  if (dock?.height && dock.top < foot && !dockEl.contains(anchor)) foot = dock.top;
+  // ...and its ceiling the top of the page area its button is in, under the
+  // header and the page's own bar: a menu that rose over either was under
+  // it, both being drawn over the page.
+  const head = document.querySelector("body > header")?.getBoundingClientRect();
+  const area = anchor?.closest?.(".doc")?.getBoundingClientRect();
+  const ceil = Math.max(head?.height ? head.bottom : 0, area?.height ? area.top : 0);
+  let left, top, room;
+  if (phone){
+    room = foot - ceil - 16;
+    m.style.maxHeight = room + "px";
+    left = 8;
+    top = Math.max(ceil + 8, foot - 8 - m.offsetHeight);
+  }else{
+    // (a button the dock covers still opens its menu above the dock)
+    const a = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+    const aTop = Math.min(a.top, foot), aBottom = Math.min(a.bottom, foot);
+    const below = foot - aBottom - 12, above = aTop - ceil - 12;
+    const up = h > below && above > below;
+    room = Math.max(40, up ? above : below);
+    m.style.maxHeight = room + "px";
+    // Lined up with its button on the side it opens from: Start Claude at a
+    // card's left opens rightward from its left edge, a ⋯ at its right
+    // leftward from its right edge.
+    left = Math.max(8, Math.min((a.left + a.right) / 2 < innerWidth / 2 ? a.left : a.right - w, innerWidth - w - 8));
+    top = up ? Math.max(ceil + 8, aTop - 4 - Math.min(h, room)) : aBottom + 4;
+    m.classList.toggle("up", up);
+  }
+  m.style.left = (left - o.left) + "px";
+  m.style.top = (top - o.top) + "px";
+}
+// An open floating menu follows its button as the page scrolls or the window
+// changes size, and a ⋯ menu closes once its button is off the screen or
+// gone (closing on any scroll shut menus a redraw's own scroll had moved
+// nothing under).
+function floatFollow(){
+  document.querySelectorAll(".floatm").forEach(m => {
+    if (m.hidden || !m.isConnected) return;
+    const a = m._anchor;
+    const r = a?.isConnected ? a.getBoundingClientRect() : null;
+    if (!r || !r.width || r.bottom < 0 || r.top > innerHeight){
+      if (m.classList.contains("actmenu")) closeMore();
+      return;
+    }
+    floatPlace(m, a);
+  });
+}
+// A press on a card that opens its project's page (the operator, 18 Oct:
+// the whole card, not only its name): anywhere but one of its controls,
+// its menu, its swatches or its chooser, and not the end of selecting text.
+function cardPress(e){
+  if (e.target.closest("button, a, input, select, textarea, label, .actmenu, .pcpop, .resumemenu")) return false;
+  return !String(getSelection?.() || "");
 }
 function closeMore(){
   document.querySelectorAll(".actmenu:not([hidden])").forEach(m => {

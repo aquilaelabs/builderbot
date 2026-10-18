@@ -3186,6 +3186,13 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .pcard.pc .pcacts>button:hover,.pcard.pc .pcacts>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
   .pcard.pc .pcacts>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
 }
+/* The whole card opens the project's page (the operator, 18 Oct), so the
+   whole card answers the pointer, as a tile that is a link does. */
+.pcard[data-row],.hproj{cursor:pointer}
+@media(hover:hover){
+  .pcard[data-row]:hover,.hproj:hover{border-color:var(--accent-mid)}
+  .pcard.pc[data-row]:hover,.hproj.pc:hover{border-color:var(--pc)}
+}
 .pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);background:none;border:0;padding:0;min-height:0;text-align:left;cursor:pointer}
 .pcard .pcname .name:hover{text-decoration:underline}
@@ -4014,6 +4021,14 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   display:flex;flex-direction:column;gap:4px;
   animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 .actmenu>button{width:100%;min-height:var(--tap);justify-content:flex-start;text-align:left;flex:0 0 auto}
+/* A menu floated over the page (floatAt in page-docs.js, the operator, 18
+   Oct): the ⋯ menus and the Claude chooser, fixed to the screen so no fold
+   or card it sits in can cut it off, scrolling inside itself when it is
+   taller than the room it has. One that opens upward rises, as does a
+   phone's sheet over the bottom bar, the way More does. */
+.floatm{position:fixed;z-index:60;overflow-y:auto;overscroll-behavior:contain}
+.floatm.up,.floatm.sheet{animation-name:menuUp;animation-duration:.32s}
+.floatm.sheet{width:calc(100vw - 16px);max-width:none;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
 @media(max-width:600px){
   /* The finger height, and nothing of the width: a phone's action bar used
      to share the row between its buttons, which made every set of two span
@@ -6620,6 +6635,14 @@ document.addEventListener("click", e => {
   if (!e.target.closest(".actbar .more > button")) closeMore();
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeMore(); });
+// A floating menu (floatAt) follows its button as the page scrolls or the
+// window changes size, a frame at a time; a scroll inside the menu moves
+// nothing under it.
+let floatFrame = 0;
+const floatSoon = e => { if (e?.target?.closest?.(".floatm") || floatFrame) return;
+  floatFrame = requestAnimationFrame(() => { floatFrame = 0; floatFollow(); }); };
+document.addEventListener("scroll", floatSoon, {capture: true, passive: true});
+addEventListener("resize", floatSoon);
 
 // ---- panes -----------------------------------------------------------
 // Its declarations are page-panes.js; what runs at load is below.
