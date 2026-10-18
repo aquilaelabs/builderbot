@@ -395,6 +395,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container's settings open in a dialog from Edit settings under its ⋯ menu (568dc79)
 - Pages change smoothly: a picked settings section, person or role fades in, chips and Cards/List fade their lists, and the line under the current tab and the rail's bar slide to what you press (658cbbf)
 - First run is four steps, each a card with its own button: your first node, your name and email, Claude Code on that node, and a first project; only the node holds up Finish, and Home's Getting started card keeps the rest until they are done. Storage paths and the idle timeout are no longer asked; their defaults are under Controller settings (f985669)
+- Page sections stand open at a desk and fold one at a time on a phone, opening on the top one; every section and card head is one height on a shade of its own, Jobs, Toolchains and Emulator have heads like Home's, a node's Sessions settings share one Save and Revert above its actions, its Advanced actions are a row each, a colored project card's buttons wear its color, and Color and Group sit in the card's menu (695f2c9)
 
 ### Removed
 
@@ -636,6 +637,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Containers page's New container and Check for updates sit on one line at a desk (ff1310e)
 - A project's settings section saves its own fields alone, and refuses a field somebody else (or a session) saved since you opened it, naming it; Save again writes yours. The notebook's "Also open" line is gone (285475b)
 - A session handing back no longer holds your next messages while the house rules' checks run, where the project's Claude settings say a new ask cuts a test run: the checks run in the background and a failure is said on your next prompt (4253ca4)
+- A job reaches a node with an NVIDIA card within its poll: it used to wait while the agent read the card, up to seconds a job (695f2c9)
 
 ### Security
 

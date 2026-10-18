@@ -148,6 +148,13 @@ function jobOutputs(j){
     .filter(Boolean).join(" · ")}</div>`;
 }
 
+// The list under its head, as every page's sections are (the operator, 18
+// Oct: Jobs had no head, Home and Machines one), drawn the same by the page
+// and by its placeholder.
+function jobsSection(body, count){
+  return docSection("jobs", "list", "Jobs", count, body);
+}
+
 function renderJobsInto(i){
   const d = docSurface(i, "jobs");
   if (!d) return;
@@ -157,7 +164,7 @@ function renderJobsInto(i){
     d.setBar(`<span class="dim">${skv(4)}</span><span class="sp"></span>
       <label class="jbfilter"><input type="checkbox" id="jbActive" ${jobsActive ? "checked" : ""}>
         only what is running or waiting</label>`);
-    d.list.innerHTML = skTpl(skTable(JOB_COLS, 6, "jbtbl"));
+    d.list.innerHTML = skTpl(jobsSection(skTable(JOB_COLS, 6, "jbtbl"), ""));
     wireJobsTab(d.el);
     loadJobs();
     return;
@@ -208,12 +215,15 @@ function renderJobsInto(i){
      omit: !count(j => j.state === "failed")},
     {label: "succeeded", value: count(j => j.state === "succeeded"), sub: `of ${jobsList.length} listed`},
   ]);
-  d.list.innerHTML = tiles + (jobsList.length ? tblWrap(JOB_COLS, rows, "jbtbl") : "") + (!jobsList.length
-    ? `<div class="empty">${jobsActive ? "nothing is running or waiting"
-                                       : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>` : "");
+  d.list.innerHTML = tiles + jobsSection(jobsList.length ? tblWrap(JOB_COLS, rows, "jbtbl")
+    : `<div class="empty">${jobsActive ? "nothing is running or waiting"
+                                       : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>`,
+    jobsList.length ? `${jobsList.length}` : "none");
   // Paged like every other long list here. This one grows without bound:
   // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.
+  // Its section stands open at a desk and takes its turn on a phone.
+  wireSections(d.list);
   const tbl = d.list.querySelector(".jbtbl");
   if (tbl) paginate(tbl, ":scope > .jbrow", {key: "jbList", noun: "jobs"});
   if (jobsFocus){

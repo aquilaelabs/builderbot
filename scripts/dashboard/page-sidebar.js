@@ -79,6 +79,7 @@ function wireProjectRows(root){
   root.querySelectorAll("[data-p]").forEach(b => b.onclick = () =>
     setProjectPinned(b.dataset.p, b.dataset.on === "1"));
   root.querySelectorAll("[data-pgroup]").forEach(b => b.onclick = () => askProjectGroup(b));
+  root.querySelectorAll("[data-pcolor]").forEach(b => b.onclick = () => pickProjectColor(b));
   root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
     openProjectSettings(b.dataset.rn));
   root.querySelectorAll("[data-bug]").forEach(b => b.onclick = () =>
@@ -308,7 +309,9 @@ async function askProjectGroup(btn){
 // elsewhere rolls them back up.
 function pickProjectColor(btn){
   const name = btn.dataset.pcolor, cur = projectColor(name);
-  const line = btn.closest(".pcname");
+  btn.closest(".actmenu")?.setAttribute("hidden", "");
+  const card = btn.closest(".pcard, .phead") || btn.closest("[data-row]");
+  const line = card?.querySelector(".pcname, .pname");
   const open = line?.nextElementSibling?.classList.contains("pcpop");
   document.querySelectorAll(".pcpop").forEach(x => x.__done?.());
   if (open || !line) return;
@@ -320,7 +323,7 @@ function pickProjectColor(btn){
       aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
   line.insertAdjacentElement("afterend", pop);
   btn.setAttribute("aria-expanded", "true");
-  const away = e => { if (!pop.contains(e.target) && e.target !== btn) done(); };
+  const away = e => { if (!pop.contains(e.target)) done(); };
   const esc_ = e => { if (e.key === "Escape") done(); };
   const done = () => { pop.remove(); btn.setAttribute("aria-expanded", "false");
                        document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc_, true); };

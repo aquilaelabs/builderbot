@@ -484,14 +484,6 @@ Host ${esc(alias)}
 // its record (the operator, 13 Oct: what is the node's reads on its row;
 // the controller's own tunnel stays in Settings). Read-only: changing it
 // is enrolling again.
-function nodeReachRow(n){
-  if (n.kind !== "agent") return "";
-  const t = n.config?.tunnel;
-  const how = !t ? "over the LAN" : t.kind === "wireguard" ? `over WireGuard, as ${esc(t.addr || "its tunnel address")}`
-    : `through ${esc(t.host || "the public hostname")}, the controller's tunnel`;
-  return `<div class="field ndreach"><div class="hint">Reaches the controller ${how}; set when it was enrolled.</div></div>`;
-}
-
 function nodeDoorRow(n){
   if (n.kind !== "agent") return "";
   const d = n.reported?.door || n.config?.door;
@@ -500,11 +492,13 @@ function nodeDoorRow(n){
   const cmd = d.kind === "cloudflared"
     ? `ssh -o ProxyCommand="cloudflared access ssh --hostname ${esc(d.host || "HOST")}" ${esc(n.config?.user || "bb")}@${esc(d.host || "HOST")}`
     : `ssh ${esc(n.config?.user || "bb")}@${esc(d.host || n.name)}`;
-  const state = !known ? "not reported yet" : !d.installed ? "not installed" : d.active ? "open" : "shut";
+  // The machine's own way in, for a person with a shell on it, whatever
+  // projects it hosts: one hostname, picked when it was enrolled, not a
+  // project's (the operator, 18 Oct, asked whether each project needed one).
   return `<div class="field nddoor">
-      <div class="actbar"><span class="state">SSH door: ${esc(d.kind)}, ${esc(state)}${
-        d.kind === "cloudflared" ? " (Cloudflare Access decides who reaches it)" : " (the tailnet's ACLs decide who reaches it)"}</span><span class="sp"></span>
-        ${known && d.installed ? `<button type="button" data-nd="door" data-on="${d.active ? "0" : "1"}" ${n.live ? "" : "disabled"}>${d.active ? "Shut it" : "Open it"}</button>` : ""}</div>
+      <div class="sub">The SSH door lets you into this machine itself, as <code>${esc(n.config?.user || "bb")}</code>; ${
+        d.kind === "cloudflared" ? "Cloudflare Access decides who reaches it" : "the tailnet's ACLs decide who reaches it"}. The projects it hosts need none of their own.</div>
+      ${known && d.installed ? `<div class="actbar"><span class="sp"></span><button type="button" data-nd="door" data-on="${d.active ? "0" : "1"}" ${n.live ? "" : "disabled"}>${d.active ? "Shut the door" : "Open the door"}</button></div>` : ""}
       ${known && d.installed && d.active ? (d.kind === "cloudflared" ? nodeDoorConfig(n, d) : `<pre class="ndcmd">${cmd}</pre>`) : ""}
     </div>`;
 }
@@ -623,45 +617,83 @@ function nodeProjectsSection(n){
 function nodeSessionsSection(n){
   const se = n.reported?.session;
   const list = n.reported?.sessions || [];
-  let status, cls, body;
-  if (n.config?.host_only){
-    return docSection("nodes", "sessions", ndTitle("sessions"), "hosting only", nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeToolsLine(n), {cls: "ok"});
-  }
-  if (!se || typeof se !== "object"){
+  const host = !!n.config?.host_only;
+  const iso = n.reported?.isolation;
+  // What this node is, said as facts (the operator, 18 Oct: the section was
+  // a heap of lines from one install, a Save under every switch): who runs
+  // the sessions, with what, how far each sees, how the node reaches the
+  // controller, and its SSH door, the machine's own way in.
+  const t = n.config?.tunnel;
+  const reach = n.kind !== "agent" ? "" : !t ? "over the LAN" : t.kind === "wireguard" ? `over WireGuard, as ${t.addr || "its tunnel address"}`
+    : `through ${t.host || "the public hostname"}, the controller's tunnel`;
+  const d = n.kind === "agent" ? (n.reported?.door || n.config?.door) : null;
+  const door = !d?.kind ? "none" : `${d.kind}${d.host ? ` at ${d.host}` : ""}, ${!n.reported?.door ? "not reported yet" : !d.installed ? "not installed" : d.active ? "open" : "shut"}`;
+  const ready = !host && se && typeof se === "object" && se.up;
+  const facts = factGrid([
+    ["Sessions", host ? "none: it hosts containers only" : ready ? `run as ${se.user || "?"}` : ""],
+    ["Claude Code", ready ? (se.claude || "not installed yet") : ""],
+    ["Each session", ready && iso ? (iso.sessions ? "sees only its own project" : "can read other projects") : ""],
+    ["Open now", ready && list.length ? list.map(x => x.name).join(", ") : ""],
+    ["Reaches the controller", reach],
+    ["SSH door", door],
+  ], "ndsessfacts");
+  let status, cls;
+  const notes = [];
+  if (host){
+    [status, cls] = ["hosting only", "ok"];
+  } else if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
-    body = `<div class="sub">Update the agent: this one is too old to run sessions.</div>`;
+    notes.push(["Update the agent: this one is too old to run sessions.", "warn"]);
   } else if (!se.up){
     [status, cls] = ["none", "warn"];
-    body = `<div class="sub">${esc(se.why || "no session account: provision it with --session-user")}.
-      No Claude session can start here until it is up.</div>`;
+    notes.push([`${se.why || "no session account: provision it with --session-user"}. No Claude session can start here until it is up.`, "warn"]);
   } else {
-    const gaps = [];
-    if (!se.boot) gaps.push("the agent reports no boot id: Update agent");
-    // Whether a session here is kept to its own project (R35): said on the
-    // status itself when it is not, since a folded section shows nothing else.
-    const iso = n.reported?.isolation;
     const shared = !!iso && !iso.sessions;
-    [status, cls] = gaps.length ? ["blocked", "bad"]
+    if (!se.boot) notes.push(["the agent reports no boot id: Update agent", "bad"]);
+    if (!iso) notes.push(["Update the agent to know whether sessions here see only their own project.", "dim"]);
+    else if (shared) notes.push([`Sessions here can read each other's projects: ${iso.why || "this machine cannot build a session's view"}.`, "warn"]);
+    [status, cls] = !se.boot ? ["blocked", "bad"]
       : [`${list.length ? `${list.length} open` : "ready"}${shared ? ", not isolated" : ""}`, shared ? "warn" : "ok"];
-    body = `
-      <div class="sub">Sessions run here as <code>${esc(se.user || "?")}</code> with ${
-        se.claude ? esc(se.claude) : "no Claude Code installed yet"}.</div>
-      ${gaps.map(g => `<div class="sub bad">${esc(g)}</div>`).join("")}
-      ${!iso ? `<div class="sub dim">Update the agent to know whether sessions here see only their own project.</div>`
-        : iso.sessions ? `<div class="sub">Each session sees only its own project.</div>`
-        : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
-      ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}</div>` : ""}
-      ${nodeSyncRow(n)}
-      ${nodeSessNetRow(n)}
-      ${nodeContainerNetRow(n)}
-      ${nodePortsLocalRow(n)}
-      ${nodeTurnsRow(n)}`;
   }
-  // ...and the node's phone and CI runner, which are tabs of their own
-  // (R121): a line at the foot of this section opens them. It was a band
-  // between sections, which read as part of Sessions yet stayed when Sessions
-  // folded, and sat without the section's inset (the operator, 7 Oct).
-  return docSection("nodes", "sessions", ndTitle("sessions"), status, body + nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls});
+  const body = `<div class="field">${facts}${notes.map(([x, c]) => `<div class="sub ${c}">${esc(x)}</div>`).join("")}</div>
+    ${nodeSessSettings(n)}
+    <div class="ndactions">
+      ${nodeDoorRow(n)}
+      ${nodeHostRow(n)}
+      ${host ? "" : nodeSyncRow(n)}
+      ${nodeToolsLine(n)}
+    </div>`;
+  return docSection("nodes", "sessions", ndTitle("sessions"), status, body, {cls});
+}
+
+// The section's settings, one group with one Save and Revert at its foot
+// (the operator, 18 Oct): every switch and number here is a draft until
+// Save, which sends what changed and nothing else.
+function nodeSessSettings(n){
+  const host = !!n.config?.host_only;
+  const rows = host ? nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n)
+    : nodeSessNetRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeTurnsRow(n);
+  const t = n.turns || {};
+  const now = host ? "" : `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
+  const dirty = nodeSessDirty(n);
+  return `<div class="ndsettings">${rows}
+    <div class="actbar sectbar"><span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span><span class="sp"></span>
+      <button type="button" data-nd="sess-save"${dirty ? "" : " disabled"}>Save</button>
+      <button type="button" data-nd="sess-revert"${dirty ? "" : " disabled"}>Revert</button></div>
+  </div>`;
+}
+// Whether a draft in the section differs from what the node has.
+function nodeSessDirty(n){
+  const c = nodeDraft(n).draft || {};
+  const conf = n.config || {};
+  const ctrOn = "container_net" in conf ? !!conf.container_net : !!conf.host_only;
+  const portsOn = "ports_local" in conf ? !!conf.ports_local : !!conf.host_only;
+  return (c.sessnetOn !== undefined && c.sessnetOn !== !!conf.session_net)
+    || (c.rootAsks !== undefined && c.rootAsks !== !conf.no_root)
+    || (c.ctrNet !== undefined && c.ctrNet !== ctrOn)
+    || (c.portsLocal !== undefined && c.portsLocal !== portsOn)
+    || (c.turnsText !== undefined && String(Number(c.turnsText) || 0) !== String((n.turns || {}).limit || 0))
+    || (c.workersText !== undefined && String(Number(c.workersText) || 0) !== String(conf.test_workers || 0));
 }
 
 // Claude Code on this node: this account's sign-in here (a login is one
@@ -714,8 +746,6 @@ function nodeHostRootRow(n){
     <label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session of a project that hosts containers here ask for a root command (bb root run --node ${esc(n.name)}), which a person then allows or denies</label>
     ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}
-    <div class="actbar"><span class="state"></span><span class="sp"></span>
-      <button type="button" data-nd="root-asks-host"${c.draft.rootAsks === rootOn ? " disabled" : ""}>Save</button></div>
   </div>`;
 }
 
@@ -742,8 +772,6 @@ function nodeContainerNetRow(n){
     <label class="ndcap"><input type="checkbox" data-k="ctrnet" ${c.draft.ctrNet ? "checked" : ""}>
       keep each project's containers to their own network (a container reaches another project's only where its project reads it)</label>
     ${line}
-    <div class="actbar"><span class="state"></span><span class="sp"></span>
-      <button type="button" data-nd="ctr-net-save"${c.draft.ctrNet === on ? " disabled" : ""}>Save</button></div>
   </div>`;
 }
 
@@ -766,8 +794,6 @@ function nodePortsLocalRow(n){
     <label class="ndcap"><input type="checkbox" data-k="portslocal" ${c.draft.portsLocal ? "checked" : ""}>
       published ports stay on this node (bound to 127.0.0.1; a compose naming 0.0.0.0:PORT publishes it anyway)</label>
     ${line}
-    <div class="actbar"><span class="state"></span><span class="sp"></span>
-      <button type="button" data-nd="ports-local-save"${c.draft.portsLocal === on ? " disabled" : ""}>Save</button></div>
   </div>`;
 }
 
@@ -796,12 +822,12 @@ function nodeSessNetRow(n){
     : on ? `<div class="sub dim">Setting it up.</div>`
     : sn.sessions ? `<div class="sub dim">${sn.sessions} session${sn.sessions === 1 ? "" : "s"} started while it was on keep their own network until they end.</div>`
     : "";
-  return `<label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}>
+  return `<div class="field"><label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}>
       keep each session to its own project's network</label>
-    ${line}
-    <label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
+    ${line}</div>
+    <div class="field"><label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session ask for a root command (bb root run), which a person then allows or denies</label>
-    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}`;
+    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}</div>`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -816,8 +842,6 @@ function nodeTurnsRow(n){
   if (c.draft.turnsText === undefined || c.draft.turnsFrom !== have){
     c.draft.turnsText = have; c.draft.turnsFrom = have;
   }
-  const now = `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${
-    t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
   const inp = `ndTurns-${n.id}`;
   // ...and how many workers a test run here may use (R81): the node's
   // cores when 0, handed to every test job as BB_TEST_WORKERS.
@@ -827,7 +851,7 @@ function nodeTurnsRow(n){
   }
   const winp = `ndWorkers-${n.id}`;
   // What 0 means is in each label, where a phone reads it (B459).
-  return `<div class="logdays setrow col">
+  return `<div class="ndnums"><div class="logdays setrow col">
       ${lbl(inp, "Claude sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
@@ -837,11 +861,8 @@ function nodeTurnsRow(n){
         "how many workers a test run here may use, as BB_TEST_WORKERS in its environment")}
       <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
         value="${esc(c.draft.workersText)}">
-    </div>
-    <div class="actbar">
-      <span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span>
-      <button type="button" data-nd="turns" title="save the limit and the switch: the next prompt here is held to the one, the next session started here to the other">Save</button>
-    </div>`;
+    </div></div>
+`;
 }
 
 // The node's path mapping (docs/nodes.md §11): what this container's paths
@@ -869,6 +890,11 @@ function nodeAdvancedSection(n, stale, inflight){
   if (c.draft.nameText === undefined || c.draft.nameFrom !== n.name){
     c.draft.nameText = n.name; c.draft.nameFrom = n.name;
   }
+  // Each action a row of its own (the operator, 18 Oct: the section was big
+  // gaps, a sentence across the width and its buttons on the next line): its
+  // name and what it does at the left, its button at the right.
+  const act = (title, say, btn, cls = "") => `<div class="ndact${cls ? " " + cls : ""}"><div class="grow"><div class="name">${esc(title)}</div>
+      <div class="sub">${say}</div></div><div class="acts actbar">${btn}</div></div>`;
   const body = `
     <div class="ndname actbar">
       <div class="setrow col grow">${lbl("", "Name", "its name in the pickers, on the project rows and as a runner label")}
@@ -877,9 +903,8 @@ function nodeAdvancedSection(n, stale, inflight){
       <button type="button" data-nd="rename"${!String(c.draft.nameText || "").trim() || String(c.draft.nameText).trim() === n.name ? " disabled" : ""}
         title="a runner already installed keeps its old label until reinstalled">Rename</button>
     </div>
-    <div class="sub">Only needed when a path a compose file names is somewhere else on the node.</div>
     <div class="ndpaths actbar">
-      <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated")}
+      <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated; only needed when a path a compose file names is somewhere else on the node")}
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
         aria-label="path mapping"></div>
@@ -888,46 +913,31 @@ function nodeAdvancedSection(n, stale, inflight){
         title="check both machines see the same projects directory">Check</button>
     </div>
     <div class="sub ndcheck" hidden></div>
-    ${!n.reported?.sandbox ? "" : `<div class="actbar">
-      <span class="state">${n.config?.lock
-        ? "Locked: storage, network and root changes are refused from here."
-        : "Lock refuses storage, network and root changes from here."}</span>
-      <button type="button" data-nd="${n.config?.lock ? "unlock" : "lock"}"
-        title="${n.config?.lock ? "allow them from here again"
-          : "keep them to the machine's own console"}">${
-        n.config?.lock ? "Unlock" : "Lock system changes"}</button>
-    </div>`}
-    <div class="actbar">
-      <span class="state">Drain finishes what is running and takes nothing new.</span>
-      <button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
-        title="${n.state === "draining" ? "take new work again"
-          : "finish what is running and take nothing new, so the machine can reboot"}">${
-        n.state === "draining" ? "Undrain" : "Drain"}</button>
-      <button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
-        title="${stale ? esc(staleWhy(n))
-          : inflight("cache-clear") ? "already clearing"
-          : "drop every project's build cache here; the next build refetches"}">${
-        inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>
-      <button type="button" data-nd="${n.state === "disabled" ? "enable" : "disable"}"
-        title="${n.state === "disabled" ? "offer it to projects and hand it work again"
-          : "keep it enrolled and configured, but off every picker and handed no work or session until Enable"}">${
-        n.state === "disabled" ? "Enable" : "Disable"}</button>
-      <button type="button" class="danger" data-nd="unenroll" ${inflight("uninstall") ? "disabled" : ""}
-        title="${n.live && n.reported?.sandbox
-          ? "take BuilderBot off the machine (the agent, its accounts, mounts, runners and files; Docker and the shares stay) and remove the node here; enrolling it again, here or elsewhere, starts from Enroll node"
-          : "remove the node here; the machine cannot be cleaned from here (" + (n.live ? "not provisioned by BuilderBot" : "its agent is not dialing in") + "), so BuilderBot's pieces stay on it"}">${
-        inflight("uninstall") ? "Un-enrolling…" : "Un-enroll"}</button>
-    </div>
-    ${n.kind === "agent" ? `<div class="actbar">
-      <span class="state${n.live && !installing ? "" : " bad"}">${!n.live
-        ? "Reboot and Shut down need the agent dialing in, and it is away: power the machine from its console or its hypervisor."
-        : installing ? `Reboot and Shut down wait: ${installing} is running here. Stop it first, or wait for it to finish.`
-        : "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on."}</span>
-      ${["reboot", "poweroff"].map(w =>
-        `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) || installing ? "disabled" : ""}>${
-          inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
-                      : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join("")}
-    </div>` : ""}`;
+    <div class="ndacts">
+    ${!n.reported?.sandbox ? "" : act(n.config?.lock ? "Unlock system changes" : "Lock system changes",
+        n.config?.lock ? "Locked: storage, network and root changes are refused from here." : "Refuses storage, network and root changes from here, keeping them to the machine's own console.",
+        `<button type="button" data-nd="${n.config?.lock ? "unlock" : "lock"}">${n.config?.lock ? "Unlock" : "Lock"}</button>`)}
+    ${act(n.state === "draining" ? "Undrain" : "Drain",
+        n.state === "draining" ? "Draining: it finishes what is running and takes nothing new. Undrain takes new work again." : "Finishes what is running and takes nothing new, so the machine can reboot.",
+        `<button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}">${n.state === "draining" ? "Undrain" : "Drain"}</button>`)}
+    ${act("Clear cache", stale ? esc(staleWhy(n)) : "Drops every project's build cache here; the next build fetches again.",
+        `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}>${inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>`)}
+    ${act(n.state === "disabled" ? "Enable" : "Disable",
+        n.state === "disabled" ? "Disabled: off every picker and handed no work or session. Enable offers it again." : "Keeps it enrolled and configured, but off every picker and handed no work or session until Enable.",
+        `<button type="button" data-nd="${n.state === "disabled" ? "enable" : "disable"}">${n.state === "disabled" ? "Enable" : "Disable"}</button>`)}
+    ${act("Un-enroll", n.live && n.reported?.sandbox
+        ? "Takes BuilderBot off the machine (its agent, accounts, mounts, runners and files; Docker and the shares stay) and removes the node here."
+        : `Removes the node here; BuilderBot's pieces stay on the machine, since ${n.live ? "BuilderBot did not provision it" : "its agent is not dialing in"}.`,
+        `<button type="button" class="danger" data-nd="unenroll" ${inflight("uninstall") ? "disabled" : ""}>${inflight("uninstall") ? "Un-enrolling…" : "Un-enroll"}</button>`)}
+    ${n.kind !== "agent" ? "" : act("Reboot or shut down",
+        !n.live ? `<span class="bad">They need the agent dialing in, and it is away: power the machine from its console or its hypervisor.</span>`
+        : installing ? `<span class="bad">They wait: ${esc(installing)} is running here. Stop it first, or wait for it to finish.</span>`
+        : "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on.",
+        ["reboot", "poweroff"].map(w =>
+          `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) || installing ? "disabled" : ""}>${
+            inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
+                        : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join(""))}
+    </div>`;
   return docSection("nodes", "advanced", ndTitle("advanced"),
                     n.state === "draining" ? "draining" : n.config?.lock ? "locked" : "",
                     body, {cls: n.state === "draining" ? "warn" : ""});
@@ -2090,40 +2100,6 @@ function wireNodesTab(root){
         if (n) openUnenroll(n);
         return;
       }
-      if (act === "ctr-net-save"){
-        const sw = b.closest(".field")?.querySelector('[data-k="ctrnet"]');
-        if (!sw) return;
-        busy(b, "Saving");
-        const k = await nodeAct({action: "container-net", id, on: sw.checked});
-        if (k.error) notify(k.error, true);
-        else notify(sw.checked ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello");
-        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.ctrNet = undefined;
-        await loadNodes();
-        return;
-      }
-      if (act === "ports-local-save"){
-        const sw = b.closest(".field")?.querySelector('[data-k="portslocal"]');
-        if (!sw) return;
-        busy(b, "Saving");
-        const k = await nodeAct({action: "ports-local", id, on: sw.checked});
-        if (k.error) notify(k.error, true);
-        else notify(sw.checked ? "published ports here bind to 127.0.0.1 from the next hello: the agent writes docker's daemon.json and restarts docker once"
-                               : "published ports here bind to every address from the next hello: docker restarts once");
-        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.portsLocal = undefined;
-        await loadNodes();
-        return;
-      }
-      if (act === "root-asks-host"){
-        const ra = b.closest(".field")?.querySelector('[data-k="rootasks"]');
-        if (!ra) return;
-        busy(b, "Saving");
-        const k = await nodeAct({action: "root-asks", id, on: ra.checked});
-        if (k.error) notify(k.error, true);
-        else notify(ra.checked ? "a session of a project hosting here may ask for a root command" : "root asks are off here");
-        const c = nodeDraft(nodesList.find(x => x.id === id)); if (c && c.draft) c.draft.rootAsks = undefined;
-        await loadNodes();
-        return;
-      }
       if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
@@ -2233,43 +2209,45 @@ function wireNodesTab(root){
         notify(`${was} is now ${name}. A runner already installed there keeps the label ${was} until it is reinstalled.`);
         return;
       }
-      if (act === "turns"){
-        // The Sessions section's Save: the limit, and the session network
-        // switch when its tick differs from what the node has.
-        const inp = box.querySelector('[data-k="turns"]');
-        const sw = box.querySelector('[data-k="sessnet"]');
-        const was = !!nodesList.find(x => x.id === id)?.config?.session_net;
-        const j = await nodeAct({action: "turns", id, limit: Number(inp ? inp.value : 0)});
-        if (j.error) return;
-        const c = nodesConf[id]; if (c && c.draft) c.draft.turnsText = undefined;
-        let said = j.limit ? `at most ${j.limit} Claude session${j.limit === 1 ? "" : "s"} work here at once`
-                           : "no limit on Claude sessions working here at once";
-        if (sw && sw.checked !== was){
-          const k = await nodeAct({action: "session-net", id, on: sw.checked});
-          if (k.error) return;
-          if (c && c.draft) c.draft.sessnetOn = undefined;
-          said += sw.checked ? "; sessions started here from now on reach only their own project's containers"
-                             : "; sessions started here from now on share its network";
-        }
-        const wi = box.querySelector('[data-k="workers"]');
-        const wWas = String(nodesList.find(x => x.id === id)?.config?.test_workers || 0);
-        if (wi && String(Number(wi.value) || 0) !== wWas){
-          const k = await nodeAct({action: "test-workers", id, workers: Number(wi.value) || 0});
-          if (k.error) return;
-          if (c && c.draft) c.draft.workersText = undefined;
-          said += k.workers ? `; test runs here may use ${k.workers} worker${k.workers === 1 ? "" : "s"}`
-                            : "; test runs here may use every core";
-        }
-        const ra = box.querySelector('[data-k="rootasks"]');
-        const raWas = !nodesList.find(x => x.id === id)?.config?.no_root;
-        if (ra && ra.checked !== raWas){
-          const k = await nodeAct({action: "root-asks", id, on: ra.checked});
-          if (k.error) return;
-          if (c && c.draft) c.draft.rootAsks = undefined;
-          said += ra.checked ? "; a session here may ask for a root command again"
-                             : "; a session here asking for a root command is refused";
-        }
-        notify(said);
+      if (act === "sess-revert"){
+        const c = nodesConf[id];
+        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        nodesRev++; drawPanes();
+        return;
+      }
+      if (act === "sess-save"){
+        // The Sessions section's one Save (the operator, 18 Oct): what
+        // changed of its switches and numbers, each by its own action, said
+        // in one line.
+        const n0 = nodesList.find(x => x.id === id) || {}, conf = n0.config || {};
+        const val = k => box.querySelector(`[data-k="${k}"]`);
+        const said = [];
+        busy(b, "Saving");
+        const step = async (el, was, body, line) => {
+          if (!el) return true;
+          const now = el.type === "checkbox" ? el.checked : String(Number(el.value) || 0);
+          if (now === was) return true;
+          const k = await nodeAct({...body(now), id});
+          if (k.error) return false;
+          said.push(line(now, k));
+          return true;
+        };
+        const ok = await step(val("turns"), String((n0.turns || {}).limit || 0), v => ({action: "turns", limit: Number(v)}),
+                              v => Number(v) ? `at most ${v} Claude session${Number(v) === 1 ? "" : "s"} work here at once` : "no limit on Claude sessions working here at once")
+          && await step(val("sessnet"), !!conf.session_net, v => ({action: "session-net", on: v}),
+                        v => v ? "sessions started here from now on reach only their own project's containers" : "sessions started here from now on share its network")
+          && await step(val("workers"), String(conf.test_workers || 0), v => ({action: "test-workers", workers: Number(v)}),
+                        v => Number(v) ? `test runs here may use ${v} worker${Number(v) === 1 ? "" : "s"}` : "test runs here may use every core")
+          && await step(val("rootasks"), !conf.no_root, v => ({action: "root-asks", on: v}),
+                        v => v ? "a session here may ask for a root command" : "a session here asking for a root command is refused")
+          && await step(val("ctrnet"), "container_net" in conf ? !!conf.container_net : !!conf.host_only, v => ({action: "container-net", on: v}),
+                        v => v ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello")
+          && await step(val("portslocal"), "ports_local" in conf ? !!conf.ports_local : !!conf.host_only, v => ({action: "ports-local", on: v}),
+                        v => v ? "published ports here bind to 127.0.0.1 from the next hello; docker restarts once" : "published ports here bind to every address from the next hello; docker restarts once");
+        const c = nodesConf[id];
+        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (said.length) notify(said.join("; "));
+        await loadNodes();
         return;
       }
       if (act === "gpu-apply"){
@@ -2368,18 +2346,14 @@ function wireNodesTab(root){
     // checkbox on this section too, written on the click (B257).
     // Each session kept to its own project's network (R79): a draft until
     // the section's Save, like the limit beside it.
-    const sw = box.querySelector('[data-k="sessnet"]');
-    if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
-    const ra = box.querySelector('[data-k="rootasks"]');
-    const cn = box.querySelector('[data-k="ctrnet"]');
-    if (cn) cn.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.ctrNet = cn.checked;
-                                  const sb = cn.closest(".field")?.querySelector('[data-nd="ctr-net-save"]'); if (sb) sb.disabled = false; };
-    const pl = box.querySelector('[data-k="portslocal"]');
-    if (pl) pl.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.portsLocal = pl.checked;
-                                  const sb = pl.closest(".field")?.querySelector('[data-nd="ports-local-save"]'); if (sb) sb.disabled = false; };
-    if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked;
-                                  // A hosting-only row's own Save wakes with the tick (nodeHostRootRow).
-                                  const sb = ra.closest(".field")?.querySelector('[data-nd="root-asks-host"]'); if (sb) sb.disabled = false; };
+    // The Sessions section's drafts: each change wakes its one Save and
+    // Revert, which sleep again when every field is back where it was.
+    const sessWake = () => { const dirty = nodeSessDirty(nodesList.find(x => x.id === id) || {});
+      box.querySelectorAll('[data-nd="sess-save"], [data-nd="sess-revert"]').forEach(x => { x.disabled = !dirty; }); };
+    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
+      const el = box.querySelector(`[data-k="${k}"]`);
+      if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
+    }
     // The GPU section's two switches (R102): drafts until its Apply.
     const ge = box.querySelector('[data-k="gpuemu"]');
     if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };
@@ -2389,13 +2363,13 @@ function wireNodesTab(root){
     if (ti){
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };
       ti.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.turnsText = ti.value;
-                           nodesFocus = {id, key: "turns"}; };
+                           nodesFocus = {id, key: "turns"}; sessWake(); };
     }
     const wi = box.querySelector('[data-k="workers"]');
     if (wi){
       wi.onfocus = () => { nodesFocus = {id, key: "workers"}; };
       wi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.workersText = wi.value;
-                           nodesFocus = {id, key: "workers"}; };
+                           nodesFocus = {id, key: "workers"}; sessWake(); };
     }
   });
   // The field that had the caret before this repaint gets it back: the

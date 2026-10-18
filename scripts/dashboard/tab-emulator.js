@@ -99,7 +99,7 @@ function emuAddRows(d, why){
   // Adding images is an administrator's (the server's gate on /api/emulator):
   // not offered without the grant (R137 step 4), the list above is everybody's.
   if (state?.can?.admin === false) return "";
-  return `<div class="imgadd emadd"><label for="imgFlavor">Images to add</label>
+  return `<div class="imgadd emadd"><label for="imgFlavor">Kind</label>
       <select id="imgFlavor">${
         flavors.map(f => `<option value="${esc(f.kind)}"${f.kind === chosen ? " selected" : ""}
           >${esc(f.label)}</option>`).join("")}</select>
@@ -139,6 +139,27 @@ function emuRow(im, why){
   </label>`;
 }
 
+// The page's two lists under their heads (the operator, 18 Oct: the
+// Emulator had none): the system images the node holds, and the ones to add
+// with their terms and Install selected. The page and its placeholder draw
+// them the same.
+function emuSections(images, count, add){
+  return docSection("emulator", "images", "System images", count, images)
+    + docSection("emulator", "add", "Images to add", "", add);
+}
+// Install selected, and Abort while a job runs, at the foot of Images to add.
+function emuAddBar(d, held, job){
+  if (!mayToolchains(emuNode)) return "";
+  return `<div class="actbar macros">
+      ${job.running ? `<span class="state tcworking">${job.action === "remove" ? "Removing" : "Adding"} ${
+        esc(job.current || job.image || "")}<span class="dots"></span></span>` : ""}
+      ${held && !job.running ? `<span class="state bad">${esc(held)}</span>` : ""}
+      <button class="primary" data-emu="install"${held || job.running || !emuTickedHere(d).length ? " disabled" : ""}>Install selected${
+        emuTickedHere(d).length > 1 ? ` (${emuTickedHere(d).length})` : ""}</button>
+      ${job.running ? `<button data-emu="abort"${job.aborting ? " disabled" : ""}>${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+    </div>`;
+}
+
 function renderEmulatorInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -155,7 +176,7 @@ function renderEmulatorInto(i){
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
     surf.list.innerHTML = skTpl(`<div class="tchead">System images in ${skv(18)}: what its emulator can boot.</div>
       <div class="field"><div class="tiles">${tile("images")}${tile("AVDs", "built on them")}${tile("free", "on the store")}</div></div>
-      <div class="tcs">${skRows(2)}</div><div class="imgadd emadd"><span class="lbl">Images to add</span>${skv(12, "ctl")}</div><div class="tcs">${skRows(2)}</div>`);
+      ${emuSections(`<div class="tcs">${skRows(2)}</div>`, "", `<div class="tcs">${skRows(2)}</div>`)}`);
     return;
   }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
@@ -213,25 +234,18 @@ function renderEmulatorInto(i){
     ${job.state === "failed" && job.error ? `<div class="tchead bad">${
       job.action === "remove" ? "Removing" : "Adding"} ${esc(job.image)} failed: ${esc(job.error)}.
       The Jobs tab has its log.</div>` : ""}
-    ${(d.images || []).length
+    ${d.wrong_platform ? "" : emuSections((d.images || []).length
       ? `<div class="tcs">${d.images.map(im => emuRow(im, held)).join("")}</div>`
-      : d.wrong_platform ? ""
       : `<div class="tchead">${d.known === false
           ? `${esc(d.name)}'s agent is too old to report its system images: update it from the ${pageLink("nodes", "Nodes page")}.`
-          : `No image yet: ${esc(d.name)}'s emulator has nothing to boot.`}</div>`}
-    ${d.wrong_platform ? "" : emuAddRows(d, held)}
-    ${d.wrong_platform ? "" : `<div class="hint tcterms">Adding an image accepts
+          : `No image yet: ${esc(d.name)}'s emulator has nothing to boot.`}</div>`,
+      (d.images || []).length ? `${d.images.length}` : "none",
+      emuAddRows(d, held) + `<div class="hint tcterms">Adding an image accepts
       <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
-      Android SDK terms</a>.</div>`}
-    ${d.wrong_platform || !mayToolchains(emuNode) ? "" : `<div class="actbar macros">
-      ${job.running ? `<span class="state tcworking">${job.action === "remove" ? "Removing" : "Adding"} ${
-        esc(job.current || job.image || "")}<span class="dots"></span></span>` : ""}
-      ${held && !job.running ? `<span class="state bad">${esc(held)}</span>` : ""}
-      <button class="primary" data-emu="install"${held || job.running || !emuTickedHere(d).length ? " disabled" : ""}>Install selected${
-        emuTickedHere(d).length > 1 ? ` (${emuTickedHere(d).length})` : ""}</button>
-      ${job.running ? `<button data-emu="abort"${job.aborting ? " disabled" : ""}>${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-    </div>`}`;
+      Android SDK terms</a>.</div>` + emuAddBar(d, held, job))}`;
 
+  // Its sections stand open at a desk and take turns on a phone.
+  wireSections(el);
   const sel = el.querySelector("#emuNodeSel");
   if (sel) sel.onchange = () => { emuNode = sel.value; emu = null; emuTicked.clear();
                                   try{ localStorage.setItem("bb.emunode", emuNode); }catch(e){ /* private */ }

@@ -439,6 +439,15 @@ function tcClaudeRow(m, busy){
   </div>`;
 }
 
+// The page's two lists under their heads (the operator, 18 Oct: Toolchains
+// had none): what belongs to the machine itself (its NVIDIA driver and
+// toolkit, Claude Code), when the node has any, and the catalog. The page
+// and its placeholder draw them the same.
+function tcSections(machine, catalog, status){
+  return (machine ? docSection("toolchains", "machine", "This machine", "", machine) : "")
+    + docSection("toolchains", "catalog", "Toolchains", status, catalog);
+}
+
 function renderToolchainsInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -468,7 +477,7 @@ function renderToolchainsInto(i){
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
     surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
       <div class="field headline tcact"><div class="actbar macros"><span class="state">${skv(22)}</span></div></div>
-      ${skTable(TC_COLS, 6, "tcs")}`);
+      ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}`);
     return;
   }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
@@ -589,12 +598,15 @@ function renderToolchainsInto(i){
                  title="install these on ${esc(d.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
             : `This node's owner installs them: the agent does not administer the machine.`}</div></div>`;
     })()}
-    ${onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
-      d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
-    ${tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
-      .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs")}
+    ${tcSections(onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
+      d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
+      tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
+      .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs"),
+      `${(d.items || []).filter(i => i.installed).length} installed`)}
 `;
 
+  // Its sections stand open at a desk and take turns on a phone.
+  wireSections(el);
   // Install selected sleeps until something is ticked (the operator, 18
   // Oct: a press that only said "tick something first" was asleep in all
   // but look).

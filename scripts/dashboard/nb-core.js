@@ -542,6 +542,8 @@ function makeNotebook(project){
     // the incoming on docIn's (fadeThrough's halves), rather than a tab
     // switch being the one place on the page where something simply appears.
     let away = null;
+    // A view opened anew opens on its first section on a phone.
+    if (root.querySelector(`.nbview[data-view="${v}"]`)?.hidden) sectNewVisit();
     root.querySelectorAll(".nbview:not(.fghost)").forEach(x => {
       const show = x.dataset.view === v, wasHidden = x.hidden;
       if (!show && !wasHidden && !noMotion()) away = ghostOf(x);
@@ -902,7 +904,11 @@ function projectActions(p, extra = ""){
     p.locked ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
     // A label of this account's to keep projects together on the Projects
     // page (the operator, 18 Oct): nothing else follows from it.
-    p.locked ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group…"}</button>`,
+    p.locked ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group"}</button>`,
+    // This account's color for it (the operator, 18 Oct: picked here, where a
+    // dot beside the name read as a checkbox), its swatches unrolling under
+    // the name as Group's box does.
+    `<button type="button" data-pcolor="${esc(name)}">${p.color ? "Color: " + esc(p.color) : "Color"}</button>`,
     `<button type="button" data-rn="${esc(name)}">Settings</button>`,
     extra,
   ].filter(Boolean).join("");

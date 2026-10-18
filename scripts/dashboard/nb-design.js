@@ -225,7 +225,7 @@ function nbDesignView({$, nb, project, root}){
       </div></div>` : ""}
       ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one, or leave it: a session that builds the project chooses the colors, the type, corners, space and motion, and puts them here.</div></div>`}`;
     return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}${status ? " · " + status : ""}`,
-                      body + nb.sectBar("design:themes"), {open: false});
+                      body + nb.sectBar("design:themes"), {open: false, fold: true});
   }
 
   // The design's rules, the Briefing's shape (nb-rules.js, drawRules): Add a
@@ -418,7 +418,7 @@ function nbDesignView({$, nb, project, root}){
       ${p ? pageBody(p) : ""}`
       : `<div class="field"><div class="hint">No pages yet: pick a platform and a template and press Add page.</div></div>`);
     return docSection("design", "pages", "Pages", n ? `${n} page${n === 1 ? "" : "s"}` : "none yet",
-                      body + nb.sectBar("design:pages"), {open: false});
+                      body + nb.sectBar("design:pages"), {open: false, fold: true});
   }
 
   function pageBody(p){

@@ -110,9 +110,7 @@ function projectCard(p){
   const pc = colorAttrs(p.color), cls = {error:"bad", warning:"warn", locked:"locked"};
   const node = p.node_name || p.session_at || "";
   return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
-    <div class="pcname"><span class="pcdot"><button type="button" class="pcswatch${p.color ? "" : " none"}" data-pcolor="${esc(p.name)}"${
-        p.color ? ` style="--pc:${colorTone(p.color)}"` : ""} aria-label="your color for ${esc(projLabel(p.name))}: ${esc(p.color || "none")}"
-        aria-expanded="false"></button></span><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
+    <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
       p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : ""}${
       p.pinned || p.locked ? "" : ` <span class="dim pcunpinned" title="not on Home's glance">unpinned</span>`}</div>
     <div class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}</div>
@@ -184,13 +182,12 @@ function renderProjectsInto(i){
         return `<section class="pjgroup" data-group="${esc(g)}"><h3 class="pjgname">${esc(g)} <span class="dim">${list.length}</span></h3>${grid_(list)}</section>`;
       }).join("")
     + (gone.length ? docSection("projects", "archived", "Archived", `${gone.length} project${gone.length === 1 ? "" : "s"}`,
-                                grid_(gone), {open: false, cls: "dim"}) : "");
+                                grid_(gone), {open: false, cls: "dim", fold: true}) : "");
   if (paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
     wireSections(grid);
     wireProjectRows(grid);
     wireProjectHeader(grid);
     grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
-    grid.querySelectorAll("[data-pcolor]").forEach(b => b.onclick = () => pickProjectColor(b));
   }
   syncResumeMenu();
 }

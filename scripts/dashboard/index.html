@@ -167,6 +167,9 @@
      and the rows that already matched did so at --tap. */
   --ctl:var(--tap);
   --doc-w:1080px;
+  /* A card's head: the ink a step into the panel, its own shade in every
+     scheme (the operator, 18 Oct: a head the card's color did not pop). */
+  --head-bg:color-mix(in srgb, var(--ink) 6%, var(--panel));
   /* Every page's bar is the height of a project's header (the operator,
      17 Oct: it reads better with that much room): its 32px controls and
      6px above and below them. */
@@ -1088,7 +1091,8 @@ body.firstrun #panes{display:none}
   overflow:hidden;min-width:0}
 /* Home's cards keep the inset every card's words have, 16px, the tiles'
    too (the operator, 17 Oct: the headings sat 4px left of the tiles'). */
-.hcard h3,.hsect h3{margin:0;padding:10px 16px;font:var(--f-sect);border-bottom:var(--hair) solid var(--line)}
+.hcard h3,.hsect h3{margin:0;padding:12px 16px;min-height:46px;box-sizing:border-box;display:flex;align-items:center;
+  font:var(--f-sect);border-bottom:var(--hair) solid var(--line);background:var(--head-bg)}
 .hnone{padding:10px 16px;color:var(--dim);font:var(--f-ui)}
 /* Getting started (R267): a line per step, its tick in first run's circle,
    its way there at the right; a step done is dim. */
@@ -2059,17 +2063,10 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .pcpick button[data-color=""]{background:transparent;
   background-image:linear-gradient(135deg, transparent 45%, var(--dim) 45%, var(--dim) 55%, transparent 55%)}
 .pcpick button[aria-checked="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--ink)}
-/* A card's color dot, this account's own color for the project (the
-   operator, 18 Oct), and the swatches it unrolls under the name. */
-.pcard .pcdot{display:inline-flex;margin-right:6px;vertical-align:middle}
-.pcard .pcswatch{width:22px;height:22px;min-height:0;padding:0;border:0;border-radius:50%;background:none;
-  display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
-.pcard .pcswatch::before{content:"";width:14px;height:14px;border-radius:50%;box-sizing:border-box;
-  background:var(--pc);border:var(--hair) solid color-mix(in srgb,var(--pc) 70%,var(--ink))}
-.pcard .pcswatch.none::before{background:transparent;border:var(--hair) dashed var(--dim)}
-@media(pointer:coarse){ .pcard .pcswatch{width:30px;height:30px} .pcard .pcswatch::before{width:18px;height:18px} }
-.pcard .pcpop{margin:6px 0 2px}
-/* An ask in a card (Group...) sits on the card's own inset, not a band's. */
+/* The swatches a card's Color unrolls under its name (the operator, 18 Oct:
+   picked from its menu, this account's own color for the project). */
+.pcard .pcpop,.phead~.pcpop,.pname~.pcpop{margin:6px 0 2px}
+/* An ask in a card (Group) sits on the card's own inset, not a band's. */
 .pcard .askline{padding:6px 0 2px}
 .pcard .askline .askrow input{flex:1 1 auto;min-width:0}
 /* A finger, not a pointer: the small controls that measured under 32px in the
@@ -2961,7 +2958,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    the rows under it, and room above each group but the first. No project
    is the same shape in the line color, since it is nobody's. */
 .dmtab .dmgroup{--gc:var(--accent);color:var(--dim);font:var(--f-ui);
-  display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;
+  display:flex;align-items:baseline;align-content:center;flex-wrap:wrap;gap:4px 10px;
+  min-height:46px;box-sizing:border-box;
   background:color-mix(in srgb, var(--gc) 16%, transparent);
   box-shadow:inset 4px 0 0 0 var(--gc);
   border-bottom:1px solid color-mix(in srgb, var(--gc) 50%, var(--line))}
@@ -3162,6 +3160,16 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:var(--row-y) var(--row-x);background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);min-width:0}
 .pcard.pc{box-shadow:inset 3px 0 var(--pc);background:color-mix(in srgb, var(--pc) 16%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
+/* A colored card's buttons wear its color too (the operator, 18 Oct): a
+   lighter tint for the plain ones, a deeper one for Open Claude, so the card
+   reads as one color and the running session still stands out on it. */
+.pcard.pc .pcacts>button,.pcard.pc .pcacts>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
+  border-color:color-mix(in srgb, var(--pc) 50%, var(--line));color:var(--ink)}
+.pcard.pc .pcacts>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+@media(hover:hover){
+  .pcard.pc .pcacts>button:hover,.pcard.pc .pcacts>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
+  .pcard.pc .pcacts>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
+}
 .pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);background:none;border:0;padding:0;min-height:0;text-align:left;cursor:pointer}
 .pcard .pcname .name:hover{text-decoration:underline}
@@ -3284,6 +3292,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    across on a phone. */
 .dmstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--hair);background:var(--line);
   border:var(--hair) solid var(--line);border-radius:var(--r-control);overflow:hidden;margin:10px 0 0}
+/* A line under the stats or the services' table keeps the gap the stats
+   keep above them, not flush on their edge. */
+.dmtab :is(.dmstats,.dmsvctbl)+.sub{margin-top:10px}
 @media(max-width:900px){ .dmstats{grid-template-columns:repeat(2,minmax(0,1fr))} }
 .dmstats .tile{background:var(--sunk);border:0;border-radius:0;padding:8px 12px;min-width:0;
   display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l l" "v s" "x x";align-items:center;gap:2px 8px}
@@ -3809,8 +3820,28 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect{border-top:var(--hair) solid var(--line)}
 .sect>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
   padding:var(--row-y) var(--row-x);font:var(--f-ui);color:var(--ink);
-  min-height:var(--tap);box-sizing:border-box}
+  min-height:max(var(--tap), 46px);box-sizing:border-box}
 .sect>summary::-webkit-details-marker{display:none}
+/* Room between a block of text and the buttons under it (the operator, 18
+   Oct: words all but touching their buttons): a line of prose, a hint, a
+   facts list or a runner's notes followed by a row of actions keeps 10px
+   from it, wherever the two meet, rather than each surface spacing its own. */
+:is(.doctab,.nbview,.modal,.setup) :is(.sub,.hint,.note,p,dl.facts,.notice):not(:empty)+:is(.actbar,.acts){margin-top:10px}
+/* At a desk a page's sections stand open and do not fold (the operator, 18
+   Oct; sectFixed): no triangle on their heads and nothing to press. A fold
+   on purpose (data-fold) keeps both. */
+@media(min-width:901px){
+  :is(.doctab,.nbview) details.sect:not([data-fold]):not(details.sect details.sect):not(.row:not(.ndrow) details.sect):not(.modal details.sect)>summary{cursor:default}
+  :is(.doctab,.nbview) details.sect:not([data-fold]):not(details.sect details.sect):not(.row:not(.ndrow) details.sect):not(.modal details.sect)>summary::before{display:none}
+}
+/* A card's head, the same everywhere (the operator, 18 Oct): the Containers
+   project band's height, 46px (every section's, nested or not), on a shade of its own off the card's ground
+   so it reads as the head of what is under it. A page's sections and Home's
+   cards wear it; a fold inside a row (a container's Log) is the row's, not
+   a head. --head-bg is the ink mixed into the panel, so every scheme, light
+   or dark, gets its own step. */
+:is(.doctab,.nbview) details.sect:not(details.sect details.sect):not(.row:not(.ndrow) details.sect)>summary{
+  background:var(--head-bg)}
 .sect>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
 .sect[open]>summary::before{content:"\25BE"}
 .sect>summary .t{font:var(--f-sect);flex:0 1 auto;min-width:0}
@@ -4049,6 +4080,31 @@ button[aria-busy="true"]{opacity:.75}
   .nodestab .ndrow>.ndsections>.sectjump{margin:12px 0 0;padding-left:0;padding-right:0;border:0}
 }
 .ndrow .actbar.ndagent{margin-top:4px}
+/* A node's Advanced actions (the operator, 18 Oct): a row each, its name and
+   what it does at the left and its button at the right, divided by a
+   hairline, as a list of things to do reads. A phone stacks the button
+   under its words. */
+.ndacts{display:flex;flex-direction:column;margin-top:8px;border-top:var(--hair) solid var(--line)}
+.ndact{display:flex;align-items:center;gap:8px 16px;padding:10px 0;border-bottom:var(--hair) solid var(--line)}
+.ndact:last-child{border-bottom:0}
+.ndact>.grow{min-width:0;flex:1 1 auto}
+.ndact .name{font:var(--f-ui);font-weight:600;color:var(--ink)}
+.ndact .sub{margin:2px 0 0}
+.ndact>.acts{flex:0 0 auto;display:flex;gap:8px}
+@media(max-width:600px){ .ndact{flex-wrap:wrap} .ndact>.acts{width:100%;justify-content:flex-end} }
+/* Its Sessions section (the operator, 18 Oct): the facts, its settings as
+   one group over its Save and Revert, then its actions. */
+.ndsettings{display:flex;flex-direction:column;gap:2px;margin-top:6px;border-top:var(--hair) solid var(--line);padding-top:6px}
+.ndsettings>.field{padding:2px 0;margin:0}
+.ndsettings>.field>.ndcap{min-height:32px}
+.ndsettings>.field>.sub{margin-top:2px}
+/* ...its two numbers side by side, a phone stacking them. */
+.ndsettings>.logdays.setrow.col{display:inline-flex;width:auto}
+.ndsettings .ndnums{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:8px}
+/* A mouse needs no 38px box around a 16px tick, which spread the switches
+   a blank line apart; a finger keeps the tap height. */
+@media(pointer:fine){ .ndsettings>.field>.ndcap>input[type=checkbox]{min-height:0;margin-block:0} }
+.ndactions{display:flex;flex-direction:column;gap:6px;margin-top:8px;border-top:var(--hair) solid var(--line);padding-top:6px}
 .ndrow .ndsections .sub{margin:0}
 .ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
   gap:6px;align-items:center}
@@ -6461,7 +6517,7 @@ untitleWatch();
 // Its declarations are page-shell.js; what runs at load is below: the
 // address bar's back and forward open what they name, the search is wired,
 // and the phone's More sheet closes on a tap elsewhere.
-addEventListener("hashchange", () => { if (!openRoute(location.hash)) shellSync(); });
+addEventListener("hashchange", () => { sectNewVisit(); if (!openRoute(location.hash)) shellSync(); });
 // The page the address names reads its own data now, on the read the head
 // began (preGets), so it is usually in hand when the first status read
 // draws the page, which then opens as itself rather than as a second

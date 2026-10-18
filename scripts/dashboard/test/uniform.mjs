@@ -380,7 +380,10 @@ async function language(){
     const sects = [...box.querySelectorAll('details.sect > summary')].map(s => {
       const c = getComputedStyle(s);
       return { status: s.querySelector('.sst')?.textContent?.trim() || '',
-               skin: [c.minHeight, c.fontWeight, c.cursor].join('|') };
+               // The cursor says whether it folds: a pointer where a press
+               // folds it, the plain arrow on a page's section at a desk,
+               // which stands open (sectFixed, the operator, 18 Oct).
+               skin: [c.minHeight, c.fontWeight, c.cursor === (sectFixed(s.parentElement) ? 'default' : 'pointer') ? 'cursor ok' : `cursor ${c.cursor}`].join('|') };
     });
     // The voices (R210): a button speaks in the page's sans (the key caps
     // on the terminal tab are mono on purpose), never the browser's own

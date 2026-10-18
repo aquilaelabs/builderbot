@@ -115,6 +115,8 @@ function railGo(key, tool){
   railWant = key;
   const kind = railTool(g, tool);
   if (!kind) return;
+  // A page opened anew opens on its first section on a phone.
+  sectNewVisit();
   const was = location.hash;
   OPENERS[kind]?.();
   const to = routeOf(tabOf(panes[0]));

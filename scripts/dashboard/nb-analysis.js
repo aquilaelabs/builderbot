@@ -168,7 +168,7 @@ function nbAnalysisView({$, nb, project}){
       </div>`;
     }
     return docSection("briefing", "preamble", briefTitle("preamble"),
-                      status, body, {open: false, cls});
+                      status, body, {open: false, cls, fold: true});
   }
 
   // ---- the brief it was started from -----------------------------------------
@@ -196,7 +196,7 @@ function nbAnalysisView({$, nb, project}){
       <textarea id="briefKept" readonly rows="8" spellcheck="false"
         aria-label="the brief this project was started from">${esc(d.pending ? d.text : k.text)}</textarea></div>`;
     return docSection("briefing", "brief", briefTitle("brief"),
-                      d.pending ? "waiting" : k.sent ? "sent" : "set aside", body, {open: false});
+                      d.pending ? "waiting" : k.sent ? "sent" : "set aside", body, {open: false, fold: true});
   }
 
   return {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection};

@@ -2424,7 +2424,7 @@ function dmTiles(t){
 // container uses.
 function dmImagesSection(){
   return state?.can?.admin ? docSection("docker", "images", "Images and volumes", "",
-    `<div class="dmimgbox">${skel("rows", 3, "reading…")}</div>`, {open: false}) : "";
+    `<div class="dmimgbox">${skel("rows", 3, "reading…")}</div>`, {open: false, fold: true}) : "";
 }
 // ...and the status line under them: when the images were checked.
 function dmStatus(d){

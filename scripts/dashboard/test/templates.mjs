@@ -15,7 +15,10 @@ const PAGES = [
   ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
   // Deploy is an undeployed node's alone, which is not known while it waits.
   ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)', ['barSig']],
-  ['toolchains', '#/build/toolchains', 'toolchains = null; renderToolchainsInto(0)'],
+  // This machine is a node's with a GPU or Claude Code row to show, which
+  // is not known while it waits; on a phone, where it is drawn it is the one
+  // open section, so the list's table is folded under it.
+  ['toolchains', '#/build/toolchains', 'toolchains = null; renderToolchainsInto(0)', ['title:This machine', 'phone:table']],
   // The fixture's node never reported its images (known false), so the page
   // lands with no tiles; a node that has carries them, as the template does.
   ['emulator', '#/build/emulator', 'emu = null; renderEmulatorInto(0)', ['tiles']],
@@ -116,7 +119,7 @@ const differ = (got, tpl, skip = []) => {
   if (!!got.card !== !!tpl.card) out.push(`card: page ${got.card ? 'floats one' : 'floats none'}, template ${tpl.card ? 'floats one' : 'floats none'}`);
   else if (got.card && (Math.abs(got.card.l - tpl.card.l) > 2 || Math.abs(got.card.r - tpl.card.r) > 2))
     out.push(`card edges ${got.card.l} to ${got.card.r} on the page, ${tpl.card.l} to ${tpl.card.r} in the template`);
-  else if (got.card && Math.abs(got.top - tpl.top) > 24)
+  else if (got.card && !skip.includes('tiles') && Math.abs(got.top - tpl.top) > 24)
     out.push(`the first card starts ${got.top}px down on the page, ${tpl.top}px in the template`);
   return out.join('; ');
 };
@@ -153,7 +156,9 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     await sleep(300);
     const tpl = await page.evaluate(outline, '.pane .doc.on');
     await page.unroute(HELD);
-    const why = err || differ(got, tpl, skip);
+    // A `phone:KEY` skips KEY at phone width alone.
+    const skips = (skip || []).flatMap(k => k.startsWith('phone:') ? (W < 900 ? [k.slice(6)] : []) : [k]);
+    const why = err || differ(got, tpl, skips);
     ok(!why, `${name} waits as itself ${where}${why ? `: ${why}` : ''}`);
   }
   const [shown, waiting] = W < 900 ? ['beta', 'delta'] : ['beta', 'gamma'];

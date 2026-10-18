@@ -222,7 +222,7 @@ const SKTPLS = {
   briefing: () => {
     const sects = BRIEF_SECTS.filter(([k]) => k !== "brief");
     return skTpl(`<nav class="sectjump">${[...sects.map(([, t]) => t), "Memories"].map(t => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
-      + sects.map(([k, t, open], j) => docSection("briefing", k, t, "", skRows(j ? 1 : 3), {open})).join(""));
+      + sects.map(([k, t, open], j) => docSection("briefing", k, t, "", skRows(j ? 1 : 3), {open, fold: k === "preamble"})).join(""));
   },
   // ...and the Version box above it, which the view fills on its own.
   version: () => skTpl(docSection("artifacts", "version", artTitle("version"), "", skRows(1))),
@@ -385,7 +385,10 @@ function renderDiff(text){
 // once, at the moment it turns, and is the one open in its view; closed
 // after that, it stays closed for as long as it stays the same news.
 const sectLoud = {};
-function docSection(kind, id, title, status, body, {cls = "", open, loud = false, prime = false} = {}){
+// `fold`: a fold on purpose, shut until opened at every width (the Projects
+// page's Archived, a read made only when it is opened); every other section
+// at a page's level stands open at a desk and does not fold there.
+function docSection(kind, id, title, status, body, {cls = "", open, loud = false, prime = false, fold = false} = {}){
   const key = `${kind}:${id}`;
   const turned = loud && !sectLoud[key];
   sectLoud[key] = loud;
@@ -395,7 +398,7 @@ function docSection(kind, id, title, status, body, {cls = "", open, loud = false
   // `prime`: the section a view is opened for (Artifacts' Files), open by
   // default beside the first on a desktop. `data-set`: its caller said open
   // or shut, which a default never overrules.
-  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}${open !== undefined ? " data-set" : ""}>
+  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}${open !== undefined ? " data-set" : ""}${fold ? " data-fold" : ""}>
     <summary><span class="t">${esc(title)}</span>${
       status ? `<span class="sst${cls ? " " + cls : ""}">${esc(status)}</span>` : ""}</summary>
     <div class="body">${body}</div>
@@ -528,7 +531,7 @@ function wireSections(root){
     // `:scope > summary` because a section can contain folds of its own, and
     // the section must not answer for theirs.
     const sum = d.querySelector(":scope > summary");
-    if (sum) sum.onclick = e => { e.preventDefault(); if (!d.open) soleOpen(d); slideDetails(d, !d.open); };
+    if (sum) sum.onclick = e => { e.preventDefault(); if (sectFixed(d)) return; if (!d.open) soleOpen(d); slideDetails(d, !d.open); };
   });
   const view = root.closest?.(".nbview, .doctab") || root.querySelector?.(".doctab");
   if (view){
@@ -583,15 +586,14 @@ const sectLast = new WeakMap();     // a group -> the key of the section last op
 const sectLastByName = new Map();
 const sectGroupName = g => (sectsOf(g)[0]?.dataset.sect || "").split(":")[0] || "";
 function sectRemember(g, key){
-  sectLast.set(g, key);
+  sectLast.set(g, [sectVisit, key]);
   const n = sectGroupName(g);
-  if (n) sectLastByName.set(n, key);
+  if (n) sectLastByName.set(n, [sectVisit, key]);
 }
 function sectRecall(g){
-  const have = sectLast.get(g);
-  if (have !== undefined) return have;
   const n = sectGroupName(g);
-  return n ? sectLastByName.get(n) : undefined;
+  const have = sectLast.get(g) || (n ? sectLastByName.get(n) : undefined);
+  return have && have[0] === sectVisit ? have[1] : undefined;
 }
 // A group is a view, a tab, a fold holding folds, or a dialog box that says
 // it holds sections (`data-sects`: the project settings, the operator 7 Oct).
@@ -601,6 +603,21 @@ const sectRuled = g => !!g?.closest?.(".nb, .doctab, [data-sects]");
 // with nothing in it is display:none and is no group's first.
 const sectsOf = g => [...g.querySelectorAll("details.sect")]
   .filter(o => sectGroup(o) === g && getComputedStyle(o).display !== "none");
+// A section at a page's level on a desk: it stands open and does not fold
+// (the operator, 18 Oct: no section collapses on a desktop; on a phone they
+// take turns, one open, the page opening on its first). Not a fold on
+// purpose (data-fold), one inside a row (a container's Log) or inside
+// another section, nor a dialog's.
+function sectFixed(d){
+  return !isPhone() && !d.hasAttribute("data-fold") && !d.closest(".row:not(.ndrow), .modal")
+    && !d.parentElement?.closest("details.sect") && !!d.closest(".doctab, .nbview");
+}
+// Which visit of a page the remembered pick belongs to: a page opened anew
+// opens on its first section on a phone, a redraw within the visit keeps
+// the one somebody opened (the operator, 18 Oct: always starting with the
+// top section).
+let sectVisit = 0;
+function sectNewVisit(){ sectVisit++; }
 // Nobody has opened or shut it, and its caller left it to the default.
 const sectDefault = o => !(o.dataset.sect && o.dataset.sect in sectOpen) && !o.hasAttribute("data-set");
 function soleOpen(d){
@@ -640,14 +657,18 @@ function oneOpen(g){
   const mine = sectsOf(g);
   for (const o of mine){
     if (o.hasAttribute("data-lead")){ o.removeAttribute("data-lead"); sectRemember(g, o.dataset.sect || ""); continue; }
-    // Open unless somebody shut it, at a desk (the operator, 8 Oct).
-    if (sectDefault(o)) o.open = true;
+    // At a desk a page's sections stand open, whoever shut one before
+    // (sectFixed); a fold on purpose keeps what it was given.
+    if (sectFixed(o) || sectDefault(o)) o.open = true;
   }
   if (!isPhone() || mine.length < 2) return;
+  // On a phone one stands open: the one opened by a hand or a draw in this
+  // visit of the page, else the first that is not a fold on purpose, the
+  // top of the page. A fold on purpose is one of the one at a time too: it
+  // is never what a phone opens on, but opening it shuts the rest.
   const last = sectRecall(g);
   const keep = mine.find(o => last && (o.dataset.sect || "") === last)
-    || mine.find(o => o.hasAttribute("data-prime"))
-    || mine.find(o => o.open) || mine[0];
+    || mine.find(o => !o.hasAttribute("data-fold")) || mine[0];
   for (const o of mine) o.open = o === keep;
 }
 // A button that is doing something says so until the repaint replaces it:

@@ -878,31 +878,36 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
-  // Every section open by default, and shutting one leaves the others open
-  // (the operator, 8 Oct: too much was hidden in folds).
+  // Every section open, and at a desk a press on a heading leaves it open:
+  // nothing on a page folds at a desk (the operator, 18 Oct), only on a
+  // phone, one at a time.
   {
     const sects = `${ROW} .ndconfbody > details.sect`;
     const before = await page.$$eval(sects, ds => ds.map(d => d.open));
     ok(before.length > 1 && before.every(Boolean), `the Nodes tab has every section open (${before})`);
     await page.$$eval(sects, ds => ds[1].querySelector(':scope > summary').click());
-    await page.waitForFunction(s => !document.querySelectorAll(s)[1].open, sects, { timeout: 5000 }).catch(() => {});
+    await sleep(400);
     const open = await page.$$eval(sects, ds => ds.filter(d => d.open).length);
-    ok(open === before.length - 1, `...and shutting one leaves the rest open (${open} open of ${before.length})`);
-    await page.$$eval(sects, ds => ds[1].querySelector(':scope > summary').click());
-    await page.waitForFunction(s => document.querySelectorAll(s)[1].open, sects, { timeout: 5000 }).catch(() => {});
+    ok(open === before.length, `...and a press on a heading at a desk folds nothing (${open} open of ${before.length})`);
   }
   // Every fold on this page is driven rather than left to the browser's
   // instant snap: the memories, the bug reports, the version tab's fold, the
   // Docker manager's wiring. Sections shipped without it and were the one
-  // kind that jumped.
+  // kind that jumped. A section folds only on a phone, so it is measured
+  // there.
   {
-    // An open one: every section is open by default (8 Oct).
-    const key = await page.$eval(`${ROW} .ndconfbody > details.sect[open]`, d => d.dataset.sect);
+    await page.setViewportSize({ width: 393, height: 851 });
+    await sleep(300);
+    // One at a time on a phone, so open the first before folding it.
+    const key = await page.$eval(`${ROW} .ndconfbody > details.sect`, d => d.dataset.sect);
     const sel = `${ROW} .ndconfbody > details.sect[data-sect="${key}"]`;
+    await openFold(page, sel);
     const moved = await animatedDuring(page, () => closeFold(page, sel));
     ok(moved.some(c => /\bsect\b/.test(c)),
-       '...and a section folds with the same tween as every other fold here');
-    await openFold(page, sel);          // put it back for what reads inside it
+       '...and on a phone a section folds with the same tween as every other fold here');
+    await page.setViewportSize({ width: 1280, height: 900 });
+    // Put every one back for what reads inside them.
+    await page.$$eval(`${ROW} .ndconfbody > details.sect`, ds => ds.forEach(d => { d.open = true; }));
   }
   // The CI runner page lists every node with a runner, not only one: a
   // workflow lands on whichever runner its runs-on matches, and GitHub was
@@ -1274,7 +1279,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(await page.$eval(`${ROW} [data-k="rootasks"]`, c => c.checked && /bb root run --node shed/.test(c.closest('label').textContent)),
        'the hosting-only row carries the root-asks switch, on, naming the verb');
     await page.click(`${ROW} [data-k="rootasks"]`);
-    await page.click(`${ROW} [data-nd="root-asks-host"]`);
+    await page.click(`${ROW} [data-nd="sess-save"]`);
     await page.waitForFunction(sel => document.querySelector(sel + ' [data-k="rootasks"]')?.checked === false, ROW, { timeout: 10000 });
     const off = await rootAsk();
     ok(/root/.test(off.error || '') && !off.ok, `...and off, the ask is refused and told so (${off.error})`);
@@ -1355,8 +1360,10 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(!(await page.$$eval('#rnNode option', (os, id) => os.some(o => o.value === id), minted.id)),
        '...and the project settings\' node picker does not offer it');
     await page.click('#rnCancel');
-    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: saidOf(b) }));
-    ok(/Un-enroll/.test(unro.text) && /take BuilderBot off the machine/.test(unro.title) && !(await page.$(`${ROW} [data-nd="retire"]`)),
+    // What it does is said on its row (the operator, 18 Oct: Advanced's
+    // actions a row each, the words beside the button, not in a tooltip).
+    const unro = await page.$eval(`${ROW} [data-nd="unenroll"]`, b => ({ text: b.textContent, title: b.closest('.ndact')?.querySelector('.sub')?.textContent || '' }));
+    ok(/Un-enroll/.test(unro.text) && /Takes BuilderBot off the machine/.test(unro.title) && !(await page.$(`${ROW} [data-nd="retire"]`)),
        'Un-enroll is the one way off, cleaning the machine where it can; Remove and Uninstall are gone');
     // Its dialog: what always goes, and the three rings to tick (the stores,
     // what the dashboard configured, a host's doors), none ticked for a node
@@ -1422,14 +1429,18 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: true } });
     await page.evaluate(async () => { await refresh(); await loadNodes(); });
     await page.waitForSelector(`${ROW} .nddoor [data-nd="door"]`, { timeout: 10000 });
-    ok(/Reaches the controller (over the LAN|over WireGuard|through )/.test(await page.$eval(`${ROW} .ndreach`, e => e.textContent)),
-       'the row says how the node reaches the controller, as it was enrolled, above its door');
+    // Said as the Sessions section's facts (the operator, 18 Oct): how it
+    // reaches the controller, and its door, the machine's own way in.
+    const facts = await page.$eval(`${ROW} .ndsessfacts`, e => e.textContent.replace(/\s+/g, ' '));
+    ok(/Reaches the controller ?(over the LAN|over WireGuard|through )/.test(facts),
+       `the Sessions section says how the node reaches the controller, as it was enrolled (${facts.slice(0, 120)})`);
     const doorRow = await page.$eval(`${ROW} .nddoor`, e => ({ text: e.textContent, on: e.querySelector('[data-nd="door"]').dataset.on,
       cmd: e.querySelector('.ndcmd')?.textContent || '' }));
-    ok(/SSH door: cloudflared, open/.test(doorRow.text) && doorRow.on === '0' && /Shut it/.test(doorRow.text)
+    ok(/SSH door ?cloudflared at ssh-shed\.example\.com, open/.test(facts) && doorRow.on === '0' && /Shut the door/.test(doorRow.text)
+       && /this machine itself/.test(doorRow.text)
        && /Host shed\n\s+HostName ssh-shed\.example\.com\n\s+User \S+\n\s+ProxyCommand cloudflared access ssh --hostname %h/.test(doorRow.cmd)
        && /ssh shed/.test(doorRow.text) && /MobaXterm/.test(doorRow.text),
-       `a node reporting its door open shows Shut it and the PC's ssh config block named for the node, with MobaXterm's way (R179) (${doorRow.cmd.replace(/\s+/g, ' ').slice(0, 90)})`);
+       `a node reporting its door open says so, as the machine's way in, and shows Shut the door and the PC's ssh config block named for the node, with MobaXterm's way (R179) (${doorRow.cmd.replace(/\s+/g, ' ').slice(0, 90)})`);
     page.dialogs.length = 0;
     await page.click(`${ROW} .nddoor [data-nd="door"]`);
     const doorJob = await (async () => { for (let i = 0; i < 40; i++){
@@ -1439,13 +1450,13 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       await sleep(250);
     } return null; })();
     ok(page.dialogs.length === 1 && /Shut the SSH door/.test(page.dialogs[0]) && doorJob && doorJob.spec.config.on === false,
-       `Shut it asks, then queues the door system job with on: false (${JSON.stringify(doorJob?.spec)})`);
+       `Shut the door asks, then queues the door system job with on: false (${JSON.stringify(doorJob?.spec)})`);
     if (doorJob) await napi('/api/v1/jobs', { action: 'cancel', id: doorJob.id });
     await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: false } });
     await page.evaluate(async () => { await refresh(); await loadNodes(); });
-    await page.waitForFunction(sel => /SSH door: cloudflared, shut/.test(document.querySelector(sel + ' .nddoor')?.textContent || ''), ROW, { timeout: 10000 });
-    ok(await page.$eval(`${ROW} .nddoor`, e => /Open it/.test(e.textContent) && !e.querySelector('.ndcmd')),
-       '...and reported shut, the row offers Open it and no command');
+    await page.waitForFunction(sel => /SSH door\s*cloudflared at ssh-shed\.example\.com, shut/.test(document.querySelector(sel + ' .ndsessfacts')?.textContent.replace(/\s+/g, ' ') || ''), ROW, { timeout: 10000 });
+    ok(await page.$eval(`${ROW} .nddoor`, e => /Open the door/.test(e.textContent) && !e.querySelector('.ndcmd')),
+       '...and reported shut, the row offers Open the door and no command');
     await hello(CENSUS);
     // Enroll script on the row (R177): a new script for this node, bound
     // to the machine it reported, with no secret in it; run on another
@@ -2284,7 +2295,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.waitForFunction(id => /sees only its own project/.test(document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
                              minted.id, { timeout: 15000 }).catch(() => {});
   const isolated = await rowText();
-  ok(/Each session sees only its own project/.test(isolated) && !/not isolated/.test(isolated),
+  ok(/Each session ?sees only its own project/.test(isolated) && !/not isolated/.test(isolated),
      '...and one whose sessions are says that instead');
   await napi('/api/prefs', { project: 'alpha', node: '' });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
@@ -2949,8 +2960,9 @@ ok(page.errors.length === 0,
     // the row and, as before, on the server (the operator, 30 Sep).
     const held = await page.$eval(`.ndrow[data-node="${shed.id}"]`, r => ({
       dead: ['reboot', 'poweroff'].map(w => r.querySelector(`[data-nd="${w}"]`)?.disabled),
-      why: [...r.querySelectorAll('.state')].map(e => e.textContent).find(t => /Reboot and Shut down wait/.test(t)) || '' }));
-    ok(held.dead.every(Boolean) && /a change to this node \(gpu\)/.test(held.why),
+      // Said on the action's own row, under its name (the operator, 18 Oct).
+      why: r.querySelector('[data-nd="reboot"]')?.closest('.ndact')?.querySelector('.sub')?.textContent || '' }));
+    ok(held.dead.every(Boolean) && /They wait: a change to this node \(gpu\)/.test(held.why),
        `while a change is applying on the node, Reboot and Shut down are ghosted and say why (${held.why})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: g.job });
     // ...and the tab read again, so the canceled set-up is not what the
@@ -3095,7 +3107,9 @@ ok(page.errors.length === 0,
     const drawn = await page.$eval('.doc .tctab .tcdrv', e => ({ text: e.textContent.replace(/\s+/g, ' ').trim(),
       tick: e.querySelector('#tcDrvTick') ? { on: e.querySelector('#tcDrvTick').checked, dead: e.querySelector('#tcDrvTick').disabled } : null,
       opts: [...e.querySelectorAll('#tcDrvSel option')].map(o => o.textContent.trim()), dead: e.querySelector('#tcDrvSel').disabled,
-      first: e.closest('.tcs')?.nextElementSibling?.classList.contains('tcs') }));
+      // This machine is its own section, above the store's (the operator, 18 Oct).
+      first: (() => { const m = e.closest('.tcs'), t = document.querySelector('.doc .tctab .tcs:not(.tcmachine)');
+        return !!(m && t && (m.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING)); })() }));
     ok(/NVIDIA driver/.test(drawn.text) && /GeForce RTX 3070 Ti/.test(drawn.text) && /not installed: nouveau has the card/.test(drawn.text)
        && drawn.tick && !drawn.tick.on && !drawn.tick.dead && drawn.first,
        `the tab draws the driver's row above the store's, with a tick box like theirs (${drawn.text.slice(0, 90)})`);

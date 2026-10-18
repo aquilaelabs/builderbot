@@ -3391,7 +3391,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     // which this agent, not root, cannot: said under the switch in red.
     {
       const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="sessnet"]`;
-      const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="turns"]`;
+      const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="sess-save"]`;
       await openSection(page, 'nodes:sessions', `.nodestab .ndrow[data-node="${minted.id}"]`);
       await page.waitForSelector(sw, { timeout: 15000 });
       ok(!(await page.$eval(sw, e => e.checked)), 'the Sessions section offers the switch, off to begin with');
@@ -3430,8 +3430,10 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       await page.click(ra);
       await page.click(save);
       const noRoot = await until(async () => (await nodeById(minted.id)).config?.no_root === true ? true : null, 15000, 300);
-      ok(noRoot && await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .sub`, es => es.some(e => /refused and told this is off/.test(e.textContent))),
-         '...and unticking it, then Save, turns them off and says so under the switch');
+      // The row says so once the page has read the node again after the Save.
+      const toldOff = noRoot && await page.waitForFunction(id => [...document.querySelectorAll(`.nodestab .ndrow[data-node="${id}"] .sub`)]
+        .some(e => /refused and told this is off/.test(e.textContent)), minted.id, { timeout: 15000 }).then(() => true, () => false);
+      ok(toldOff, `...and unticking it, then Save, turns them off and says so under the switch (${noRoot ? 'off on the node' : 'still on at the node'})`);
       await page.click(ra);
       await page.click(save);
       await until(async () => (await nodeById(minted.id)).config?.no_root ? null : true, 15000, 300);

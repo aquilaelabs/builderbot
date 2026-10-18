@@ -1209,7 +1209,7 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.waitForFunction(() => !document.querySelector('.doc .projtab .pjgroup') &&
     !!document.querySelector('.doc .projtab #pjGrid > .pgrid .pcard[data-row="beta"]'), null, { timeout: 15000 });
   ok(g.head === 'Clients 1' && g.cards.join() === 'beta' && offered.includes('Clients'),
-     `Group… puts a project under its group's name on the page, the next ask offering the groups made, and an empty answer takes it back out (${JSON.stringify({ ...g, offered })})`);
+     `Group puts a project under its group's name on the page, the next ask offering the groups made, and an empty answer takes it back out (${JSON.stringify({ ...g, offered })})`);
 }
 
 // Unpinning takes a project off the sidebar and leaves it on the tab, whole.
@@ -1765,17 +1765,19 @@ await page.waitForFunction(() => document.getElementById('rnName').value === pro
 ok(!await page.$('#rnColor'), '...and the dialog has no color: a project\'s color is each person\'s own');
 await page.click('#rnCancel');
 await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: 10000 });
-// A color is this account's own (the operator, 18 Oct): picked from the dot
-// beside a card's name, nine swatches and none, worn by the card and the
-// project's page at once, and stored for this account rather than on the
-// project.
+// A color is this account's own (the operator, 18 Oct): picked from a card's
+// menu, Color, nine swatches and none unrolling under its name, worn by the
+// card and the project's page at once, and stored for this account rather
+// than on the project. No dot beside the name: it read as a checkbox.
 await page.evaluate(() => openProjectsTab());
-await page.waitForSelector('.doc .projtab [data-row="alpha"] [data-pcolor]', { timeout: 15000 });
+await page.waitForSelector('.doc .projtab [data-row="alpha"]', { timeout: 15000 });
+ok(!await page.$('.doc .projtab [data-row="alpha"] .pcname .pcswatch'), 'a card carries no color dot beside its name');
+await pjMenu('alpha');
 await page.click('.doc .projtab [data-row="alpha"] [data-pcolor]');
 await page.waitForSelector('.doc .projtab [data-row="alpha"] .pcpop', { timeout: 5000 });
 ok(await page.$$eval('.doc .projtab [data-row="alpha"] .pcpop [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
-   'the dot beside a card\'s name offers the colors, none picked for a project this account never colored');
+   'the card menu\'s Color offers the colors, none picked for a project this account never colored');
 await page.click('.doc .projtab [data-row="alpha"] .pcpop [data-color="teal"]');
 await page.waitForFunction(() => document.querySelector('.doc .projtab [data-row="alpha"]')?.classList.contains('pc'), null, { timeout: 10000 });
 const kept = await page.evaluate(() => { const p = state.projects.find(x => x.name === 'alpha'); return { mine: p.color, project: p.prefs?.color || '' }; });
