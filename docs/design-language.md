@@ -746,7 +746,7 @@ Two judgements are yours. A list that only just crosses the line is left whole, 
 Applies to: scripts/dashboard/index.html, scripts/dashboard/page-motion.js; motion, animation, animate, fade, transition, tween
 
 Everything that appears, leaves, opens or changes state moves: a panel or
-menu arrives (`menuIn`, 8px over .22s; one that opens upward from the bottom bar rises instead, `menuUp`, 16px over .32s; both on one ease-out cubic, so a desk's menus and a phone's sheet move alike), a document brought to the front fades in over its
+menu arrives the way it opened (the operator, 18 Oct): one below what was pressed drops into place (`menuIn`, 8px over .22s) and one above it rises (`menuRise`, the same 8px and .22s upward), every context menu at its button at a desk and on a phone alike, never a sheet; the bottom bar's More, which opens upward from the bar, rises further (`menuUp`, 16px over .32s); all on one ease-out cubic, a document brought to the front fades in over its
 own ground (`docIn`, contentIn's frames under a name of its own, so a
 document that already wears contentIn from its first paint still fades when
 it comes forward) while the page it replaces fades out first (`docOut`, gone by .09s) and holds still where it sat, a fade through rather than a double exposure (the operator, 16 Oct); every page's bar is one height, its sub-nav's segment (one button for a page that stands alone), so a switch moves nothing; the dock slides up out of its line when it opens (`dockUp`) and back down into it when it shuts (`dockDown`), laid over the page, a section folds over its height
@@ -1249,7 +1249,7 @@ controls a thumb meets (a tab's close and minimize, the new-tab button, the
 color swatches) are at least 30px; a desktop keeps its tighter strip. A bar
 of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
 rather than each taking its text's, so the last one is never cut off: at
-344px, a folding phone's cover screen, four did not fit. A page's bar is one line on a phone, its node picker and its buttons (the operator, 18 Oct): the picker drops its word and gives up width last, the buttons take their short words (`barSaid`: Re-check, Install; New VM, Enroll; Check, New), and what else the bar holds (a search, Cards and List) takes the line under it. "Both widths" means
+344px, a folding phone's cover screen, four did not fit. A page's bar is one line on a phone, its node picker and its buttons (the operator, 18 Oct): the picker drops its word and gives up width last, the buttons take their short words (`barSaid`: Re-check, Install; New VM, Enroll; Check, New), and what else the bar holds is on that line too (the operator, 18 Oct, reversing the second line it had): Containers' search takes what is left from a 4em floor and its Cards and List are their pictures, the node's name read whole up to 11em; under 440px, where the search would be a sliver, it takes a line of its own under the rest. "Both widths" means
 a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 840, still the phone layout) and a desktop.
 

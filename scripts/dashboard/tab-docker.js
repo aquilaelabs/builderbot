@@ -2406,14 +2406,18 @@ function dmImage(img){
 // registry images against what their registries serve now (R195), not while
 // the daemon is blind; and New container, the page's main action, where a
 // phone finds it without scrolling past every container (R119 step 5).
+// Cards and List as their pictures on a phone, so the bar is one line there
+// (the operator, 18 Oct): four tiles, and lines.
+const DM_ICON_CARDS = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>`;
+const DM_ICON_LIST = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>`;
 function dmBar(b){
   const ghost = !b, dead = ghost ? " disabled" : "";
   return `<div class="field histbar docbarrow dmpick">${
       nodePick("dmNode", ghost ? null : b.nodes, dockerNode || b?.nodes[0]?.id)}<input${ghost ? "" : ` id="dmSearch"`} type="search"
-        placeholder="name, image, port or project" autocomplete="off" aria-label="narrow the containers" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
+        placeholder="${isPhone() ? "search" : "name, image, port or project"}" autocomplete="off" aria-label="narrow the containers: name, image, port or project" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
       <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
-        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card"${dead}>Cards</button>
-        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card"${dead}>List</button></div>
+        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card" aria-label="Cards"${dead}><span class="lng">Cards</span><span class="shrt">${DM_ICON_CARDS}</span></button>
+        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card" aria-label="List"${dead}><span class="lng">List</span><span class="shrt">${DM_ICON_LIST}</span></button></div>
       ${mayDocker() ? `<span class="actbar">${
       b?.blind ? "" : `<button type="button"${ghost ? "" : ` id="bDockerCheck"`}${dead}>${barSaid("Check for updates", "Check")}</button>`}${
       `<button type="button"${ghost ? "" : ` id="bDockerNew"`} class="primary"${dead}>${barSaid("New container", "New")}</button>`}</span>` : ""}</div>`;

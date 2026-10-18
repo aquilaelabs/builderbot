@@ -3939,8 +3939,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    everywhere). The picker drops its word, which the node's name beside it
    says, and shrinks to what is left, its name cut short last; the buttons
    take their short words and never wrap; a search box gives up width
-   rather than its line, and on Containers, where a search and Cards and
-   List are on the bar as well, those two take the second line. */
+   rather than its line, Containers' Cards and List being their pictures. */
 @media(max-width:600px){
   /* Half the bar at most: Firefox and Safari size a picker to its longest
      option, a disabled one's reason included, where Chrome sizes it to the
@@ -3962,17 +3961,34 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      the three it holds dead step aside rather than crowd it. */
   .doctab .field.docbarrow>.actbar>button.tcidle{display:none}
   .doctab .field.docbarrow>input{flex:1 1 0;min-width:7em}
-  /* min-width, so the search never fits beside the picker and its buttons
-     and goes to the second line with Cards and List (the operator's phone,
-     18 Oct, where a Check that was not drawn left it room on the first). */
-  .doctab .field.docbarrow.dmpick>input{order:5;flex-basis:0;min-width:55%}
-  .doctab .field.docbarrow.dmpick>.pseg{order:6}
+  /* Containers is one line too (the operator, 18 Oct, reversing the second
+     line it had): the picker, the search taking what is left, Cards and List
+     as their pictures, and the buttons in their short words. Where the line
+     leaves the search too little to type into, a fold's cover, it wraps to
+     the next line rather than shrinking to nothing. */
+  .doctab .field.docbarrow.dmpick{flex-wrap:wrap;gap:6px}
+  /* The node's name read whole (up to 11em) and the search taking what is
+     left from a small floor, so the line is laid out on that floor and not
+     the search's full width, which had put the buttons on a line of their
+     own; its hint is a word there. */
+  .doctab .field.docbarrow.dmpick>label.pick{flex:0 1 auto;min-width:5em;max-width:11em;margin-inline-end:0}
+  /* (the id's rule too, a desk's 12rem base and 8rem floor) */
+  .doctab .field.docbarrow.dmpick>input,.dmtab .dmpick #dmSearch{flex:1 1 0;min-width:4em}
+  .doctab .field.docbarrow.dmpick>.pseg>button{min-width:var(--tap);padding:4px 8px}
+  .doctab .field.docbarrow.dmpick>.pseg svg{display:block}
   .projtab .docbarrow #pjSearch{flex:1 1 0;min-width:7em}
   /* A runner's three actions, in their short words, on the row's one line. */
   .ndrun .actbar{flex-wrap:nowrap}
   .ndrun .actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap}
   .lng{display:none}
   .shrt{display:inline}
+}
+/* ...and under 440px, where that leaves the search too narrow to type into
+   (a smaller phone, a fold's cover), it takes a line of its own under the
+   picker, the views and the buttons, rather than a sliver, stopping short
+   of the edge as every control does. */
+@media(max-width:440px){
+  .doctab .field.docbarrow.dmpick>input,.dmtab .dmpick #dmSearch{order:9;flex:0 1 100%;max-width:88%}
 }
 :is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox,.ngroute) *){
   max-width:min(var(--ctl-w),88%)}
