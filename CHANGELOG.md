@@ -161,6 +161,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A dev container's build or Up stops and names any image-only service its compose has gained since the last build, and ships it only once a person says yes on the Docker tab; a container's env can no longer set COMPOSE_FILE, COMPOSE_PROJECT_NAME or COMPOSE_PROFILES (568dc79)
 - A dev container can lay another compose file from its tree over its own, chosen as Override in its settings or with bb devapp new --override and bb devapp override (658cbbf)
 - bb dashboard trace shows each request's CPU time, how busy the server was, and which named parts of a page's read took the time (658cbbf)
+- A session can ask a lent phone's owner for one touch on whatever app is in front (bb phone touch --any-app), so another project's keyboard can be tested; the owner answers each one (3930c2a)
 
 ### Changed
 
@@ -396,6 +397,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Pages change smoothly: a picked settings section, person or role fades in, chips and Cards/List fade their lists, and the line under the current tab and the rail's bar slide to what you press (658cbbf)
 - First run is four steps, each a card with its own button: your first node, your name and email, Claude Code on that node, and a first project; only the node holds up Finish, and Home's Getting started card keeps the rest until they are done. Storage paths and the idle timeout are no longer asked; their defaults are under Controller settings (f985669)
 - Page sections stand open at a desk and fold one at a time on a phone, opening on the top one; every section and card head is one height on a shade of its own, Jobs, Toolchains and Emulator have heads like Home's, a node's Sessions settings share one Save and Revert above its actions, its Advanced actions are a row each, a colored project card's buttons wear its color, and Color and Group sit in the card's menu (695f2c9)
+- A press anywhere on a project's card opens its page, on Projects and on Home; a card's menu and the Claude chooser open over the page, so a card in Archived no longer has its menu cut off, and on a phone both open as a sheet above the bottom bar (3930c2a)
 
 ### Removed
 
@@ -638,6 +640,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings section saves its own fields alone, and refuses a field somebody else (or a session) saved since you opened it, naming it; Save again writes yours. The notebook's "Also open" line is gone (285475b)
 - A session handing back no longer holds your next messages while the house rules' checks run, where the project's Claude settings say a new ask cuts a test run: the checks run in the background and a failure is said on your next prompt (4253ca4)
 - A job reaches a node with an NVIDIA card within its poll: it used to wait while the agent read the card, up to seconds a job (695f2c9)
+- Typing in the Enroll node and VM dialogs no longer lands in a node's rename box, the Nodes page no longer shows an older list over a save, and Check beside Path mapping keeps its answer (3930c2a)
 
 ### Security
 
