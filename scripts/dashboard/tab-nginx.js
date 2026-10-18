@@ -222,6 +222,12 @@ function nginxUndeployed(n){
   </div>`;
 }
 
+// The page's four sections, named once for the page and its placeholder
+// alike (R218, the operator 18 Oct: the nginx placeholder was a few gray
+// lines while every other page's waited as itself).
+const NG_TITLES = {hostnames: "Hostnames", routes: "Routes", certs: "Certificates", image: "Image"};
+function ngSect(key, status, body, opts){ return docSection("nginx", key, NG_TITLES[key], status, body, opts); }
+
 function nginxBody(n){
   if (!n.deployed) return nginxUndeployed(n);
   const d = nginxDraftOf(n);
@@ -240,7 +246,7 @@ function nginxBody(n){
   // on one short line with the rest behind its ?, and saves what it writes
   // under itself; Remove stands apart at the page's foot.
   const pairs = Object.values(n.certs || {}).filter(c => c?.set).length;
-  const image = docSection("nginx", "image", "Image", n.behind ? `nginx:${n.behind} is out` : `nginx:${im.tag || "?"}`,
+  const image = ngSect("image", n.behind ? `nginx:${n.behind} is out` : `nginx:${im.tag || "?"}`,
     `<div class="field">
       <div class="sub ngimage">${esc(pinned)}</div>
       <div class="hint${n.behind ? " warn" : ""}">${esc(news)}.${helpIcon("The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.")}</div>
@@ -251,11 +257,11 @@ function nginxBody(n){
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
   const hostN = (nginxHostnames || []).length;
-  const hosts = docSection("nginx", "hostnames", "Hostnames", hostN ? `${hostN} name${hostN === 1 ? "" : "s"}` : "none yet",
+  const hosts = ngSect("hostnames", hostN ? `${hostN} name${hostN === 1 ? "" : "s"}` : "none yet",
     `<div class="field"><div class="hint">The names this BuilderBot answers for, picked on any route.${helpIcon(
       "The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's). Added and deleted at the press.")}</div>
       ${nginxHostLines()}</div>`);
-  const routes = docSection("nginx", "routes", "Routes", count ? `${count} route${count === 1 ? "" : "s"}` : "no route yet",
+  const routes = ngSect("routes", count ? `${count} route${count === 1 ? "" : "s"}` : "no route yet",
     `<div class="field"><div class="hint">Each hostname or path to a port a container publishes on ${esc(n.name)}.${helpIcon(
       "nginx runs on the host network and reaches a container at 127.0.0.1. A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A name nothing routes is answered by closing the connection.")}</div></div>
       <div class="field ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
@@ -268,7 +274,7 @@ function nginxBody(n){
   // The pairs held, and Add a certificate unrolling the form under them: a
   // paste is now and then, not on every visit (the operator, step 29).
   const open = nginxCertOpen || !!(d.cert.trim() || d.key.trim());
-  const certs = docSection("nginx", "certs", "Certificates", pairs ? `${pairs} pair${pairs === 1 ? "" : "s"}` : "none yet",
+  const certs = ngSect("certs", pairs ? `${pairs} pair${pairs === 1 ? "" : "s"}` : "none yet",
     `<div class="field"><div class="hint">The pairs this node holds, each known by its domain.${helpIcon(
       "A pair is known by the domain its names say: a wildcard pair for *.example.com is example.com's, and the same again is a renewal. A key is kept on the controller and never shown.")}</div>
       ${nginxCertLines(n, d)}</div>
@@ -320,7 +326,8 @@ function renderNginxInto(i){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
     d.setBar(nginxBar(null));
-    d.list.innerHTML = skTpl(`${headLine(`${skv(5)} ${skv(24)}`, "", "toolstate")}<div class="field">${skRows(2)}</div>`);
+    d.list.innerHTML = skTpl(`${headLine(`${skv(5)} ${skv(24)}`, "", "toolstate")}${
+      ["hostnames", "routes", "certs", "image"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
     loadNginx();
     return;
   }

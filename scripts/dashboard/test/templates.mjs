@@ -14,7 +14,11 @@ const PAGES = [
   ['nodes', '#/machines/nodes', 'nodesList = null; renderNodesInto(0)'],
   ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
   // Deploy is an undeployed node's alone, which is not known while it waits.
-  ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)', ['barSig']],
+  // ...and its four sections are a deployed node's: the fixture's is not, so
+  // the page draws one line and Deploy where the template, waiting for the
+  // node a person mostly has, draws them.
+  ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)',
+   ['barSig', 'card', 'title:Hostnames', 'title:Routes', 'title:Certificates', 'title:Image']],
   // This machine is a node's with a GPU or Claude Code row to show, which
   // is not known while it waits; on a phone, where it is drawn it is the one
   // open section, so the list's table is folded under it.
@@ -116,7 +120,7 @@ const differ = (got, tpl, skip = []) => {
   if (got.split && tpl.split && got.detailX !== null && tpl.detailX !== null && Math.abs(got.detailX - tpl.detailX) > 2)
     out.push(`the detail starts at ${got.detailX} on the page, ${tpl.detailX} in the template`);
   if (got.empty) return out.join('; ');
-  if (!!got.card !== !!tpl.card) out.push(`card: page ${got.card ? 'floats one' : 'floats none'}, template ${tpl.card ? 'floats one' : 'floats none'}`);
+  if (!skip.includes('card') && !!got.card !== !!tpl.card) out.push(`card: page ${got.card ? 'floats one' : 'floats none'}, template ${tpl.card ? 'floats one' : 'floats none'}`);
   else if (got.card && (Math.abs(got.card.l - tpl.card.l) > 2 || Math.abs(got.card.r - tpl.card.r) > 2))
     out.push(`card edges ${got.card.l} to ${got.card.r} on the page, ${tpl.card.l} to ${tpl.card.r} in the template`);
   else if (got.card && !skip.includes('tiles') && Math.abs(got.top - tpl.top) > 24)
