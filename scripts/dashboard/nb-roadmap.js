@@ -305,7 +305,7 @@ function nbRoadmapView({$, nb}){
                                {key: "shelved", label: "Shelved", count: parked}], nb.roadmapChip, "data-rmchip");
     if (paint($("roadmapChips"), chips, true))
       $("roadmapChips").querySelectorAll("[data-rmchip]").forEach(b => b.onclick = () => {
-        nb.roadmapChip = b.dataset.rmchip; redrawRoadmap(); fadeIn($("roadmapList")); });
+        fadeThrough(() => [$("roadmapList")], () => { nb.roadmapChip = b.dataset.rmchip; redrawRoadmap(); }); });
     setHidden($("roadmapFilter"), rows.length + finishedN < 2);
     const q = (nb.roadmapFind || "").trim().toLowerCase();
     const shown = r => (!nb.roadmapChip || (nb.roadmapChip === "shelved") === !!r.shelved) && rmMatch(r, q);

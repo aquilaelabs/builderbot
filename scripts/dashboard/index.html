@@ -757,9 +757,8 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   .ssplit:not(.sopen)[data-move="back"]>.snav{animation:splitBack .26s cubic-bezier(.33,1,.68,1)}
 }
 /* ...and at a desk, where the list and the section stand side by side, the
-   section picked fades in as a rail page does (the operator, 17 Oct): the
-   in-half of the fade through, on the part that changed. */
-@media(min-width:901px){ .ssplit[data-move="in"]>:not(.snav){animation:docIn .22s cubic-bezier(.33,1,.68,1) .03s backwards} }
+   section picked fades through as a rail page does (fadeThrough, the
+   operator 17 and 18 Oct). */
 @media(prefers-reduced-motion:reduce){ .ssplit[data-move]>*{animation:none} }
 .rdetail{min-width:0;padding:0 0 0 var(--row-x)}
 .rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
@@ -797,7 +796,6 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   .rsplit.open[data-move="in"]>.rdetail{animation:splitIn .26s cubic-bezier(.33,1,.68,1)}
   .rsplit:not(.open)[data-move="back"]>.rlist{animation:splitBack .26s cubic-bezier(.33,1,.68,1)}
 }
-@media(min-width:901px){ .rsplit[data-move="in"]>.rdetail{animation:docIn .22s cubic-bezier(.33,1,.68,1) .03s backwards} }
 @media(prefers-reduced-motion:reduce){ .rsplit[data-move]>*{animation:none} }
 /* A role's areas are a table (R218 step 8): the area with what Read and
    Write let one do under its name, then the two boxes in their columns. */

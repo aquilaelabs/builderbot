@@ -416,7 +416,14 @@ export const patience = ms => Math.round(ms * SLOW);
 // nothing.
 export async function splitPick(page, id){
   await page.evaluate(s => document.querySelector(`.doc.on .ssplit > .snav [data-spick="${s}"], .ssplit > .snav [data-spick="${s}"]`)?.click(), id);
+  await faded(page);
 }
+// A press's fade through over (fadeThrough): the still copy of what went out
+// gone and what came in at rest, which is when a person reads it; read
+// sooner, a list counts the copy beside its replacement.
+export const faded = page => page.waitForFunction(() => !document.querySelector('.fghost')
+  && !document.getAnimations().some(a => a.id === 'fadein' && a.playState === 'running'),
+  null, { timeout: 5000 });
 export const rnSect = splitPick;
 
 export async function sectSave(page, sect, { end = false, timeout = 15000 } = {}){

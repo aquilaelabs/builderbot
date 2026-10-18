@@ -405,7 +405,7 @@ function splitDraw(root){
   // whose fields is on show is drawn as nothing (.rngroup's own rule), and
   // listed it opened on an empty pane (B813).
   const empty = d => d.matches(".rngroup") && !d.querySelector(":scope > .body > .field:not([hidden]):not(.rnbarf)");
-  const all = [...root.querySelectorAll(o.sel)], shown = all.filter(d => !d.hidden && !empty(d));
+  const all = [...root.querySelectorAll(o.sel)].filter(d => !d.classList.contains("fghost")), shown = all.filter(d => !d.hidden && !empty(d));
   // The one picked, or the first shown while it is hidden (its list being
   // read again), without forgetting it: it comes back when it shows.
   let pick = st.pick;
@@ -420,7 +420,10 @@ function splitDraw(root){
     nav.innerHTML = html; nav.dataset.drawn = html;
     nav.querySelectorAll("[data-spick]").forEach(b => b.onclick = () => {
       st.pick = b.dataset.spick; st.open = true;
-      splitMove(root, "in"); splitDraw(root);
+      // At a desk the section fades through, as a rail page does; on a
+      // phone it slides in over the list.
+      splitAway(() => [...root.querySelectorAll(o.sel)].filter(d => d.classList.contains("scur")),
+                () => { splitMove(root, "in"); splitDraw(root); });
       if (matchMedia("(max-width: 900px)").matches) root.scrollIntoView?.({block: "start"});
     });
   }
@@ -429,6 +432,12 @@ function splitDraw(root){
     if (on && !d.open) d.open = true; });
   root.classList.toggle("sopen", st.open);
   splitMarks(root);
+}
+
+// A pick on a list beside its detail: a fade through at a desk (fadeThrough),
+// and on a phone the redraw alone, which plays its slide (splitMove).
+function splitAway(parts, swap){
+  return matchMedia("(max-width: 900px)").matches ? swap() : fadeThrough(parts, swap);
 }
 
 // The phone's slide: in from the right to a section, back from the left to

@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold, nbGo } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold, nbGo, faded } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -2843,6 +2843,7 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     ok(chips[0] === '' && /ep\.silon/.test(mine), `the chips start with All and count each project (${chips.join('|')})`);
     await page.click('.dmtab .chips .chip[data-dmchip="ep.silon"]');
     await page.waitForFunction(() => document.querySelector('.dmtab .chip.on')?.dataset.dmchip === 'ep.silon', null, { timeout: 5000 });
+    await faded(page);
     const shown = await page.$$eval('.dmtab .dmgroup b', bs => bs.map(b => b.textContent.trim()));
     ok(shown.length === 1 && /ep\.silon|epsilon/i.test(shown[0]),
        `...a chip narrows the list to that project's group alone (${shown.join('|')})`);

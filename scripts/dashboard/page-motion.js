@@ -278,9 +278,54 @@ function fadeIn(els){
   if (noMotion()) return;
   for (const el of (els instanceof Element ? [els] : [...(els || [])])){
     el.getAnimations().forEach(a => { if (a.id === "fadein") a.cancel(); });
-    el.animate([{opacity: 0}, {opacity: 1}], {duration: 220, delay: 30, fill: "backwards",
+    // docIn's frames and timing, so a part arrives as a rail page does.
+    el.animate([{opacity: 0}, {opacity: 1}], {duration: 220, delay: 60, fill: "backwards",
                                                 easing: "cubic-bezier(.33,1,.68,1)", id: "fadein"});
   }
+}
+
+// ...and the out-half (the operator, 18 Oct: a section, a person, a chip
+// and a view switched with a cut where the rail fades through). What is on
+// show is copied before the press redraws it; the copy goes back where it
+// stood, in the parent the redraw left (or drew again) there, so the page's
+// rules still dress it, and fades out on docOut's .09s while the new part
+// fades in. The copy is inert, has no ids and wears .fghost, which every
+// reader of the parts skips.
+function ghostOf(el){
+  if (!el || !el.offsetParent) return null;
+  return { g: el.cloneNode(true), r: el.getBoundingClientRect(), home: el.parentNode };
+}
+function ghostOut(w, home){
+  if (!w) return;
+  const at = home?.isConnected ? home : w.home?.isConnected ? w.home : null;
+  if (!at) return;
+  const g = w.g;
+  g.classList.add("fghost");
+  g.removeAttribute("id");
+  g.querySelectorAll("[id]").forEach(e => e.removeAttribute("id"));
+  g.inert = true;
+  g.setAttribute("aria-hidden", "true");
+  Object.assign(g.style, { position: "absolute", left: "0", top: "0", margin: "0", boxSizing: "border-box",
+                           width: `${w.r.width}px`, height: `${w.r.height}px`, pointerEvents: "none", zIndex: "1" });
+  at.appendChild(g);
+  const r = g.getBoundingClientRect();
+  g.style.left = `${(w.r.left - r.left).toFixed(1)}px`;
+  g.style.top = `${(w.r.top - r.top).toFixed(1)}px`;
+  const gone = () => g.remove();
+  g.animate([{opacity: 1}, {opacity: 0}], {duration: 90, easing: "ease-in", fill: "forwards"}).finished.then(gone, gone);
+  setTimeout(gone, 400);
+}
+// A press's redraw as a fade through: `pick` names the parts that change
+// (a selector, or a function giving them), `swap` redraws them.
+function fadeThrough(pick, swap){
+  const parts = () => [...(typeof pick === "function" ? pick() : document.querySelectorAll(pick))]
+    .filter(e => !e.classList.contains("fghost") && e.offsetParent);
+  if (noMotion()) return swap();
+  const was = parts().map(ghostOf);
+  swap();
+  const now = parts();
+  was.forEach((w, i) => ghostOut(w, (now[i] || now[0])?.parentNode));
+  fadeIn(now);
 }
 
 // The marker on the item on show slides to the one pressed (the operator,

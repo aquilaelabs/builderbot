@@ -1286,6 +1286,39 @@ for (const kind of kinds){
     ok(held.includes('docIn') && held.includes('docOut') && out === 'visible',
        `a switch between two pages is a crossfade, the one going out fading as the one coming in does (${held.join(', ') || 'nothing'}; out ${out})`);
   }
+  // ...and what a press redraws inside a page fades through the same way
+  // (the operator, 18 Oct): a settings section, a role and a notebook view,
+  // each leaving a still copy fading out on docOut's time while the new part
+  // fades in on docIn's, and the copy gone soon after.
+  for (const [label, kind, ready, press, ghost, fresh] of [
+    ['a settings section picked', 'settings', '.pane .doc.on .ssplit > .snav [data-spick]:not(.on)',
+     '.pane .doc.on .ssplit > .snav [data-spick]:not(.on)', '.pane .doc.on .ssplit > .fghost', '.pane .doc.on .ssplit > .scur:not(.fghost)'],
+    ['a role picked', 'roles', '.pane .doc.on .rsplit [data-rpick]:not(.on)',
+     '.pane .doc.on .rsplit [data-rpick]:not(.on)', '.pane .doc.on .rsplit > .fghost', '.pane .doc.on .rsplit > .rdetail:not(.fghost)'],
+    ['a notebook view switched', 'notebook:roadmap', '.pane .doc.on .nbtabs [data-v="bugs"]',
+     '.pane .doc.on .nbtabs [data-v="bugs"]', '.pane .doc.on .nbview.fghost', '.pane .doc.on .nbview[data-view="bugs"]:not(.fghost)'],
+  ]){
+    await onlyDocs([kind.split(':')[0]]);
+    await bring(kind);
+    await page.waitForSelector(ready, { timeout: 15000 });
+    await atRest();
+    const r = await page.evaluate(async ([press, ghost, fresh]) => {
+      document.querySelector(press).click();
+      // A view's switch waits on its leave check (leaveNbView) first.
+      for (let i = 0; i < 40 && !document.querySelector(ghost); i++) await new Promise(r => setTimeout(r, 5));
+      const g = document.querySelector(ghost), n = document.querySelector(fresh);
+      const t = a => a.effect?.getTiming?.() || {};
+      return { out: (g?.getAnimations() || []).map(a => t(a).duration)[0] ?? 0, inert: !!g?.inert, ids: !!g?.querySelector('[id]'),
+               in: (n?.getAnimations() || []).filter(a => a.id === 'fadein').map(a => `${t(a).duration}@${t(a).delay}`)[0] || '' };
+    }, [press, ghost, fresh]);
+    await page.waitForTimeout(500);
+    const left = await page.$$eval(ghost, gs => gs.length);
+    // A pick opens its detail, which on a phone stands over the list: put
+    // back, so the phone's pass later finds each list as it was.
+    await page.evaluate(() => { for (const k in SPLIT) SPLIT[k].open = false; rolesPhoneOpen = false; });
+    ok(r.out === 90 && r.in === '220@60' && r.inert && !r.ids && left === 0,
+       `${label} fades through as a rail page does: the old a still copy fading out, the new fading in, the copy gone after (out ${r.out}ms, in ${r.in || 'none'}, inert ${r.inert}, ids ${r.ids}, left ${left})`);
+  }
   const schemes = await page.evaluate(() => THEMES.map(t => t[0]));
   const bad = [];
   for (const t of schemes){

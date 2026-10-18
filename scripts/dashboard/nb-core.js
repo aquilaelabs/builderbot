@@ -537,18 +537,18 @@ function makeNotebook(project){
     // from another group's.
     slideMark(root.querySelector(".nbtabs .nbgroups"), "nbg:" + project);
     slideMark(sub, "nbv:" + project + ":" + g);
-    // The incoming view arrives on the same fade content does: one vocabulary
-    // for "this is here now", rather than a tab switch being the one place on
-    // the page where something simply appears.
-    root.querySelectorAll(".nbview").forEach(x => {
+    // A view switched fades through as a rail page does (the operator,
+    // 18 Oct): the one going out as a still copy fading on docOut's time,
+    // the incoming on docIn's (fadeThrough's halves), rather than a tab
+    // switch being the one place on the page where something simply appears.
+    let away = null;
+    root.querySelectorAll(".nbview:not(.fghost)").forEach(x => {
       const show = x.dataset.view === v, wasHidden = x.hidden;
+      if (!show && !wasHidden && !noMotion()) away = ghostOf(x);
       x.hidden = !show;
-      if (show && wasHidden && !noMotion()){
-        x.classList.remove("justpainted");
-        void x.offsetWidth;
-        x.classList.add("justpainted");
-      }
+      if (show && wasHidden){ x.classList.remove("justpainted"); fadeIn(x); }
     });
+    ghostOut(away);
     // The settings form comes into this view while it is on screen, and goes
     // back to the dialog when another view is picked (page-projsettings.js).
     if (v === "settings") settingsInto(project, root.querySelector('.nbview[data-view="settings"] .nbsettings'));

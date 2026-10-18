@@ -167,7 +167,8 @@ function wireUsersBar(el){
 function wireUsers(el){
   el.querySelectorAll("[data-upick]").forEach(b => b.onclick = () => {
     if (b.dataset.upick !== usersPick && usersDirty() && !confirm(`Leave ${usersPick}'s changes unsaved?`)) return;
-    usersPick = b.dataset.upick; usersEdit = null; usersPhoneOpen = true; usersMoveNext = "in"; usersRedraw();
+    splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {
+      usersPick = b.dataset.upick; usersEdit = null; usersPhoneOpen = true; usersMoveNext = "in"; usersRedraw(); });
   });
   el.querySelectorAll("[data-uback]").forEach(b => b.onclick = () => { usersPhoneOpen = false; usersMoveNext = "back"; usersRedraw(); });
   // What is typed is kept across the repaints a poll brings (B422's lesson).

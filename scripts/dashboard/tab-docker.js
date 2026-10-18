@@ -140,6 +140,8 @@ let dockerFetching = false;        // an answer is on its way: the tab says so
 // each of them blinked at the foot of the tab through every build. Under this
 // long, nothing is said: an answer that arrives at once needs no announcing.
 const DM_SLOW_MS = 600;
+// What a chip or Cards and List redraws: the groups' cards, or the list.
+const DM_PARTS = ".pane .doc.on .dmtab .dmcard, .pane .doc.on .dmtab > .tbl";
 let dmSlowTimer = null, dmSlow = false;
 async function loadDocker(){
   const asked = dockerNode;
@@ -2595,17 +2597,14 @@ function renderDockerInto(i){
   if (nb) nb.onclick = openNewContainer;
   // A chip narrows the list to one project's group (the chips rule): a
   // redraw from what is already here, nothing fetched and nothing saved.
-  el.querySelectorAll("[data-dmchip]").forEach(c => c.onclick = () => {
-    dmChip = c.dataset.dmchip; dockerRev++; drawPanes();
-    // ...the groups it leaves fading in, as a page does (fadeIn).
-    fadeIn(document.querySelectorAll(".pane .doc.on .dmtab .dmcard, .pane .doc.on .dmtab > .tbl"));
-  });
+  el.querySelectorAll("[data-dmchip]").forEach(c => c.onclick = () =>
+    // ...the groups it leaves fading through, as a page does (fadeThrough).
+    fadeThrough(DM_PARTS, () => { dmChip = c.dataset.dmchip; dockerRev++; drawPanes(); }));
   // Cards or a list: this browser's choice, kept for the next open.
   el.querySelectorAll("[data-dmview]").forEach(b => b.onclick = () => {
     dmView = b.dataset.dmview === "list" ? "list" : "cards";
     try{ localStorage.setItem("bb.dmview", dmView); }catch(e){ /* private mode */ }
-    dockerRev++; drawPanes();
-    fadeIn(document.querySelectorAll(".pane .doc.on .dmtab .dmcard, .pane .doc.on .dmtab > .tbl"));
+    fadeThrough(DM_PARTS, () => { dockerRev++; drawPanes(); });
   });
   // The search redraws as it is typed, and keeps its focus and its caret
   // across the redraw, which replaces the box.

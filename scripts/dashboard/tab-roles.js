@@ -427,7 +427,8 @@ function wireRoles(el){
   // list), the owners' row opened or shut, and Back to the list.
   el.querySelectorAll("[data-rpick]").forEach(b => b.onclick = () => {
     if (b.dataset.rpick !== rolesPick && rolesRoleDirty() && !confirm(`Leave the changes to ${rolesDraft.name} unsaved?`)) return;
-    rolesPick = b.dataset.rpick; rolesDraft = null; rolesPhoneOpen = true; rolesMoveNext = "in"; rolesRedraw();
+    splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {
+      rolesPick = b.dataset.rpick; rolesDraft = null; rolesPhoneOpen = true; rolesMoveNext = "in"; rolesRedraw(); });
   });
   el.querySelectorAll("[data-rowners]").forEach(b => b.onclick = () => {
     rolesOwnersOpen = b.getAttribute("aria-expanded") !== "true";

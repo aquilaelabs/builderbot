@@ -5,7 +5,7 @@
 // (the operator, 17 Oct).
 // Honored by the gate where they hold and nowhere else; a project's owner
 // gives roles on the projects they own and nothing Global.
-import { launch, newPage, ok, done, ready, sleep, URL, DIR, openSection } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, URL, DIR, openSection, faded } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -39,6 +39,7 @@ ok(names.includes("BuilderBot's owner (built in)") && names.includes('Administra
 ok(!await page.$('.rolestab .rlist input, .rolestab [data-rwho]') && !!await page.$('.rolestab #rolesNewOpen'),
    '...no account and no field in the list, and New role at the right of the page\'s bar');
 await page.click('.rolestab [data-rpick="admin"]');
+await faded(page);
 ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 15
      && [...t.querySelectorAll('[data-rread]')].every(c => c.disabled)),
    '...a built-in one reads as every area, with nothing to change and no Save');
