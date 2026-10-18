@@ -4962,9 +4962,20 @@ print(json.dumps(out))`], { encoding: 'utf8' });
      `the row offers a certificate (none first), the container's published ports, and Add route (${JSON.stringify(line)})`);
   // What is typed into the hostname box survives the tab being drawn again
   // (B729: a redraw between the typing and the press sent no hostname).
-  await page.fill(`${DM} .dmnginxroute [data-dmnghost]`, 'kept.example.test');
+  // Typed until the draft holds it: a poll's redraw landing with the fill
+  // can take the box it typed into, and the check then measured a draft that
+  // never saw the typing ("no box; draft {}", B829), not the redraw it is for.
+  for (let i = 0; i < 5; i++){
+    await page.waitForSelector(`${DM} .dmnginxroute [data-dmnghost]`, { timeout: 10000 });
+    await page.fill(`${DM} .dmnginxroute [data-dmnghost]`, 'kept.example.test').catch(() => {});
+    if (await page.evaluate(() => JSON.stringify(dmNginxDraft || {}).includes('kept.example.test'))) break;
+    await sleep(300);
+  }
   const typed = await page.evaluate(() => JSON.stringify(dmNginxDraft));
   await page.evaluate(() => { dockerRev++; drawPanes(); });
+  // ...and read once the row is drawn again, not in the instant the redraw
+  // may still be showing the page's placeholder.
+  await page.waitForSelector(`${DM} .dmnginxroute [data-dmnghost]`, { timeout: 10000 }).catch(() => {});
   const kept = await page.$$eval(`${DM} .dmnginxroute [data-dmnghost]`, es => es.map(e => `${e.value}${e.closest('.fghost') ? ' (ghost)' : ''}`));
   ok(kept[0] === 'kept.example.test',
      `a hostname typed on the row is still there after the tab is drawn again (${kept.join(' | ') || 'no box'}; draft ${typed})`);
