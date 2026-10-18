@@ -258,7 +258,7 @@ function nginxBody(n){
   const routes = docSection("nginx", "routes", "Routes", count ? `${count} route${count === 1 ? "" : "s"}` : "no route yet",
     `<div class="field"><div class="hint">Each hostname or path to a port a container publishes on ${esc(n.name)}.${helpIcon(
       "nginx runs on the host network and reaches a container at 127.0.0.1. A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A name nothing routes is answered by closing the connection.")}</div></div>
-      <div class="ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
+      <div class="field ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
       <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
         <span class="state"></span><span class="sp"></span>
         <button type="button" data-ngadd>Add route</button>

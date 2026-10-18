@@ -1887,19 +1887,35 @@ select:focus{outline-offset:-2px}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
 .nginxtab .sect>.body{padding:0 0 var(--row-y);gap:0}
-/* ...and its route rows: hostname, path, port, TLS. */
-.ngroute{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0}
-/* The field band gives every input its full width; a route's share it. */
-.ngroute select[data-ng="host"],.ngroute input[data-ng="host"]{width:auto;flex:2 1 12em;min-width:0}
+/* ...and its route rows: hostname, path, port, TLS. A grid, so a route's
+   fields line up with the route above it at a desk; a phone draws it on two
+   lines (below). */
+.ngroute{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1.2fr) 6em minmax(0,3fr) auto;
+  align-items:center;gap:8px;margin:4px 0}
+.ngroute>:not(.eye){width:100%;min-width:0}
+.ngroute>.eye{width:auto}
 /* The shared hostname list on the nginx tab: a name, where it is routed,
    and Delete where it is routed nowhere; the box to add one under it. */
 .nghost{display:flex;align-items:center;gap:8px;margin:2px 0}
 .nghost + .actbar input,.field > .actbar input[data-nghostnew]{flex:1 1 14em;min-width:0}
-.ngroute input[data-ng="path"]{width:auto;flex:1 1 7em;min-width:0}
-.ngroute input[data-ng="port"]{width:auto;flex:0 1 6em;min-width:0}
 .ngroute .ndcap{white-space:nowrap}
-.ngroute .eye{flex:0 0 auto;width:auto}
 .ngroutes:empty{display:none}
+/* The routes are a field band like the rest of the page, so they keep its
+   inset (the operator, 18 Oct: they ran to the screen's edge on a phone,
+   the port cut off past it). A phone draws each route on two lines,
+   hostname, path and port, then the pair and its delete, a hairline
+   between routes; its fields share the line as a bar's buttons do, so they
+   are not capped one by one (the cap rule's row list names .ngroute). */
+@media(max-width:900px){
+  .ngroute{grid-template-columns:minmax(0,1fr) 4.5em 5em;margin:0;padding:8px 0;
+    border-bottom:var(--hair) solid var(--line)}
+  .ngroute:last-child{border-bottom:0}
+  .ngroute>:nth-child(4){grid-column:1 / 3}
+  .ngroute>.eye{justify-self:end}
+}
+/* A pair's line sits on the band's inset, not a row's inset on top of it,
+   its delete at the band's right edge where every other one is. */
+.nginxtab .field>.row.ngcert{padding-left:0;padding-right:0}
 /* The certificate and its key are pasted whole: a tall box each, one under
    the other like every field (the operator, 11 Oct: the two sat beside the
    picker on desktop). */
@@ -3951,7 +3967,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   .lng{display:none}
   .shrt{display:inline}
 }
-:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
+:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox,.ngroute) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
