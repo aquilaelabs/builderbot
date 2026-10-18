@@ -642,6 +642,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A job reaches a node with an NVIDIA card within its poll: it used to wait while the agent read the card, up to seconds a job (695f2c9)
 - Typing in the Enroll node and VM dialogs no longer lands in a node's rename box, the Nodes page no longer shows an older list over a save, and Check beside Path mapping keeps its answer (3930c2a)
 - A container's settings dialog takes typing again when the same project's page is open elsewhere; the hidden page's copy of the dialog had been opening on top of it (dfc8f9c)
+- Pull to refresh on a phone no longer fails when the list redraws under your finger, and the gear and the bell open when pressed again straight after closing (dfd2ccf)
 
 ### Security
 
