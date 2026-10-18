@@ -18,6 +18,7 @@ their ports there already, and it is one rule a person can hold in their
 head; the cost, said on the tab, is that nginx holds 80 and 443 on the
 machine, so a container that publishes either itself is named as the clash.
 """
+import concurrent.futures
 import contextlib
 import http.client
 import json
@@ -612,11 +613,17 @@ def view(devapp, instance_state):
                "live": n.get("live"), "clash": [],
                # What it is pinned to and the line it would move to (R192).
                "image": image_of(rec) | {"ref": image_ref(rec)}, "behind": behind(rec)}
-        state, row["clash"] = _daemon_half(devapp, instance_state, nid, name, is_up)
+        out.append((row, is_up))
+    # Each node's daemon half at once (the operator, 18 Oct: the tab took
+    # five seconds, the nodes' reads one after another): the view waits for
+    # the slowest node rather than for all of them added up.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(8, len(out)))) as ex:
+        halves = list(ex.map(lambda ri: _daemon_half(devapp, instance_state, ri[0]["node"], ri[0]["container"], ri[1]), out))
+    for (row, _), (state, clash) in zip(out, halves, strict=True):
+        row["clash"] = clash
         if state is not None:
             row["state"] = state
-        out.append(row)
-    return {"nodes": out, "image": IMAGE, "latest": latest_image(), "hostnames": hostnames()}
+    return {"nodes": [row for row, _ in out], "image": IMAGE, "latest": latest_image(), "hostnames": hostnames()}
 
 
 # ---- the public hostnames (the operator, 12 Oct) ----------------------------

@@ -370,6 +370,19 @@ class DaemonMemo(unittest.TestCase):
         npx.view(self.dv, self.state)
         self.assertEqual(len(self.asked), 6)
 
+    def test_the_nodes_are_read_at_once(self):
+        """Two nodes whose daemons each take half a second: the view waits
+        for the slower, not for both (the operator, 18 Oct)."""
+        import time
+        npx.configure(state=self.tmp, write_json=write_json,
+                      node_list=lambda: [{"id": "n1", "name": "vps", "kind": "agent", "state": "online"},
+                                         {"id": "n2", "name": "box", "kind": "agent", "state": "online"}],
+                      node_name=lambda nid: {"n1": "vps", "n2": "box"}[nid], taken_ports=lambda *a: time.sleep(0.5) or [])
+        t0 = time.monotonic()
+        v = npx.view(self.dv, lambda *a: time.sleep(0.5) or {"up": True})
+        self.assertLess(time.monotonic() - t0, 1.3, "the slower node (1 s), not both added up (1.5 s)")
+        self.assertEqual([r["node"] for r in v["nodes"]], ["n1", "n2"], "in the nodes' order")
+
     def test_the_memo_runs_out(self):
         npx.view(self.dv, self.state)
         with npx._memo_lock:
