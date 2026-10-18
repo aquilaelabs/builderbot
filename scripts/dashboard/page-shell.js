@@ -33,8 +33,8 @@ const RAIL_ICONS = {
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
-  {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"]]},
-  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"], ["nginx", "nginx"]]},
+  {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["nginx", "nginx"]]},
+  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
@@ -188,14 +188,19 @@ function openRoute(hash){
     if (helpIndex && helpCur) helpRead(helpCur);
     return true;
   }
-  const g = RAIL.find(x => x.key === key);
+  // nginx was a Machines tool until it joined Containers (the operator,
+  // 18 Oct): an address from before still lands on it.
+  const g = RAIL.find(x => x.key === (key === "machines" && a === "nginx" ? "containers" : key));
   if (!g) return false;
   const multi = (g.tools || []).length > 1;
-  const kind = railTool(g, a);
+  // ...and a group that had one tool named its node second
+  // (#/containers/NODE), which it still may.
+  const named = (g.tools || []).some(([k]) => k === a);
+  const kind = railTool(g, named ? a : "");
   if (!kind) return false;
-  railWant = key;
+  railWant = g.key;
   // The node the address names, set before the page draws (R256 step 3).
-  const node = multi ? b : a;
+  const node = multi && named ? b : a;
   if (node && NODE_SET[kind]) NODE_SET[kind](decodeURIComponent(node));
   OPENERS[kind]?.();
   return true;

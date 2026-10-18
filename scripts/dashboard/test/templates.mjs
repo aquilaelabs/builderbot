@@ -13,7 +13,7 @@ const PAGES = [
   ['jobs', '#/jobs', 'jobsList = null; renderJobsInto(0)'],
   ['nodes', '#/machines/nodes', 'nodesList = null; renderNodesInto(0)'],
   ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
-  ['nginx', '#/machines/nginx', 'nginxList = null; renderNginxInto(0)'],
+  ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)'],
   ['toolchains', '#/build/toolchains', 'toolchains = null; renderToolchainsInto(0)'],
   // The fixture's node never reported its images (known false), so the page
   // lands with no tiles; a node that has carries them, as the template does.

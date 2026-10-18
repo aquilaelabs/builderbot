@@ -25,8 +25,16 @@ const base = URL.replace(/\/$/, '');
 const api = async (path, body) => (await fetch(base + path, body === undefined
   ? { headers: H } : { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
 
-// Under Machines on the rail, for an account that reads the Nodes tab.
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'machines' && g.tools.some(([k]) => k === 'nginx')) && railAllows('nginx')), 'the rail offers nginx under Machines');
+// A tab of its own under Containers on the rail, beside the containers
+// (the operator, 18 Oct), for an account that reads the Nodes tab.
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,nginx')
+                              && !railGroups().some(g => g.key === 'machines' && g.tools.some(([k]) => k === 'nginx')) && railAllows('nginx')),
+   'the rail offers nginx under Containers, beside the containers, and no longer under Machines');
+// ...and an address from when it was a Machines tool still lands on it.
+await page.goto(base + '/#/machines/nginx'); await ready(page);
+await page.waitForFunction(() => tabOf(panes[0])?.kind === 'nginx' && location.hash.startsWith('#/containers/nginx'), null, { timeout: 15000 })
+  .then(() => ok(true, '#/machines/nginx opens the nginx page under Containers'),
+        async () => ok(false, `#/machines/nginx opens the nginx page under Containers (${await page.evaluate(() => `${tabOf(panes[0])?.kind} ${location.hash}`)})`));
 await page.evaluate(() => openNginxTab());
 await page.waitForSelector('.nginxtab [data-ngnode]', { timeout: 15000 });
 const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name === 'sandbox'));

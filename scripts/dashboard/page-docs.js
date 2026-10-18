@@ -109,8 +109,9 @@ function skNodeBar(actions = []){
 // afresh rather than inside it.
 function bootPage(hash){
   const parts = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts[0] === "machines" && parts[1] === "nginx") parts[0] = "containers";   // openRoute's alias
   const key = parts[0] || "home", g = RAIL.find(x => x.key === key) || RAIL[0];
-  const tool = parts[1] || g.tools[0][0];
+  const tool = g.tools.some(([k]) => k === parts[1]) ? parts[1] : g.tools[0][0];
   const seg = (tools, on) => `<span class="subnav pseg">${tools.map(([k, label]) =>
       `<button type="button" disabled class="${k === on ? "on" : ""}">${esc(label)}</button>`).join("")}</span>`;
   const doc = (barHtml, body) => `<div class="doc on flush"><div class="doctab">${barHtml

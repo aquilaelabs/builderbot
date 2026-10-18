@@ -1708,7 +1708,7 @@ function dmRowsHtml(ins, job, blind){
         // What it uses: one band of four for a container, a table of its
         // services for a stack (the tables rule), each with its own use.
         blind ? "" : many ? dmServicesTable(d, finished) : dmStatStrip(d)}
-        ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: routes, certificates and Deploy on the ${pageLink("", "nginx page", "#/machines/nginx")}</div>` : ""}
+        ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: routes, certificates and Deploy on the ${pageLink("", "nginx page", "#/containers/nginx")}</div>` : ""}
         ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : d.relocating.archive ? "note" : "bad"} dmreloc">${esc(d.relocating.line)}${
           d.relocating.busy ? '<span class="dots"></span>'
           : d.relocating.archive && mayDocker() && !busy ? ` <a href="#" data-dmunpack>unpack it now</a>` : ""}</div>` : ""}
