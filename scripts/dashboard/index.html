@@ -29,10 +29,18 @@
   {
     // #/group/tool, a group alone naming its first tool (RAIL's order).
     const [g, t] = location.hash.replace(/^#\/?/, "").split("/");
-    const FIRST = {home: "home", machines: "nodes", jobs: "jobs", people: "users"};
+    const FIRST = {home: "home", machines: "nodes", jobs: "jobs", people: "users", containers: "docker"};
+    // Containers reads a node's list, the node this browser last listed
+    // (tab-docker.js keeps it): known here, so its read starts with the
+    // status read instead of after it, which on a busy controller took
+    // seconds (the operator, 18 Oct). A node picked elsewhere since is a
+    // read that does not match, and the page simply asks its own.
+    let dmNode = "";
+    try{ dmNode = localStorage.getItem("bb.dmnode") || ""; }catch(e){ /* private */ }
     const BOOT_READS = {"home/home": ["/api/home?light=1"], "people/users": ["/api/users", "/api/roles"], "people/roles": ["/api/roles"],
                         "settings/profile": ["/api/profile"], "machines/nodes": ["/api/v1/nodes"],
-                        "machines/storage": ["/api/storage"], "containers/nginx": ["/api/nginx"], "machines/nginx": ["/api/nginx"], "jobs/jobs": ["/api/v1/jobs?n=100"]};
+                        "machines/storage": ["/api/storage"], "containers/nginx": ["/api/nginx"], "machines/nginx": ["/api/nginx"], "jobs/jobs": ["/api/v1/jobs?n=100"],
+                        "containers/docker": ["/api/docker" + (dmNode ? "?node=" + encodeURIComponent(dmNode) : "")]};
     // A project's page (#/projects/NAME): what its notebook reads as it opens.
     // Its Overview, the view it opens on, reads its rules, code base,
     // preamble and brief as well.
@@ -6461,7 +6469,7 @@ addEventListener("hashchange", () => { if (!openRoute(location.hash)) shellSync(
 {
   const BOOT_LOADS = {"/api/home?light=1": homeOpen, "/api/users": loadUsers, "/api/roles": loadRoles, "/api/profile": loadProfile,
                       "/api/v1/nodes": loadNodes, "/api/storage": loadStorage, "/api/nginx": loadNginx, "/api/v1/jobs?n=100": loadJobs};
-  for (const u of Object.keys(preGets)) BOOT_LOADS[u]?.();
+  for (const u of Object.keys(preGets)) (BOOT_LOADS[u] || (u.startsWith("/api/docker") ? () => dmBootLoad(u) : null))?.();
 }
 wireJump();
 document.addEventListener("click", e => {

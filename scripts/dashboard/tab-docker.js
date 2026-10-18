@@ -132,6 +132,17 @@ function dockerNodeKeep(){
   saveLayout();
 }
 
+// The read the page's head began for the node this browser last listed
+// (index.html, preGets): that node is the one looked at, and its list is
+// read on the read already on its way (the operator, 18 Oct: a reload sat
+// on the placeholder until the status read had landed, seconds on a busy
+// controller, before the list was even asked for).
+function dmBootLoad(u){
+  const n = new globalThis.URL(u, location.origin).searchParams.get("node") || "";
+  if (!dockerNode && n) dockerNode = n;
+  loadDocker();
+}
+
 let dockerAsk = 0;                       // which ask is newest, so an older
                                          // answer landing late cannot win
 let dockerFetching = false;        // an answer is on its way: the tab says so
@@ -153,7 +164,7 @@ async function loadDocker(){
   }, DM_SLOW_MS);
   let got;
   try{
-    got = await (await fetch("/api/docker"
+    got = await (await bootFetch("/api/docker"
       + (asked ? "?node=" + encodeURIComponent(asked) : ""))).json();
   }catch(e){ got = {error: String(e), containers: []}; }
   // An answer for a node the operator has already picked away from must not
@@ -170,6 +181,8 @@ async function loadDocker(){
   // First answer resolves "" to the default node's real id, so the picker
   // and the cache speak one language.
   if (!dockerNode && got.node) dockerNode = got.node;
+  // ...and kept in this browser for the next reload's early read (dmBootLoad).
+  if (dockerNode && !got.error) try{ localStorage.setItem("bb.dmnode", dockerNode); }catch(e){ /* private */ }
   dockerList = got;
   dockerRev++;
   // drawPanes rather than reaching into a pane by index: which pane holds this
