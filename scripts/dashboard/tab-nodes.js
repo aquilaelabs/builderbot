@@ -326,39 +326,42 @@ function nodeRunnerSection(n, c){
     const ap = n.applying?.what === "runner" && (n.applying.slot || slot) === slot ? n.applying : null;
     const job = ap ? (want.want ? "installing" : "removing") : "";
     const failed = n.runner_failed && (n.runner_failed.slot || slot) === slot ? n.runner_failed : null;
-    // The verdict first: "installed" and "will actually pick up a job" are
-    // different states, and a runner registered with no listener reads as
-    // healthy right up until a workflow sits in "Waiting for a runner".
-    const [verdict, vcls] = job
-      ? [`${job} now: its job is on the Jobs tab, and the buttons come back when it ends`, "note"]
+    // Its state a pill on its name line, its facts one mono line, and what
+    // is wrong or worth knowing a notice under it (R218 step 28, the voices
+    // rule). "Installed" and "will actually pick up a job" are different
+    // states: a runner registered with no listener reads as healthy right
+    // up until a workflow sits in "Waiting for a runner".
+    const [word, pcls, say, scls] = job
+      ? [`${job} now`, "warn", "its job is on the Jobs tab, and the buttons come back when it ends", "note"]
       : !rep.installed
-      ? (failed ? [`install failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}`, "bad"]
-        : [want.want ? "install asked for; the node has not reported it yet" : "not installed", ""])
-      : rep.busy ? ["running a job right now", "ok"]
-      : rep.active ? ["listening: idle, waiting for a job", "ok"]
-      : ["installed but NOT listening, so no workflow will reach it: Reinstall runner", "bad"];
-    const rowCls = failed && rep.installed && vcls === "ok" ? "warn" : vcls;
+      ? (failed ? ["install failed", "off", `install failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}`, "bad"]
+        : want.want ? ["asked for", "warn", "install asked for; the node has not reported it yet", "note"] : ["not installed", "", "", ""])
+      : rep.busy ? ["running a job", "ok", "", ""]
+      : rep.active ? ["listening", "ok", "", ""]
+      : ["not listening", "off", "installed but not listening, so no workflow will reach it: Reinstall runner", "bad"];
+    const rowCls = failed && rep.installed && pcls === "ok" ? "warn" : scls === "bad" ? "bad" : scls;
     if (rowCls === "bad") worst = "bad"; else if (rowCls === "note" && worst !== "bad") worst = "note";
-    const detail = rep.installed
-      ? [rep.name ? `registered as ${rep.name}`
-           : rep.active ? "" : "its registered name did not come back, so the registration may not have finished",
-         rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ")
-      : "";
+    const facts = rep.installed
+      ? [rep.name ? `registered as ${rep.name}` : "", rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ") : "";
     // A token is what a reinstall and a removal mint from, so a runner
     // without one (registered before tokens were per runner) says so once,
-    // where the two buttons it disables are, rather than as a warning on a
-    // runner that is working.
-    const noToken = !stored ? (rep.installed ? "no token stored: add one above with this address to reinstall or remove" : "no token stored") : "";
-    // A reinstall that failed left the runner standing: its state stays,
-    // and what went wrong follows it.
-    const late = failed && rep.installed ? ` · reinstall failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}` : "";
-    const state = verdict + (detail ? " · " + detail : "") + late + (noToken ? " · " + noToken : "");
+    // with the way to add one, rather than as a warning on one that works.
+    const notes = [
+      say ? [say, scls] : null,
+      rep.installed && !rep.name && !rep.active ? ["its registered name did not come back, so the registration may not have finished", "warn"] : null,
+      // A reinstall that failed left the runner standing: its state stays,
+      // and what went wrong follows it.
+      failed && rep.installed ? [`reinstall failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}`, "bad"] : null,
+      !stored ? [`no token stored: Add runner with this address stores one, to ${rep.installed ? "reinstall or remove it" : "install it"}`, "warn"] : null,
+    ].filter(Boolean);
     const ro = mayOn(slot) !== "write";
     return `<div class="row stack2 ndrun${ro ? " ndrunro" : ""}" data-slot="${esc(slot)}"><div class="grow">
-        <div class="name"><code>${esc(rep.url || want.url || slot)}</code>${hostOf(want, rep) ? ` <span class="pill">${hostOf(want, rep)}</span>` : ""}${
-          rep.busy ? ` <span class="pill note ndrunbusy">running a job</span>` : ""}</div>
+        <div class="name"><code>${esc(rep.url || want.url || slot)}</code>${hostOf(want, rep) ? ` <span class="pill">${hostOf(want, rep)}</span>` : ""}
+          <span class="pill stat ndrunstate${pcls ? " " + pcls : ""}${rep.busy && !job ? " ndrunbusy" : ""}">${esc(word)}</span></div>
+        ${facts ? `<div class="sub ndrunfacts">${esc(facts)}</div>` : ""}
+        ${notes.map(([t, c]) => `<div class="sub ${c} ndrunnote">${esc(t)}</div>`).join("")}
         <div class="actbar">
-          <span class="state ndrunstate${rowCls ? " " + rowCls : ""}">${esc(state)}</span>
+          <span class="sp"></span>
           <button type="button" data-nrunner="install" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
             title="${why || (stored ? "install the runner here and register it with the stored token"
                                     : "add a token first")}">${

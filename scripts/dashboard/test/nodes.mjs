@@ -765,7 +765,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.fill(`${RROW} [data-k="runner:labels"]`, 'gpu');
   await page.click(`${RROW} [data-nrunneradd]`);
   await page.waitForSelector(RUN, { timeout: 10000 });
-  ok(await page.$eval(`${RUN} .ndrunstate`, e => /not installed/.test(e.textContent) && !/no token stored/.test(e.textContent))
+  ok(await page.$eval(RUN, r => /not installed/.test(r.querySelector('.ndrunstate').textContent) && !/no token stored/.test(r.textContent))
      && await page.$eval(`${RUN} [data-nrunner="install"]`, b => !b.disabled && /Install runner/.test(b.textContent))
      && !!(await page.$(`${RUN} [data-nrunnerforget]`))
      && await page.$(`${RROW} [data-k="runner:token"]`) === null && await page.$('.runnertab [data-nrunnershow]') !== null,
@@ -810,12 +810,13 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     n.runner_failed = { id: 'j_x', slot: 'github.com-example-org', ended: 1789350000, why: "Libicu's dependencies is missing for Dotnet Core 6.0" };
     n.services = { ...(n.services || {}), runners: { 'github.com-example-org': { want: true, labels: [], url: 'https://github.com/example-org' } } };
     nodesRev++; drawPanes();
-    const e = document.querySelector(sel + ' .ndrun[data-slot="github.com-example-org"] .ndrunstate');
-    const out = { text: e?.textContent || '', bad: !!e?.classList.contains('bad') };
+    const r = document.querySelector(sel + ' .ndrun[data-slot="github.com-example-org"]');
+    const note = r?.querySelector('.ndrunnote.bad');
+    const out = { text: `${r?.querySelector('.ndrunstate')?.textContent || ''} | ${note?.textContent || ''}`, bad: !!note };
     n.runner_failed = keep.f; n.services = keep.s; nodesRev++; drawPanes();
     return out;
   }, { id: minted.id, sel: RROW });
-  ok(/install failed (?!: )\S/.test(failedVerdict.text) && /Libicu/.test(failedVerdict.text) && failedVerdict.bad,
+  ok(/^install failed \| install failed (?!: )\S/.test(failedVerdict.text) && /Libicu/.test(failedVerdict.text) && failedVerdict.bad,
      `the Nodes tab says a runner install failed, when, and why, in red (${failedVerdict.text.slice(0, 80)})`);
   const removingVerdict = await page.evaluate(({ id, sel }) => {
     const n = nodesList.find(x => x.id === id);
@@ -842,10 +843,11 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await runnerCensus({ runners: [{ installed: true, active: false, busy: false,
                                    name: '', labels: ['builderbot', 'shed'] }] });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
-  await page.waitForFunction(sel => /NOT listening/.test(
+  await page.waitForFunction(sel => /not listening/.test(
     document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN, { timeout: 10000 });
-  ok(await page.$eval(`${RUN} .ndrunstate`, e => /no workflow will reach it/.test(e.textContent)
-       && /registration may not have finished/.test(e.textContent) && e.classList.contains('bad'))
+  // Its state a pill, and why under it as notices (R218 step 28).
+  ok(await page.$eval(RUN, r => /no workflow will reach it/.test(r.querySelector('.ndrunnote.bad')?.textContent || '')
+       && /registration may not have finished/.test(r.textContent) && r.querySelector('.ndrunstate').classList.contains('off'))
      && await page.$$eval(`${RROW} .ndrun`, rows => rows.length === 1),
      'a runner that is registered but not listening says so, rather than reading as installed, on the one row');
   await runnerCensus({ runners: [{ slot: GH, installed: true, active: true, busy: true,
@@ -853,8 +855,8 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
                                    labels: ['builderbot', 'shed'] }] });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
   await page.waitForFunction(sel => document.querySelector(sel + ' .ndrunbusy'), RUN, { timeout: 10000 });
-  ok(await page.$eval(`${RUN} .ndrunstate`, e => /running a job/.test(e.textContent)
-       && /registered as shed/.test(e.textContent)),
+  ok(await page.$eval(RUN, r => /running a job/.test(r.querySelector('.ndrunstate').textContent)
+       && /registered as shed/.test(r.querySelector('.ndrunfacts')?.textContent || '')),
      '...and one that is working says which job-taking state it is in, by name');
   // The label is the only thing that pins a workflow to THIS machine.
   // `self-hosted` alone matches the controller and every other node, so
