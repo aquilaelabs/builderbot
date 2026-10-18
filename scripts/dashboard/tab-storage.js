@@ -152,14 +152,28 @@ function storageProjects(n, where){
 // Measure now, the page's upkeep, in its bar with every header button (the
 // operator, 17 Oct): the walk's numbers arrive with the node's census, which
 // the page follows, so it has no Refresh.
+// Given GHOST, the placeholder's: there and dead until the node is known.
 function storageMeasureBtn(n){
+  if (n === GHOST) return storageMay ? `<span class="actbar"><button type="button" disabled>Measure now</button></span>` : "";
   if (!n || !storageMay || n.may_measure === false) return "";
   return `<span class="actbar"><button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
     n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button></span>`;
 }
+// The bar: the node and Measure now; given nothing, the placeholder's.
+function storageBar(pnodes, n){
+  return `${nodePick("stNodeSel", pnodes, storageNode)}<span class="sp"></span>${storageMeasureBtn(pnodes ? n : GHOST)}`;
+}
 
-// What the tab says about one node: the state row, then its disks.
+// What the tab says about one node: the state row, then its disks. Given
+// null, the placeholder (R218, the operator 18 Oct: drawn by the page's own
+// code so it cannot drift): the same bands and By project, shimmering where
+// the node's numbers go.
 function storageBody(n, where){
+  const hint = `<div class="field"><div class="hint">Each disk and what BuilderBot holds on it, largest first; where its stores live is set on its row on the ${pageLink("nodes", "Nodes page")}.</div></div>`;
+  const byProject = (count, body) => docSection("storage", "projects", "By project", count,
+    `<div class="field"><div class="hint">What each project's folders hold${n ? ` on ${esc(n.name)}` : ""}.${helpIcon("Its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.")}</div></div>
+      ${body}`);
+  if (!n) return `${headLine(skv(28), "", "toolstate")}${hint}${skRows(2)}${byProject("", skRows(3))}`;
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
@@ -168,11 +182,9 @@ function storageBody(n, where){
     : "walked an hour after the agent starts, then every hour";
   return `<div data-stnode="${esc(n.node)}">
     ${headLine(`${pill} <span class="sub">${esc(facts)}</span>`, "", "toolstate")}
-    <div class="field"><div class="hint">Each disk and what BuilderBot holds on it, largest first; where its stores live is set on its row on the ${pageLink("nodes", "Nodes page")}.</div></div>
+    ${hint}
     ${storageDisks(n)}
-    ${docSection("storage", "projects", "By project", `${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`,
-      `<div class="field"><div class="hint">What each project's folders hold on ${esc(n.name)}.${helpIcon("Its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.")}</div></div>
-      ${storageProjects(n, where)}`)}
+    ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${n.slow?.length ? `<div class="field"><div class="hint warn">Not measured in time: ${esc(n.slow.join(", "))}. A slow share; the next walk tries again.</div></div>` : ""}
   </div>`;
 }
@@ -181,15 +193,9 @@ function renderStorageInto(i){
   const d = docSurface(i, "storage");
   if (!d) return;
   if (storageList === null){
-    // Its template (R218 step 16): the bar, the state row's words and the
-    // two headings with their hints are the page's own; the node and what
-    // its disks hold are on their way.
-    d.setBar(skNodeBar(storageMay ? ["Measure now"] : []));
-    d.list.innerHTML = skTpl(`${headLine(skv(28), "", "toolstate")}
-      <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
-      ${skRows(2)}
-      <div class="field">${lbl("", "By project")}<div class="hint">What each project's folders hold: its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.</div></div>
-      ${skRows(3)}`);
+    // The page's own bar and body, given nothing.
+    d.setBar(storageBar(null));
+    d.list.innerHTML = skTpl(storageBody(null));
     loadStorage();
     return;
   }
@@ -202,7 +208,7 @@ function renderStorageInto(i){
   const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
   // One order for every page's top (the operator, 17 Oct): the node and
   // Measure now in the bar; when it was measured on the status line under it.
-  d.setBar(`${nodePick("stNodeSel", pnodes, storageNode)}<span class="sp"></span>${storageMeasureBtn(n)}`);
+  d.setBar(storageBar(pnodes, n));
   d.list.innerHTML = n ? storageBody(n, where)
     : `<div class="empty">no node to measure yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
   wireStorageTab(d.el);

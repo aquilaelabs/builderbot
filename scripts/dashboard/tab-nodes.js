@@ -216,7 +216,7 @@ function nodeGpuSection(n){
         title="apply both: the emulator's switch is a job on the node, the other takes effect for sessions started from now on">${
         busy ? "Applying…" : "Apply"}</button>
     </div>`;
-  return docSection("nodes", "gpu", "GPU", status, body, {cls});
+  return docSection("nodes", "gpu", ndTitle("gpu"), status, body, {cls});
 }
 function nodeGit(n){
   const v = String(n.reported?.git || "").trim();
@@ -617,7 +617,7 @@ function nodeProjectsSection(n){
     </div>`;
   }).join("");
   const body = rows || `<div class="empty">No project you can see has this node. A project's settings add one.</div>`;
-  return docSection("nodes", "projects", "Projects", list.length ? `${list.length}` : "none", body);
+  return docSection("nodes", "projects", ndTitle("projects"), list.length ? `${list.length}` : "none", body);
 }
 
 function nodeSessionsSection(n){
@@ -625,7 +625,7 @@ function nodeSessionsSection(n){
   const list = n.reported?.sessions || [];
   let status, cls, body;
   if (n.config?.host_only){
-    return docSection("nodes", "sessions", "Sessions", "hosting only", nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeToolsLine(n), {cls: "ok"});
+    return docSection("nodes", "sessions", ndTitle("sessions"), "hosting only", nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeToolsLine(n), {cls: "ok"});
   }
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
@@ -661,7 +661,7 @@ function nodeSessionsSection(n){
   // (R121): a line at the foot of this section opens them. It was a band
   // between sections, which read as part of Sessions yet stayed when Sessions
   // folded, and sat without the section's inset (the operator, 7 Oct).
-  return docSection("nodes", "sessions", "Sessions", status, body + nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls});
+  return docSection("nodes", "sessions", ndTitle("sessions"), status, body + nodeHostRow(n) + nodeReachRow(n) + nodeDoorRow(n) + nodeToolsLine(n), {cls});
 }
 
 // Claude Code on this node: this account's sign-in here (a login is one
@@ -693,7 +693,7 @@ function nodeClaudeSection(n){
         : `Not installed: a Claude session cannot start here until the ${pageLink("toolchains", "Toolchains page")} installs it.`}</span>
       ${se?.up && mayToolchains(n.id) ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
     </div>`;
-  return docSection("nodes", "claude", "Claude Code", status, body, {cls});
+  return docSection("nodes", "claude", ndTitle("claude"), status, body, {cls});
 }
 
 // Whether each session here reaches only its own project's containers, the
@@ -928,7 +928,7 @@ function nodeAdvancedSection(n, stale, inflight){
           inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
                       : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join("")}
     </div>` : ""}`;
-  return docSection("nodes", "advanced", "Advanced",
+  return docSection("nodes", "advanced", ndTitle("advanced"),
                     n.state === "draining" ? "draining" : n.config?.lock ? "locked" : "",
                     body, {cls: n.state === "draining" ? "warn" : ""});
 }
@@ -1218,8 +1218,8 @@ function nodeConfSections(n){
   const managed = !!rep.sandbox;
   return `<div class="ndconf"><div class="ndconfbody">
     ${managed
-      ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
-        + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
+      ? docSection("nodes", "storage", ndTitle("storage"), stStatus, storage, {cls: stCls})
+        + docSection("nodes", "network", ndTitle("network"), netStatus, network, {cls: netCls})
       : `<div class="sub dim ndguest">Storage and network are managed on the machine itself, not here.</div>`}
   </div></div>`;
 }
@@ -1303,6 +1303,36 @@ function nodeCharts(n){
     c.vram ? hourChart(`vram:${n.id}`, "GPU RAM", n.spark.map(x => [x[0], x[4]])) : ""}</div>`;
 }
 
+// The page's parts its placeholder draws too (R218, the operator 18 Oct: a
+// template written beside the page fell behind it), so a change to either
+// is a change to both; given null, each draws the placeholder's.
+// A node's sections, in their order, by the titles they are drawn under.
+const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
+                  ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
+// The bar: the node switcher, Create sandbox VM, and Enroll node.
+function ndBar(live){
+  const g = !live, dead = g ? " disabled" : "";
+  return `${nodePick("ndPick", g ? null : live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick)}
+    <span class="sp"></span>
+    <span class="actbar">
+      <button type="button"${g ? "" : ` id="ndVm"`}${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
+      <button type="button" class="primary"${g ? "" : ` id="ndEnroll"`}${dead}>${barSaid("Enroll node", "Enroll")}</button>
+    </span>`;
+}
+// Its facts in the facts voice, its id among them (R218 step 26): the id is
+// the one in its enroll script's name.
+const ND_FACTS = ["Reached", "Has", "Seen", "Agent", "Jobs run as", "Id"];
+function ndFacts(vals){
+  return factGrid(ND_FACTS.map((k, i) => [k, vals ? vals[i] : GHOST, k === "Id" ? {cls: "ndid"} : undefined]), "ndfacts");
+}
+// Test and Enroll script, the head's two buttons about the machine itself.
+function ndAgentButtons(dead){
+  const off = dead ? " disabled" : "";
+  return `<button type="button"${dead ? "" : ` data-nd="test"`} title="check that this node answers"${off}>Test</button>
+          <button type="button"${dead ? "" : ` data-nd="reenroll"`} title="a new enroll script for this node, to run again on the same machine"${off}>Enroll script</button>`;
+}
+
 // The node's page: a header band: name, state, where it is, its agent and
 // the one control that is about the agent, then the sections.
 function renderNodesInto(i){
@@ -1312,18 +1342,18 @@ function renderNodesInto(i){
     // Its template (R218 step 16): the bar, the sections' names and the jump
     // bar over them are the page's own; the node and what it says are on
     // their way. A section somebody shut is drawn shut, as it will land.
-    const sects = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["claude", "Claude Code"],
-                   ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
-    d.setBar(`<label class="pick">Node ${skv(9, "ctl")}</label><span class="sp"></span>
-      <span class="actbar"><button type="button" disabled>${barSaid("Create sandbox VM", "New VM")}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span>`);
-    // One card as the node's is: its head (name, facts, Test and Enroll
-    // script, the sections' chips) and its sections inside it.
+    // Drawn by the page's own builders given nothing (the operator, 18
+    // Oct: a template written beside the page fell behind it): the bar, the
+    // head card with its facts' labels and its two buttons, the sections a
+    // node usually has under their own titles, and the jump bar sectJump
+    // puts over them, as the page does.
+    d.setBar(ndBar(null));
     d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
-        <div class="name">${skv(7)}</div><div class="sub">${skv(26)}</div>
-        <div class="actbar ndagent"><span class="lead dim">${skv(14)}</span>
-          <button type="button" disabled>Test</button><button type="button" disabled>Enroll script</button></div>
-        <nav class="sectjump">${sects.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav></div>
-      <div class="ndsections">${sects.map(([k, t], j) => docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
+        <div class="name">${skv(7)}</div>${ndFacts(null)}
+        <div class="actbar ndagent"><span class="lead dim"></span>${ndAgentButtons(true)}</div></div>
+      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu").map(([k, t], j) =>
+        docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
+    sectJump(d.list.closest(".doctab") || d.el);
     loadNodes();
     return;
   }
@@ -1348,12 +1378,7 @@ function renderNodesInto(i){
   if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
   const n = live.find(x => x.id === nodesPick);
   // Picked as every node-scoped page picks one (nodePick, R218 step 26).
-  d.setBar(`${nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick)}
-    <span class="sp"></span>
-    <span class="actbar">
-      <button type="button" id="ndVm">${barSaid("Create sandbox VM", "New VM")}</button>
-      <button type="button" class="primary" id="ndEnroll">${barSaid("Enroll node", "Enroll")}</button>
-    </span>`);
+  d.setBar(ndBar(live));
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
@@ -1440,11 +1465,10 @@ function renderNodesInto(i){
             title="${updating ? "Update queued: this row refreshes when the node reports back"
               : `Update the agent to ${esc(nodesAgent.version)} once its running jobs finish`}">${
             updating ? "Updating…" : "Update agent"}</button>` : ""}
-          <button type="button" data-nd="test" title="check that this node answers">Test</button>
-          <button type="button" data-nd="reenroll" title="a new enroll script for this node, to run again on the same machine">Enroll script</button>
+          ${ndAgentButtons(false)}
         </div>
         <div class="sub ndtest" hidden></div>` : "";
-    const health = docSection("nodes", "health", "Health",
+    const health = docSection("nodes", "health", ndTitle("health"),
       n.kind === "agent" ? (n.live ? "live" : "quiet") : "", `
         ${nodeMeters(n) || `<div class="empty">nothing measured yet</div>`}
         ${nodeCharts(n)}
@@ -1465,8 +1489,7 @@ function renderNodesInto(i){
         ${
         // Its facts in the facts voice, its id among them (R218 step 26):
         // the id is the one in its enroll script's name.
-        factGrid([["Reached", where], ["Has", census], ["Seen", seen], ["Agent", agentVer],
-                  ["Jobs run as", n.kind === "agent" ? n.config?.user || "" : ""], ["Id", n.id, {cls: "ndid"}]], "ndfacts")}
+        ndFacts([where, census, seen, agentVer, n.kind === "agent" ? n.config?.user || "" : "", n.id])}
         ${keepLine(n)}
         ${nodeMay(n) !== "write" ? `<div class="sub warn ndreadonly">Your roles give no Nodes Write on ${esc(n.name)}, so its settings are read here. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
         ${agentBar}${pendingBar}

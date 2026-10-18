@@ -4,6 +4,11 @@
 // (R60). A factory makeNotebook calls per notebook.
 
 "use strict";
+// The view's sections by the titles they are drawn under, read by the view
+// and by its placeholders (page-docs.js SKTPLS: artifacts, version) alike
+// (R218, the operator 18 Oct).
+const ART_TITLES = {build: "Build", files: "Files", version: "Version"};
+const artTitle = k => ART_TITLES[k] || k;
 
 // A staged bump that moves the compatibility window: minor and major do,
 // patch does not, and only where this project owns the window at all.
@@ -56,7 +61,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       if (el){
         el.hidden = false;
         el.className = "";
-        el.innerHTML = docSection("artifacts", "build", "Build",
+        el.innerHTML = docSection("artifacts", "build", artTitle("build"),
           b.node ? (b.gap ? "agent behind" : b.name) : "no node",
           b.node && b.gap
             ? `<div class="hint bad">Nothing runs on <b>${esc(b.name)}</b> until its agent is
@@ -217,7 +222,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     list.innerHTML = (devHtml ? docSection("artifacts", "dev", "Docker",
                                             cf.available === false ? "unreachable"
                                             : `${cfFiles.length} compose file${cfFiles.length === 1 ? "" : "s"}`, devHtml) : "")
-      + docSection("artifacts", "files", "Files", rows.length ? `${rows.length} in dist/` : "none yet", filesBody, {prime: true});
+      + docSection("artifacts", "files", artTitle("files"), rows.length ? `${rows.length} in dist/` : "none yet", filesBody, {prime: true});
     wireSections(list);
     paginate(list.querySelector('[data-sect="artifacts:files"] > .body'), ":scope > .artrow", {key: "artList", noun: "files"});
     // What a session looked with (R96): a reel's sheet, an emulator shot.
@@ -420,7 +425,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       // on this tab with nothing naming it. "unavailable" rather than a
       // guess at which, because this branch is both a malformed VERSION and
       // a project with no git behind it; the body says which.
-      box.innerHTML = docSection("artifacts", "version", "Version", "unavailable",
+      box.innerHTML = docSection("artifacts", "version", artTitle("version"), "unavailable",
         `<div class="verln"><span>version</span><code>${esc(ver.error)}</code></div>`,
         {cls: "warn"});
       wireSections(box);
@@ -452,7 +457,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     });
     box.innerHTML = all.map(v => docSection("artifacts",
       `version${v.component ? ":" + v.component : ""}`,
-      all.length > 1 ? (v.component || `${projLabel(v.project)} (the project)`) : "Version",
+      all.length > 1 ? (v.component || `${projLabel(v.project)} (the project)`) : artTitle("version"),
       v.target || "no VERSION file",
       verSection(v) + nb.sectBar(`artifacts:version${v.component ? ":" + v.component : ""}`),
       {cls: v.target ? "" : "warn"})).join("");

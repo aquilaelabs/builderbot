@@ -405,7 +405,10 @@ function renderRolesInto(i){
   // A count, as Users and Jobs keep (the operator, 18 Oct), not a sentence.
   const nRoles = Object.keys(rolesData?.roles || {}).length;
   d.setBar(`<span class="dim">${rolesData === null ? skv(4) : `${nRoles} role${nRoles === 1 ? "" : "s"}`}</span><span class="sp"></span>${
-    rolesData?.admin ? `<span class="actbar"><button type="button" class="primary" id="rolesNewOpen">New role</button></span>` : ""}`);
+    // Waiting, who may add a role is the status read's to say, and the
+    // button is there and dead, as it will land.
+    (rolesData ? rolesData.admin : state?.can?.admin) ? `<span class="actbar"><button type="button" class="primary"${
+      rolesData ? ` id="rolesNewOpen"` : " disabled"}>New role</button></span>` : ""}`);
   if (rolesData === null){
     // Its template (R218 step 16): the two sections and their fields' labels
     // are the page's own; who holds what is on its way.

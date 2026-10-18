@@ -2370,6 +2370,56 @@ function dmImage(img){
   return `${esc(s.slice(0, at))} <code class="dmdigest" title="${esc(s.slice(at + 1))}">${esc(dg.slice(0, 12))}</code>`;
 }
 
+// The page's top, drawn by the page and by its placeholder alike (R218, the
+// operator 18 Oct: a template written beside the page fell behind it), so
+// a change to either is a change to both. Given null, each draws its
+// placeholder: the same markup with a shimmer where a value goes and its
+// controls dead.
+// The bar: the one node switcher (page-docs.js nodePick, R121 step 5) at
+// the left, the search beside it (R216: a name, an image, a port or a
+// project, narrowing the rows as it is typed; a view, never saved), Cards
+// and List, and the page's buttons at the right: Check for updates, the
+// registry images against what their registries serve now (R195), not while
+// the daemon is blind; and New container, the page's main action, where a
+// phone finds it without scrolling past every container (R119 step 5).
+function dmBar(b){
+  const ghost = !b, dead = ghost ? " disabled" : "";
+  return `<div class="field histbar docbarrow dmpick">${
+      nodePick("dmNode", ghost ? null : b.nodes, dockerNode || b?.nodes[0]?.id)}<input${ghost ? "" : ` id="dmSearch"`} type="search"
+        placeholder="name, image, port or project" autocomplete="off" aria-label="narrow the containers" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
+      <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
+        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card"${dead}>Cards</button>
+        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card"${dead}>List</button></div>
+      ${mayDocker() ? `<span class="actbar">${
+      b?.blind ? "" : `<button type="button"${ghost ? "" : ` id="bDockerCheck"`}${dead}>${barSaid("Check for updates", "Check")}</button>`}${
+      `<button type="button"${ghost ? "" : ` id="bDockerNew"`} class="primary"${dead}>${barSaid("New container", "New")}</button>`}</span>` : ""}</div>`;
+}
+// The tiles: what runs of how many, the updates due once images were
+// checked, the projects, and what on this daemon nobody here started.
+function dmTiles(t){
+  const g = !t;
+  return statTiles([
+    {label: "running", value: g ? GHOST : t.running, sub: g ? GHOST : `of ${t.all} container${t.all === 1 ? "" : "s"}`,
+     tone: !g && t.all && !t.running ? "warn" : ""},
+    {label: "updates due", value: g ? GHOST : t.behind, tone: !g && t.behind ? "warn" : "", omit: !g && !t.checked && !t.behind},
+    {label: "projects", value: g ? GHOST : t.projects},
+    {label: "not ours", value: g ? 0 : t.notOurs, omit: g || !t.notOurs, title: "on this daemon, started by nobody here"},
+  ]);
+}
+// The daemon's images and volumes (R216): a section at the foot, read when
+// opened, for an administrator, with the two prunes that touch nothing a
+// container uses.
+function dmImagesSection(){
+  return state?.can?.admin ? docSection("docker", "images", "Images and volumes", "",
+    `<div class="dmimgbox">${skel("rows", 3, "reading…")}</div>`, {open: false}) : "";
+}
+// ...and the status line under them: when the images were checked.
+function dmStatus(d){
+  if (!mayDocker()) return "";
+  return headLine(!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet",
+    "", "dmimgbar");
+}
+
 function renderDockerInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -2384,20 +2434,15 @@ function renderDockerInto(i){
     // view switch and its buttons, the add band and the tiles' words are the
     // page's own; the daemon's containers are on their way, as cards or as
     // lines, whichever view this browser keeps.
-    const tile = (label, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${esc(label)}</span>${
-      sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    // In the page's own order (the page tops' rule): the bar with Check for
-    // updates and New container at its right, the three tiles it usually
-    // shows, the status line, then the rows.
-    el.innerHTML = `<div class="doctab dmtab">${skTpl(`<div class="field histbar docbarrow dmpick"><label class="pick">Node ${skv(7, "ctl")}</label>${skv(16, "ctl")}
-        <span class="sp"></span><div class="pseg dmviewseg"><button type="button" disabled class="${dmView === "cards" ? "on" : ""}">Cards</button><button type="button" disabled class="${
-          dmView === "list" ? "on" : ""}">List</button></div>${
-          mayDocker() ? `<span class="actbar"><button type="button" disabled>${barSaid("Check for updates", "Check")}</button><button type="button" class="primary" disabled>${barSaid("New container", "New")}</button></span>` : ""}</div>
-      <div class="field"><div class="tiles">${tile("running", `of ${skv(2)} containers`)}${tile("updates due")}${tile("projects")}</div></div>
-      ${mayDocker() ? headLine(`images checked ${skv(4)}`, "", "dmimgbar") : ""}
+    // In the page's own order (the page tops' rule), drawn by the page's own
+    // builders given nothing (the operator, 18 Oct: a template written
+    // beside the page fell behind it): the bar, the tiles, the status line,
+    // then the rows.
+    el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmTiles(null)}${dmStatus(null)}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
-        : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}`)}</div>`;
+        : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}
+      ${dmImagesSection()}`)}</div>`;
     return;
   }
   // The daemon did not answer; it is off, it is not a sandbox VM, or the VM
@@ -2492,28 +2537,8 @@ function renderDockerInto(i){
   // by the fingerprint each heartbeat carries (the operator, 17 Oct).
   const dnodes = (nodesList || []).filter(n => n.kind !== "local");
   if (nodesList === null || nodesStale) loadNodes();
-  const picker = `<div class="field histbar docbarrow dmpick">${
-      nodePick("dmNode", dnodes, dockerNode || dnodes[0]?.id)}${
-      // Search beside the picker (R216): a name, an image, a port or a
-      // project, narrowing the rows as it is typed; a view, never saved.
-      ""}<input id="dmSearch" type="search" placeholder="name, image, port or project" autocomplete="off"
-        aria-label="narrow the containers" value="${esc(dmSearch)}"><span class="sp"></span>
-      <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
-        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card">Cards</button>
-        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card">List</button></div>
-      ${mayDocker() ? `<span class="actbar">${
-      // The registry images checked against what their registries serve now
-      // (R195), weekly by itself or now: the page's upkeep, in the bar with
-      // every header button (the operator, 17 Oct); a row that is behind
-      // says so with Update.
-      blind ? "" : `<button type="button" id="bDockerCheck">${barSaid("Check for updates", "Check")}</button>`}${
-      // The page's main action at the right of its bar (the operator, 17 Oct:
-      // one order for every page's top), where a phone finds it without
-      // scrolling past every container (R119 step 5).
-      `<button type="button" id="bDockerNew" class="primary">${barSaid("New container", "New")}</button>`}</span>` : ""}</div>`;
-  // ...and its status line under the tiles: when the images were checked.
-  const status = mayDocker() && !blind ? headLine(dockerList?.images_at ? `images checked ${esc(ago(dockerList.images_at))}` : "images not checked yet",
-    "", "dmimgbar") : "";
+  const picker = dmBar({nodes: dnodes, blind});
+  const status = blind ? "" : dmStatus(dockerList);
   // What a session is waiting on, above everything else: somebody is blocked
   // on these, and this is the tab whose dial sent them here. The bell carries
   // them too, the way root asks sit on the Nodes tab and in the bell.
@@ -2541,13 +2566,8 @@ function renderDockerInto(i){
   const running = allIns.filter(d => d.running).length;
   const behind = allIns.filter(d => (d.images_behind || []).length || d.nginx_to).length;
   const notOurs = allCs.filter(c => !c.ours).length;
-  const tiles = blind || !(allIns.length || allCs.length) ? "" : statTiles([
-    {label: "running", value: running, sub: `of ${allIns.length} container${allIns.length === 1 ? "" : "s"}`,
-     tone: allIns.length && !running ? "warn" : ""},
-    {label: "updates due", value: behind, tone: behind ? "warn" : "", omit: !dockerList?.images_at && !behind},
-    {label: "projects", value: chips.filter(g => g.key !== "none").length},
-    {label: "not ours", value: notOurs, omit: !notOurs, title: "on this daemon, started by nobody here"},
-  ]);
+  const tiles = blind || !(allIns.length || allCs.length) ? "" : dmTiles({running, all: allIns.length, behind,
+    checked: !!dockerList?.images_at, projects: chips.filter(g => g.key !== "none").length, notOurs});
   el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${status}${
     chipBar(chips, dmChip, "data-dmchip")}${askRows}${note
       ? `<div class="field"><div class="notice warn dmnote">${esc(note)}</div></div>` : srcLine}${
@@ -2561,8 +2581,7 @@ function renderDockerInto(i){
     // The daemon's images and volumes (R216): a section at the foot, read
     // when opened, for an administrator, with the two prunes that touch
     // nothing a container uses. Blind, there is no daemon to list.
-    !blind && state?.can?.admin ? docSection("docker", "images", "Images and volumes", "",
-        `<div class="dmimgbox">${skel("rows", 3, "reading…")}</div>`, {open: false}) : ""}
+    blind ? "" : dmImagesSection()}
     </div>`;
   gateDocker(el, off);
   // The asks answer through the phone's endpoint, which holds the one list of

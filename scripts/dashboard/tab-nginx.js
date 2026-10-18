@@ -305,13 +305,21 @@ function nginxBody(n){
   </div>`;
 }
 
+// The bar, the page's and its placeholder's (R218, the operator 18 Oct):
+// the node switcher, and Deploy, an undeployed node's one action, at its
+// right; waiting, which node and whether it is deployed are not known yet.
+function nginxBar(pnodes, n){
+  return `${nodePick("ngNodeSel", pnodes, nginxNode)}${n && !n.deployed
+    ? `<span class="sp"></span><span class="actbar"><button type="button" class="primary" data-ngdeploy>Deploy</button></span>` : ""}`;
+}
+
 function renderNginxInto(i){
   const d = docSurface(i, "nginx");
   if (!d) return;
   if (nginxList === null){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
-    d.setBar(skNodeBar([]));
+    d.setBar(nginxBar(null));
     d.list.innerHTML = skTpl(`${headLine(`${skv(5)} ${skv(24)}`, "", "toolstate")}<div class="field">${skRows(2)}</div>`);
     loadNginx();
     return;
@@ -322,9 +330,7 @@ function renderNginxInto(i){
   }
   const n = nginxPick();
   const pnodes = nginxList.map(x => ({id: x.node, name: x.name, live: x.live}));
-  // Deploy, an undeployed node's one action, at the right of the bar.
-  d.setBar(`${nodePick("ngNodeSel", pnodes, nginxNode)}${n && !n.deployed
-    ? `<span class="sp"></span><span class="actbar"><button type="button" class="primary" data-ngdeploy>Deploy</button></span>` : ""}`);
+  d.setBar(nginxBar(pnodes, n));
   d.list.innerHTML = n ? nginxBody(n)
     : `<div class="empty">no node to put nginx on yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
   wireNginxTab(d.el);

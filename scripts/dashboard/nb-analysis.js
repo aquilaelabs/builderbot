@@ -112,7 +112,7 @@ function nbAnalysisView({$, nb, project}){
     }
     // Open on both sizes: the numbers are the answer, not a place to go and
     // look for one, and the rules under it are the fold that closes.
-    return docSection("briefing", "codebase", "Code base", status, body, {open: true});
+    return docSection("briefing", "codebase", briefTitle("codebase"), status, body, {open: true});
   }
   // ---- what a session is handed --------------------------------------------
   // The three stores this notebook already shows, joined into the one string
@@ -167,7 +167,7 @@ function nbAnalysisView({$, nb, project}){
           + `and a session reads the rest when it needs it.</div>`).join("")}
       </div>`;
     }
-    return docSection("briefing", "preamble", "What a session is sent",
+    return docSection("briefing", "preamble", briefTitle("preamble"),
                       status, body, {open: false, cls});
   }
 
@@ -195,7 +195,7 @@ function nbAnalysisView({$, nb, project}){
     const body = `<div class="field"><div class="hint">${esc(line)}</div>
       <textarea id="briefKept" readonly rows="8" spellcheck="false"
         aria-label="the brief this project was started from">${esc(d.pending ? d.text : k.text)}</textarea></div>`;
-    return docSection("briefing", "brief", "Brief",
+    return docSection("briefing", "brief", briefTitle("brief"),
                       d.pending ? "waiting" : k.sent ? "sent" : "set aside", body, {open: false});
   }
 

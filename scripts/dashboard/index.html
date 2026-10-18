@@ -3851,6 +3851,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      one chosen. */
   .doctab .field.docbarrow>label.pick{flex:0 1 auto;min-width:0;max-width:50%;display:inline-flex;align-items:center;margin-inline-end:auto}
   .doctab .field.docbarrow>label.pick>.pickw{display:none}
+  /* ...and a placeholder's picker box loses the gap it kept after the word. */
+  .doctab .field.docbarrow>label.pick>.skv{margin-left:0}
   /* :not() twice: the cap on every bar control above is (0,5,1). */
   .doctab .field.docbarrow>label.pick>select:not([multiple]):not([size]){min-width:0;max-width:none;width:auto;flex:0 1 auto}
   .doctab .field.docbarrow>.sp{display:none}
@@ -3994,7 +3996,8 @@ button[aria-busy="true"]{opacity:.75}
    Network come in a wrapper of their own (nodeConfSections), which
    draws nothing either. */
 @media(min-width:901px){
-  .doctab.nodestab>.doclist>.row.stack2.ndrow{background:none;border:0;border-radius:0;padding:0;margin:0 var(--row-x)}
+  .doctab.nodestab>.doclist>.row.stack2.ndrow,
+  .doctab.nodestab>.doclist>.skt>.row.stack2.ndrow{background:none;border:0;border-radius:0;padding:0;margin:0 var(--row-x)}
   .nodestab .ndrow>.grow{margin:12px 0 0;padding:var(--row-y) var(--row-x);background:var(--panel);
     border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
   .nodestab .ndrow>.ndsections{margin:0;width:100%}
@@ -4237,6 +4240,8 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .skel .sk-b.sub{height:.62em;margin-top:9px}
 .sk-row{padding:var(--row-y) 0;border-bottom:var(--hair) solid var(--line);min-height:var(--tap)}
 .sk-row:last-child{border-bottom:0}
+/* A project group's placeholder rows in the card's own inset, as its rows land. */
+.dmtab .dmcard>.sk-row{padding-left:var(--row-x);padding-right:var(--row-x)}
 /* The shapes start where a loading line's words would (the .loading's own
    inset, which each surface sets), and in a .field, which is inset already,
    at its edge rather than a second one in; so in a fold's body. */
@@ -4925,7 +4930,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" id="memLog"
           title="every change to this notebook, with when">History</button>
       </div>
-      <div id="rulesBox"></div>
+      <div id="rulesBox" data-skel="briefing"></div>
       <div class="field histbar" id="memHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the memory log">
         <select class="hwhen" aria-label="how far back">
@@ -5039,7 +5044,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <!-- The version, above the things it names. Not a sixth tab: the strip
            already runs past a phone at five labels, and a version and the
            artifacts it stamps are one subject; those filenames carry it. -->
-      <div id="verBox"></div>
+      <div id="verBox" data-skel="version"></div>
       <div id="artList" data-skel="artifacts"></div>
       <!-- What a session looked with (R96): reels and emulator shots, in one
            fold apart from what ships, each saying whose it is, and swept

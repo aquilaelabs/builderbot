@@ -36,6 +36,14 @@ function openPhoneTab(){
   openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
 }
 
+// The bar, the page's and its placeholder's (R218, the operator 18 Oct):
+// the node switcher and Check now in the button group every page's bar has.
+function phoneBar(nodes, n){
+  const g = !nodes;
+  return `${nodePick("phPick", g ? null : nodes, n?.id)}<span class="sp"></span>
+    <span class="actbar"><button type="button"${g ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button></span>`;
+}
+
 function renderPhoneInto(i){
   const d = docSurface(i, "phone");
   if (!d) return;
@@ -44,7 +52,7 @@ function renderPhoneInto(i){
     // (connect, pair) with their labels are the page's own; the node and
     // its phone are on their way.
     const fld = (label, em, grow = false) => `<div class="${grow ? "grow " : ""}setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
-    d.setBar(skNodeBar(["Check now"]));
+    d.setBar(phoneBar(null));
     // In the card the rows land in (.phonetab).
     d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
         <div class="sub">${skv(10)}</div></div></div>
@@ -56,8 +64,7 @@ function renderPhoneInto(i){
   }
   const nodes = ph.nodes || [];
   const n = nodes.find(x => x.id === phNode) || nodes[0];
-  d.setBar(`${nodePick("phPick", nodes, n?.id)}<span class="sp"></span>
-    <button type="button" id="phRefresh" title="ask the node's adb about the phone now">Check now</button>`);
+  d.setBar(phoneBar(nodes, n));
   phFoot = "";
   d.list.innerHTML = n ? phonePanel(n)
     : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("toolchains", "Toolchains page")}.</div>`;

@@ -32,7 +32,11 @@
 // same list on Toolchains, the Emulator, the Phone and the CI runner. A node
 // that cannot be picked for this tab says why in its option, and a quiet one
 // says so. `why(n)` is "" for one that can.
+// `nodes` null is the page's placeholder (R218, the operator 18 Oct: a
+// placeholder drawn by the page's own code, so it cannot drift from it):
+// the same label and word, the picker's box shimmering.
 function nodePick(id, nodes, cur, why = () => ""){
+  if (nodes === null) return `<label class="pick"><span class="pickw">Node</span> ${skv(7, "ctl")}</label>`;
   if (!nodes.length) return "";
   return `<label class="pick"><span class="pickw">Node</span> <select id="${esc(id)}" aria-label="node">${nodes.map(n => {
     const w = why(n);
@@ -96,9 +100,9 @@ function skTpl(html, {said = "loading…", live = false} = {}){
 // there and dead until the page they act on has drawn. An action given as
 // [label, "primary"] is the page's main action and wears its fill.
 function skNodeBar(actions = []){
-  return `<label class="pick"><span class="pickw">Node</span> ${skv(7, "ctl")}</label><span class="sp"></span><span class="actbar">${
+  return `${nodePick("", null)}<span class="sp"></span>${actions.length ? `<span class="actbar">${
     actions.map(a => [].concat(a)).map(([a, cls, short]) => `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${
-      short ? barSaid(a, short) : esc(a)}</button>`).join("")}</span>`;
+      short ? barSaid(a, short) : esc(a)}</button>`).join("")}</span>` : ""}`;
 }
 // A bar button's words at both widths (the operator, 18 Oct: the node
 // picker and a page's buttons on one line on a phone). On a phone the short
@@ -202,19 +206,26 @@ function bootRail(on){
 // The notebook views whose sections are always the same, by name, so the
 // markup's placeholders (data-skel) and the views' own waits draw them.
 const SKTPLS = {
-  // As the view lands: its sections' chips, then Changes, History,
-  // Branches and Claude may (Fetch, Pull and Push only come with a remote).
-  git: () => skTpl(`<nav class="sectjump">${["Changes", "History", "Branches", "Claude may"].map(t => `<a href="#">${t}</a>`).join("")}</nav>`
-    + [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["may", "Claude may"]]
-      .map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")
-    // Shut as the view draws them until somebody opens one: CI opens only
-    // when it is red, the Design view's two always start shut.
-    + docSection("git", "ci", "CI", "", skRows(1), {open: false})),
+  // As the view lands, from the view's own table (nb-git.js GIT_SECTS): its
+  // sections' chips, then each steady section; CI and a README come with
+  // what the repository holds, so the placeholder promises neither.
+  git: () => skTpl(`<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
+    + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")),
   design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2), {open: false})
     + docSection("design", "themes", "Themes", "", skRows(2), {open: false})),
-  // Not Version: the view draws that section itself, outside the list.
-  artifacts: () => skTpl([["build", "Build", 1], ["files", "Files", 2]]
-    .map(([k, t, n]) => docSection("artifacts", k, t, "", skRows(n))).join("")),
+  // Its list, by the view's own titles (nb-artifacts.js ART_TITLES)...
+  artifacts: () => skTpl([["build", 1], ["files", 2]]
+    .map(([k, n]) => docSection("artifacts", k, artTitle(k), "", skRows(n))).join("")),
+  // The Overview's box of sections (nb-rules.js BRIEF_SECTS) as drawRules
+  // lands it, the Brief left out, with the jump bar over them and the
+  // Memories under them that the markup holds.
+  briefing: () => {
+    const sects = BRIEF_SECTS.filter(([k]) => k !== "brief");
+    return skTpl(`<nav class="sectjump">${[...sects.map(([, t]) => t), "Memories"].map(t => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
+      + sects.map(([k, t, open], j) => docSection("briefing", k, t, "", skRows(j ? 1 : 3), {open})).join(""));
+  },
+  // ...and the Version box above it, which the view fills on its own.
+  version: () => skTpl(docSection("artifacts", "version", artTitle("version"), "", skRows(1))),
 };
 // A word the page needs, asked in a box in the row (R256 step 4) where
 // window.prompt was: its label, the field, Cancel and OK, under the control
@@ -712,16 +723,21 @@ function headLine(said, actions = "", cls = ""){
 // its label under it and, when the number itself is news, a tone. Facts
 // to look at, never pressed; a tile for a number that is always the same
 // is not drawn, which is what the `omit` flag is for.
+// A value or a sub given as GHOST is the page's placeholder: the tile is
+// the real one, its number shimmering until the page has it.
 function statTiles(tiles){
   const rows = (tiles || []).filter(t => t && !t.omit);
   if (!rows.length) return "";
   return `<div class="field"><div class="tiles">${rows.map(t => `
     <div class="tile${t.tone ? " " + esc(t.tone) : ""}"${t.title ? ` title="${esc(t.title)}"` : ""}>
-      <div class="tv">${esc(String(t.value ?? "–"))}${t.unit ? `<span class="tu">${esc(t.unit)}</span>` : ""}</div>
+      <div class="tv">${t.value === GHOST ? skv(1.4) : esc(String(t.value ?? "–"))}${t.unit ? `<span class="tu">${esc(t.unit)}</span>` : ""}</div>
       <div class="tl">${esc(t.label || "")}</div>
-      ${t.sub ? `<div class="ts">${esc(t.sub)}</div>` : ""}
+      ${t.sub === GHOST ? `<div class="ts">${skv(5)}</div>` : t.sub ? `<div class="ts">${esc(t.sub)}</div>` : ""}
     </div>`).join("")}</div></div>`;
 }
+// What a placeholder passes where a value will go (statTiles, a page's own
+// builders): drawn as a shimmer in the real markup.
+const GHOST = Object.freeze({ghost: true});
 
 // What a row knows, as labels and values: two columns at a desk, one on a
 // phone. A pair whose value is empty is left out, so a caller lists what
@@ -745,7 +761,8 @@ function factGrid(pairs, cls = ""){
   const rows = (pairs || []).filter(p => p && p[1] !== undefined && p[1] !== null && String(p[1]).trim() !== "");
   if (!rows.length) return "";
   return `<dl class="facts${cls ? " " + esc(cls) : ""}">${rows.map(([k, v, opt]) => `
-    <div class="fact"><dt>${esc(k)}</dt><dd${opt && opt.cls ? ` class="${esc(opt.cls)}"` : ""}>${opt && opt.html ? v : esc(String(v))}</dd></div>`).join("")}</dl>`;
+    <div class="fact"><dt>${esc(k)}</dt><dd${opt && opt.cls ? ` class="${esc(opt.cls)}"` : ""}>${
+      v === GHOST ? skv(8) : opt && opt.html ? v : esc(String(v))}</dd></div>`).join("")}</dl>`;
 }
 
 // ---- tables (R218 step 8, the design's tables rule) -----------------------

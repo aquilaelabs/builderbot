@@ -24,7 +24,9 @@ function fxFilter(rows, st){
               .toLowerCase().includes(q)));
 }
 
-function fxBarHtml(rows, st, extra){
+// `dead`: the page's placeholder (R218, the operator 18 Oct), the same
+// controls there and dead until the findings land.
+function fxBarHtml(rows, st, extra, dead = false){
   const per = {};
   for (const f of rows){
     const l = f.level === "info" ? "note" : f.level;
@@ -34,13 +36,13 @@ function fxBarHtml(rows, st, extra){
   // Classes, not ids: a notebook per project means this bar can exist several
   // times on one page, and duplicate ids are how the wrong one gets wired.
   return `${extra || ""}
-    <select class="fxLevel" aria-label="level">
+    <select class="fxLevel" aria-label="level"${dead ? " disabled" : ""}>
       <option value="">every level</option>
       ${lvls.map(l => `<option value="${esc(l)}"${l === st.level ? " selected" : ""}>${
         esc(l)} · ${per[l]}</option>`).join("")}
     </select>
     <input class="fxFind" maxlength="80" autocomplete="off"
-      placeholder="search rules, paths, messages" value="${esc(st.find || "")}">`;
+      placeholder="search rules, paths, messages" value="${esc(st.find || "")}"${dead ? " disabled" : ""}>`;
 }
 
 // The same bar wearing its own band, for the notebook's Analysis view, which
@@ -199,7 +201,7 @@ function renderFindingsInto(i){
   if (!findings || findings.loading){
     // Its template (R218 step 16): the bar's three narrowing controls stand
     // where they will, their boxes shimmering; the findings are on their way.
-    d.setBar(`${skv(9, "ctl")}${skv(7, "ctl")}${skv(14, "ctl")}`);
+    d.setBar(fxBarHtml([], fxState, `<select aria-label="project" disabled><option>all projects</option></select>`, true));
     // As it lands across projects: a project's name over its card.
     d.list.innerHTML = skTpl(`<div class="fxproj"><span class="name">${skv(8)}</span></div>${skRows(6)}`);
     return;

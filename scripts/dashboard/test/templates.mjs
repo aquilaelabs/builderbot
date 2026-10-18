@@ -13,7 +13,8 @@ const PAGES = [
   ['jobs', '#/jobs', 'jobsList = null; renderJobsInto(0)'],
   ['nodes', '#/machines/nodes', 'nodesList = null; renderNodesInto(0)'],
   ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
-  ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)'],
+  // Deploy is an undeployed node's alone, which is not known while it waits.
+  ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)', ['barSig']],
   ['toolchains', '#/build/toolchains', 'toolchains = null; renderToolchainsInto(0)'],
   // The fixture's node never reported its images (known false), so the page
   // lands with no tiles; a node that has carries them, as the template does.
@@ -30,6 +31,9 @@ const PAGES = [
 // A notebook view's template is what a project not yet read shows: the view
 // is drawn loaded on one project and waiting on another.
 const VIEWS = ['briefing', 'roadmap', 'bugs', 'git', 'tests', 'analysis', 'design', 'artifacts', 'settings'];
+// Sections a view draws only from what the project holds: a red CI, a
+// README, a Brief to keep.
+const VIEW_SKIP = { git: ['title:CI', 'title:README.md'], briefing: ['title:Brief'] };
 const HELD = /\/api\/(?!status|layout|revs|presence)/;
 
 // The outline of what is on show in `sel`: a template's wrapper (.skt) is
@@ -76,6 +80,15 @@ const outline = sel => {
     card: card ? box(card) : null,
     // a part still on its way, saying so (its dots): not landed yet
     busy: !!first('.dots'),
+    // What the page is made of, not only whether it has a bar (R218, the
+    // operator 18 Oct: Containers and Nodes waited as pages they had
+    // stopped being): the bar's parts in order (its picker with its word or
+    // without, a search, Cards and List, its buttons), the jump bar, and
+    // the titles of the sections on show.
+    barSig: bar ? [...bar.children].filter(shown).map(e => e.matches('label.pick') ? (e.querySelector('.pickw') ? 'picker' : 'picker without its word')
+      : e.matches('input') ? 'search' : e.matches('.pseg') ? 'a switch' : e.matches('.actbar') ? 'buttons' : null).filter(Boolean).join(', ') : '',
+    jump: !!first('.sectjump'),
+    titles: [...root.querySelectorAll('details.sect > summary .t')].filter(shown).map(e => e.textContent.trim()).filter(Boolean),
   };
 };
 
@@ -84,6 +97,16 @@ const differ = (got, tpl, skip = []) => {
   if (!got || !tpl) return `${got ? 'no template' : 'no page'} to measure`;
   if (!tpl.skel) return tpl.waiting ? 'it waits with words, not a template' : '';   // draws at once: nothing to hold
   const out = [];
+  if (!skip.includes('barSig') && got.barSig !== tpl.barSig) out.push(`its bar is ${got.barSig || 'empty'} on the page, ${tpl.barSig || 'empty'} in the template`);
+  if (!skip.includes('jump') && got.jump !== tpl.jump) out.push(`jump bar: page ${got.jump ? 'has' : 'has none'}, template ${tpl.jump ? 'has' : 'has none'}`);
+  // A title the template promises is one the page draws; a section the page
+  // only sometimes has (a node's GPU, a managed node's Storage) is named in
+  // the page's skip list as `title:NAME`.
+  const spare = skip.filter(k => k.startsWith('title:')).map(k => k.slice(6));
+  const lost = tpl.titles.filter(t => !got.titles.includes(t) && !spare.includes(t));
+  const extra = got.titles.filter(t => !tpl.titles.includes(t) && !spare.includes(t));
+  if (lost.length) out.push(`the template has sections the page does not: ${lost.join(', ')}`);
+  if (extra.length) out.push(`the page has sections the template does not: ${extra.join(', ')}`);
   // An empty page has only its frame to compare: what fills it differs.
   for (const k of got.empty ? ['bar', 'tiles', 'status'] : ['bar', 'tiles', 'status', 'split', 'table'])
     if (!skip.includes(k) && got[k] !== tpl[k]) out.push(`${k}: page ${got[k] ? 'has' : 'has none'}, template ${tpl[k] ? 'has' : 'has none'}`);
@@ -144,7 +167,7 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     await sleep(600);
     const tpl = await page.evaluate(outline, '.nb .nbview:not([hidden])');
     await page.unroute(HELD);
-    const why = differ(got, tpl);
+    const why = differ(got, tpl, VIEW_SKIP[v] || []);
     ok(!why, `the notebook's ${v} view waits as itself ${where}${why ? `: ${why}` : ''}`);
   }
   await page.close();

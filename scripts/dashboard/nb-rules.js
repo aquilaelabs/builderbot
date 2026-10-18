@@ -4,6 +4,14 @@
 // (R60). A factory makeNotebook calls per notebook.
 
 "use strict";
+// The Overview's sections in the box drawRules fills, in their order, by
+// the titles they are drawn under, and whether each opens: read by their
+// builders here and in nb-analysis.js and by the view's placeholder
+// (page-docs.js SKTPLS.briefing), so neither falls behind (R218, the
+// operator 18 Oct). The Brief is only a project started from one's.
+const BRIEF_SECTS = [["codebase", "Code base", true], ["brief", "Brief", false], ["rules", "Your rules", false],
+                     ["preamble", "What a session is sent", false]];
+const briefTitle = k => (BRIEF_SECTS.find(s => s[0] === k) || [k, k])[1];
 
 function nbRulesView({$, nb, project}){
   // One answer for the several askers of a first show (B218): the view
@@ -254,7 +262,7 @@ function nbRulesView({$, nb, project}){
       revert: () => nb.ruleClearStaged()});
     box.innerHTML = nb.codebaseSection()
       + nb.briefSection()
-      + docSection("briefing", "rules", "Your rules",
+      + docSection("briefing", "rules", briefTitle("rules"),
       rows.length ? `${rows.length}` : "none", clash + body + nb.sectBar("briefing:rules"),
       // Shut on both sizes: the rules are read once and edited rarely, and
       // open they push the code base off the first screen. The count on the

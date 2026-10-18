@@ -8,6 +8,12 @@
 // project, and takes back the one function the rest of the notebook calls.
 
 "use strict";
+// The view's steady sections in their order, by the titles they are drawn
+// under: the view and its placeholder (page-docs.js SKTPLS.git) both read
+// them, so neither falls behind the other (R218, the operator 18 Oct). CI
+// and a README come only with what the repository holds.
+const GIT_SECTS = [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["policy", "Claude may"]];
+const gitTitle = k => (GIT_SECTS.find(s => s[0] === k) || [k, k])[1];
 
 function nbGitView({$, nb, project}){
   // ---- git -----------------------------------------------------------------
@@ -353,13 +359,13 @@ function nbGitView({$, nb, project}){
           <span class="state">its own branches, one at a time ${helpIcon("Applies to pushes only. Tags, deletions and remote-only branches stay yours; commits and merges here are always allowed.")}</span>
           <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
         </div></div></div>`;
-    body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
+    body.innerHTML = docSection("git", "changes", gitTitle("changes"), files.length ? String(files.length) : "none",
         conflictBar + (files.length ? treeNote : "") + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
-      + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
+      + docSection("git", "history", gitTitle("history"), commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
-      + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
+      + docSection("git", "branches", gitTitle("branches"), String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
       + ciSection()
-      + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}${pol.scan === "off" ? " · unheld" : ""}`, policy) : "");
+      + (policy ? docSection("git", "policy", gitTitle("policy"), `${pol.push || "allow"} · ${pol.main || "deny"}${pol.scan === "off" ? " · unheld" : ""}`, policy) : "");
     wireSections(body);
     body.querySelectorAll("[data-cifix]").forEach(b => b.onclick = () => gitAct("ci-fix", {where: b.dataset.cifix}, b, "Fixing"));
     const cl = $("gitCiLook");
