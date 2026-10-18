@@ -2763,9 +2763,9 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     pills: [...r.querySelectorAll('.fpill .k')].map(k => k.textContent.trim()) }));
   ok(head.origin.length > 0 && head.pills.includes('Project'),
      `...and a row says what it is on one line under its name, its settings as pills (${head.origin} | ${head.pills.join(', ')})`);
-  ok(await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill',
-       e => getComputedStyle(e, '::before').content === '""' && getComputedStyle(e, '::before').width === '6px'),
-     '...the state pill wearing a dot of its color');
+  const dot = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill',
+    e => ({ content: getComputedStyle(e, '::before').content, width: getComputedStyle(e, '::before').width, cls: e.className, text: e.textContent.trim() }));
+  ok(dot.content === '""' && dot.width === '6px', `...the state pill wearing a dot of its color (${JSON.stringify(dot)})`);
   // What it uses now, asked beside the list once it landed and drawn as a
   // strip on the running row: the fixture's docker answers stats with
   // fixed figures.
@@ -4963,9 +4963,11 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   // What is typed into the hostname box survives the tab being drawn again
   // (B729: a redraw between the typing and the press sent no hostname).
   await page.fill(`${DM} .dmnginxroute [data-dmnghost]`, 'kept.example.test');
+  const typed = await page.evaluate(() => JSON.stringify(dmNginxDraft));
   await page.evaluate(() => { dockerRev++; drawPanes(); });
-  ok(await page.$eval(`${DM} .dmnginxroute [data-dmnghost]`, e => e.value) === 'kept.example.test',
-     'a hostname typed on the row is still there after the tab is drawn again');
+  const kept = await page.$$eval(`${DM} .dmnginxroute [data-dmnghost]`, es => es.map(e => `${e.value}${e.closest('.fghost') ? ' (ghost)' : ''}`));
+  ok(kept[0] === 'kept.example.test',
+     `a hostname typed on the row is still there after the tab is drawn again (${kept.join(' | ') || 'no box'}; draft ${typed})`);
   await page.fill(`${DM} .dmnginxroute [data-dmnghost]`, '');
   const port = Number(line.ports[0].replace('!', ''));
   await page.click(`${DM} .dmnginxroute [data-dmngadd]`);
