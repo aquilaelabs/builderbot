@@ -3887,14 +3887,18 @@ another project can still reach this directory through Bash.
 to make the **owner** account, and it is the only page it serves until you
 have; nothing else is reachable, signed in or not. So open it as soon as the
 container is up: until somebody claims it, whoever can reach the port can.
-The setup page follows (R199): the controller's basics, where what grows is
-kept and when an idle Claude session ends, each with its default shown and
-staying under the Settings tab afterwards, and then a first node, which
-cannot wait. **Create sandbox VM** or **Enroll node** on the Nodes tab under
-the page makes it, and **Finish** stays shut, on the server too, until a
-node is enrolled, answering and running sessions: a hosting-only node holds
-no code, so a project would have nowhere to work or build. A public hostname
-and hosting-only nodes come later, from Settings and Enroll node.
+The setup page follows (R199, R267): four steps, each a card with its state
+and its own button. A first node cannot wait: **Create sandbox VM** or
+**Enroll node** in its card opens the Nodes page's own dialogs, the card says
+when the machine dials in, and **Finish** stays shut, on the server too,
+until a node is enrolled, answering and running sessions: a hosting-only node
+holds no code, so a project would have nowhere to work or build. Then your
+name and email (no session starts without an author for its commits),
+Claude Code on that node, and a first project, which can wait: after Finish,
+Home's Getting started card keeps what is left of them. Where what grows is
+kept and when an idle session ends are not asked; their defaults are under
+Controller settings. A public hostname and hosting-only nodes come later,
+from Settings and Enroll node.
 
 Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped

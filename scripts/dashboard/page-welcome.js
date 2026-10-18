@@ -11,45 +11,48 @@
 
 const GUIDE_USER = `
   <h4>What this is</h4>
-  <p>A Claude Code workstation in a browser. Each project on the left is a
-  repository; a Claude session edits it, and the notebook beside it is where
-  you and Claude keep the plan.</p>
+  <p>A Claude Code workstation in a browser. A project is a repository, kept
+  and built on a node; a Claude session works on it, and the project's page
+  is where you and Claude keep the plan.</p>
+  <h4>Finding your way</h4>
+  <ul>
+    <li><b>The rail</b>, down the left edge: Home, Projects, Containers,
+      Machines, Build, Jobs, Sessions and the rest, each a page. On a phone it
+      is the bar at the foot: Home, Projects, Containers, Jobs, and More for
+      the others.</li>
+    <li><b>The search</b> at the top jumps to a page, a project, a container or
+      a node by name.</li>
+    <li><b>The dock</b> at the foot of every page holds the chat and your
+      terminals; a tab pulls it up, and on a phone it is a sheet.</li>
+    <li><b>The bell</b> holds what needs your answer, and <b>the dot</b> beside
+      it is the doctor's verdict on this controller.</li>
+  </ul>
   <h4>Start here</h4>
   <ul>
-    <li><b>Your profile</b> (the gear): your name, and the git name and email
-      your commits carry. No session starts until they are set.</li>
-    <li><b>Claude Code</b> on each node you work on: its <b>Toolchains</b> tab
-      installs it, then a project's <b>Claude</b> button takes you to the
-      node's sign-in the first time.</li>
-    <li><b>A project</b>: its name opens the notebook, <b>Claude</b> starts a
-      session, the terminal button opens a shell.</li>
-    <li><b>The notebook</b>: Briefing, Roadmap (sent to Claude a step at a
-      time), Bugs, Git, Artifacts, Tests, Analysis.</li>
-    <li><b>The bell</b>: what needs your answer.</li>
-    <li><b>Your phone</b>: the Phone tab, under Tools, connects a handset to a
-      node you pick; a session asks before it touches it.</li>
+    <li><b>Your profile</b>, in the gear: your name and email, which your commits
+      carry. No Claude session starts without them.</li>
+    <li><b>A project</b>: Start Claude opens a session, Shell a terminal, and its
+      name opens its page: Overview, Plan (Roadmap, Bugs), Code (Git, Tests,
+      Analysis), Ship (Artifacts, Docker) and Docs (Wiki, Design).</li>
+    <li><b>Claude Code</b> runs on a node: the first Start Claude takes you to
+      its sign-in there.</li>
   </ul>
   <h4>When something says no</h4>
   <p>A refusal names the way out, so read it rather than retry.</p>
   <h4>Something is wrong</h4>
-  <p>File it on the project's Bugs tab: what you pressed and what it said
-  back. Sessions read the same tracker.</p>
-  <h4>On a phone</h4>
-  <p>The bar at the bottom switches between the sidebar and the terminal; the
-  keys panel stands in for the ones a soft keyboard hides.</p>`;
+  <p>File it on the project's Bugs: what you pressed and what it said back.
+  Sessions read the same tracker.</p>`;
 const GUIDE_ADMIN = GUIDE_USER + `
   <h4>As an administrator</h4>
   <ul>
-    <li><b>Nodes</b>: the machines where builds, tests, CI, the emulator and
-      sessions run. <b>Enroll node</b> gives you the command to run on the
-      machine.</li>
-    <li><b>Tools</b>: what each node can build with, installed from the
-      catalog.</li>
-    <li><b>Users</b>: accounts, roles and which projects each sees.</li>
-    <li><b>Controller settings</b>: what this controller does; everything
-      waits for Save.</li>
-    <li><b>Approvals</b>: per project, what a session adds lands, waits for
-      you, or is refused.</li>
+    <li><b>Machines</b>: the nodes where builds, tests, CI, the emulator and
+      sessions run, and what their disks hold. Enroll node gives you the
+      script to run on a machine.</li>
+    <li><b>Build</b>: what each node builds with (Toolchains), its emulator, a
+      phone lent to it, and its CI runner.</li>
+    <li><b>People</b>: accounts, roles and which projects each sees.</li>
+    <li><b>Settings</b>: this controller's, each waiting for its Apply; and a
+      project's own, from its page.</li>
   </ul>`;
 let abPage = "guide", abLogLoaded = false;
 function abShow(which){
@@ -204,6 +207,8 @@ function welcomeOnce(){
   if (welcomed || !state?.me || !state.welcome || setupNeeded()) return;
   welcomed = true;
   const w = state.welcome, rev = state.image?.rev || "";
-  if (!w.seen) openAbout("guide");
+  // An administrator has Home's Getting started for this (R267), and a
+  // guide over it would be two at once; a person invited later has none.
+  if (!w.seen){ if (!state?.can?.admin) openAbout("guide"); }
   else if (rev && w.image_seen !== rev) openAbout("log");
 }

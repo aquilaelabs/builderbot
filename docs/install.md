@@ -110,13 +110,15 @@ docker logs -f BuilderBot          # banner → hooks → ready
 docker exec -it BuilderBot bb doctor
 ```
 
-Then open the dashboard. The first page is the setup: make the owner
-account, then confirm the controller's basics (where what grows is kept, and
-when an idle Claude session ends; each has its default shown), then enroll
-the first node, with **Enroll node** for a machine you already have or
-**Create sandbox VM** for a new VM. That step cannot be skipped: nothing runs
-without a node, so **Finish** opens only once one is enrolled and answering,
-and it has to be one that runs sessions, not a hosting-only one.
+Then open the dashboard. The first page makes the owner account; the setup
+page after it is four steps, each a card with its own button: your first
+node (**Enroll node** for a machine you already have, **Create sandbox VM**
+for a new VM), your name and email, Claude Code on that node, and a first
+project. The node cannot be skipped: nothing runs without one, so **Finish**
+opens only once one is enrolled and answering, and it has to be one that
+runs sessions, not a hosting-only one. The other three can wait: Home keeps
+them in its Getting started card. Storage and the idle timeout are not
+asked; their defaults are under Controller settings.
 
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. On the
 controller it verifies: the workspace and home are writable, git is new

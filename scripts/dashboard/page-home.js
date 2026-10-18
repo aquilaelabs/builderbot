@@ -130,11 +130,37 @@ function homeGlanceHtml(){
   }).join("")}</div>`;
 }
 
+// Getting started (R267): what is left of first run's four once Finish is
+// pressed, each with its own way there, until all are done or it is put
+// away; read from setupSteps, the setup page's own reading, so the two
+// never disagree. Put away is this browser's, which is all it needs.
+let homeStartHidden = (() => { try{ return localStorage.getItem("bb.gsHidden") === "1"; }catch(e){ return false; } })();
+function homeStartHtml(){
+  // First run's continuation, so the owner's and an administrator's: a
+  // person without the role may have no New project to press.
+  if (homeStartHidden || setupNeeded() || !state?.can?.admin) return "";
+  const s = setupSteps(), canNodes = railAllows("nodes");
+  // What the card cannot read yet it does not claim: the nodes list comes
+  // once, with the Claude step's state.
+  if (canNodes && nodesList === null) return "";
+  const steps = [
+    canNodes ? ["Your first node", !!s.node, `<button type="button" data-hstart="node">Nodes page</button>`] : null,
+    ["Your name and email", s.git, `<button type="button" data-hstart="git">Profile</button>`],
+    canNodes ? ["Claude Code on your node", !!s.claude, `<button type="button" data-hstart="claude"${s.node ? "" : " disabled"}>Toolchains</button>`] : null,
+    ["A first project", s.project, `<button type="button" data-hstart="project">New project</button>`],
+  ].filter(Boolean);
+  const left = steps.filter(x => !x[1]).length;
+  if (!left) return "";
+  return `<div class="field"><section class="hcard hstart"><h3>Getting started<span class="sst">${steps.length - left} of ${steps.length}</span></h3>
+    ${steps.map(([t, done, act]) => `<div class="hsrow${done ? " done" : ""}"><span class="setnum">${done ? "✓" : ""}</span><span class="grow">${esc(t)}</span>${done ? "" : act}</div>`).join("")}
+    <div class="bfootbar"><span class="sp"></span><button type="button" data-hstart="hide">Put away</button></div></section></div>`;
+}
+
 // Attention, Last jobs and the pinned projects: the cards under the tiles,
 // with Last jobs' rows handed in (its own, or the shapes of them on the way).
 function homeCards(jobs){
   const needs = needsRows(), hidden = state?.bell_hidden || 0;
-  return `<div class="field"><div class="homegrid">
+  return `${homeStartHtml()}<div class="field"><div class="homegrid">
         <section class="hcard"><h3>Attention</h3>${needs.length ? needs.join("")
           : `<div class="hnone">nothing needs attention</div>`}${hidden
           ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
@@ -169,5 +195,15 @@ function renderHomeInto(i){
   root.querySelectorAll('[data-htile="ci"]').forEach(a => a.onclick = () => { sectOpen["git:ci"] = true; });
   root.querySelectorAll("[data-hjob]").forEach(b => b.onclick = () => openJob(b.dataset.hjob));
   root.querySelectorAll("[data-hproj]").forEach(b => b.onclick = () => openNotebook(b.dataset.hproj));
+  root.querySelectorAll("[data-hstart]").forEach(b => b.onclick = () => {
+    const k = b.dataset.hstart, s = setupSteps();
+    if (k === "node") railGo("machines");
+    else if (k === "git") openProfileTab();
+    else if (k === "claude" && s.node) openToolchainsOn(s.node.id);
+    else if (k === "project") openNewProject();
+    else if (k === "hide"){ homeStartHidden = true; try{ localStorage.setItem("bb.gsHidden", "1"); }catch(e){ /* private */ } drawPanes(); }
+  });
+  // The Claude step's state is the nodes list's, read once for the card.
+  if (!homeStartHidden && nodesList === null && railAllows("nodes")) loadNodes().then(() => drawPanes());
   wireNeeds(root);
 }

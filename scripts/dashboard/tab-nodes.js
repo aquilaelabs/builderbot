@@ -1661,24 +1661,12 @@ async function nodeProjectRemove(b, name, id){
   nodesRev++; drawPanes();
 }
 
-function wireNodesTab(root){
-  wireSignin(root);
-  wireCharts(root);
-  root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
-  root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
-  root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () =>
-    nodeProjectRemove(b, b.dataset.ndproj, b.closest("[data-node]")?.dataset.node || ""));
-  const pick = root.querySelector("#ndPick");
-  if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
-                                    nodesRev++; drawPanes(); };
-  // The root asks answer through the phone's endpoint, which holds the one
-  // list of asks; phFetch redraws this tab when the answer comes back.
-  root.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
-    b.disabled = true; b.textContent = "running";
-    phFetch({action: "allow", id: Number(b.dataset.rallow)});
-  });
-  root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
-    phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
+// The enroll and sandbox VM dialogs, drawn into #ndmodal (outside every
+// page's DOM, so a poll landing mid-type cannot take what was typed): the
+// Nodes page's two buttons open them, and so does first run's node step
+// (page-setup.js), so there is one way to enroll (R267). Built on each
+// call, as they were on each wiring of the Nodes page.
+function ndDialogs(){
   // ---- enrolling, in a dialog -------------------------------------------
   // Written here rather than into the tab, so a poll landing mid-type cannot
   // take the name with it: the box is outside this tab's DOM and survives
@@ -2032,8 +2020,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       vmForm(r);
     });
   };
-  const vm = root.querySelector("#ndVm");
-  if (vm) vm.onclick = async () => {
+  const openVm = async () => {
     modal.hidden = false;
     vmForm(null);
     // The list of managers comes from the server; it is the templates that
@@ -2048,14 +2035,39 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (!modal.hidden && body.querySelector("#vmGo") && !body.querySelector(".vmmade")) vmForm(null); }
     }
   };
-  const en = root.querySelector("#ndEnroll");
-  if (en) en.onclick = () => { modal.hidden = false; mintForm(); };
+  const openEnroll = () => { modal.hidden = false; mintForm(); };
   // The backdrop closes it, like every other dialog on the page. Not while
   // the token is up: that is the one thing here shown once, and closing it by
   // a stray click on the room around it would lose the command.
   modal.onclick = e => {
     if (e.target === modal && !body.querySelector(".ndtoken")) shut();
   };
+  return {modal, body, shut, mintForm, vmForm, openVm, openEnroll};
+}
+
+function wireNodesTab(root){
+  wireSignin(root);
+  wireCharts(root);
+  root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
+  root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
+  root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () =>
+    nodeProjectRemove(b, b.dataset.ndproj, b.closest("[data-node]")?.dataset.node || ""));
+  const pick = root.querySelector("#ndPick");
+  if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
+                                    nodesRev++; drawPanes(); };
+  // The root asks answer through the phone's endpoint, which holds the one
+  // list of asks; phFetch redraws this tab when the answer comes back.
+  root.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
+    b.disabled = true; b.textContent = "running";
+    phFetch({action: "allow", id: Number(b.dataset.rallow)});
+  });
+  root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
+    phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
+  const {modal, body, shut, mintForm, vmForm, openVm, openEnroll} = ndDialogs();
+  const vm = root.querySelector("#ndVm");
+  if (vm) vm.onclick = openVm;
+  const en = root.querySelector("#ndEnroll");
+  if (en) en.onclick = openEnroll;
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;

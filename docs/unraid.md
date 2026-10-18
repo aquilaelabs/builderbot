@@ -264,11 +264,12 @@ notebook context.
    until somebody claims the container, whoever can reach the port can. After
    that, `bb users passwd <name>` changes a password and the Users tab adds
    everyone else
-4. **Finish the setup page.** It shows the controller's basics with their
-   defaults, then asks for the first node (**Enroll node** or **Create
-   sandbox VM** on the Nodes tab beneath it). The rest of the dashboard opens
-   once a node that runs sessions (not a hosting-only one) is enrolled and
-   answering: nothing runs without one
+4. **Finish the setup page.** Its first step is the first node (**Enroll
+   node** or **Create sandbox VM**, in its card); then your name and email,
+   Claude Code on the node and a first project, which can wait for Home's
+   Getting started card. The rest of the dashboard opens once a node that
+   runs sessions (not a hosting-only one) is enrolled and answering: nothing
+   runs without one
 
 You get container status and every node's runner, a rendered report of whatever SARIF your
 scanner drops in `/reports`, every `bb` command as a button that types into the

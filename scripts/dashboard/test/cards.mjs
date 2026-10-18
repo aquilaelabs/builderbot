@@ -4,7 +4,7 @@
 // project on several nodes, and dialogs that scroll.
 import { launch, newPage, ok, done, ready, openArchived, doctorFixture, animatedDuring, refreshUntil,
          holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold, registerProject,
-         saveDialog, sectSave } from './lib.mjs';
+         saveDialog, sectSave, sleep } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -881,9 +881,17 @@ ok(true, '...and so does a click on the page under it');
     body: JSON.stringify({ action: 'prefs', prefs: p }) })).json();
   await prefs({ welcome_seen: false });
   await page.reload(); await ready(page);
+  // An administrator has Home's Getting started for this (R267, the
+  // operator 18 Oct): the guide over it would be two at once, so it does
+  // not open by itself for one; it is About's, on its guide.
+  await sleep(2500);
+  ok(await page.$eval('#aboutModal', e => e.hidden),
+     'an administrator who has not read the guide is not shown it on sign-in: Home\'s Getting started is theirs');
+  await page.click('#bAbout');
   await page.waitForSelector('#aboutModal:not([hidden])', { timeout: 15000 });
+  await page.click('.abswitch [data-ab="guide"]');
   ok(await page.$eval('#abGuide', e => !e.hidden && /Your profile/.test(e.textContent) && /As an administrator/.test(e.textContent)),
-     'an account that has not read the guide gets the panel on sign-in, open on the guide: the administrator\'s, for an owner');
+     '...and About opens on the guide: the administrator\'s, for an owner');
   await page.click('.abswitch [data-ab="log"]');
   // Whatever the top section is: Unreleased while entries are accumulating,
   // a dated number the moment somebody bumps. Asserted on the SHAPE (a

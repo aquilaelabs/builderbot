@@ -1018,15 +1018,38 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:56px 1fr;
    above and the bottom bar below with no gap, so what scrolls goes under
    both (the operator, 16 Oct); the header's line and the bar's close it. */
 @media(max-width:900px){ main{grid-template-columns:1fr;padding:0;gap:0} main>.col{gap:0} }
-/* First run (R199): the setup panel over the Nodes tab, and nothing else
-   until Finish: no rail, no bell, no doctor, at every width. */
+/* First run (R199, R267): the setup page and nothing else until Finish: no
+   rail, no bell, no doctor, and no panes, so no dock, at every width. The
+   page is the content area's whole height, its steps at the reading width. */
 body.firstrun main{grid-template-columns:1fr}
 body.firstrun .rail, body.firstrun .railbar, body.firstrun .railmore{display:none}
-body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:none}
-.setup{flex:0 1 auto;max-height:60%;overflow:auto;background:var(--panel);
-  border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:var(--row-y) var(--row-x)}
-.setup .setuphead h2{margin:0 0 4px;font-size:16px}
-.setup .setuphead p{margin:0 0 10px}
+body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport, body.firstrun #jump{display:none}
+body.firstrun #panes{display:none}
+.setup{flex:1 1 auto;min-height:0;overflow:auto;background:var(--panel);
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
+@media(max-width:900px){ .setup{border:0;border-radius:0} }
+.setuppage{max-width:var(--doc-w);margin:0 auto;padding:20px var(--row-x) 32px;display:flex;flex-direction:column;gap:12px}
+.setuphead h2{margin:0 0 6px;font:var(--f-sect);font-size:20px;color:var(--ink)}
+.setuphead p{margin:0;color:var(--dim)}
+/* A step: its number, its title and its state on one line, what it is under
+   them, and its actions at the card's foot on the right. */
+.setstep{background:var(--bg);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+  padding:var(--row-y) var(--row-x);display:flex;flex-direction:column;gap:8px}
+.setstephead{display:flex;align-items:center;gap:10px}
+.setstephead h3{margin:0;font:var(--f-sect);color:var(--ink);flex:1 1 auto;min-width:0}
+.setnum{flex:0 0 auto;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  font:var(--f-pill);color:var(--dim);border:var(--hair) solid var(--line)}
+.setstep.done .setnum{color:var(--pass);border-color:var(--green2-edge)}
+.setstepbody p{margin:0;color:var(--dim)}
+.setstepbody p b{color:var(--ink)}
+.setstep>.actbar{justify-content:flex-end;flex-wrap:wrap}
+.setfields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--field-gap);margin-top:8px}
+.setfields input{width:100%;box-sizing:border-box;min-height:var(--ctl);padding:8px 9px;font:var(--f-field)}
+@media(max-width:600px){ .setfields{grid-template-columns:minmax(0,1fr)} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .setfields input{font-size:16px} } }
+.setfinish{display:flex;flex-direction:column;gap:8px;padding-top:4px}
+.setfinish p{margin:0;font:var(--f-note)}
+.setfinish>.actbar{justify-content:flex-end}
 /* What un-enrolling does, in the reset dialog and a node's Un-enroll: a sunk box, the
    same ground as a public key's, so it reads as a note and not a control. */
 .resetwhat{margin:8px 0;background:var(--sunk);border:var(--hair) solid var(--line);
@@ -1059,6 +1082,13 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
    too (the operator, 17 Oct: the headings sat 4px left of the tiles'). */
 .hcard h3,.hsect h3{margin:0;padding:10px 16px;font:var(--f-sect);border-bottom:var(--hair) solid var(--line)}
 .hnone{padding:10px 16px;color:var(--dim);font:var(--f-ui)}
+/* Getting started (R267): a line per step, its tick in first run's circle,
+   its way there at the right; a step done is dim. */
+.hstart h3{display:flex;align-items:center;gap:8px}
+.hstart h3 .sst{margin-left:auto;font:var(--f-ui);color:var(--dim)}
+.hsrow{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:var(--hair) solid var(--line);min-height:var(--tap)}
+.hsrow.done{color:var(--dim)}
+.hsrow.done .setnum{color:var(--pass);border-color:var(--green2-edge)}
 .hcard .hjob{width:100%;text-align:left;background:none;border:0;border-radius:0;padding:8px 16px;
   border-bottom:var(--hair) solid var(--line);white-space:normal;justify-content:flex-start;min-height:var(--tap)}
 .hcard .hjob:last-child{border-bottom:0}
@@ -6239,8 +6269,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
        bar at the foot of the page, and this column is not drawn. -->
   <nav id="rail" class="rail" aria-label="pages"></nav>
   <div class="col term">
-    <!-- First run (R199): the setup page, over the Nodes tab, until Finish.
-         page-setup.js draws it. -->
+    <!-- First run (R199, R267): the setup page, in the panes' place, until
+         Finish. page-setup.js draws it. -->
     <div class="setup" id="setupPanel" hidden></div>
     <div class="panes" id="panes">
       <!-- No `active`: that outline says WHICH of two panes has the keyboard

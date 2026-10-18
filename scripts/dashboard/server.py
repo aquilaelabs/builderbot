@@ -161,7 +161,7 @@ SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first ac
   <label for="u">Username</label>
   <input id="u" name="username" autocomplete="username" autocapitalize="none"
     required autofocus>
-  <label for="p">Password</label>
+  <label for="p">Password, at least 8 characters</label>
   <input id="p" name="password" type="password" autocomplete="new-password"
     minlength="8" required>
   <label for="p2">Password again</label>

@@ -2068,10 +2068,11 @@ reaches them only through `bb` verbs that submit jobs; the artifacts come
 back into `dist/`. A VM is therefore required for full function, and the
 sandbox VM the Docker manager already needs is the first node: `provision-linux.sh
 --controller URL --token bbe_…` enrolls it in the same run. Since 12 Oct
-(R199) a first run asks for it before anything else: the setup page makes
-the owner account, shows the controller's basics, and opens nothing more
-until a node is enrolled and answering, made with Create sandbox VM or
-Enroll node, and one that runs sessions rather than a hosting-only one.
+(R199) a first run asks for it before anything else: after the owner
+account, the setup page's first step is the node, and it opens nothing more
+until one is enrolled and answering, made with Create sandbox VM or Enroll
+node in that step's card, and one that runs sessions rather than a
+hosting-only one.
 
 Three things follow, in the order they have to happen.
 

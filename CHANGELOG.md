@@ -394,6 +394,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A page's sub-nav (Nodes, Storage, nginx and the like) is tabs along the bar instead of a boxed switch, and every state that can be good or bad (healthy, running, passed) keeps its own green, amber and red in every color scheme (568dc79)
 - A container's settings open in a dialog from Edit settings under its ⋯ menu (568dc79)
 - Pages change smoothly: a picked settings section, person or role fades in, chips and Cards/List fade their lists, and the line under the current tab and the rail's bar slide to what you press (658cbbf)
+- First run is four steps, each a card with its own button: your first node, your name and email, Claude Code on that node, and a first project; only the node holds up Finish, and Home's Getting started card keeps the rest until they are done. Storage paths and the idle timeout are no longer asked; their defaults are under Controller settings (f985669)
 
 ### Removed
 
