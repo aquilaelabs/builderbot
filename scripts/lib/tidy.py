@@ -116,19 +116,46 @@ def listening(root=PROC):
     return out
 
 
+def ppid_of(pid, root=PROC):
+    try:
+        with open(os.path.join(root, str(pid), "stat"), encoding="utf-8") as f:
+            return int(f.read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        return -1
+
+
+# What a tool call's background job runs under between Claude Code and its
+# server: the call's own shell, bb run's, and what wraps a command.
+LAUNCHERS = ("bash", "sh", "env", "timeout", "nohup", "setsid")
+
+
 def orphaned(pid, root=PROC):
     """Whether what started this process is gone: it was adopted by the
     session's first process or by Claude Code, which adopts what a tool
-    call put in the background once that call's shell has ended."""
-    try:
-        with open(os.path.join(root, str(pid), "stat"), encoding="utf-8") as f:
-            ppid = int(f.read().rsplit(")", 1)[1].split()[1])
-    except (OSError, ValueError, IndexError):
+    call put in the background once that call's shell has ended. Or it is a
+    background tool call's own job still running, reached from Claude Code
+    through nothing but shells and bb run: nobody keeps that open once the
+    task is done, and tidy said nothing was running beside one (B840)."""
+    ppid = ppid_of(pid, root)
+    if ppid < 0:
         return False
     if ppid <= 1:
         return True
     info = proc_info(ppid, root)
-    return bool(info) and info[0] == "claude"
+    if not info:
+        return False
+    if info[0] == "claude":
+        return True
+    for _ in range(6):
+        if info[0] not in LAUNCHERS:
+            return False
+        ppid = ppid_of(ppid, root)
+        info = proc_info(ppid, root) if ppid > 1 else None
+        if not info:
+            return False
+        if info[0] == "claude":
+            return True
+    return False
 
 
 def suite_running(tmp=None):

@@ -68,10 +68,17 @@ class Tidy(unittest.TestCase):
         proc(r, 50, "python3", "python3 /tmp/bb-suite.x1/scripts/dashboard/server.py", ppid=1, fds=["socket:[5001]"])
         proc(r, 9, "claude", "claude")
         proc(r, 60, "node", "node vite.js --port 5173", ppid=9, fds=["socket:[5003]"])
+        # A background tool call's own server, still running (B840): the call's
+        # shell, bb run's, then the server, under Claude Code.
+        proc(r, 70, "bash", "bash -c bb run -- python3 server.py", ppid=9)
+        proc(r, 71, "bash", "bash /opt/builderbot/scripts/bb run -- python3 server.py", ppid=70)
+        proc(r, 72, "python3", "python3 scripts/dashboard/server.py", ppid=71, fds=["socket:[5003]"])
         got = sorted(tidy.processes(root=r, uid=UID, spare=set()))
-        self.assertEqual(got, [(10, "node", "server"), (11, "python3", "server"), (60, "node", "server")],
-                         "an orphan listening goes, adopted by pid 1 or by Claude Code; a running suite's server, "
-                         "the harness's own, a connection and an idle node stay")
+        self.assertEqual(got, [(10, "node", "server"), (11, "python3", "server"), (60, "node", "server"),
+                               (72, "python3", "server")],
+                         "an orphan listening goes, adopted by pid 1 or by Claude Code, and so does a background "
+                         "tool call's own server; a running suite's server, the harness's own, a connection and "
+                         "an idle node stay")
 
     def test_no_server_is_ended_while_a_test_run_holds_its_lock(self):
         r, t = self.root, Path(self.root, "tmp", "dashboard-test.d")
