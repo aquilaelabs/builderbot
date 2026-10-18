@@ -6247,7 +6247,9 @@ quietFields(document.documentElement);
   const shape = el.dataset.skel;
   if (shape === "page"){
     const pg = bootPage(location.hash), rl = bootRail(pg.rail);
-    el.outerHTML = `<div class="loading skel skboot"><span class="sk-said">${esc(el.textContent.trim() || "loading")}</span>${pg.bar}${pg.body}</div>`;
+    const id = `skboot${Math.random().toString(36).slice(2)}`;
+    el.outerHTML = `<div class="loading skel skboot" id="${id}"><span class="sk-said">${esc(el.textContent.trim() || "loading")}</span>${pg.bar}${pg.body}</div>`;
+    if (pg.tool) bootOwn($(id), pg.tool);
     if (!$("rail").innerHTML.trim()) $("rail").innerHTML = rl.rail;
     if (!$("railbar").innerHTML.trim()) $("railbar").innerHTML = rl.bar;
     return;

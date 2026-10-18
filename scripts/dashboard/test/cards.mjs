@@ -2387,18 +2387,39 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
 // operator, 18 Oct: it showed the boot's placeholder, then the page's own
 // while only then asking for its data): its reads start before the status
 // read has answered, and each is asked once.
+// Where each of these reads was asked from, said when one is asked twice.
+await page.addInitScript(() => {
+  const real = window.fetch; window.__asks = [];
+  window.fetch = function(u){ window.__asks.push(`${String(u)} <- ${(new Error().stack || '').split('\n').slice(2, 5).map(l => l.trim()).join(' < ')}`);
+    return real.apply(this, arguments); };
+});
 for (const [addr, reads] of [['#/people/users', ['/api/users', '/api/roles']],
                              ['#/projects/alpha', ['/api/roadmap?project=alpha', '/api/memory?project=alpha', '/api/brief?project=alpha']]]){
   await page.goto(URL.replace(/\/$/, '') + '/' + addr); await ready(page);
+  const at = await page.waitForFunction(a => location.hash.startsWith(a) && location.hash, addr, { timeout: 10000 })
+    .then(h => h.jsonValue()).catch(() => page.evaluate(() => location.hash));
   const seen = []; let statusAt = Infinity;
-  const onReq = r => { const u = new globalThis.URL(r.url()); seen.push({ path: u.pathname + u.search, at: Date.now() }); };
-  const onRes = r => { if (new globalThis.URL(r.url()).pathname === '/api/status' && statusAt === Infinity) statusAt = Date.now(); };
+  // Only the reloaded page's own: the page before it may still be reading
+  // what its own open asked for when the reload starts.
+  let docAt = Infinity;
+  // ...and the status read the one that page asked for, by its request.
+  let statusReq = null;
+  const onReq = r => { if (r.resourceType() === 'document'){ docAt = Date.now(); return; }
+    if (Date.now() < docAt) return;
+    const u = new globalThis.URL(r.url());
+    if (u.pathname === '/api/status' && !statusReq) statusReq = r;
+    seen.push({ path: u.pathname + u.search, at: Date.now() }); };
+  const onRes = r => { if (r.request() === statusReq && statusAt === Infinity) statusAt = Date.now(); };
+  // The page before it quiet first: what its own open asked for is its own.
+  await page.waitForTimeout(1500);
   page.on('request', onReq); page.on('response', onRes);
   await page.reload(); await ready(page);
   await page.waitForTimeout(1500);
   page.off('request', onReq); page.off('response', onRes);
   const got = reads.map(u => ({ u, n: seen.filter(x => x.path === u).length, early: seen.some(x => x.path === u && x.at <= statusAt) }));
+  const twice = got.filter(g => g.n > 1).map(g => g.u);
+  if (twice.length) console.log((await page.evaluate(us => window.__asks.filter(a => us.some(u => a.startsWith(u + ' '))), twice)).join('\n'));
   ok(got.every(g => g.n === 1 && g.early),
-     `a reload at ${addr} asks for the page's own data beside the status read, once each (${got.map(g => `${g.u.replace(/\?.*/, '')} ${g.n}x${g.early ? ' early' : ' late'}`).join(', ')})`);
+     `a reload at ${addr} asks for the page's own data beside the status read, once each (at ${at}; ${got.map(g => `${g.u.replace(/\?.*/, '')} ${g.n}x${g.early ? ' early' : ' late'}`).join(', ')})`);
 }
 await done(browser);

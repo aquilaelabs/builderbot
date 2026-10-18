@@ -16,17 +16,22 @@ let bootSeen = null;                      // which run of the container this pag
 let preStatusUsed = false;                // the head's early fetch: once only
 
 // A read the head began for the page the address names (preGets), shared
-// by whoever asks for it until a moment after the first status read is
-// drawn, each with a copy of its answer: the page's loader at load and its
-// open on that first draw are one read, taken beside the status read. Then
-// they are dropped (bootReadsDone), so nothing read at load is handed out
-// after the page could have moved on.
+// by whoever asks for it, each with a copy of its answer: the page's loader
+// at load and its open on the first draw are one read, taken beside the
+// status read. Taken after that draw, it is dropped once it has landed
+// (the page has opened on it; whoever asks while it is still on its way
+// shares it), or five seconds after the draw when nothing took it, so
+// nothing read at load is handed out after the page moved on.
+let bootDrawn = false;
 function bootFetch(url){
   const p = preGets[url];
-  return p ? p.then(r => r.clone()) : fetch(url);
+  if (!p) return fetch(url);
+  if (bootDrawn) p.finally(() => { if (preGets[url] === p) delete preGets[url]; });
+  return p.then(r => r.clone());
 }
 function bootReadsDone(){
-  setTimeout(() => { for (const k of Object.keys(preGets)) delete preGets[k]; }, 1000);
+  bootDrawn = true;
+  setTimeout(() => { for (const k of Object.keys(preGets)) delete preGets[k]; }, 5000);
 }
 
 // Terminal tabs whose session we have actually watched running.
@@ -188,9 +193,10 @@ async function refresh(){
       findings = null;
     if (findings && !findings.loading && findings.agesKey === undefined)
       findings.agesKey = agesKey;
+    // The first draw opens the page the address named: a read begun at load
+    // that it takes from here is its last (bootFetch).
+    if (!bootDrawn) bootReadsDone();
     render();
-    // The page the address named has opened on the reads begun at load.
-    if (Object.keys(preGets).length) bootReadsDone();
     // Cleared at the END, not where the fetch landed: a poll that arrives
     // and then fails on this page is still a failed poll, and resetting the
     // count on arrival read every one of those as the first.

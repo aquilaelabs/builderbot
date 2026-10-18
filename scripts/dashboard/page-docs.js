@@ -150,7 +150,25 @@ function bootPage(hash){
   // The rest: their rows in a floating card, as the pages draw them at a
   // desk (their exact first paints are R218's templates step).
   else body = doc("", `<div class="field"><div class="sk-card skrows">${skRows(6)}</div></div>`);
-  return {rail: key, bar, body: `<div class="skstack">${body}</div>`};
+  return {rail: key, bar, body: `<div class="skstack">${body}</div>`, tool: key === "projects" && parts[1] === "analysis" ? "findings" : tool};
+}
+
+// ...and in it, the page's own placeholder where it has one: the page drawn
+// by its own render into the boot's frame (doc "boot") with nothing loaded
+// yet, which is what a page opened by a press shows while it waits (the
+// operator, 18 Oct: a reload showed a placeholder of its own and then the
+// page's). A page that cannot draw before the first status read keeps the
+// boot's shape.
+function bootOwn(root, tool){
+  const doc = root?.querySelector(".skstack > .doc");
+  const spec = TABKINDS[tool];
+  if (!doc || !spec?.render || tool === "projects") return;
+  const was = doc.innerHTML;
+  doc.id = "docboot";
+  doc.innerHTML = "";
+  try{ spec.render("boot"); }catch(e){ doc.innerHTML = was; }
+  if (!doc.querySelector(".doclist > *")) doc.innerHTML = was;
+  doc.removeAttribute("id");
 }
 
 // A page of settings on its way, in splitSects' shape: its sections' names
