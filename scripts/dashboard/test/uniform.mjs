@@ -403,7 +403,15 @@ async function language(){
       const c = getComputedStyle(n);
       return vis(n) && (/mono/i.test(c.fontFamily) || parseFloat(c.borderLeftWidth) < 2);
     }).map(n => `${named(n)} "${n.textContent.trim().slice(0, 20)}"`);
-    return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects, alien, flat };
+    // Room between words and the buttons under them (R218 step 55, the
+    // operator, 18 Oct: text all but touching its buttons): a line of prose,
+    // a hint or a facts list followed by an action bar keeps 8px or more.
+    const tight = [...box.querySelectorAll('.sub, .hint, .note, p, dl.facts, .notice')].filter(t => {
+      const n = t.nextElementSibling;
+      if (!n || !vis(t) || !vis(n) || !t.textContent.trim() || !n.matches('.actbar, .acts') || !n.querySelector('button')) return false;
+      return n.getBoundingClientRect().top - t.getBoundingClientRect().bottom < 8;
+    }).map(t => `${named(t)} "${t.textContent.trim().slice(0, 20)}"`);
+    return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects, alien, flat, tight };
   }, { NOT_A_BAR });
 }
 
@@ -673,6 +681,8 @@ for (const kind of kinds){
      `[${kind}] every button speaks in the page's font${L.alien.length ? `; not: ${L.alien.slice(0, 6).join(', ')}` : ''}`);
   ok(L.flat.length === 0,
      `[${kind}] a notice is sans behind a bar of its color${L.flat.length ? `; not: ${L.flat.slice(0, 6).join(', ')}` : ''}`);
+  ok(L.tight.length === 0,
+     `[${kind}] words keep room from the buttons under them${L.tight.length ? `; not: ${L.tight.slice(0, 6).join(', ')}` : ''}`);
   L.layout.forEach(x => seenBars.add(x));
   L.sects.forEach(x => seenSects.add(x.skin));
   L.reds.forEach(x => seenReds.add(x));
