@@ -1286,6 +1286,23 @@ for (const kind of kinds){
     ok(held.includes('docIn') && held.includes('docOut') && out === 'visible',
        `a switch between two pages is a crossfade, the one going out fading as the one coming in does (${held.join(', ') || 'nothing'}; out ${out})`);
   }
+  // The line under a strip slides on transform alone, so the compositor runs
+  // it while the press draws the view (the operator, 18 Oct: it stuttered).
+  {
+    await onlyDocs(['notebook']);
+    await bring('notebook:roadmap');
+    await atRest();
+    const props = await page.evaluate(async () => {
+      document.querySelector('.pane .doc.on .nbtabs [data-v="bugs"]').click();
+      for (let i = 0; i < 40; i++){
+        const a = document.querySelector('.pane .doc.on .nbtabs .nbsub > .slmark')?.getAnimations()[0];
+        if (a) return [...new Set(a.effect.getKeyframes().flatMap(k => Object.keys(k)))].filter(k => !['offset', 'easing', 'composite', 'computedOffset'].includes(k));
+        await new Promise(r => setTimeout(r, 5));
+      }
+      return null;
+    });
+    ok(props && props.join() === 'transform', `a strip's line slides on transform alone (${props ? props.join(', ') : 'no slide'})`);
+  }
   // ...and what a press redraws inside a page fades through the same way
   // (the operator, 18 Oct): a settings section, a role and a notebook view,
   // each leaving a still copy fading out on docOut's time while the new part

@@ -354,8 +354,13 @@ function slideMark(box, key, vertical = false){
   if (m.style[dim] !== `${size}px`) m.style[dim] = `${size}px`;
   const was = SLIDE_MARKS[key];
   SLIDE_MARKS[key] = {at, size, el: m};
-  if (was && (was.at !== at || was.size !== size) && !noMotion())
-    m.animate([{transform: move(was.at), [dim]: `${was.size}px`}, {transform: move(at), [dim]: `${size}px`}],
+  // Transform alone, so the compositor runs it (the operator, 18 Oct: the
+  // notebook's line stuttered): the marker takes its new size at once and
+  // its old size is a scale that eases to 1, rather than a width animated
+  // on the main thread, which the view drawn on the same press held up.
+  const scale = n => vertical ? `scaleY(${n})` : `scaleX(${n})`;
+  if (was && (was.at !== at || was.size !== size) && size > 0 && !noMotion())
+    m.animate([{transform: `${move(was.at)} ${scale(was.size / size)}`}, {transform: `${move(at)} ${scale(1)}`}],
               {duration: 260, easing: "cubic-bezier(.33,1,.68,1)"});
 }
 
