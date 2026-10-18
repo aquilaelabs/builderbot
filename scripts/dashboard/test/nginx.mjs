@@ -294,9 +294,12 @@ ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.
   await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"]', { timeout: 20000 });
   await page.evaluate(() => openEditContainer('nginx-sandbox'));
   await page.waitForSelector('#cmodal:not([hidden])');
-  ok(await page.evaluate(() => document.getElementById('cName').disabled && document.getElementById('cGo').disabled
-       && document.getElementById('cEnv').readOnly && document.getElementById('cYml').readOnly
-       && /BuilderBot manages this one/.test(document.getElementById('cNameHint').textContent)),
+  // Locked once its own read has landed, which the dialog opens before: read
+  // in the instant it opened, under a whole run's load it was not yet.
+  const locked = () => document.getElementById('cName').disabled && document.getElementById('cGo').disabled
+    && document.getElementById('cEnv').readOnly && document.getElementById('cYml').readOnly
+    && /BuilderBot manages this one/.test(document.getElementById('cNameHint').textContent);
+  ok(await page.waitForFunction(locked, null, { timeout: 15000 }).then(() => true, () => false),
      '...and its Edit dialog is for reading: name, compose file and env locked, Save ghosted');
   await page.evaluate(() => { document.getElementById('cmodal').hidden = true; openNginxTab(); });
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: kept, drop_cert: 'www.example.com' });

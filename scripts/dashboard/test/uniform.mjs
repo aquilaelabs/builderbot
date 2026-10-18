@@ -1300,7 +1300,10 @@ for (const kind of kinds){
       focusTab(id);
       window.__held = document.getAnimations().filter(a => a.playState === 'running' || a.pending);
       window.__held.forEach(a => { a.pause(); a.currentTime = 0; });
-      const l = document.querySelector('.pane .stack > .doc.leaving');
+      // ...in the pane the switch is in: under load the dock's pane can still
+      // hold a page of its own leaving, its timer late, and out of sight it
+      // read hidden.
+      const l = document.querySelector('#pane0 .stack > .doc.leaving');
       return { held: window.__held.map(a => a.animationName || '').filter(Boolean),
                out: l ? getComputedStyle(l).visibility : 'none' };
     }, await tabIdOf('notebook'));

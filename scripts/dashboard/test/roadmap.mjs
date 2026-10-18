@@ -1667,7 +1667,10 @@ ok(strip.clipped && strip.onScreen,
    'the notebook strip scrolls rather than spilling, with the current tab in view');
 
 await nbGo(phone, 'briefing'); // every control on screen at once
-await phone.evaluate(() => { document.getElementById('memSect').open = true; });
+// Opened by its heading, as a person would: one set open by hand is not the
+// reader's choice, and a poll's redraw on a phone shut it again for the one
+// it keeps, which a whole run's load let land inside the wait below.
+await phone.evaluate(() => { const d = document.getElementById('memSect'); if (!d.open) d.querySelector(':scope > summary').click(); });
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
   const out = [];
