@@ -1296,6 +1296,28 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
   select option:disabled{color:var(--dim);background:none}
   select option::checkmark{flex:0 0 auto;color:var(--accent)}
 }
+/* ...and where base-select is not there (Firefox, Safari: the operator, 18
+   Oct, asked that they match Chrome), the CLOSED picker is still drawn the
+   page's way: the native one put a chevron of the platform's own in a box
+   20px wider than Chrome's. Its ▼ is two half squares in --dim, as
+   gradients, since a data URI cannot read a token and a select has no
+   ::after; the end padding is the arrow's, as it is above. The open list
+   stays the browser's, which nothing here can reach. */
+@supports not (appearance: base-select){
+  /* :not([multiple]) for weight: the field skin below is as heavy as a
+     bare select and comes later, and its background shorthand cleared the
+     arrow. */
+  select:not([multiple]){appearance:none;-webkit-appearance:none;padding-inline-end:28px !important;
+    background-image:linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+      linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+    background-position:calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+    background-size:5px 5px;background-repeat:no-repeat;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  select:disabled{opacity:.5;cursor:default}
+}
+/* A number field's spin arrows: Chrome shows them on hover alone, Firefox
+   drew them always, crowding the five characters the field is wide for. */
+input[type="number"]{-moz-appearance:textfield}
 @media(prefers-reduced-motion:reduce){
   select::picker-icon{transition:none}
   select::picker(select){animation:none}
@@ -3811,6 +3833,36 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
+/* A bar button's short words (barSaid): kept for a phone. */
+.shrt{display:none}
+/* On a phone a page's bar is one line of its picker and its buttons (the
+   operator, 18 Oct: the node pulldown and the buttons fit on one line,
+   everywhere). The picker drops its word, which the node's name beside it
+   says, and shrinks to what is left, its name cut short last; the buttons
+   take their short words and never wrap; a search box gives up width
+   rather than its line, and on Containers, where a search and Cards and
+   List are on the bar as well, those two take the second line. */
+@media(max-width:600px){
+  /* Half the bar at most: Firefox and Safari size a picker to its longest
+     option, a disabled one's reason included, where Chrome sizes it to the
+     one chosen. */
+  .doctab .field.docbarrow>label.pick{flex:0 1 auto;min-width:0;max-width:50%;display:inline-flex;align-items:center;margin-inline-end:auto}
+  .doctab .field.docbarrow>label.pick>.pickw{display:none}
+  /* :not() twice: the cap on every bar control above is (0,5,1). */
+  .doctab .field.docbarrow>label.pick>select:not([multiple]):not([size]){min-width:0;max-width:none;width:auto;flex:0 1 auto}
+  .doctab .field.docbarrow>.sp{display:none}
+  .doctab .field.docbarrow>.actbar{flex:0 1 auto;min-width:0;flex-wrap:nowrap;justify-content:flex-end;margin-inline-start:auto}
+  .doctab .field.docbarrow>.actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .doctab .field.docbarrow>input{flex:1 1 0;min-width:7em}
+  .doctab .field.docbarrow.dmpick>input{order:5;flex-basis:0}
+  .doctab .field.docbarrow.dmpick>.pseg{order:6}
+  .projtab .docbarrow #pjSearch{flex:1 1 0;min-width:7em}
+  /* A runner's three actions, in their short words, on the row's one line. */
+  .ndrun .actbar{flex-wrap:nowrap}
+  .ndrun .actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap}
+  .lng{display:none}
+  .shrt{display:inline}
+}
 :is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.

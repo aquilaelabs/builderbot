@@ -34,7 +34,7 @@
 // says so. `why(n)` is "" for one that can.
 function nodePick(id, nodes, cur, why = () => ""){
   if (!nodes.length) return "";
-  return `<label class="pick">Node <select id="${esc(id)}" aria-label="node">${nodes.map(n => {
+  return `<label class="pick"><span class="pickw">Node</span> <select id="${esc(id)}" aria-label="node">${nodes.map(n => {
     const w = why(n);
     return `<option value="${esc(n.id)}"${n.id === cur ? " selected" : ""}${w ? " disabled" : ""}>${esc(n.name)}${
       w ? `: ${esc(w)}` : n.live === false ? " (quiet)" : ""}</option>`;
@@ -96,8 +96,17 @@ function skTpl(html, {said = "loading…", live = false} = {}){
 // there and dead until the page they act on has drawn. An action given as
 // [label, "primary"] is the page's main action and wears its fill.
 function skNodeBar(actions = []){
-  return `<label class="pick">Node ${skv(7, "ctl")}</label><span class="sp"></span><span class="actbar">${
-    actions.map(a => [].concat(a)).map(([a, cls]) => `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${esc(a)}</button>`).join("")}</span>`;
+  return `<label class="pick"><span class="pickw">Node</span> ${skv(7, "ctl")}</label><span class="sp"></span><span class="actbar">${
+    actions.map(a => [].concat(a)).map(([a, cls, short]) => `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${
+      short ? barSaid(a, short) : esc(a)}</button>`).join("")}</span>`;
+}
+// A bar button's words at both widths (the operator, 18 Oct: the node
+// picker and a page's buttons on one line on a phone). On a phone the short
+// form shows; where it is the start of the long one the rest is a span a
+// phone hides, so the button's text is still the whole label everywhere.
+function barSaid(full, short){
+  return full.startsWith(short) ? `${esc(short)}<span class="lng">${esc(full.slice(short.length))}</span>`
+    : `<span class="lng">${esc(full)}</span><span class="shrt">${esc(short)}</span>`;
 }
 // ---- the first paint, shaped like the page the address names ----------------
 // What a reload shows until the first snapshot lands (the operator, 17 Oct:

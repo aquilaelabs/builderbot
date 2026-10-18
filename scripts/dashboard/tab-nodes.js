@@ -365,11 +365,11 @@ function nodeRunnerSection(n, c, between = ""){
           <button type="button" data-nrunner="install" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
             title="${why || (stored ? "install the runner here and register it with the stored token"
                                     : "add a token first")}">${
-            rep.installed ? "Reinstall runner" : "Install runner"}</button>
+            rep.installed ? barSaid("Reinstall runner", "Reinstall") : barSaid("Install runner", "Install")}</button>
           ${stored ? `<button type="button" class="danger" data-nrunnerforget data-slot="${esc(slot)}" ${busyNow ? "disabled" : ""}
-            title="drop the stored token and this row; a registered runner keeps running">Forget token</button>` : ""}
+            title="drop the stored token and this row; a registered runner keeps running">${barSaid("Forget token", "Forget")}</button>` : ""}
           ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
-            title="${why || (stored ? "deregister it and remove it from this node" : "add a token first")}">Remove runner</button>` : ""}
+            title="${why || (stored ? "deregister it and remove it from this node" : "add a token first")}">${barSaid("Remove runner", "Remove")}</button>` : ""}
         </div>${ro ? `<div class="sub bad ndrunwhy">Your roles give no CI runner Write on this runner: an administrator gives it on the Users page.</div>` : ""}</div></div>`;
   }).join("");
   // Adding is a button that unrolls the form in its own band, the shape
@@ -1315,7 +1315,7 @@ function renderNodesInto(i){
     const sects = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["claude", "Claude Code"],
                    ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
     d.setBar(`<label class="pick">Node ${skv(9, "ctl")}</label><span class="sp"></span>
-      <span class="actbar"><button type="button" disabled>Create sandbox VM</button><button type="button" class="primary" disabled>Enroll node</button></span>`);
+      <span class="actbar"><button type="button" disabled>${barSaid("Create sandbox VM", "New VM")}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span>`);
     // One card as the node's is: its head (name, facts, Test and Enroll
     // script, the sections' chips) and its sections inside it.
     d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
@@ -1351,8 +1351,8 @@ function renderNodesInto(i){
   d.setBar(`${nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick)}
     <span class="sp"></span>
     <span class="actbar">
-      <button type="button" id="ndVm">Create sandbox VM</button>
-      <button type="button" class="primary" id="ndEnroll">Enroll node</button>
+      <button type="button" id="ndVm">${barSaid("Create sandbox VM", "New VM")}</button>
+      <button type="button" class="primary" id="ndEnroll">${barSaid("Enroll node", "Enroll")}</button>
     </span>`);
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})

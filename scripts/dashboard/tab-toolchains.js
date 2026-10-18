@@ -462,7 +462,7 @@ function renderToolchainsInto(i){
   if (!d){
     // Its template (R218 step 16): the bar, the tile's words and the table's
     // head are the page's own; the store and its rows are on their way.
-    surf.setBar(skNodeBar(["Check for updates", ["Install selected", "primary"]]));
+    surf.setBar(skNodeBar([["Check for updates", "", "Check"], ["Install selected", "primary", "Install"]]));
     // In the page's own order: its bar with its two buttons, its tiles, its
     // status line, then the catalog's table.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
@@ -519,11 +519,11 @@ function renderToolchainsInto(i){
       <button data-tc="check"${busy || pstale || !may ? " disabled" : ""}
         title="ask each upstream what it has now">${
         busy && job.action === "check"
-          ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
-        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
+          ? `${barSaid("Checking for updates", "Checking")}<span class="dots">${".".repeat(tcDots)}</span>`
+        : (d.items || []).some(i => i.state) ? barSaid("Re-check for updates", "Re-check") : barSaid("Check for updates", "Check")}</button>
       ${!may ? "" : `<button class="primary" data-tc="install"${busy || pstale || !tcTicked.size ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
-        >Install selected</button>`}
+        >${barSaid("Install selected", "Install")}</button>`}
       ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}</span>`);
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).

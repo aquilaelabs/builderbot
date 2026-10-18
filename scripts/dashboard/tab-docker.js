@@ -2392,7 +2392,7 @@ function renderDockerInto(i){
     el.innerHTML = `<div class="doctab dmtab">${skTpl(`<div class="field histbar docbarrow dmpick"><label class="pick">Node ${skv(7, "ctl")}</label>${skv(16, "ctl")}
         <span class="sp"></span><div class="pseg dmviewseg"><button type="button" disabled class="${dmView === "cards" ? "on" : ""}">Cards</button><button type="button" disabled class="${
           dmView === "list" ? "on" : ""}">List</button></div>${
-          mayDocker() ? `<span class="actbar"><button type="button" disabled>Check for updates</button><button type="button" class="primary" disabled>New container</button></span>` : ""}</div>
+          mayDocker() ? `<span class="actbar"><button type="button" disabled>${barSaid("Check for updates", "Check")}</button><button type="button" class="primary" disabled>${barSaid("New container", "New")}</button></span>` : ""}</div>
       <div class="field"><div class="tiles">${tile("running", `of ${skv(2)} containers`)}${tile("updates due")}${tile("projects")}</div></div>
       ${mayDocker() ? headLine(`images checked ${skv(4)}`, "", "dmimgbar") : ""}
       ${dmView === "list" ? skTable(DM_COLS, 4)
@@ -2506,11 +2506,11 @@ function renderDockerInto(i){
       // (R195), weekly by itself or now: the page's upkeep, in the bar with
       // every header button (the operator, 17 Oct); a row that is behind
       // says so with Update.
-      blind ? "" : `<button type="button" id="bDockerCheck">Check for updates</button>`}${
+      blind ? "" : `<button type="button" id="bDockerCheck">${barSaid("Check for updates", "Check")}</button>`}${
       // The page's main action at the right of its bar (the operator, 17 Oct:
       // one order for every page's top), where a phone finds it without
       // scrolling past every container (R119 step 5).
-      `<button type="button" id="bDockerNew" class="primary">New container</button>`}</span>` : ""}</div>`;
+      `<button type="button" id="bDockerNew" class="primary">${barSaid("New container", "New")}</button>`}</span>` : ""}</div>`;
   // ...and its status line under the tiles: when the images were checked.
   const status = mayDocker() && !blind ? headLine(dockerList?.images_at ? `images checked ${esc(ago(dockerList.images_at))}` : "images not checked yet",
     "", "dmimgbar") : "";
