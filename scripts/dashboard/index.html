@@ -2967,6 +2967,11 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
     padding:0 var(--row-x) var(--row-y);align-self:start;position:sticky;top:12px}
   /* The Docker manager's group: the project its card's heading. */
   .dmtab .dmcard>.dmgroup{border-bottom:var(--hair) solid var(--line)}
+  /* ...and its stacks told apart (the operator, 18 Oct: a project's
+     instances ran together in its card): between two, a band of the page's
+     own ground the width of the gap between cards, a hairline either side,
+     so the card stays the project's and each stack in it reads as its own. */
+  .dmtab .dmcard>.row+.row{box-shadow:inset 0 12px 0 var(--bg),inset 0 13px 0 var(--line);padding-top:calc(var(--row-y) + 13px)}
   .dmtab .row + .dmgroup{margin-top:0}
 }
 
