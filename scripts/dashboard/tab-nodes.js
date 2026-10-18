@@ -299,7 +299,7 @@ function mountState(m, reported){
 // says is there, and the labels an install would register with: the node's
 // own name among them, which is the label a workflow's runs-on uses to land
 // here. Install and Remove are system jobs like the rest of the plane.
-function nodeRunnerSection(n, c){
+function nodeRunnerSection(n, c, between = ""){
   // One runner per git host on a node (R53): the record's asks and the
   // census's reports, joined by slot, each a row with its own state and
   // buttons; the addbar at the top takes a new one, host, address and
@@ -402,10 +402,14 @@ function nodeRunnerSection(n, c){
   // The node-scoped tool's shape, the Phone tab's too (R121 step 5): the
   // state row first, the things below it, the add band, and at the foot
   // what a workflow (or a session) does to reach this node.
+  // `between` is what the CI runner page puts under the state line: every
+  // node's runner at a glance (runnerRows). This node's runners are a list
+  // of their own, a card on that page (the operator, 18 Oct: it read as
+  // loose rows under lines that ran to the edge).
   return `${headLine(`<span class="pill ${pill}">${esc(status)}</span> One runner per git host; its labels decide which workflows land here.`,
-        "", "toolstate")}${n.runner_new === false && !c.addRunner ? `<div class="field"><div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div></div>` : ""}
+        "", "toolstate")}${between}${n.runner_new === false && !c.addRunner ? `<div class="field"><div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div></div>` : ""}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
-      ${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}
+      <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}</div>
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div></div>` : ""}`;
 }
@@ -870,7 +874,8 @@ function nodeAdvancedSection(n, stale, inflight){
       <div class="setrow col grow">${lbl("", "Name", "its name in the pickers, on the project rows and as a runner label")}
       <input data-k="name" value="${esc(c.draft.nameText)}" spellcheck="false" autocomplete="off"
         maxlength="60" aria-label="node name"></div>
-      <button type="button" data-nd="rename" title="a runner already installed keeps its old label until reinstalled">Rename</button>
+      <button type="button" data-nd="rename"${!String(c.draft.nameText || "").trim() || String(c.draft.nameText).trim() === n.name ? " disabled" : ""}
+        title="a runner already installed keeps its old label until reinstalled">Rename</button>
     </div>
     <div class="sub">Only needed when a path a compose file names is somewhere else on the node.</div>
     <div class="ndpaths actbar">
@@ -1063,7 +1068,7 @@ function nodeConfSections(n){
   const stores = ["data", "toolchains", "cache", "artifacts"].map(role => {
     const r = rep.stores?.[role];
     const now = r ? (r.free_mb === null ? `${r.path}: missing` : `${r.path}, ${
-      r.free_mb >= 10240 ? Math.round(r.free_mb / 1024) + "GB" : r.free_mb + "MB"} free`) : "";
+      sgb(r.free_mb)} free`) : "";
     return `
     <div class="ndstore">
       ${lbl("", role, STORE_ABOUT[role] || "")}
@@ -1227,8 +1232,8 @@ function meter(label, pct, right, title){
     <span class="val">${esc(right)}</span></div>`;
 }
 
-const gb = mb => mb === null || mb === undefined ? "?"
-  : mb >= 10240 ? Math.round(mb / 1024) + "GB" : Math.round(mb) + "MB";
+// Storage's reading of a size (sgb): TB past ten of them (B834: 11425GB).
+const gb = mb => sgb(mb);
 
 // Everything the census measured, as meters: what the machine is doing now,
 // and how much room each store has left.
@@ -1443,11 +1448,12 @@ function renderNodesInto(i){
       n.kind === "agent" ? (n.live ? "live" : "quiet") : "", `
         ${nodeMeters(n) || `<div class="empty">nothing measured yet</div>`}
         ${nodeCharts(n)}
+        <div class="ndhmore">
         ${nodeTools(n)}
         ${nodeGit(n)}
         ${nodeGpu(n)}
         ${nodeSound(n)}
-        ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
+        ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}</div>`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What
     // inside it needs one (Storage and Network) nodeConfSections decides.
@@ -1556,7 +1562,7 @@ function renderRunnerInto(i){
     // In the node's panel, as it lands: its rows are bands there, not a card.
     d.setBar(skNodeBar([["Add runner", "primary"]]));
     d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${headLine(`${skv(5)} One runner per git host; its labels decide which workflows land here.`,
-      "", "toolstate")}${skRows(1)}</div>`);
+      "", "toolstate")}<div class="ndruns">${skRows(1)}</div></div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
@@ -1567,7 +1573,9 @@ function renderRunnerInto(i){
   const show = d.el.querySelector("[data-nrunnershow]");
   if (show) show.onclick = () => { nodeDraft(n).addRunner = true; nodesRev++; drawPanes(); };
   d.list.innerHTML = n
-    ? `${runnerRows()}<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
+    ? `<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n),
+        // Several to compare; one is what the section under it says already.
+        (state?.node_runners || []).length > 1 ? runnerRows() : "")}</div></div>`
     : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
   d.list.querySelectorAll(".ndrunro button").forEach(b => { b.disabled = true; });
@@ -1777,14 +1785,21 @@ function wireNodesTab(root){
       if (reach.value === "public" && own && ctl.value === "https://") ctl.value = `https://${own}`;
       showHost();
     };
-    reach.onchange = showWg;
+    // Make the script wakes once a WireGuard way in has its config (the
+    // operator, 18 Oct): chosen or pasted.
+    const goReady = () => { const g = $b("#ndEnGo");
+      if (g && !g.dataset.busy) g.disabled = reach.value === "wireguard" && !$b("#ndEnWgText").value.trim() && !enrolled; };
+    reach.onchange = () => { showWg(); goReady(); };
     host.onchange = showHost;
+    $b("#ndEnWgText").addEventListener("input", goReady);
     showWg();
+    goReady();
     // A file chosen lands in the box, which is what is sent: one place to
     // read it, change it, or paste it instead.
     $b("#ndEnWg").onchange = async e => {
       const f = e.target.files?.[0];
       if (f) $b("#ndEnWgText").value = await f.text();
+      goReady();
     };
     // No focus, like every other dialog here: on a phone it would raise the
     // keyboard over the box it just opened.
@@ -2306,7 +2321,10 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     if (ni){
       ni.onfocus = () => { nodesFocus = {id, key: "name", pos: ni.selectionStart ?? undefined}; };
       ni.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.nameText = ni.value;
-                           nodesFocus = {id, key: "name", pos: ni.selectionStart ?? undefined}; };
+                           nodesFocus = {id, key: "name", pos: ni.selectionStart ?? undefined};
+                           // Rename wakes on a new name (the operator, 18 Oct).
+                           const rn = box.querySelector('[data-nd="rename"]'), v = ni.value.trim();
+                           if (rn) rn.disabled = !v || v === (nodesList.find(x => x.id === id)?.name || ""); };
     }
     // The same for the limit on sessions working at once, in the Sessions
     // section: a number is typed across a heartbeat as easily as a path.

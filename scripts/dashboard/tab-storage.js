@@ -109,16 +109,22 @@ function storageDisks(n){
     const ours = some.reduce((a, h) => a + (h.mb || 0), 0);
     const pct = fs.total_mb ? (fs.used_mb || 0) / fs.total_mb * 100 : 0;
     const also = fs.also?.length ? `, also at ${fs.also.join(", ")}` : "";
-    return `<div class="field stdisk"><div class="ndmeters">${
-        meter(fs.path, pct, `${sgb(fs.used_mb)} / ${sgb(fs.total_mb)}`,
+    // Each filesystem a card of its own (R218 step 47, the operator 18 Oct):
+    // its mount the heading, used of its size the status, then its meter,
+    // what of it is BuilderBot's and the rows of what that is.
+    return docSection("storage", `fs:${fs.path}`, fs.path, `${sgb(fs.used_mb)} of ${sgb(fs.total_mb)}`,
+      `<div class="field stdisk"><div class="ndmeters">${
+        // "used": the card's heading already names the filesystem.
+        meter("used", pct, `${sgb(fs.used_mb)} / ${sgb(fs.total_mb)}`,
               `${fs.source} (${fs.type}${fs.ro ? ", read-only" : ""})${also}`)}</div>${
         mine.length ? `<div class="sub">${ours ? `${sgb(ours)} of it is BuilderBot's` : "nothing of it is BuilderBot's yet"}</div>` : ""}</div>${
       some.map(storageRow).join("")}${
-      none.length ? `<div class="row stnone"><div class="grow"><div class="sub">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet</div></div></div>` : ""}`;
+      none.length ? `<div class="row stnone"><div class="grow"><div class="sub">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet</div></div></div>` : ""}`,
+      {cls: pct >= 92 ? "bad" : pct >= 80 ? "warn" : ""});
   };
   const out = fss.map(fs => block(fs, held.filter(h => h.fs === fs.path)));
   const off = held.filter(h => !fss.some(fs => fs.path === h.fs));
-  if (off.length) out.push(`<div class="field"><div class="sub">on a filesystem the walk did not measure</div></div>${off.map(storageRow).join("")}`);
+  if (off.length) out.push(docSection("storage", "fs:elsewhere", "Elsewhere", "not measured", off.map(storageRow).join("")));
   return out.join("");
 }
 
@@ -162,12 +168,11 @@ function storageBody(n, where){
     : "walked an hour after the agent starts, then every hour";
   return `<div data-stnode="${esc(n.node)}">
     ${headLine(`${pill} <span class="sub">${esc(facts)}</span>`, "", "toolstate")}
-    <div class="field"><div class="hint">Where its stores live is set on its row on the ${pageLink("nodes", "Nodes page")}.</div></div>
-    <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
+    <div class="field"><div class="hint">Each disk and what BuilderBot holds on it, largest first; where its stores live is set on its row on the ${pageLink("nodes", "Nodes page")}.</div></div>
     ${storageDisks(n)}
-    <div class="field">${lbl("", "By project")}
-      <div class="hint">What each project's folders hold on ${esc(n.name)}: its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.</div></div>
-    ${storageProjects(n, where)}
+    ${docSection("storage", "projects", "By project", `${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`,
+      `<div class="field"><div class="hint">What each project's folders hold on ${esc(n.name)}.${helpIcon("Its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.")}</div></div>
+      ${storageProjects(n, where)}`)}
     ${n.slow?.length ? `<div class="field"><div class="hint warn">Not measured in time: ${esc(n.slow.join(", "))}. A slow share; the next walk tries again.</div></div>` : ""}
   </div>`;
 }

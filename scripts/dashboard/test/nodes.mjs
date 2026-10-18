@@ -915,12 +915,16 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // while the fifteen-second poll is out returns at once and re-polls after
   // it, so the first draw here can be from an answer computed before this
   // hello. Wait for the state the assertion is about (B73).
+  // One runner is told by its own section; the list of every node's
+  // runners is for comparing several, so with one it is not drawn (the
+  // operator, 18 Oct: it said the same thing twice).
   await page.evaluate(() => { refresh(); openRunnerTab(); });
   await page.waitForFunction(() => {
-    const t = document.querySelector('.doc.on .runnersall')?.textContent || '';
-    return /shed/.test(t) && /listening, idle/.test(t);
+    const r = document.querySelector('.doc.on .ndruns .ndrun');
+    return /listening/.test(r?.querySelector('.ndrunstate')?.textContent || '') && /shed/.test(r?.querySelector('.ndrunfacts')?.textContent || '');
   }, null, { timeout: 15000 });
-  ok(true, 'the CI runner page lists a node\'s runner and says it is listening, idle');
+  ok(await page.$('.doc.on .runnersall') === null,
+     'the CI runner page tells a node\'s one runner in its own card, listening and registered as shed, with no list repeating it');
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector(`${ROW}`, { state: 'visible', timeout: 15000 });
   await runnerCensus({});
@@ -1185,7 +1189,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        '...and Move to a synced copy waits while the copies are being removed');
     await beat({ sync_clean: { token: off.clean, freed: 5 * 1048576, error: '' } });
     await page.evaluate(() => loadNodes());
-    await page.waitForFunction(sel => /copies were removed, 5MB freed/.test(document.querySelector(sel)?.textContent || ''),
+    await page.waitForFunction(sel => /copies were removed, 5 ?MB freed/.test(document.querySelector(sel)?.textContent || ''),
                                ROW, { timeout: 10000 });
     ok(true, '...and the row says when they are gone and what that freed');
     page.dialogs.length = 0;
@@ -1521,7 +1525,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   // Its headroom is the free tile's to say, once (R218 step 24), not the
   // status line's again.
   const room = await page.$eval('.tctab .tiles', e => e.textContent.replace(/\s+/g, ' '));
-  ok(tools.some(t => /6655482e/.test(t)) && /(40|39(\.\d)?) ?GB free/.test(room)
+  ok(tools.some(t => /6655482e/.test(t)) && /(40|39)(\.\d)? ?GB free/.test(room)
      && !/GB free|MB free/.test(await page.$eval('.tctab .tcact .state', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom in its tile alone (${room.slice(0, 120)} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),

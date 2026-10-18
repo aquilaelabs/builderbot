@@ -2975,6 +2975,13 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   /* nginx's and the CI runner's state line heads the page, a line of words
      with nothing to draw a line under. */
   :is(.nginxtab, .runnertab) .row.toolstate{border-bottom:0}
+  /* The CI runner page (the operator, 18 Oct): every node's runners and
+     this node's own each a card on the page's margin, and the pin's hint
+     under them with no line across. */
+  .runnertab .runnersall,.runnertab .ndruns{margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+    border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
+  .runnertab .ndruns>.row:last-child{border-bottom:0}
+  .runnertab .ndrunpin{border-top:0;margin-top:4px}
   .fxtab .fnote,.doctab .fnote{border-top:0}
   /* A page of settings, and the Roles page: two cards side by side, their
      tops level; a settings page's foot (Delete project) floats under the
@@ -3911,6 +3918,30 @@ button[aria-busy="true"]{opacity:.75}
 .ndconf{display:contents}
 .ndconfbody{display:contents}
 .ndrow>.ndsections{margin:8px calc(-1 * var(--row-x)) calc(-1 * var(--row-y))}
+/* What a node has beside its numbers (its tools, git, GPU, sound, labels):
+   one band that flows across the width, not five lines under the charts. */
+.ndhmore{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px}
+.ndhmore>*{margin:0}
+/* At a desk the Nodes page is cards, as a notebook view is (the operator,
+   18 Oct): the node's head one card and each of its sections one of its
+   own on the page's margin; the row that holds them draws nothing but
+   keeps the page's inset, so it starts where the bar does. Storage and
+   Network come in a wrapper of their own (nodeConfSections), which
+   draws nothing either. */
+@media(min-width:901px){
+  .doctab.nodestab>.doclist>.row.stack2.ndrow{background:none;border:0;border-radius:0;padding:0;margin:0 var(--row-x)}
+  .nodestab .ndrow>.grow{margin:12px 0 0;padding:var(--row-y) var(--row-x);background:var(--panel);
+    border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
+  .nodestab .ndrow>.ndsections{margin:0;width:100%}
+  .nodestab .ndrow>.ndsections>.ndconf,.nodestab .ndrow>.ndsections>.ndconf>.ndconfbody{margin:0;padding:0;border:0;background:none}
+  .nodestab .ndrow>.ndsections>details.sect,
+  .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>details.sect{margin:12px 0 0;background:var(--panel);
+    border:var(--hair) solid var(--line);border-radius:var(--r-surface);overflow:hidden}
+  .nodestab .ndrow>.ndsections>details.sect[open]>summary,
+  .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>details.sect[open]>summary{border-bottom:var(--hair) solid var(--line)}
+  .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>.ndguest{margin:12px var(--row-x) 0}
+  .nodestab .ndrow>.ndsections>.sectjump{margin:12px 0 0;padding-left:0;padding-right:0;border:0}
+}
 .ndrow .actbar.ndagent{margin-top:4px}
 .ndrow .ndsections .sub{margin:0}
 .ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
