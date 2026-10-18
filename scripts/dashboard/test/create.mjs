@@ -441,9 +441,13 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
   ok(g.roadmap === 'ask' && g.bugs === 'deny' && g.rules === 'auto' && g.settings === 'auto',
      `...and the project carries them, the unnamed ones auto (${JSON.stringify(g)})`);
   // ...and Run its container, so a session can create the first one by request.
+  // Read where the create wrote it, which it does before it answers (B606):
+  // the page's copy is a status poll away, and on a loaded box, with every
+  // project's git to walk, the polls ran past the wait.
   const docked = await postJson({ name: 'Docked App', mode: 'init', devbuild: 'ask' });
-  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'Docked-App' && p.prefs?.devbuild === 'ask'), { timeout: 15000 });
-  ok(docked.status === 200, 'a project is created with Run its container set, and carries it');
+  const dockedPrefs = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects?.['Docked-App'] || {};
+  ok(docked.status === 200 && dockedPrefs.devbuild === 'ask',
+     `a project is created with Run its container set, and carries it (${docked.status}, ${dockedPrefs.devbuild}${docked.body.note ? '; ' + docked.body.note : ''})`);
   // ...and the signing and reporting dials, when one differs from the
   // default a project gets anyway.
   const signed = await postJson({ name: 'Signed App', mode: 'init', sign: 'auto', keys: 'deny', release: 'auto', report: 'deny' });
@@ -969,6 +973,20 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta', forge: 'gite
    'and github.com cannot be linked as Gitea: the host names itself');
 // The deploy-key pick from the clone flow above must not ride along into
 // this open: the select starts empty and repopulates from a fresh fetch.
+// Waited on this open's own answer, not the list: the host picker above
+// can be drawn from the last open's catalog while this one's is still out.
+// An answer with no keys in it can be the agent's listing (ssh-add, with a
+// time limit) given up on a loaded box, and the list then never fills
+// (B521): the dialog is opened again for a fresh answer, as a person would.
+for (let i = 0; i < 3; i++){
+  const keys = await page.evaluate(async () => ((await pFetch)?.keys || []).length);
+  if (keys || i === 2) break;
+  await page.click('#pCancel');
+  await page.waitForFunction(() => document.getElementById('pmodal').hidden, null, { timeout: 10000 });
+  await unfold(page, 'beta');
+  await page.click('.pgrid .pcard[data-row="beta"] [data-l]');
+  await page.waitForFunction(() => !document.getElementById('pmodal').hidden, null, { timeout: 20000 });
+}
 await page.waitForFunction(() => document.querySelectorAll('#pKey option').length > 1);
 ok(await page.$eval('#pKey', el => el.value === ''),
    'a new open starts with no key selected, whatever the last one picked');
@@ -1198,11 +1216,18 @@ writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
 // (laid out first: measured mid-draw it read no stroke, no fill and 0px, B602)
 // On the Projects page's bar now (R218 step 3).
 await page.evaluate(() => openProjectsTab());
-await page.waitForFunction(() => document.querySelector('#bTrashTab svg')?.getBoundingClientRect().width > 0, { timeout: 15000 });
-const binInk = await page.$eval('#bTrashTab svg', e => {
+// Found, laid out and read in the one call (B723): the page's bar is drawn
+// again by the poll and by a page switch's fade, and an icon found by one
+// call and read by the next was read off a copy already taken out of the
+// page, where every computed style is an empty string. The fade's still
+// copy is passed over for the same reason.
+const binInk = await page.waitForFunction(() => {
+  const e = [...document.querySelectorAll('#bTrashTab svg')].find(x => x.isConnected && !x.closest('.fghost'));
+  const w = e?.getBoundingClientRect().width;
+  if (!w) return null;
   const c = getComputedStyle(e);
-  return { stroke: c.stroke, fill: c.fill, w: e.getBoundingClientRect().width };
-});
+  return c.stroke ? { stroke: c.stroke, fill: c.fill, w } : null;
+}, null, { timeout: 15000 }).then(h => h.jsonValue());
 ok(binInk.stroke !== 'none' && binInk.fill === 'none' && binInk.w >= 12,
    `the bin button's icon is actually drawn (stroke ${binInk.stroke}, fill ${binInk.fill}, ${binInk.w}px)`);
 await page.click('#bTrashTab');

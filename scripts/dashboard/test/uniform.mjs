@@ -976,8 +976,10 @@ for (const kind of kinds){
   const notFirst = Object.entries(heads).filter(([, h]) => !h.isHead).map(([v, h]) => `${v} opens with ${h.first}`);
   ok(notFirst.length === 0,
      `every notebook view opens with its head row${notFirst.length ? `; not: ${notFirst.join(', ')}` : ''}`);
-  const tops = new Set(Object.values(heads).map(h => h.top));
-  ok(tops.size === 1,
+  // Within a pixel: a top on a half pixel rounds either way, 212 on one view
+  // and 213 on the next with nothing drawn differently (B504, B116).
+  const topsAt = Object.values(heads).map(h => h.top).filter(t => t !== null);
+  ok(topsAt.length === Object.keys(heads).length && Math.max(...topsAt) - Math.min(...topsAt) <= 1,
      `...and the head row sits at one height on every view (${JSON.stringify(
        Object.fromEntries(Object.entries(heads).map(([v, h]) => [v, h.top])))})`);
   ok(Object.values(heads).every(h => h.right),
@@ -1291,9 +1293,17 @@ for (const kind of kinds){
     await bring('notebook:roadmap');
     await bring('projects');
     await atRest();
-    const held = await switchHeld(await tabIdOf('notebook'));
-    const out = await page.evaluate(() => { const l = document.querySelector('.pane .stack > .doc.leaving');
-      return l ? getComputedStyle(l).visibility : 'none'; });
+    // The page going out read in the same task as the switch and the hold:
+    // read after it, the page's own 150ms timer had taken .leaving off on a
+    // loaded box and the copy read hidden (B795).
+    const { held, out } = await page.evaluate(id => {
+      focusTab(id);
+      window.__held = document.getAnimations().filter(a => a.playState === 'running' || a.pending);
+      window.__held.forEach(a => { a.pause(); a.currentTime = 0; });
+      const l = document.querySelector('.pane .stack > .doc.leaving');
+      return { held: window.__held.map(a => a.animationName || '').filter(Boolean),
+               out: l ? getComputedStyle(l).visibility : 'none' };
+    }, await tabIdOf('notebook'));
     await release();
     await atRest();
     ok(held.includes('docIn') && held.includes('docOut') && out === 'visible',

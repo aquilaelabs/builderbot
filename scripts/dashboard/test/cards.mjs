@@ -671,12 +671,16 @@ ok(await page.evaluate(() => { try { return localStorage.getItem('bb.theme'); }
 // ...for the account that picked it (B491): a browser whose choice was
 // another account's takes this account's own scheme on the next poll,
 // rather than carrying the first account's colors over.
-const switched = await page.evaluate(async () => {
+// Asked of the poll until it has answered: a refresh joins one already out,
+// whose answer may predate the switch, and the page then read abyss still,
+// taking the two hallway checks below down with it (B622).
+await page.evaluate(() => {
   localStorage.setItem('bb.theme', 'abyss'); localStorage.setItem('bb.theme.who', 'somebody-else');
   document.documentElement.dataset.theme = 'abyss';
-  await refresh();
-  return { theme: document.documentElement.dataset.theme || 'default', who: localStorage.getItem('bb.theme.who') };
 });
+await refreshUntil(page, () => document.documentElement.dataset.theme === 'nostromo', { timeout: 20000 }).catch(() => {});
+const switched = await page.evaluate(() =>
+  ({ theme: document.documentElement.dataset.theme || 'default', who: localStorage.getItem('bb.theme.who') }));
 ok(switched.theme === 'nostromo' && switched.who === 'test',
    `another account's choice in this browser gives way to this account's own scheme (${JSON.stringify(switched)})`);
 // Nostromo's dark half is the ship's hallways (the operator, 16 Oct): a
@@ -1278,7 +1282,12 @@ ok(true, 'pinning it back reads Unpin again');
   });
   const before = held;
   // Five asks while the first is still out. They must coalesce into one more.
+  // The first is waited for rather than given a fixed 400ms: a read the poll
+  // had out before the route was set is joined, rightly, and the held one
+  // goes only when it lands, which on a loaded box is later than that (B430).
   await page.evaluate(() => { refresh(); refresh(); refresh(); refresh(); refresh(); });
+  for (const t1 = Date.now(); held < before + 1 && Date.now() - t1 < 20000;)
+    await new Promise(r => setTimeout(r, 50));
   await new Promise(r => setTimeout(r, 400));
   ok(held === before + 1,
      `polls asked while one is out do not stack (${held - before} request in flight)`);
@@ -2013,8 +2022,11 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   // the claim, and the color is checked once the swap has finished.
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   const was = await bg();
+  // To a scheme the page is not already on: one an earlier check left on
+  // Nostromo swapped to Nostromo again, changed nothing and read as no
+  // swap at all (B487).
   const swap = await page.evaluate(() => {
-    applyTheme('nostromo');
+    applyTheme(document.documentElement.dataset.theme === 'nostromo' ? 'ember' : 'nostromo');
     return { during: document.documentElement.classList.contains('theming'),
              eased: getComputedStyle(document.body).transitionDuration };
   });

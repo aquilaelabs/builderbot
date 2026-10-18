@@ -6,7 +6,7 @@
 // browser would never send (wrong types, missing fields, absurd numbers),
 // because the checks are written against each field being the thing it is
 // supposed to be.
-import { launch, newPage, ok, done, ready, sleep, URL } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, URL } from './lib.mjs';
 
 // ---- the app's own files carry a validator --------------------------------
 // index.html IS the application, and it went out with no ETag and no cache
@@ -132,12 +132,23 @@ ok(badGet.length === 0,
 // 0.68s, and it used to run once per request while a sign-in was open, so a
 // phone, a desktop and a preload polling together were a gigabyte of Node and
 // a dashboard that had stopped answering.
-const t0 = Date.now();
-await page.evaluate(async () => {
-  await Promise.all(Array.from({length: 8}, () => fetch('/api/status')));
-});
-const took = Date.now() - t0;
-ok(took < 6000, `eight status polls at once stay quick (${took}ms)`);
+// Timed up to three times, a few seconds apart, and the quickest kept
+// (B517): one burst in a whole eight-worker run took 8.8s at a load past the
+// core count with nothing wrong, and a cost that is the code's is paid on
+// every try, where a busy moment of the box's is not. The bar stretches with
+// the harness's patience as every wait does.
+const bar = patience(6000), tries = [];
+for (let i = 0; i < 3; i++){
+  if (i) await sleep(3000);
+  const t0 = Date.now();
+  await page.evaluate(async () => {
+    await Promise.all(Array.from({length: 8}, () => fetch('/api/status')));
+  });
+  tries.push(Date.now() - t0);
+  if (tries[i] < bar) break;
+}
+const took = Math.min(...tries);
+ok(took < bar, `eight status polls at once stay quick (${tries.join('ms, ')}ms; under ${bar}ms)`);
 
 page.errors = [];
 ok(true, 'the console errors above are the refusals themselves');

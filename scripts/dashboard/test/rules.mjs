@@ -138,9 +138,19 @@ ok(await page.$eval('#rulesBox .rulerow[data-i="1"]', r =>
      && /scripts\/agent/.test(r.querySelector('.rltrig')?.textContent || '')
      && !r.querySelector('textarea, input')),
    'a saved rule is a closed fold with its name on the line and its words behind it, not fields');
-ok(await page.$eval('#rulesBox .rulerow[data-i="1"]', r => getComputedStyle(r).borderRadius === '0px'
-     && getComputedStyle(r).borderTopWidth === '1px'),
-   '...drawn as a line-divided row like a bug report, not a box');
+// Found and read in the one call, on a row in the page and laid out (B431):
+// the list is drawn again as the save's answer and the poll land, and a row
+// found by one call and read by the next was read off a copy already taken
+// out, where every computed style is an empty string. Read at rest, with
+// nothing on it still moving.
+const rowLook = await page.waitForFunction(() => {
+  const r = document.querySelector('#rulesBox .rulerow[data-i="1"]');
+  if (!r?.isConnected || !r.offsetParent || r.getAnimations({ subtree: true }).some(a => a.playState === 'running')) return null;
+  const c = getComputedStyle(r);
+  return c.borderTopWidth ? { radius: c.borderRadius, top: c.borderTopWidth } : null;
+}, null, { timeout: 10000 }).then(h => h.jsonValue(), () => ({}));
+ok(rowLook.radius === '0px' && rowLook.top === '1px',
+   `...drawn as a line-divided row like a bug report, not a box (${JSON.stringify(rowLook)})`);
 await page.click('#rulesBox .rulerow[data-i="1"] summary');
 await page.waitForFunction(() => document.querySelector('#rulesBox .rulerow[data-i="1"]').open, null, { timeout: 10000 });
 await page.click('#rulesBox .rulerow[data-i="1"] .rlEdit');

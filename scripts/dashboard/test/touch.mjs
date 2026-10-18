@@ -1,11 +1,17 @@
 // Real touch through Chromium's gesture recognizer: the dock's line under a
 // finger, and pull to refresh.
-import { launch, newPage, ok, done, finger, sleep, URL } from './lib.mjs';
+import { launch, newPage, ok, done, finger, sleep, settled, URL } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 400, height: 700 }, hasTouch: true, isMobile: true });
 await page.goto(URL);
 await page.waitForFunction(() => typeof state !== 'undefined' && state && !document.body.classList.contains('booting'), null, { timeout: 40000 });
+// Where an element is, read in the one call that finds it, and waited for
+// until it has a box (B521): a handle taken first and measured after read
+// null when a poll's redraw replaced the element in between.
+const rectOf = sel => page.waitForFunction(s => { const e = document.querySelector(s);
+  const r = e?.getBoundingClientRect(); return r && r.width && r.height ? { x: r.left, y: r.top, width: r.width, height: r.height } : null; },
+  sel, { timeout: 10000 }).then(h => h.jsonValue());
 
 // On a phone the terminals are the dock's (R218 step 4): a tap on one on
 // its line brings the sheet up with it, the whole height above the bottom
@@ -14,7 +20,7 @@ await page.evaluate(() => { for (let i = 0; i < 2; i++) newShell(''); dockToggle
 await page.waitForFunction(() => document.querySelectorAll('#pane1 .dtab[data-id]').length >= 2);
 await page.waitForTimeout(300);
 const want = await page.evaluate(() => tabs.filter(t => t.kind === 'term')[1].id);
-const rb = await (await page.$(`#pane1 .dtab[data-id="${want}"] .dlbl`)).boundingBox();
+const rb = await rectOf(`#pane1 .dtab[data-id="${want}"] .dlbl`);
 await finger(page, rb.x + 20, rb.y + rb.height / 2, rb.x + 20, rb.y + rb.height / 2, 0);
 await page.waitForFunction(w => panes[1] === w && dockUp, want, { timeout: 5000 });
 ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane0')).display === 'none'),
@@ -36,7 +42,7 @@ ok(!up.left && !up.right && !up.top && !up.foot && up.bar > 0, `...and up it spa
 const meet = await page.evaluate(() => { const w = (s, side) => getComputedStyle(document.querySelector(s))['border' + side + 'Width'];
   return { dockTop: w('#pane1', 'Top'), keysFoot: w('#mobar', 'Bottom') }; });
 ok(meet.dockTop === '0px' && meet.keysFoot === '0px', `...with one line at its top and one at its foot ${JSON.stringify(meet)}`);
-const cb = await (await page.$('#pane1 [data-dtoggle]')).boundingBox();
+const cb = await rectOf('#pane1 [data-dtoggle]');
 await finger(page, cb.x + cb.width / 2, cb.y + cb.height / 2, cb.x + cb.width / 2, cb.y + cb.height / 2, 0);
 await page.waitForFunction(() => !dockUp, null, { timeout: 5000 });
 ok(await page.evaluate(() => getComputedStyle(document.getElementById('pane0')).display !== 'none'),
@@ -75,17 +81,35 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
   const before = await page.evaluate(() => { window.__pulls = 0; const r = window.pullRefresh;
     window.pullRefresh = (...a) => { window.__pulls++; return r(...a); }; return true; });
   // From the top of a document tab in front (a terminal is the terminal's
-  // own to scroll), where a list is read from.
+  // own to scroll), where a list is read from. The tab's own read lands
+  // after its list is first drawn, and its redraw replaces the rows: a
+  // finger that came down on a row so replaced has its moves and its lift
+  // sent to the row taken out, which never reached the page's listener on
+  // the document (B815, B831; the page hears them on the row since, B854).
+  // The page is still let finish its reads first, and a drag whose row went
+  // mid-gesture is made again rather than counted.
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.doctab.nodestab .doclist', { timeout: 15000 });
-  await sleep(400);
-  const top = await page.evaluate(() => { const r = document.querySelector('.doctab.nodestab .doclist')?.getBoundingClientRect();
-    return r ? Math.round(r.top + 20) : 200; });
-  await finger(page, 200, top, 200, top + 140);
-  const pulled = await page.evaluate(() => window.__pulls);
-  const where = await page.evaluate(y => { const el = document.elementFromPoint(200, y); const sc = pullScroller(el);
-    return `${el?.tagName}.${el?.className} in ${sc ? sc.className + ' at ' + sc.scrollTop : 'no scroller'}`; }, top);
-  ok(before && pulled >= 1, `a drag down from the top refreshes (${pulled}; ${where})`);
+  await settled(page, { quiet: 400, cap: 8000 });
+  await page.evaluate(() => { window.__pullFrom = null;
+    document.addEventListener('touchstart', e => { window.__pullFrom = e.target; }, { capture: true, passive: true }); });
+  let top = 200, pulled = 0, where = '', drags = 0;
+  while (drags < 3 && !pulled){
+    drags++;
+    top = await page.evaluate(() => { const r = document.querySelector('.doctab.nodestab .doclist')?.getBoundingClientRect();
+      return r ? Math.round(r.top + 20) : 200; });
+    await finger(page, 200, top, 200, top + 140);
+    pulled = await page.evaluate(() => window.__pulls);
+    // Asked only of a drag that did not count: one that did redraws the
+    // list itself.
+    const gone = !pulled && await page.evaluate(() => !!window.__pullFrom && !window.__pullFrom.isConnected);
+    where = await page.evaluate(y => { const el = document.elementFromPoint(200, y); const sc = pullScroller(el);
+      return `${el?.tagName}.${el?.className} in ${sc ? sc.className + ' at ' + sc.scrollTop : 'no scroller'}`; }, top)
+      + (gone ? ', the row it started on redrawn under it' : '');
+    if (!gone) break;
+    await settled(page, { quiet: 400, cap: 8000 });
+  }
+  ok(before && pulled >= 1, `a drag down from the top refreshes (${pulled}; ${where}; ${drags} drag(s))`);
   await page.evaluate(() => { window.__pulls = 0; });
   await finger(page, 200, top, 200, top + 30);
   ok(await page.evaluate(() => window.__pulls) === 0, '...and a short one does not');

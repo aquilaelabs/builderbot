@@ -729,6 +729,13 @@ print(u.remove("second"))`], { encoding: 'utf8' });
       for (let i = 0; i < 40; i++) await chat(owner, { action: 'send', who: 'sharer', text: `an older line ${i}` });
       await page.evaluate(() => { if (tabOf(panes[1])?.kind !== 'chat' || !dockUp) openChatTab(); chatOpen({ who: 'sharer' }); });
       await page.waitForFunction(() => document.querySelectorAll('#chatlog .chatmsg').length >= 40, null, { timeout: 15000 });
+      // ...and laid out taller than its box, the dock up and done sliding
+      // (B650): read while the dock was still coming up, the log had no
+      // height, read as not tall, and a scroll to the top had nothing to move.
+      await page.waitForFunction(() => { const l = document.getElementById('chatlog');
+        return l && l.clientHeight > 0 && l.scrollHeight > l.clientHeight
+          && !document.getElementById('pane1')?.getAnimations().some(a => a.playState === 'running'); },
+        null, { timeout: 15000 }).catch(() => {});
       const up = await page.evaluate(() => { const l = document.getElementById('chatlog'); l.scrollTop = 0;
                                              return { top: l.scrollTop, tall: l.scrollHeight > l.clientHeight }; });
       await page.evaluate(() => loadChat());

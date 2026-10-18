@@ -28,6 +28,33 @@ const rowOpen = async sel => {
   await page.evaluate(s => { const row = document.querySelector(s); const acts = row?.querySelector('.rowacts');
     if (acts?.hidden) row.querySelector('.dtog')?.click(); }, sel);
   await page.waitForTimeout(300);
+};
+// A row's reword box is the one right under it (row.after(box)), and every
+// fill, read and press here goes to that one rather than the first
+// .editbox in the page. Save pressed, the box is waited out; still open, what
+// the page holds is said and Save is pressed once more (B415): the box stayed
+// open for minutes in one run in four alone with the press reported done, and
+// a guard that says only "the handler did not run" left nothing to find it by.
+const rewordBox = row => `${row} + .editbox`;
+let rw = '';
+const rewordSave = async box => {
+  const shut = () => page.waitForFunction(b => !document.querySelector(b), box, { timeout: patience(10000) })
+    .then(() => true, () => false);
+  await page.click(`${box} .primary`);
+  if (await shut()) return;
+  const seen = await page.evaluate(b => {
+    const all = [...document.querySelectorAll('.editbox')], mine = document.querySelector(b);
+    const btn = mine?.querySelector('.primary'), r = btn?.getBoundingClientRect();
+    const at = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+    return { boxes: all.length, under: all.map(x => x.previousElementSibling?.dataset?.id + ':' + x.previousElementSibling?.dataset?.step),
+             typed: mine?.querySelector('textarea')?.value?.slice(0, 40), wired: !!btn?.onclick,
+             folding: !!mine?.getAnimations().some(a => a.playState === 'running'),
+             hit: at ? `${at.tagName}.${at.className}` : null, focus: document.activeElement?.className || document.activeElement?.tagName };
+  }, box);
+  console.log(`[B415] the reword box was still open after Save was pressed, pressed again: ${JSON.stringify(seen)}`);
+  await page.click(`${box} .primary`);
+  if (!(await shut()))
+    throw new Error(`the reword box is still open after Save was pressed twice: its handler did not run (B311, B415) ${JSON.stringify(seen)}`);
 };await page.goto(URL);
 await ready(page);
 
@@ -486,19 +513,32 @@ ok((await bins()).includes('1'),
 // and it is optional, because a reason demanded is a reason typed as "x".
 await rowOpen(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"] .rm`);
-await page.waitForSelector('.dropbox', { timeout: 10000 });
+// The row's own box, the one right under it (B415, as the reword's).
+const dropBox = `#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"] + .dropbox`;
+await page.waitForSelector(dropBox, { timeout: 10000 });
 ok(await page.$$eval('#roadmapList .roadmap', ts => ts.length) > 0
    && read().projects.alpha.find(r => String(r.id) === c1.id).steps.length === 2,
    'the bin asks in place, and nothing has gone while it is asking');
 ok(await page.evaluate(() => document.activeElement?.tagName !== 'INPUT'),
    '...without the cursor in the field, like every other box in this window');
-await page.click('.dropbox .stop');
+await page.click(`${dropBox} .stop`);
 // Waited for rather than read in the same breath as the click, which a
 // loaded box lost once (B292); a Cancel that never closes the box still
-// fails here, five seconds on, and the line says which half it was.
+// fails here, and the line says which half it was. Still open, what the
+// page holds is said and Cancel is pressed once more (B415).
 {
-  const shut = await page.waitForSelector('.dropbox', { state: 'detached', timeout: 5000 })
-    .then(() => true, () => false);
+  const gone = () => page.waitForSelector(dropBox, { state: 'detached', timeout: 5000 }).then(() => true, () => false);
+  let shut = await gone();
+  if (!shut){
+    console.log(`[B415] the drop box was still open after Cancel was pressed, pressed again: ${JSON.stringify(await page.evaluate(b => {
+      const mine = document.querySelector(b), btn = mine?.querySelector('.stop'), r = btn?.getBoundingClientRect();
+      const at = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+      return { boxes: document.querySelectorAll('.dropbox').length, wired: !!btn?.onclick,
+               folding: !!mine?.getAnimations().some(a => a.playState === 'running'), hit: at ? `${at.tagName}.${at.className}` : null };
+    }, dropBox))}`);
+    await page.click(`${dropBox} .stop`);
+    shut = await gone();
+  }
   const steps = read().projects.alpha.find(r => String(r.id) === c1.id).steps.length;
   ok(shut && steps === 2,
      `Cancel closes it and drops nothing (the box ${shut ? 'closed' : 'is still open'}, ${steps} steps on disk)`);
@@ -901,20 +941,23 @@ ok(await page.$eval('#roadmapList .roadmap:has(.who) .body',
 // A permission dialog swallows stray characters. Simulated with echo off,
 // which has the same signature: the line does not appear, so Enter is not
 // pressed and nothing is crossed out.
-execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty -echo']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty -echo; echo ECHO-OFF-NOW']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
-// Waited for on the pane's own tty rather than slept for (B345): under a
-// whole run's load the shell had not run stty when the send began, the line
-// echoed, and Enter followed. This check failed in five whole runs in a row
-// and passed alone every time.
+// Waited for on what the shell printed after it ran stty (B345, B486), not on
+// the tty's flags: a shell at its prompt has echo off in the tty while its
+// line editor reads (it draws what is typed itself), so the flags read -echo
+// before the shell had even taken the line, and between taking it and stty
+// running the tty is back to echoing. Under a whole run's load the send
+// landed in that gap, the kernel echoed it, and Enter followed. The line the
+// shell prints is its own line on the screen, never the command's echo.
 {
-  const tty = execFileSync('tmux', ['display-message', '-p', '-t', 'claude-alpha', '#{pane_tty}'], { encoding: 'utf8' }).trim();
+  const cap = () => execFileSync('tmux', ['capture-pane', '-p', '-J', '-t', 'claude-alpha'], { encoding: 'utf8' });
   let off = false;
-  for (let i = 0; i < 100 && !off; i++){
-    try { off = /(^|\s)-echo(\s|$)/.test(execFileSync('stty', ['-a', '-F', tty], { encoding: 'utf8' })); } catch { off = false; }
+  for (let i = 0; i < 150 && !off; i++){
+    off = cap().split('\n').some(l => l.trim() === 'ECHO-OFF-NOW');
     if (!off) await new Promise(r => setTimeout(r, 100));
   }
-  ok(off, 'the stand-in session has echo off, read from its tty, before the send');
+  ok(off, 'the stand-in session has run stty -echo before the send');
 }
 // ...and the pane quiet: under a whole run's load a line sent earlier still
 // had its shell's "command not found" on the way, which repeats the line, and
@@ -1129,13 +1172,12 @@ ok(made.steps.length === 2 && made.steps[0].text === 'first, widen it'
 // one by construction, and it would have flattened them on the way back.
 await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
-await page.waitForSelector('.editbox textarea', { timeout: 10000 });
-ok(await page.$eval('.editbox textarea', t => t.value) === 'first, widen it',
+rw = rewordBox(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
+await page.waitForSelector(`${rw} textarea`, { timeout: 10000 });
+ok(await page.$eval(`${rw} textarea`, t => t.value) === 'first, widen it',
    'the pencil opens the line as it stands, ready to change');
-await page.fill('.editbox textarea', 'first, widen it a lot');
-await page.click('.editbox .primary');
-await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
-  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
+await page.fill(`${rw} textarea`, 'first, widen it a lot');
+await rewordSave(rw);
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent
   === 'first, widen it a lot', plainId, { timeout: patience(20000) });
@@ -1149,11 +1191,10 @@ ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
 // which only works if a step can hold more than a sentence.
 await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
-await page.waitForSelector('.editbox textarea', { timeout: 10000 });
-await page.fill('.editbox textarea', 'widen the select\n\nand check it at 412px');
-await page.click('.editbox .primary');
-await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
-  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
+rw = rewordBox(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
+await page.waitForSelector(`${rw} textarea`, { timeout: 10000 });
+await page.fill(`${rw} textarea`, 'widen the select\n\nand check it at 412px');
+await rewordSave(rw);
 await page.waitForFunction(id => /\n/.test(document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent || ''),
   plainId, { timeout: 10000 });
@@ -1175,8 +1216,9 @@ ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] 
 {
   await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
   await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
-  await page.waitForSelector('.editbox textarea', { timeout: 10000 });
-  await page.fill('.editbox textarea', 'half a thought, still typing');
+  rw = rewordBox(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
+  await page.waitForSelector(`${rw} textarea`, { timeout: 10000 });
+  await page.fill(`${rw} textarea`, 'half a thought, still typing');
   // Somebody else writes the same project, as a session does: another
   // process entirely, through bb, which is the case the file lock exists for.
   bbRoadmap('add', 'from somebody else');
@@ -1190,11 +1232,11 @@ ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] 
     await new Promise(r => setTimeout(r, 300));
   };
   await tick(); await tick();
-  ok(await page.$eval('.editbox textarea', t => t.value) === 'half a thought, still typing',
+  ok(await page.$eval(`${rw} textarea`, t => t.value) === 'half a thought, still typing',
      'a redraw from elsewhere leaves a half-typed rewording alone, box and words');
   // And the arrival is not lost: the panel has not recorded the revision it
   // skipped, so the next poll after the box shuts draws what came in.
-  await page.click('.editbox .stop');
+  await page.click(`${rw} .stop`);
   await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: 10000 });
   let landed = false;
   for (let i = 0; i < 20 && !landed; i++){
@@ -1206,11 +1248,10 @@ ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] 
 }
 await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
-await page.waitForSelector('.editbox textarea', { timeout: 10000 });
-await page.fill('.editbox textarea', 'first, widen it a lot');
-await page.click('.editbox .primary');
-await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
-  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
+rw = rewordBox(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
+await page.waitForSelector(`${rw} textarea`, { timeout: 10000 });
+await page.fill(`${rw} textarea`, 'first, widen it a lot');
+await rewordSave(rw);
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent
   === 'first, widen it a lot', plainId, { timeout: patience(20000) });
@@ -1286,13 +1327,12 @@ ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"]
 // Editing them is part of the reword box, staged like everything else there.
 await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed`);
-await page.waitForSelector('.editbox .dta', { timeout: 10000 });
-ok(await page.$eval('.editbox .dta', t => t.value) === 'the select is built in stepRow()',
+rw = rewordBox(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"]`);
+await page.waitForSelector(`${rw} .dta`, { timeout: 10000 });
+ok(await page.$eval(`${rw} .dta`, t => t.value) === 'the select is built in stepRow()',
    'the reword box opens with the details as they stand');
-await page.fill('.editbox .dta', 'stepRow(), and the CSS at .roadmap .dinfo');
-await page.click('.editbox .primary');
-await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
-  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
+await page.fill(`${rw} .dta`, 'stepRow(), and the CSS at .roadmap .dinfo');
+await rewordSave(rw);
 await page.waitForFunction(id => /CSS at/.test(document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .dinfo`)?.textContent || ''),
   plainId, { timeout: 10000 });
@@ -1327,11 +1367,10 @@ const untouched = JSON.stringify(read().projects.alpha);
 const wasText = read().projects.alpha.find(r => String(r.id) === plainId).text;
 await rowOpen(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"]`);
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .ed`);
-await page.waitForSelector('.editbox textarea', { timeout: 10000 });
-await page.fill('.editbox textarea', 'a wording nobody asked for');
-await page.click('.editbox .primary');
-await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
-  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
+rw = rewordBox(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"]`);
+await page.waitForSelector(`${rw} textarea`, { timeout: 10000 });
+await page.fill(`${rw} textarea`, 'a wording nobody asked for');
+await rewordSave(rw);
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="-1"] .txt`)?.textContent
   === 'a wording nobody asked for', plainId, { timeout: patience(20000) });   // late under load (B311)

@@ -1634,17 +1634,25 @@ ok((await page.errors).every(e => /400/.test(e)),
   // Red as an error is everywhere, beside the plain staged line's yellow, and
   // in the value column with it: the class drew nothing until B338, and a
   // long line dropped under the label.
-  const look = await page.$$eval(`${LNB} #verBox .vermark`, ms => {
+  // Found and read in the one call, and only once both lines are in the
+  // page and laid out (B487, B662): the row is drawn again as the bump
+  // lands, and lines found by one call and read by the next were read off a
+  // copy already taken out, where every computed color is an empty string.
+  const look = await page.waitForFunction(name => {
+    const root = notebooks.get(name)?.root;
+    const ms = [...(root?.querySelectorAll('#verBox .vermark') || [])].filter(m => m.isConnected && !m.closest('.fghost'));
+    const of = re => ms.find(m => re.test(m.textContent));
+    const [warn, plain] = [of(/Save commits it on/), of(/staged: 0\.8\.0/)];
+    if (!warn?.offsetParent || !plain?.offsetParent) return null;
     const probe = document.createElement('span');
     probe.style.color = 'var(--bad)';
     document.body.appendChild(probe);
     const red = getComputedStyle(probe).color;
     probe.remove();
-    const of = re => ms.find(m => re.test(m.textContent));
-    const [warn, plain] = [of(/Save commits it on/), of(/staged: 0\.8\.0/)];
-    return { red, warn: warn && getComputedStyle(warn).color, plain: plain && getComputedStyle(plain).color,
-             lefts: [warn, plain].map(m => m && Math.round(m.getBoundingClientRect().left)) };
-  });
+    const got = { red, warn: getComputedStyle(warn).color, plain: getComputedStyle(plain).color,
+                  lefts: [warn, plain].map(m => Math.round(m.getBoundingClientRect().left)) };
+    return got.red && got.warn && got.plain ? got : null;
+  }, 'landproj', { timeout: 20000 }).then(h => h.jsonValue(), () => ({ warn: null, plain: null, note: 'both lines never stood in the row together' }));
   ok(look.warn === look.red && look.plain !== look.red && look.lefts[0] === look.lefts[1],
      `...in red beside the staged line's yellow, and in the same column (${JSON.stringify(look)})`);
   await page.click(`${LNB} [data-ssave="artifacts:version"]`);
