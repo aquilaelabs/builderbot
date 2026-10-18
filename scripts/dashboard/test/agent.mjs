@@ -3377,8 +3377,11 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
                                { timeout: 15000 });
     const row = await page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`,
                                  e => e.textContent.replace(/\s+/g, ' '));
+    // Its facts a grid (R218 step 26): the account jobs run as is one.
+    const runsAs = await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .ndfacts .fact`,
+      fs => fs.find(f => f.querySelector('dt').textContent === 'Jobs run as')?.querySelector('dd').textContent || '');
     ok(/agentbox/.test(row) && /live/.test(row) && /cpu/.test(row) && /data/.test(row)
-       && new RegExp(`jobs run as ${process.env.USER || 'builder'}`).test(row),
+       && runsAs === (process.env.USER || 'builder'),
        `the row shows the agent live, its numbers and the account jobs run as (${row.slice(0, 160)}…)`);
     // Each session kept to its own project's network (R79): a switch in the
     // row's Sessions section, a draft until the section's Save (the rule

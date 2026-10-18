@@ -1339,9 +1339,8 @@ function renderNodesInto(i){
   const live = nodesList.filter(n => n.state !== "retired" && n.kind !== "local");
   if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
   const n = live.find(x => x.id === nodesPick);
-  d.setBar(`${live.length ? `<label class="pick">Node <select id="ndPick" aria-label="node">${
-      live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
-        esc(x.name)}: ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>` : ""}
+  // Picked as every node-scoped page picks one (nodePick, R218 step 26).
+  d.setBar(`${nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick)}
     <span class="sp"></span>
     <span class="actbar">
       <button type="button" id="ndVm">Create sandbox VM</button>
@@ -1396,12 +1395,12 @@ function renderNodesInto(i){
     // is waiting for rather than "Updating" for minutes.
     const held = (n.jobs || []).some(j => j.type === "self-update" && j.state === "queued")
       ? (n.jobs || []).filter(j => j.type !== "self-update" && j.state !== "queued").length : 0;
-    const agentLine = n.kind === "agent" && n.agent?.version
-      ? `agent ${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
-          stale ? ` <span class="pill warn ndstale" title="this controller ships agent ${
-            esc(nodesAgent.version)} ${esc(nodesAgent.digest.slice(7, 15))}">update available → ${
-            esc(nodesAgent.version)}</span>` : ""}${
-          n.config?.user ? ` · jobs run as ${esc(n.config.user)}` : ""}` : "";
+    // The agent a fact; an update for it a pill beside the node's state.
+    const agentVer = n.kind === "agent" && n.agent?.version
+      ? `${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}` : "";
+    const stalePill = n.kind === "agent" && n.agent?.version && stale
+      ? ` <span class="pill warn ndstale" title="this controller ships agent ${
+          esc(nodesAgent.version)} ${esc(nodesAgent.digest.slice(7, 15))}">update available → ${esc(nodesAgent.version)}</span>` : "";
     const pending = n.state === "pending";
     // A waiting row says what its script was made with (the operator, 11
     // Oct), and offers the script again: a new one, since a token is good
@@ -1428,7 +1427,7 @@ function renderNodesInto(i){
                 held === 1 ? "" : "s"} to finish; the node takes no new work until then (10 minutes at most).`
               : `Updating to agent ${esc(nodesAgent?.version || "")}. This row refreshes when the node reports back.`)
             : stale ? `${windowGap(n) ? "out of window" : "behind"}: ${esc(staleWhy(n))}`
-            : `Test checks that this node answers.`}</span>
+            : ""}</span>
           ${stale ? `<button type="button" data-nd="update-agent" ${updating ? "disabled" : ""}
             title="${updating ? "Update queued: this row refreshes when the node reports back"
               : `Update the agent to ${esc(nodesAgent.version)} once its running jobs finish`}">${
@@ -1453,10 +1452,12 @@ function renderNodesInto(i){
     return askRows + `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
-        <div class="name">${esc(n.name)} ${nodeStatePill(n)}
-          <span class="dim">· ${esc(n.kind)}</span>
-          <code class="dim ndid" title="this node's id: the one in its enroll script's name">${esc(n.id)}</code></div>
-        <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
+        <div class="name">${esc(n.name)} ${nodeStatePill(n)}${stalePill}</div>
+        ${
+        // Its facts in the facts voice, its id among them (R218 step 26):
+        // the id is the one in its enroll script's name.
+        factGrid([["Reached", where], ["Has", census], ["Seen", seen], ["Agent", agentVer],
+                  ["Jobs run as", n.kind === "agent" ? n.config?.user || "" : ""], ["Id", n.id, {cls: "ndid"}]], "ndfacts")}
         ${keepLine(n)}
         ${nodeMay(n) !== "write" ? `<div class="sub warn ndreadonly">Your roles give no Nodes Write on ${esc(n.name)}, so its settings are read here. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
         ${agentBar}${pendingBar}
