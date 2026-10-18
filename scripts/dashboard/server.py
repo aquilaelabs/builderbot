@@ -835,6 +835,61 @@ def _git_facts(d):
     return facts
 
 
+def _listed(d, cloning):
+    """Whether the walk lists directory `d` as a project: the one rule for
+    the whole list and for its names alone (project_names)."""
+    # Only what BuilderBot made (R154, the operator 8 Oct): a folder made by
+    # hand on the share is not a project, and Import is the way one comes in.
+    if not registry.is_project(d.name):
+        return False
+    # Mid-clone: a directory with a .git and not much else, which every
+    # check reads as a repository in a strange state. The job row is
+    # already saying what it really is.
+    if d.name == cloning:
+        return False
+    # Hidden directories are not projects: the whole projects folder is
+    # mounted now, so this list would otherwise open with the share's own
+    # furniture (.Recycle.Bin and friends) presented as things to fix.
+    #
+    # .bbignore is the general form of the same idea, and the one thing
+    # here an operator can drive: a directory holding that file is not a
+    # project and is not listed. The container drops it into any path of
+    # its own that lands inside the projects share (the toolchain store, when
+    # someone maps it inside the projects folder rather than beside it),
+    # and anyone can create one by hand for a directory they would rather
+    # not see. It hides; locking a project is the thing that *blocks*, and
+    # that is a different control with a different guarantee.
+    if not d.is_dir() or d.name.startswith(".") or (d / IGNORE_MARKER).exists():
+        return False
+    # An empty directory is the one thing never reported. It is not a
+    # problem to fix but a mount point waiting for content, or a leftover,
+    # and flagging it would be noise on every boot. One this user cannot
+    # read, write or enter is listed, with what is wrong with it.
+    if not all(os.access(d, m) for m in (os.R_OK, os.W_OK, os.X_OK)):
+        return True
+    try:
+        return any(d.iterdir())
+    except OSError:
+        return True
+
+
+def project_names(who):
+    """The names of the projects `who` may see, in the list's order: what
+    project_list answers to "is this a project?" (the access check most
+    handlers make), without describing each one, which costs the status
+    read's half second (the operator, 17 Oct: the Git view asked for the
+    whole list five times as it opened)."""
+    with timing.timed("project_names"):
+        try:
+            here = sorted(WORKSPACE.iterdir()) if WORKSPACE.is_dir() else []
+        except OSError:
+            return []
+        cloning = projects.busy_name()
+        registry.sync()
+        rows = [{"name": d.name} for d in here if _listed(d, cloning)]
+        return [p["name"] for p in _projects_seen_by(who, rows)]
+
+
 def _projects_on_disk():
     """The directories under /workspace that are projects, each with what is
     wrong with it: the walk, the permissions, and what git says of the
@@ -869,27 +924,7 @@ def _projects_on_disk():
     with timing.timed("projects:registry"):
         registry.sync()
     for d in here:
-        if not registry.is_project(d.name):
-            continue
-        # Mid-clone: a directory with a .git and not much else, which every
-        # check below reads as a repository in a strange state. The job row is
-        # already saying what it really is.
-        if d.name == cloning:
-            continue
-        # Hidden directories are not projects: the whole projects folder is
-        # mounted now, so this list would otherwise open with the share's own
-        # furniture (.Recycle.Bin and friends) presented as things to fix.
-        #
-        # .bbignore is the general form of the same idea, and the one thing
-        # here an operator can drive: a directory holding that file is not a
-        # project and is not listed. The container drops it into any path of
-        # its own that lands inside the projects share (the toolchain store, when
-        # someone maps it inside the projects folder rather than beside it),
-        # and anyone can create one by hand for a directory they would rather
-        # not see. It hides; locking a project is the thing that *blocks*, and
-        # that is a different control with a different guarantee.
-        if (not d.is_dir() or d.name.startswith(".")
-                or (d / IGNORE_MARKER).exists()):
+        if not _listed(d, cloning):
             continue
         issues = []
 
@@ -916,15 +951,6 @@ def _projects_on_disk():
         branch, git_ok, linked, github = None, False, True, False
         fhost, forge = "", forges.OTHER
         if not missing:
-            # An empty directory is the one thing never reported. It is not a
-            # problem to fix but a mount point waiting for content, or a
-            # leftover, and flagging it would be noise on every boot.
-            try:
-                if not any(d.iterdir()):
-                    continue
-            except OSError:
-                pass                    # unreadable: covered by `missing` above
-
             with timing.timed("projects:git"):
                 git_ok, linked, fhost, forge, github, branch = _git_facts(d)
             if not git_ok:
@@ -1824,8 +1850,8 @@ def session_tokens_for(nid, sessions):
     `claude-ep_silon` and the project cannot be read back out of it.
     """
     want = {}
-    for p in project_list(users.ALL):
-        want[claude_session(p["name"])] = p["name"]
+    for name in project_names(users.ALL):
+        want[claude_session(name)] = name
     out = []
     seen = set()
     for row in sessions if isinstance(sessions, list) else []:
@@ -3155,7 +3181,7 @@ phone.remover = devactions.remove_instance
 # (phone.verb): the projects an account sees, a project's node and its Run
 # its container dial, a container held to its project's node (R79).
 phone.users = users
-phone.project_names = lambda who: {p["name"] for p in project_list(who)}
+phone.project_names = lambda who: set(project_names(who))
 phone.project_node = lambda p: prefs.get(p)["node"]
 phone.project_hosts = lambda p: prefs.get(p).get("hosts") or []
 phone.dial = lambda p: prefs.get(p)["devbuild"]
@@ -3201,7 +3227,7 @@ profiletab.configure(users=users,
                      node_names=lambda: {n["id"]: n["name"]
                                          for n in ([] if NODES_OK else nodes.node_list())},
                      logs_of=lambda me: transcripts.mine(
-                         users.uid_of(me), [p["name"] for p in project_list(me)]))
+                         users.uid_of(me), project_names(me)))
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -4325,7 +4351,7 @@ class Handler(BaseHTTPRequestHandler):
         this account sees. The same shape as _refused: a guard that returns
         a bool. Twenty-nine handlers each rebuilt the visible set and wrote
         the same reply before this existed (R60)."""
-        if name and name in {p["name"] for p in project_list(self._who())}:
+        if name and name in set(project_names(self._who())):
             return False
         self._json({"error": f"not a project: {name}" if name else "not a project"}, 400)
         return True
@@ -4494,8 +4520,8 @@ class Handler(BaseHTTPRequestHandler):
         if lim is None and (not users.may(me, "node") or roles.level_of(me or {}, "nodes")):
             return None
         want = set(lim or ())
-        for p in project_list(me):
-            pr = prefs.get(p["name"])
+        for name in project_names(me):
+            pr = prefs.get(name)
             want.update([pr["node"], *(pr.get("nodes") or [])])
         want.discard("")
         return want
@@ -5338,7 +5364,7 @@ class Handler(BaseHTTPRequestHandler):
         if (why := self._area_read_why("accounts")):
             return self._json({"error": why}, 403)
         with timing.timed("users:tab_view"):
-            got = users.tab_view(self._who(), [p["name"] for p in project_list(self._who())],
+            got = users.tab_view(self._who(), project_names(self._who()),
                                  claudegrant.logins_of)
         return self._json(got)
 
@@ -5365,7 +5391,7 @@ class Handler(BaseHTTPRequestHandler):
             people.append({"name": u["name"], "uid": u["uid"], "role": u["role"],
                            "roles": [r for r in roles.roles_of(full) if r not in ("user",)] if can["admin"] else [],
                            "project_roles": pr, "projects": on})
-        all_projects = [p["name"] for p in project_list(me)] if scope is None else sorted(scope)
+        all_projects = project_names(me) if scope is None else sorted(scope)
         rs = roles.all_roles()
         if scope is not None:
             rs = {n: r for n, r in rs.items() if r.get("scope") == "projects"}
@@ -5421,7 +5447,7 @@ class Handler(BaseHTTPRequestHandler):
         rows, names = [], {}
         if not NODES_OK:
             mine = None if users.may(me, "admin") == "" \
-                else {p["name"] for p in project_list(me)}
+                else set(project_names(me))
             if mine is not None and not (me or {}).get("session") and self._area_read_why("jobs"):
                 mine = {p for p in mine if roles.level_of(me, "projects", p, users.may_work)}
             with timing.timed("home:jobs"):
@@ -5442,7 +5468,7 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         me = self._who()
         mine = None if users.may(me, "admin") == "" \
-            else {p["name"] for p in project_list(me)}
+            else set(project_names(me))
         # Without Jobs Read a person sees their projects' jobs alone, those
         # they may read (R152 step 3); the Jobs tab is hidden for them.
         if mine is not None and not (me or {}).get("session") and self._area_read_why("jobs"):
@@ -5494,7 +5520,7 @@ class Handler(BaseHTTPRequestHandler):
         # to its projects, a session's to its own one (the operator, 24 Sep).
         seen = None
         if sess or self._node_scope() is not None:
-            seen = {name} if sess else {p["name"] for p in project_list(me)}
+            seen = {name} if sess else set(project_names(me))
         # ...and of those, the projects whose Containers this person may
         # read (R152 step 3).
         if seen is not None and not sess and not users.is_admin(me):
@@ -6131,7 +6157,7 @@ class Handler(BaseHTTPRequestHandler):
             if (why := users.may(self._who(), "jobs")):
                 return self._json({"error": why}, 403)
             name = field(req, "project")
-            if name not in {p["name"] for p in project_list(self._who())}:
+            if name not in set(project_names(self._who())):
                 return self._json({"error": "not a project"}, 400)
             # ...and by grant on the node the job would run on (R137 step
             # 3): the one named, else the project's primary, as run_job
@@ -6147,7 +6173,7 @@ class Handler(BaseHTTPRequestHandler):
         # jobs of its projects and a session its own project's; a stranger's
         # job and a missing one answer alike.
         me = self._who()
-        mine = None if users.may(me, "admin") == "" else {p["name"] for p in project_list(me)}
+        mine = None if users.may(me, "admin") == "" else set(project_names(me))
         if mine is not None:
             j = nodes.job(field(req, "id"), with_log=False)
             if not j or j.get("project") not in mine:
@@ -6574,7 +6600,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": why}, 400)
         # Which project it belongs to: one of them, or none.
         under = field(req, "owner")
-        if act == "owner" and under and under not in {p["name"] for p in project_list(me)}:
+        if act == "owner" and under and under not in set(project_names(me)):
             return self._json({"error": f"no project called {under}"}, 400)
         return self._json(*containers.admin_verb(act, name, nid, under))
 
@@ -6596,7 +6622,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         return self._json(*containers.tab_verb(
             field(req, "action"), field(req, "name"), req,
-            seen=lambda: [p["name"] for p in project_list(self._who())]))
+            seen=lambda: project_names(self._who())))
 
     def _logs(self, req):
         """The log policy, and the two things that can be done to the pile:
@@ -6647,7 +6673,7 @@ class Handler(BaseHTTPRequestHandler):
         # never will be, but carries every one of these controls. Checked
         # against the store rather than waved through: this name reaches a
         # compose call and a data directory either way.
-        if name not in {p["name"] for p in project_list(me)} \
+        if name not in set(project_names(me)) \
                 and name not in containers.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
@@ -6666,7 +6692,7 @@ class Handler(BaseHTTPRequestHandler):
             # ...and a session reads what belongs to a project its own reads
             # (B551): the state and the starter env, never a change.
             reads = {owner} if sess and act in ("state", "starter", "probe") and owner and self._reads(owner) else set()
-            if owner not in ({sess} | reads if sess else {p["name"] for p in project_list(me)}):
+            if owner not in ({sess} | reads if sess else set(project_names(me))):
                 return self._json({"error": containers.not_ours(devapp.pname(name, want), sess)}, 403)
         # Reading is everybody's; changing what is running is not (roadmap
         # #27). Named, not derived from the verb: an action that should be
@@ -6799,15 +6825,14 @@ class Handler(BaseHTTPRequestHandler):
                 # landed, unshipped, on the project's own node (B645).
                 if req.get("ship") is not True:
                     req["node"] = ""
-        if act not in ("starter", "state") and name in {p["name"] for p
-                                                        in project_list(me)} \
+        if act not in ("starter", "state") and name in project_names(me) \
                 and self._readonly(name):
             return None
         # ...and for a container written here, the project it belongs to,
         # for anybody but an administrator: a session of a locked project
         # does not work on its containers either.
         if act not in ("starter", "state") and not users.is_admin(me) \
-                and name not in {p["name"] for p in project_list(me)} \
+                and name not in set(project_names(me)) \
                 and self._readonly(devapp.owner_of(name, field(req, "instance") or devapp.MAIN)):
             return None
         # `new` is the one action whose instance does not exist yet, which is
@@ -6825,10 +6850,10 @@ class Handler(BaseHTTPRequestHandler):
             if me.get("session"):
                 return self._json({"error": "moving a container to another project is a person's, "
                                             "on the Docker tab"}, 403)
-            if field(req, "to") not in {p["name"] for p in project_list(me)}:
+            if field(req, "to") not in set(project_names(me)):
                 return self._json({"error": f"no project called {field(req, 'to')}"}, 400)
         if act == "owner" and field(req, "owner") \
-                and field(req, "owner") not in {p["name"] for p in project_list(me)}:
+                and field(req, "owner") not in set(project_names(me)):
             return self._json({"error": f"no project called {field(req, 'owner')}"}, 400)
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and
@@ -7271,7 +7296,7 @@ class Handler(BaseHTTPRequestHandler):
         if not me:
             return self._json({"error": "not signed in"}, 401)
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(me)}:
+        if name not in set(project_names(me)):
             return self._json({"error": f"not a project: {name}"}, 400)
         return self._json(presence.heartbeat(name, me.get("uid") or "",
                                              str(req.get("client") or "")[:64],
@@ -7478,7 +7503,7 @@ class Handler(BaseHTTPRequestHandler):
         if not me or not users.uid_of(me) or me.get("session"):
             return self._json({"error": "an account's, not a session's: a session uses bb git"}, 403)
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list(me)}:
+        if name not in set(project_names(me)):
             return self._json({"error": "not a project"}, 400)
         if self._readonly(name):
             return None
@@ -7575,7 +7600,7 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("admin"):
             return None
         me = self._who() or {}
-        return self._result(users.verb(act, req, lambda: {p["name"] for p in project_list(me)},
+        return self._result(users.verb(act, req, lambda: set(project_names(me)),
                                        may_change=lambda p: membership.member_refusal(
                                            me, p, joining=field(req, "name") == me.get("name"))))
 
@@ -7762,10 +7787,10 @@ class Handler(BaseHTTPRequestHandler):
             # The ones this account may open, each with its access: asked
             # project by project through the same gate as every call after.
             mine = []
-            for p in project_list(me):
-                a, _ = ftp.access_for(me, p["name"], "editor")
+            for name in project_names(me):
+                a, _ = ftp.access_for(me, name, "editor")
                 if a:
-                    mine.append({"name": p["name"], "access": a})
+                    mine.append({"name": name, "access": a})
             return self._json({"api": files.API, "projects": mine})
         project = field(req, "project")
         if self._not_project(project):
@@ -8278,9 +8303,8 @@ class Handler(BaseHTTPRequestHandler):
         # lookup: a name that is not the one this account's session would have
         # is somebody else's conversation, and typing into it is the thing a
         # read-only console must not become.
-        project = next((p["name"] for p in project_list(me)
-                        if users.tmux_prefix(me) + claude_session(p['name'])
-                        == want), "")
+        project = next((name for name in project_names(me)
+                        if users.tmux_prefix(me) + claude_session(name) == want), "")
         if not project or users.may(me, "claude", project):
             return self._json({"error": "not a Claude session of yours"}, 403)
         on_node = self._session_on_node(want, str(req.get("node") or ""))
@@ -8379,7 +8403,7 @@ def main():
     # before project_list could answer, failed, and the dev instance's
     # owner kept "*" (B496).
     try:
-        moved = users.migrate_star([p["name"] for p in project_list(users.ALL)])
+        moved = users.migrate_star(project_names(users.ALL))
         if moved:
             print(f"dashboard: {moved} account(s) moved from every project to the ones that exist (R135)", flush=True)
     except Exception as e:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
