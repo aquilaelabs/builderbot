@@ -2459,10 +2459,20 @@ cmd_tests() {
             rm -f "$keepf"
         fi
         [ -x "$here" ] || die "no dashboard test harness at $here: run this from the BuilderBot checkout"
-        ( BB_TEST_HOLD=1 nohup bash "$here" > "$keeplog" 2>&1 & )
-        local _
+        # In a group of its own, so a keep that gives up can end it: one left
+        # waiting for another run's lock came up minutes later, and every bb
+        # dashboard test after attached to it, a world the suites before had
+        # filled (B843).
+        BB_TEST_HOLD=1 setsid nohup bash "$here" > "$keeplog" 2>&1 &
+        local hold=$! _
         for _ in $(seq 150); do [ -f "$keepf" ] && break; sleep 1; done
-        [ -f "$keepf" ] || die "the fixture did not come up within 150s: bb tests keep log has what it said"
+        if [ ! -f "$keepf" ]; then
+            kill -- -"$hold" 2>/dev/null || kill "$hold" 2>/dev/null || true
+            local why="bb tests keep log has what it said"
+            grep -q "waiting for the run that holds the lock" "$keeplog" 2>/dev/null \
+                && why="it was waiting for another test run's lock; keep again once that run ends"
+            die "the fixture did not come up within 150s, and it is ended so it cannot come up later: $why"
+        fi
         # shellcheck source=/dev/null
         . "$keepf"
         log "fixture kept at $KEEP_URL (test:test): bb dashboard test SUITE and bb tests probe FILE attach to it; bb tests keep stop ends it"
