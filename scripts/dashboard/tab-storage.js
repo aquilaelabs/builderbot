@@ -131,19 +131,16 @@ function storageProjects(n, where){
   const empty = rows.filter(r => !r.other && !r.total);
   const shown = rows.filter(r => r.other || r.total);
   const cols = where.filter(w => shown.some(r => r[w]));
-  // Each cell says which column it is (data-k): a desk shows the head row
-  // and hides the words, a phone stacks the cells and shows each one's word
-  // beside its number, since a column of bare numbers under a name said
-  // nothing (the operator's screenshot, B655). An empty cell says so.
-  const head = `<div class="row stack2 stproj sthead"><div class="grow"><div class="dim">project</div></div>${
-    cols.map(w => `<div class="dim stcol">${esc(w)}</div>`).join("")}<div class="dim stcol">total</div></div>`;
-  const tail = empty.length ? `<div class="row stnone"><div class="grow"><div class="sub">${esc(andList(empty.map(r => projLabel(r.name))))} hold${empty.length === 1 ? "s" : ""} nothing here</div></div></div>` : "";
+  // A table (R218 step 27, the tables rule): a head naming the columns at a
+  // desk, and on a phone each cell its column's word beside its number,
+  // since a column of bare numbers under a name said nothing (B655). An
+  // empty cell says so.
+  const tcols = [{label: "Project"}, ...cols.map(w => ({label: w, num: true})), {label: "total", num: true}];
+  const tail = empty.length ? `<div class="field stnone"><div class="sub">${esc(andList(empty.map(r => projLabel(r.name))))} hold${empty.length === 1 ? "s" : ""} nothing here</div></div>` : "";
   if (!shown.length) return tail;
-  return head + shown.map(r => `<div class="row stack2 stproj${r.other ? " dim" : ""}">
-      <div class="grow"><div class="name">${r.other ? "other projects <span class=\"dim\">· ones you cannot see</span>" : esc(projLabel(r.name))}</div></div>
-      ${cols.map(w => `<div class="stcol" data-k="${esc(w)}">${r[w] ? sgb(r[w]) : `<span class="dim">none</span>`}</div>`).join("")}
-      <div class="stcol" data-k="total"><b>${sgb(r.total)}</b></div>
-    </div>`).join("") + tail;
+  return tblWrap(tcols, shown.map(r => `<div class="row stack2 stproj${r.other ? " dim" : ""}">${tblLine(tcols, [
+      `<span class="name">${r.other ? "other projects <span class=\"dim\">· ones you cannot see</span>" : esc(projLabel(r.name))}</span>`,
+      ...cols.map(w => r[w] ? sgb(r[w]) : `<span class="dim">none</span>`), `<b>${sgb(r.total)}</b>`])}</div>`).join(""), "sttbl") + tail;
 }
 
 // Measure now, the page's upkeep, in its bar with every header button (the
@@ -160,9 +157,12 @@ function storageBody(n, where){
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
+  // The walk as facts beside its pill (R218 step 27), and the one hint.
+  const facts = n.measured ? [n.took_s ? `the walk took ${n.took_s}s` : "", "walked every hour"].filter(Boolean).join(" · ")
+    : "walked an hour after the agent starts, then every hour";
   return `<div data-stnode="${esc(n.node)}">
-    ${headLine(`${pill} ${n.measured ? `${n.took_s ? `the walk took ${n.took_s}s; ` : ""}walked again every hour` : "the agent walks its disks an hour after it starts, then every hour"}; where its stores live is set on its row on the Nodes tab`,
-      "", "toolstate")}
+    ${headLine(`${pill} <span class="sub">${esc(facts)}</span>`, "", "toolstate")}
+    <div class="field"><div class="hint">Where its stores live is set on its row on the ${pageLink("nodes", "Nodes page")}.</div></div>
     <div class="field">${lbl("", "Filesystems")}<div class="hint">Each disk, and what BuilderBot holds on it, largest first.</div></div>
     ${storageDisks(n)}
     <div class="field">${lbl("", "By project")}
