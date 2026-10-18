@@ -486,10 +486,11 @@ print(json.dumps(out))
   await page.click(`${card} [data-pmore]`); await page.waitForTimeout(250);
   ok(await page.$eval(`${card} .actmenu`, m => !m.hidden && m.querySelectorAll('button').length >= 5),
      '...and pressing it opens the menu with the rest');
-  // A phone's menu is a sheet over the bottom bar, rising as More does
-  // (floatAt, the operator, 18 Oct: a card's menu was cut off in its fold).
-  const menuAnim = await page.$eval(`${card} .actmenu`, m => getComputedStyle(m).animationName);
-  ok(menuAnim === 'menuUp', `...on the stylesheet's tween, rising as a sheet (${menuAnim})`);
+  // At its button on a phone too, its entrance going the way it opened:
+  // rising above the button, dropping below it (the operator, 18 Oct).
+  const menuAnim = await page.$eval(`${card} .actmenu`, m => ({ name: getComputedStyle(m).animationName, up: m.classList.contains('up') }));
+  ok(menuAnim.name === (menuAnim.up ? 'menuRise' : 'menuIn'),
+     `...on the stylesheet's tween, moving the way it opened (${JSON.stringify(menuAnim)})`);
   ok(await page.$eval(`${card} [data-pmore]`, b => b.getAttribute('aria-expanded') === 'true'),
      '...saying so, for anything that is not looking at the pixels');
   await page.keyboard.press('Escape');

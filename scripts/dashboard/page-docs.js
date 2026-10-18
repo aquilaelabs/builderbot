@@ -700,8 +700,7 @@ function wireMore(root){
 // A menu over the page, never inside what holds its button (the operator,
 // 18 Oct: a card's ⋯ in Archived was cut off at the fold's foot): at a desk
 // under its button and lined up with it, above it when it would pass
-// the screen's foot; on a phone a sheet over the bottom bar, as More is.
-// The ⋯ menus and the Claude chooser both. Fixed to the screen, measured
+// the screen's foot, at every width. The ⋯ menus and the Claude chooser both. Fixed to the screen, measured
 // against whatever box holds it as its frame (a scheme's glass makes one),
 // its entrance played from the start where it lands.
 function floatAt(m, anchor){
@@ -729,9 +728,8 @@ function floatAt(m, anchor){
 function floatPlace(m, anchor){
   const phone = isPhone();
   m.classList.add("floatm");
-  m.classList.toggle("sheet", phone);
   m.classList.remove("up");
-  Object.assign(m.style, {right: "auto", bottom: "auto", maxHeight: ""});
+  Object.assign(m.style, {right: "auto", bottom: "auto", maxHeight: "", maxWidth: ""});
   // The frame's origin, read off a probe beside it rather than the menu
   // itself, whose own entrance may be moving it.
   const probe = document.createElement("i");
@@ -753,27 +751,24 @@ function floatPlace(m, anchor){
   const head = document.querySelector("body > header")?.getBoundingClientRect();
   const area = anchor?.closest?.(".doc")?.getBoundingClientRect();
   const ceil = Math.max(head?.height ? head.bottom : 0, area?.height ? area.top : 0);
-  let left, top, room;
-  if (phone){
-    room = foot - ceil - 16;
-    m.style.maxHeight = room + "px";
-    left = 8;
-    top = Math.max(ceil + 8, foot - 8 - m.offsetHeight);
-  }else{
-    // (a button the dock covers still opens its menu above the dock)
-    const a = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
-    const aTop = Math.min(a.top, foot), aBottom = Math.min(a.bottom, foot);
-    const below = foot - aBottom - 12, above = aTop - ceil - 12;
-    const up = h > below && above > below;
-    room = Math.max(40, up ? above : below);
-    m.style.maxHeight = room + "px";
-    // Lined up with its button on the side it opens from: Start Claude at a
-    // card's left opens rightward from its left edge, a ⋯ at its right
-    // leftward from its right edge.
-    left = Math.max(8, Math.min((a.left + a.right) / 2 < innerWidth / 2 ? a.left : a.right - w, innerWidth - w - 8));
-    top = up ? Math.max(ceil + 8, aTop - 4 - Math.min(h, room)) : aBottom + 4;
-    m.classList.toggle("up", up);
-  }
+  // At its button on a phone too (the operator, 18 Oct: a bottom sheet was
+  // the bottom bar's More's, not a menu's), as wide as the screen allows.
+  const a = anchor.getBoundingClientRect(), w = Math.min(m.offsetWidth, innerWidth - 16), h = m.offsetHeight;
+  if (phone) m.style.maxWidth = `${innerWidth - 16}px`;
+  // (a button the dock covers still opens its menu above the dock)
+  const aTop = Math.min(a.top, foot), aBottom = Math.min(a.bottom, foot);
+  const below = foot - aBottom - 12, above = aTop - ceil - 12;
+  const up = h > below && above > below;
+  const room = Math.max(40, up ? above : below);
+  m.style.maxHeight = room + "px";
+  // Lined up with its button on the side it opens from: Start Claude at a
+  // card's left opens rightward from its left edge, a ⋯ at its right
+  // leftward from its right edge.
+  const left = Math.max(8, Math.min((a.left + a.right) / 2 < innerWidth / 2 ? a.left : a.right - w, innerWidth - w - 8));
+  const top = up ? Math.max(ceil + 8, aTop - 4 - Math.min(h, room)) : aBottom + 4;
+  // Its entrance moves the way it opened: up into place above its button,
+  // down into place below it (the operator, 18 Oct).
+  m.classList.toggle("up", up);
   m.style.left = (left - o.left) + "px";
   m.style.top = (top - o.top) + "px";
 }

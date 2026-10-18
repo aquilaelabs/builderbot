@@ -1402,15 +1402,18 @@ await page.setViewportSize({ width: 393, height: 851 });
   await page.evaluate(() => openProjectsTab());
   await page.waitForSelector('.doc.on .pgrid .pcard [data-pmore]', { timeout: 10000 });
   // The menu's entrance is the stylesheet's, which animatedDuring does not
-  // see: read the animation on the menu itself. A phone's menu is a sheet
-  // over the bottom bar, rising as More does (menuUp), and it lands on the
-  // screen however soon after the page's own fade the press came.
+  // see: read the animation on the menu itself. It opens at its button on
+  // a phone as at a desk, rising when it opens above it and dropping below
+  // (menuRise, menuIn), and lands on the screen however soon after the
+  // page's own fade the press came.
   await page.click('.doc.on .pgrid .pcard [data-pmore]');
   await page.waitForSelector('.doc.on .pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
   await sleep(500);
   const menu = await page.$eval('.doc.on .pgrid .pcard .actmenu:not([hidden])', m => { const r = m.getBoundingClientRect();
-    return { anim: getComputedStyle(m).animationName, on: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth }; });
-  ok(menu.anim === 'menuUp' && menu.on, `a card's menu comes in with a tween on a phone, rising as a sheet, on the screen (${JSON.stringify(menu)})`);
+    return { anim: getComputedStyle(m).animationName, up: m.classList.contains('up'),
+             on: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth }; });
+  ok(menu.anim === (menu.up ? 'menuRise' : 'menuIn') && menu.on,
+     `a card's menu comes in with a tween on a phone, moving the way it opened, on the screen (${JSON.stringify(menu)})`);
   await page.keyboard.press('Escape');
 }
 await sleep(400);

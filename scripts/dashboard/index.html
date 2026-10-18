@@ -4024,13 +4024,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* A menu floated over the page (floatAt in page-docs.js, the operator, 18
    Oct): the ⋯ menus and the Claude chooser, fixed to the screen so no fold
    or card it sits in can cut it off, scrolling inside itself when it is
-   taller than the room it has. One that opens upward rises, as does a
-   phone's sheet over the bottom bar, the way More does. */
+   taller than the room it has. One that opens above its button rises into
+   place and one below drops, at every width (the operator, 18 Oct). */
 /* (two classes, so it outranks .pinmenu's position:absolute further down:
    the chooser is one, and was placed against its pane, a pane's height off) */
 .floatm.floatm{position:fixed;z-index:60;overflow-y:auto;overscroll-behavior:contain}
-.floatm.up,.floatm.sheet{animation-name:menuUp;animation-duration:.32s}
-.floatm.sheet{width:calc(100vw - 16px);max-width:none;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
+.floatm.up{animation-name:menuRise}
 @media(max-width:600px){
   /* The finger height, and nothing of the width: a phone's action bar used
      to share the row between its buttons, which made every set of two span
@@ -4489,6 +4488,10 @@ span.skel.sk-word{display:inline-block;vertical-align:middle;padding:0}
    menu's twitch: 16px over .32s on an ease-out cubic, fading the whole way
    (the operator, 16 Oct). */
 @keyframes menuUp{from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none}}
+/* ...and a context menu that opens above what was pressed rises the same
+   8px over the same time a menu below it drops (menuIn): the motion goes the
+   way the menu opened (the operator, 18 Oct). */
+@keyframes menuRise{from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none}}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
