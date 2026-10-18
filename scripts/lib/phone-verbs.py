@@ -152,12 +152,18 @@ def lent():
     elif op == "ui":
         use("ui")
     elif op == "touch":
+        # --any-app: the one touch on whatever is in front, not only a lease
+        # app (B485: another project's keyboard on a lent phone had no way to
+        # be glided on); its owner's ask says so, and their Allow for this
+        # session does not cover it.
+        anyapp = "--any-app" in rest
+        rest = [w for w in rest if w != "--any-app"]
         if not rest:
             sys.exit("usage: bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--seed N] "
-                     "| text \"...\" | key NAME")
+                     "| text \"...\" | key NAME   [--any-app]")
         kind = rest[0]
         ms = flag(rest, "--ms")
-        a = {"kind": kind}
+        a = {"kind": kind, **({"anyapp": True} if anyapp else {})}
         if kind in ("tap", "hold"):
             a.update(x=rest[1] if len(rest) > 1 else None, y=rest[2] if len(rest) > 2 else None)
             if ms:

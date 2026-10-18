@@ -134,6 +134,13 @@ class Lease(unittest.TestCase):
         self.assertIn("cannot build the glide injector", fell["out"])     # and it says so
         self.answer = {"code": 3, "out": "bb-not-yours: com.android.settings"}
         self.assertEqual(pl.use("app", "touch", {"kind": "tap", "x": 1, "y": 1})[1], 409)
+        # B485: a touch its owner allowed on whatever is in front carries no
+        # lease guard; a layout read under the same flag still has one.
+        self.answer = {"code": 0, "out": ""}
+        pl.use("app", "touch", {"kind": "tap", "x": "3", "y": "4", "anyapp": True})
+        self.assertEqual(self.sent[-1][-1], "input tap 3 4")
+        pl.use("app", "ui", {"anyapp": True})
+        self.assertIn("*dev.app/*", self.sent[-1][-1])
 
     def test_a_shot_lands_in_dist_phone(self):
         pl.lend("n1", OWNER, "app", 1)
@@ -345,6 +352,25 @@ class Session(unittest.TestCase):
         self.assertEqual([g["project"] for g in phone.trusts("n1")], ["app"])
         # Another account's session on the same project still asks.
         self.assertFalse(self.shot(uid="u9")["allowed"])
+
+    def test_a_touch_on_any_app_asks_every_time_and_never_directly(self):
+        # B485: Allow for this session covers the lease's apps, not a touch on
+        # whatever is in front, which its owner answers each time.
+        first = self.shot()
+        phone.decide(first["asked"], True, "u1", "Owner", session=True)
+        self.settle(first["asked"])
+        sess = {"name": "session:app", "uid": "u3", "aname": "Asker", "session": "app"}
+        r = phone.verb("use", {"op": "touch", "args": {"kind": "tap", "x": 1, "y": 2, "anyapp": True},
+                               "why": "glide on the keyboard"}, sess, False)[0]
+        self.assertFalse(r["allowed"])
+        self.assertIn("anyapp=True", phone._find(r["asked"])["cmd"])          # the owner reads it
+        # A person's direct use drops the flag: it is only ever an owner's Allow.
+        phone.users.may_see = staticmethod(lambda who, proj: True)
+        got = []
+        pl.use = lambda proj, op, args: (got.append(args) or ({"out": ""}, 200))
+        phone.verb("use", {"op": "touch", "project": "app", "args": {"kind": "tap", "x": 1, "y": 2, "anyapp": True}},
+                   {"name": "Owner", "uid": "u1"}, False)
+        self.assertNotIn("anyapp", got[-1])
 
     def test_ask_every_time_and_take_back_end_it(self):
         first = self.shot()

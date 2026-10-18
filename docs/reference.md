@@ -440,7 +440,10 @@ bb phone record [SECONDS] | record start [SECONDS] | record stop
 bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--seed N] |
                    text "..." | key back|enter|del|tab|space|up|down|left|right
                    only while a lease app is in front or is the keyboard;
-                   bb phone ui prints the screen's layout under the same rule
+                   --any-app asks the owner for that one touch on whatever is
+                   in front (another project's keyboard), and Allow for this
+                   session does not cover it; bb phone ui prints the screen's
+                   layout under the same rule
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,

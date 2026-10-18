@@ -440,7 +440,8 @@ comes back with its reel, `record-...-sheet.png`, the frames that changed
 with their times in one picture: read that, not the video, before the next
 touch; a screenshot (`bb phone shot`) says only where things ended up. `bb
 phone touch tap|hold|glide|text|key` acts only while a lease app is in front
-or is the keyboard. A glide moves like a hand (`--hand steady|normal|shaky`,
+or is the keyboard; `--any-app` asks the owner for that one touch on whatever
+is in front (another project's keyboard), each time. A glide moves like a hand (`--hand steady|normal|shaky`,
 `ruler` for the straight even stroke, `--seed N` to send the same stroke
 again), and a keyboard under test meets a normal hand, never a ruler: a
 stroke nobody makes proves nothing. Anything else on the phone is `bb phone

@@ -365,7 +365,9 @@ def use(project, op, args):
                                     f"logcat -d -t {n} --pid=$p", project, timeout=90)
         return {"code": r["code"], "out": r["out"]}, 200
     if op in ("touch", "ui"):
-        guard = _ours_in_front(pkgs)
+        # A touch its owner allowed on whatever is in front (--any-app, B485):
+        # no lease-app guard on that one; every other is held to the lease.
+        guard = "" if op == "touch" and (args or {}).get("anyapp") is True else _ours_in_front(pkgs)
         if op == "touch" and str((args or {}).get("kind")) == "glide":
             g = _glide(project, nid, serial, guard, args)
             if g is not None:

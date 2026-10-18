@@ -911,7 +911,10 @@ def _allow_if_trusted(q):
         return q
     with _lock:
         r = _find(q["id"])
-    if r and r.get("kind") in ("phone", "phone-use") and trusted(r["node"], r["project"], r.get("asker_uid") or ""):
+    # A touch on whatever app is in front (--any-app, B485) is asked every
+    # time: the owner trusted the session with the lease's apps, not the phone.
+    if r and r.get("kind") in ("phone", "phone-use") and not (r.get("args") or {}).get("anyapp") \
+            and trusted(r["node"], r["project"], r.get("asker_uid") or ""):
         with _lock:
             r["auto"] = True
         decide(r["id"], True, r["to"], "")
@@ -1730,7 +1733,11 @@ def verb(action, req, who, fresh):
             return {"error": "which project's phone?"}, 400
         op = field(req, "op")
         if op == "status" or not who.get("session"):
-            return leasing.use(proj, op, req.get("args"))
+            # A touch beyond the lease's apps (anyapp) is only ever its
+            # owner's Allow on a session's ask, never asked for directly.
+            direct = {k: v for k, v in (req.get("args") or {}).items() if k != "anyapp"} \
+                if isinstance(req.get("args"), dict) else req.get("args")
+            return leasing.use(proj, op, direct)
         lnid, got = leasing.leased_to(proj)
         # What would be refused anyway is refused now, not after its owner
         # was asked (report #52): no lease, a file outside dist/, an app
