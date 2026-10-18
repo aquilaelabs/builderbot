@@ -369,6 +369,20 @@ LINE_COMMENT = re.compile(r"(?m)(?:^|(?<=\s))//[^\n]*$|/\*(?:(?!\*/).)*\*/\s*$",
 ARROW_PARAMS = r"(?:\((?:[^()]|\([^()]*\))*\)|[A-Za-z_$][\w$]*)"
 TS_ARROW_PARAMS = r"(?:\((?:[^()]|\([^()]*\))*\)(?:\s*:\s*[\w$<>\[\],.|&?'\" ]+?)?|[A-Za-z_$][\w$]*)"
 TS_SUFFIXES = {".ts", ".tsx", ".astro", ".vue", ".svelte"}
+# Where a function is named after its return type with no keyword before it
+# (B809): Java's `String quote(String v) {`, C#'s, Dart's `String quote(v) =>
+# v;`. The code before the name is modifiers and annotations, then a type;
+# a control word in the type's place (`return quote(`, `new Foo(`) is a call.
+TYPED_SUFFIXES = {".java", ".cs", ".dart"}
+TYPED_HEAD = re.compile(r"(?:^|[{};])\s*(?:@[\w.]+(?:\([^()]*\))?\s*)*(?:[\w$]+\s+)*"
+                        r"([\w$.]+)(?:<[^;{}()=]*>)?(?:\[\s*\])*\??\s*$")
+NOT_A_TYPE = {"return", "new", "throw", "else", "case", "await", "yield", "typeof", "sizeof",
+              "in", "is", "as", "do", "goto", "assert", "not", "and", "or", "default", "break",
+              "continue", "if", "while", "for", "switch", "catch", "using", "lock", "checked"}
+# A Kotlin or Scala statement a new line starts with, ending an expression
+# body that ran on without a `;` (B810): `fun a(v) = quote(v)` then `fun b`.
+FN_LINE_WORDS = {"fun", "def", "val", "var", "override", "private", "public", "protected",
+                 "internal", "class", "object", "suspend", "inline"}
 JSX_SUFFIXES = {".tsx", ".jsx", ".astro"}
 OBJ_KEY_ARROW = re.compile(r"(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?"
                            + ARROW_PARAMS + r"\s*\Z", re.M)
@@ -396,8 +410,9 @@ class JSScanner:
     REGEX_BEFORE = set("(,=:[!&|?{};+-*%<>~^")
 
     def __init__(self, text, sink, line0=1, top="(top level)", shape_methods=True, base=0,
-                 fn_words=None, words=None, ts=False, jsx=False):
+                 fn_words=None, words=None, ts=False, jsx=False, typed=False):
         self.s = text
+        self.typed = typed
         self.words = words or (JS_KEYWORDS, TYPE_WORDS, MODIFIERS)
         self.ts = ts
         self.jsx = jsx
@@ -764,6 +779,12 @@ class JSScanner:
                 return code
             pos = start
 
+    def typed_tail(self):
+        # what may stand between a typed head's `)` and its body: Dart's
+        # `async`, `async*`, `sync*`, Java's `throws IOException, X`
+        return self.typed and self.mm_close is not None and bool(re.fullmatch(
+            r"\s*(?:async\*?|sync\*|throws\s+[\w$.,\s]+)?\s*", self.s[self.mm_close:self.i]))
+
     def nest(self):
         return self.parens + self.brackets
 
@@ -783,7 +804,8 @@ class JSScanner:
             # name is followed by extends, implements, < or its {, never a word
             self.sink.defs.remove(self.pending)
             self.pending = None
-        if self.exprs and word in STATEMENT_WORDS and self.line > self.tok_line:
+        if self.exprs and self.line > self.tok_line and (
+                word in STATEMENT_WORDS or (word in FN_LINE_WORDS and self.fn_words & {"fun", "def"})):
             # a statement on a new line after one with no `;`
             self.close_exprs(lambda dp, pr: dp == self.depth and pr == self.nest(), self.tok_line)
         # `of` is for-of's word after a binding (`x of`, `] of`, `} of`) and
@@ -962,8 +984,9 @@ class JSScanner:
                 code = self.code_before(self.i - (len(before) - len(before.rstrip())) - len(prev))
                 before = before.rstrip()
                 head = before[:-len(prev)].rstrip()
-                if self.shape_methods and (code.endswith(("{", ",", ";", "}")) or not code):
-                    # possibly an object/class method: decided at the ) {
+                typed = self.typed and (lambda m: bool(m) and m.group(1) not in NOT_A_TYPE)(TYPED_HEAD.search(code))
+                if self.shape_methods and (code.endswith(("{", ",", ";", "}")) or not code or typed):
+                    # possibly an object/class method, or a typed function: decided at the ) { or ) =>
                     self.maybe_method = (prev, self.line, self.parens)
                 else:
                     self.maybe_method = None
@@ -1057,7 +1080,7 @@ class JSScanner:
                     self.stack.append((self.enclosing(), self.depth, None))
             elif getattr(self, "maybe_method", None) and self.maybe_method[2] == self.parens \
                     and (self.last_sig == ")" or (self.ts and self.mm_close is not None and re.fullmatch(
-                        r"\s*:\s*[\w$<>\[\],.|&?'\" ]+", s[self.mm_close:self.i]))):
+                        r"\s*:\s*[\w$<>\[\],.|&?'\" ]+", s[self.mm_close:self.i])) or self.typed_tail()):
                 # (TypeScript: `private bound(a: Vec): [number, number] {`)
                 # its own `)` just closed: in `if (a(b, c(d))){` the `)` before
                 # the brace is the if's, and c is a call
@@ -1085,12 +1108,43 @@ class JSScanner:
             if self.pending is not None and self.pending_depth > self.depth:
                 # an interface's `fun f(x: Int)` with no body ends with its scope
                 self.pending = None
-            self.close_exprs(lambda dp, pr: dp > self.depth)
+            # (on the line of its last token: a Kotlin body closed by its
+            # class's `}` ends on its own line, not the brace's)
+            self.close_exprs(lambda dp, pr: dp > self.depth, self.tok_line)
             while self.stack and self.stack[-1][1] >= self.depth:
                 _, _, d = self.stack.pop()
                 if d is not None:
                     d["end"] = self.line
             self.last_sig = "}"
+            return
+        if c == "=" and s[self.i + 1:self.i + 2] not in ("=", ">") and s[self.i - 1:self.i] not in tuple("=!<>+-*/%&|^:") \
+                and self.pending is not None and self.pending["kind"] == "function" \
+                and getattr(self, "pending_close", None) is not None and self.parens == self.paren_at_pending \
+                and re.fullmatch(r"\s*(?::\s*[\w$<>\[\],.?*() ]+)?\s*", s[self.pending_close:self.i]):
+            # Kotlin's `fun a(v: String) = quote(v)`, Scala's `def a(v) = ...`:
+            # a body that is one expression, so the calls in it are a's, not
+            # the class's around it (B810), and it ends where the expression does
+            d, self.pending = self.pending, None
+            d["expr"] = True
+            self.exprs.append((d, self.depth, self.nest(), len(self.stack)))
+            self.i += 1
+            self.last_sig = "="
+            return
+        if c == "=" and s[self.i:self.i + 2] == "=>" and self.typed and self.maybe_method \
+                and self.maybe_method[2] == self.parens and (self.last_sig == ")" or self.typed_tail()):
+            # Dart's `String quote(v) => v;`: a typed head's arrow body (B809),
+            # one expression, its header taken back from the calls
+            name, line, _ = self.maybe_method
+            self.maybe_method = None
+            d = self.add_def(name, line, "method", self.enclosing_or_blank())
+            d["expr"] = True
+            self.exprs.append((d, self.depth, self.nest(), len(self.stack)))
+            for cl in reversed(self.sink.calls):
+                if cl["name"] == name and cl["line"] == line:
+                    self.sink.calls.remove(cl)
+                    break
+            self.i += 2
+            self.last_sig = "=>"
             return
         if c == "=" and s[self.i:self.i + 2] == "=>":
             # `const NAME = x => expr`: a definition with no brace to hang a
@@ -1642,7 +1696,7 @@ def scan_js(text, sink, line0=1, base=0):
     suffix = Path(sink.path).suffix
     JSScanner(text, sink, line0, shape_methods=suffix in SHAPE_METHODS, base=base,
               fn_words=FN_BY_SUFFIX.get(suffix, set()), words=keywords_for(suffix),
-              ts=suffix in TS_SUFFIXES, jsx=suffix in JSX_SUFFIXES).run()
+              ts=suffix in TS_SUFFIXES, jsx=suffix in JSX_SUFFIXES, typed=suffix in TYPED_SUFFIXES).run()
 
 
 SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script>", re.S | re.I)

@@ -119,6 +119,27 @@ class OtherProjects(unittest.TestCase):
                      ("onText", 18, 18)]:
             self.assertIn(want, got)
 
+    def test_a_kotlin_expression_body_holds_its_own_calls(self):
+        # B810: `fun a(v) = quote(v)` gave the call to the class around it
+        s = scan("class K {\n fun a(v: String) = quote(v)\n fun quote(v: String) = v\n}\n"
+                 "fun b(v: String): String = quote(v)\nfun c() { b(\"x\") }\n", "K.kt")
+        self.assertTrue({("a", 2, 2), ("quote", 3, 3), ("b", 5, 5)} <= defs(s), defs(s))
+        self.assertTrue({("quote", 2, "a"), ("quote", 5, "b"), ("b", 6, "c")} <= calls(s), calls(s))
+
+    def test_a_typed_function_is_a_definition_and_a_control_word_is_not_a_type(self):
+        # B809: Dart's `String quote(v) => v;` and Java's typed methods were calls
+        d = scan("String a(v) => 'x';\nString quote(v) => v;\nclass A {\n  @override\n"
+                 "  Future<List<int>> load(int n) async { return await quote(n); }\n}\n"
+                 "void main() { a(quote(1)); }\n", "a.dart")
+        self.assertTrue({("a", 1, 1), ("quote", 2, 2), ("load", 5, 5), ("main", 7, 7)} <= defs(d), defs(d))
+        self.assertTrue({("quote", 5, "load"), ("a", 7, "main"), ("quote", 7, "main")} <= calls(d), calls(d))
+        self.assertNotIn("a", {c["name"] for c in d.calls if c["line"] == 1})
+        j = scan("class A {\n  String quote(String v) throws IOException { return v; }\n"
+                 "  void main() { B b = new B(); if (x) return quote(v); }\n}\n", "A.java")
+        self.assertTrue({("quote", 2, 2), ("main", 3, 3)} <= defs(j), defs(j))
+        self.assertTrue({("B", 3, "main"), ("quote", 3, "main")} <= calls(j), calls(j))
+        self.assertFalse({"B", "return"} & {x["name"] for x in j.defs})
+
     def test_event_attributes_class_lists_and_named_iifes(self):
         text = ('<button onclick="jump(\'errors\'); other()">x</button>\n<script>\n'
                 "function jump(w){ el.classList.toggle('ghost', on); el.className = 'btn ' + (d ? 'red' : 'blue'); }\n"
