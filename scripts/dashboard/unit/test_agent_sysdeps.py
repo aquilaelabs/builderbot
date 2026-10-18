@@ -34,6 +34,15 @@ class SysdepsTest(unittest.TestCase):
         missing, _ = agent.sysdeps_missing(cat, "big", "apt", ["false"])
         self.assertEqual(len(missing), agent.SYSDEPS_MAX)
 
+    def test_apt_waits_for_the_lock(self):
+        """B838: another apt holding the dpkg lock failed the install at
+        once; apt is told to wait for it."""
+        agent._have = lambda b: b == agent.DPKG_BIN
+        fam, _, install = agent.pkg_backend()
+        self.assertEqual(fam, "apt")
+        self.assertIn("DPkg::Lock::Timeout=300", install)
+        self.assertLess(install.index("DPkg::Lock::Timeout=300"), install.index("install"))
+
 
 if __name__ == "__main__":
     unittest.main()

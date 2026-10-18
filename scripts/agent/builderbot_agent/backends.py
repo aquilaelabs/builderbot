@@ -60,7 +60,11 @@ def pkg_backend():
     this agent cannot install packages on: a recipe's packages are named
     for the owner there."""
     if _have(DPKG_BIN):
-        return "apt", [DPKG_BIN, "-s"], [APT_BIN, "install", "-y", "-qq"]
+        # The lock is waited for, five minutes, where apt-get gave up at once:
+        # unattended-upgrades holds it on a fresh Ubuntu, and so did the apt
+        # of a job lost to an agent restart, which failed the install after
+        # it (B838). dnf waits for its own lock unasked.
+        return "apt", [DPKG_BIN, "-s"], [APT_BIN, "-o", "DPkg::Lock::Timeout=300", "install", "-y", "-qq"]
     if _have(RPM_BIN) and _have(ZYPPER_BIN) and not _have(DNF_BIN):
         return "zypper", [RPM_BIN, "-q"], [ZYPPER_BIN, "-n", "-q", "install", "-y"]
     if _have(RPM_BIN) and _have(DNF_BIN):
