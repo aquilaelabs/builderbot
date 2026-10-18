@@ -343,6 +343,12 @@ function jumpGo(i){
 function wireJump(){
   const inp = $("jump"), list = $("jumpList");
   if (!inp || !list) return;
+  // The whole hint where it fits; a phone's field is narrower than it, so
+  // there it says what it is for in two words (the operator, 18 Oct: cut
+  // off mid-word). The aria-label keeps the whole of it either way.
+  const said = () => { inp.placeholder = isPhone() ? "jump to…" : "jump to a page, project, container or node"; };
+  said();
+  matchMedia("(max-width: 900px)").addEventListener("change", said);
   inp.oninput = drawJump;
   inp.onfocus = () => { if (nodesList === null) loadNodes().then(drawJump); drawJump(); };
   inp.onkeydown = e => {

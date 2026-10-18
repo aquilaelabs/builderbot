@@ -3236,7 +3236,11 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   background:transparent;color:var(--ink);font:var(--f-ui);text-align:left;min-height:var(--tap)}
 .jrow.on,.jrow:hover{background:var(--btn-hi)}
 .jrow .jw{color:var(--dim);font:var(--f-note);white-space:nowrap}
-@media(max-width:600px){ .jump{flex:1 1 90px} .jump input{padding:4px 8px} }
+/* On a phone the field takes the width between the brand and the buttons:
+   the spacer beside it grew too and took half (the operator, 18 Oct: the
+   hint cut off beside a blank gap). */
+@media(max-width:900px){ .jump{flex:1 1 90px} header>.spacer{display:none} }
+@media(max-width:600px){ .jump input{padding:4px 8px} }
 /* Under 600px the header's bug and sign-out move into the gear's menu: six
    buttons a thumb wide left the search a sliver at 344px (B744). */
 .uimenu .narrowonly{display:none}
