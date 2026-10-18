@@ -32,6 +32,23 @@ class JobLogs(unittest.TestCase):
                     (jid, project, state, self.n, int(time.time()) - ago,
                      None if state == "running" else int(time.time()) - ago))
 
+    def test_a_probe_ending_sweeps_nothing(self):
+        """A quiet probe's end leaves the sweep alone (the operator, 17 Oct:
+        each Docker read's result swept every project's history); a job
+        somebody queued still sweeps its project's."""
+        swept = []
+        real = nodes.prune_job_logs
+        self.addCleanup(setattr, nodes, "prune_job_logs", real)
+        nodes.prune_job_logs = lambda project=None: swept.append(project) or 0
+        self.job("jq", project="")
+        nodes._probe_ids.add("jq")
+        self.addCleanup(nodes._probe_ids.discard, "jq")
+        self.assertEqual(nodes.job_result(self.n, "jq", "succeeded", 0), {"ok": True})
+        self.assertEqual(swept, [], "the probe swept nothing")
+        self.job("jr")
+        nodes.job_result(self.n, "jr", "succeeded", 0)
+        self.assertEqual(swept, ["p"], "a queued job sweeps its own project")
+
     def test_a_running_jobs_log_keeps_its_start_and_its_end(self):
         self.job("j1")
         total = nodes.JOB_LOG_MAX_CHUNKS + 40

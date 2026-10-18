@@ -40,6 +40,7 @@ import names   # noqa: E402
 from fields import field   # noqa: E402
 import db   # noqa: E402
 import turns   # noqa: E402
+import timing   # noqa: E402
 import enrollscript   # noqa: E402
 from db import _exec, _lock, _rows, audit, mint   # noqa: E402
 
@@ -4118,24 +4119,27 @@ def prune_job_logs(project=None):
     where = "WHERE project = ?" if project else ""
     args = (project,) if project else ()
     gone = 0
+    cutoff = int(time.time()) - log_days() * 86400
     for row in _rows(f"SELECT DISTINCT project FROM jobs {where}", args):
         proj = row["project"]
-        # Beyond the newest N, by when they ended (a job still running has no
-        # `ended` and sorts first, which is right: it is the one being read).
-        old = _rows(
-            "SELECT id FROM jobs WHERE project = ? AND state IN "
-            "('succeeded', 'failed', 'canceled') "
-            "ORDER BY COALESCE(ended, queued) DESC LIMIT -1 OFFSET ?",
-            (proj, JOB_LOG_KEEP))
-        cutoff = int(time.time()) - log_days() * 86400
-        aged = _rows(
-            "SELECT id FROM jobs WHERE project = ? AND state IN "
-            "('succeeded', 'failed', 'canceled') AND COALESCE(ended, queued) < ?",
-            (proj, cutoff))
-        for jid in {r["id"] for r in old} | {r["id"] for r in aged}:
-            if _rows("SELECT 1 FROM job_logs WHERE job_id = ? LIMIT 1", (jid,)):
-                _exec("DELETE FROM job_logs WHERE job_id = ?", (jid,))
-                gone += 1
+        # Only the jobs past the policy that still HAVE a log, in one read:
+        # asked one job at a time, every job ending looked at each of the
+        # up to two thousand rows a project keeps, on the store's one lock,
+        # which the trace put at over a second of the server's time per
+        # result (the operator, 17 Oct). Past the policy is beyond the newest
+        # N by when they ended (a job still running has no `ended` and sorts
+        # first, which is right: it is the one being read), or older than
+        # the days a log is kept.
+        doomed = _rows(
+            "SELECT DISTINCT l.job_id FROM job_logs l JOIN jobs j ON j.id = l.job_id "
+            "WHERE j.project = ? AND j.state IN ('succeeded', 'failed', 'canceled') "
+            "AND (COALESCE(j.ended, j.queued) < ? OR j.id NOT IN ("
+            "SELECT id FROM jobs WHERE project = ? AND state IN ('succeeded', 'failed', 'canceled') "
+            "ORDER BY COALESCE(ended, queued) DESC LIMIT ?))",
+            (proj, cutoff, proj, JOB_LOG_KEEP))
+        for r in doomed:
+            _exec("DELETE FROM job_logs WHERE job_id = ?", (r["job_id"],))
+            gone += 1
     return gone
 
 
@@ -4352,8 +4356,13 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # work is bounded by that project's own history.
     # Housekeeping never loses a result: whatever goes wrong in the sweep, the
     # job that just finished is already recorded above.
+    # Not after a quiet probe: its record is dropped once its answer is read,
+    # it has no project, and a sweep with none swept every project's history
+    # on each Docker read, which is most of what ends (the operator, 17 Oct).
     try:
-        prune_job_logs(got[0]["project"] if "project" in got[0].keys() else None)
+        if not quiet:
+            with timing.timed("result:sweep"):
+                prune_job_logs(got[0]["project"] if "project" in got[0].keys() else None)
     except sqlite3.Error as e:
         print(f"dashboard: nodes: job log sweep after {job_id} skipped: {e}",
               file=sys.stderr, flush=True)
@@ -4377,7 +4386,8 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
             # what that means. The row used to carry that sentence because
             # the controller ran compose itself; this is how it keeps it now
             # the node does (roadmap #24).
-            better = fn(job(job_id, with_log=False), state)
+            with timing.timed(f"result:hook:{got[0]['type']}"):
+                better = fn(job(job_id, with_log=False), state)
             if state != "succeeded" and isinstance(better, str) and better.strip():
                 _exec("UPDATE jobs SET error = ? WHERE id = ?",
                       (better.strip()[:500], job_id))
