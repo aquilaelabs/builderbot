@@ -952,8 +952,10 @@ execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
 // shell prints is its own line on the screen, never the command's echo.
 {
   const cap = () => execFileSync('tmux', ['capture-pane', '-p', '-J', '-t', 'claude-alpha'], { encoding: 'utf8' });
+  // Given as long as any wait here on a loaded box: fifteen seconds ran out
+  // in a whole eight-worker run with the shell still to get to it.
   let off = false;
-  for (let i = 0; i < 150 && !off; i++){
+  for (const until = Date.now() + patience(40000); !off && Date.now() < until;){
     off = cap().split('\n').some(l => l.trim() === 'ECHO-OFF-NOW');
     if (!off) await new Promise(r => setTimeout(r, 100));
   }
