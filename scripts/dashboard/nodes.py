@@ -971,7 +971,7 @@ def enroll_script(principal, req):
     ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=enrolled)
     if ans.get("error"):
         return ans
-    prov = AGENT_DIR.parent.parent / "nodes" / "provision-linux.sh"
+    prov = HERE.parent.parent / "nodes" / "provision-linux.sh"
     if not prov.is_file():
         return {"error": "this controller ships no provisioner"}
     user = re.sub(r"[^a-z0-9_-]", "", (field(req, "user") or "bb").lower())[:32] or "bb"
@@ -4607,7 +4607,11 @@ def job_counts():
 # ---------------------------------------------------------------------------
 # the agent file: served to nodes, and the digest hello compares against
 
-AGENT_DIR = HERE.parent / "agent"
+# The agent's sources, beside the dashboard; a test world's own copy where
+# the harness names one (BB_AGENT_DIR), so a suite that makes its controller
+# ship a newer agent changes only its own world's, not the copy every worker
+# of a whole run serves from (B718, B751, B510).
+AGENT_DIR = Path(os.environ.get("BB_AGENT_DIR") or HERE.parent / "agent")
 AGENT_VERSION_PY = AGENT_DIR / "builderbot_agent" / "__init__.py"
 _agent_cache = {}
 

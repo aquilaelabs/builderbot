@@ -12,12 +12,16 @@ import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileS
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
+// The agent this world's controller ships (run.sh's BB_AGENT_DIR, a copy of
+// its own): the zip a node starts on is built from it, and the newer agent
+// the self-update check needs is made there, never in the run's shared tree.
+const SHIPPED = `${DIR}/agentsrc`;
 // The agent's own modules, in-process: a fresh copy of the package as one
 // object (unit/agentpkg.py), the way the single file was loaded by path.
 const LOAD_AGENT = `import sys; sys.path.insert(0, ${JSON.stringify(`${REPO}/scripts/dashboard/unit`)}); import agentpkg`;
 // What a node runs: the zip the controller ships (builderbot_agent/bundle.py).
 const agentZip = () => execFileSync('python3', ['-c', 'import sys; sys.path.insert(0, sys.argv[1]); '
-  + 'from builderbot_agent import bundle; sys.stdout.buffer.write(bundle.build(sys.argv[1]))', `${REPO}/scripts/agent`]);
+  + 'from builderbot_agent import bundle; sys.stdout.buffer.write(bundle.build(sys.argv[1]))', SHIPPED]);
 // Under bb tests coverage (R76) every python this file starts, the agent it
 // runs and the module it drives in-process alike, counts the agent's
 // functions into its own file: PID is each process's own, so a self-update's
@@ -3112,7 +3116,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // the agent downloads the file, checks its digest, writes it over its
     // own, re-executes in place and dials in on the new digest. Then it
     // still takes work, which is the point of it staying the same process.
-    appendFileSync(AGENT, '\n# the suite: from here on the controller ships a newer agent\n');
+    appendFileSync(`${SHIPPED}/builderbot-agent.py`, '\n# the suite: from here on the controller ships a newer agent\n');
     const shipped = await until(async () => {
       const r = await api('/api/v1/nodes');
       return r.agent?.digest && r.agent.digest !== all.agent.digest ? r.agent : null;

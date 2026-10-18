@@ -1426,7 +1426,13 @@ fresh
 # the whole run now and then. Their pids come back through a file outside $S.
 PIDF="$(mktemp "${TMPDIR:-/tmp}/dashboard-test-pid.XXXXXX")"
 start_server() {
+# The agent this world's controller ships, a copy of its own made fresh for
+# each suite: agent.mjs appends to it to make its controller ship a newer
+# agent, which in the run's shared copy held every other worker's nodes as
+# running an agent "newer than its number" (B718, B751, B510).
+rm -rf "$S/agentsrc"; cp -r "$DASH/../agent" "$S/agentsrc"
 ( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
+    BB_AGENT_DIR="$S/agentsrc" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     TC_AUTOCHECK=0 BB_NODE_POLL=3 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
