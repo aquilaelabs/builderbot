@@ -188,6 +188,14 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         # failed there rather than left running forever (docs/nodes.md §9).
         # `taken` is a census hello_step took beside the loop; anybody else
         # takes one here, now.
+        # A census of its own, here, while one hello_step asked for is still
+        # being taken beside the loop: that one predates whatever this hello
+        # follows (a job that removed a driver), so it is let go when it
+        # lands and a fresh one taken, rather than said after this one and
+        # putting back what the job took away (B851).
+        if taken is None and getattr(self, "census_thread", None) is not None \
+                and self.census_thread.is_alive():
+            self.census_stale = True
         c = taken if taken is not None else self.census_beating()
         st, r = self.ctl.call("hello", {"census": c,
                                         "version": AGENT_VERSION,

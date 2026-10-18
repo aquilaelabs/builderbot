@@ -496,10 +496,23 @@ await page.evaluate(() => { toolchains.job.running = false; tcRev++; drawPanes()
 ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
    && await page.$$eval('.doc .tc input:not(:disabled)', is => is.length > 0),
    '...and live again when it finishes');
+// The tab at rest first. Every job ends with the server measuring the sizes
+// again (du over every tree, slow on a loaded box), and the tab asks every
+// second and a half until that lands and repaints its rows when it does, so
+// the click below met a list being rewritten under it: a bin replaced
+// between the press and the release takes no click at all, nothing asked,
+// nothing removed, and the wait after it ran out (B463). So the sizes are
+// waited for, and the click is made again while no confirmation has come.
+await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
+  && !toolchains.sizing && !tcSizeTimer, { timeout: 30000 });
 const nd = page.dialogs.length;
-await page.click('.doc [data-rm="android:emulator"]');
-ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall'),
-   'uninstalling asks first');
+let presses = 0;
+while (page.dialogs.length === nd && presses < 3){
+  presses++;
+  await page.click('.doc [data-rm="android:emulator"]');
+}
+ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall android:emulator'),
+   `uninstalling asks first (${presses} press(es): ${page.dialogs.slice(nd).join(' | ') || 'nothing asked'})`);
 // The job, not just the count: a row being removed has no path line at all,
 // so "one installed path" is briefly true mid-removal, and everything after
 // this reads paths. On this runner that race is the difference between green
@@ -519,9 +532,27 @@ ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 // highlight no other list here has, in a hardcoded color no scheme reached.
 ok(await page.$eval('.doc:has(.tc)', e => e.classList.contains('flush')),
    'the Toolchains tab fills its pane, like every other document tab');
-ok(await page.$eval('.tc', e => { const c = getComputedStyle(document.documentElement);
-     return getComputedStyle(e).padding === `${c.getPropertyValue('--row-y').trim()} ${c.getPropertyValue('--row-x').trim()}`; }),
-   '...on the same band the notebook uses (the band tokens), so the two do not disagree by two pixels');
+// The row on show, and the two read in one frame and waited for until they
+// agree (B792, B444). This failed twice under a whole run's load and passed
+// alone, and no rule, token or script found here moves either side, so the
+// cause is not known; it read the first .tc anywhere and said nothing of
+// what it saw, which is why it stayed unknown. It reads the shown tab's row
+// now, not a copy a redraw fades out, and says both values when they differ.
+const band = () => page.evaluate(() => {
+  const e = document.querySelector('.pane .doc.on .tc:not(.fghost .tc)');
+  const c = getComputedStyle(document.documentElement);
+  const want = `${c.getPropertyValue('--row-y').trim()} ${c.getPropertyValue('--row-x').trim()}`;
+  return { got: e ? getComputedStyle(e).padding : 'no row', want };
+});
+await page.waitForFunction(() => {
+  const e = document.querySelector('.pane .doc.on .tc:not(.fghost .tc)');
+  const c = getComputedStyle(document.documentElement);
+  return !!e && getComputedStyle(e).padding
+    === `${c.getPropertyValue('--row-y').trim()} ${c.getPropertyValue('--row-x').trim()}`;
+}, { timeout: 5000 }).catch(() => {});
+const bandRead = await band();
+ok(bandRead.got === bandRead.want,
+   `...on the same band the notebook uses (the band tokens), so the two do not disagree by two pixels (${bandRead.got}; tokens ${bandRead.want})`);
 ok(await page.evaluate(() => {
      const host = document.querySelector('.doc:has(.tc)');
      const bin = document.querySelector('.tc .rm');

@@ -1917,6 +1917,18 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const ckf = ck.ok ? await job(ck.job) : null;
       ok(/bb-sandbox gpu-driver refresh/.test(ckf?.log || '') && /reading the package lists again/.test(ckf?.log || ''),
          `Check for updates reads apt's lists again on the node (${ck.error || ckf?.state})`);
+      // The check asks the agent for a fresh hello, whose census it takes
+      // beside its loop: slowly on a loaded box. A remove queued while that
+      // census is still being taken says its own hello with the driver gone,
+      // and the older census was then said on top of it with the driver still
+      // there, the next hello ten minutes off, so the row read "waiting" to
+      // the end of the wait below (B483; the agent lets that census go since,
+      // B851). The hello the check asked for is still waited for first: the
+      // agent logs each one it says.
+      await until(() => {
+        const l = agentLog(), at = l.lastIndexOf('hello again: the GPU driver check refreshed apt');
+        return at >= 0 && /\] hello: node /.test(l.slice(at));
+      }, 120000);
       const rm = await api('/api/toolchains', { action: 'remove', names: ['nvidia-driver', KIT], node: minted.id });
       const rmf = rm.ok ? await job(rm.job) : null;
       const gone = await until(async () => { const x = await drv(); return x?.state === 'absent' ? x : null; }, 120000);
