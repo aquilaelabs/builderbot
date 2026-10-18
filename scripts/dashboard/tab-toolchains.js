@@ -559,7 +559,8 @@ function renderToolchainsInto(i){
         {label: "installed", value: items.filter(x => x.installed).length, sub: `of ${items.length} offered`},
         {label: "updates due", value: due, tone: due ? "warn" : "", omit: !due && !d.checked},
         {label: "needed by a project", value: need, tone: need ? "warn" : "", omit: !need},
-        {label: "free", value: typeof d.free_mb === "number" ? (d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB") : "",
+        // Storage's reading of a size (sgb), TB past ten of them (B834).
+        {label: "free", value: typeof d.free_mb === "number" ? sgb(d.free_mb) : "",
          sub: "on the store", omit: typeof d.free_mb !== "number"},
       ]);
     })()}
