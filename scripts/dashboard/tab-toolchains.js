@@ -516,15 +516,15 @@ function renderToolchainsInto(i){
   surf.setBar(`${nodePick("tcNodeSel", pnodes, tcNode)}<span class="sp"></span><span class="actbar">
       ${busy && may ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-      <button data-tc="check"${busy || pstale || !may ? " disabled" : ""}
+      <button data-tc="check"${busy ? ` class="tcidle"` : ""}${busy || pstale || !may ? " disabled" : ""}
         title="ask each upstream what it has now">${
         busy && job.action === "check"
           ? `${barSaid("Checking for updates", "Checking")}<span class="dots">${".".repeat(tcDots)}</span>`
         : (d.items || []).some(i => i.state) ? barSaid("Re-check for updates", "Re-check") : barSaid("Check for updates", "Check")}</button>
-      ${!may ? "" : `<button class="primary" data-tc="install"${busy || pstale || !tcTicked.size ? " disabled" : ""}
+      ${!may ? "" : `<button class="primary${busy ? " tcidle" : ""}" data-tc="install"${busy || pstale || !tcTicked.size ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >${barSaid("Install selected", "Install")}</button>`}
-      ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}</span>`);
+      ${clean.length ? `<button type="button" class="danger${busy ? " tcidle" : ""}" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}</span>`);
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).
   const storeSaid = onNode

@@ -3790,6 +3790,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
 .sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
 .sect>.body>.sub:first-child{margin-top:0}
+/* A container's own folds (Ports and mounts, Log) start where its card's
+   words do, not a section's inset further in (the operator's phone, 18 Oct). */
+.dmtab .row>details.sect>summary,.dmtab .row>details.sect>.body{padding-left:0;padding-right:0}
 /* A section's own explainer line, straight in its body, is the quiet note
    it is everywhere else: the Git view's Branches line read at body size
    (the design pass, 4 Oct). */
@@ -3852,9 +3855,19 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   .doctab .field.docbarrow>label.pick>select:not([multiple]):not([size]){min-width:0;max-width:none;width:auto;flex:0 1 auto}
   .doctab .field.docbarrow>.sp{display:none}
   .doctab .field.docbarrow>.actbar{flex:0 1 auto;min-width:0;flex-wrap:nowrap;justify-content:flex-end;margin-inline-start:auto}
-  .doctab .field.docbarrow>.actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The buttons keep their words whole; the picker is what gives up width
+     (the operator's phone, 18 Oct: "Re-ch…" and "Rem…" beside a picker
+     half the bar wide). */
+  .doctab .field.docbarrow>.actbar>button{flex:0 0 auto;white-space:nowrap}
+  .doctab .field.docbarrow>label.pick{min-width:6.5em}
+  /* While a job runs on Toolchains, Abort is the bar's one live button and
+     the three it holds dead step aside rather than crowd it. */
+  .doctab .field.docbarrow>.actbar>button.tcidle{display:none}
   .doctab .field.docbarrow>input{flex:1 1 0;min-width:7em}
-  .doctab .field.docbarrow.dmpick>input{order:5;flex-basis:0}
+  /* min-width, so the search never fits beside the picker and its buttons
+     and goes to the second line with Cards and List (the operator's phone,
+     18 Oct, where a Check that was not drawn left it room on the first). */
+  .doctab .field.docbarrow.dmpick>input{order:5;flex-basis:0;min-width:55%}
   .doctab .field.docbarrow.dmpick>.pseg{order:6}
   .projtab .docbarrow #pjSearch{flex:1 1 0;min-width:7em}
   /* A runner's three actions, in their short words, on the row's one line. */
@@ -4240,6 +4253,17 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .tctab .tc .tcdetail{display:contents}
 .tctab .tc:not(.open) .tcabout{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tctab .tc .tcmore{font:var(--f-note);margin-left:6px;min-height:0;padding:0}
+/* On a phone the row's facts and its news start under its name, not at the
+   row's edge (the operator's phone, 18 Oct): the box is one size in every
+   browser so the inset is its width and the gap; and what a toolchain is
+   for is read whole there, where one line held a third of it. */
+@media(max-width:900px){
+  .tcs .td.lead>input[type="checkbox"]{width:18px;height:18px;flex:0 0 18px;margin:1px 0 0}
+  .tcs .tline{padding-inline-start:28px}
+  .tcs .tline>.td.lead{margin-inline-start:-28px;flex-basis:calc(100% + 28px)}
+  .tcs .tc>.sub{padding-inline-start:28px}
+  .tctab .tc:not(.open) .tcabout{white-space:normal}
+}
 .skboot .sk-card.skrows{padding:0 var(--row-x)}
 .skboot>.skstack{position:relative;flex:1;min-height:0;background:var(--panel)}
 .skboot>.skstack>.doc{position:absolute;inset:0}
