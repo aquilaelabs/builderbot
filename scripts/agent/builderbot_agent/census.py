@@ -32,11 +32,9 @@ from .gpu import (
     _gpu_container,
     _gpu_display,
     _gpu_driver,
-    _gpu_mem_kinds,
     _gpu_name,
-    _gpu_procs,
-    _gpu_sample,
     _proc_kinds,
+    gpu_cached,
 )
 from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
@@ -618,5 +616,4 @@ class Sampler:
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
                 "stores": _stores(state.get("stores")), "running": running,
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
-                **_gpu_sample(), **({"gpu_procs": _gpu_procs(), "gpu_mem_kinds": _gpu_mem_kinds()}
-                                     if shutil.which("nvidia-smi") else {})}
+                **gpu_cached()}

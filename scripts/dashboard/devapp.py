@@ -64,6 +64,16 @@ import threading
 import time
 from pathlib import Path
 
+# The request's timing parts (server.py's trace), where there is a request:
+# a suite or a verb loads this file by its path, outside the dashboard's
+# directory, and times nothing.
+try:
+    import timing
+    _timed = timing.timed
+except ImportError:
+    def _timed(name):
+        return contextlib.nullcontext()
+
 WORKSPACE = None
 STATE = None
 FILE = None
@@ -2763,10 +2773,12 @@ def overview(node_id=None):
 
 
 def _overview_here(picked):
-    got = available_cached()
-    cs = containers() if got.get("on") else {
-        "error": got.get("why") or "no docker daemon is reachable from here",
-        "containers": []}
+    with _timed("docker:available"):
+        got = available_cached()
+    with _timed("docker:ps"):
+        cs = containers() if got.get("on") else {
+            "error": got.get("why") or "no docker daemon is reachable from here",
+            "containers": []}
     by_proj = {}
     for c in cs["containers"]:
         by_proj.setdefault(c["project"], []).append(c)

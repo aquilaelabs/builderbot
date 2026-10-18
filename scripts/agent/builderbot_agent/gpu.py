@@ -4,6 +4,8 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import time
 from .base import GPU_DISPLAY_STATE, SYS_ROOT, TOOLKIT, _run
 
 
@@ -118,18 +120,6 @@ def _proc_kinds(proc_root="/proc"):
     return out
 
 
-def _gpu_procs():
-    """How many processes are computing on the card, or 0."""
-    if not shutil.which("nvidia-smi"):
-        return 0
-    try:
-        p = subprocess.run(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
-                           capture_output=True, text=True, timeout=3, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return 0
-    return len([ln for ln in (p.stdout or "").splitlines() if ln.strip()]) if p.returncode == 0 else 0
-
-
 def _gpu_mem_kinds(proc_root="/proc", smi=None):
     """{kind: MB} of the card's memory in use, by what holds it, read from
     nvidia-smi's process table, which lists a graphics user (an emulator
@@ -157,6 +147,54 @@ def _gpu_mem_kinds(proc_root="/proc", smi=None):
             pass
         out[kind] = out.get(kind, 0) + mb
     return out
+
+
+# The card read on a thread of its own and kept (B841): nvidia-smi takes a
+# second or so to start, and the heartbeat asked it three times before every
+# work poll, so on a node with the driver installed a job queued after another
+# waited three seconds to be handed over, and every Containers read with it.
+# Read every GPU_EVERY_S while a card answers; a driver with no card (exit 9,
+# a card taken out of a VM) or one not loaded yet is asked again in
+# GPU_GONE_S, not every few seconds for good.
+GPU_EVERY_S = 10
+GPU_GONE_S = 300
+_gpu = {"val": {}, "thread": None}
+_gpu_lock = threading.Lock()
+
+
+def gpu_cached():
+    """The card's latest reading for the heartbeat ({gpu_pct, gpu_mem_used_mb,
+    gpu_mem_mb, gpu_procs, gpu_mem_kinds}), or {}: never waits on nvidia-smi.
+    The first call starts the thread that reads it."""
+    if not shutil.which("nvidia-smi"):
+        return {}
+    with _gpu_lock:
+        if _gpu["thread"] is None:
+            _gpu["thread"] = threading.Thread(target=_gpu_loop, name="gpu-sample", daemon=True)
+            _gpu["thread"].start()
+        return dict(_gpu["val"])
+
+
+def gpu_read():
+    """One reading: the card's numbers, then its process table once for both
+    the count computing on it and its memory by kind. {} when no card answers."""
+    s = _gpu_sample()
+    if not s:
+        return {}
+    try:
+        smi = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=3, check=False).stdout or ""
+    except (OSError, subprocess.SubprocessError):
+        smi = ""
+    procs = len(re.findall(r"\s\d+\s+(?:C|C\+G)\s+\S.*?\s\d+MiB\s*\|", smi))
+    return s | {"gpu_procs": procs, "gpu_mem_kinds": _gpu_mem_kinds(smi=smi)}
+
+
+def _gpu_loop():
+    while True:
+        val = gpu_read()
+        with _gpu_lock:
+            _gpu["val"] = val
+        time.sleep(GPU_EVERY_S if val else GPU_GONE_S)
 
 
 def _kernel_key(name):

@@ -430,13 +430,26 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.wssync.start()
         self.claudesync.start()
         while True:
+            # How long each part of a turn took before its poll (B841): a job
+            # queued while the agent is between polls waits for all of it,
+            # and what the turn spends is said in the next heartbeat.
+            turn = {}
+            def timed(name, fn, *a, _turn=turn):
+                t0 = time.monotonic()
+                try:
+                    return fn(*a)
+                finally:
+                    ms = int((time.monotonic() - t0) * 1000)
+                    if ms >= 20:
+                        _turn[name] = _turn.get(name, 0) + ms
+            turn_t0 = time.monotonic()
             # The monotonic clock: a clock step killed a running job as timed
             # out and stopped hello for the size of the step (B286). Zero
             # means due now, whichever clock.
             if not self.hello_at or time.monotonic() - self.hello_at > 600:
                 self.refresh_session_tool()
                 self.quiet_distro_ttyd()
-                said = self.hello_step()
+                said = timed("hello", self.hello_step)
                 # None: the census is on its way; the work poll below is the
                 # heartbeat meanwhile, and the next turn of the loop asks again.
                 st, r = said if said is not None else (200, {})
@@ -456,10 +469,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # asked every second for minutes, a journal line each time.
                 if said is not None:
                     delay = 1
-            self.session_check()
-            self.session_firewall_check()
-            self.session_idle_reap()
-            self.runner_check()
+            timed("session_check", self.session_check)
+            timed("firewall_check", self.session_firewall_check)
+            timed("idle_reap", self.session_idle_reap)
+            timed("runner_check", self.runner_check)
             n = self.running()
             # The controller counts what is running here from its own rows
             # and wakes a held poll when a job ends, so the poll is held at
@@ -470,47 +483,52 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # seconds of the census landing and not a whole poll after it,
             # which is what the retry a refusal asked for is waiting on.
             wait = min(self.poll, 3) if getattr(self, "census_asked", False) else self.poll
-            sample = self.sampler.sample(self.state, n)
+            sample = timed("sample", self.sampler.sample, self.state, n)
             # The sessions this node runs ride the heartbeat (roadmap #24),
             # so the dashboard's Sessions card lists them beside its own.
             if self.ttyd:
-                sample["sessions"] = self.sessions_now()
+                sample["sessions"] = timed("sessions", self.sessions_now)
             # ...and the ports its containers publish, for other nodes'
             # sessions of the same project (R82).
-            pub = self.published_now()
+            pub = timed("published", self.published_now)
             if pub is not None:
                 sample["published"] = pub
             # ...and a fingerprint of its containers, for the Containers
             # page to re-read on when one changes outside BuilderBot.
-            dig = self.containers_now()
+            dig = timed("containers", self.containers_now)
             if dig is not None:
                 sample["ctr_digest"] = dig
             # ...and what each running container uses, once a minute, for
             # its hour on the controller (R218 step 9).
-            ctr = self.stats_now()
+            ctr = timed("stats", self.stats_now)
             if ctr is not None:
                 sample["ctr_stats"] = ctr
             # ...and the sessions a controller outage held, for the bell's
             # "stopped by the update" once it answers again (R251).
-            sample["held"] = self.held_now()
+            sample["held"] = timed("held", self.held_now)
             # ...and what each account here is signed in to Claude as, on its
             # own slower clock, so the controller's record is true without a
             # session having to run (B104). Absent from most heartbeats,
             # which the controller reads as "no news" rather than as none.
-            logins = self.logins_now()
+            logins = timed("logins", self.logins_now)
             if logins is not None:
                 sample["logins"] = logins
             # ...and each synced project's state here (R162).
-            synced = self.wssync.status()
+            synced = timed("sync", self.wssync.status)
             if synced is not None:
                 sample["sync"] = synced
             # ...and, leaving it, what is still to go up; and the last
             # clean-up's answer, until the controller has read it (R164).
-            drain = self.wssync.drain()
+            drain = timed("sync_drain", self.wssync.drain)
             if drain is not None:
                 sample["sync_drain"] = drain
             if self.wssync.clean_ask and (self.wssync.done() or {}).get("token") == self.wssync.clean_ask:
                 sample["sync_clean"] = self.wssync.done()
+            # ...the last turn's, whole, kept for the next heartbeat.
+            if getattr(self, "turn_ms", None):
+                sample["turn_ms"] = self.turn_ms
+            turn["total"] = int((time.monotonic() - turn_t0) * 1000)
+            self.turn_ms = turn
             st, r = self.ctl.call("work", {"sample": sample, "running": n, "wait": wait},
                                   timeout=wait + 15)
             if st in (200, 204):

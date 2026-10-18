@@ -3011,6 +3011,11 @@ def heartbeat(nid, sample, addr, running=0):
         clean["gpu_mem_kinds"] = {k: max(0, min(10**7, int(v))) for k, v in list(s["gpu_mem_kinds"].items())[:16]
                                   if (k in PROC_KINDS or k == "other") and isinstance(v, (int, float))}
     clean["running"] = int(running or 0)
+    # How long the agent's last turn spent before its poll, by part (B841):
+    # a job queued meanwhile waited for it.
+    if isinstance(s.get("turn_ms"), dict):
+        clean["turn_ms"] = {re.sub(r"[^a-z_]", "", str(k))[:24]: max(0, min(10**7, int(v)))
+                            for k, v in list(s["turn_ms"].items())[:20] if isinstance(v, (int, float))}
     stores = s.get("stores") if isinstance(s.get("stores"), dict) else {}
     clean["stores"] = {str(r)[:20]: _mb((v or {}).get("free_mb"))
                        for r, v in list(stores.items())[:8]}
