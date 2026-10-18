@@ -1064,6 +1064,11 @@ body.firstrun #bBell, body.firstrun #bDocDot, body.firstrun #bReport{display:non
 .hproj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 .hproj .pnote{font:var(--f-ui)} .hproj .pnote.bad{color:var(--bad)} .hproj .pnote.warn{color:var(--warn)} .hproj .pnote.dim{color:var(--dim)}
 .jbrow.focus{box-shadow:inset 3px 0 var(--accent)}
+/* A job's line opens it (rows-you-open, R218 step 25): pressed like a
+   list's row, with the lists' own hover. */
+.jbrow > .jbopen{cursor:pointer}
+@media(hover:hover){ .jbrow > .jbopen:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)} }
+.jbrow > .jbopen:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 /* The Notifications page (R218 step 6): an ask's long part whole in a box
    that scrolls inside itself; a kept notice wears its kind's icon. */
 .ntask.bad{box-shadow:inset 3px 0 var(--bad)}

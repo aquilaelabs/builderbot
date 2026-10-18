@@ -166,20 +166,31 @@ await ready(page);
   const ids = [...mine];
   let logRow = null;
   for (const id of ids){
-    const b = await page.$(`.jobstab .jbrow[data-job="${id}"][data-state="succeeded"] [data-jb="log"]`);
+    const b = await page.$(`.jobstab .jbrow[data-job="${id}"][data-state="succeeded"] > .jbopen > .td:nth-child(3)`);
     if (b){ logRow = { id, b }; break; }
   }
   ok(logRow, `a job this file queued is on the tab with a log to unfold (${ids.length} queued)`);
   await logRow.b.click();
   await page.waitForSelector(`.jobstab .jbrow[data-job="${logRow.id}"] .jblog`, { timeout: 10000 });
   const log = await page.$eval(`.jobstab .jbrow[data-job="${logRow.id}"] .jblog`, e => e.textContent);
-  ok(/placed on local|hi from local/.test(log), `Log unfolds what the job wrote (${log.trim().slice(0, 40)})`);
+  ok(/placed on local|hi from local/.test(log), `a press on the row unfolds what the job wrote (${log.trim().slice(0, 40)})`);
+  // The row is what opens (rows-you-open, R218 step 25): no Log button, the
+  // line says it is open, and Enter on it folds the log away again.
+  const opened = await page.$eval(`.jobstab .jbrow[data-job="${logRow.id}"]`, r => ({
+    btn: !!r.querySelector('[data-jb="log"]'), exp: r.querySelector('.jbopen').getAttribute('aria-expanded') }));
+  await page.focus(`.jobstab .jbrow[data-job="${logRow.id}"] > .jbopen`);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(id => !document.querySelector(`.jobstab .jbrow[data-job="${id}"] .jblog`), logRow.id, { timeout: 10000 })
+    .catch(() => {});
+  const shut = await page.$(`.jobstab .jbrow[data-job="${logRow.id}"] .jblog`) === null;
+  ok(!opened.btn && opened.exp === 'true' && shut,
+     `...the row itself opens it, with no Log button, says it is open, and Enter folds it away (${JSON.stringify({ ...opened, shut })})`);
   // ...and on a FAILED row too: the job's own error sentence was read as a
   // failed request and its log kept out, so every failed job read "(this
   // job wrote nothing)" (B658, the operator, 11 Oct).
   let failRow = null;
   for (const id of ids){
-    const b = await page.$(`.jobstab .jbrow[data-job="${id}"][data-state="failed"] [data-jb="log"]`);
+    const b = await page.$(`.jobstab .jbrow[data-job="${id}"][data-state="failed"] > .jbopen > .td:nth-child(3)`);
     if (b){ failRow = { id, b }; break; }
   }
   ok(failRow, `a failed job this file queued is on the tab with a log to unfold`);
@@ -188,7 +199,7 @@ await ready(page);
     await page.waitForFunction(id => /about to fail/.test(document.querySelector(`.jobstab .jbrow[data-job="${id}"] .jblog`)?.textContent || ''),
                                failRow.id, { timeout: 10000 }).catch(() => {});
     const flog = await page.$eval(`.jobstab .jbrow[data-job="${failRow.id}"] .jblog`, e => e.textContent);
-    ok(/about to fail/.test(flog), `Log unfolds what a failed job wrote, not "(this job wrote nothing)" (${flog.trim().slice(0, 40)})`);
+    ok(/about to fail/.test(flog), `a press on a failed row unfolds what it wrote, not "(this job wrote nothing)" (${flog.trim().slice(0, 40)})`);
   }
 
   // a running job from the tab: Cancel on the row

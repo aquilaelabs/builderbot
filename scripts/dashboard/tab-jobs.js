@@ -178,13 +178,14 @@ function renderJobsInto(i){
     return `
     <div class="row stack2 jbrow${j.id === jobsMarked ? " focus" : ""}" data-job="${esc(j.id)}" data-state="${esc(j.state)}">
       ${tblLine(JOB_COLS, [jobTitle(j), jobStatePill(j), esc(j.type), jobNode(j), jobBy(j), jobWhen(j), jobTook(j),
-        `<div class="actbar">
-          <button type="button" data-jb="log" title="${open ? "fold the log away" : "what it wrote, the last 4000 characters"}">${
-            open ? "Hide log" : "Log"}</button>
-          ${over || j.cancel ? "" : `<button type="button" class="danger" data-jb="cancel"
+        over || j.cancel ? "" : `<div class="actbar">
+          <button type="button" class="danger" data-jb="cancel"
             title="${j.state === "queued" ? "take it off the queue before it starts"
-                     : "stop it where it is: the row moves when the runner reports that it did"}">Cancel</button>`}
-        </div>`])}
+                     : "stop it where it is: the row moves when the runner reports that it did"}">Cancel</button>
+        </div>`], "div", "jbopen",
+        // The row's line opens it to what the job wrote (rows-you-open,
+        // R218 step 25): pressed, or Enter and Space from the keyboard.
+        `role="button" tabindex="0" aria-expanded="${open}" aria-label="${esc(open ? "fold the log away" : "open the log: what it wrote, the last 4000 characters")}"`)}
       ${j.error ? `<div class="sub jberr warn">${esc(j.error)}</div>` : ""}
       ${jobOutputs(j)}
       ${open ? `<pre class="dmlog jblog" data-tail="1">${
@@ -230,12 +231,17 @@ function wireJobsTab(root){
   root.querySelectorAll('.jblog[data-tail="1"]').forEach(t => { t.scrollTop = t.scrollHeight; });
   root.querySelectorAll(".jbrow").forEach(row => {
     const id = row.dataset.job;
+    const toggle = async () => {
+      if (jobsOpen.has(id)) jobsOpen.delete(id); else jobsOpen.add(id);
+      await loadJobs();
+    };
+    const line = row.querySelector(".jbopen");
+    // Not a press on its own controls: Cancel, a link, an output.
+    if (line){
+      line.onclick = e => { if (!e.target.closest("button, a, input, select, label")) toggle(); };
+      line.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target === line){ e.preventDefault(); toggle(); } };
+    }
     row.querySelectorAll("[data-jb]").forEach(b => b.onclick = async () => {
-      if (b.dataset.jb === "log"){
-        if (jobsOpen.has(id)) jobsOpen.delete(id); else jobsOpen.add(id);
-        await loadJobs();
-        return;
-      }
       if (b.dataset.jb === "cancel") await jobAct({action: "cancel", id});
     });
   });
