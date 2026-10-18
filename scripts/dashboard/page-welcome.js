@@ -199,7 +199,9 @@ function drawBuild(img){
 // Decided on the first poll, when the account and the image are known.
 let welcomed = false;
 function welcomeOnce(){
-  if (welcomed || !state?.me || !state.welcome) return;
+  // Not over the setup page: its steps come first, and the guide waits for
+  // the poll after Finish (B839).
+  if (welcomed || !state?.me || !state.welcome || setupNeeded()) return;
   welcomed = true;
   const w = state.welcome, rev = state.image?.rev || "";
   if (!w.seen) openAbout("guide");
