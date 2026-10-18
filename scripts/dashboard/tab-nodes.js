@@ -31,6 +31,7 @@ let nodesPick = "";              // which node the tab is showing, "" until the 
 // the DOM because the tab repaints on every heartbeat: a field that lived
 // only in the row would lose its text every 25 seconds.
 const nodesConf = {};
+let nodesCheck = {};             // node id -> {text, warn}: Check paths' last verdict (B850)
 let nodesFocus = null;           // {id, key, i}: the field to refocus after a repaint
 // When Update agent was pressed per node, so the button stays busy until the
 // agent comes back with the new digest (see renderNodesInto).
@@ -56,15 +57,27 @@ function openNodesTab(nid, what){
   if (nid) drawPanes();
 }
 
-async function loadNodes(){
+// Each read numbered, so an answer asked for before a later one (a poll's,
+// in flight when a save asked again) cannot land after it and stay drawn
+// until the nodes next move (B849), as the Toolchains page's tcLoadSeq does.
+// A caller awaiting one that was overtaken waits for the newest instead, so
+// what it reads after is the list.
+let nodesLoadSeq = 0, nodesLoading = null;
+function loadNodes(){
+  const seq = ++nodesLoadSeq;
+  return (nodesLoading = loadNodesOnce(seq));
+}
+async function loadNodesOnce(seq){
   try{
     const j = await (await bootFetch("/api/v1/nodes")).json();
+    if (seq !== nodesLoadSeq) return nodesLoading;
     nodesErr = j.error || "";
     nodesList = j.nodes || [];
     nodesAgent = j.agent || null;
     nodesDefault = j.default || "";
     nodesSystems = Array.isArray(j.systems) ? j.systems : [];
   }catch(e){
+    if (seq !== nodesLoadSeq) return nodesLoading;
     nodesErr = String(e);
     nodesList = nodesList || [];
   }
@@ -912,7 +925,7 @@ function nodeAdvancedSection(n, stale, inflight){
       <button type="button" data-nd="check-paths"
         title="check both machines see the same projects directory">Check</button>
     </div>
-    <div class="sub ndcheck" hidden></div>
+    <div class="sub ndcheck${nodesCheck[n.id]?.warn ? " warn" : ""}"${nodesCheck[n.id] ? "" : " hidden"}>${esc(nodesCheck[n.id]?.text || "")}</div>
     <div class="ndacts">
     ${!n.reported?.sandbox ? "" : act(n.config?.lock ? "Unlock system changes" : "Lock system changes",
         n.config?.lock ? "Locked: storage, network and root changes are refused from here." : "Refuses storage, network and root changes from here, keeping them to the machine's own console.",
@@ -2280,21 +2293,20 @@ function wireNodesTab(root){
       }
       if (act === "paths"){
         const inp = box.querySelector('[data-k="paths"]');
+        delete nodesCheck[id];             // a new mapping wants a new check
         await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
         const c = nodesConf[id]; if (c && c.draft) c.draft.pathsText = undefined;
         return;
       }
       if (act === "check-paths"){
-        // Roadmap #13. Like Test: the verdict goes on the row's own line,
-        // found again after nodeAct's repaint replaced the one clicked.
-        const out = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndcheck`);
-        if (out){ out.hidden = false; out.textContent = "checking…"; }
+        // Roadmap #13. The verdict is kept, not only written on the line:
+        // the next heartbeat's repaint drew the row without it (B850).
+        nodesCheck[id] = {text: "checking…", warn: false};
+        nodesRev++; drawPanes();
         const j = await nodeAct({action: "check-paths", id});
-        const now = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndcheck`) || out;
-        if (!now) return;
-        now.hidden = false;
-        now.textContent = j.error || j.why || (j.same ? "the same directory" : "not the same directory");
-        now.classList.toggle("warn", !j.same);
+        nodesCheck[id] = {text: j.error || j.why || (j.same ? "the same directory" : "not the same directory"),
+                          warn: !j.same};
+        nodesRev++; drawPanes();
         return;
       }
       if (act === "test"){
@@ -2379,11 +2391,17 @@ function wireNodesTab(root){
     const f = nodesFocus;
     const el = root.querySelector(`.ndrow[data-node="${CSS.escape(f.id)}"] ${
       f.i === undefined ? "" : `.ndmount[data-i="${f.i}"] `}[data-k="${CSS.escape(f.key)}"]`);
-    if (el && document.activeElement !== el){
+    // ...only when the repaint took it, which leaves the caret on nothing:
+    // one the person moved on (the enroll or VM dialog, another field) stays
+    // where they put it, and the memory goes (B848: the rename box, which
+    // never forgot, took every keystroke typed in the enroll dialog).
+    const at = document.activeElement;
+    const lost = !at || at === document.body || !at.isConnected;
+    if (el && at !== el && lost){
       el.focus();
       if (el.setSelectionRange && typeof f.pos === "number")
         try{ el.setSelectionRange(f.pos, f.pos); }catch(e){ /* a select has no caret */ }
-    }
+    }else if (at !== el && !lost) nodesFocus = null;
   }
 }
 function wireNodeConf(row, id){

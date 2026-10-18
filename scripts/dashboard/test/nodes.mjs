@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick, holdPoll, freePoll, refreshUntil } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -38,6 +38,33 @@ const pickNode = async (page, id) => {
     `.nodestab .ndrow[data-node="${x}"]`) !== null, id, { timeout: 10000 });
 };
 const nodeOptions = page => page.$$eval('.nodestab #ndPick option', os => os.map(o => o.value));
+
+// The page kept whichever node list answered last, not the one it asked for
+// last, so a list the poll asked for before a change could land after the
+// read that followed it (B849, numbered since). A wait on what a row says
+// still reads the list again while it waits, so one slow answer cannot hold
+// it (B606, B652).
+const nodesUntil = async (page, fn, arg, { timeout = 20000 } = {}) => {
+  const until = Date.now() + patience(timeout);
+  for (;;){
+    if (await page.waitForFunction(fn, arg, { timeout: 2500 }).then(() => true, () => false)) return;
+    if (Date.now() > until) throw new Error(`nodesUntil: the row never said it in ${patience(timeout)}ms`);
+    await page.evaluate(() => loadNodes()).catch(() => {});
+  }
+};
+
+// A box in the enroll and VM dialogs is typed while the Nodes tab behind them
+// repaints. A repaint handed the caret back to the tab field that last had it,
+// the rename box, even out of a dialog (B848, fixed in the page), and a fill
+// focuses the box and then inserts into whatever has the focus, so the text
+// went to the tab's field (B651, B612, B467). Filled again until the box
+// holds it, so any repaint that still moves the caret cannot pass for typing.
+const fillHeld = async (page, sel, value) => {
+  for (let i = 0; i < 5; i++){
+    await page.fill(sel, value);
+    if (await page.$eval(sel, (e, v) => e.value === v, value)) return;
+  }
+};
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -782,8 +809,10 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   }, RUN);
   ok(pressedState === true, 'a node action goes dead the instant it is pressed, not when it answers');
   // On the CI runner tab the runner's own state line is what says it.
-  await page.waitForFunction(sel => /installing now/.test(
-    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN, { timeout: 10000 });
+  // Read again while waiting: a list asked for before the press can land
+  // after the press's own read and stand without the job (B652).
+  await nodesUntil(page, sel => /installing now/.test(
+    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN);
   // The runner section says so itself, in its own state line, with the
   // buttons it has taken away: the operator pressed Install, then Remove,
   // and read nothing but two dead buttons while the first job ran.
@@ -2000,9 +2029,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, minted.id);
+  // Read again while waiting: a list the poll asked for before the save can
+  // land after this read and say the record's old changes (B606).
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
-  await page.waitForFunction(sel => /matches what is saved/.test(
-    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  await nodesUntil(page, sel => /matches what is saved/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW);
   ok(await page.$eval(`${ROW} [data-napply="storage"]`, b => b.disabled),
      'Apply storage is off when the node already has what the record asks for');
   // ...and comes back the moment the record asks for something it has not got.
@@ -2011,8 +2042,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
              { path: '/mnt/new', source: 'nas:/mnt/user/new', type: 'nfs', ro: false }],
     stores: {}, network: { mode: 'dhcp' } } });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
-  await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
-                             ROW, { timeout: 10000 });
+  await nodesUntil(page, sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled, ROW);
   ok(await page.$eval(`${ROW} .ndconfstate`, e => /1 change to apply.*\/mnt\/new/.test(e.textContent)),
      `...and says how many changes are waiting and what they are (${
        await page.$eval(`${ROW} .ndconfstate`, e => e.textContent.trim().slice(0, 90))})`);
@@ -2364,24 +2394,32 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   // `test -d` does. The marker never outlives the check.
   const { readFileSync: rf, writeFileSync: wf, unlinkSync: ul, readdirSync: rd } = await import('node:fs');
   const chk = `.nodestab .ndrow[data-node="${sb.id}"] .ndcheck`;
-  await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="check-paths"]`);
-  await page.waitForFunction(s => /same directory/.test(document.querySelector(s)?.textContent || ''),
-                             chk, { timeout: 20000 });
-  ok(/^the same directory/.test(await page.$eval(chk, e => e.textContent))
-     && !(await page.$eval(chk, e => e.classList.contains('warn'))),
-     'Check makes a marker under the projects share here and finds it through the daemon: the same directory');
+  // The verdict was written onto the row and kept nowhere else, so the next
+  // repaint drew the row without it (B850, kept in the page since), and a
+  // poll's repaint as the button is pressed can take the press (B486). So the
+  // poll is held over each check, and the verdict is read in the frame the
+  // wait sees it rather than by a second read after it.
+  const checkPaths = async want => {
+    await holdPoll(page);
+    try{
+      await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="check-paths"]`);
+      return await page.waitForFunction(([s, w]) => { const e = document.querySelector(s);
+        return !!e && new RegExp(w).test(e.textContent) && { text: e.textContent, warn: e.classList.contains('warn') }; },
+        [chk, want], { timeout: 20000 }).then(h => h.jsonValue());
+    } finally { await freePoll(page); }
+  };
+  const same = await checkPaths('same directory');
+  ok(/^the same directory/.test(same.text) && !same.warn,
+     `Check makes a marker under the projects share here and finds it through the daemon: the same directory (${same.text})`);
   const dlog = rf(`${DIR}/dockerstate/docker.log`, 'utf8');
   ok(/run --rm -u \d+:\d+ -v \/[^ ]+:\/d alpine test -d \/d\/\S*bb-path-check-[0-9a-f]+/.test(dlog),
      '...as a one-shot test -d through the guarded probe, mounting the share root');
   ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
      '...and the marker is gone afterwards');
   wf(`${DIR}/dockerstate/run.testfail`, '');
-  await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="check-paths"]`);
-  await page.waitForFunction(s => /NOT the same/.test(document.querySelector(s)?.textContent || ''),
-                             chk, { timeout: 20000 });
-  ok(await page.$eval(chk, e => e.classList.contains('warn'))
-     && /would bind an empty tree/.test(await page.$eval(chk, e => e.textContent)),
-     'a marker the daemon cannot see is said plainly, with what it would cost');
+  const notSame = await checkPaths('NOT the same');
+  ok(notSame.warn && /would bind an empty tree/.test(notSame.text),
+     `a marker the daemon cannot see is said plainly, with what it would cost (${notSame.text})`);
   ul(`${DIR}/dockerstate/run.testfail`);
   ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
      '...and the marker is gone after a no as well');
@@ -2428,8 +2466,8 @@ ok(sysOpts.length >= 2 && sysOpts[0].startsWith('ubuntu:') && sysOpts.some(o => 
    `the dialog asks which system the machine runs, the walked ones only (${sysOpts.join(', ')})`);
 ok(await page.$eval('#ndBody #ndEnUser', i => i.value) === 'bb',
    'Enroll node opens on bb as the account jobs run as');
-await page.fill('#ndBody #ndEnName', 'joesbox');
-await page.fill('#ndBody #ndEnUser', 'joe');
+await fillHeld(page, '#ndBody #ndEnName', 'joesbox');
+await fillHeld(page, '#ndBody #ndEnUser', 'joe');
 // Read back before the press: a run under load once minted joesbox for bb
 // (B331), and whether the field still held joe at the press is the fact
 // that says where to look.
@@ -2498,12 +2536,12 @@ await page.evaluate(async () => {
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   ok(await page.$eval('#ndBody #ndEnWgRow', r => r.hidden) && await page.$eval('#ndBody #ndEnCtl', i => i.value) === new globalThis.URL(URL).origin,
      'Enroll node asks how the machine reaches the controller, at this page\'s address, with no config to choose on the LAN');
-  await page.fill('#ndBody #ndEnName', 'cloudbox');
+  await fillHeld(page, '#ndBody #ndEnName', 'cloudbox');
   await page.selectOption('#ndBody #ndEnReach', 'wireguard');
   ok(!await page.$eval('#ndBody #ndEnWgRow', r => r.hidden), '...and asks for the router\'s config once WireGuard is picked');
   // A name, not an address: nothing resolves names through the tunnel.
   const before = await rows();
-  await page.fill('#ndBody #ndEnCtl', 'http://builderbot.lan:7680');
+  await fillHeld(page, '#ndBody #ndEnCtl', 'http://builderbot.lan:7680');
   await page.setInputFiles('#ndBody #ndEnWg', { name: 'cloudbox.conf', mimeType: 'text/plain', buffer: Buffer.from(WG) });
   await page.waitForFunction(w => document.querySelector('#ndBody #ndEnWgText')?.value === w, WG, { timeout: 5000 });
   ok(true, 'a chosen config file lands in the box beside it, to read or change before it is sent');
@@ -2513,10 +2551,10 @@ await page.evaluate(async () => {
   ok(await rows() === before && await page.$eval('#ndBody #ndEnReach', s => s.value) === 'wireguard'
      && await page.$eval('#ndBody #ndEnCtl', i => i.value) === 'http://builderbot.lan:7680',
      'a controller named rather than addressed is refused, no pending row made, and the answers are still there');
-  await page.fill('#ndBody #ndEnCtl', 'http://192.168.1.16:7680');
+  await fillHeld(page, '#ndBody #ndEnCtl', 'http://192.168.1.16:7680');
   // Pasted this time, into the box the refusal kept filled.
   ok(await page.$eval('#ndBody #ndEnWgText', t => t.value) === WG, '...and a refusal keeps it there');
-  await page.fill('#ndBody #ndEnWgText', WG);
+  await fillHeld(page, '#ndBody #ndEnWgText', WG);
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
   const file = dl.suggestedFilename();
   const script = readFileSync(await dl.path(), 'utf8');
@@ -2550,19 +2588,19 @@ await page.evaluate(async () => {
   // hostname on the agent's API alone.
   await page.click('.nodestab #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
-  await page.fill('#ndBody #ndEnName', 'vpsbox');
+  await fillHeld(page, '#ndBody #ndEnName', 'vpsbox');
   await page.selectOption('#ndBody #ndEnReach', 'public');
   const cf = await page.evaluate(() => ({ host: $('ndEnHost').checked, held: $('ndEnHost').disabled,
     sess: $('ndEnSess').checked, ctl: $('ndEnCtl').value, hint: !$('ndEnCfHint').hidden, wg: $('ndEnWgRow').hidden }));
   ok(cf.host && cf.held && !cf.sess && cf.ctl === 'https://' && cf.hint && cf.wg,
      `a public hostname holds Hosting only on, takes sessions off, and asks for the name (${JSON.stringify(cf)})`);
-  await page.fill('#ndBody #ndEnCtl', 'https://192.168.1.16');
+  await fillHeld(page, '#ndBody #ndEnCtl', 'https://192.168.1.16');
   await page.click('#ndBody #ndEnGo');
   await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
                                    && document.querySelector('#ndBody #ndEnName'), null, { timeout: 10000 });
   ok(await page.$eval('#ndBody #ndEnReach', s => s.value) === 'public' && await page.$eval('#ndBody #ndEnName', e => e.value) === 'vpsbox',
      'an address instead of the hostname is refused, with the answers kept');
-  await page.fill('#ndBody #ndEnCtl', 'https://bb.example.com');
+  await fillHeld(page, '#ndBody #ndEnCtl', 'https://bb.example.com');
   const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
   const script2 = readFileSync(await dl2.path(), 'utf8');
   const run2 = script2.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
@@ -2632,13 +2670,13 @@ await page.evaluate(async () => {
   // reports it, the row's switch queues the system job.
   await page.click('.nodestab #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnDoor', { timeout: 10000 });
-  await page.fill('#ndBody #ndEnName', 'doorbox');
+  await fillHeld(page, '#ndBody #ndEnName', 'doorbox');
   await page.selectOption('#ndBody #ndEnDoor', 'cloudflared');
   const dv = await page.evaluate(() => ({ host: !$('ndEnDoorHostRow').hidden, secret: !$('ndEnDoorSecretRow').hidden,
     close: !$('ndEnDoorCloseRow').hidden, hint: !$('ndEnDoorHint').hidden }));
   ok(dv.host && dv.secret && dv.close && dv.hint, `picking cloudflared asks for its hostname and secret, and offers closing port 22 (${JSON.stringify(dv)})`);
-  await page.fill('#ndBody #ndEnDoorHost', 'ssh-doorbox.example.com');
-  await page.fill('#ndBody #ndEnDoorSecret', 'eyJ.door.token');
+  await fillHeld(page, '#ndBody #ndEnDoorHost', 'ssh-doorbox.example.com');
+  await fillHeld(page, '#ndBody #ndEnDoorSecret', 'eyJ.door.token');
   const [dl3] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#ndBody #ndEnGo')]);
   const script3 = readFileSync(await dl3.path(), 'utf8');
   const run3 = script3.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
@@ -2684,7 +2722,7 @@ await page.evaluate(async () => {
   await page.evaluate(() => { document.getElementById('ndmodal').hidden = true; });
   await page.click('.nodestab #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnName', { timeout: 10000 });
-  await page.fill('#ndBody #ndEnName', 'racebox');
+  await fillHeld(page, '#ndBody #ndEnName', 'racebox');
   await page.evaluate(async () => { window.__vmLand(); await new Promise(r => setTimeout(r, 300)); });
   const after = await page.$eval('#ndBody', b => ({ name: b.querySelector('#ndEnName')?.value, vm: !!b.querySelector('#vmGo') }));
   ok(after.name === 'racebox' && !after.vm,
@@ -2706,8 +2744,8 @@ ok(kinds.includes('unraid') && kinds.includes('proxmox') && kinds.length >= 5,
 ok(await page.$$eval('#ndBody #vm_hv option', os => os.filter(o => o.value !== 'unraid').every(o => / \(dev\)$/.test(o.textContent))
                                                      && !/dev/.test(os.find(o => o.value === 'unraid').textContent)),
    '...the unproven ones tagged dev and Unraid not');
-await page.fill('#ndBody #vm_name', 'bb-sandbox-2');
-await page.fill('#ndBody #vm_memory_gb', '24');
+await fillHeld(page, '#ndBody #vm_name', 'bb-sandbox-2');
+await fillHeld(page, '#ndBody #vm_memory_gb', '24');
 await page.click('#ndBody #vmGo');
 await page.waitForSelector('#ndBody .vmxml', { timeout: 15000 });
 const vm1 = await page.$eval('#ndBody .vmxml', p => p.textContent);
@@ -2747,8 +2785,8 @@ ok(!!bad.error && !bad.xml, 'a name that is not a name is refused rather than es
 // ...and Unraid's own pair goes back in, which is what a VM that already
 // exists needs: its nvram file is named after that uuid and its reservation
 // was made against that MAC.
-await page.fill('#ndBody #vm_uuid', 'B091DB01-CBDD-07B7-C797-79CA40D31A00');
-await page.fill('#ndBody #vm_mac', '52:54:00:46:D2:FB');
+await fillHeld(page, '#ndBody #vm_uuid', 'B091DB01-CBDD-07B7-C797-79CA40D31A00');
+await fillHeld(page, '#ndBody #vm_mac', '52:54:00:46:D2:FB');
 await page.click('#ndBody #vmGo');
 await page.waitForFunction(() => /b091db01/.test(document.querySelector('#ndBody .vmxml')?.textContent || ''),
                            null, { timeout: 15000 });
@@ -3323,9 +3361,12 @@ ok(page.errors.length === 0,
   await page.click('#bBell');
   await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 10000 });
   // The panel draws from the page's own poll, which can be a poll behind the
-  // status read above: read the row once it carries both.
+  // status read above, and a poll under load can be a long way off: ask for
+  // it until the page's row carries both (B662), then read the drawer.
+  await refreshUntil(page, `((state?.attention || []).find(a => a.kind === 'toolchain'
+    && a.id === ${JSON.stringify(en.id)})?.tools || []).length === 2`, { timeout: 30000 }).catch(() => {});
   await page.waitForFunction(id => /2 toolchain updates/.test(document.querySelector(`#bellPanel [data-btc="${id}"]`)?.closest('.bnote')?.textContent || ''),
-                             en.id, { timeout: 20000 }).catch(() => {});
+                             en.id, { timeout: 10000 }).catch(() => {});
   const tcBell = await page.$eval(`#bellPanel [data-btc="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
   ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
      && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),
@@ -3345,9 +3386,19 @@ ok(page.errors.length === 0,
   ok(true, '...and Show again brings them back');
   // The node was enrolled through the API, so the page may not have listed
   // it yet; the tab still opens on it, not on another (B754).
-  await page.click(`#bellPanel [data-btc="${en.id}"]`);
-  const went = await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: 15000 })
-    .then(() => '', async () => JSON.stringify({ want: en.id, ...await page.evaluate(() => ({ tcNode, bell: document.getElementById('bellPanel').hidden })) }));
+  // The drawer is drawn anew on every poll, so a press can straddle a
+  // redraw: the mousedown on one link and the mouseup on its replacement,
+  // and the click goes to the drawer, which runs no link's handler (B748).
+  // Pressed again while the drawer is still open on the link.
+  const tcLink = `#bellPanel [data-btc="${en.id}"]`;
+  let went = '';
+  for (let i = 0; i < 3; i++){
+    if (await page.isVisible(tcLink)) await page.click(tcLink, { timeout: 5000 }).catch(() => {});
+    went = await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: patience(8000) })
+      .then(() => '', async () => JSON.stringify({ want: en.id, press: i + 1,
+        ...await page.evaluate(() => ({ tcNode, bell: document.getElementById('bellPanel').hidden })) }));
+    if (!went) break;
+  }
   ok(!went, `the bell's link names the node and shuts the bell${went ? ` (${went})` : ''}`);
   await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });
   ok(true, '...and its link opens the Toolchains tab on that node, Claude Code\'s row there');
