@@ -501,7 +501,7 @@ the `.modal input, …` sizing group, its iOS rule and its `:focus` group. **The
 alone**: Safari there zooms the page into a typed field smaller than that
 and this layout cannot zoom back, so fields you type into are 16px under
 `@supports (-webkit-touch-callout: none)`, a property only iOS has, and the
-field size everywhere else. A `<select>` never zooms, so it keeps the field
+field size everywhere else. A browser without `appearance: base-select` (Firefox, Safari) draws the closed picker the page's way too, the same dim triangle and end padding (the operator, 18 Oct: match Chrome); its open list stays the browser's. A `<select>` never zooms, so it keeps the field
 size at every width: a 16px mono picker beside an 11px label is the loudest
 thing on the tab, and it was on every tab. Tap targets are `min-height: var(--tap)`. A row of filters
 is `<div class="field histbar">`.
@@ -1249,7 +1249,7 @@ controls a thumb meets (a tab's close and minimize, the new-tab button, the
 color swatches) are at least 30px; a desktop keeps its tighter strip. A bar
 of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
 rather than each taking its text's, so the last one is never cut off: at
-344px, a folding phone's cover screen, four did not fit. "Both widths" means
+344px, a folding phone's cover screen, four did not fit. A page's bar is one line on a phone, its node picker and its buttons (the operator, 18 Oct): the picker drops its word and gives up width last, the buttons take their short words (`barSaid`: Re-check, Install; New VM, Enroll; Check, New), and what else the bar holds (a search, Cards and List) takes the line under it. "Both widths" means
 a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 840, still the phone layout) and a desktop.
 
