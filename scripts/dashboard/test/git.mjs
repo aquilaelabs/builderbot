@@ -119,6 +119,35 @@ await page.waitForSelector(`${NB} .gfile[data-path="a.txt"] pre.diff`, { timeout
 ok(await page.$eval(`${NB} .gfile[data-path="a.txt"] pre.diff`, e => /three/.test(e.textContent)
      && !!e.querySelector('.d-add')),
    '...and opening one shows its diff, additions marked');
+// An open diff is read once, not on every redraw of the view (B833: a
+// hundred reads in a few minutes on the controller). The view redraws when
+// a commit lands: one of another file asks nothing of this one; one after
+// this file changed asks once.
+{
+  const g = (...a) => execFileSync('git', ['-C', B, '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a]);
+  const landed = subject => page.waitForFunction(([sel, s]) => (document.querySelector(sel)?.textContent || '').includes(s),
+    [NB, subject], { timeout: 30000 });
+  const asked = [];
+  const onReq = r => { if (/what=diff&path=a\.txt/.test(r.url())) asked.push(r.url()); };
+  page.on('request', onReq);
+  writeFileSync(`${B}/other.txt`, 'another\n'); g('add', 'other.txt'); g('commit', '-qm', 'another file, for the redraw');
+  await landed('another file, for the redraw');
+  await page.waitForTimeout(500);
+  const quiet = asked.length;
+  writeFileSync(`${B}/a.txt`, 'one\ntwo\nthree\nfour\n');
+  writeFileSync(`${B}/other2.txt`, 'more\n'); g('add', 'other2.txt'); g('commit', '-qm', 'a second file, for the redraw');
+  await landed('a second file, for the redraw');
+  await page.waitForFunction(s => /four/.test(document.querySelector(s)?.textContent || ''),
+    `${NB} .gfile[data-path="a.txt"] pre.diff`, { timeout: 15000 }).catch(() => {});
+  page.off('request', onReq);
+  const shown = await page.$eval(`${NB} .gfile[data-path="a.txt"] pre.diff`, e => /four/.test(e.textContent)).catch(() => false);
+  ok(quiet === 0 && asked.length === 1 && shown,
+     `an open diff is read again only when its file changes (${quiet} on another file's commit, ${asked.length - quiet} after its own change, new line shown ${shown})`);
+  // As it was: the two commits undone, their files gone, a.txt's change back.
+  g('reset', '-q', '--soft', 'HEAD~2'); g('reset', '-q', '--', 'other.txt', 'other2.txt');
+  rmSync(`${B}/other.txt`); rmSync(`${B}/other2.txt`);
+  writeFileSync(`${B}/a.txt`, 'one\ntwo\nthree\n');
+}
 // One section open at a time (the operator, 5 Oct): History is opened.
 await openFold(page, `${NB} [data-sect="git:history"]`);
 const graph = await page.$eval(`${NB} .gitgraph`, g => ({

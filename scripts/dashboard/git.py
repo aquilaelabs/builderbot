@@ -447,6 +447,14 @@ def status(repo):
             st["files"].append({"path": line.split(" ", 10)[-1], "state": "conflict", "staged": False})
         elif line.startswith("? "):
             st["files"].append({"path": line[2:], "state": "untracked", "staged": False})
+    # Each file's time and size, so the page can tell a diff it already has
+    # from one that moved and read only those again (B833).
+    for f in st["files"]:
+        try:
+            s = os.lstat(os.path.join(repo, f["path"]))
+            f["at"] = f"{s.st_mtime_ns}:{s.st_size}"
+        except OSError:
+            f["at"] = ""
     return st
 
 

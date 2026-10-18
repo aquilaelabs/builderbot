@@ -17,6 +17,34 @@ function nbGitView({$, nb, project}){
   // redraw: the commit picked and the files unfolded are kept by sha and
   // path, not by position.
   let git = null, gitPick = "", gitOpenFiles = new Set(), gitOpenCmp = new Set();
+  // What an open fold last showed, by what it shows (B833): a redraw draws
+  // the view whole, and every open diff and comparison used to read itself
+  // again on each one, a hundred reads in a few minutes on the controller.
+  // A file's is kept against its state and stamp, a branch's against its
+  // head and main's, and read again only when one moved.
+  const gitKept = {file: {}, cmp: {}};
+  const keptBody = (kind, id, key, wait) => gitKept[kind][id]?.key === key ? gitKept[kind][id].html : wait;
+  // ...and one read at a time per fold and key: a commit moves the view
+  // twice (its add, then itself), and the second redraw came before the
+  // first answer. The answer fills the fold on screen when it lands,
+  // whichever draw that one is.
+  const gitAsking = new Set();
+  async function keptLoad(kind, d, sel, id, url, render){
+    const key = d.dataset.key, ask = `${kind}\n${id}\n${key}`;
+    if (gitAsking.has(ask)) return;
+    gitAsking.add(ask);
+    let html, ok = false;
+    try{
+      const j = await (await fetch(url)).json();
+      html = j.error ? `<div class="hint bad">${esc(j.error)}</div>` : render(j);
+      ok = !j.error;
+    }catch(e){ html = `<div class="hint bad">${esc(String(e))}</div>`; }
+    finally{ gitAsking.delete(ask); }
+    if (ok) gitKept[kind][id] = {key, html};
+    const attr = kind === "file" ? "data-path" : "data-branch";
+    const now = $("gitBody")?.querySelector(`[${attr}="${CSS.escape(id)}"]`);
+    for (const fold of new Set([d, now])) if (fold?.dataset.key === key) fold.querySelector(sel).innerHTML = html;
+  }
   // The commit a click picked, until its detail has drawn and been scrolled
   // to: the detail sits under the whole history, so a long one leaves the
   // change below the fold. A redraw from a poll leaves the page where it is.
@@ -171,12 +199,13 @@ function nbGitView({$, nb, project}){
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
     const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
     const tree = treeOf();
-    const fileRows = files.map(f => `<details class="sect gfile" data-path="${esc(f.path)}"${
+    const fileKey = f => `${f.state}|${f.staged ? 1 : 0}|${f.at || ""}`;
+    const fileRows = files.map(f => `<details class="sect gfile" data-path="${esc(f.path)}" data-key="${esc(fileKey(f))}"${
         gitOpenFiles.has(f.path) ? " open" : ""}>
         <summary><span class="t"><code>${esc(f.path)}</code></span>
           <span class="sst${f.state === "conflict" ? " bad" : f.state === "untracked" ? " note" : ""}">${
             esc(f.state)}${f.staged ? " · staged" : ""}</span></summary>
-        <div class="body gdiff">${skel("lines", 5)}</div>
+        <div class="body gdiff">${keptBody("file", f.path, fileKey(f), skel("lines", 5))}</div>
         ${locked || tree.barred ? "" : `<div class="body"><div class="actbar">
           ${tree.notMine ? "" : `<button type="button" data-gitaskfile="${esc(f.path)}"
             title="hand this change to the project's Claude session">Send to Claude</button>`}
@@ -264,13 +293,15 @@ function nbGitView({$, nb, project}){
     // A branch with work main lacks is a row you open: its commits and the
     // diff main would take, which is what a pull request page shows before
     // its button, so that page is not needed to look before Merge into main.
-    const branchRow = b => !b.remote && b.name !== main && b.main_ahead ? `<details class="sect gbranch gcmp" data-branch="${esc(b.name)}"${
+    const mainShort = local.find(b => b.name === main)?.short || "";
+    const cmpKey = b => `${b.short}|${mainShort}`;
+    const branchRow = b => !b.remote && b.name !== main && b.main_ahead ? `<details class="sect gbranch gcmp" data-branch="${esc(b.name)}" data-key="${esc(cmpKey(b))}"${
         gitOpenCmp.has(b.name) ? " open" : ""}>
         <summary><span class="t"><code>${esc(b.name)}</code>${pills(b)}</span>
           <span class="sst">${esc(vsMain(b))}</span></summary>
         <div class="body"><div class="sub">${[vsHost(b), `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div>
           ${whoseLine(b)}
-          <div class="gcmpbody">${skel("rows", 3)}</div>
+          <div class="gcmpbody">${keptBody("cmp", b.name, cmpKey(b), skel("rows", 3))}</div>
           ${acts(b)}</div>
       </details>` : `<div class="row gbranch">
         <div class="grow"><div class="name"><code>${esc(b.name)}</code>${pills(b)}</div>
@@ -449,31 +480,23 @@ function nbGitView({$, nb, project}){
     if (gitPick) loadGitCommit(gitPick);
   }
 
-  async function loadGitFile(d){
-    const box = d.querySelector(".gdiff");
-    try{
-      const r = await fetch("/api/git?project=" + encodeURIComponent(project)
-                            + "&what=diff&path=" + encodeURIComponent(d.dataset.path));
-      const j = await r.json();
-      box.innerHTML = j.error ? `<div class="hint bad">${esc(j.error)}</div>` : renderDiff(j.diff);
-    }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
+  function loadGitFile(d){
+    const path = d.dataset.path;
+    return keptLoad("file", d, ".gdiff", path,
+      "/api/git?project=" + encodeURIComponent(project) + "&what=diff&path=" + encodeURIComponent(path), j => renderDiff(j.diff));
   }
 
-  async function loadGitCompare(d){
-    const box = d.querySelector(".gcmpbody");
-    const main = git?.main || "main";
-    try{
-      const r = await fetch("/api/git?project=" + encodeURIComponent(project)
-                            + "&what=compare&branch=" + encodeURIComponent(d.dataset.branch));
-      const j = await r.json();
-      if (j.error){ box.innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
-      const files = j.files || [];
-      box.innerHTML = `<div class="gcmpc">${(j.commits || []).map(c => `<div class="sub"><code>${esc(c.short)}</code> ${
-          esc(c.subject)} · ${esc(c.author)} · ${esc(ago(c.when))}</div>`).join("")}</div>
-        <div class="sub">${files.length} file${files.length === 1 ? "" : "s"} ${esc(main)} would take: ${files.map(f =>
-          `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
-        ${renderDiff(j.diff || "")}`;
-    }catch(e){ box.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; }
+  function loadGitCompare(d){
+    const main = git?.main || "main", branch = d.dataset.branch;
+    return keptLoad("cmp", d, ".gcmpbody", branch,
+      "/api/git?project=" + encodeURIComponent(project) + "&what=compare&branch=" + encodeURIComponent(branch), j => {
+        const files = j.files || [];
+        return `<div class="gcmpc">${(j.commits || []).map(c => `<div class="sub"><code>${esc(c.short)}</code> ${
+            esc(c.subject)} · ${esc(c.author)} · ${esc(ago(c.when))}</div>`).join("")}</div>
+          <div class="sub">${files.length} file${files.length === 1 ? "" : "s"} ${esc(main)} would take: ${files.map(f =>
+            `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
+          ${renderDiff(j.diff || "")}`;
+      });
   }
 
   async function loadGitCommit(sha){
