@@ -4625,11 +4625,11 @@ URLs need their scheme (http:// or https://)"
     local files st=0
     files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
-        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "$settle" "${urls[@]}" <<'EOF'
+        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "$settle" "${drive:+$(readlink -f "$drive")}" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
 const fs = require("fs");
 const path = require("path");
-const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...urls]
+const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, drive, ...urls]
   = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
@@ -4731,6 +4731,13 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...
     }
     if (res && res.status() >= 400) console.error(`${url}: answered ${res.status()}; shot as it is`);
     if (+wait) await p.waitForTimeout(+wait);
+    // --drive works the page first, as it does the emulator and a display
+    // (B847: it was taken and never run for a URL, so the shot was of the
+    // page as it loaded): its default export gets the page and the context.
+    if (drive) {
+      const mod = await import(drive);
+      await (mod.default || mod.drive)(p, { ctx, browser: b, url });
+    }
     let out = dest;
     if (mode === "dir") {
       // Named from the path so reruns overwrite their own shots, with a
