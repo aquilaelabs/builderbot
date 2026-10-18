@@ -56,6 +56,16 @@ const idle = async (ms = 20000) => {
   }
 };
 
+// A compose job still queued or running, asked of the server: the job that
+// will move a row, which a wait has to give its time to (B624).
+const composeBusy = async () => {
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  try {
+    const r = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?active=1&type=compose', { headers: H })).json();
+    return (r.jobs || []).length > 0;
+  } catch { return false; }
+};
+
 const dockerLog = () => {
   try { return readFileSync(`${DIR}/dockerstate/docker.log`, 'utf8'); }
   catch { return ''; }
@@ -63,6 +73,49 @@ const dockerLog = () => {
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
+// The page's own asks of /api/devapp still on their way. A press on Up or
+// Rebuild asks for the instance's state first (a compose parse on its node,
+// seconds on a busy box) and only then for the action, so for that whole
+// stretch no job exists yet, and a wait counted from the press spent its
+// budget before the job had begun (B624, B829).
+// Kept by the request rather than counted: an answer can land without a
+// finished event (a reload cuts what was in flight), and a count that missed
+// one stayed busy for good. A response is enough to say it landed.
+const devAsks = new Set();
+const isDevPost = r => r.method() === 'POST' && /\/api\/devapp(\?|$)/.test(r.url());
+page.on('request', r => { if (isDevPost(r)) devAsks.add(r); });
+page.on('response', x => devAsks.delete(x.request()));
+for (const ev of ['requestfinished', 'requestfailed']) page.on(ev, r => devAsks.delete(r));
+page.on('framenavigated', f => { if (f === page.mainFrame()) devAsks.clear(); });
+// ...and settled: none of those asks in flight and no compose job queued or
+// running, held for a second, since the state ask lands a moment before the
+// action's is sent. Bounded, so a job that runs on past it is the caller's to
+// judge.
+async function settle(ms = 60000){
+  const end = Date.now() + patience(ms);
+  let quiet = 0, busy = false;
+  while (quiet < 4 && Date.now() < end){
+    busy = await composeBusy();
+    quiet = devAsks.size || busy ? 0 : quiet + 1;
+    await sleep(250);
+  }
+  if (quiet < 4) console.log(`[settle] still busy after ${ms}ms: devapp asks in flight ${
+    JSON.stringify([...devAsks].map(r => (r.postData() || '').slice(0, 80)))}, compose job ${busy ? 'active' : 'none'}`);
+}
+// Asked of the page's own listing until it holds, the listing read again
+// between looks: the tab redraws only when its revision moves, so a look
+// sampled once read whichever answer happened to be last (B619, B829, B846).
+// `fn` returns what it saw, or null to go on waiting; null back means it
+// never held.
+async function listingUntil(fn, arg, ms = 30000){
+  const end = Date.now() + patience(ms);
+  for (;;){
+    const h = await page.waitForFunction(fn, arg, { timeout: 5000 }).catch(() => null);
+    if (h) return h.jsonValue();
+    if (Date.now() > end) return null;
+    await page.evaluate(() => { loadDocker(); }).catch(() => {});
+  }
+}
 await page.goto(URL);
 await ready(page);
 await page.evaluate(() => openNotebook('ep.silon'));
@@ -221,7 +274,13 @@ const pill = () => page.$eval(`${DM} .dmpill`, e => e.textContent.replace(/[()]/
 // last word until something asks again (B246).
 const pillIs = async (want) => {
   await openManager();
-  const t0 = Date.now();
+  // The budget runs from the last moment something that could still move
+  // the pill was under way, not from the press: at a load of 20 on 8 cores
+  // the Up's state ask and its job's wait in the queue took the whole of a
+  // fixed 25s before the job had run (B624). Capped, so a pill that never
+  // comes still fails.
+  const cap = Date.now() + patience(150000);
+  let t0 = Date.now();
   for (;;){
     try{
       const got = await page.waitForFunction(
@@ -233,7 +292,8 @@ const pillIs = async (want) => {
       await idle(30000);
       return got;
     }catch(e){
-      if (Date.now() - t0 > 25000) throw e;
+      if (devAsks.size || await composeBusy()) t0 = Date.now();
+      if (Date.now() - t0 > 25000 || Date.now() > cap) throw e;
       await page.evaluate(() => { dockerList = null; loadDocker(); });
     }
   }
@@ -897,11 +957,15 @@ writeFileSync(`${DIR}/dockerstate/up.fail`, '1');
 await dmClick('up');
 // The job first, then the row: the reason reaches the row only once the
 // job has released, and a flat wait on the row ran out under load while
-// the job was still running (B340).
+// the job was still running (B340). Settled rather than idle: the press asks
+// for the state before it asks for the Up, so the queue was still empty when
+// idle first looked and it returned at once, and the row was then read
+// before the job had failed, or off a listing drawn before it did (B829).
+await settle(90000);
 await idle(60000);
-await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: patience(20000) })
-  .catch(() => {});
-const failed = await page.evaluate(() => dockerList?.job || {});
+const failed = await listingUntil(() => /up failed/.test(dockerList?.job?.error || '') ? dockerList.job : null,
+                                  undefined, 30000)
+  || await page.evaluate(() => dockerList?.job || {});
 ok(/up failed/.test(failed.error || ''),
    'an Up that fails leaves the reason on the row, not only in the reply');
 ok(!failed.running && !('log' in failed),
@@ -2763,8 +2827,21 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     pills: [...r.querySelectorAll('.fpill .k')].map(k => k.textContent.trim()) }));
   ok(head.origin.length > 0 && head.pills.includes('Project'),
      `...and a row says what it is on one line under its name, its settings as pills (${head.origin} | ${head.pills.join(', ')})`);
-  const dot = await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill',
-    e => ({ content: getComputedStyle(e, '::before').content, width: getComputedStyle(e, '::before').width, cls: e.className, text: e.textContent.trim() }));
+  // The pill on screen, waited for: read once, the first match could be a
+  // redraw's fading copy, or a row in a pane not yet drawn, whose dot has no
+  // box to measure (B815).
+  // `need` makes it a wait (null until the dot is there); without it, it is
+  // the report of what was seen.
+  const dotOf = need => {
+    const all = [...document.querySelectorAll('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill')];
+    const e = all.find(p => !p.closest('.fghost') && p.offsetParent);
+    const b = e ? getComputedStyle(e, '::before') : null;
+    const d = { content: b?.content || '', width: b?.width || '', cls: e?.className || '',
+                text: e?.textContent.trim() || '', found: all.length, shown: !!e };
+    return !need || (d.content === '""' && d.width === '6px') ? d : null;
+  };
+  const dot = await (await page.waitForFunction(dotOf, true, { timeout: patience(15000) }).catch(() => null))?.jsonValue()
+    ?? await page.evaluate(dotOf, false);
   ok(dot.content === '""' && dot.width === '6px', `...the state pill wearing a dot of its color (${JSON.stringify(dot)})`);
   // What it uses now, asked beside the list once it landed and drawn as a
   // strip on the running row: the fixture's docker answers stats with
@@ -2777,20 +2854,51 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   // ...with its last half hour under its CPU and memory (R218 step 9): the
   // node's agent sends each container's use once a minute, and the stub
   // forwards what is planted, a poll at a time.
-  const names = await page.evaluate(() => ((dockerList?.instances || [])
-    .find(d => `${d.project}|${d.instance}` === 'ep.silon|staging-two')?.services || []).map(c => c.name));
-  for (const [cpu, mem] of [[5, 20], [40, 30]]){
+  // The names off a listing that holds the row: read once, a poll's reload
+  // in flight left the listing empty and nothing was planted at all (B846).
+  const names = await listingUntil(() => {
+    const n = ((dockerList?.instances || []).find(d => `${d.project}|${d.instance}` === 'ep.silon|staging-two')?.services || [])
+      .map(c => c.name);
+    return n.length ? n : null;
+  }, undefined, 20000) || [];
+  // Each sample waited for where the page reads it, rather than slept for:
+  // the stub forwards what is planted once a poll, and in a busy whole run
+  // a poll came later than the seven seconds allowed, so the row had one
+  // sample or none and drew no line (B801, B846). The second is held until
+  // the rings have two moments, since two polls inside one second are one
+  // point on the line.
+  const rings = () => page.evaluate(async names => {
+    const node = dockerList?.node || dockerNode || '';
+    try {
+      const g = await (await fetch('/api/docker/stats' + (node ? '?node=' + encodeURIComponent(node) : ''))).json();
+      return names.map(n => (g.spark || {})[n] || []);
+    } catch { return names.map(() => []); }
+  }, names).catch(() => []);
+  let ringsSeen = [];
+  for (const [i, [cpu, mem]] of [[5, 20], [40, 30]].entries()){
     writeFileSync(`${DIR}/sandboxdata/ctr-stats.json`, JSON.stringify(Object.fromEntries(names.map(n => [n, [cpu, mem]]))));
-    await sleep(7000);
+    const until = Date.now() + patience(45000);
+    while (Date.now() < until){
+      ringsSeen = await rings();
+      if (ringsSeen.length === names.length && ringsSeen.every(r => r.some(x => x[1] === cpu)
+            && (i === 0 || new Set(r.map(x => x[0])).size >= 2))) break;
+      await sleep(1000);
+    }
   }
   rmSync(`${DIR}/sandboxdata/ctr-stats.json`, { force: true });
+  // ...and the strip asked for again until it draws the line: the stats are
+  // read once per listing, so a listing that landed before the samples did
+  // is the last word until something asks again.
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
-  const sparks = await (await page.waitForFunction(() => {
-    const ts = [...document.querySelectorAll('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile')];
+  const sparks = await listingUntil(() => {
+    const ts = [...document.querySelectorAll('.dmtab .row[data-inst="ep.silon|staging-two"] .dmstats .tile')]
+      .filter(t => !t.closest('.fghost'));
     const got = ts.map(t => t.querySelector('svg.spark')).filter(Boolean);
     return got.length === 1 ? got.map(sv => ({ pts: (sv.querySelector('polyline')?.getAttribute('points') || '').split(' ').length,
                                                dot: !!sv.querySelector('circle'), label: sv.getAttribute('aria-label') })) : null;
-  }, null, { timeout: 30000 })).jsonValue();
+  }, undefined, 30000);
+  if (!sparks) throw new Error(`B846: no sparkline on staging-two's CPU tile (names ${JSON.stringify(names)}; the rings ${
+    JSON.stringify(ringsSeen.map(r => r.map(x => x.slice(0, 2)))).slice(0, 300)})`);
   ok(sparks.every(x => x.pts >= 2 && x.dot && /last half hour/.test(x.label)),
      `...its CPU carries the last half hour as a sparkline, the latest a dot, and its memory how full it is (${JSON.stringify(sparks)})`);
   // Its log, in a fold under the row, read when the fold opens, with Follow.
@@ -3399,19 +3507,36 @@ ok(await page.$('#devSend'),
   // branch does, and says it when the pinned one moves.
   // Asked again a few times: once in about ten runs the page's branch list
   // still read ["master"] after the server had listed sidebranch (B619),
-  // and one read made that a failure.
+  // and one read made that a failure. The listing is waited for first, the
+  // page's own answer carrying both the branch and the pin, and only then
+  // is the control opened and read, off the row on screen and never a
+  // redraw's fading copy.
+  await openManager();
+  const refListed = await listingUntil(() => {
+    const d = (dockerList?.instances || []).find(x => x.project === 'ep.silon' && x.instance === 'main');
+    return (dockerList?.refs?.['ep.silon'] || []).includes('sidebranch') && d?.ref === 'sidebranch' ? true : null;
+  }, undefined, 30000);
   let refPick = '';
   for (let i = 0; i < 5 && refPick !== 'sidebranch'; i++){
-    await dmRefresh();
     await dmEditAll();
-    refPick = await page.$eval(DM, r => r.querySelector('[data-dmref]')?.value || '');
-    if (refPick !== 'sidebranch') await sleep(1000);
+    refPick = await (await page.waitForFunction(sel => {
+      const r = [...document.querySelectorAll(sel)].find(x => !x.closest('.fghost'));
+      const v = r?.querySelector('[data-dmref]')?.value || '';
+      return v === 'sidebranch' ? v : null;
+    }, DM, { timeout: 5000 }).catch(() => null))?.jsonValue() || '';
+    if (refPick !== 'sidebranch') await openManager();
   }
-  const refSeen = refPick === 'sidebranch' ? '' : await page.evaluate(sel => {
-    const r = document.querySelector(sel);
+  // What the page held and what the server says now, side by side, so a
+  // failure names which of the two was behind.
+  const refSeen = refPick === 'sidebranch' ? '' : await page.evaluate(async ([sel, was]) => {
+    const r = [...document.querySelectorAll(sel)].find(x => !x.closest('.fghost'));
+    let server = null;
+    try { server = (await (await fetch('/api/docker' + (dockerNode ? '?node=' + encodeURIComponent(dockerNode) : ''))).json()).refs?.['ep.silon']; }
+    catch (e) { server = String(e); }
     return JSON.stringify({ inst: r?.dataset.inst, control: !!r?.querySelector('[data-dmref]'),
-                            refs: dockerList?.refs?.['ep.silon'], rows: [...document.querySelectorAll(sel)].length });
-  }, DM);
+                            refs: dockerList?.refs?.['ep.silon'], server, node: dockerNode, fetching: dockerFetching,
+                            rows: [...document.querySelectorAll(sel)].length, listed: was });
+  }, [DM, !!refListed]);
   ok(refPick === 'sidebranch', `...and the Ref control holds it (${refPick || 'empty'} ${refSeen})`);
   const st = await api({ project: 'ep.silon', instance: 'main', action: 'state' });
   ok((st.state || {}).ref === 'sidebranch', 'the state carries the pin for the row');

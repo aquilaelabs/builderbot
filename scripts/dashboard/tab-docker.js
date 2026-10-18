@@ -170,7 +170,10 @@ async function loadDocker(){
   // An answer for a node the operator has already picked away from must not
   // repaint the view it no longer belongs to; it lands in that node's cache
   // and nothing else.
-  dockerSeen[got.node || asked || ""] = got;
+  // (an answer a newer ask has overtaken does not write over that node's
+  // cache either: the page falls back to the cache when it has no list, and
+  // drew the older answer again, B853)
+  if (ask === dockerAsk || asked !== dockerNode) dockerSeen[got.node || asked || ""] = got;
   if (ask === dockerAsk){ dockerFetching = false; dmSlow = false; clearTimeout(dmSlowTimer); }
   if (asked !== dockerNode) return;
   // A newer ask is in flight or has landed: one revision's reload under
@@ -2216,8 +2219,16 @@ function dmWireRows(el, list = dockerList){
   // one redraw. A setting that fails says so and the rest still go.
   // A row's settings dialog, drawn open: shown in the top layer, again after
   // each draw replaced it; Escape is its Cancel.
+  // One dialog per row, in a drawing of it that is on show: the notebook's
+  // Docker view draws the same rows in a page out of sight, and its dialog,
+  // shown modal on top, left the one on screen inert, every keystroke typed
+  // into it going nowhere (B852).
+  const onShow = !!el.offsetParent || (el.checkVisibility?.() ?? false);
   el.querySelectorAll("dialog.dmsetdlg").forEach(dlg => {
-    if (!dlg.open) try{ dlg.showModal(); }catch(e){ /* detached mid-draw */ }
+    const twin = [...document.querySelectorAll("dialog.dmsetdlg[open]")]
+      .some(o => o !== dlg && o.dataset.dmdlg === dlg.dataset.dmdlg);
+    if (!onShow || twin){ if (dlg.open) dlg.close(); }
+    else if (!dlg.open) try{ dlg.showModal(); }catch(e){ /* detached mid-draw */ }
     dlg.oncancel = e => {
       e.preventDefault();
       dmDropDrafts(dlg.dataset.dmdlg); dmEditing.delete(dlg.dataset.dmdlg); dockerRev++; drawPanes();
