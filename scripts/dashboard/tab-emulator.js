@@ -203,7 +203,8 @@ function renderEmulatorInto(i){
       {label: "images", value: (d.images || []).length},
       {label: "AVDs", value: (d.images || []).reduce((n, im) => n + (im.avds || []).length, 0), sub: "built on them"},
       {label: "levels needed", value: (d.needed || []).length, tone: (d.needed || []).length ? "warn" : "", omit: !(d.needed || []).length},
-      {label: "free", value: typeof d.free_mb === "number" ? (d.free_mb >= 10240 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB") : "",
+      // Storage's reading of a size (sgb), TB past ten of them (B842).
+      {label: "free", value: typeof d.free_mb === "number" ? sgb(d.free_mb) : "",
        sub: "on the store", omit: typeof d.free_mb !== "number"},
     ]) : ""}
     ${(d.needed || []).map(nd => `<div class="field"><div class="notice warn emlevel">${esc(nd.projects.join(", "))} compile${
