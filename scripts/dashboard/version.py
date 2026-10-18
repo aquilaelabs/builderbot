@@ -206,6 +206,45 @@ def components(project):
                   and (p / VERSION_FILE).is_file())
 
 
+# What a git read about history answered, kept per tree against a stamp of
+# the repository's own files (the operator, 18 Oct: the Artifacts view took
+# nine seconds on the controller, sixteen git commands on a network share at
+# half a second each, five of them repeats). Counts, a file's last commit, a
+# tag, an old VERSION: none of them moves until a commit, a tag or a fetch
+# does, and each of those rewrites a file the stamp reads. Status and
+# describe read the working tree, which no file under .git follows, and are
+# asked every time; so is anything carrying an env (a commit's identity).
+_HISTORY = frozenset(("rev-parse", "rev-list", "log", "show", "tag", "symbolic-ref", "merge-base"))
+_git_kept = {}
+GIT_KEPT_S = 300.0
+
+
+def _git_stamp(tree):
+    """The repository's state as its own files say it, without running git:
+    HEAD and the ref it names by content, and the index, packed refs, tags,
+    remote refs, HEAD's reflog and FETCH_HEAD by time and size. None for a .git that is not
+    a directory (a worktree's), which is then asked every time."""
+    g = Path(tree) / ".git"
+    try:
+        if not g.is_dir():
+            return None
+        head = (g / "HEAD").read_bytes()[:512]
+        ref = head.decode(errors="replace").partition("ref:")[2].strip()
+        out: list = [head, (g / ref).read_bytes()[:128] if ref and (g / ref).is_file() else b""]
+        # A push moves origin's refs without FETCH_HEAD; HEAD's reflog
+        # follows every move of HEAD itself.
+        for p in ("index", "packed-refs", "FETCH_HEAD", "logs/HEAD", "refs/tags", "refs/heads",
+                  "refs/remotes", "refs/remotes/origin"):
+            try:
+                s = (g / p).stat()
+                out.append((s.st_mtime_ns, s.st_size))
+            except FileNotFoundError:
+                out.append(None)
+        return tuple(out)
+    except OSError:
+        return None
+
+
 def _git(project, *args, timeout=10, env=None):
     """One git command in the project, or None if it failed.
 
@@ -217,18 +256,33 @@ def _git(project, *args, timeout=10, env=None):
     git identity (users.git_env), so an operator's bump is theirs and not
     whatever the repository or the box happens to have configured.
     """
+    tree = str(root(project))
+    # A read about history, answered from what it said last while the
+    # repository's own files say nothing moved (_git_kept).
+    keep = env is None and args and args[0] in _HISTORY and not (args[0] == "tag" and not ({"-l", "--list", "--points-at"} & set(args)))
+    stamp = _git_stamp(tree) if keep else None
+    if stamp is not None:
+        kept = _git_kept.get(tree)
+        if kept and kept[0] == stamp and time.time() - kept[1] < GIT_KEPT_S and args in kept[2]:
+            return kept[2][args]
     # GIT_OPTIONAL_LOCKS=0: a status here is a read, and the index lock it
     # would otherwise take can make a session's git in the same tree fail
     # with index.lock: File exists (B155). A commit still takes the locks it
     # needs; only the optional one is skipped.
     try:
-        r = subprocess.run(["git", "-C", str(root(project)), *args],
+        r = subprocess.run(["git", "-C", tree, *args],
                            capture_output=True, text=True,
                            timeout=timeout, check=False,
                            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", **(env or {})})
     except (OSError, subprocess.SubprocessError):
         return None
-    return r.stdout.strip() if r.returncode == 0 else None
+    out = r.stdout.strip() if r.returncode == 0 else None
+    if stamp is not None:
+        kept = _git_kept.get(tree)
+        if not kept or kept[0] != stamp or time.time() - kept[1] >= GIT_KEPT_S:
+            kept = _git_kept[tree] = (stamp, time.time(), {})
+        kept[2][args] = out
+    return out
 
 
 def _sub(project, comp):
