@@ -517,12 +517,16 @@ await phone.waitForSelector('.resumemenu', { timeout: 10000 });
 // a fact about the box. Where it stops is what the operator sees (B77).
 await phone.waitForFunction(() => document.querySelector('.resumemenu')
   ?.getAnimations().every(a => a.playState !== 'running'), null, { timeout: 10000 });
-ok(await phone.$eval('.resumemenu', el => {
-     const m = el.getBoundingClientRect();
-     const pane = el.closest('.pane').getBoundingClientRect();
-     return m.top >= pane.top - 1 && m.bottom <= Math.min(pane.bottom, innerHeight) + 1;
-   }),
-   '...brought into the scrolled page, not left below its fold');
+const rest = await phone.$eval('.resumemenu', el => {
+  const m = el.getBoundingClientRect(), pane = el.closest('.pane').getBoundingClientRect();
+  const a = el._anchor, ap = a?.closest?.('.pane'), rb = document.querySelector('.railbar')?.getBoundingClientRect();
+  return { top: Math.round(m.top), bottom: Math.round(m.bottom), paneTop: Math.round(pane.top),
+           paneBottom: Math.round(pane.bottom), inner: innerHeight, cls: el.className,
+           anchor: a ? { on: a.isConnected, samePane: ap === el.closest('.pane'), paneBottom: ap && Math.round(ap.getBoundingClientRect().bottom) } : null,
+           railTop: rb && Math.round(rb.top), styleTop: el.style.top,
+           in: m.top >= pane.top - 1 && m.bottom <= Math.min(pane.bottom, innerHeight) + 1 };
+});
+ok(rest.in, `...brought into the scrolled page, not left below its fold (${JSON.stringify(rest)})`);
 await phone.setViewportSize({ width: 400, height: 800 });
 await phone.click('.resumemenu [data-n]');
 // New conversation turns the menu to the model and effort it starts on

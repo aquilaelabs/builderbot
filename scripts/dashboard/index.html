@@ -4026,7 +4026,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    or card it sits in can cut it off, scrolling inside itself when it is
    taller than the room it has. One that opens upward rises, as does a
    phone's sheet over the bottom bar, the way More does. */
-.floatm{position:fixed;z-index:60;overflow-y:auto;overscroll-behavior:contain}
+/* (two classes, so it outranks .pinmenu's position:absolute further down:
+   the chooser is one, and was placed against its pane, a pane's height off) */
+.floatm.floatm{position:fixed;z-index:60;overflow-y:auto;overscroll-behavior:contain}
 .floatm.up,.floatm.sheet{animation-name:menuUp;animation-duration:.32s}
 .floatm.sheet{width:calc(100vw - 16px);max-width:none;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
 @media(max-width:600px){

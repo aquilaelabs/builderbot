@@ -1394,16 +1394,18 @@ await page.setViewportSize({ width: 393, height: 851 });
 // A card's menu on the Projects page comes in on a tween (R218 step 3);
 // the sidebar row that unfolded its controls went with the card.
 {
+  // The page on show's: the first card anywhere could be a page out of
+  // sight's, never visible, and the wait ran out on it in a whole run.
   await page.evaluate(() => openProjectsTab());
-  await page.waitForSelector('.pgrid .pcard [data-pmore]', { timeout: 10000 });
+  await page.waitForSelector('.doc.on .pgrid .pcard [data-pmore]', { timeout: 10000 });
   // The menu's entrance is the stylesheet's, which animatedDuring does not
   // see: read the animation on the menu itself. A phone's menu is a sheet
   // over the bottom bar, rising as More does (menuUp), and it lands on the
   // screen however soon after the page's own fade the press came.
-  await page.click('.pgrid .pcard [data-pmore]');
-  await page.waitForSelector('.pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
+  await page.click('.doc.on .pgrid .pcard [data-pmore]');
+  await page.waitForSelector('.doc.on .pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
   await sleep(500);
-  const menu = await page.$eval('.pgrid .pcard .actmenu:not([hidden])', m => { const r = m.getBoundingClientRect();
+  const menu = await page.$eval('.doc.on .pgrid .pcard .actmenu:not([hidden])', m => { const r = m.getBoundingClientRect();
     return { anim: getComputedStyle(m).animationName, on: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth }; });
   ok(menu.anim === 'menuUp' && menu.on, `a card's menu comes in with a tween on a phone, rising as a sheet, on the screen (${JSON.stringify(menu)})`);
   await page.keyboard.press('Escape');

@@ -706,6 +706,14 @@ function wireMore(root){
 // its entrance played from the start where it lands.
 function floatAt(m, anchor){
   m._anchor = anchor;
+  // ...and placed again when the pane it is over changes size: a press that
+  // brings up the dock's line shrinks the page's pane under a menu placed
+  // a moment before, which then reached under the line.
+  const pn = anchor?.closest?.(".pane");
+  if (pn && !pn._floatSeen && typeof ResizeObserver === "function"){
+    pn._floatSeen = new ResizeObserver(() => floatSoon());
+    pn._floatSeen.observe(pn);
+  }
   floatPlace(m, anchor);
   m.getAnimations().forEach(a => a.cancel());
   m.style.animation = "none"; void m.offsetWidth; m.style.animation = "";
@@ -731,14 +739,14 @@ function floatPlace(m, anchor){
   m.parentElement.append(probe);
   const o = probe.getBoundingClientRect();
   probe.remove();
-  // The screen's foot is the bottom bar's top on a phone, and the dock's top
-  // wherever the dock shows, its shut line or pulled up: the dock is drawn
-  // over the page, so a menu reaching under it had its last items covered.
-  // One opened from inside the dock has the screen down to the bar.
+  // The foot is the bottom of the pane its button is in, never past the
+  // bottom bar on a phone: what lies under a page's pane (the dock, its shut
+  // line, a phone's keys) is drawn over the page, so a menu reaching under
+  // it had its last items covered. One opened in the dock has the dock's.
   const bar = document.querySelector(".railbar")?.getBoundingClientRect();
   let foot = bar?.height ? bar.top : innerHeight;
-  const dockEl = document.querySelector(".pane.dock"), dock = dockEl?.getBoundingClientRect();
-  if (dock?.height && dock.top < foot && !dockEl.contains(anchor)) foot = dock.top;
+  const pane = anchor?.closest?.(".pane")?.getBoundingClientRect();
+  if (pane?.height && pane.bottom < foot) foot = pane.bottom;
   // ...and its ceiling the top of the page area its button is in, under the
   // header and the page's own bar: a menu that rose over either was under
   // it, both being drawn over the page.
