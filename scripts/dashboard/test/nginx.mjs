@@ -120,6 +120,32 @@ ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill
    '...and the state row now says so, with Remove in place of Deploy');
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
+// The deployed page in sections (R218 step 29): Hostnames, Routes,
+// Certificates and Image, each its state in its head; Routes' Save and
+// Revert under the routes; Remove apart at the foot; the certificate form
+// rolled up until Add a certificate, its Add asleep until a pair is pasted,
+// Cancel rolling it back.
+{
+  const shape = await page.$eval(sect, s => ({
+    sects: [...s.querySelectorAll(':scope > details.sect')].map(d => `${d.querySelector('.t').textContent}:${d.querySelector('.sst')?.textContent || ''}`),
+    save: !!s.querySelector('details[data-sect="nginx:routes"] [data-ngsave]'),
+    foot: !!s.querySelector(':scope > .field .ngfoot [data-ngremove]') && !s.querySelector('details.sect [data-ngremove]'),
+    form: s.querySelector('.ngcertform').hidden }));
+  ok(shape.sects.map(x => x.split(':')[0]).join() === 'Hostnames,Routes,Certificates,Image' && /1 route/.test(shape.sects[1])
+     && shape.save && shape.foot && shape.form,
+     `the deployed page is four sections with their states, Save under Routes, Remove apart, and the certificate form rolled up (${shape.sects.join(' | ')})`);
+  await page.click(`${sect} [data-ngcertopen]`);
+  await page.waitForFunction(s => !document.querySelector(s + ' .ngcertform').hidden, sect, { timeout: 5000 });
+  const asleep = await page.$eval(`${sect} [data-ngcertsave]`, b => b.disabled);
+  await page.fill(`${sect} #ngCert`, '-----BEGIN CERTIFICATE-----');
+  await page.fill(`${sect} #ngKey`, '-----BEGIN PRIVATE KEY-----');
+  const awake = await page.$eval(`${sect} [data-ngcertsave]`, b => !b.disabled);
+  const routesQuiet = await page.$eval(`${sect} [data-ngsave]`, b => b.disabled);
+  await page.click(`${sect} [data-ngcertcancel]`);
+  await page.waitForFunction(s => document.querySelector(s + ' .ngcertform').hidden && !document.querySelector(s + ' #ngCert').value, sect, { timeout: 5000 });
+  ok(asleep && awake && routesQuiet,
+     `Add a certificate unrolls the form, its Add waking once a pair is pasted and Routes' Save staying asleep, and Cancel rolls it back empty (${JSON.stringify({ asleep, awake, routesQuiet })})`);
+}
 
 // On the deployed form, a route typed: Save wakes, and Save keeps it and
 // rebuilds nginx; then the route list is put back as it was.

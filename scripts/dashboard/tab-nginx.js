@@ -25,6 +25,7 @@ let nginxErr = "";
 let nginxRev = 0;
 let nginxNode = "";               // the node the tab shows
 let nginxLatest = {};             // the registry's newest line, from the same answer
+let nginxCertOpen = false;        // Add a certificate pressed: its form unrolled
 let nginxHostnames = [];          // every node's hostnames: [{name, used: [{node, path, port}]}]
 // The routes being edited, per node, until Save or Revert; absent while a
 // node shows what is saved.
@@ -171,8 +172,13 @@ function nginxRouteRow(n, r, i){
 // moves it (drawPanes repaints a tab only when its key has).
 function nginxRedraw(){ nginxRev++; drawPanes(); }
 
+// Routes are filled from the node when they are not drafted (null), so
+// Routes' Save and Revert can let go of the routes and keep a pair half
+// pasted under Certificates, and Add the other way about.
 function nginxDraftOf(n){
-  return nginxDraft[n.node] || (nginxDraft[n.node] = {routes: (n.routes || []).map(r => ({...r})), cert: "", key: "", certFor: ""});
+  const d = nginxDraft[n.node] || (nginxDraft[n.node] = {routes: null, cert: "", key: "", certFor: ""});
+  if (!d.routes) d.routes = (n.routes || []).map(r => ({...r}));
+  return d;
 }
 
 // Each pair the node holds, one line (R188): the key it is known by, its
@@ -230,58 +236,72 @@ function nginxBody(n){
   const news = n.behind ? `nginx:${n.behind} is out: Update pins it and rebuilds`
     : lt.digest ? "the newest line the registry lists" : "no check has read the registry yet";
   const checked = lt.at ? `checked ${ago(lt.at)}` : "never checked";
-  const image = `<div class="field">
-      ${lbl("", "Image")}
+  // Four sections (R218 step 29): each says its state in its head, opens
+  // on one short line with the rest behind its ?, and saves what it writes
+  // under itself; Remove stands apart at the page's foot.
+  const pairs = Object.values(n.certs || {}).filter(c => c?.set).length;
+  const image = docSection("nginx", "image", "Image", n.behind ? `nginx:${n.behind} is out` : `nginx:${im.tag || "?"}`,
+    `<div class="field">
       <div class="sub ngimage">${esc(pinned)}</div>
-      <div class="hint${n.behind ? " warn" : ""}">${esc(news)}. The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.</div>
+      <div class="hint${n.behind ? " warn" : ""}">${esc(news)}.${helpIcon("The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.")}</div>
       <div class="actbar ngimgbar"><span class="state">${esc(checked)}${lt.error ? ` · ${esc(lt.error)}` : ""}</span><span class="sp"></span>
         <button type="button" data-ngcheck>Check now</button>
         ${n.behind ? `<button type="button" class="primary" data-ngupdate>Update to ${esc(n.behind)}</button>` : ""}</div>
-    </div>`;
+    </div>`, {cls: n.behind ? "warn" : ""});
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
+  const hostN = (nginxHostnames || []).length;
+  const hosts = docSection("nginx", "hostnames", "Hostnames", hostN ? `${hostN} name${hostN === 1 ? "" : "s"}` : "none yet",
+    `<div class="field"><div class="hint">The names this BuilderBot answers for, picked on any route.${helpIcon(
+      "The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's). Added and deleted at the press.")}</div>
+      ${nginxHostLines()}</div>`);
+  const routes = docSection("nginx", "routes", "Routes", count ? `${count} route${count === 1 ? "" : "s"}` : "no route yet",
+    `<div class="field"><div class="hint">Each hostname or path to a port a container publishes on ${esc(n.name)}.${helpIcon(
+      "nginx runs on the host network and reaches a container at 127.0.0.1. A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A name nothing routes is answered by closing the connection.")}</div></div>
+      <div class="ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
+      <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
+        <span class="state"></span><span class="sp"></span>
+        <button type="button" data-ngadd>Add route</button>
+        <button type="button" class="primary" data-ngsave disabled>Save</button>
+        <button type="button" class="caution" data-ngrevert disabled>Revert</button>
+      </div></div>`);
+  // The pairs held, and Add a certificate unrolling the form under them: a
+  // paste is now and then, not on every visit (the operator, step 29).
+  const open = nginxCertOpen || !!(d.cert.trim() || d.key.trim());
+  const certs = docSection("nginx", "certs", "Certificates", pairs ? `${pairs} pair${pairs === 1 ? "" : "s"}` : "none yet",
+    `<div class="field"><div class="hint">The pairs this node holds, each known by its domain.${helpIcon(
+      "A pair is known by the domain its names say: a wildcard pair for *.example.com is example.com's, and the same again is a renewal. A key is kept on the controller and never shown.")}</div>
+      ${nginxCertLines(n, d)}</div>
+    <div class="field ngcertadd"${open ? " hidden" : ""}><div class="actbar"><span class="sp"></span>
+      <button type="button" data-ngcertopen>Add a certificate</button></div></div>
+    <div class="ngcertform"${open ? "" : " hidden"}>
+      <div class="field">
+        ${lbl("ngCert", "Certificate")}
+        <textarea id="ngCert" data-ng="cert" rows="4" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----">${esc(d.cert)}</textarea>
+      </div>
+      <div class="field">
+        ${lbl("ngKey", "Private key")}
+        <textarea id="ngKey" data-ng="key" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
+      </div>
+      <div class="field">
+        ${lbl("ngCertFor", "Filed under", "Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), and the routes under that domain find it. Name one only for a pair whose names say no domain (an address, localhost), or to file it under another.")}
+        <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="from the certificate's names" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field"><div class="actbar ngcertbar"><span class="state"></span><span class="sp"></span>
+        <button type="button" class="primary" data-ngcertsave disabled>Add</button>
+        <button type="button" data-ngcertcancel>Cancel</button></div></div>
+    </div>`);
   // The page's status line, deployed as undeployed (the page tops' one
   // order): its state and what it runs, under the tiles.
   return `<div data-ngnode="${esc(n.node)}">
     <div class="field headline toolstate"><div class="actbar ngstate"><span class="state">${pill} <span class="sub">${sub}</span></span></div></div>
-    <div class="field">
-      ${lbl("", "Hostnames")}
-      <div class="hint">The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's).</div>
-      ${nginxHostLines()}
-    </div>
-    <div class="field">
-      ${lbl("", "Routes")}
-      <div class="hint">Each hostname or path goes to a port a container publishes on ${esc(n.name)}; nginx runs on the host network and reaches it at 127.0.0.1. A name nothing routes is answered by closing the connection.</div>
-      <div class="ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
-      <div class="actbar"><span class="state">${count ? "" : "no route yet"}</span><span class="sp"></span>
-        <button type="button" data-ngadd>Add route</button></div>
-    </div>
-    <div class="field">
-      ${lbl("", "Certificates")}
-      ${nginxCertLines(n, d)}
-      <div class="hint">The pairs this node holds, each known by the domain its names say (a wildcard pair for *.example.com is example.com's; the same again is a renewal). A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A key is kept on the controller and never shown.</div>
-    </div>
-    <div class="field">
-      ${lbl("ngCert", "Certificate")}
-      <textarea id="ngCert" data-ng="cert" rows="4" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----">${esc(d.cert)}</textarea>
-    </div>
-    <div class="field">
-      ${lbl("ngKey", "Private key")}
-      <textarea id="ngKey" data-ng="key" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----">${esc(d.key)}</textarea>
-    </div>
-    <div class="field">
-      ${lbl("ngCertFor", "Filed under")}
-      <input id="ngCertFor" data-ng="certfor" value="${esc(d.certFor)}" placeholder="from the certificate's names" autocomplete="off" spellcheck="false">
-      <div class="hint">Left empty, the pair is filed under the domain its own names say (a wildcard's star taken off), and the routes under that domain find it. Name one only for a pair whose names say no domain (an address, localhost), or to file it under another.</div>
-    </div>
-    ${image}
     ${clash}
-    <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
-      <span class="state"></span><span class="sp"></span>
-      <button type="button" data-ngsave disabled>Save</button>
-      <button type="button" class="caution" data-ngrevert disabled>Revert</button>
-      <button type="button" class="danger" data-ngremove>Remove</button>
-    </div></div>
+    ${hosts}
+    ${routes}
+    ${certs}
+    ${image}
+    <div class="field"><div class="actbar ngfoot"><span class="sp"></span>
+      <button type="button" class="danger" data-ngremove>Remove nginx</button></div></div>
   </div>`;
 }
 
@@ -326,8 +346,8 @@ function nginxReadDraft(sect, n){
   d.key = sect.querySelector('#ngKey').value;
   d.certFor = sect.querySelector('[data-ng="certfor"]')?.value.trim() || "";
   const shape = r => ({host: r.host, path: r.path, port: String(r.port), tls: r.tls !== false, cert: r.cert || ""});
-  const same = JSON.stringify(d.routes.map(shape)) === JSON.stringify((n.routes || []).map(shape));
-  return !(same && !d.cert.trim() && !d.key.trim());
+  // Whether the routes differ from what is saved: Routes' Save's question.
+  return JSON.stringify(d.routes.map(shape)) !== JSON.stringify((n.routes || []).map(shape));
 }
 
 function wireNginxTab(root){
@@ -372,6 +392,8 @@ function wireNginxTab(root){
     const dirty = nginxReadDraft(sect, n);
     bar.querySelector("[data-ngsave]").disabled = !dirty;
     bar.querySelector("[data-ngrevert]").disabled = !dirty;
+    const d = nginxDraftOf(n), add = sect.querySelector("[data-ngcertsave]");
+    if (add) add.disabled = !(d.cert.trim() && d.key.trim());
   };
   sect.addEventListener("input", sync);
   sect.addEventListener("change", sync);
@@ -415,19 +437,48 @@ function wireNginxTab(root){
     nginxDraftOf(n).routes.splice(+b.closest(".ngroute").dataset.i, 1);
     nginxRedraw();
   });
+  // Routes' Save writes the routes alone, Revert lets them go; a pair half
+  // pasted below stays in the draft either way.
   bar.querySelector("[data-ngsave]").onclick = async e => {
     nginxReadDraft(sect, n);
-    const d = nginxDraftOf(n);
     busy(e.target, "Saving");
-    const j = await nginxAct({action: "save", node: nid, routes: d.routes, cert_for: d.certFor,
-                              ...(d.cert.trim() ? {cert: d.cert, key: d.key} : {})});
-    if (!j.error) delete nginxDraft[nid];
-    // Where a pasted pair was filed, since the key is the pair's own to
-    // say unless a name was typed.
-    if (!j.error && d.cert.trim() && j.host) notify(`${n.name}: the pair is kept as ${j.host}'s`);
+    const j = await nginxAct({action: "save", node: nid, routes: nginxDraftOf(n).routes});
+    if (!j.error) nginxDraftOf(n).routes = null;
     nginxRedraw();
   };
-  bar.querySelector("[data-ngrevert]").onclick = () => { delete nginxDraft[nid]; nginxRedraw(); };
+  bar.querySelector("[data-ngrevert]").onclick = () => { nginxReadDraft(sect, n); nginxDraftOf(n).routes = null; nginxRedraw(); };
+  // Add a certificate unrolls the form; Add writes the pair beside the
+  // routes as saved (an unsaved route is Routes' to save), Cancel lets the
+  // paste go and rolls the form back up.
+  const certOpen = sect.querySelector("[data-ngcertopen]");
+  if (certOpen) certOpen.onclick = () => {
+    nginxCertOpen = true;
+    certOpen.closest(".ngcertadd").hidden = true;
+    const form = sect.querySelector(".ngcertform");
+    slideHidden(form, true, () => form.querySelector("#ngCert")?.focus());
+  };
+  const certSave = sect.querySelector("[data-ngcertsave]");
+  if (certSave) certSave.onclick = async () => {
+    nginxReadDraft(sect, n);
+    const d = nginxDraftOf(n);
+    busy(certSave, "Adding");
+    const j = await nginxAct({action: "save", node: nid, routes: n.routes || [], cert: d.cert, key: d.key, cert_for: d.certFor});
+    if (!j.error){
+      // Where it was filed, since the key is the pair's own to say unless
+      // a name was typed.
+      if (j.host) notify(`${n.name}: the pair is kept as ${j.host}'s`);
+      Object.assign(d, {cert: "", key: "", certFor: ""});
+      nginxCertOpen = false;
+    }
+    nginxRedraw();
+  };
+  const certCancel = sect.querySelector("[data-ngcertcancel]");
+  if (certCancel) certCancel.onclick = () => {
+    nginxReadDraft(sect, n);
+    Object.assign(nginxDraftOf(n), {cert: "", key: "", certFor: ""});
+    nginxCertOpen = false;
+    nginxRedraw();
+  };
   const chk = sect.querySelector("[data-ngcheck]");
   if (chk) chk.onclick = async e => {
     nginxReadDraft(sect, n);
@@ -443,7 +494,7 @@ function wireNginxTab(root){
     await nginxAct({action: "update", node: nid});
     nginxRedraw();
   };
-  const rm = bar.querySelector("[data-ngremove]");
+  const rm = sect.querySelector("[data-ngremove]");
   if (rm) rm.onclick = async e => {
     if (!confirm(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Docker tab; the routes and certificate stay here for a redeploy.`)) return;
     busy(e.target, "Removing");
