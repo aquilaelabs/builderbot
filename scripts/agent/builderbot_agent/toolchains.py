@@ -261,6 +261,13 @@ def pkg_available(fam, name):
     return p.returncode == 0
 
 
+# The most system packages one recipe may name: a bound on what a catalog
+# can make a machine install, not a guess at what any needs. It was 64, and
+# Playwright with WebKit's libraries is 76 on apt; what was past it was
+# dropped without a word, and WebKit installed and could not launch (B836).
+SYSDEPS_MAX = 160
+
+
 def sysdeps_missing(cat, name, fam, query):
     """(the recipe's system packages missing on this machine, and (family,
     names) when its recipe lists them for another family only). Asked by
@@ -269,11 +276,11 @@ def sysdeps_missing(cat, name, fam, query):
     text was the test, and rpm -q prints "not installed" on stdout."""
     recipe = next((p for p in cat.get("toolchains") or [] if p.get("name") == name), {})
     system = recipe.get("system") or {}
-    want = [str(x) for x in (system.get(fam) or []) if x][:64] if fam else []
+    want = [str(x) for x in (system.get(fam) or []) if x][:SYSDEPS_MAX] if fam else []
     if not want:
         other = next((k for k in ("apt", "dnf", "pacman", "zypper", "apk", "xbps", "emerge")
                       if k != fam and system.get(k)), "")
-        return [], ((other, [str(x) for x in system[other][:64]]) if other else None)
+        return [], ((other, [str(x) for x in system[other][:SYSDEPS_MAX]]) if other else None)
     def installed(x):
         try:
             return subprocess.run(query + [x], capture_output=True, timeout=30,
