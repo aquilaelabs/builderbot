@@ -641,6 +641,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session handing back no longer holds your next messages while the house rules' checks run, where the project's Claude settings say a new ask cuts a test run: the checks run in the background and a failure is said on your next prompt (4253ca4)
 - A job reaches a node with an NVIDIA card within its poll: it used to wait while the agent read the card, up to seconds a job (695f2c9)
 - Typing in the Enroll node and VM dialogs no longer lands in a node's rename box, the Nodes page no longer shows an older list over a save, and Check beside Path mapping keeps its answer (3930c2a)
+- A container's settings dialog takes typing again when the same project's page is open elsewhere; the hidden page's copy of the dialog had been opening on top of it (dfc8f9c)
 
 ### Security
 
