@@ -177,9 +177,12 @@ async function open(args){
   const rec = { id, kind: want.kind, pid: p.pid, port, profile, ext, extId: want.kind === 'chrome' ? chromeExtId(ext) : geckoId,
                 extUuid, started: Math.floor(Date.now() / 1000) };
   writeFileSync(recPath(id), JSON.stringify(rec));
-  // Up when its port answers.
+  // Up when its port answers, within a minute: a cold Firefox takes about
+  // fifteen seconds on a quiet box, and the old fifteen-second cap ran out on
+  // a busy one with the browser still starting (B758). One that dies stops
+  // the wait at once.
   let up = false;
-  for (let i = 0; i < 60 && !up; i++){
+  for (let i = 0; i < 240 && !up; i++){
     await sleep(250);
     if (!alive(p.pid)) break;
     try {

@@ -1593,8 +1593,12 @@ restore_world() {
 # Up and dialed in: the stub says hello the moment it starts, and a file that
 # opens on the node's row must not meet it still marked as not answering.
 wait_stub() {
-    local since="$1" _
-    for _ in $(seq 40); do
+    # Ten seconds, stretched as the suites' waits are (BB_TEST_SLOW): one
+    # worker's server among eight on a loaded box answered after it, and the
+    # worker ended without running its suites (B756).
+    local since="$1" _ tries
+    tries="$(awk -v s="${BB_TEST_SLOW:-1}" 'BEGIN { printf "%d", 40 * (s > 1 ? s : 1) }')"
+    for _ in $(seq "$tries"); do
         curl -fs -u test:test "http://127.0.0.1:$PORT/api/v1/nodes" 2>/dev/null \
             | python3 -c 'import json,sys; since=float(sys.argv[1]); d=json.load(sys.stdin)
 n=[x for x in d.get("nodes",[]) if x.get("name")=="sandbox"]
@@ -1602,7 +1606,7 @@ sys.exit(0 if n and float((n[0].get("agent") or {}).get("last_seen") or 0) >= si
             && return 0
         sleep 0.25
     done
-    warn "the stub agent did not dial in again within ten seconds"
+    warn "the stub agent did not dial in again within $(( tries / 4 )) seconds"
 }
 # BB_TEST_PHASES=1 says what each part of a suite's set-up cost, which is
 # the time no check measures: a suite's own seconds are its checks', and
@@ -1689,6 +1693,12 @@ run_file() {
     suite_pid=""
     [ "$rc" != 124 ] && [ "$rc" != 137 ] \
         || log "FAIL  $(basename "$1") ran out of its ${SUITE_TIMEOUT:-1500} s: something in it waited on nothing"
+    # What the server said about the agent's sources moving under it, into
+    # the run's own log where a failure is read (B718, B751): a node then held
+    # for an agent "newer than its number" names the file that moved, which
+    # only the server's log carried, and that went with the world.
+    [ "$rc" = 0 ] || grep -h "the agent's sources changed on disk" "$S/server.log" 2>/dev/null \
+        | tail -3 | while IFS= read -r l; do log "server: $l"; done
     # What the suite cost, world and all, for the next run's worker plan
     # (bucket_plan): a pass in a whole run only, since a failure can stop
     # early or wait out a timeout, and a rerun runs on an idle box. One
