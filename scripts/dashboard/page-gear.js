@@ -339,13 +339,17 @@ function toggleUiMenu(open){
   uiMenuOpen = open === undefined ? !uiMenuOpen : open;
   btn.setAttribute("aria-expanded", uiMenuOpen ? "true" : "false");
   if (uiMenuOpen){
+    // A close still playing is stopped, and its end hides only a menu still
+    // meant to be shut: pressed again inside its 120ms, the menu opened and
+    // was then hidden by the close's own finish (B855).
+    el.getAnimations().forEach(a => a.cancel());
     el.hidden = false;
     drawUiMenu();
     if (!noMotion())
       el.animate([{opacity: 0, transform: "translateY(-10px)"},
                   {opacity: 1, transform: "none"}], {duration: 160, easing: "ease"});
   } else if (!el.hidden){
-    const hide = () => { el.hidden = true; };
+    const hide = () => { if (!uiMenuOpen) el.hidden = true; };
     if (noMotion()) hide();
     else el.animate([{opacity: 1, transform: "none"},
                      {opacity: 0, transform: "translateY(-10px)"}],

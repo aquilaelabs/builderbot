@@ -58,7 +58,18 @@ function wirePull(){
     hint.style.opacity = "0";
     hint.style.transform = "translate(-50%, 0) rotate(0deg)";
   };
-  const reset = () => { y0 = null; live = false; last = 0; if (!busy) hide(); };
+  // A row a poll redraws under the finger leaves the page, and a touch's
+  // moves and lift go on to it alone, never reaching the document, so the
+  // pull was lost (B854): while it is out of the page they are heard on it.
+  let held = null;
+  const unhold = () => {
+    if (!held) return;
+    held.t.removeEventListener("touchmove", held.mv);
+    held.t.removeEventListener("touchend", held.en);
+    held.t.removeEventListener("touchcancel", held.cn);
+    held = null;
+  };
+  const reset = () => { unhold(); y0 = null; live = false; last = 0; if (!busy) hide(); };
   document.addEventListener("touchstart", e => {
     if (busy || e.touches.length !== 1) return reset();
     const t = e.target;
@@ -69,8 +80,14 @@ function wirePull(){
     y0 = e.touches[0].clientY; live = false; last = 0;
     // It comes down from the header's lower edge, wherever that is.
     hint.style.top = `${Math.round(document.querySelector("header")?.getBoundingClientRect().bottom || 0)}px`;
+    unhold();
+    const away = f => ev => { if (!t.isConnected) f(ev); };
+    held = {t, mv: away(onMove), en: away(onEnd), cn: away(reset)};
+    t.addEventListener("touchmove", held.mv, {passive: true});
+    t.addEventListener("touchend", held.en, {passive: true});
+    t.addEventListener("touchcancel", held.cn, {passive: true});
   }, {passive: true});
-  document.addEventListener("touchmove", e => {
+  const onMove = e => {
     if (y0 === null) return;
     const dy = e.touches[0].clientY - y0;
     // Back above where it started: nothing pulled, for now. The finger may
@@ -78,8 +95,9 @@ function wirePull(){
     if (dy <= 0){ last = 0; hint.style.opacity = "0"; return; }
     live = true; last = dy;
     show(dy);
-  }, {passive: true});
-  document.addEventListener("touchend", () => {
+  };
+  document.addEventListener("touchmove", onMove, {passive: true});
+  const onEnd = () => {
     // The distance the last move reached: a lift's own position is not
     // always reported, and a lift is where the finger already was.
     if (y0 !== null && live && last >= PULL_AT){
@@ -92,10 +110,11 @@ function wirePull(){
         // Long enough to be seen turning, even when the answer is instant.
         setTimeout(() => { busy = false; hide(); }, Math.max(0, 450 - (Date.now() - started)));
       });
-      y0 = null; live = false; last = 0;
+      unhold(); y0 = null; live = false; last = 0;
       return;
     }
     reset();
-  }, {passive: true});
+  };
+  document.addEventListener("touchend", onEnd, {passive: true});
   document.addEventListener("touchcancel", reset, {passive: true});
 }

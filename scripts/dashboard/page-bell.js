@@ -534,7 +534,9 @@ function toggleBell(open){
       panel.animate([{opacity: 0, transform: "translateY(-10px)"},
                      {opacity: 1, transform: "none"}], {duration: 160, easing: "ease"});
   } else if (!panel.hidden){
-    const hide = () => { panel.hidden = true; };
+    // ...and it hides only a panel still meant to be shut: pressed open again
+    // inside the 120ms, the old close's end hid it (B855, as the gear's did).
+    const hide = () => { if (!bellOpen) panel.hidden = true; };
     if (noMotion()) hide();
     else {
       // oncancel as well as onfinish. Whether the panel is actually gone was
