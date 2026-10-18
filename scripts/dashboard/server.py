@@ -208,9 +208,13 @@ LOGIN_HTML = """<!doctype html>
      as the fallback for browsers that do not know dvh.
      `safe center` keeps the top of the card reachable if a soft keyboard
      ever leaves less room than the card needs, the same rule the
-     dashboard's own dialogs use. */
-  html{background:var(--bg)}
-  body{margin:0;min-height:100vh;min-height:100dvh;padding:16px;position:relative;overflow-x:hidden;
+     dashboard's own dialogs use.
+     The document itself never scrolls (B837: the page still scrolled on the
+     operator's phone in Firefox, though it fitted): the body is the one
+     scroller, the height of what is on show, and it scrolls only when what
+     it holds is taller, a keyboard up over a short screen. */
+  html{background:var(--bg);height:100%;overflow:hidden}
+  body{margin:0;height:100vh;height:100dvh;padding:16px;position:relative;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;
     display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:18px;
     color:var(--ink);background:var(--bg);
     font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
