@@ -18,11 +18,6 @@ let profile = null, profileRev = 0;
 // emptied itself mid-sentence would be unusable (docs/design-language.md,
 // Settings; nothing takes effect until Save).
 const profileDraft = {};
-// The time zone picked and not yet applied, kept apart from the account's
-// draft: it is this browser's (a cookie, userTZ in index.html), and it has
-// its own Apply, so it must not light the account's Save.
-let tzDraft = null;
-
 // This browser's zone and every zone it knows, alphabetically after it. UTC
 // by that name, which some browsers leave out of their own list.
 function tzOptions(cur){
@@ -63,7 +58,7 @@ const PROFILE_FIELDS = [
 // Each section's line on the list beside it.
 const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
-  browser: "this browser's time zone", password: "change it, signing out everywhere",
+  password: "change it, signing out everywhere",
   plugins: "what you added with /plugin", logs: "your conversations with Claude, to download",
 };
 
@@ -76,10 +71,10 @@ function renderProfileInto(i){
     // A page of settings as it lands (skSplit): the sections listed, Who
     // you are picked beside them with its fields.
     const fld = label => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(18, "ctl")}</div>`;
-    d.setBar(`<span class="dim">${skv(16)}</span>`);
+    d.setBar(`<span class="barfacts">${skv(16)}</span>`);
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
-      ["On this browser", PROFILE_SAYS.browser], ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins],
+      ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins],
       ["Conversation logs", PROFILE_SAYS.logs]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
     return;
   }
@@ -87,7 +82,9 @@ function renderProfileInto(i){
   const val = k => profileDraft[k] ?? p[k] ?? "";
   const dirty = PROFILE_FIELDS.some(([k]) => (profileDraft[k] ?? p[k] ?? "") !== (p[k] ?? ""));
   const wm = profile.what_may || {roles: [], may: []};
-  d.setBar(`<span class="dim">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
+  // Who this is, in the facts voice (R218 step 31): the name, the roles and
+  // the Claude account, one mono line.
+  d.setBar(`<span class="barfacts">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
     profile.claude ? ` · Claude: ${esc(profile.claude)}` : ""}</span>`);
   // A page of settings (page-docs.js splitSects, the operator, 16 Oct):
   // each block a section, the sections a list beside the one picked; who
@@ -113,17 +110,6 @@ function renderProfileInto(i){
         </div>`)}
     ${sec("may", "What you may do", `
         ${wm.may.length ? factGrid(wm.may) : `<div class="hint">nothing yet: an administrator gives you a role</div>`}`)}
-    ${sec("browser", "On this browser", `
-        <div class="logset">
-          <div class="logdays setrow col">
-            ${lbl("pfTZ", "Time zone", "this browser's, so each device shows its own")}
-            <select id="pfTZ">${tzOptions(tzDraft ?? userTZ())}</select>
-          </div>
-          <div class="actbar">
-            <span class="state">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</span>
-            <button type="button" id="pfTZApply"${tzDraft === null || tzDraft === userTZ() ? " disabled" : ""}>Apply</button>
-          </div>
-        </div>`)}
     ${sec("password", "Password", `
         <div class="logset">
           <div class="logdays setrow col">
@@ -149,6 +135,9 @@ function renderProfileInto(i){
         <div class="logset">${profileLogs(profile.logs || [])}</div>`)}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
+  // Paged like every long list here (R218 step 31): one log per
+  // conversation, so the list only grows.
+  paginate(d.list.querySelector(".cvlogs"), ":scope > .artrow", {key: "pfLogs", noun: "conversations"});
   wireProfile(d.el);
 }
 
@@ -219,17 +208,6 @@ function wireProfile(root){
       refresh();                      // the Claude buttons follow git_ready
     }catch(e){ notify("profile: " + e, true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
-  };
-  const tz = root.querySelector("#pfTZ"), tzApply = root.querySelector("#pfTZApply");
-  if (tz) tz.onchange = () => {
-    tzDraft = tz.value;
-    if (tzApply) tzApply.disabled = tzDraft === userTZ();
-  };
-  if (tzApply) tzApply.onclick = () => {
-    setUserTZ(tzDraft || "");
-    tzDraft = null;
-    notify(userTZ() ? `times on this browser are in ${userTZ()} now` : "times on this browser follow this device again");
-    drawPanes();
   };
   const pw = root.querySelector("#pfPasswd");
   if (pw) pw.onclick = async () => {

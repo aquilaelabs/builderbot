@@ -107,11 +107,10 @@ for (const who of CAST) {
 
   // Settings that are theirs.
   const tz = 'Europe/Paris';
-  await page.evaluate(() => openProfileTab());
-  await page.waitForSelector('#pfTZ', { state: 'attached', timeout: 15000 });
-  await splitPick(page, 'browser');
-  await page.waitForSelector('#pfTZ', { timeout: 15000 });
-  await page.selectOption('#pfTZ', tz); await page.click('#pfTZApply');
+  await page.evaluate(() => toggleUiMenu(true));
+  await page.waitForSelector('#uiMenu #uiTZ', { timeout: 15000 });
+  await page.selectOption('#uiTZ', tz); await page.click('#uiTZApply');
+  await page.evaluate(() => toggleUiMenu(false));
   ok(await page.evaluate(() => userTZ()) === tz, `${tag} sets this browser's time zone`);
   const prof = await api(page, '/api/profile', { action: 'save', profile: { full_name: `${who.name} renamed`, email: `${who.name}@example.invalid` } });
   ok(prof.status === 200 && !prof.error, `${tag} saves their own profile (${prof.status}${prof.error ? ': ' + prof.error : ''})`);

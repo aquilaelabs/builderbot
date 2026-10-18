@@ -1823,12 +1823,18 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok(apis.length === 1 && apis[0] === 'system-images;android-31;google_apis;x86_64',
        `...and the rows to add are what the NODE does not have (${JSON.stringify(apis)})`);
     // Toolchains' gesture (R121 step 5): tick, then Install selected, which
-    // with nothing ticked says so rather than sending nothing.
+    // sleeps until something is ticked (the operator, 18 Oct) and wakes on
+    // a tick.
     ok(await page.$eval('.emutab .tc.emimg input', b => b.checked && b.disabled),
        '...ticked like Toolchains: an installed image is a set, dead tick');
-    await page.click('.emutab [data-emu="install"]');
-    await page.waitForFunction(() => /tick something first/.test(document.body.textContent), null, { timeout: 10000 });
-    ok(true, '...and Install selected with nothing ticked says to tick something, in Toolchains\' words');
+    const asleep = await page.$eval('.emutab [data-emu="install"]', b => b.disabled);
+    await page.click('.emutab .tc.emnew input');
+    await page.waitForFunction(() => !document.querySelector('.emutab [data-emu="install"]')?.disabled, null, { timeout: 10000 }).catch(() => {});
+    const awake = await page.$eval('.emutab [data-emu="install"]', b => !b.disabled);
+    await page.click('.emutab .tc.emnew input');
+    await page.waitForFunction(() => document.querySelector('.emutab [data-emu="install"]')?.disabled, null, { timeout: 10000 }).catch(() => {});
+    ok(asleep && awake && await page.$eval('.emutab [data-emu="install"]', b => b.disabled),
+       `...and Install selected sleeps until something is ticked, waking on a tick and sleeping on its untick (${JSON.stringify({ asleep, awake })})`);
     ok(await page.evaluate(async id => !('images' in await (await fetch('/api/toolchains?node=' + id)).json()),
                            minted.id),
        'the Toolchains tab no longer carries images: they are the Emulator tab\'s');

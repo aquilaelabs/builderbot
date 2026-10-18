@@ -288,7 +288,8 @@ function rolesRoleBody(){
   const people = n => { const h = holders(n).length; return h ? `${h} ${h === 1 ? "person" : "people"}` : "nobody"; };
   const row = (n, name, tag, cls = "") => { const on = n === rolesPick && !r?.fresh;
     return `<button type="button" class="rrow${cls}${on ? " on" : ""}" data-rpick="${esc(n)}"${on ? ' aria-current="true"' : ""}>
-      <span class="name">${esc(name)}</span><span class="rtags">${tag ? `<span class="pill">${esc(tag)}</span>` : ""}<span class="dim">${people(n)}</span></span></button>`; };
+      <span class="rline"><span class="name">${esc(name)}</span>${tag ? `<span class="pill">${esc(tag)}</span>` : ""}</span>
+      <span class="rfacts">${esc(people(n))}</span></button>`; };
   // One list (the operator, 17 Oct: no heading or field halfway down it):
   // built in first, then the ones made here, each with its kind, and the
   // projects' owner roles, one per project and each the same shape, folded
@@ -298,10 +299,10 @@ function rolesRoleBody(){
   const plain = names.filter(n => !owners.includes(n));
   const ownersOpen = rolesOwnersOpen || owners.includes(rolesPick) && !r?.fresh;
   const list = plain.map(n => row(n, d.roles[n].label || n, kind(d.roles[n]))).join("")
-    + (r?.fresh ? `<button type="button" class="rrow on" aria-current="true"><span class="name">${esc(r.name)}</span><span class="rtags"><span class="dim">new, not saved</span></span></button>` : "")
+    + (r?.fresh ? `<button type="button" class="rrow on" aria-current="true"><span class="rline"><span class="name">${esc(r.name)}</span></span><span class="rfacts">new, not saved</span></button>` : "")
     + (owners.length ? `<button type="button" class="rrow rfold" data-rowners aria-expanded="${ownersOpen ? "true" : "false"}">
-        <span class="name">Project owners <span class="rchev" aria-hidden="true">${ownersOpen ? "▾" : "▸"}</span></span>
-        <span class="rtags"><span class="dim">one per project, ${owners.length} project${owners.length === 1 ? "" : "s"}</span></span></button>`
+        <span class="rline"><span class="name">Project owners <span class="rchev" aria-hidden="true">${ownersOpen ? "▾" : "▸"}</span></span></span>
+        <span class="rfacts">one per project, ${owners.length} project${owners.length === 1 ? "" : "s"}</span></button>`
        + (ownersOpen ? owners.map(n => row(n, projLabel(d.roles[n].project), "", " rsub")).join("") : "") : "");
   if (!r) return rolesSplit("roles", list, `<div class="empty">no role picked</div>`);
   const who = r.fresh ? [] : holders(r.name);
@@ -378,7 +379,11 @@ function rolesNewOpen(){
     <div class="field">${lbl("rolesNewName", "Its name")}<input id="rolesNewName" autocomplete="off"></div>
     <div class="field">${lbl("rolesNewScope", "Kind", "On a project: given per project, and holds there. Everywhere: holds on every project and is the only kind that reaches the nodes, toolchains and the controller")}
       <select id="rolesNewScope"><option value="projects">On a project</option><option value="global">Everywhere</option></select></div>
-    <div class="foot"><button id="rolesAdd" class="primary">Make it</button><button id="rolesNewCancel">Cancel</button></div></div>`;
+    <div class="foot"><button id="rolesAdd" class="primary" disabled>Make it</button><button id="rolesNewCancel">Cancel</button></div></div>`;
+  // Make it wakes once a name is typed that no role has (the operator, 18
+  // Oct).
+  const nm = m.querySelector("#rolesNewName");
+  nm.oninput = () => { const v = nm.value.trim(); m.querySelector("#rolesAdd").disabled = !v || !!rolesData.roles[v]; };
   m.hidden = false;
   m.onclick = e => { if (e.target === m) m.hidden = true; };
   m.querySelector("#rolesNewCancel").onclick = () => { m.hidden = true; };
@@ -397,7 +402,9 @@ function rolesNewOpen(){
 function renderRolesInto(i){
   const d = docSurface(i, "roles");
   if (!d) return;
-  d.setBar(`<span class="dim">what each role reads and writes; a person's roles are picked beside their account on Users</span><span class="sp"></span>${
+  // A count, as Users and Jobs keep (the operator, 18 Oct), not a sentence.
+  const nRoles = Object.keys(rolesData?.roles || {}).length;
+  d.setBar(`<span class="dim">${rolesData === null ? skv(4) : `${nRoles} role${nRoles === 1 ? "" : "s"}`}</span><span class="sp"></span>${
     rolesData?.admin ? `<span class="actbar"><button type="button" class="primary" id="rolesNewOpen">New role</button></span>` : ""}`);
   if (rolesData === null){
     // Its template (R218 step 16): the two sections and their fields' labels

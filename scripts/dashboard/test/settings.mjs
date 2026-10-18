@@ -100,6 +100,17 @@ ok(groups.join('|') === 'Logs|Claude sessions|Storage|Reach from outside|Debuggi
      `the tab is a list of its sections beside the one picked, each saying what is in it (${rows.map(r => r.k).join(', ')})`);
   const was = await page.$eval('#idleMin', i => i.value);
   await splitPick(page, 'idle');
+  // Apply and Revert sleep until a field differs from what is saved, and
+  // again when it is typed back (R218 step 32, as Profile's do).
+  const G = '.settingstab [data-group="Claude sessions"]';
+  const awake = () => page.$eval(G, g => [g.querySelector('#idleApply').disabled, g.querySelector('[data-srevert]').disabled].join());
+  const atRest = await awake();
+  await page.fill('#idleMin', '4321');
+  const changed = await awake();
+  await page.fill('#idleMin', was);
+  const back = await awake();
+  ok(atRest === 'true,true' && changed === 'false,false' && back === 'true,true',
+     `a section's Apply and Revert sleep until a field differs, and again when it is typed back (${atRest} | ${changed} | ${back})`);
   await page.fill('#idleMin', '4321');
   await page.click('.settingstab [data-group="Claude sessions"] [data-srevert]');
   await page.waitForFunction(w => document.getElementById('idleMin')?.value === w, was, { timeout: 10000 });
@@ -295,8 +306,10 @@ ok(elsewhere.git_name === 'T. Person',
   const pre = async p => (await (await fetch(URL.replace(/\/$/, '') + `/api/preamble?project=${p}`, { headers: auth })).json()).text || '';
   const globals = async () => ((await (await fetch(URL.replace(/\/$/, '') + '/api/global-rules', { headers: auth })).json()).rules || []);
   await page.evaluate(() => openSettingsTab());
-  await page.waitForSelector('.settingstab .snav [data-spick="nodes"]', { timeout: 15000 }); await splitPick(page, 'nodes');
-  await page.waitForSelector('#setNodes', { timeout: 15000 });
+  await page.waitForSelector('.settingstab .snav [data-spick="logs"]', { timeout: 15000 });
+  // Reset last, and no section that only linked to the Nodes page (R218 step 32).
+  const order = await page.$$eval('.settingstab .snav [data-spick]', bs => bs.map(b => b.dataset.spick));
+  ok(!order.includes('nodes') && order.at(-1) === 'reset', `Controller settings ends on Reset, with no Nodes section (${order.join(', ')})`);
   ok(!(await page.$('#setGlobalRules')) && !(await page.$('#grmodal')),
      'Controller settings has no Global rules dialog any more');
 
@@ -351,20 +364,25 @@ ok(elsewhere.git_name === 'T. Person',
     body: JSON.stringify({ project: 'alpha', action: 'save', rules: (await (await fetch(URL.replace(/\/$/, '') + '/api/rules?project=alpha', { headers: auth })).json()).rules, globals_off: [] }) });
 }
 
-// ---- the time zone is this browser's (Profile, On this browser) ----------
+// ---- the time zone is this browser's (the gear, R218 step 31) ------------
 // A cookie, not the account: a phone abroad and the desk at home each keep
 // their own. Every time the page shows goes through fmtTime, so picking a
 // zone moves them all, and "This device's own" takes the cookie away again.
+// It sits in the gear beside the scheme, the other choice that is this
+// browser's, and Profile no longer lists it.
 {
   await page.evaluate(() => openProfileTab());
-  await page.waitForSelector('.profiletab .snav [data-spick="browser"]', { timeout: 15000 });
-  await splitPick(page, 'browser');
-  await page.waitForSelector('#pfTZ', { timeout: 15000 });
+  await page.waitForSelector('.profiletab .snav [data-spick]', { timeout: 15000 });
+  ok(await page.$('.profiletab .snav [data-spick="browser"]') === null && await page.$('.profiletab #pfTZ') === null,
+     'Profile no longer carries the time zone');
+  await page.evaluate(() => toggleUiMenu(true));
+  await page.waitForSelector('#uiMenu #uiTZ', { timeout: 15000 });
   const zone = 'Pacific/Chatham';          // +12:45: no browser's own zone by accident
-  await page.selectOption('#pfTZ', zone);
-  ok(await page.$eval('#pfSave', b => b.disabled) && !await page.$eval('#pfTZApply', b => b.disabled),
-     'picking a zone lights its own Apply, not the account\'s Save');
-  await page.click('#pfTZApply');
+  const asleep = await page.$eval('#uiTZApply', b => b.disabled);
+  await page.selectOption('#uiTZ', zone);
+  ok(asleep && !await page.$eval('#uiTZApply', b => b.disabled),
+     'in the gear, picking a zone wakes its Apply, asleep until then');
+  await page.click('#uiTZApply');
   const after = await page.evaluate(z => ({
     cookie: document.cookie.includes('bb_tz=' + encodeURIComponent(z)),
     tz: userTZ(),
@@ -375,14 +393,14 @@ ok(elsewhere.git_name === 'T. Person',
      `Apply keeps the zone in a cookie on this browser, and the page's times follow it (${JSON.stringify(after)})`);
   const acct = await (await page.evaluate(() => fetch('/api/profile').then(r => r.text())));
   ok(!acct.includes(zone), '...and nothing of it is stored against the account');
-  await page.waitForSelector('#pfTZ', { timeout: 15000 });
-  await page.selectOption('#pfTZ', '');
-  await page.click('#pfTZApply');
+  await page.waitForSelector('#uiMenu #uiTZ', { timeout: 15000 });
+  await page.selectOption('#uiTZ', '');
+  await page.click('#uiTZApply');
   ok(await page.evaluate(() => !document.cookie.includes('bb_tz=') && userTZ() === ''),
      'This device\'s own takes the cookie away again');
   await page.evaluate(() => { document.cookie = 'bb_tz=Not%2FAZone; path=/'; });
   ok(await page.evaluate(() => userTZ() === ''), 'a zone this browser does not know is ignored, not trusted');
-  await page.evaluate(() => setUserTZ(''));
+  await page.evaluate(() => { setUserTZ(''); toggleUiMenu(false); });
 }
 
 // ---- a project's settings live in its notebook (R119 step 3) ---------------

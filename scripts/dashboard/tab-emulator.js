@@ -226,7 +226,7 @@ function renderEmulatorInto(i){
       ${job.running ? `<span class="state tcworking">${job.action === "remove" ? "Removing" : "Adding"} ${
         esc(job.current || job.image || "")}<span class="dots"></span></span>` : ""}
       ${held && !job.running ? `<span class="state bad">${esc(held)}</span>` : ""}
-      <button class="primary" data-emu="install"${held || job.running ? " disabled" : ""}>Install selected${
+      <button class="primary" data-emu="install"${held || job.running || !emuTickedHere(d).length ? " disabled" : ""}>Install selected${
         emuTickedHere(d).length > 1 ? ` (${emuTickedHere(d).length})` : ""}</button>
       ${job.running ? `<button data-emu="abort"${job.aborting ? " disabled" : ""}>${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
     </div>`}`;

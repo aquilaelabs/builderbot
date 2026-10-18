@@ -25,10 +25,36 @@ function settingsLive(){
 // away what was typed into another (docs/design-language.md, Settings).
 const settingsDraft = {};
 const sdVal = (id, value) => settingsDraft[id] ?? value;
+// Each field's saved value, read when it is drawn with no draft over it,
+// so an edit back to it is no change and its section's Apply and Revert
+// sleep again (R218 step 32, as Profile's do).
+const settingsSaved = {};
+const SETTINGS_FIELDS = "input[data-set], select[data-set], #idleMin, #logDays, input[data-path]";
 function settingsKeep(el){
-  el.querySelectorAll("input[data-set], select[data-set], #idleMin, #logDays, input[data-path]").forEach(i => {
-    const on = () => { settingsDraft[i.id] = i.type === "checkbox" ? i.checked : i.value; };
+  const val = i => i.type === "checkbox" ? i.checked : i.value;
+  el.querySelectorAll(SETTINGS_FIELDS).forEach(i => {
+    if (!(i.id in settingsDraft)) settingsSaved[i.id] = val(i);
+    const on = () => {
+      const v = val(i);
+      if (i.id in settingsSaved && v === settingsSaved[i.id]) delete settingsDraft[i.id];
+      else settingsDraft[i.id] = v;
+      settingsWake(el);
+    };
     i.oninput = on; i.onchange = on;
+  });
+  el.querySelectorAll("[data-clear]").forEach(i => { i.addEventListener("change", () => settingsWake(el)); });
+  settingsWake(el);
+}
+// A section's Apply and Revert awake only while one of its fields differs
+// from what is saved, or a stored secret is ticked to go. Not the Logs
+// section's Apply: pressed with the days as they are, it crops now.
+function settingsWake(el){
+  el.querySelectorAll("details.sect").forEach(sec => {
+    const dirty = [...sec.querySelectorAll(SETTINGS_FIELDS)].some(i => i.id in settingsDraft)
+      || !!sec.querySelector("[data-clear]:checked");
+    sec.querySelectorAll(".setApply, #idleApply, #pathsApply, [data-srevert]").forEach(b => {
+      if (!b.dataset.busy && b.disabled !== !dirty) b.disabled = !dirty;
+    });
   });
 }
 
@@ -44,7 +70,7 @@ const SETTINGS_SAYS = {
   logs: "days kept, downloads, diagnostics", reports: "what sessions reported about BuilderBot",
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
   tunnel: "a hostname that reaches it from outside", debug: "debug mode and dev features",
-  reset: "start over at the setup page", nodes: "the machines work runs on",
+  reset: "start over at the setup page",
 };
 
 function renderSettingsInto(i){
@@ -52,7 +78,8 @@ function renderSettingsInto(i){
   if (!d) return;
   // The build and the uptime live here now (R218 step 2, the top-bar rule):
   // facts in the facts voice, where the header carried them before.
-  d.setBar(`<span class="dim">what this controller does; appearance is in the gear</span><span class="sub dim">up ${
+  // ...and no sentence about the page beside them (the operator, 18 Oct).
+  d.setBar(`<span class="barfacts">up ${
     esc(shortUptime(state?.uptime || 0))} · ${esc(state?.image?.version || (state?.image?.rev || "").slice(0, 7) || "unstamped")}</span>`);
   // Sections, like every other tab's (the operator, 11 Oct): one fold per
   // group, its status on the heading, a jump bar over them, and each with
@@ -68,22 +95,17 @@ function renderSettingsInto(i){
   d.list.innerHTML = `<div class="sectjump" data-sects></div>
     ${sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logSection(), "logs")
         || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`)}
-    ${reportsSection() ? sect("reports", "BuilderBot bug reports", "", reportsSection()) : ""}
+    ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}
     ${sect("idle", "Claude sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
            `<div class="row stack2" data-group="Claude sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
-    ${sect("reset", "Reset BuilderBot", "", `<div class="row stack2" data-group="Reset">
-      <div class="grow">
-        <div class="sub">Start over at the setup page, un-enrolling the nodes first if you choose. Everything but project files is moved aside, not deleted.</div>
-        <div class="actbar"><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
-      </div>
-    </div>`)}
-    ${sect("nodes", "Nodes", "", `<div class="row stack2">
-      <div class="grow">
-        <div class="sub">The machines work runs on, each set up on its own row.</div>
-        <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
-      </div>
+    ${
+    // Last, apart from the settings (R218 step 32); the Nodes section that
+    // only linked to the Nodes page is gone with it, the rail being the way.
+    sect("reset", "Reset BuilderBot", "", `<div class="field" data-group="Reset">
+      <div class="hint">Start over at the setup page, un-enrolling the nodes first if you choose. Everything but project files is moved aside, not deleted.</div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
     </div>`)}`;
   sectJump(d.list.querySelector("[data-sects]"));
   wireSections(d.el);
@@ -101,8 +123,7 @@ function renderSettingsInto(i){
   wirePathsSection(d.el);
   wireSettingsSections(d.el);
   settingsKeep(d.el);
-  const nd = d.el.querySelector("#setNodes");
-  if (nd) nd.onclick = () => openNodesTab();
+  if (reportsCount === null && reportsSection()) countReports();
   const rs = d.el.querySelector("#setReset");
   if (rs) rs.onclick = () => askReset();
   const rc = d.el.querySelector("#setReportsClear");
@@ -122,15 +143,25 @@ function withRevert(html, key){
   return html.replace(m[0], `${m[0]}<button type="button" class="caution" data-srevert="${esc(key)}" title="put this section's fields back to what is saved">Revert</button>`);
 }
 
+// Opens on what it holds (R218 step 32): its count the section's status,
+// one hint, Clear reports its action. Counted when the page draws it and
+// after a Clear, not on the poll.
+let reportsCount = null;
+async function countReports(){
+  try{
+    const c = await (await postJSON("/api/reports", {action: "count"})).json();
+    if (c.error) return;
+    reportsCount = c.all || 0;
+  }catch{ return; }
+  settingsRev++;
+  drawPanes();
+}
 function reportsSection(){
   // The debug grant's, and not drawn without it (the operator, 6 Oct).
   if (state?.can?.debug === false) return "";
-  return `<div class="row stack2">
-      <div class="grow">
-        <div class="name">BuilderBot bug reports</div>
-        <div class="sub">What sessions reported about BuilderBot with bb report. The Diagnostics download under Logs carries them.</div>
-        <div class="actbar"><button type="button" class="danger" id="setReportsClear">Clear reports</button></div>
-      </div>
+  return `<div class="field">
+      <div class="hint">What sessions reported about BuilderBot with <code>bb report</code>; the Diagnostics download under Logs carries them.</div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="danger" id="setReportsClear">Clear reports</button></div>
     </div>`;
 }
 
@@ -150,6 +181,7 @@ async function clearReports(btn){
     else notify(`cleared ${j.cleared} report${j.cleared === 1 ? "" : "s"}`);
   }catch{ notify("could not clear the reports", true); }
   unbusy(btn, "Clear reports");
+  countReports();
 }
 
 // The settings that used to be environment variables (roadmap R29): what is

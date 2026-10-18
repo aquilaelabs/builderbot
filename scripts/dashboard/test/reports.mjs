@@ -164,6 +164,12 @@ await page.waitForFunction(async () => (await (await fetch('/api/reports', { met
 ok(page.dialogs.length === 1 && new RegExp(`Delete all ${before.all} reports`).test(page.dialogs[0])
    && !/open/.test(page.dialogs[0]),
    `Clear reports in Controller settings asks first, naming how many (${page.dialogs[0]})`);
+// The section opens on what it holds (R218 step 32): its count its status,
+// counted again after the Clear.
+await page.waitForFunction(() => document.querySelector('.settingstab details[data-sect="settings:reports"] > summary .sst')?.textContent === 'none',
+  null, { timeout: 10000 }).catch(() => {});
+ok(await page.$eval('.settingstab details[data-sect="settings:reports"] > summary .sst', e => e.textContent).catch(() => '') === 'none',
+   '...and the section\'s status says how many it holds: none, after the Clear');
 const next = await call('/api/reports', { action: 'add', text: 'the first one after a clear' }, ALPHA);
 ok(next.id > lastId, `...clears every one, and the next report does not take a number already used (#${next.id} after #${lastId})`);
 page.dialogs.length = 0;

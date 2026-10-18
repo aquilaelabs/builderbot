@@ -18,6 +18,9 @@ const THEMES = [
 ];
 
 const THEME_IDS = new Set(THEMES.map(t => t[0]));
+// The time zone picked in the gear and not applied yet: this browser's (a
+// cookie, userTZ), with its own Apply.
+let tzDraft = null;
 
 // The scheme's other half (R216): each has a dark and a light palette, and
 // which is on is this switch: dark, light, or the device's own setting,
@@ -199,6 +202,12 @@ function drawUiMenu(){
         <span class="swa"></span><span class="swb"></span><span class="swi"></span>
         <span class="swp"></span><span class="swn">${esc(label)}</span>
       </button>`).join("")}</div>
+    <h4>Time zone</h4>
+    <div class="tzrow">
+      <select id="uiTZ" aria-label="this browser's time zone">${tzOptions(tzDraft ?? userTZ())}</select>
+      <button type="button" id="uiTZApply"${tzDraft === null || tzDraft === userTZ() ? " disabled" : ""}>Apply</button>
+    </div>
+    <div class="tzsaid">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</div>
     <h4>Account</h4>
     <div class="acctrow">
       <button type="button" id="uiProfile">Profile</button>
@@ -213,6 +222,23 @@ function drawUiMenu(){
   // BROWSER's (theme, layout) and everything the controller owns lives on
   // the Settings tab, where it has room to say what it costs. The log
   // section that used to render here moved with that rule.
+  // The time zone is this browser's, beside its scheme (R218 step 31): a
+  // pick, then Apply, as any setting (the settings rule's one exception is
+  // the scheme, which is looked at rather than decided).
+  const tz = el.querySelector("#uiTZ"), tzApply = el.querySelector("#uiTZApply");
+  tz.onchange = () => { tzDraft = tz.value; tzApply.disabled = tzDraft === userTZ(); };
+  // Said in place, not by drawing the menu again: a redraw took the pressed
+  // button out of the menu before the press reached the page's listener,
+  // which read it as a press elsewhere and shut the menu.
+  tzApply.onclick = () => {
+    setUserTZ(tzDraft || "");
+    tzDraft = null;
+    tzApply.disabled = true;
+    const said = el.querySelector(".tzsaid");
+    if (said) said.textContent = `times here read ${fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}`;
+    notify(userTZ() ? `times on this browser are in ${userTZ()} now` : "times on this browser follow this device again");
+    drawPanes();
+  };
   el.querySelector("#uiProfile").onclick = () => { toggleUiMenu(false);
     openProfileTab(); };
   // On a narrow phone the header's bug and sign-out live here, so the search

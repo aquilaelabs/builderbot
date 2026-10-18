@@ -157,8 +157,8 @@ function phonePanel(n){
        <div class="setrow col">${lbl("phConnPort", "Port", "after the colon on the wireless debugging screen; it changes each time that is turned on")}
          <input id="phConnPort" maxlength="5" inputmode="numeric" autocomplete="off"
          placeholder="41235" value="${esc(phConnPort)}"${off ? " disabled" : ""}></div>
-       <span class="acts"><button type="button" id="phConnect" class="primary"${
-         off ? " disabled" : ""} title="${offWhy}"
+       <span class="acts"><button type="button" id="phConnect" class="primary"${off ? ' data-off="1"' : ""}${
+         off || !phIp.trim() || !phConnPort.trim() ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
        ${ph.you && phIp === ph.you
          ? `<div class="sub">this device; you are reading this on it</div>`
@@ -176,7 +176,8 @@ function phonePanel(n){
          <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="123456"
            value="${esc(phCode)}"${off ? " disabled" : ""}></div>
        </div>
-       <span class="acts"><button type="button" id="phPair"${off ? " disabled" : ""} title="${offWhy}">Pair</button></span>
+       <span class="acts"><button type="button" id="phPair"${off ? ' data-off="1"' : ""}${
+         off || !phIp.trim() || !phPort.trim() || !phCode.trim() ? " disabled" : ""} title="${offWhy}">Pair</button></span>
        <div class="sub">${ph.you && phIp === ph.you
          ? `<b class="warn">You are reading this on the phone you are pairing.</b>
             Pair from another device: Android closes the pairing dialog when you leave it.`
@@ -254,7 +255,8 @@ function phonePanel(n){
   if (known.length)
     rows.push(`<div class="row"><div class="grow">
         <div class="name">Remembered on ${esc(n.name)}</div>
-        <div class="sub">paired or connected here before: Connect is all they need</div>
+        <div class="sub">paired or connected here before: today's port is all they need</div>
+        <div class="sub note phknownsay"${phConnPort.trim() ? " hidden" : ""}>Connect wakes once today's port is typed in Port above</div>
       </div></div>`,
       ...known.map(k => `<div class="row phknown" data-ip="${esc(k.ip)}">
         <div class="grow">
@@ -264,7 +266,7 @@ function phonePanel(n){
           <div class="sub">${esc(k.ip)}${k.model ? "" : " · paired, never connected from here"} · ${
             esc(ago(k.last || k.first || 0))}${k.by ? ` by ${esc(k.by)}` : ""}</div>
           <div class="actbar">
-            <button type="button" data-kconnect="${esc(k.ip)}"${off ? " disabled" : ""} title="${offWhy}">Connect</button>
+            <button type="button" data-kconnect="${esc(k.ip)}"${off ? ' data-off="1"' : ""}${off || !phConnPort.trim() ? " disabled" : ""} title="${offWhy}">Connect</button>
             <button type="button" class="danger" data-kforget="${esc(k.ip)}">Forget</button>
           </div>
         </div></div>`));
@@ -299,10 +301,20 @@ function wirePhoneTab(root){
   if (rf && phRefreshing) busy(rf, "Refreshing");
   // The fields keep what is in them across a redraw.
   const keep = (id, set) => { const el = $$(id); if (el) el.oninput = e => set(e.target.value); };
-  keep("phIp", v => phIp = v);
-  keep("phConnPort", v => phConnPort = v);
-  keep("phPairPort", v => phPort = v);
-  keep("phPairCode", v => phCode = v);
+  // Each press wakes once what it sends is typed (the operator, 18 Oct): a
+  // press that only said what was missing was asleep in all but look.
+  const wake = () => {
+    const set = (b, ready) => { if (b) b.disabled = b.dataset.off === "1" || !ready; };
+    set($$("phConnect"), phIp.trim() && phConnPort.trim());
+    set($$("phPair"), phIp.trim() && phPort.trim() && phCode.trim());
+    root.querySelectorAll("[data-kconnect]").forEach(b => set(b, phConnPort.trim()));
+    const say = root.querySelector(".phknownsay");
+    if (say) say.hidden = !!phConnPort.trim();
+  };
+  keep("phIp", v => { phIp = v; wake(); });
+  keep("phConnPort", v => { phConnPort = v; wake(); });
+  keep("phPairPort", v => { phPort = v; wake(); });
+  keep("phPairCode", v => { phCode = v; wake(); });
   const on = (id, fn) => { const el = $$(id); if (el) el.onclick = fn; };
   on("phConnect", () => {
     if (!phIp.trim()) return notify("the phone's IP, from its wireless debugging screen", true);

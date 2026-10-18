@@ -84,15 +84,17 @@ function usersDirty(){
 }
 function usersRedraw(){ usersRev++; drawPanes(); }
 
-// An account's row: its name, what it holds, and when it was last seen.
+// An account's row: its name with what it holds as pills on one line, and
+// when it was last seen a fact under it (the operator, 18 Oct: the pills
+// and the seen ran together under the name).
 function userRow(u){
   const on = u.name === usersPick;
   const more = (u.roles || []).filter(r => r !== u.role && r !== "user");
   const roles = [...(u.role === "owner" || u.role === "admin" ? [u.role] : []), ...more];
   return `<button type="button" class="rrow${on ? " on" : ""}" data-upick="${esc(u.name)}"${on ? ' aria-current="true"' : ""}>
-    <span class="name">${esc(u.name)}${u.name === usersMeta.me ? ` <span class="pill">you</span>` : ""}</span>
-    <span class="rtags">${roles.length ? roles.map(r => `<span class="pill${r === "owner" ? " ok" : ""}">${esc(usersMeta.role_labels?.[r] || r)}</span>`).join("")
-      : `<span class="dim">no role</span>`}<span class="dim">${u.seen ? `seen ${esc(ago(u.seen))}` : "never seen"}</span></span></button>`;
+    <span class="rline"><span class="name">${esc(u.name)}</span>${u.name === usersMeta.me ? `<span class="pill">you</span>` : ""}${
+      roles.map(r => `<span class="pill${r === "owner" ? " ok" : ""}">${esc(usersMeta.role_labels?.[r] || r)}</span>`).join("")}</span>
+    <span class="rfacts">${[roles.length ? "" : "no role", u.seen ? `seen ${ago(u.seen)}` : "never seen"].filter(Boolean).map(esc).join(" · ")}</span></button>`;
 }
 
 // The picked account's settings, saved together: its name, its roles and
@@ -133,7 +135,9 @@ function usersDetail(u){
 function renderUsersInto(i){
   const d = docSurface(i, "users");
   if (!d) return;
-  d.setBar(`<span class="dim">who may sign in here, what each may do, and which projects they see</span><span class="sp"></span>
+  // A count where Jobs and Sessions keep theirs, not a sentence about the
+  // page (the operator, 18 Oct: a bar holds what the page acts on).
+  d.setBar(`<span class="dim">${usersList === null ? skv(4) : `${usersList.length} ${usersList.length === 1 ? "person" : "people"}`}</span><span class="sp"></span>
     <span class="actbar"><button type="button" class="primary" id="uAddOpen">Add user</button></span>`);
   if (usersList === null){
     // Its template (R218 step 16): the list beside the settings, whose
@@ -242,13 +246,18 @@ function usersAddOpen(){
       <input id="uNewFull" autocomplete="off"></div>
     <div class="field">${lbl("uNewEmail", "Email", "optional")}<input id="uNewEmail" type="email" autocomplete="off"></div>
     <div class="field"><div class="hint">A new account holds no role: give it one beside its account once it is added.</div></div>
-    <div class="foot"><button id="uAdd" class="primary">Add</button><button id="uAddCancel">Cancel</button></div></div>`;
+    <div class="foot"><button id="uAdd" class="primary" disabled>Add</button><button id="uAddCancel">Cancel</button></div></div>`;
+  // Add wakes once there is a name and the password is typed the same twice
+  // (the operator, 18 Oct).
+  const ready = () => { m.querySelector("#uAdd").disabled = !(m.querySelector("#uNewName").value.trim()
+    && m.querySelector("#uNewPw").value && m.querySelector("#uNewPw").value === m.querySelector("#uNewPw2").value); };
   for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewPw2", "pw2"],
                            ["#uNewFull", "full"], ["#uNewEmail", "email"]]){
     const f = m.querySelector(id);
     f.value = usersAddDraft[key] || "";
-    f.oninput = f.onchange = () => { usersAddDraft[key] = f.value; };
+    f.oninput = f.onchange = () => { usersAddDraft[key] = f.value; ready(); };
   }
+  ready();
   m.hidden = false;
   m.onclick = e => { if (e.target === m) m.hidden = true; };
   m.querySelector("#uAddCancel").onclick = () => { m.hidden = true; };

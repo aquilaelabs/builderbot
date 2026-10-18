@@ -521,7 +521,7 @@ function renderToolchainsInto(i){
         busy && job.action === "check"
           ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
         : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
-      ${!may ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
+      ${!may ? "" : `<button class="primary" data-tc="install"${busy || pstale || !tcTicked.size ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >Install selected</button>`}
       ${clean.length ? `<button type="button" class="danger" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}</span>`);
@@ -595,8 +595,13 @@ function renderToolchainsInto(i){
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs")}
 `;
 
+  // Install selected sleeps until something is ticked (the operator, 18
+  // Oct: a press that only said "tick something first" was asleep in all
+  // but look).
+  const inst = el.querySelector('[data-tc="install"]');
   el.querySelectorAll(".tc input").forEach(b => b.onchange = () => {
     b.checked ? tcTicked.add(b.value) : tcTicked.delete(b.value);
+    if (inst) inst.disabled = busy || pstale || !tcTicked.size;
   });
   el.querySelectorAll("[data-tc]").forEach(b => b.onclick = () => tcAct(b.dataset.tc));
   const psel = el.querySelector("#tcNodeSel");
@@ -623,6 +628,7 @@ function renderToolchainsInto(i){
     // Picking a version is choosing to install it: the tick follows.
     tcDriverPick = dsel.value; tcTicked.add(TC_DRIVER);
     const t = el.querySelector("#tcDrvTick"); if (t && !t.disabled) t.checked = true;
+    if (inst) inst.disabled = busy || pstale || !tcTicked.size;
   };
   el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = () => {
     if (confirm(`Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))

@@ -680,6 +680,14 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    out beside it as the square icons they are in the header (the operator,
    16 Oct), not two more full-width rows of words. */
 .uimenu .acctrow{display:flex;gap:6px}
+/* The time zone (R218 step 31): its pick and Apply on a line, what times
+   read under it. */
+.uimenu .tzrow{display:flex;gap:6px}
+.uimenu .tzrow select{flex:1 1 auto;min-width:0}
+.uimenu .tzsaid{font:var(--f-note);color:var(--dim);margin-top:4px}
+/* What a page's bar knows about the one thing it is about, in the facts
+   voice: one dim mono line (Profile's name, roles and Claude account). */
+.docbarrow .barfacts{font:var(--f-data);color:var(--dim);min-width:0;overflow-wrap:anywhere}
 .uimenu .acctrow>button{min-height:var(--tap)}
 .uimenu .acctrow #uiProfile{flex:1 1 auto}
 .uimenu .acctrow .narrowonly{flex:0 0 var(--tap);width:var(--tap);padding:0;justify-content:center}
@@ -743,6 +751,10 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rlist>.sk-row{padding:var(--row-y) var(--row-x)}
 .rlist>.sk-row:last-child{border-bottom:0}
 .rrow .rtags{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font:var(--f-note)}
+/* A person's or a role's row (the operator, 18 Oct): the name with its
+   pills on one line, and what is known of it one fact line under it. */
+.rrow .rline{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;min-width:0}
+.rrow .rfacts{font:var(--f-data);color:var(--dim)}
 @media(hover:hover){ :is(.rolestab,.userstab) .rrow:hover:not(.on),.snav .rrow:hover:not(.on){background:color-mix(in srgb,var(--ink) 6%,transparent)} }
 /* The picked row is lit, so it wears the second color (--lit) as every lit
    control does. */

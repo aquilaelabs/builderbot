@@ -931,11 +931,10 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.fill('#uNewFull', 'Tab Made');
   await page.fill('#uNewEmail', 'tab@example.invalid');
   ok(!await page.$('#uNewRole'), 'Add user asks for no role: it is given beside the account once added (R152)');
-  // Typed twice (R134): two that differ add nobody.
-  await page.click('#uAdd');
-  await sleep(600);
-  ok(!(await page.$('.userstab [data-upick="tabmade"]')) && !await page.$eval('#uaddmodal', m => m.hidden),
-     'two passwords that differ add nobody, and the dialog stays');
+  // Typed twice (R134): two that differ add nobody, Add asleep while they
+  // do (the operator, 18 Oct: a press is awake only when it can act).
+  ok(await page.$eval('#uAdd', b => b.disabled) && !(await page.$('.userstab [data-upick="tabmade"]')) && !await page.$eval('#uaddmodal', m => m.hidden),
+     'two passwords that differ add nobody: Add sleeps, and the dialog stays');
   await page.fill('#uNewPw2', 'tabmadepw1');
   // A reload landing between typing and Add repaints the tab; what was
   // typed survives it (B422: it emptied the form, and Add sent nothing).

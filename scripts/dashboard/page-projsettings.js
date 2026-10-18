@@ -937,7 +937,7 @@ function rnDrawSnapshots(){
         <span class="dim">· ${d.files} files · ${esc(humanBytes(d.bytes))}</span></span>
       <input type="text" data-snapfile placeholder="a file, from the tree's top" spellcheck="false" autocomplete="off"
              aria-label="the file to restore from this day">
-      <button type="button" data-snapone>Restore file</button>
+      <button type="button" data-snapone disabled>Restore file</button>
       <button type="button" data-snapall>Restore all</button>
     </div>`).join("")
     : `<div class="dim">none yet: the first is taken within half an hour of the setting being above 0</div>`)
@@ -960,7 +960,10 @@ function rnDrawSnapshots(){
     const day = row.dataset.day;
     row.querySelector("[data-snapall]").onclick = e => act(e.target, {action: "restore", day},
       `Put all of ${name} back as it was on ${day}?\n\nFiles changed since are written back and files added since are removed, on the controller and then every node. The tree as it is now is snapshotted first.`);
-    row.querySelector("[data-snapone]").onclick = e => {
+    // Restore file wakes once a file is typed (the operator, 18 Oct).
+    const one = row.querySelector("[data-snapone]"), file = row.querySelector("[data-snapfile]");
+    file.oninput = () => { one.disabled = !file.value.trim(); };
+    one.onclick = e => {
       const path = row.querySelector("[data-snapfile]").value.trim();
       if (!path) return notify("type the file to restore, from the tree's top", true);
       act(e.target, {action: "restore", day, path}, `Put ${path} back as it was on ${day}?`);
@@ -1031,7 +1034,7 @@ function rnDrawSigning(){
         ${rnSignLocked ? `<input type="password" id="rnLockCur" autocomplete="current-password" placeholder="the backup password now" aria-label="the backup password now">` : ""}
         <input type="password" id="rnLockNew" autocomplete="new-password" placeholder="${rnSignLocked ? "a new one, or empty to remove it" : "at least ten characters"}" aria-label="the new backup password">
         <input type="password" id="rnLockAgain" autocomplete="new-password" placeholder="the new one again" aria-label="the new backup password again">
-        <div class="rnsignbar"><button type="button" class="link" id="rnLockGo">${rnSignLocked ? "Change it" : "Set it"}</button></div>
+        <div class="rnsignbar"><button type="button" class="link" id="rnLockGo" disabled>${rnSignLocked ? "Change it" : "Set it"}</button></div>
       </div>` : ""}
       ${rnSignMayLock ? `<div class="rnsignbar"><button type="button" class="link" id="rnLockOpen">${
         rnSignLockOpen ? "Never mind" : rnSignLocked ? "Change or remove" : "Set a backup password"}</button></div>` : ""}
@@ -1118,6 +1121,17 @@ function rnDrawSigning(){
   const lo = $("rnLockOpen");
   if (lo) lo.onclick = () => { rnSignLockOpen = !rnSignLockOpen; rnDrawSigning(); };
   const lg = $("rnLockGo");
+  // Wakes once what it sends makes sense (the operator, 18 Oct): the two
+  // new ones alike and a password in them, or, with one set, both empty to
+  // take it off; and the one now typed when there is one.
+  const lockReady = () => {
+    const cur = $("rnLockCur")?.value || "", nw = $("rnLockNew")?.value || "", again = $("rnLockAgain")?.value || "";
+    return nw === again && (nw || rnSignLocked) && (!rnSignLocked || cur);
+  };
+  if (lg) ["rnLockCur", "rnLockNew", "rnLockAgain"].forEach(id => {
+    const el = $(id);
+    if (el) el.oninput = () => { lg.disabled = !lockReady(); };
+  });
   if (lg) lg.onclick = async () => {
     const cur = $("rnLockCur")?.value || "", nw = $("rnLockNew").value, again = $("rnLockAgain").value;
     if (nw !== again) return notify("the two new passwords differ", true);
