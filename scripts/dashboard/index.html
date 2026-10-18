@@ -3250,9 +3250,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .tile .tl{font:var(--f-note);color:var(--dim)}
 .tile .ts{font:var(--f-note);color:var(--dim);opacity:.85}
 .tile.ok .tv{color:var(--pass)}
-/* A tile that is a link and carries no news is the second color: it is a
-   way to its page, as a link in words is. */
-.tile.link:not(.ok):not(.warn):not(.bad) .tv{color:var(--note)}
+/* A tile that is a link and carries no news keeps the text color, as every
+   tile's number does (the operator, 18 Oct: Home's in the second color read
+   as news); its border on hover says it is a way to its page. */
 .tile.warn .tv{color:var(--warn)}
 .tile.bad .tv{color:var(--bad)}
 /* An odd number of tiles on a phone sits in threes rather than two to a row
