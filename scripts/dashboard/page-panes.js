@@ -318,8 +318,8 @@ function nbReadOnly(root, project){
   }
   // Says what still works, not only what does not: the point of locking a
   // project is that everything you do yourself carries on.
-  note.textContent = "Locked: roadmap, bugs and memories are read-only. Findings, "
-    + "artifacts and the dev instance still work; the padlock on its row unlocks it.";
+  note.textContent = "Archived: roadmap, bugs and memories are read-only. Findings, "
+    + "artifacts and the dev instance still work; Unarchive, in its menu, brings it back.";
 }
 
 // Back to its holder when no tab is showing it, so a stale copy is never left

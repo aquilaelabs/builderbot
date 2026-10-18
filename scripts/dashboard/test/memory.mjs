@@ -23,6 +23,10 @@ const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on th
 // A locked project keeps its notebook, which is the whole difference from
 // the exclusion this replaced, which hid it. It opens read-only.
 await page.evaluate(() => openProjectsTab());
+// Locked is archived now (the operator, 18 Oct): its card is in the Archived
+// fold at the page's foot, opened to reach it.
+await page.waitForSelector('.projtab details[data-sect="projects:archived"]', { state: 'attached', timeout: 15000 });
+await page.evaluate(() => { document.querySelector('.projtab details[data-sect="projects:archived"]').open = true; });
 await page.waitForSelector(row('delta'), { timeout: 15000 });
 ok(await page.$$eval(`${row('delta')} [data-open]`, b => b.length === 1),
    'a locked project still has a page to open');

@@ -78,6 +78,7 @@ function wireProjectRows(root){
     setLocked(b.dataset.k, b.dataset.on === "1"));
   root.querySelectorAll("[data-p]").forEach(b => b.onclick = () =>
     setProjectPinned(b.dataset.p, b.dataset.on === "1"));
+  root.querySelectorAll("[data-pgroup]").forEach(b => b.onclick = () => askProjectGroup(b));
   root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
     openProjectSettings(b.dataset.rn));
   root.querySelectorAll("[data-bug]").forEach(b => b.onclick = () =>
@@ -255,10 +256,11 @@ async function setLocked(name, on){
   const running = !who.length ? "No Claude session is running here."
     : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} Claude session here ends now.`
     : `${who.length} Claude sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
-  if (on && !confirm(`Lock ${projLabel(name)}?\n\n${running}\n\n`
-        + `No Claude session starts here and its notebook goes read-only. Your `
-        + `shells, findings, artifacts and dev instance keep working. Unlock `
-        + `reverses it.`)) return;
+  if (on && !confirm(`Archive ${projLabel(name)}?\n\n${running}\n\n`
+        + `No Claude session starts here, its notebook goes read-only, and its `
+        + `card moves to Archived at the foot of the Projects page. Your shells, `
+        + `findings, artifacts and dev instance keep working. Unarchive, in its `
+        + `menu, reverses it.`)) return;
   try{
     const r = await postJSON("/api/lock", {name, locked:on});
     const j = await r.json();
@@ -267,10 +269,76 @@ async function setLocked(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === s);
       if (t) dropTab(t.id);
     }
-    if (on && j.ended?.length) notify(`${projLabel(name)} locked: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
+    if (on && j.ended?.length) notify(`${projLabel(name)} archived: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
     applyNow(p => { p.locked = (j.locked || []).includes(p.name); });
-  }catch(e){ notify("lock failed: " + e, true); }
+  }catch(e){ notify("archive failed: " + e, true); }
   refresh();
+}
+
+// ---- a project's group ----------------------------------------------------
+
+// Which of this account's groups a project is kept in (the operator, 18
+// Oct): asked in a box under the card's name, the groups already made
+// offered, an empty answer taking it out of its group.
+async function askProjectGroup(btn){
+  const name = btn.dataset.pgroup, p = (state?.projects || []).find(x => x.name === name);
+  btn.closest(".actmenu")?.setAttribute("hidden", "");
+  const card = btn.closest(".pcard, .phead") || btn.closest("[data-row]");
+  const at = card?.querySelector(".pcname, .pname") || card;
+  if (!at) return;
+  const groups = [...new Set((state?.projects || []).map(x => x.group).filter(Boolean))].sort();
+  const got = await askInline(at, {label: `Group ${projLabel(name)} with`, value: p?.group || "", ok: "Save",
+                                   options: groups, allowEmpty: true});
+  if (got === null || got === (p?.group || "")) return;
+  try{
+    const j = await (await postJSON("/api/project-group", {name, group: got})).json();
+    if (j.error){ notify(j.error, true); return; }
+    applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
+    notify(got ? `${projLabel(name)} is in ${got}` : `${projLabel(name)} is in no group`);
+  }catch(e){ notify("group: " + e, true); }
+  refresh();
+}
+
+// ---- a project's color ----------------------------------------------------
+
+// The color this account gives a project (the operator, 18 Oct: a person's
+// own, not the project's), picked from the dot beside its name on its card:
+// the swatches unroll under the name, and a press on one wears it at once,
+// as a scheme is (it is looked at, not decided). Escape or a press
+// elsewhere rolls them back up.
+function pickProjectColor(btn){
+  const name = btn.dataset.pcolor, cur = projectColor(name);
+  const line = btn.closest(".pcname");
+  const open = line?.nextElementSibling?.classList.contains("pcpop");
+  document.querySelectorAll(".pcpop").forEach(x => x.__done?.());
+  if (open || !line) return;
+  const pop = document.createElement("div");
+  pop.className = "pcpop pcpick";
+  pop.setAttribute("role", "radiogroup");
+  pop.setAttribute("aria-label", `your color for ${projLabel(name)}`);
+  pop.innerHTML = PROJECT_COLORS.map(([n, tone]) => `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
+      aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
+  line.insertAdjacentElement("afterend", pop);
+  btn.setAttribute("aria-expanded", "true");
+  const away = e => { if (!pop.contains(e.target) && e.target !== btn) done(); };
+  const esc_ = e => { if (e.key === "Escape") done(); };
+  const done = () => { pop.remove(); btn.setAttribute("aria-expanded", "false");
+                       document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc_, true); };
+  pop.__done = done;
+  setTimeout(() => { document.addEventListener("pointerdown", away, true); document.addEventListener("keydown", esc_, true); });
+  pop.querySelector(`[data-color="${cur}"]`)?.focus();
+  pop.onclick = async e => {
+    const b = e.target.closest("[data-color]");
+    if (!b) return;
+    const color = b.dataset.color;
+    done();
+    if (color === cur) return;
+    try{
+      const j = await (await postJSON("/api/project-color", {name, color})).json();
+      if (j.error){ notify(j.error, true); return; }
+      applyNow(x => { x.color = (j.colors || {})[x.name] || ""; });
+    }catch(err){ notify("color: " + err, true); }
+  };
 }
 
 // ---- a project's pin, and rows that come and go -------------------------

@@ -2,7 +2,7 @@
 // Projects page's cards, the Analysis tab and its gate, which build this is,
 // the welcome panel, polls that do not stack, themes, the gear's logs, a
 // project on several nodes, and dialogs that scroll.
-import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
+import { launch, newPage, ok, done, ready, openArchived, doctorFixture, animatedDuring, refreshUntil,
          holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold, registerProject,
          saveDialog, sectSave } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
@@ -16,7 +16,10 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 // A card's link, lock, pin and the rest sit behind its menu on the Projects
 // page (R218 step 3): opened first, the way a thumb does.
 const pjMenu = async name => {
+  // An archived card is in the Archived fold at the page's foot: opened first.
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
+    const fold = c?.closest('details.sect');
+    if (fold && !fold.open) fold.open = true;
     if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click(); }, name);
   await page.waitForTimeout(150);
 };await page.goto(URL);
@@ -1123,8 +1126,23 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
     const g = getComputedStyle(m.querySelector('svg'));
     return { fill: g.fill, stroke: g.stroke, said: m.textContent.trim() };
   });
-  ok(mark.fill === 'none' && mark.stroke !== 'none' && mark.said === 'locked',
+  ok(mark.fill === 'none' && mark.stroke !== 'none' && mark.said === 'archived',
      `...the padlock drawn as a line in the dim color, with its word beside it (${JSON.stringify(mark)})`);
+  // Archived (the operator, 18 Oct): the lock under the name it is used
+  // for. Its card leaves the grid for the Archived fold at the page's foot,
+  // its menu says Unarchive and offers no Pin or Group, and Home's pinned
+  // projects leave it out.
+  const arch = await page.evaluate(() => {
+    const c = document.querySelector('.doc .projtab .pcard[data-row="alpha"]');
+    const fold = c?.closest('details.sect');
+    return { fold: fold?.dataset.sect || '', foldShut: fold ? !fold.open : null,
+             said: fold?.querySelector(':scope > summary .sst')?.textContent || '',
+             menu: [...(c?.querySelectorAll('.actmenu button') || [])].map(b => b.textContent.trim()),
+             home: (state?.projects || []).filter(p => p.pinned && !p.locked).some(p => p.name === 'alpha') };
+  });
+  ok(arch.fold === 'projects:archived' && arch.foldShut === true && /^\d+ projects?$/.test(arch.said)
+     && arch.menu.includes('Unarchive') && !arch.menu.some(t => /^(Pin|Unpin|Group)/.test(t)) && !arch.home,
+     `an archived project's card is folded away under Archived, its menu offering Unarchive and no Pin or Group, and it is not among the pinned (${JSON.stringify(arch)})`);
 await page.evaluate(() => setLocked('alpha', false));
 // Unlocking is what is under test, so it is the LOCK that has to stop being
 // the reason. The button stays dead here for a different one (alpha has no
@@ -1158,6 +1176,34 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
      && !!r.querySelector('[data-k]') && !!r.querySelector('[data-p]')),
    '...with the same controls on a card: its page, shell, the lock and the pin');
 
+// Groups (the operator, 18 Oct): a label of this account's that keeps
+// projects together on the page, set from a card's menu in a box under its
+// name, the groups made already offered; an empty answer takes it out.
+{
+  const group = async (name, to) => {
+    await pjMenu(name);
+    await page.click(`.doc .projtab .pcard[data-row="${name}"] [data-pgroup]`);
+    await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
+    await page.fill('.doc .projtab .askline input', to);
+    await page.click('.doc .projtab .askline [data-askok]');
+  };
+  await group('beta', 'Clients');
+  await page.waitForSelector('.doc .projtab .pjgroup[data-group="Clients"] .pcard[data-row="beta"]', { timeout: 15000 });
+  const g = await page.$eval('.doc .projtab .pjgroup[data-group="Clients"]', s => ({
+    head: s.querySelector('.pjgname').textContent.replace(/\s+/g, ' ').trim(),
+    cards: [...s.querySelectorAll('.pcard')].map(c => c.dataset.row) }));
+  await pjMenu('gamma');
+  await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
+  await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
+  const offered = await page.$$eval('.doc .projtab .askline datalist option', os => os.map(o => o.value));
+  await page.click('.doc .projtab .askline [data-askno]');
+  await group('beta', '');
+  await page.waitForFunction(() => !document.querySelector('.doc .projtab .pjgroup') &&
+    !!document.querySelector('.doc .projtab #pjGrid > .pgrid .pcard[data-row="beta"]'), null, { timeout: 15000 });
+  ok(g.head === 'Clients 1' && g.cards.join() === 'beta' && offered.includes('Clients'),
+     `Group… puts a project under its group's name on the page, the next ask offering the groups made, and an empty answer takes it back out (${JSON.stringify({ ...g, offered })})`);
+}
+
 // Unpinning takes a project off the sidebar and leaves it on the tab, whole.
 await page.evaluate(() => setProjectPinned('alpha', false));
 await page.waitForFunction(
@@ -1168,6 +1214,16 @@ ok(await page.$$eval('.doc .projtab .pcard .name',
 ok(await page.$eval('.doc .projtab .pcard[data-row="alpha"]',
      r => !!r.querySelector('[data-c]') && !!r.querySelector('[data-open]')),
    '...still carrying every control, which is the whole promise of the pin');
+// The pinned first on the page, each part by name (the operator, 18 Oct).
+{
+  const order = await page.evaluate(() => [...document.querySelectorAll('.doc .projtab #pjGrid > .pgrid .pcard')]
+    .map(c => { const p = state.projects.find(x => x.name === c.dataset.row); return { n: p.label || p.name, pin: !!p.pinned }; }));
+  const firstLoose = order.findIndex(o => !o.pin);
+  const sorted = part => part.every((o, i) => !i || part[i - 1].n.localeCompare(o.n) <= 0);
+  ok(firstLoose > 0 && order.slice(firstLoose).every(o => !o.pin)
+     && sorted(order.slice(0, firstLoose)) && sorted(order.slice(firstLoose)),
+     `the pinned projects come first, each part by name (${order.map(o => `${o.n}${o.pin ? '*' : ''}`).join(', ')})`);
+}
 // The tab is a document, not a card adrift in one. It used to draw itself
 // inside .card, rounded, bordered and floating on a darker gutter, while the
 // notebook in the pane beside it filled the pane. One language.
@@ -1687,38 +1743,44 @@ ok(!await page.$eval('#rnAsks', e => e.disabled) && !(await page.$('#rnModel')) 
    && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent))
    && /picked each time a session starts, in the Claude button's menu/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    'with no session running it simply applies at the next start; the model and effort are no longer the dialog\'s');
-// A color for the project: nine swatches, none by default, and the one
-// picked is worn by the row and by the notebook tab once saved.
+// A change in a section wakes its own Save and no other, and Revert puts
+// it back without saving.
 await page.selectOption('#rnAsks', '');
-ok(await page.$$eval('#rnColor [data-color]', bs =>
-     bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
-   'the dialog offers a color, with none picked for a project nobody colored');
-await page.click('#rnColor [data-color="teal"]');
-// The bars wake on a 0 ms timer after the click (B691): read them after it.
+await page.fill('#rnName', 'alpha draft name');
+// The bars wake on a 0 ms timer after the input (B691): read them after it.
 await page.waitForFunction(() => !document.querySelector('.rnbar[data-rnbar="project"] [data-rnsave]')?.disabled, null, { timeout: 5000 });
 ok(await page.$eval('.rnbar[data-rnbar="project"] [data-rnsave]', b => !b.disabled)
    && await page.$eval('.rnbar[data-rnbar="runs"] [data-rnsave]', b => b.disabled),
    'a change wakes its own section\'s Save and no other');
-ok(!(await sectSave(page, 'project')), '...which saves it');
+await page.click('.rnbar[data-rnbar="project"] [data-rnrevert]');
+await page.waitForFunction(() => document.getElementById('rnName').value === projLabel('alpha'), null, { timeout: 5000 });
+ok(!await page.$('#rnColor'), '...and the dialog has no color: a project\'s color is each person\'s own');
 await page.click('#rnCancel');
 await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: 10000 });
-await refreshUntil(page, () => (state?.projects || [])
-  .find(p => p.name === 'alpha')?.prefs?.color === 'teal', { timeout: 20000 });
-ok(await page.$eval('.doc .projtab [data-row="alpha"]', r =>
-     r.classList.contains('pc') && /--pc:/.test(r.getAttribute('style') || '')),
-   'saving a color puts it on the project\'s row');
+// A color is this account's own (the operator, 18 Oct): picked from the dot
+// beside a card's name, nine swatches and none, worn by the card and the
+// project's page at once, and stored for this account rather than on the
+// project.
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.doc .projtab [data-row="alpha"] [data-pcolor]', { timeout: 15000 });
+await page.click('.doc .projtab [data-row="alpha"] [data-pcolor]');
+await page.waitForSelector('.doc .projtab [data-row="alpha"] .pcpop', { timeout: 5000 });
+ok(await page.$$eval('.doc .projtab [data-row="alpha"] .pcpop [data-color]', bs =>
+     bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
+   'the dot beside a card\'s name offers the colors, none picked for a project this account never colored');
+await page.click('.doc .projtab [data-row="alpha"] .pcpop [data-color="teal"]');
+await page.waitForFunction(() => document.querySelector('.doc .projtab [data-row="alpha"]')?.classList.contains('pc'), null, { timeout: 10000 });
+const kept = await page.evaluate(() => { const p = state.projects.find(x => x.name === 'alpha'); return { mine: p.color, project: p.prefs?.color || '' }; });
+ok(kept.mine === 'teal' && kept.project === '' && !await page.$('.doc .projtab [data-row="alpha"] .pcpop'),
+   `a pick wears it on the card at once and rolls the swatches up, kept as this account's and not the project's (${JSON.stringify(kept)})`);
 await page.evaluate(() => openNotebook('alpha'));
 await nbShown(page);
 ok(await page.evaluate(() => {
      const b = document.querySelector('#pane0 .bar.proj');
      return !!b && b.classList.contains('pc') && /--pc:/.test(b.getAttribute('style') || '');
    }), "...and on its page's header");
-await page.evaluate(async () => {
-  await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ project: 'alpha', color: '' }) });
-});
-await refreshUntil(page, () => !(state?.projects || [])
-  .find(p => p.name === 'alpha')?.prefs?.color, { timeout: 20000 });
+await page.evaluate(() => postJSON('/api/project-color', { name: 'alpha', color: '' }));
+await refreshUntil(page, () => !(state?.projects || []).find(p => p.name === 'alpha')?.color, { timeout: 20000 });
 await page.waitForFunction(() => !document.querySelector('#pane0 .bar.proj')?.classList.contains('pc'), null, { timeout: 20000 });
 ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
@@ -1813,7 +1875,7 @@ await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnReply', e => e.disabled)
    && await page.$eval('#rnAsks', e => e.disabled),
    'a locked project cannot be given session settings: no session starts there to have them');
-ok(/Locked/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+ok(/Archived/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
 await pjMenu('gamma');
@@ -1863,6 +1925,7 @@ ok(!await page.$('.doc .projtab [data-x]'),
    'there is no exclude control anywhere any more');
 // delta is the fixture's locked project.
 await page.evaluate(() => openProjectsTab());
+await openArchived(page);
 await page.waitForSelector('.pgrid .pcard[data-row="delta"]', { timeout: 10000 });
 const dRow = '.pgrid .pcard[data-row="delta"]';
 ok(await page.$$eval(`${dRow} .pcname .lockmark`, e => e.length) === 1,
@@ -1879,7 +1942,7 @@ const refused = await page.evaluate(async () => {
     body: JSON.stringify({ project: 'delta', action: 'add', text: 'should not land' }) });
   return { status: r.status, error: (await r.json()).error || '' };
 });
-ok(refused.status === 409 && /locked/.test(refused.error),
+ok(refused.status === 409 && /archived/.test(refused.error),
    '...and the server refuses a write into its notebook, not just the button');
 
 // The sidebar fits its column. It stopped doing so because a tooltip is laid

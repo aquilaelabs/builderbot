@@ -1001,6 +1001,7 @@ def _project_columns(who, facts):
     # the disk here, two listdirs and no write when nothing moved.
     reg = registry.sync()["projects"]
     pins = projects.load_project_pins(users.uid_of(who), users.starts_unpinned(who))
+    groups = projects.load_project_groups(users.uid_of(who))
     # One small file for the whole list, read here rather than per row: this
     # runs on the fifteen-second poll and a per-project read would be a dozen
     # opens for a dozen values that came from the same dictionary.
@@ -1008,6 +1009,10 @@ def _project_columns(who, facts):
     # there with nothing set; the settings field offers it as what an
     # empty box means.
     project_prefs = prefs.all_projects(WORKSPACE)
+    # The color this account gives each project (the operator, 18 Oct: a
+    # person's own, not the project's), starting from what the projects
+    # wore before that, for an account that has not picked one yet.
+    colors = projects.load_marks("color", users.uid_of(who), start=_legacy_colors(project_prefs))
     # ...and, in one read each, what the ACCOUNT ASKING chose per project and
     # the author its commits carry with nothing overridden. The model, the
     # effort and the commit identity are the person's, not the directory's
@@ -1104,6 +1109,10 @@ def _project_columns(who, facts):
                     "forge_host": fhost,
                     "locked": d.name in locked,
                     "pinned": True if pins is None else d.name in pins,
+                    # The group this account files it under, or "".
+                    "group": groups.get(d.name, ""),
+                    # ...and the color it gives it, or "".
+                    "color": colors.get(d.name, ""),
                     # Whether it carries its own access token, so the rename
                     # dialog can offer to change one without offering to
                     # invent one for a local repo that never had any.
@@ -1194,6 +1203,12 @@ def _project_columns(who, facts):
                     or mapping.held(d.name),
                     "issues": issues})
     return out
+
+
+def _legacy_colors(project_prefs):
+    """The colors projects wore while a color was the project's, {name:
+    color}: where an account that has picked none starts."""
+    return {n: (pr or {}).get("color") or "" for n, pr in (project_prefs or {}).items()}
 
 
 def _projects_seen_by(who, rows):
@@ -4183,6 +4198,8 @@ POST_ROUTES = (
     # path it prefixes, and both handlers were called _pin, so the later
     # definition quietly replaced the earlier one in the class body too.
     ("prefix", "/api/project-pin", "_project_pin"),
+    ("prefix", "/api/project-group", "_project_group"),
+    ("prefix", "/api/project-color", "_project_color"),
     ("prefix", "/api/project-auth", "_project_auth"),
     ("exact", "/api/project-ftp", "_project_ftp"),
     ("prefix", "/api/container", "_container"),
@@ -7508,7 +7525,7 @@ class Handler(BaseHTTPRequestHandler):
         if self._readonly(name):
             return None
         if name in set(projects.load_locks()):
-            return self._json({"error": "locked: the padlock on its row unlocks it"}, 403)
+            return self._json({"error": "archived: Unarchive, in its menu, brings it back"}, 403)
         action = field(req, "action")
         # A branch is its session's (git.py not_yours): another account's is
         # an administrator's to merge, asked each time and never while that
@@ -8151,6 +8168,31 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "a session has no sidebar: the pins are a person's own"}, 403)
         return self._json(*projects.pin(users.uid_of(me), req.get("name", ""), bool(req.get("pinned")),
                                         users.starts_unpinned(me)))
+
+    def _project_group(self, req):
+        """Put a project in one of this account's groups, or take it out
+        (projects.set_group): a label for the Projects page, nothing more."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session has no Projects page: the groups are a person's own"}, 403)
+        name = field(req, "name")
+        if name not in set(project_names(me)):
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        return self._json(*projects.set_group(users.uid_of(me), name, field(req, "group")))
+
+    def _project_color(self, req):
+        """Give a project one of the colors for this account alone, or none
+        (projects.set_mark): worn by its card, its tabs and its bar."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session has no Projects page: a project's color is a person's own"}, 403)
+        name, color = field(req, "name"), field(req, "color")
+        if name not in set(project_names(me)):
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        if color and color not in prefs.COLORS:
+            return self._json({"error": f"color is one of {', '.join(prefs.COLORS)}, or none: not {color}"}, 400)
+        return self._json(*projects.set_mark("color", users.uid_of(me), name, color,
+                                             start=_legacy_colors(prefs.all_projects(WORKSPACE))))
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should

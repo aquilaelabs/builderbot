@@ -2019,6 +2019,73 @@ def pin(uid, name, on, fresh=False):
 
 
 # ---------------------------------------------------------------------------
+# a person's own marks on projects: groups and colors
+
+# Labels a person puts on projects for their own view, and nothing else (the
+# operator, 18 Oct): a group keeps projects together on the Projects page,
+# a color is worn by a project's card, its tabs and its bar. Neither moves a
+# file or gates anything, and each account sees only its own: {uid:
+# {project: value}}, a file per kind.
+
+GROUP_MAX = 40
+MARK_FILES = {"group": "project-groups.json", "color": "project-colors.json"}
+
+
+def _marks(kind):
+    try:
+        d = json.loads((STATE / MARK_FILES[kind]).read_text())
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _clean_marks(v):
+    return {k: x for k, x in (v or {}).items() if isinstance(k, str) and isinstance(x, str) and x}
+
+
+def load_marks(kind, uid, start=None):
+    """This account's marks of a kind, {project: value}. `start` is what an
+    account that has never set one sees (the colors projects had before
+    they were each person's own)."""
+    d = _marks(kind)
+    if str(uid or "") not in d:
+        return _clean_marks(start)
+    return _clean_marks(d[str(uid or "")])
+
+
+def set_mark(kind, uid, name, value, start=None):
+    """Set one project's mark of a kind for one account, or take it off with
+    an empty value; the first one written keeps `start` beside it, so the
+    rest are not lost. (payload, status)."""
+    if not name or name not in {d.name for d in WORKSPACE.iterdir() if d.is_dir() and not d.name.startswith(".")}:
+        return {"error": f"unknown project: {name}"}, 400
+    with lock:
+        d = _marks(kind)
+        mine = _clean_marks(d.get(str(uid or ""), start))
+        if value:
+            mine[name] = value
+        else:
+            mine.pop(name, None)
+        d[str(uid or "")] = mine
+        try:
+            write_json(STATE / MARK_FILES[kind], d)
+        except OSError as e:
+            return {"error": f"could not save: {e}"}, 500
+    return {kind + "s": mine}, 200
+
+
+def load_project_groups(uid):
+    """This account's groups, {project: group name}."""
+    return load_marks("group", uid)
+
+
+def set_group(uid, name, group):
+    """Put one project in a group for one account, or take it out with an
+    empty name. (payload, status)."""
+    return set_mark("group", uid, name, " ".join(str(group or "").split())[:GROUP_MAX])
+
+
+# ---------------------------------------------------------------------------
 # the locks
 
 # Locked projects live on the /config volume so the list survives the image
@@ -2061,9 +2128,9 @@ def save_locks(names):
 # feature: the notebook opens, the findings and their history are there, the
 # artifacts list and a dev instance still work. What goes is everything that
 # writes on Claude's behalf: the notebook's three tabs.
-LOCKED_REFUSAL = ("{name} is locked: yours to run. Unlock it to change its "
-                  "notebook; everything you read here still works while it "
-                  "stays locked.")
+LOCKED_REFUSAL = ("{name} is archived: yours to run. Unarchive it, in its "
+                  "menu, to change its notebook; everything you read here "
+                  "still works while it stays archived.")
 
 
 def locked_out(name):

@@ -211,23 +211,29 @@ const SKTPLS = {
 // window.prompt was: its label, the field, Cancel and OK, under the control
 // that asked; Enter is OK and Escape is Cancel. Resolves with what was typed,
 // trimmed, or null. One at a time: a second ask takes the first one's place.
-function askInline(after, {label, value = "", ok = "OK"} = {}){
+// `options` are offered as the box is typed in; `allowEmpty` lets OK answer
+// "" (a group taken away), where otherwise an empty box is a Cancel.
+function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpty = false} = {}){
   return new Promise(resolve => {
     document.querySelectorAll(".askline").forEach(x => x.__done?.(null));
     const box = document.createElement("div");
     box.className = "field askline";
-    box.innerHTML = `<label class="lbl">${esc(label)}</label><div class="askrow actbar"><input type="text" autocomplete="off" spellcheck="false" aria-label="${esc(label)}">
-      <button type="button" data-askno>Cancel</button><button type="button" class="primary" data-askok>${esc(ok)}</button></div>`;
+    const list = options.length ? `askopts${++seq}` : "";
+    box.innerHTML = `<label class="lbl">${esc(label)}</label><div class="askrow actbar"><input type="text" autocomplete="off" spellcheck="false" aria-label="${esc(label)}"${
+        list ? ` list="${list}"` : ""}>
+      <button type="button" data-askno>Cancel</button><button type="button" class="primary" data-askok>${esc(ok)}</button></div>${
+      list ? `<datalist id="${list}">${options.map(o => `<option value="${esc(o)}"></option>`).join("")}</datalist>` : ""}`;
     after.insertAdjacentElement("afterend", box);
     const inp = box.querySelector("input");
     inp.value = value;
     inp.focus(); inp.select();
     const done = v => { box.remove(); resolve(v); };
     box.__done = done;
-    box.querySelector("[data-askok]").onclick = () => done(inp.value.trim() || null);
+    const answer = () => done(inp.value.trim() || (allowEmpty ? "" : null));
+    box.querySelector("[data-askok]").onclick = answer;
     box.querySelector("[data-askno]").onclick = () => done(null);
     inp.onkeydown = e => {
-      if (e.key === "Enter"){ e.preventDefault(); done(inp.value.trim() || null); }
+      if (e.key === "Enter"){ e.preventDefault(); answer(); }
       else if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(null); }
     };
   });

@@ -521,6 +521,14 @@ export async function openSection(page, key, scope = ''){
   await page.waitForFunction(s => document.querySelector(s)?.open, sel, { timeout: 5000 }).catch(() => {});
 }
 
+// The Projects page's Archived fold opened (the operator, 18 Oct: a locked
+// project is archived, its card folded away at the page's foot), so an
+// archived card can be read and pressed; the fixture's delta is one.
+export async function openArchived(page){
+  await page.waitForSelector('.projtab details[data-sect="projects:archived"]', { state: 'attached', timeout: 15000 });
+  await page.evaluate(() => { document.querySelector('.projtab details[data-sect="projects:archived"]').open = true; });
+}
+
 export async function openFold(page, sel){
   // Resolved to a handle first, and the wait done through that rather than
   // through the selector: these are often Playwright's own selector flavor

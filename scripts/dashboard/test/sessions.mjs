@@ -269,9 +269,9 @@ await page.waitForFunction(() => !state.sessions.some(s => s.name === 'claude-ep
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
 // Either wording is the design's: the other account's session is named when
 // the poll has seen it by the click, and that is timing (B388).
-ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claude sessions here end now: yours, w\.lock\./.test(page.dialogs[ndx]) && /Lock ep\.silon\?/.test(page.dialogs[ndx])
+ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claude sessions here end now: yours, w\.lock\./.test(page.dialogs[ndx]) && /Archive ep\.silon\?/.test(page.dialogs[ndx])
    && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
-   `dotted project: locking it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
+   `dotted project: archiving it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
 await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] [data-c]'), { timeout: 15000 });
 

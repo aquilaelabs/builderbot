@@ -116,10 +116,11 @@ function homeJobsHtml(){
 }
 
 function homeGlanceHtml(){
-  const pinned = (state?.projects || []).filter(p => p.pinned);
+  // Not an archived one (the operator, 18 Oct), pinned or not.
+  const pinned = (state?.projects || []).filter(p => p.pinned && !p.locked);
   if (!pinned.length) return `<div class="hnone">no project is pinned: a project's menu on the Projects page pins it here</div>`;
   return `<div class="hglance">${pinned.map(p => {
-    const pc = colorAttrs(p.prefs?.color);
+    const pc = colorAttrs(p.color);
     return `<div class="hproj${pc.cls}"${pc.style}>
       <button type="button" class="name link" data-hproj="${esc(p.name)}">${esc(p.label || p.name)}</button>
       <div class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>` : ""}</div>

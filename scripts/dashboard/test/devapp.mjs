@@ -4308,8 +4308,8 @@ print(json.dumps(out))
   const eps = b.find(x => x.head === 'ep.silon');
   ok(eps && !/rgba\(0, 0, 0, 0\)/.test(eps.bg) && /inset/.test(eps.bar) && b.find(x => x.head === 'No project')?.none,
      `a project's heading is a tinted band with a bar down its left, and No project is marked plain (${JSON.stringify(eps)})`);
-  await api('/api/prefs', { project: 'ep.silon', color: 'teal' });
-  await refreshUntil(page, () => (state.projects || []).find(p => p.name === 'ep.silon')?.prefs?.color === 'teal',
+  await api('/api/project-color', { name: 'ep.silon', color: 'teal' });
+  await refreshUntil(page, () => (state.projects || []).find(p => p.name === 'ep.silon')?.color === 'teal',
                      { timeout: 20000 });
   await page.evaluate(() => { dockerRev++; drawPanes(); });
   await page.waitForFunction(() => /57, 181, 176/.test(getComputedStyle(

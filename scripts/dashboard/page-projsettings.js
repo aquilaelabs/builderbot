@@ -38,7 +38,7 @@ const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
 // a menu.
 let rnPrefWas = {git_name: "", git_email: "",
                  node: "", nodes: "", hosts: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
-                 capture_days: "7", snapshot_days: "14", dev_keep: "3", gate: "", color: "", debug: ""};
+                 capture_days: "7", snapshot_days: "14", dev_keep: "3", gate: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -52,25 +52,31 @@ const colorAttrs = name => {
   const tone = colorTone(name);
   return tone ? {cls: " pc", style: ` style="--pc:${tone}"`} : {cls: "", style: ""};
 };
+// This account's color for a project (the operator, 18 Oct: a person's own,
+// set from its card), or "".
 const projectColor = name =>
-  (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
+  (state?.projects || []).find(x => x.name === name)?.color || "";
 // The name a project is shown under (R154): its directory is `name` and the
 // key everywhere, and what a person reads is the registry's `label`. A name
 // not in the poll (a project since deleted) is shown as it is.
 const projLabel = name =>
   (state?.projects || []).find(x => x.name === name)?.label || String(name ?? "");
-// The project a tab is about, for its color: a notebook's, or the project
-// whose Claude session a terminal tab holds. A plain shell has none.
-const tabProject = t => t.kind === "notebook" ? t.arg
-  : t.kind === "term" && String(t.arg).startsWith("claude:") ? t.arg.slice(7).split(":")[0] : "";
-const rnColorNow = () =>
-  $("rnColor").querySelector('[aria-checked="true"]')?.dataset.color || "";
-function rnFillColor(cur){
-  $("rnColor").innerHTML = PROJECT_COLORS.map(([n, tone]) =>
-    `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
-       aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${
-       n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
-}
+// The project a tab is about, for its color: a notebook's, the project whose
+// Claude session a terminal tab holds, or for a shell the project its label
+// names, the directory it is in (sessionLabels), so a tab that reads
+// "sh: droid" wears droid's color wherever it was opened (the operator, 18
+// Oct). Before the poll has its directory, the project it was opened on
+// (sh:N:NAME). A container's shell and one outside every project have none.
+const tabProject = t => {
+  if (t.kind === "notebook") return t.arg;
+  const a = String(t.kind === "term" ? t.arg : "");
+  if (a.startsWith("claude:")) return a.slice(7).split(":")[0];
+  if (a.startsWith("ctr:") || !a) return "";
+  const cwd = (state?.sessions || []).find(s => s.name === sessionOf(a))?.cwd;
+  if (!cwd) return a.startsWith("sh:") ? a.split(":")[2] || "" : "";
+  const here = baseOf(cwd);
+  return (state?.projects || []).some(p => p.name === here) ? here : "";
+};
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
 // A dial's choices beyond those three, by the kind it gates: the wiki may
@@ -110,8 +116,7 @@ function rnPrefsOf(p){
                sign: p?.prefs?.sign || "ask",
                release: p?.prefs?.release || "ask",
                keys: p?.prefs?.keys || "ask",
-               version: p?.version_policy || "locked",
-               color: p?.prefs?.color || ""};
+               version: p?.version_policy || "locked"};
 }
 
 function rnFillPrefs(p){
@@ -120,7 +125,6 @@ function rnFillPrefs(p){
   const nm = $("rnNodesMore");
   if (nm) delete nm.dataset.drawn;
   rnPrefWas = rnPrefsOf(p);
-  rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
   $("rnGitEmail").value = rnPrefWas.git_email;
   // Said where it is typed: the Profile is the default, this is the exception,
@@ -445,7 +449,7 @@ function rnDrawPrefs(){
   const shut = !!p?.locked;
   $("rnReply").disabled = $("rnAsks").disabled = shut;
   $("rnPrefHint").textContent = shut
-    ? "Locked; this project is yours to run, so no session starts here."
+    ? "Archived; this project is yours to run, so no session starts here."
     : "Applied the next time Claude starts here. The model and effort are picked each time a session starts, in the Claude button's menu.";
 }
 
@@ -566,7 +570,7 @@ function renameProject(name, mode = "all"){
   // read "GitHub settings", and the host is the one fact this door is about.
   const where = p?.forge_name || "its remote";
   $("rnTitle").textContent = git ? `${where} settings for ${projLabel(name)}` : projLabel(name);
-  for (const id of ["rnNameField", "rnColorField", "rnMineField",
+  for (const id of ["rnNameField", "rnMineField",
                     "rnGateField", "rnBuildField", "rnReadsField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
@@ -1424,7 +1428,6 @@ function closeRename(){
 const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "build", "signing", "claude", "yours"];
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
-  color: ["project", "Color"],
   node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
   reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"], debug: ["sees", "Debugging"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
@@ -1467,8 +1470,7 @@ function rnEnc(){
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
           devbuild: $("rnGateDocker").value || "deny", report: $("rnGateReport").value || "auto",
           sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
-          keys: $("rnGateKeys").value || "ask", version: $("rnGateVersion").value || "locked",
-          color: rnColorNow()};
+          keys: $("rnGateKeys").value || "ask", version: $("rnGateVersion").value || "locked"};
 }
 
 // What one section holds unsaved, as the names its fields go by, and which
@@ -1544,7 +1546,6 @@ function rnRevertSect(sect){
   if (sect === "project"){
     $("rnName").value = projLabel(rnFor); rnShow();
     $("rnPreview").hidden = true; $("rnName").classList.remove("bad");
-    rnFillColor(w.color);
   } else if (sect === "people"){
     rnPeopleDraft = {}; rnDrawPeople();
   } else if (sect === "repo"){
@@ -1687,7 +1688,7 @@ async function rnSubmit(sect, end = false){
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
-                              build: v.build, test: v.test, gate: v.gate, color: v.color, ...(v.dbg || {}),
+                              build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
                               devbuild: v.devbuild, report: v.report, sign: v.sign, keys: v.keys, release: v.release,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),

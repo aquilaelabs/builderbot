@@ -171,17 +171,34 @@ for (const who of CAST) {
   const road = JSON.stringify(await api(user2.page, '/api/roadmap?project=alpha'));
   ok(['test', 'w.admin1', 'w.admin2', 'w.user1', 'w.user2'].every(n => road.includes(`walked by ${n}`)),
      'everybody on alpha reads the items the others added to its roadmap');
-  const color = await api(owner.page, '/api/prefs', { project: 'alpha', color: 'teal' });
-  ok(color.status === 200, `the owner sets alpha's color (${color.status})`);
+  // A project's color is each person's own (the operator, 18 Oct): the
+  // owner's pick is the owner's, and nobody else's view wears it.
+  const color = await api(owner.page, '/api/project-color', { name: 'alpha', color: 'teal' });
+  ok(color.status === 200, `the owner gives alpha a color of their own (${color.status})`);
   // Waited for, not read after one refresh(): a poll already on its way when
   // it is called makes it queue another and return at once, so one call can
   // read the state from before the write. On a loaded box, the whole run, a
   // poll is on its way often enough that this read undefined (B238).
-  const colorOf = () => (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color;
-  await refreshUntil(user1.page, () => (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color === 'teal',
+  const colorOf = () => (state.projects || []).find(p => p.name === 'alpha')?.color || '';
+  await refreshUntil(owner.page, () => ((state.projects || []).find(p => p.name === 'alpha')?.color || '') === 'teal',
                      { timeout: 20000 }).catch(() => {});
-  const seen = await user1.page.evaluate(colorOf);
-  ok(seen === 'teal', `...which is alpha's for everybody (${seen})`);
+  await user1.page.evaluate(() => refresh());
+  const mine = await owner.page.evaluate(colorOf), theirs = await user1.page.evaluate(colorOf);
+  ok(mine === 'teal' && theirs === '', `...which the owner sees and w.user1 does not (${mine} | ${theirs || 'none'})`);
+  // The tabs it colors: a shell opened on a project is that project's as
+  // much as its Claude session is (the operator, 18 Oct: the dock's boxes
+  // too); the workspace's shell is nobody's.
+  const tabsOf = await owner.page.evaluate(() => ['claude:alpha:1', 'sh:2:alpha', 'sh:1:', 'shell']
+    .map(arg => tabProject({ kind: 'term', arg }) || '-').join(' '));
+  ok(tabsOf === 'alpha alpha - -', `a Claude tab and a shell on alpha wear its color, the workspace's shell none (${tabsOf})`);
+  // A shell is read by the directory its label names: the workspace's shell
+  // cd'd into alpha reads "sh: alpha" and wears alpha's color.
+  const moved = await owner.page.evaluate(() => {
+    const was = state.sessions;
+    state.sessions = [...(was || []), { name: sessionOf('shell'), cwd: '/workspace/alpha' }];
+    const r = tabProject({ kind: 'term', arg: 'shell' }) || '-';
+    state.sessions = was; return r; });
+  ok(moved === 'alpha', `...and the workspace's shell, gone into alpha, wears alpha's (${moved})`);
   await Promise.all([owner, user1, user2].map(p => refreshUntil(p.page,
     () => ((state.projects || []).find(p => p.name === 'alpha')?.yours?.model || '') === 'sonnet',
     { timeout: 20000 }).catch(() => {})));

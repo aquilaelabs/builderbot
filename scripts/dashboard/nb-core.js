@@ -895,8 +895,14 @@ function projectActions(p, extra = ""){
     p.phone?.mine ? `<button type="button" data-ph="${esc(name)}"${phoneWhy(p) ? " disabled" : ""}>${
         p.phone?.lease?.project === name ? "Take your phone back" : "Lend your phone"}</button>` : "",
     p.mine === false ? "" : `<button type="button" data-bug="${esc(name)}">Report a BuilderBot bug</button>`,
-    `<button type="button" data-k="${esc(name)}" data-on="${p.locked ? "0" : "1"}"${state?.can?.lock === false ? " disabled" : ""}>${p.locked ? "Unlock" : "Lock"}</button>`,
-    `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
+    // Archive is the lock under the name it is used for (the operator, 18
+    // Oct): an archived project is kept and run by hand, its card folded
+    // away at the foot of the Projects page, and not pinned.
+    `<button type="button" data-k="${esc(name)}" data-on="${p.locked ? "0" : "1"}"${state?.can?.lock === false ? " disabled" : ""}>${p.locked ? "Unarchive" : "Archive"}</button>`,
+    p.locked ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
+    // A label of this account's to keep projects together on the Projects
+    // page (the operator, 18 Oct): nothing else follows from it.
+    p.locked ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group…"}</button>`,
     `<button type="button" data-rn="${esc(name)}">Settings</button>`,
     extra,
   ].filter(Boolean).join("");
@@ -905,7 +911,7 @@ function projectActions(p, extra = ""){
   // dead one is told.
   const live = liveSessions();
   const say = notMine(p) ? NOT_MINE_WHY
-    : p.locked ? "locked; you run this one. Unlock lets Claude back in"
+    : p.locked ? "archived; you run this one. Unarchive, in its menu, lets Claude back in"
     : heldWhy(p) ? heldWhy(p)
     : p.session_why ? p.session_why
     : othersOn(name).length ? `${othersOn(name).join(", ")} also working here, in a checkout of their own: start yours`

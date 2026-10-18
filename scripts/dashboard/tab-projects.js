@@ -107,12 +107,14 @@ function projectMatches(p, q){
 // session's dot and word, the one notice, and the two actions with the
 // rest behind the menu, the same parts the project page's header draws.
 function projectCard(p){
-  const pc = colorAttrs(p.prefs?.color), cls = {error:"bad", warning:"warn", locked:"locked"};
+  const pc = colorAttrs(p.color), cls = {error:"bad", warning:"warn", locked:"locked"};
   const node = p.node_name || p.session_at || "";
   return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
-    <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
-      p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "locked" : "read-only"}</span>` : ""}${
-      p.pinned ? "" : ` <span class="dim pcunpinned" title="not on Home's glance">unpinned</span>`}</div>
+    <div class="pcname"><span class="pcdot"><button type="button" class="pcswatch${p.color ? "" : " none"}" data-pcolor="${esc(p.name)}"${
+        p.color ? ` style="--pc:${colorTone(p.color)}"` : ""} aria-label="your color for ${esc(projLabel(p.name))}: ${esc(p.color || "none")}"
+        aria-expanded="false"></button></span><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
+      p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : ""}${
+      p.pinned || p.locked ? "" : ` <span class="dim pcunpinned" title="not on Home's glance">unpinned</span>`}</div>
     <div class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}</div>
     ${projectState(p)}
     ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
@@ -143,7 +145,7 @@ function renderProjectsInto(i){
         <span class="sp"></span>
         <span class="actbar"><button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
         <button type="button" class="primary" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button></span>`);
-    d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div class="field pgridband"><div id="pjGrid" class="pgrid"></div></div>`;
+    d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");
@@ -163,15 +165,32 @@ function renderProjectsInto(i){
                                        : "no projects are yours yet: an administrator grants them on the Users tab"}</div>`);
     return;
   }
-  // By name, pinned or not (the operator, 7 Oct): pinned first split one
-  // list into two alphabets. Sorted here rather than by the server, which
-  // reports the directory order every other reader wants.
-  const shown = ps.filter(p => projectMatches(p, pjQuery)).sort(byProjectName);
-  if (paint(grid, shown.map(projectCard).join("")
-      || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
+  // The pinned first, each part by name (the operator, 18 Oct, where on 7
+  // Oct it was by name alone): what is pinned is what is looked for. Sorted
+  // here rather than by the server, which reports the directory order every
+  // other reader wants; each group, and the ungrouped, keeps the order.
+  const shown = ps.filter(p => projectMatches(p, pjQuery))
+    .sort((a, b) => (b.pinned && !b.locked) - (a.pinned && !a.locked) || byProjectName(a, b));
+  // The ones in no group first, then each of this account's groups under
+  // its name, by name (the operator, 18 Oct); and the archived ones apart,
+  // folded at the foot, their own fold whatever group they were in.
+  const live = shown.filter(p => !p.locked), gone = shown.filter(p => p.locked);
+  const named = [...new Set(live.map(p => p.group).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const grid_ = list => `<div class="pgrid">${list.map(projectCard).join("")}</div>`;
+  const loose = live.filter(p => !p.group);
+  const html = (loose.length ? grid_(loose) : "")
+    + named.map(g => {
+        const list = live.filter(p => p.group === g);
+        return `<section class="pjgroup" data-group="${esc(g)}"><h3 class="pjgname">${esc(g)} <span class="dim">${list.length}</span></h3>${grid_(list)}</section>`;
+      }).join("")
+    + (gone.length ? docSection("projects", "archived", "Archived", `${gone.length} project${gone.length === 1 ? "" : "s"}`,
+                                grid_(gone), {open: false, cls: "dim"}) : "");
+  if (paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
+    wireSections(grid);
     wireProjectRows(grid);
     wireProjectHeader(grid);
     grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
+    grid.querySelectorAll("[data-pcolor]").forEach(b => b.onclick = () => pickProjectColor(b));
   }
   syncResumeMenu();
 }
